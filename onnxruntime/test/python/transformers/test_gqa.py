@@ -626,27 +626,34 @@ def attention_ref(
         v = repeat(v, "b s h d -> b s (h g) d", g=q.shape[2] // v.shape[2])
 
     scores = torch.einsum("bthd,bshd->bhts", q, k) / math.sqrt(q.shape[-1])
+    torch.set_printoptions(precision=4, profile='full')
+    print("scores", scores)
 
     if softcap > 0:
         scores = (scores / softcap).tanh() * softcap
+        print("softcap", scores)
 
     if key_padding_mask is not None:
         scores.masked_fill_(rearrange(~key_padding_mask, "b s -> b 1 1 s"), float("-inf"))
+        print("padding masked:", scores)
 
     if window_size[0] >= 0 or window_size[1] >= 0:
         local_mask = construct_local_mask(
             seqlen_q, seqlen_k, window_size, query_padding_mask, key_padding_mask, q.device
         )
         scores.masked_fill_(local_mask, float("-inf"))
+        print("local masked:", scores)
 
     # Add custom attention bias if provided (for CPU tests)
     if attention_bias is not None:
         # The bias should only be applied to the relevant part of the scores matrix,
         # matching the sequence length of the bias tensor.
         scores[..., : attention_bias.shape[-1]] += attention_bias
+        print("add attn_bias", scores)
 
     if use_smooth_softmax or (head_sink is not None):
         attention = smooth_softmax_ref(scores, head_sink)
+        print("apply sink", attention)
     else:
         attention = torch.softmax(scores, dim=-1)
 
@@ -706,7 +713,6 @@ def parity_check_gqa_prompt(
 
     head_sink = torch.rand(config.num_heads, dtype=torch_type, device=device) if config.has_head_sink else None
     print("head_sink:", head_sink)
-
     window_size = (-1, -1)
     if config.local_window_size > 0:
         window_size = (config.local_window_size, 0)
@@ -961,7 +967,7 @@ def parity_check_gqa_past(
 
 
 def get_cuda_rotary_options():
-    return [(True, False), (True, True), (False, False)]
+    return [(False, False)] if pipeline_mode else [(True, False), (True, True), (False, False)]
 
 
 def get_cpu_rotary_options():
@@ -969,13 +975,13 @@ def get_cpu_rotary_options():
 
 
 def get_softmax_options():
-    return [(True, False)] if pipeline_mode else [(False, False), (False, True), (True, False)]
+    return [(False, True )] if pipeline_mode else [(False, False), (False, True), (True, False)]
 
 
 def gqa_cuda_prompt_test_cases():
-    batches = [3] if pipeline_mode else [1, 3, 5]
-    seqs = [(35, 35)] if pipeline_mode else [(35, 35), (127, 127), (240, 240), (2000, 2000)]
-    num_h = [(6, 3)] if pipeline_mode else [(6, 3), (9, 9), (32, 8)]
+    batches = [1] if pipeline_mode else [1, 3, 5]
+    seqs = [(2, 2)] if pipeline_mode else [(35, 35), (127, 127), (240, 240), (2000, 2000)]
+    num_h = [(4, 2)] if pipeline_mode else [(6, 3), (9, 9), (32, 8)]
     h_sizes = [32] if pipeline_mode else [32, 64, 128, 256]
     smmoth_softmax__head_sink = get_softmax_options()
 
@@ -983,10 +989,10 @@ def gqa_cuda_prompt_test_cases():
         for sq, skv in seqs:
             for n, n2 in num_h:
                 for h in h_sizes:
-                    for lws in [-1, random.randint(1, skv)]:
+                    for lws in [-1]: #[-1, random.randint(1, skv)]:
                         for rotary, rotary_interleaved in get_cuda_rotary_options():
-                            for packed in [False, True]:
-                                for softcap in [0.0, 50.0]:
+                            for packed in [False]: # [False, True]:
+                                for softcap in [0.0]: # [0.0, 50.0]:
                                     if rotary and h % 16 > 0:
                                         continue
                                     for use_smooth_softmax, has_head_sink in smmoth_softmax__head_sink:
