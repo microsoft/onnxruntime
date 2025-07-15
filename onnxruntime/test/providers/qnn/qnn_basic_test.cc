@@ -1014,9 +1014,10 @@ TEST_F(QnnHTPBackendTests, HTPSocModels) {
 
 // Test that models run with various HTP architecture values (and set device_id)
 TEST_F(QnnHTPBackendTests, HTPArchValues) {
-  constexpr std::array<const char*, 3> htp_archs = {"",     // No explicit arch specified
+  constexpr std::array<const char*, 4> htp_archs = {"",     // No explicit arch specified
                                                     "0",    // "None"
-                                                    "68"};  // v68
+                                                    "68",   // v68
+                                                    "81"};  // v81
   for (auto htp_arch : htp_archs) {
     RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
                        TestBackend::Htp,  // backend
