@@ -15,6 +15,7 @@
 #include "core/providers/qnn-abi/builder/qnn_def.h"
 #include "core/providers/qnn-abi/builder/qnn_quant_params_wrapper.h"
 #include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "test/autoep/library/example_plugin_ep_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -51,7 +52,8 @@ class QnnModelWrapper {
         input_index_map_(input_index_map),
         output_index_map_(output_index_map),
         qnn_backend_type_(qnn_backend_type),
-        model_settings_(model_settings) {
+        model_settings_(model_settings),
+        api_ptrs_{OrtApi(), OrtEpApi(), OrtModelEditorApi()} {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
 
@@ -113,17 +115,64 @@ class QnnModelWrapper {
     return std::move(model_output_tensor_wrappers_);
   }
 
-  Status GetInitializerTensors(std::unique_ptr<OrtArrayOfConstObjects>& initializers) const { 
+  Status GetInitializerTensors(std::unique_ptr<OrtArrayOfConstObjects>& initializers) const {
     return ort_graph_.GetInitializers(initializers);
   }
 
-  // const OrtValueInfo* GetConstantTensor(const std::string& tensor_name) const {
-  //   return ort_graph_.GetConstantInitializer(tensor_name);
-  // }
+  const OrtValueInfo* GetConstantTensor(const std::string& tensor_name) const {
+    std::unique_ptr<OrtArrayOfConstObjects> initializers_ptr;
+    Status status = GetInitializerTensors(initializers_ptr);
+    if (!status.IsOK()) {
+      return nullptr;
+    }
+    const OrtArrayOfConstObjects* initializers = initializers_ptr.get();
+    size_t num_initializers = 0;
+    api_ptrs_.ort_api.ArrayOfConstObjects_GetSize(initializers, &num_initializers);
+    const void* const* initializers_data = nullptr;
+    api_ptrs_.ort_api.ArrayOfConstObjects_GetData(initializers, &initializers_data);
 
-  // bool IsConstantInput(std::string input_name) const {
-  //   return ort_graph_.IsConstantInitializer(input_name, true);
-  // }
+    bool is_constant_initializer = false;
+    bool find_tensor_name = false;
+    for (size_t i = 0; i < num_initializers && !find_tensor_name; ++i) {
+      const OrtValueInfo* value_info = static_cast<const OrtValueInfo*>(initializers_data[i]);
+      const char* value_info_name = nullptr;
+      api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name);
+      if (std::string(value_info_name) == tensor_name) {
+        find_tensor_name = true;
+        api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
+        if (is_constant_initializer) {
+          return value_info;
+        }
+      }
+    }
+    return nullptr;
+  }
+
+  bool IsConstantInput(std::string input_name) const {
+    std::unique_ptr<OrtArrayOfConstObjects> initializers_ptr;
+    Status status = GetInitializerTensors(initializers_ptr);
+    if (!status.IsOK()) {
+      return false;
+    }
+    const OrtArrayOfConstObjects* initializers = initializers_ptr.get();
+    size_t num_initializers = 0;
+    RETURN_IF_ERROR(api_ptrs_.ort_api.ArrayOfConstObjects_GetSize(initializers, &num_initializers));
+    const void* const* initializers_data = nullptr;
+    RETURN_IF_ERROR(api_ptrs_.ort_api.ArrayOfConstObjects_GetData(initializers, &initializers_data));
+
+    bool is_optional_graph_input = false;
+    bool find_input_name = false;
+    for (size_t i = 0; i < num_initializers && !find_input_name; ++i) {
+      const OrtValueInfo* value_info = static_cast<const OrtValueInfo*>(initializers_data[i]);
+      const char* value_info_name = nullptr;
+      RETURN_IF_ERROR(api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name));
+      if (std::string(value_info_name) == input_name) {
+        find_input_name = true;
+        RETURN_IF_ERROR(api_ptrs_.ort_api.ValueInfo_IsOptionalGraphInput(value_info, &is_optional_graph_input));
+      }
+    }
+    return is_optional_graph_input;
+  }
 
   static bool GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t>& shape);
 
@@ -141,17 +190,17 @@ class QnnModelWrapper {
     return json_qnn_graph_.Finalize();
   }
 
-  // Qnn_TensorType_t GetTensorType(const std::string& tensor_name) const {
-  //   if (IsConstantInput(tensor_name)) {
-  //     return QNN_TENSOR_TYPE_STATIC;
-  //   } else if (IsGraphInput(tensor_name)) {
-  //     return QNN_TENSOR_TYPE_APP_WRITE;
-  //   } else if (IsGraphOutput(tensor_name)) {
-  //     return QNN_TENSOR_TYPE_APP_READ;
-  //   } else {
-  //     return QNN_TENSOR_TYPE_NATIVE;
-  //   }
-  // }
+  Qnn_TensorType_t GetTensorType(const std::string& tensor_name) const {
+    if (IsConstantInput(tensor_name)) {
+      return QNN_TENSOR_TYPE_STATIC;
+    } else if (IsGraphInput(tensor_name)) {
+      return QNN_TENSOR_TYPE_APP_WRITE;
+    } else if (IsGraphOutput(tensor_name)) {
+      return QNN_TENSOR_TYPE_APP_READ;
+    } else {
+      return QNN_TENSOR_TYPE_NATIVE;
+    }
+  }
 
   Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info) const;
 
@@ -333,6 +382,7 @@ class QnnModelWrapper {
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   ModelSettings model_settings_ = {};
   utils::QnnJSONGraph json_qnn_graph_;
+  ApiPtrs api_ptrs_;
 };  // QnnModelWrapper
 
 }  // namespace qnn
