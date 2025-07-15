@@ -75,6 +75,47 @@
      // graph_proto stores large initializers in an external file
    }
    ```
+
+ EXAMPLE SNIPPET (external initializers that point to data in memory, not officially supported by ONNX spec):
+
+   This example stores initializers externally. However, instead of storing the initializers in a separate
+   file, the onnx::TensorProto objects point directly to memory addresses. This requires setting the initializer's
+   location to a special tag like "_MEM_ADDR_" (instead of a file path). The offset is set to the pointer to the
+   initializer's data in memory (instead of an offset into a file).
+
+   Because this is not standard ONNX, such a onnx::GraphProto should not be saved as an ONNX file.
+   However, it allows custom tools that operate directly on a onnx::GraphProto to get the initializer data
+   if it has already been loaded into memory.
+
+   ```C++
+   #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
+   #include "ort_graph_to_proto.h"
+
+   OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* ort_graph,
+                                             OrtEpGraphSupportInfo* graph_support_info) {
+     std::string external_file_path = "weights.bin";
+     std::ofstream out_file(external_file_path, std::ios::binary);
+
+     auto handle_initializer_data = [&external_file_path, &out_file](const OrtValueInfo* value_info,
+                                                                     const void* data, size_t bytes,
+                                                                     bool& is_external, std::string& location,
+                                                                     int64_t& offset) -> Ort::Status {
+       // OrtValueInfo* could be used to query initializer's name, type, shape, consumers, etc.
+       (void)value_info;
+
+       offset = reinterpret_cast<int64_t>(data);
+       location = "_MEM_ADDR_";  // Some special location tag that indicates the offset is a pointer.
+       is_external = true;  // True if is external initializer
+       return Ort::Status{nullptr};
+     }
+
+     ONNX_NAMESPACE::GraphProto graph_proto;
+     OrtEpUtils::OrtGraphToProto(*ort_graph, graph_proto, handle_initializer_data);
+
+     // graph_proto has initializers that look like they are stored in an external file,
+     // but they are actually point to the data in memory.
+   }
+   ```
 */
 
 #ifndef INCLUDE_ONNXRUNTIME_CORE_PROVIDERS_UTILS_ORT_GRAPH_TO_PROTO_H_
