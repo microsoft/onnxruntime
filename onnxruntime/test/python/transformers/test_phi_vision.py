@@ -285,8 +285,11 @@ class TestFusion(unittest.TestCase):
         attention_node = next((n for n in graph.node if n.name == "Attention_0"), None)
         self.assertIsNotNone(attention_node, "Could not find the Attention fused node")
         attr_names = [attr.name for attr in attention_node.attribute]
-        self.assertNotIn("unidirectional", attr_names,
-                     f"The attention node should not have a 'unidirectional' attribute: {attr_names}")
+        self.assertNotIn(
+            "unidirectional",
+            attr_names,
+            f"The attention node should not have a 'unidirectional' attribute: {attr_names}",
+        )
 
 
 if __name__ == "__main__":
