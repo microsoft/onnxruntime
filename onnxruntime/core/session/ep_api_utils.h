@@ -16,6 +16,10 @@ struct ForwardToFactory {
     return static_cast<const TFactory*>(this_ptr)->GetVendor();
   }
 
+  static uint32_t ORT_API_CALL GetVendorId(const OrtEpFactory* this_ptr) noexcept {
+    return static_cast<const TFactory*>(this_ptr)->GetVendorId();
+  }
+
   static const char* ORT_API_CALL GetVersion(const OrtEpFactory* this_ptr) noexcept {
     return static_cast<const TFactory*>(this_ptr)->GetVersion();
   }
