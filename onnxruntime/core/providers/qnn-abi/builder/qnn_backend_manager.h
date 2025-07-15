@@ -242,9 +242,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status ReleaseContext();
 
-  // Sets the ORT logger and creates a corresponding QNN logger with the same log level.
+  // Creates a corresponding QNN logger with the same log level.
   // NOTE: caller must lock the `logger_recursive_mutex_` before calling this function.
-  Status InitializeQnnLog(const logging::Logger& logger);
+  Status InitializeQnnLog();
 
   // Terminate logging in the backend
   // NOTE: This function locks the internal `logger_recursive_mutex_`.

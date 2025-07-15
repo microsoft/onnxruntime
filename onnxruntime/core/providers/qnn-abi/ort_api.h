@@ -41,6 +41,7 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
+#include "core/session/abi_logger.h"
 #include "core/session/abi_session_options_impl.h"
 
 // #define ORT_API_MANUAL_INIT

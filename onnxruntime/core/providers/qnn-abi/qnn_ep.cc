@@ -6,7 +6,7 @@
 #include "qnn_ep_factory.h"
 
 // #include "core/providers/qnn-abi/shared_context.h"
-// #include "core/providers/qnn-abi/builder/qnn_backend_manager.h"
+#include "core/providers/qnn-abi/builder/qnn_backend_manager.h"
 // #include "core/providers/qnn-abi/builder/qnn_utils.h"
 // #include "core/providers/qnn-abi/qnn_ep_utils.h"
 #include <unordered_map>
@@ -93,13 +93,13 @@ QnnEp::QnnEp(QnnEpFactory& factory, const std::string& name,
         GetName = GetNameImpl;
         GetCapability = GetCapabilityImpl;
 
-        // // Initialize the backend manager
-        // qnn::QnnBackendManagerConfig backend_config;
-        // backend_config.backend_path = "";  // Default backend path
-        // backend_config.profiling_file_path = "";
-        // backend_config.device_id = 0;
-        // backend_config.soc_model = 0;
-        // qnn_backend_manager_ = qnn::QnnBackendManager::Create(backend_config);
+        // Initialize the backend manager
+        qnn::QnnBackendManagerConfig backend_config;
+        backend_config.backend_path = "QnnHtp.dll";  // Default backend path
+        backend_config.profiling_file_path = "";
+        backend_config.device_id = 0;
+        backend_config.soc_model = 0;
+        qnn_backend_manager_ = qnn::QnnBackendManager::Create(backend_config);
 }
 
 QnnEp::~QnnEp() = default;
@@ -380,6 +380,7 @@ const char* ORT_API_CALL QnnEp::GetNameImpl(const OrtEp* this_ptr) noexcept {
 OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
                                                 const OrtGraph* graph,
                                                 OrtEpGraphSupportInfo* graph_support_info) {
+    std::cout << "DEBUG: GetCapabilityImpl" << std::endl;
     graph_support_info;
     QnnEp* ep = static_cast<QnnEp*>(this_ptr);
 
@@ -459,24 +460,21 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
         }
     }
 
-    // status rt = ep->qnn_backend_manager_->SetupBackend(ep->logger_, is_qnn_ctx_model,
-    //                                                        ep->context_cache_enabled_ && false,  // enable_spill_fill_buffer_ (not implemented)
-    //                                                        ep->share_ep_contexts_,
-    //                                                        ep->enable_vtcm_backup_buffer_sharing_,
-    //                                                        context_bin_map);
+    Status rt = ep->qnn_backend_manager_->SetupBackend(*ep->logger_.ToInternal(),
+                                                       is_qnn_ctx_model,
+                                                       ep->context_cache_enabled_ && false,  // enable_spill_fill_buffer_ (not implemented)
+                                                       ep->share_ep_contexts_,
+                                                       ep->enable_vtcm_backup_buffer_sharing_,
+                                                       context_bin_map);
 
-    // context_bin_map.clear();
+    context_bin_map.clear();
 
-    // if (Status::OK() != rt) {
-    //     const char* error_msg = ep->ort_api.GetErrorMessage(rt);
-    //     std::string full_error_msg = "QNN SetupBackend failed: " + std::string(error_msg ? error_msg : "Unknown error");
-    //     ep->ort_api.Logger_LogMessage(ep->logger_, ORT_LOGGING_LEVEL_ERROR, full_error_msg.c_str(),
-    //                                 ORT_FILE, __LINE__, __FUNCTION__);
-    //     ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-    //     ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
-    //     ep->ort_api.ReleaseArrayOfConstObjects(graph_outputs);
-    //     return rt;
-    // }
+    if (Status::OK() != rt) {
+        ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+        ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
+        ep->ort_api.ReleaseArrayOfConstObjects(graph_outputs);
+        return ep->ort_api.CreateStatus(ORT_EP_FAIL, rt.ErrorMessage().c_str());
+    }
 
     // if (qnn::IsNpuBackend(ep->qnn_backend_manager_->GetQnnBackendType())) {
     //     // Set the power config id and the default power mode from provider option for main thread,
