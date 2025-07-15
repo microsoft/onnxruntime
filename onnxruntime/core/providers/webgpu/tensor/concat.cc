@@ -110,6 +110,10 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
       sizes_in_concat_axis.push_back(cumulative_size_in_concat_axis);
     }
 
+    // Remove the last element from both vectors to prevent out of bounds writes
+    sizes.pop_back();
+    sizes_in_concat_axis.pop_back();
+
     program.CacheHint(absl::StrJoin(std::make_tuple(num_inputs_this_concat, prepare.axis), ","))
         .AddOutputs({prepare.output_tensor})
         .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
