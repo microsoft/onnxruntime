@@ -125,6 +125,9 @@ void run_flash_splitkv_fwd(Flash_fwd_params& params, cudaStream_t stream) {
                     cudaFuncSetAttribute(
                         kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(smem_size));
                   }
+                  #ifdef ENABLE_FLASH_DEBUG
+                  init_flash_debug();
+                  #endif
                   kernel<<<grid, Kernel_traits::kNThreads, static_cast<int>(smem_size), stream>>>(params);
                 });
               });

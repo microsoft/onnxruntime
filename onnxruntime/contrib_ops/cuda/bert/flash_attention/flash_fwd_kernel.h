@@ -28,6 +28,7 @@
 #include "contrib_ops/cuda/bert/flash_attention/mask.h"
 #include "contrib_ops/cuda/bert/flash_attention/rotary.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_debug.h"
+#include "contrib_ops/cuda/bert/flash_attention/cute_tensor_helper.h"
 
 namespace onnxruntime {
 namespace flash {
@@ -234,7 +235,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   __syncthreads();
   if (threadIdx.x == 0) {
     printf("\n--- Query Tile (sQ) | m_block=%d, bidh=%d, bidb=%d ---\n", m_block, bidh, bidb);
-    print_1d_tensor_values(sQ);
+    print_tensor(sQ);
   }
   __syncthreads();  // Sync after print
 #endif
@@ -304,7 +305,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
 #ifdef ENABLE_FLASH_DEBUG
     if (threadIdx.x == 0) {
       printf("\n--- Key Tile (sK) | n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", n_block, m_block, bidh, bidb);
-      print_1d_tensor_values(sK);
+      print_tensor(sK);
     }
     __syncthreads();  // Sync after print
 #endif
@@ -347,7 +348,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
 #ifdef ENABLE_FLASH_DEBUG
     if (threadIdx.x == 0) {
       printf("\n--- Softmax Result (acc_s) | n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", n_block, m_block, bidh, bidb);
-      print_1d_tensor_values(acc_s);
+      print_tensor(acc_s);
     }
     __syncthreads();  // Sync after print
 #endif
@@ -376,7 +377,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
 #ifdef ENABLE_FLASH_DEBUG
     if (threadIdx.x == 0) {
       printf("\n--- Key Tile (sK) | n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", n_block, m_block, bidh, bidb);
-      print_1d_tensor_values(sK);
+      print_tensor(sK);
     }
     __syncthreads();  // Sync after print
 #endif
@@ -408,7 +409,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
 #ifdef ENABLE_FLASH_DEBUG
     if (threadIdx.x == 0) {
       printf("\n--- Softmax Result (acc_s) | n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", n_block, m_block, bidh, bidb);
-      print_1d_tensor_values(acc_s);
+      print_tensor(acc_s);
     }
     __syncthreads();  // Sync after print
 #endif
@@ -827,7 +828,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   __syncthreads();
   if (threadIdx.x == 0) {
     printf("\n--- Key Tile (tKsK) | m_block=%d, bidh=%d, bidb=%d ---\n", m_block, bidh, bidb);
-    print_1d_tensor_values(tKsK);
+    print_tensor(tKsK);
   }
   __syncthreads();  // Sync after print
 #endif
@@ -895,7 +896,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 #ifdef ENABLE_FLASH_DEBUG
     if (threadIdx.x == 0) {
       printf("\n--- QK Result (acc_s) | mask_step=%d, n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", masking_step, n_block, m_block, bidh, bidb);
-      print_1d_tensor_values(acc_s);
+      print_tensor(acc_s);
     }
     __syncthreads();  // Sync after print
 #endif
@@ -937,7 +938,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 #ifdef ENABLE_FLASH_DEBUG
     if (threadIdx.x == 0) {
       printf("\n--- Softmax Result (acc_o) | mask_step=%d, n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", masking_step, n_block, m_block, bidh, bidb);
-      print_1d_tensor_values(acc_o);
+      print_tensor(acc_o);
     }
     __syncthreads();  // Sync after print
 #endif
@@ -1009,7 +1010,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 #ifdef ENABLE_FLASH_DEBUG
     if (threadIdx.x == 0) {
       printf("\n--- Softmax Result (acc_o) | n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", n_block, m_block, bidh, bidb);
-      print_1d_tensor_values(acc_o);
+      print_tensor(acc_o);
     }
     __syncthreads();  // Sync after print
 #endif
@@ -1028,7 +1029,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 #ifdef ENABLE_FLASH_DEBUG
   if (threadIdx.x == 0) {
     printf("\n--- LSE Result (acc_o) | n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", n_block, m_block, bidh, bidb);
-    print_1d_tensor_values(acc_o);
+    print_tensor(acc_o);
   }
   __syncthreads();  // Sync after print
 #endif

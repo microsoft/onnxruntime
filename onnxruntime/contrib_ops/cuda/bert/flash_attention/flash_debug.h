@@ -12,7 +12,12 @@
 namespace onnxruntime {
 namespace flash {
 
-static __device__ volatile int flash_debug_block_sync = 0;
+extern __device__ volatile int flash_debug_block_sync;
+
+inline void init_flash_debug() {
+  int zero = 0;
+  cudaMemcpyToSymbol(flash_debug_block_sync, &zero, sizeof(int));
+}
 
 __device__ __forceinline__ int get_linear_block_id() {
   dim3 gridDim_ = gridDim;
@@ -55,29 +60,29 @@ __device__ __forceinline__ void flash_debug_block_sync_advance() {
 #define FLASH_DEBUG_BLOCK_SYNC_END \
   flash_debug_block_sync_advance();
 
-template <typename T>
-__device__ __forceinline__ void print_1d_tensor_values(const T& tensor) {
-  printf("Tensor size: %d:\n", (int)tensor.size());
-  // This loop flattens the tensor for printing.
-  // T is the type, decltype(tensor.size()) is the size type.
-  for (int i = 0; i < tensor.size(); ++i) {
-    // The `(T)tensor(i)` cast is important to ensure the correct type is printed.
-    // Use `printf` instead of `std::cout` in CUDA device code.
-    printf("%f ", (float)tensor(i));
-  }
-  printf("\n");
-}
+// template <typename T>
+// __device__ __forceinline__ void print_1d_tensor_values(const T& tensor) {
+//   printf("Tensor size: %d:\n", (int)tensor.size());
+//   // This loop flattens the tensor for printing.
+//   // T is the type, decltype(tensor.size()) is the size type.
+//   for (int i = 0; i < tensor.size(); ++i) {
+//     // The `(T)tensor(i)` cast is important to ensure the correct type is printed.
+//     // Use `printf` instead of `std::cout` in CUDA device code.
+//     printf("%f ", (float)tensor(i));
+//   }
+//   printf("\n");
+// }
 
-template <typename T>
-__device__ __forceinline__ void print_2d_tensor_values(const T& tensor) {
-  printf("Tensor size: %d x %d):\n", (int)size<0>(tensor), (int)size<1>(tensor));
-  for (int mi = 0; mi < size<0>(tensor); ++mi) {
-    for (int ni = 0; ni < size<1>(tensor); ++ni) {
-      printf("%f ", (float)tensor(mi, ni));
-    }
-    printf("\n");
-  }
-}
+// template <typename T>
+// __device__ __forceinline__ void print_2d_tensor_values(const T& tensor) {
+//   printf("Tensor size: %d x %d):\n", (int)size<0>(tensor), (int)size<1>(tensor));
+//   for (int mi = 0; mi < size<0>(tensor); ++mi) {
+//     for (int ni = 0; ni < size<1>(tensor); ++ni) {
+//       printf("%f ", (float)tensor(mi, ni));
+//     }
+//     printf("\n");
+//   }
+// }
 
 }  // namespace flash
 }  // namespace onnxruntime
