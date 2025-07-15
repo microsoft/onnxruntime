@@ -149,7 +149,7 @@ class PhiVCLIPAttentionAndLayerNorm(torch.nn.Module):
         self.attn = PhiVCLIPAttention()
         self.ln = torch.nn.LayerNorm(20, eps=1e-05)
 
-    def forward(self, x):
+    def forward(self, x, attention_mask=None):
         #      SkipLayerNorm ------+
         #            |             |
         #        Attention         |
@@ -163,8 +163,7 @@ class PhiVCLIPAttentionAndLayerNorm(torch.nn.Module):
         x = self.ln(x)
         residual = x
 
-        # Attention + MatMul
-        x = self.attn(x)
+        x = self.attn(x, attention_mask=attention_mask)
 
         # SkipLayerNorm
         x = residual + x
@@ -194,14 +193,31 @@ class TestFusion(unittest.TestCase):
             )
 
     def export(self, model, inputs):
-        torch.onnx.export(
-            model,
-            args=inputs,
-            f=os.path.join(os.path.dirname(__file__), "export.onnx"),
-            export_params=True,
-            opset_version=14,
-            do_constant_folding=True,
-        )
+        path = os.path.join(os.path.dirname(__file__), "export.onnx")
+      
+        if len(inputs) == 2:
+            torch.onnx.export(
+                model,
+                args=inputs,
+                f=path,
+                export_params=True,
+                opset_version=14,
+                do_constant_folding=True,
+                input_names=["input", "attention_mask"],
+                dynamic_axes={
+                    "input": {0: "batch", 1: "seq"},
+                    "attention_mask": {0: "batch", 2: "seq", 3: "seq"},
+                },
+            )
+        else:
+            torch.onnx.export(
+                model,
+                args=inputs,
+                f=path,
+                export_params=True,
+                opset_version=14,
+                do_constant_folding=True,
+            )
 
     def tearDown(self):
         path = os.path.join(os.path.dirname(__file__), "export.onnx")
@@ -248,6 +264,29 @@ class TestFusion(unittest.TestCase):
             original_model, model_type="clip", num_heads=2, hidden_size=20, optimization_options=options, opt_level=0
         )
         self.verify_fusion(optimized_model, "phi-3.5-v-instruct-vision-attention.onnx")
+
+    def test_phi_vision_attention_with_mask(self):
+        model = PhiVCLIPAttentionAndLayerNorm()
+
+        batch, seq_len, dim = 1, 2, 20
+        mask = torch.zeros(batch, 1, seq_len, seq_len)
+        mask[:, 1:] = float('-inf')
+ 
+        inputs = (torch.randn(batch, seq_len, dim), mask)
+        self.export(model, inputs)
+        original_model = onnx.load(os.path.join(os.path.dirname(__file__), "export.onnx"))
+        options = FusionOptions("clip")
+        optimized_model = optimize_model(
+            original_model, model_type="clip", num_heads=2, hidden_size=20, optimization_options=options, opt_level=0, use_gpu=True 
+        )
+        self.verify_fusion(optimized_model, "phi-4-v-instruct-vision-attention.onnx")
+
+        graph = optimized_model.model.graph
+        attention_node = next((n for n in graph.node if n.name == "Attention_0"), None)
+        self.assertIsNotNone(attention_node, "Could not find the Attention fused node")
+        attr_names = [attr.name for attr in attention_node.attribute]
+        self.assertNotIn("unidirectional", attr_names,
+                     f"The attention node should not have a 'unidirectional' attribute: {attr_names}")
 
 
 if __name__ == "__main__":
