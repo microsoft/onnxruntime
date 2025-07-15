@@ -277,7 +277,13 @@ class TestFusion(unittest.TestCase):
         original_model = onnx.load(os.path.join(os.path.dirname(__file__), "export.onnx"))
         options = FusionOptions("clip")
         optimized_model = optimize_model(
-            original_model, model_type="clip", num_heads=2, hidden_size=20, optimization_options=options, opt_level=0, use_gpu=True 
+            original_model,
+            model_type="clip",
+            num_heads=2,
+            hidden_size=20,
+            optimization_options=options,
+            opt_level=0,
+            use_gpu=True,
         )
         self.verify_fusion(optimized_model, "phi-4-v-instruct-vision-attention.onnx")
 
