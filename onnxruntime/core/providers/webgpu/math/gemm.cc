@@ -3,6 +3,7 @@
 
 #include "core/providers/webgpu/math/gemm.h"
 #include "core/providers/webgpu/math/gemm_packed.h"
+#include "core/providers/webgpu/math/subgroup_matrix_gemm.h"
 
 #include <vector>
 
@@ -147,6 +148,11 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
                               {alpha_},
                               {beta_}});
     return context.RunProgram(program);
+  }
+
+  // Check if we can use optimized subgroup matrix GEMM for apple devices
+  if (CanApplySubgroupMatrixGemm(context, static_cast<uint32_t>(K), static_cast<uint32_t>(N))) {
+    return ApplySubgroupMatrixGemm(A, B, C, transA_, transB_, alpha_, beta_, context);
   }
 
   return ApplyGemmPacked(A, B, C, transA_, transB_, alpha_, beta_, context);
