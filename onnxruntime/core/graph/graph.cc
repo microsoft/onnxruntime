@@ -4253,7 +4253,7 @@ namespace {
 // The function examines initializer tensor_proto and if the data is in memory it inlines
 // and adds it to the output initializers. Otherwise, it copies the initializer.
 // External data on disk references are preserved.
-void InlineOrCopyInitializerToGraphProto(const Graph& src_graph, const TensorProto& initializer, TensorList& output_initializers) {
+Status InlineOrCopyInitializerToGraphProto(const Graph& src_graph, const TensorProto& initializer, TensorList& output_initializers) {
   TensorProto& output = *output_initializers.Add();
 
   // copy any in-memory external data into raw data
@@ -4263,40 +4263,17 @@ void InlineOrCopyInitializerToGraphProto(const Graph& src_graph, const TensorPro
       output = utils::TensorToTensorProto(ort_value.Get<Tensor>(),
                                           initializer.name(), /* use_tensor_buffer */ false);
     } else {
-      output = initializer;
-
-      const std::filesystem::path ignored;
-      std::basic_string<ORTCHAR_T> location;
-      onnxruntime::FileOffsetType file_offset;
-      SafeInt<size_t> tensor_byte_size;
-
-      ORT_THROW_IF_ERROR(utils::GetExternalDataInfo(initializer, ignored, location, file_offset, tensor_byte_size));
-
-      output.clear_data_location();
-      output.clear_external_data();
-
-      // file_offset is address
-      if (utils::HasString(initializer)) {
-        auto tensor_shape = utils::GetTensorShapeFromTensorProto(initializer);
-        std::string* data = reinterpret_cast<std::string*>(file_offset);
-        for (size_t i = 0, lim = narrow<size_t>(tensor_shape.Size()); i < lim; ++i) {
-          // set in raw data
-          output.add_string_data(*data);
-          ++data;
-        }
-      } else {
-        void* data = reinterpret_cast<void*>(file_offset);
-        // set in raw data
-        output.set_raw_data(data, tensor_byte_size);
-      }
+      ORT_RETURN_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(initializer, {}, output));
     }
   } else {
     output = initializer;
   }
+  return Status::OK();
 }
 }  // namespace
 
-Status Graph::ToGraphProtoImpl(ONNX_NAMESPACE::GraphProto& output_graph_proto) const {
+Status Graph::ProcessSubgraphsInmemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto,
+                                           bool process_main) const {
   for (const auto& node : Nodes()) {
     if (node.ContainsSubgraph()) {
       // Let's find this node in the output_graph_proto
@@ -4321,102 +4298,113 @@ Status Graph::ToGraphProtoImpl(ONNX_NAMESPACE::GraphProto& output_graph_proto) c
                           "Subgraph ", name, " is referred to in GetAttributeNameToSubgraphMap, but not found in node ",
                           node.Name(), " while attempting to recurse into it.");
         auto& result_subgraph = *sub_hit->mutable_g();
-        ORT_RETURN_IF_ERROR(subgraph->ToGraphProtoImpl(result_subgraph));
+        ORT_RETURN_IF_ERROR(subgraph->ProcessSubgraphsInmemoryData(result_subgraph, process_main));
       }
     }
   }
 
-  // For the root graph, these not the case, so those need to be added/converted
-
+  // When graph_proto is copied from graph_proto, initializers already present in the main graph
+  if (parent_graph_ != nullptr || process_main) {
 #if !defined(DISABLE_SPARSE_TENSORS)
-  const auto& model_path = ModelPath();
-  const bool has_sparse_initializers = !sparse_tensor_names_.empty();
-  const auto sparse_end = sparse_tensor_names_.end();
-  auto* mut_initializers = output_graph_proto.mutable_initializer();
+    auto* mutable_initializers = output_graph_proto.mutable_initializer();
+    const auto& model_path = ModelPath();
+    const bool has_sparse_initializers = !sparse_tensor_names_.empty();
+    const auto sparse_end = sparse_tensor_names_.end();
 
-  // We want to make sure that sparse initializers do not appear
-  // as dense duplicates within the initializers list.
-  std::optional<InlinedVector<TensorList::iterator>> initializer_to_remove;
-  if (has_sparse_initializers) {
-    // We need to remove the dense initializers that are sparse tensors
-    initializer_to_remove.emplace();
-  }
+    // We want to make sure that sparse initializers do not appear
+    // as dense duplicates within the initializers list.
+    std::optional<InlinedHashSet<std::string>> initializer_to_remove;
+    if (has_sparse_initializers) {
+      // We need to remove the dense initializers that are sparse tensors
+      initializer_to_remove.emplace();
+    }
 
-  for (auto first = mut_initializers->begin(), end = mut_initializers->end(); first != end; ++first) {
-    auto& initializer = *first;
-    if (!has_sparse_initializers || sparse_end == sparse_tensor_names_.find(initializer.name())) {
+    for (auto first = mutable_initializers->begin(), end = mutable_initializers->end(); first != end; ++first) {
+      auto& initializer = *first;
       if (utils::HasExternalDataInMemory(initializer)) {
         ONNX_NAMESPACE::TensorProto tensor_proto;
-        ORT_THROW_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(initializer, {}, tensor_proto));
+        ORT_RETURN_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(initializer, {}, tensor_proto));
         initializer = std::move(tensor_proto);
       }
-    } else {
-      auto& sparse_initializer = *output_graph_proto.add_sparse_initializer();
-      auto status = utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer);
-      ORT_ENFORCE(status.IsOK(), "Failed to convert dense initializer to sparse");
-      initializer_to_remove->push_back(first);
-    }
-  }
 
-  if (initializer_to_remove) {
-    for (auto& it : *initializer_to_remove) {
-      RemoveRepeatedFieldEntry(*mut_initializers, it);
+      if (has_sparse_initializers && sparse_end != sparse_tensor_names_.find(initializer.name())) {
+        auto& sparse_initializer = *output_graph_proto.add_sparse_initializer();
+        ORT_RETURN_IF_ERROR(utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer));
+        initializer_to_remove->insert(initializer.name());
+      }
     }
-  }
 
+    // erase/remove dense initializers that are sparse tensors so no duplicates are present
+    if (initializer_to_remove) {
+      mutable_initializers->erase(std::remove_if(
+                                      mutable_initializers->begin(), mutable_initializers->end(),
+                                      [&initializer_to_remove](const ONNX_NAMESPACE::TensorProto& initializer) {
+                                        return initializer_to_remove->count(initializer.name()) > 0;
+                                      }),
+                                  mutable_initializers->end());
+    }
 #else
-  for (auto& initializer : *output_graph_proto.mutable_initializer()) {
-    if (utils::HasExternalDataInMemory(initializer)) {
-      ONNX_NAMESPACE::TensorProto tensor_proto;
-      ORT_THROW_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(initializer, {}, tensor_proto));
-      initializer = std::move(tensor_proto);
+    for (auto& initializer : *output_graph_proto.mutable_initializer()) {
+      if (utils::HasExternalDataInMemory(initializer)) {
+        ONNX_NAMESPACE::TensorProto tensor_proto;
+        ORT_RETURN_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(initializer, {}, tensor_proto));
+        initializer = std::move(tensor_proto);
+      }
     }
-  }
 #endif
-
+  }
   return Status::OK();
 }
 
 ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
-#if !defined(DISABLE_SPARSE_TENSORS)
-  if (!GraphProtoSyncNeeded() && sparse_tensor_names_.empty()) {
-    return *graph_proto_;
-  }
-#else
-  if (!GraphProtoSyncNeeded()) {
-    return *graph_proto_;
-  }
-#endif
+  // #if !defined(DISABLE_SPARSE_TENSORS)
+  //   if (!GraphProtoSyncNeeded() && sparse_tensor_names_.empty()) {
+  //     return *graph_proto_;
+  //   }
+  // #else
+  //   if (!GraphProtoSyncNeeded()) {
+  //     return *graph_proto_;
+  //   }
+  // #endif
 
   GraphProto result;
-  ToGraphProtoInternal(result);
-  // Recurses to check for subgraphs. Subgraph initializers
-  // already have their initializers copied via Node::ToProto(),
-  // however, we want to inline any in-memory data
-  ORT_THROW_IF_ERROR(ToGraphProtoImpl(result));
+  if (!GraphProtoSyncNeeded()) {
+    result = *graph_proto_;
+    ORT_THROW_IF_ERROR(ProcessSubgraphsInmemoryData(result, /*process_main*/ true));
+  } else {
+    ToGraphProtoInternal(result);
 
-  auto* mutable_initializers = result.mutable_initializer();
+    ORT_THROW_IF_ERROR(ProcessSubgraphsInmemoryData(result, /*process_main*/ false));
+
+    // Add initializers to parent graph by copy converting them from graph_proto_
+    // ToGraphProtoInternal() does not copy initializers for the main graph
+    auto* mutable_initializers = result.mutable_initializer();
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-  const auto& model_path = ModelPath();
-  // We want to make sure that sparse initializers do not appear
-  // as dense duplicates within the initializers list.
-  const bool has_sparse_initializers = !sparse_tensor_names_.empty();
-  const auto sparse_end = sparse_tensor_names_.end();
-  for (const auto& initializer : graph_proto_->initializer()) {
-    if (!has_sparse_initializers || sparse_end == sparse_tensor_names_.find(initializer.name())) {
-      InlineOrCopyInitializerToGraphProto(*this, initializer, *mutable_initializers);
-    } else {
-      auto& sparse_initializer = *result.add_sparse_initializer();
-      auto status = utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer);
-      ORT_ENFORCE(status.IsOK(), "Failed to convert dense initializer to sparse");
+    const auto& model_path = ModelPath();
+    const bool has_sparse_initializers = !sparse_tensor_names_.empty();
+    const auto sparse_end = sparse_tensor_names_.end();
+
+    for (const auto& initializer : graph_proto_->initializer()) {
+      if (!has_sparse_initializers || sparse_end == sparse_tensor_names_.find(initializer.name())) {
+        ORT_THROW_IF_ERROR(InlineOrCopyInitializerToGraphProto(*this, initializer, *mutable_initializers));
+      } else {
+        auto& sparse_initializer = *result.add_sparse_initializer();
+        if (utils::HasExternalDataInMemory(initializer)) {
+          ONNX_NAMESPACE::TensorProto tensor_proto;
+          ORT_THROW_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(initializer, {}, tensor_proto));
+          ORT_THROW_IF_ERROR(utils::DenseTensorToSparseTensorProto(tensor_proto, model_path, sparse_initializer));
+        } else {
+          ORT_THROW_IF_ERROR(utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer));
+        }
+      }
     }
-  }
 #else
-  for (const auto& initializer : graph_proto_->initializer()) {
-    InlineOrCopyInitializerToGraphProto(*this, initializer, *mutable_initializers);
-  }
+    for (const auto& initializer : graph_proto_->initializer()) {
+      ORT_THROW_IF_ERROR(InlineOrCopyInitializerToGraphProto(*this, initializer, *mutable_initializers));
+    }
 #endif
+  }
 
   return result;
 }
@@ -4489,7 +4477,8 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
 
       // We do not externalize string tensors.
       if (utils::HasString(initializer)) {
-        InlineOrCopyInitializerToGraphProto(*this, initializer, *output_graph_proto.mutable_initializer());
+        ORT_RETURN_IF_ERROR(InlineOrCopyInitializerToGraphProto(*this, initializer,
+                                                                *output_graph_proto.mutable_initializer()));
         continue;
       }
 

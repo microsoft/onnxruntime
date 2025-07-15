@@ -1575,8 +1575,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// Subgraph initializers are already copied using Node::ToPtoro()
   /// </summary>
   /// <param name="output_graph_proto"></param>
+  /// <param name="process_main">process main graph if true</param>
   /// <returns></returns>
-  Status ToGraphProtoImpl(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
+  Status ProcessSubgraphsInmemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto, bool process_main) const;
 
   /// <summary>
   /// This function traverses the graph bottom up and externalizes
