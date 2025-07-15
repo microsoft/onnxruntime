@@ -87,17 +87,17 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
         << "  let zero_point_offset = " << scales.IndicesToOffset("zero_point_indices") << ";\n";
     if (is_4bit) {
       shader.MainFunctionBody()
-        << "  let zero_point_index = zero_point_offset % 8;\n"
-        << "  let packed_4bit_zero_points = " << zero_point.GetByOffset("zero_point_offset / 8") << ";\n"
-        << "  let packed_8bit_zero_points = (packed_4bit_zero_points >> (4 * (zero_point_index % 2))) & 0x0f0f0f0f;\n"
-        << "  let zero_point_vec = " << unpack << "(u32(packed_8bit_zero_points));\n"
-        << "  var zero_point = zero_point_vec[zero_point_index / 2];\n";
+          << "  let zero_point_index = zero_point_offset % 8;\n"
+          << "  let packed_4bit_zero_points = " << zero_point.GetByOffset("zero_point_offset / 8") << ";\n"
+          << "  let packed_8bit_zero_points = (packed_4bit_zero_points >> (4 * (zero_point_index % 2))) & 0x0f0f0f0f;\n"
+          << "  let zero_point_vec = " << unpack << "(u32(packed_8bit_zero_points));\n"
+          << "  var zero_point = zero_point_vec[zero_point_index / 2];\n";
     } else {
       shader.MainFunctionBody()
-        << "  let zero_point_index = zero_point_offset % 4;\n"
-        << "  let packed_8bit_zero_points = " << zero_point.GetByOffset("zero_point_offset / 4") << ";\n"
-        << "  let zero_point_vec = " << unpack << "(u32(packed_8bit_zero_points));\n"
-        << "  var zero_point = zero_point_vec[zero_point_index];\n";
+          << "  let zero_point_index = zero_point_offset % 4;\n"
+          << "  let packed_8bit_zero_points = " << zero_point.GetByOffset("zero_point_offset / 4") << ";\n"
+          << "  let zero_point_vec = " << unpack << "(u32(packed_8bit_zero_points));\n"
+          << "  var zero_point = zero_point_vec[zero_point_index];\n";
     }
     if (is_signed_) {
       shader.MainFunctionBody()
@@ -141,12 +141,11 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
     std::optional<Tensor> data_representation_4bit;
     std::optional<Tensor> zero_points_representation_4bit;
     TensorShape data_representation_4bit_shape{x->Shape()};
-    MLDataType new_dtype = (x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8) ?
-      DataTypeImpl::GetType<UInt4x2>() : DataTypeImpl::GetType<Int4x2>();
+    MLDataType new_dtype = (x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8) ? DataTypeImpl::GetType<UInt4x2>() : DataTypeImpl::GetType<Int4x2>();
     auto memory_info = OrtMemoryInfo{
-            "WebGPU_Buffer",
-            OrtDeviceAllocator,
-            OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0}};
+        "WebGPU_Buffer",
+        OrtDeviceAllocator,
+        OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0}};
 
     data_representation_4bit_shape[x_rank - 1] = data_representation_4bit_shape[x_rank - 1] * 2;
     data_representation_4bit.emplace(
