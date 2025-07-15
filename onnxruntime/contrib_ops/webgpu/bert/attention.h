@@ -82,7 +82,7 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
                                           {"total_sequence_length_comp", ProgramUniformVariableDataType::Uint32},
                                           {"elements_per_thread", ProgramUniformVariableDataType::Uint32},
                                           {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
-                                          {"local_window_size", ProgramUniformVariableDataType::Int32});
+                                          {"local_window_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   int work_group_size_;

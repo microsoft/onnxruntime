@@ -250,7 +250,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_sliding_window) {
     // Sliding window
     shader.MainFunctionBody()
-        << "let should_apply_local_window = uniforms.local_window_size >= 0 && seq_causal_length > u32(uniforms.local_window_size) + 1;\n"
+        << "let should_apply_local_window = uniforms.local_window_size >= 0 && seq_causal_length > uniforms.local_window_size + 1;\n"
         << "let start_offset = select(0, seq_causal_length - u32(uniforms.local_window_size), should_apply_local_window);\n"
         << "let effective_seq_length = select(seq_causal_length, u32(uniforms.local_window_size), should_apply_local_window);\n";
   } else {
@@ -288,7 +288,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "var sum_vector = f32_val_t(0);\n"
                             << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
                             << "  let actual_pos = local_offset + i + start_offset;\n"
-                            << "  if (!should_apply_local_window ||actual_pos < seq_causal_length) {\n"
+                            << "  if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
                             << "     sum_vector += exp(f32_val_t(x[offset + i + start_offset]) - max_value);\n"
                             << "  }\n"
                             << "}\n"
