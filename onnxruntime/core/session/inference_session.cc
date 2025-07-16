@@ -3657,9 +3657,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
                                                      optimizers_to_disable_,
                                                      GetIntraOpThreadPoolToUse());
       };
-    }
-
-    if (graph_optimization_level >= level) {
+    } else if (graph_optimization_level >= level) {
       // Generate and register transformers for level
       transformers_to_register = [&]() {
         const bool use_full_build_optimizations =
