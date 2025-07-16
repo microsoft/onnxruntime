@@ -381,5 +381,27 @@ TEST(SqueezeOpTest, SqueezeNegAxis_2_opset13_bfloat16) {
 }
 #endif  //  USE_DNNL
 
+// Test for empty string axes input - this should behave the same as no axes provided
+TEST(SqueezeOpTest, Squeeze_Empty_String_Axes_Input) {
+  OpTester test("Squeeze", 13);
+  test.AddInput<float>("data", {1, 1, 4, 1}, std::vector<float>(4, 1.0f));
+  // Add empty axes tensor to simulate the empty string case
+  test.AddInput<int64_t>("axes", {0}, std::vector<int64_t>{}, false);
+  test.AddOutput<float>("squeezed", {4}, std::vector<float>(4, 1.0f));
+  // TensorRT doesn't seem to support missing 'axes'
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test for null axes tensor - this should behave the same as no axes provided  
+TEST(SqueezeOpTest, Squeeze_Null_Axes_Input) {
+  OpTester test("Squeeze", 13);
+  test.AddInput<float>("data", {1, 1, 4, 1}, std::vector<float>(4, 1.0f));
+  // Add a null axes input (simulating optional trailing input as empty string)
+  test.AddOptionalInputEdge();
+  test.AddOutput<float>("squeezed", {4}, std::vector<float>(4, 1.0f));
+  // TensorRT doesn't seem to support missing 'axes'
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime
