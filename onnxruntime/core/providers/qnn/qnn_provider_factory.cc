@@ -256,7 +256,7 @@ OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase
 #endif
 
   // Identify the path of the current dynamic library, and expect that backend_path is in the same directory.
-  onnxruntime::PathString current_path = GetDynamicLibraryLocationByAddress(CreateEpFactories);
+  onnxruntime::PathString current_path = GetDynamicLibraryLocationByAddress(reinterpret_cast<const void*>(&CreateEpFactories));
   if (!current_path.empty()) {
     const std::filesystem::path parent_path = std::filesystem::path{std::move(current_path)}.parent_path();
     backend_path = (parent_path / backend_path).string();
