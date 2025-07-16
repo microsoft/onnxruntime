@@ -173,6 +173,8 @@ struct ModelEditorGraph : public OrtGraph {
 
   const std::string& GetName() const override { return name; }
 
+  const ORTCHAR_T* GetModelPath() const override { return ORT_TSTR(""); }
+
   int64_t GetOnnxIRVersion() const override {
     return ONNX_NAMESPACE::Version::IR_VERSION;
   }

@@ -535,6 +535,11 @@ static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
 static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph) {
   const OrtApi& ort_api = Ort::GetApi();
 
+  // Check the path to model.
+  const std::filesystem::path& model_path = graph_viewer.ModelPath();
+  const ORTCHAR_T* api_model_path = ort_api.Graph_GetModelPath(&api_graph);
+  ASSERT_EQ(PathString(api_model_path), PathString(model_path.c_str()));
+
   // Check graph inputs.
   const auto& graph_input_node_args = graph_viewer.GetInputsIncludingInitializers();
 

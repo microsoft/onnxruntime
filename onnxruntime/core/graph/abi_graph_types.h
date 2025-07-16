@@ -277,6 +277,12 @@ struct OrtGraph {
   virtual const std::string& GetName() const = 0;
 
   /// <summary>
+  /// Returns the model's path, which could be empty if unknown.
+  /// </summary>
+  /// <returns>The model path.</returns>
+  virtual const ORTCHAR_T* GetModelPath() const = 0;
+
+  /// <summary>
   /// Returns the model's ONNX IR version. Important in checking for optional graph inputs
   /// (aka non-constant initializers), which were introduced in ONNX IR version 4.
   /// </summary>

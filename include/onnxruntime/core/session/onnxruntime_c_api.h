@@ -5560,6 +5560,18 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetName, _In_ const OrtGraph* graph, _Outptr_ const char** graph_name);
 
+  /** \brief Returns the file path to the ONNX model from which an OrtGraph is constructed.
+   *
+   * \note Returns an empty file path if the model path is unknown, such as when the model is loaded from bytes
+   * via CreateSessionFromArray.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \return The model path, which is an empty path string if unknown.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(const ORTCHAR_T*, Graph_GetModelPath, _In_ const OrtGraph* graph);
+
   /** \brief Returns the ONNX IR version.
    *
    * \param[in] graph The OrtGraph instance.
