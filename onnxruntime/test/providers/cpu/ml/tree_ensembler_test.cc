@@ -290,5 +290,62 @@ TEST(MLOpTest, TreeEnsembleLeafOnly) {
   test.Run();
 }
 
+TEST(MLOpTest, TreeEnsembleIssue25400) {
+  // https://github.com/microsoft/onnxruntime/issues/25400
+  OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
+  int64_t n_targets = 4;
+
+  int64_t aggregate_function = 1;
+  int64_t post_transform = 0;
+  std::vector<int64_t> tree_roots = {0};
+  std::vector<uint8_t> nodes_modes = {0, 6, 6};
+  std::vector<int64_t> nodes_featureids = {0, 0, 0};
+  std::vector<float> nodes_splits = {11.f, 232344.f, std::numeric_limits<float>::quiet_NaN()};
+  std::vector<int64_t> nodes_truenodeids = {1, 0, 1};
+  std::vector<int64_t> nodes_trueleafs = {0, 1, 1};
+  std::vector<int64_t> nodes_falsenodeids = {2, 2, 3};
+  std::vector<int64_t> nodes_falseleafs = {1, 0, 1};
+
+  std::vector<int64_t> leaf_targetids = {0, 1, 2, 3};
+  std::vector<float> leaf_weights = {1.f, 10.f, 1000.f, 100.f};
+  std::vector<float> member_ship_values(40004);
+  for (size_t i = 0; i < member_ship_values.size(); i++) {
+    member_ship_values[i] = i % 4 == 0 ? 1.2 : (i % 4 == 1 ? 3.7 : (i % 4 == 2 ? 8 : 9));
+  }
+  member_ship_values[40000] = std::numeric_limits<float>::quiet_NaN();
+  member_ship_values[40001] = 12.f;
+  member_ship_values[40002] = 7.f;
+  member_ship_values[40003] = std::numeric_limits<float>::quiet_NaN();
+
+  auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
+  auto nodes_splits_as_tensor = make_tensor(nodes_splits, "nodes_splits");
+  auto leaf_weights_as_tensor = make_tensor(leaf_weights, "leaf_weight");
+  auto member_ship_values_as_tensor = make_tensor(member_ship_values, "member_ship_values");
+
+  // add attributes
+  test.AddAttribute("n_targets", n_targets);
+  test.AddAttribute("aggregate_function", aggregate_function);
+  test.AddAttribute("post_transform", post_transform);
+  test.AddAttribute("tree_roots", tree_roots);
+  test.AddAttribute("nodes_modes", nodes_modes_as_tensor);
+  test.AddAttribute("nodes_featureids", nodes_featureids);
+  test.AddAttribute("nodes_splits", nodes_splits_as_tensor);
+  test.AddAttribute("nodes_truenodeids", nodes_truenodeids);
+  test.AddAttribute("nodes_trueleafs", nodes_trueleafs);
+  test.AddAttribute("nodes_falsenodeids", nodes_falsenodeids);
+  test.AddAttribute("nodes_falseleafs", nodes_falseleafs);
+  test.AddAttribute("leaf_targetids", leaf_targetids);
+  test.AddAttribute("leaf_weights", leaf_weights_as_tensor);
+  test.AddAttribute("membership_values", member_ship_values_as_tensor);
+
+  // fill input data
+  std::vector<float> X = {1.f, 4.f, 5.f, 6.f};
+  std::vector<float> Y = {0.f, 0.f, 0.f, 100.f};
+
+  test.AddInput<float>("X", {1, 4}, X);
+  test.AddOutput<float>("Y", {1, 4}, Y);
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
