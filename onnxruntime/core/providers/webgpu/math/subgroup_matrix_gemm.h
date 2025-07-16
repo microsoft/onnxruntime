@@ -12,12 +12,11 @@ namespace webgpu {
 
 class SubgroupMatrixGemmProgram final : public Program<SubgroupMatrixGemmProgram> {
  public:
-  SubgroupMatrixGemmProgram(bool transA, bool transB, float alpha, float beta, bool need_handle_bias)
+  SubgroupMatrixGemmProgram(bool transA, bool transB, float alpha, bool need_handle_bias)
       : Program{"SubgroupMatrixGemm"},
         transA_(transA),
         transB_(transB),
         alpha_(alpha),
-        beta_(beta),
         need_handle_bias_(need_handle_bias) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -37,7 +36,6 @@ class SubgroupMatrixGemmProgram final : public Program<SubgroupMatrixGemmProgram
   bool transA_;
   bool transB_;
   float alpha_;
-  float beta_;
   bool need_handle_bias_;
 };
 
