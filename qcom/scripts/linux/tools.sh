@@ -20,28 +20,42 @@ function clean_tools_dir() {
 function get_android_ndk_root() {
     python \
         "${REPO_ROOT}/qcom/scripts/all/install_ndk.py" \
-        "--cli-tools-root=$(get_package_contentdir android_commandlinetools_linux)"
+        "--cli-tools-root=$(get_package_contentdir android_commandlinetools_$(get_host_platform))"
 }
 
 #
 # Get the Android SDK root (ANDROID_HOME)
 #
 function get_android_sdk_root() {
-    realpath $(get_package_contentdir android_commandlinetools_linux)/..
+    realpath $(get_package_contentdir android_commandlinetools_$(get_host_platform))/..
 }
 
 #
 # Get the directory containing ccache, installing it if necessary.
 #
 function get_ccache_bindir() {
-    get_package_bindir ccache_linux
+    get_package_bindir ccache_$(get_host_platform)
 }
 
 #
 # Get the directory containing CMake binaries, installing them if necessary.
 #
 function get_cmake_bindir() {
-    get_package_bindir cmake_linux
+    get_package_bindir cmake_$(get_host_platform)
+}
+
+function get_host_platform() {
+    case `uname` in
+        Darwin)
+            echo "macos"
+            ;;
+        Linux)
+            echo "linux"
+            ;;
+        *)
+            die "Unknown host platform"
+            ;;
+    esac
 }
 
 #
@@ -51,7 +65,7 @@ function get_java_bindir() {
   if [ -n "${JAVA_HOME:-}" ]; then
     log_debug "JAVA_HOME found at ${JAVA_HOME}"
   else
-    get_package_bindir java_linux
+    get_package_bindir java_$(get_host_platform)
   fi
 }
 
@@ -59,7 +73,7 @@ function get_java_bindir() {
 # Get the directory containing ninja, installing it if necessary.
 #
 function get_ninja_bindir() {
-    get_package_bindir ninja_linux
+    get_package_bindir ninja_$(get_host_platform)
 }
 
 function get_package_bindir() {

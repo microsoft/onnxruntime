@@ -17,6 +17,11 @@ ccache_linux:
   url: https://github.com/ccache/ccache/releases/download/v{version}/ccache-{version}-linux-x86_64.tar.xz
   sha256: 7766991b91b3a5a177ab33fa043fe09e72c68586d5a86d20a563a05b74f119c0
   content_root: ccache-{version}-linux-x86_64
+ccache_macos:
+  version: 4.11.3
+  url: https://github.com/ccache/ccache/releases/download/v{version}/ccache-{version}-darwin.tar.gz
+  sha256: 6f187a79fc57864d900aff28f9c3f93d020ed7a849be2f2ead6799959ccf30b0
+  content_root: ccache-{version}-darwin
 ccache_windows_x86_64:
   version: 4.11.3
   url: https://github.com/ccache/ccache/releases/download/v{version}/ccache-{version}-windows-x86_64.zip
@@ -27,6 +32,12 @@ cmake_linux:
   url: https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-linux-x86_64.tar.gz
   sha256: 14e15d0b445dbeac686acc13fe13b3135e8307f69ccf4c5c91403996ce5aa2d4
   content_root: cmake-{version}-linux-x86_64
+  bindir: bin
+cmake_macos:
+  version: 3.31.7
+  url: https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-macos-universal.tar.gz
+  sha256: 1cb11aa2edae8551bb0f22807c6f5246bd0eb60ae9fa1474781eb4095d299aca
+  content_root: cmake-{version}-macos-universal/CMake.app/Contents
   bindir: bin
 cmake_windows_x86_64:
   version: 3.31.7
@@ -41,6 +52,13 @@ java_linux:
   sha256: 9c2f7c39e0d5b296ce50e563740694b2ebfe4a620415d1b2b848ba47bebceb47
   content_root: jdk-{version}
   bindir: bin
+java_macos:
+  major_version: 21
+  version: 21.0.5
+  url: https://download.oracle.com/java/{major_version}/archive/jdk-{version}_macos-aarch64_bin.tar.gz
+  sha256: 13cb8d754069fc76a2ff6eee96273cc1a96cb47ecf3afa7820407635c386dd37
+  content_root: jdk-{version}.jdk/Contents/Home
+  bindir: bin
 java_windows_x86_64:
   major_version: 21
   version: 21.0.5
@@ -52,6 +70,10 @@ ninja_linux:
   version: 1.12.1
   url: https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip
   sha256: 6f98805688d19672bd699fbbfa2c2cf0fc054ac3df1f0e6a47664d963d530255
+ninja_macos:
+  version: 1.12.1
+  url: https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-mac.zip
+  sha256: 89a287444b5b3e98f88a945afa50ce937b8ffd1dcc59c555ad9b1baf855298c9
 ninja_windows_x86_64:
   version: 1.12.1
   url: https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-win.zip

@@ -291,3 +291,16 @@ class ConditionalTask(Task):
             self.true_task.run()
         else:
             self.false_task.run()
+
+
+class PyTestTask(RunExecutablesWithVenvTask):
+    def __init__(
+        self,
+        group_name: str | None,
+        venv: Path | None,
+        files_or_dirs: list[str],
+        env: Mapping[str, str] | None = None,
+        cwd: Path | None = None,
+    ):
+        cmd = [["pytest", *files_or_dirs]]
+        super().__init__(group_name, venv, cmd, env, cwd)

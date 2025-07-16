@@ -22,9 +22,11 @@ from ep_build.plan import (
     task,
 )
 from ep_build.task import (
+    CompositeTask,
     ExtractArchiveTask,
     ListTasksTask,
     NoOpTask,
+    PyTestTask,
 )
 from ep_build.tasks.build import (
     BuildEpLinuxTask,
@@ -37,6 +39,7 @@ from ep_build.util import (
     REPO_ROOT,
     is_host_arm64,
     is_host_linux,
+    is_host_mac,
     is_host_windows,
 )
 
@@ -153,7 +156,7 @@ class TaskLibrary:
     @task
     @depends(["build_ort_android"])
     def archive_ort_android(self, plan: Plan) -> str:
-        if is_host_linux():
+        if is_host_linux() or is_host_mac():
             return plan.add_step(
                 BuildEpLinuxTask(
                     "Archiving ONNX Runtime for Android",
@@ -234,7 +237,7 @@ class TaskLibrary:
     @task
     @depends(["create_venv"])
     def build_ort_android(self, plan: Plan) -> str:
-        if is_host_linux():
+        if is_host_linux() or is_host_mac():
             return plan.add_step(
                 BuildEpLinuxTask(
                     "Building ONNX Runtime for Android",
@@ -389,6 +392,37 @@ class TaskLibrary:
                 "linux",
                 self.__qairt_sdk_root,
                 "test",
+            )
+        )
+
+    @task
+    @depends(["archive_ort_android"])
+    def test_ort_local_android(self, plan: Plan) -> str:
+        env = dict(os.environ)
+        test_root = REPO_ROOT / "build" / "qdc_test_root"
+        env["QDC_TEST_ROOT"] = str(test_root)
+
+        # This is a pretty slow way to do this, but it's easy to implement
+        # and essentially free to maintain. If you find yourself using this
+        # often enough that your life would be better if we didn't roundtrip
+        # through a zip file, please open a Jira and we'll invest more here.
+        return plan.add_step(
+            CompositeTask(
+                group_name=None,
+                tasks=[
+                    ExtractArchiveTask(
+                        "Extracting ONNX Runtime for Android",
+                        REPO_ROOT / "build" / "onnxruntime-tests-android.zip",
+                        test_root,
+                    ),
+                    PyTestTask(
+                        "Testing ONNX Runtime for Android with a local device",
+                        self.__venv_path,
+                        ["tests"],
+                        env=env,
+                        cwd=REPO_ROOT / "qcom" / "scripts" / "linux" / "appium",
+                    ),
+                ],
             )
         )
 

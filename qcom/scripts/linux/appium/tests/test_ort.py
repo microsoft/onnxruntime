@@ -64,5 +64,5 @@ class TestOrt(TestBase):
             f"echo -=-=-=-=-=-=-=-=-=-=- >> {ORT_TEST_RESULTS_DEVICE_LOG} && "
             f"echo Running test: {test_str} >> {ORT_TEST_RESULTS_DEVICE_LOG} && "
             f"env ADSP_LIBRARY_PATH={QNN_ADSP_LIBRARY_PATH} LD_LIBRARY_PATH={QNN_LD_LIBRARY_PATH} "
-            f"{test_str} >> {ORT_TEST_RESULTS_DEVICE_LOG} 2>&1"
+            f"{test_str} 2>&1 | tee -a {ORT_TEST_RESULTS_DEVICE_LOG}"
         )
