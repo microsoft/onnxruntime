@@ -76,6 +76,7 @@ struct MIGraphX_Provider : Provider {
     return std::make_shared<MIGraphXProviderFactory>(info);
   }
 
+  /*
   //TODO: Interface change might require changes in other parts of win-onnxruntime?
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) {
     if (param == nullptr) {
@@ -97,8 +98,9 @@ struct MIGraphX_Provider : Provider {
     UpdateProviderOptions(&info, *provider_options);
     return std::make_shared<MIGraphXProviderFactory>(info);
   }
+  */
 
-  /* std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
     auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);
     MIGraphXExecutionProviderInfo info;
     info.device_id = static_cast<OrtDevice::DeviceId>(options.device_id);
@@ -125,7 +127,7 @@ struct MIGraphX_Provider : Provider {
     info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(options.migraphx_arena_extend_strategy);
     info.mem_limit = options.migraphx_mem_limit;
     return std::make_shared<MIGraphXProviderFactory>(info);
-  }*/
+  }
 
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
     auto internal_options = onnxruntime::MIGraphXExecutionProviderInfo::FromProviderOptions(options);
@@ -173,9 +175,9 @@ struct MIGraphX_Provider : Provider {
                                   const OrtSessionOptions& session_options,
                                   const OrtLogger& logger,
                                   std::unique_ptr<IExecutionProvider>& ep) override {
-    if (num_devices != 1) {
-      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "[MigraphX/AMDGPU EP]  only supports one device.");
-    }
+    //if (num_devices != 1) {
+    //  return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "[MigraphX/AMDGPU EP]  only supports one device.");
+    //}
 
     const ConfigOptions* config_options = &session_options.GetConfigOptions();
 
@@ -243,7 +245,7 @@ struct MigraphXEpFactory : OrtEpFactory {
 
     for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
       const OrtHardwareDevice& device = *devices[i];
-      if (factory->ort_api.HardwareDevice_Type(&device) == factory->ort_hw_device_type || true){
+      if (factory->ort_api.HardwareDevice_Type(&device) == factory->ort_hw_device_type){
           //factory->ort_api.HardwareDevice_VendorId(&device) == factory->vendor_id) {
         OrtKeyValuePairs* ep_options = nullptr;
         factory->ort_api.CreateKeyValuePairs(&ep_options);
