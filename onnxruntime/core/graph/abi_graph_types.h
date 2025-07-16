@@ -277,7 +277,7 @@ struct OrtGraph {
   virtual const std::string& GetName() const = 0;
 
   /// <summary>
-  /// Returns the model's path, which could be empty if unknown.
+  /// Returns the model's path, which is empty if unknown.
   /// </summary>
   /// <returns>The model path.</returns>
   virtual const ORTCHAR_T* GetModelPath() const = 0;
