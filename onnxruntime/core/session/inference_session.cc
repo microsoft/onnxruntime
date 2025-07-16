@@ -3651,7 +3651,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
 
     // Enable free dimension override even when the graph optimization level is 0.
     // If the optimization level is above 0, the override will be applied during level 1 optimization.
-    if ((level == TransformerLevel::Default)) {
+    if (level == TransformerLevel::Default) {
       if (graph_optimization_level == TransformerLevel::Default) {
         transformers_to_register = [&]() {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
