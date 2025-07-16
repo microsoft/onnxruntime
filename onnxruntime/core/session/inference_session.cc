@@ -3657,7 +3657,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
                                                      optimizers_to_disable_,
                                                      GetIntraOpThreadPoolToUse());
       };
-    } else if (graph_optimization_level >= level) {
+    } else if ((graph_optimization_level != TransformerLevel::Default) && graph_optimization_level >= level) {
       // Generate and register transformers for level
       transformers_to_register = [&]() {
         const bool use_full_build_optimizations =
@@ -3683,8 +3683,10 @@ common::Status InferenceSession::AddPredefinedTransformers(
       };
     }
 
-    for (auto& entry : transformers_to_register()) {
-      ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
+    if (transformers_to_register) {  // Ensure the lambda is initialized before invoking it
+      for (auto& entry : transformers_to_register()) {
+        ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
+      }
     }
   }
   return Status::OK();
