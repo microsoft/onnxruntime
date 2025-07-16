@@ -95,7 +95,7 @@ QnnEp::QnnEp(QnnEpFactory& factory, const std::string& name,
 
         // Initialize the backend manager
         qnn::QnnBackendManagerConfig backend_config;
-        backend_config.backend_path = "QnnHtp.dll";  // Default backend path
+        backend_config.backend_path = "QnnCpu.dll";  // Default backend path
         backend_config.profiling_file_path = "";
         backend_config.device_id = 0;
         backend_config.soc_model = 0;
@@ -675,17 +675,19 @@ QnnEp::PerThreadContext::PerThreadContext(qnn::QnnBackendManager* qnn_backend_ma
     // so user doesn't need to set it for every session run
     if (is_htp_power_config_id_valid_) {
         if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode) {
-            rt = qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_, default_htp_performance_mode);
+            ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_,
+                                                                           default_htp_performance_mode));
         }
         if (default_rpc_control_latency > 0) {
-            rt = qnn_backend_manager_->SetRpcControlLatency(htp_power_config_id_, default_rpc_control_latency);
+            ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcControlLatency(htp_power_config_id_,
+                                                                               default_rpc_control_latency));
         }
     }
 }
 
 QnnEp::PerThreadContext::~PerThreadContext() {
     if (is_htp_power_config_id_valid_) {
-        Status rt = qnn_backend_manager_->DestroyHTPPowerConfigID(htp_power_config_id_);
+        ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(htp_power_config_id_));
     }
 }
 
