@@ -107,7 +107,7 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
                    IAllocatorUniquePtr<void>& packed_b,
                    size_t& packed_b_size,
                    TensorShape& b_shape
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
                    ,
                    bool enableKleidiPacking
 #endif
@@ -122,7 +122,7 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
   const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
 
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
   MlasGemmBatchPackUseKleidi(enableKleidiPacking);
 #endif
   packed_b_size = MlasGemmPackBSize(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans, N, K);

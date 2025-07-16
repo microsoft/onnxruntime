@@ -16,7 +16,7 @@ Abstract:
 
 #include "mlasi.h"
 
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 //
@@ -864,7 +864,7 @@ Return Value:
 
 --*/
 {
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //KleidiAI
     thread_local bool kleidiai_conv_attempted = false;
     if (!kleidiai_conv_attempted &&
@@ -1109,7 +1109,7 @@ Return Value:
 
 --*/
 {
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     thread_local bool kleidiai_convprep_attempted = false;
     if (!kleidiai_convprep_attempted &&
         GetMlasPlatform().MlasConvPrepare == &ArmKleidiAI::MlasConvPrepare) {

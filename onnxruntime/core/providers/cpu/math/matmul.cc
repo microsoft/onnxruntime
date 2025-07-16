@@ -195,7 +195,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
     } else
 #endif
     {
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
       auto node_op_type = this->Node().OpType();
       if (node_op_type == "FusedMatMul") {
         is_packed = GemmPackBFp32(alloc, tensor, false, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_, false);
