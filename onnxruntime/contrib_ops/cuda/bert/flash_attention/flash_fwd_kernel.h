@@ -275,7 +275,13 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   float sink = (params.head_sink_ptr != nullptr)
                    ? reinterpret_cast<Element*>(params.head_sink_ptr)[bidh]
                    : (params.smooth_softmax ? 0.0f : -kInfinity);
-  // if (tidx == 0) printf("# bidb = %d, bidh = %d, sink = %f, y=%d, z=%d\n", bidb, bidh, sink, blockIdx.y, blockIdx.z);
+
+#ifdef ENABLE_FLASH_DEBUG
+  if (tidx == 0) {
+    printf("bidb = %d, bidh = %d, sink = %f, y=%d, z=%d\n", bidb, bidh, sink, blockIdx.y, blockIdx.z);
+  }
+#endif
+
   if constexpr (Is_softcap) {
     if (params.head_sink_ptr != nullptr) {
       sink = cutlass::fast_tanh(sink * params.softcap);
@@ -844,7 +850,12 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   float sink = (params.head_sink_ptr != nullptr)
                    ? reinterpret_cast<Element*>(params.head_sink_ptr)[bidh]
                    : (params.smooth_softmax ? 0.0f : -std::numeric_limits<float>::infinity());
-  // if (cute::thread0()) printf("## bidb = %d, bidh = %d, sink = %f, y=%d, z=%d\n", bidb, bidh, sink, blockIdx.y, blockIdx.z);
+
+#ifdef ENABLE_FLASH_DEBUG
+  if (tidx == 0) {
+    printf("bidb = %d, bidh = %d, sink = %f, y=%d, z=%d\n", bidb, bidh, sink, blockIdx.y, blockIdx.z);
+  }
+#endif
 
   if constexpr (Is_softcap) {
     if (params.head_sink_ptr != nullptr) {

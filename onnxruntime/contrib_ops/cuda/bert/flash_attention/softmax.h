@@ -99,25 +99,25 @@ struct Softmax {
     Tensor scores = make_tensor(acc_s.data(), flash::convert_layout_acc_rowcol(acc_s.layout()));
     static_assert(decltype(size<0>(scores))::value == kNRows);
 
-    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
+    if (threadIdx.x == 0) {
       if (Is_first)
         printf("Softmax first iteration:\n");
       else
         printf("Softmax subsequent iteration:\n");
 
-      printf("row_max values:\n");
+      printf("old row_max values:\n");
       for (int mi = 0; mi < size<0>(row_max); ++mi) {
         printf("%f ", (float)row_max(mi));
       }
       printf("\n");
 
-      printf("row_sum values:\n");
+      printf("old row_sum values:\n");
       for (int mi = 0; mi < size<0>(row_sum); ++mi) {
         printf("%f ", (float)row_sum(mi));
       }
       printf("\n");
 
-      printf("scores values:\n");
+      printf("old scores values:\n");
       for (int mi = 0; mi < size<0>(scores); ++mi) {
         for (int ni = 0; ni < size<1>(scores); ++ni) {
           printf("%f ", (float)scores(mi, ni));
@@ -127,39 +127,39 @@ struct Softmax {
       printf("\n");
     }
 
-    const bool use_sink = (sink != -kInfinity);
+    // const bool use_sink = (sink != -kInfinity);
     if (Is_first) {
       flash::template reduce_max</*zero_init=*/true>(scores, row_max);
 
-      if (use_sink) {
-#pragma unroll
-        for (int mi = 0; mi < size<0>(row_max); ++mi) {
-          row_max(mi) = max(row_max(mi), sink);  // Sink value ensures that row_max cannot be -inf
-        }
-      }
+//       if (use_sink) {
+// #pragma unroll
+//         for (int mi = 0; mi < size<0>(row_max); ++mi) {
+//           row_max(mi) = max(row_max(mi), sink);  // Sink value ensures that row_max cannot be -inf
+//         }
+//       }
 
       flash::scale_apply_exp2(scores, row_max, softmax_scale_log2);
       flash::reduce_sum</*zero_init=*/true>(scores, row_sum);
 
-      //       if (use_sink) {
-      // #pragma unroll
-      //         for (int mi = 0; mi < size<0>(row_sum); ++mi) {
-      //           float sink_exp = exp2f((sink - row_max(mi)) * softmax_scale_log2);
-      //           row_sum(mi) += sink_exp;
-      //         }
-      //       }
+//       if (use_sink) {
+// #pragma unroll
+//         for (int mi = 0; mi < size<0>(row_sum); ++mi) {
+//           float sink_exp = exp2f((sink - row_max(mi)) * softmax_scale_log2);
+//           row_sum(mi) += sink_exp;
+//         }
+//       }
     } else {
       Tensor scores_max_prev = make_fragment_like(row_max);
       cute::copy(row_max, scores_max_prev);
 
       flash::template reduce_max</*zero_init=*/false>(scores, row_max);
 
-      if (use_sink) {
-#pragma unroll
-        for (int mi = 0; mi < size<0>(row_max); ++mi) {
-          row_max(mi) = max(row_max(mi), sink);
-        }
-      }
+//       if (use_sink) {
+// #pragma unroll
+//         for (int mi = 0; mi < size<0>(row_max); ++mi) {
+//           row_max(mi) = max(row_max(mi), sink);
+//         }
+//       }
 
       Tensor acc_o_rowcol = make_tensor(acc_o.data(), flash::convert_layout_acc_rowcol(acc_o.layout()));
       static_assert(decltype(size<0>(acc_o_rowcol))::value == kNRows);
@@ -171,6 +171,11 @@ struct Softmax {
                                    ? row_max(mi)
                                    : (row_max(mi) == -kInfinity ? 0.0f : row_max(mi));
         float scores_scale = exp2f((scores_max_prev(mi) - scores_max_cur) * softmax_scale_log2);
+
+        printf("blocks=(%d, %d, %d) threads=(%d, %d, %d) mi=%d, scores_max_prev=%f, scores_max_cur = %f, row_sum=%f, scores_scale=%f, scaled_row_sum = %f\n",
+          blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z,
+          mi, scores_max_prev(mi), scores_max_cur, row_sum(mi), scores_scale, row_sum(mi) * scores_scale);
+
         row_sum(mi) *= scores_scale;
 
 #pragma unroll
@@ -195,7 +200,7 @@ struct Softmax {
       //       }
     }
 
-    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
+    if (threadIdx.x == 0) {
       printf("updated row_max values:\n");
       for (int mi = 0; mi < size<0>(row_max); ++mi) {
         printf("%f ", (float)row_max(mi));
@@ -234,8 +239,38 @@ struct Softmax {
       float sum = row_sum(mi);
 
       if (use_sink) {
-        sum += expf((sink - row_max(mi)) * softmax_scale);
+        const float sink_scaled = sink * softmax_scale;
+        const float max_scaled = (row_max(mi) == -kInfinity) ? 0.f : (row_max(mi) * softmax_scale);
+        float sink_exp = expf(sink_scaled - max_scaled);
+
+        printf("blocks=(%d, %d, %d) threads=(%d, %d, %d) mi = %d, sink=%f, softmax_scale=%f, sink_exp = %f, max=%f, sum = %f, sum + sink_exp=%f\n",
+          blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z,
+          mi, sink, softmax_scale, sink_exp, row_max(mi), sum, sum + sink_exp);
+
+        // When sink - row_max(mi) is too large
+        if (sink_exp != sink_exp && row_max(mi) != -kInfinity) {
+          #pragma unroll
+          for (int ni = 0; ni < size<1>(acc_o_rowcol); ++ni) {
+            acc_o_rowcol(mi, ni) = 0.0f;
+          }
+          continue;
+        }
+
+        sum += sink_exp;
       }
+
+      // if (use_sink) {
+
+      //   float scores_max_cur = !Check_inf
+      //                              ? row_max(mi)
+      //                              : (row_max(mi) == -kInfinity ? 0.0f : row_max(mi));
+      //   float scores_scale = exp2f((scores_max_prev(mi) - scores_max_cur) * softmax_scale_log2);
+      //   row_sum(mi) *= scores_scale;
+      // }
+
+      // if (use_sink) {
+      //   sum += expf((sink - row_max(mi)) * softmax_scale);
+      // }
 
       float inv_sum = (sum == 0.f || sum != sum) ? 1.f : 1.f / sum;
       lse(mi) = (sum == 0.f || sum != sum)
@@ -244,9 +279,13 @@ struct Softmax {
       float scale = inv_sum;
 #pragma unroll
       for (int ni = 0; ni < size<1>(acc_o_rowcol); ++ni) {
+        printf("blocks=(%d, %d, %d) threads=(%d, %d, %d) mi = %d, ni = %d, acc=%f scale=%f acc*scale = %f\n",
+          blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z,
+          mi, ni, acc_o_rowcol(mi, ni), scale, acc_o_rowcol(mi, ni) * scale);
         acc_o_rowcol(mi, ni) *= scale;
       }
     }
+
     return lse;
   };
 };

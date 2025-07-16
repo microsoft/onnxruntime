@@ -9,5 +9,5 @@ namespace flash {
 __device__ volatile int flash_debug_block_sync = 0;
 
 }
-}
+}  // namespace onnxruntime
 #endif
