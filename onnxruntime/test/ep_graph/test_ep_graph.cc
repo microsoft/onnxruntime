@@ -216,17 +216,27 @@ TEST(EpGraphTest, SerializeToProto_ExternalInitializersInMemory) {
   const auto& tensor_protos = graph_proto.initializer();
   ASSERT_EQ(tensor_protos.size(), api_num_initializers);
 
+  std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*> tensor_proto_map;
+  for (const auto& tensor_proto : tensor_protos) {
+    tensor_proto_map.emplace(tensor_proto.name(), &tensor_proto);
+  }
+
   for (size_t i = 0; i < api_num_initializers; ++i) {
     const OrtValue* ort_value = nullptr;
     const void* ort_value_data = nullptr;
+    const char* value_name = nullptr;
 
+    ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(api_initializers[i], &value_name));
     ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(api_initializers[i], &ort_value));
     ASSERT_ORTSTATUS_OK(ort_api.GetTensorData(ort_value, &ort_value_data));
 
-    ONNX_NAMESPACE::TensorProto_DataLocation data_location = tensor_protos[static_cast<int>(i)].data_location();
+    auto iter = tensor_proto_map.find(value_name);
+    ASSERT_NE(iter, tensor_proto_map.end());
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = iter->second;
+    ONNX_NAMESPACE::TensorProto_DataLocation data_location = tensor_proto->data_location();
     ASSERT_EQ(data_location, ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
 
-    const auto& ext_data_entries = tensor_protos[static_cast<int>(i)].external_data();
+    const auto& ext_data_entries = tensor_proto->external_data();
     const ONNX_NAMESPACE::StringStringEntryProto& location_entry = ext_data_entries[0];
     const ONNX_NAMESPACE::StringStringEntryProto& offset_entry = ext_data_entries[1];
 
