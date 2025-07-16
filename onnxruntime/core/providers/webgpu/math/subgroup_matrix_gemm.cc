@@ -7,10 +7,13 @@
 namespace onnxruntime {
 namespace webgpu {
 
-// Common shader code parts that are shared across all variants
-namespace {
+Status SubgroupMatrixGemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-const char* kCommonShaderHeader = R"(
+  // Add common shader header
+  shader.AdditionalImplementation() << R"(
 const tile_cols = 64;
 const tile_rows = 32;
 const tile_k = 32;
@@ -18,156 +21,71 @@ const subtile_cols = 32;
 const subtile_rows = 16;
 
 var<workgroup> tile_A: array<f32, tile_rows * tile_k>;
+// 32 x 32 - RxC
 var<workgroup> tile_B: array<f32, tile_cols * tile_k>;
+// If B is transposed, 64 x 32 - RxC. Else 32 x 64 - RxC
 var<workgroup> scratch: array<array<array<f32, 64>, 4>, 4>;
+// 64 * 4 * 4
 )";
 
-const char* kCommonMainStart = R"(
-    let a_global_base = workgroup_id.y * tile_rows;
-    let b_global_base = workgroup_id.x * tile_cols;
-
-    let subtile_id = u32(local_idx / sg_size);
-    let subtile_idx = u32(subtile_id / 2);
-    let subtile_idy = subtile_id % 2;
-    let base_A = subtile_idy * subtile_rows;
-    let base_B = subtile_idx * subtile_cols;
-
-    var matC00: subgroup_matrix_result<f32, 8, 8>;
-    var matC01: subgroup_matrix_result<f32, 8, 8>;
-    var matC02: subgroup_matrix_result<f32, 8, 8>;
-    var matC03: subgroup_matrix_result<f32, 8, 8>;
-    var matC10: subgroup_matrix_result<f32, 8, 8>;
-    var matC11: subgroup_matrix_result<f32, 8, 8>;
-    var matC12: subgroup_matrix_result<f32, 8, 8>;
-    var matC13: subgroup_matrix_result<f32, 8, 8>;
-
-    for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
-)";
-
-const char* kCommonComputeLoop = R"(
-        workgroupBarrier();
-
-        for (var step: u32 = 0; step < tile_k; step += 8) {
-)";
-
-const char* kCommonComputeOperations = R"(
-            // Compute Phase
-            matC00 = subgroupMatrixMultiplyAccumulate(matA0, matB0, matC00);
-            matC01 = subgroupMatrixMultiplyAccumulate(matA0, matB1, matC01);
-            matC02 = subgroupMatrixMultiplyAccumulate(matA0, matB2, matC02);
-            matC03 = subgroupMatrixMultiplyAccumulate(matA0, matB3, matC03);
-
-            matC10 = subgroupMatrixMultiplyAccumulate(matA1, matB0, matC10);
-            matC11 = subgroupMatrixMultiplyAccumulate(matA1, matB1, matC11);
-            matC12 = subgroupMatrixMultiplyAccumulate(matA1, matB2, matC12);
-            matC13 = subgroupMatrixMultiplyAccumulate(matA1, matB3, matC13);
-        }
-        workgroupBarrier();
-    }
-)";
-
-const char* kCommonMainEnd = R"(
-    // Write out top block
-    subgroupMatrixStore(&scratch[subtile_id][0], 0, matC00, false, 8);
-    subgroupMatrixStore(&scratch[subtile_id][1], 0, matC01, false, 8);
-    subgroupMatrixStore(&scratch[subtile_id][2], 0, matC02, false, 8);
-    subgroupMatrixStore(&scratch[subtile_id][3], 0, matC03, false, 8);
-    workgroupBarrier();
-
-    let row = u32(sg_id / 4);
-    var col = u32(sg_id % 4) * 2;
-    var matrix_c_offset = (a_global_base + base_A) * uniforms.N + b_global_base + base_B;
-
-    var row_limit = i32(uniforms.M) - i32(a_global_base + base_A);
-    storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
-    workgroupBarrier();
-
-    // Write out bottom block
-    subgroupMatrixStore(&scratch[subtile_id][0], 0, matC10, false, 8);
-    subgroupMatrixStore(&scratch[subtile_id][1], 0, matC11, false, 8);
-    subgroupMatrixStore(&scratch[subtile_id][2], 0, matC12, false, 8);
-    subgroupMatrixStore(&scratch[subtile_id][3], 0, matC13, false, 8);
-    workgroupBarrier();
-
-    matrix_c_offset = matrix_c_offset + 8 * uniforms.N;
-    row_limit = i32(uniforms.M) - i32(a_global_base + base_A + 8);
-    storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
-)";
-
-// Load functions for different transpose combinations
-const char* kLoadSHMA_Normal = R"(
-fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
-    let a_global = tile_base + row;
-    if (a_global >= uniforms.M) {
-        return;
-    }
-    var col = c_idx * 8;
-    for (var col_offset: u32 = 0; col_offset < 8; col_offset++) {
-        tile_A[row * tile_k + col + col_offset] = input_a[a_global * uniforms.K + k_idx + col + col_offset];
-    }
-}
-)";
-
-const char* kLoadSHMA_TransA = R"(
+  if (transA_) {
+    shader.AdditionalImplementation() << R"(
 fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
     var col = c_idx * 8;
     let a_global = tile_base + col;
     if (a_global >= uniforms.M) {
         return;
     }
+    // 128 threads need to load 32 x 32. 4 threads per row or 8 col per thread
     for (var col_offset: u32 = 0; col_offset < 8; col_offset++) {
         tile_A[row * tile_k + col + col_offset] = input_a[(k_idx + row) * uniforms.M + a_global + col_offset];
     }
 }
 )";
-
-const char* kLoadSHMB_Normal = R"(
-fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
-    var col = c_idx * 16;
-    let b_global = tile_base + col;
-    if (b_global >= uniforms.N) {
+  } else {
+    shader.AdditionalImplementation() << R"(
+fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
+    let a_global = tile_base + row;
+    if (a_global >= uniforms.M) {
         return;
     }
-    for (var col_offset: u32 = 0; col_offset < 16; col_offset++) {
-        tile_B[row * 64 + col + col_offset] = input_b[k_idx * uniforms.N + row * uniforms.N + b_global + col_offset];
+    var col = c_idx * 8;
+    // 128 threads need to load 32 x 32. 4 threads per row or 8 col per thread
+    for (var col_offset: u32 = 0; col_offset < 8; col_offset++) {
+        tile_A[row * tile_k + col + col_offset] = input_a[a_global * uniforms.K + k_idx + col + col_offset];
     }
 }
 )";
+  }
 
-const char* kLoadSHMB_TransB = R"(
+  if (transB_) {
+    shader.AdditionalImplementation() << R"(
 fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
     let b_global = tile_base + row;
     if (b_global >= uniforms.N) {
         return;
     }
     var col = c_idx * 16;
+    // 128 threads need to load 32 x 64. 4 threads per row or 16 col per thread
     for (var col_offset: u32 = 0; col_offset < 16; col_offset++) {
         tile_B[row * tile_k + col + col_offset] = input_b[b_global * uniforms.K + k_idx + col + col_offset];
     }
 }
 )";
-
-}  // namespace
-
-Status SubgroupMatrixGemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const ShaderVariableHelper& input_a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  const ShaderVariableHelper& input_b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-
-  // Add common shader header
-  shader.AdditionalImplementation() << kCommonShaderHeader;
-
-  // Add appropriate load functions based on transpose flags
-  if (transA_) {
-    shader.AdditionalImplementation() << kLoadSHMA_TransA;
   } else {
-    shader.AdditionalImplementation() << kLoadSHMA_Normal;
-  }
-
-  if (transB_) {
-    shader.AdditionalImplementation() << kLoadSHMB_TransB;
-  } else {
-    shader.AdditionalImplementation() << kLoadSHMB_Normal;
+    shader.AdditionalImplementation() << R"(
+fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
+    var col = c_idx * 16;
+    let b_global = tile_base + col;
+    if (b_global >= uniforms.N) {
+        return;
+    }
+    // 128 threads need to load 32 x 64. 4 threads per row or 16 col per thread
+    for (var col_offset: u32 = 0; col_offset < 16; col_offset++) {
+        tile_B[row * 64 + col + col_offset] = input_b[k_idx * uniforms.N + row * uniforms.N + b_global + col_offset];
+    }
+}
+)";
   }
 
   // Generate storeOutput function dynamically
@@ -258,42 +176,27 @@ fn storeOutput(offset: u32, row: u32, col: u32, src_slot: u32, row_limit: i32) {
 )";
   }
 
-  shader.MainFunctionBody() << kCommonComputeLoop;
+  shader.MainFunctionBody() << R"(
+        workgroupBarrier();
 
-  // Add matrix load operations based on transpose flags
-  if (transA_ && transB_) {
-    shader.MainFunctionBody() << R"(
+        for (var step: u32 = 0; step < tile_k; step += 8) {
             // Load to local memory phase
-            let matrix_a_offset = step * 8 * 4 + subtile_idy * subtile_rows;
+)";
+
+  if (transA_) {
+    shader.MainFunctionBody() << R"(            let matrix_a_offset = step * 8 * 4 + subtile_idy * subtile_rows;
             var matA0: subgroup_matrix_left<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>>(&tile_A, matrix_a_offset, true, tile_k);
             var matA1: subgroup_matrix_left<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>>(&tile_A, matrix_a_offset + 8, true, tile_k);
-            var matrix_b_offset = subtile_idx * subtile_cols * tile_k + step;
-
-            var matB0: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset, true, tile_k);
-            var matB1: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 8 * tile_k, true, tile_k);
-            var matB2: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 16 * tile_k, true, tile_k);
-            var matB3: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 24 * tile_k, true, tile_k);
 )";
-  } else if (transA_ && !transB_) {
-    shader.MainFunctionBody() << R"(
-            // Load to local memory phase
-            let matrix_a_offset = step * 8 * 4 + subtile_idy * subtile_rows;
-            var matA0: subgroup_matrix_left<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>>(&tile_A, matrix_a_offset, true, tile_k);
-            var matA1: subgroup_matrix_left<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>>(&tile_A, matrix_a_offset + 8, true, tile_k);
-            var matrix_b_offset = step * 8 * 8 + subtile_idx * tile_k;
-
-            var matB0: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset, false, tile_k * 2);
-            var matB1: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 8 , false, tile_k * 2);
-            var matB2: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 16 , false, tile_k * 2);
-            var matB3: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 24 , false, tile_k * 2);
-)";
-  } else if (!transA_ && transB_) {
-    shader.MainFunctionBody() << R"(
-            // Load to local memory phase
-            let matrix_a_offset = subtile_idy * subtile_rows * tile_k + step;
+  } else {
+    shader.MainFunctionBody() << R"(            let matrix_a_offset = subtile_idy * subtile_rows * tile_k + step;
             var matA0: subgroup_matrix_left<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>>(&tile_A, matrix_a_offset, false, tile_k);
             var matA1: subgroup_matrix_left<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>>(&tile_A, matrix_a_offset + 8 * tile_k, false, tile_k);
-            var matrix_b_offset = subtile_idx * subtile_cols * tile_k + step;
+)";
+  }
+
+  if (transB_) {
+    shader.MainFunctionBody() << R"(            var matrix_b_offset = subtile_idx * subtile_cols * tile_k + step;
 
             var matB0: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset, true, tile_k);
             var matB1: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 8 * tile_k, true, tile_k);
@@ -301,12 +204,7 @@ fn storeOutput(offset: u32, row: u32, col: u32, src_slot: u32, row_limit: i32) {
             var matB3: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 24 * tile_k, true, tile_k);
 )";
   } else {
-    shader.MainFunctionBody() << R"(
-            // Load to local memory phase
-            let matrix_a_offset = subtile_idy * subtile_rows * tile_k + step;
-            var matA0: subgroup_matrix_left<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>>(&tile_A, matrix_a_offset, false, tile_k);
-            var matA1: subgroup_matrix_left<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>>(&tile_A, matrix_a_offset + 8 * tile_k, false, tile_k);
-            var matrix_b_offset = step * 8 * 8 + subtile_idx * tile_k;
+    shader.MainFunctionBody() << R"(            var matrix_b_offset = step * 8 * 8 + subtile_idx * tile_k;
 
             var matB0: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset, false, tile_k * 2);
             var matB1: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 8 , false, tile_k * 2);
@@ -315,7 +213,21 @@ fn storeOutput(offset: u32, row: u32, col: u32, src_slot: u32, row_limit: i32) {
 )";
   }
 
-  shader.MainFunctionBody() << kCommonComputeOperations;
+  shader.MainFunctionBody() << R"(
+            // Compute Phase
+            matC00 = subgroupMatrixMultiplyAccumulate(matA0, matB0, matC00);
+            matC01 = subgroupMatrixMultiplyAccumulate(matA0, matB1, matC01);
+            matC02 = subgroupMatrixMultiplyAccumulate(matA0, matB2, matC02);
+            matC03 = subgroupMatrixMultiplyAccumulate(matA0, matB3, matC03);
+
+            matC10 = subgroupMatrixMultiplyAccumulate(matA1, matB0, matC10);
+            matC11 = subgroupMatrixMultiplyAccumulate(matA1, matB1, matC11);
+            matC12 = subgroupMatrixMultiplyAccumulate(matA1, matB2, matC12);
+            matC13 = subgroupMatrixMultiplyAccumulate(matA1, matB3, matC13);
+        }
+        workgroupBarrier();
+    }
+)";
 
   // Handle alpha scaling
   if (alpha_ != 1.0f) {
@@ -332,7 +244,33 @@ fn storeOutput(offset: u32, row: u32, col: u32, src_slot: u32, row_limit: i32) {
 )";
   }
 
-  shader.MainFunctionBody() << kCommonMainEnd;
+  shader.MainFunctionBody() << R"(
+    // Write out top block
+    subgroupMatrixStore(&scratch[subtile_id][0], 0, matC00, false, 8);
+    subgroupMatrixStore(&scratch[subtile_id][1], 0, matC01, false, 8);
+    subgroupMatrixStore(&scratch[subtile_id][2], 0, matC02, false, 8);
+    subgroupMatrixStore(&scratch[subtile_id][3], 0, matC03, false, 8);
+    workgroupBarrier();
+
+    let row = u32(sg_id / 4);
+    var col = u32(sg_id % 4) * 2;
+    var matrix_c_offset = (a_global_base + base_A) * uniforms.N + b_global_base + base_B;
+
+    var row_limit = i32(uniforms.M) - i32(a_global_base + base_A);
+    storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
+    workgroupBarrier();
+
+    // Write out bottom block
+    subgroupMatrixStore(&scratch[subtile_id][0], 0, matC10, false, 8);
+    subgroupMatrixStore(&scratch[subtile_id][1], 0, matC11, false, 8);
+    subgroupMatrixStore(&scratch[subtile_id][2], 0, matC12, false, 8);
+    subgroupMatrixStore(&scratch[subtile_id][3], 0, matC13, false, 8);
+    workgroupBarrier();
+
+    matrix_c_offset = matrix_c_offset + 8 * uniforms.N;
+    row_limit = i32(uniforms.M) - i32(a_global_base + base_A + 8);
+    storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
+)";
 
   return Status::OK();
 }
@@ -370,7 +308,7 @@ Status ApplySubgroupMatrixGemm(const Tensor* a,
 
   bool need_handle_bias = c && beta != 0.0f;
 
-  SubgroupMatrixGemmProgram program{transA, transB, alpha, beta, need_handle_bias};
+  SubgroupMatrixGemmProgram program{transA, transB, alpha, need_handle_bias};
 
   program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank},
                      {b, ProgramTensorMetadataDependency::TypeAndRank}});
