@@ -146,26 +146,28 @@ const char* ORT_API_CALL QnnEp::GetNameImpl(const OrtEp* this_ptr) noexcept {
 // }
 
 
-OrtStatus* QnnEp::GetSupportedNodes(const OrtGraph* graph,
-                                    const std::unordered_map<const OrtNode*, const OrtNode*>& node_unit_map,
+OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
+                                    const OrtGraph* graph,
+                                    const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
                                     const size_t node_unit_size,
                                     const logging::Logger& logger,
                                     std::unordered_set<const OrtNode*>& supported_nodes) const {
+    const auto* ep = static_cast<const QnnEp*>(this_ptr);
   OrtArrayOfConstObjects* graph_inputs = nullptr;
   OrtArrayOfConstObjects* graph_outputs = nullptr;
-  this->ort_api.Graph_GetInputs(graph, &graph_inputs);
-  this->ort_api.Graph_GetOutputs(graph, &graph_outputs);
+  ep->ort_api.Graph_GetInputs(graph, &graph_inputs);
+  ep->ort_api.Graph_GetOutputs(graph, &graph_outputs);
 
   // Util function that initializes a table that maps a graph input or output name to its index.
   auto init_input_output_index_map = [&](std::unordered_map<std::string, size_t>& index_map,
                                          OrtArrayOfConstObjects* inouts) {
     size_t num_elements;
-    this->ort_api.ArrayOfConstObjects_GetSize(inouts, &num_elements);
+    ep->ort_api.ArrayOfConstObjects_GetSize(inouts, &num_elements);
     for (size_t idx = 0; idx < num_elements; ++idx) {
         const void* inout = nullptr;
-        this->ort_api.ArrayOfConstObjects_GetElementAt(inouts, idx, &inout);
+        ep->ort_api.ArrayOfConstObjects_GetElementAt(inouts, idx, &inout);
         const char* name = nullptr;
-        this->ort_api.GetValueInfoName(static_cast<const OrtValueInfo*>(inout), &name);
+        ep->ort_api.GetValueInfoName(static_cast<const OrtValueInfo*>(inout), &name);
 
         index_map.emplace(name, idx);
     }
@@ -179,7 +181,7 @@ OrtStatus* QnnEp::GetSupportedNodes(const OrtGraph* graph,
   init_input_output_index_map(model_output_index_map, graph_outputs);
 
   auto qnn_model_wrapper = qnn::QnnModelWrapper(*graph,
-                                                ApiPtrs{this->ort_api, this->ep_api, this->model_editor_api},
+                                                ApiPtrs{ep->ort_api, ep->ep_api, ep->model_editor_api},
                                                 logger,
                                                 qnn_backend_manager_->GetQnnInterface(),
                                                 qnn_backend_manager_->GetQnnBackendHandle(),
@@ -206,17 +208,16 @@ OrtStatus* QnnEp::GetSupportedNodes(const OrtGraph* graph,
     // }
 
     if (supported) {
-      for (const OrtNode* node_unit : qnn_node_group->GetNodeUnits()) {
-        // for (const Node* node : node_unit->GetAllNodesInGroup()) {
-        //   supported_nodes.insert(node);
-        // }
-        supported_nodes.insert(node_unit);
+      for (const OrtNodeUnit* node_unit : qnn_node_group->GetNodeUnits()) {
+        for (const OrtNode* node : node_unit->GetAllNodesInGroup()) {
+          supported_nodes.insert(node);
+        }
       }
     }
   }
 
-  this->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
-  this->ort_api.ReleaseArrayOfConstObjects(graph_outputs);
+  ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
+  ep->ort_api.ReleaseArrayOfConstObjects(graph_outputs);
   return nullptr;
 }
 
@@ -594,14 +595,14 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
 
   // Get node units for the ABI layer
   std::vector<const OrtNode*> node_unit_holder;
-  std::unordered_map<const OrtNode*, const OrtNode*> node_unit_map;
+  std::unordered_map<const OrtNode*, const OrtNodeUnit*> node_unit_map;
 
-  std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(this_ptr, graph, logger);
+  std::tie(node_unit_holder, node_unit_map) = GetAllOrtNodeUnits(this_ptr, graph, logger);
   std::cout << "DEBUG: #nodes: " << node_unit_holder.size() << std::endl;
 
   // Analyze nodes for QNN support
   std::unordered_set<const OrtNode*> supported_nodes;
-  ep->GetSupportedNodes(graph, node_unit_map, node_unit_holder.size(), logger, supported_nodes);
+  ep->GetSupportedNodes(this_ptr, graph, node_unit_map, node_unit_holder.size(), logger, supported_nodes);
 
   // Clean up intermediate resources
   ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);

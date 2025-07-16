@@ -42,6 +42,7 @@
 #include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/abi_logger.h"
+#include "core/graph/abi_graph_types.h"
 #include "core/session/abi_session_options_impl.h"
 
 // #define ORT_API_MANUAL_INIT
@@ -52,10 +53,16 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 
+
+// #include "core/session/onnxruntime_cxx_api.h"
+
 #include <memory>
 #include <vector>
 
+
+
 namespace onnxruntime {
+
 
 // inline void InitOrtCppApi() {
 //   // Call util function in provider bridge that initializes the global api_ object.
@@ -141,5 +148,82 @@ namespace onnxruntime {
 //  private:
 //   const NodeAttributes& node_attributes_;
 // };
+
+// Forward declaration for OrtNode which is used in OrtNodeUnit
+
+
+class OrtNodeUnit {
+ public:
+  // NodeUnit type
+  enum class Type : uint8_t {
+    SingleNode,  // The NodeUnit contains a single node
+    QDQGroup,    // The NodeUnit contain a QDQ group of nodes, such as "DQ->Sigmoid->Q"
+  };
+
+ public:
+  // explicit NodeUnit(const Node& node);
+  // explicit NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group);
+  // NodeUnit(gsl::span<const Node* const> dq_nodes, const Node& target_node, const Node* redundant_clip_node,
+  //          gsl::span<const Node* const> q_nodes, Type unit_type,
+  //          gsl::span<const NodeUnitIODef> inputs, gsl::span<const NodeUnitIODef> outputs,
+  //          size_t input_edge_count, Node::EdgeSet output_edges);
+
+  Type UnitType() const noexcept { return type_; }
+
+  // const std::vector<NodeUnitIODef>& Inputs() const noexcept { return inputs_; }
+  // const std::vector<NodeUnitIODef>& Outputs() const noexcept { return outputs_; }
+
+  // const std::string& Domain() const noexcept;
+  const std::string& OpType() const noexcept{ return target_node_.GetOpType(); }
+  const std::string& Name() const noexcept { return target_node_.GetName(); }
+  // int SinceVersion() const noexcept;
+  // NodeIndex Index() const noexcept;
+  // const std::filesystem::path& ModelPath() const noexcept;
+  // ProviderType GetExecutionProviderType() const noexcept;
+
+  const OrtNode& GetNode() const noexcept { return target_node_; }
+  // const Node* GetRedundantClipNode() const noexcept { return redundant_clip_node_; }
+  // const std::vector<const Node*>& GetDQNodes() const noexcept { return dq_nodes_; }
+  // const std::vector<const Node*>& GetQNodes() const noexcept { return q_nodes_; }
+  std::vector<const OrtNode*> GetAllNodesInGroup() const noexcept {
+    std::vector<const OrtNode*> all_nodes = dq_nodes_;
+    all_nodes.push_back(&target_node_);
+    if (redundant_clip_node_) {
+      all_nodes.push_back(redundant_clip_node_);
+    }
+    all_nodes.reserve(all_nodes.size() + q_nodes_.size());
+    for (auto& n : q_nodes_)
+      all_nodes.push_back(n);
+    return all_nodes;
+  }
+
+  // /// Number of input edges to the logical node. For a QDQ node this is the count of input edges to the DQ nodes
+  // /// plus any other edges to the target node for inputs that are not via a DQ node.
+  // size_t InputEdgeCount() const { return input_edge_count_; }
+
+  // // output edges. src index is for outputs of the target node. dest index and node is for consumer of node unit
+  // // output. any Q nodes are hidden.
+  // Node::EdgeConstIterator OutputEdgesBegin() const;
+  // Node::EdgeConstIterator OutputEdgesEnd() const;
+
+ private:
+  // // Initialization for a NodeUnit that contains a single node
+  // void InitForSingleNode();
+
+  const std::vector<const OrtNode*> dq_nodes_;  // dq nodes for this NodeUnit, not necessarily all inputs
+  const OrtNode& target_node_;
+  const OrtNode* redundant_clip_node_;         // Optional redundant clip node for the QDQ group, nullptr if not present.
+  const std::vector<const OrtNode*> q_nodes_;  // q-nodes for this NodeUnit. not necessarily all outputs
+  const Type type_;
+
+  // std::vector<NodeUnitIODef> inputs_;
+  // std::vector<NodeUnitIODef> outputs_;
+
+  // size_t input_edge_count_;  // total number of input edges
+
+  // // output edges, hiding any Q nodes involved. src_idx will be value from target node. only used for QDQ node group.
+  // Node::EdgeSet output_edges_;
+};
+
 
 }  // namespace onnxruntime

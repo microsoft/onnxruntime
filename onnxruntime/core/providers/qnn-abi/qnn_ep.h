@@ -14,6 +14,7 @@
 #include "core/providers/qnn-abi/builder/qnn_def.h"
 #include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
+#include "qnn_ep_utils.h"
 #include "test/autoep/library/example_plugin_ep_utils.h"
 
 namespace onnxruntime {
@@ -43,8 +44,9 @@ class QnnEp : public OrtEp, public ApiPtrs {
                                                   const OrtGraph* graph,
                                                   OrtEpGraphSupportInfo* graph_support_info);
 
-  OrtStatus* GetSupportedNodes(const OrtGraph* graph,
-                               const std::unordered_map<const OrtNode*, const OrtNode*>& node_unit_map,
+  OrtStatus* GetSupportedNodes(OrtEp* this_ptr,
+                              const OrtGraph* graph,
+                               const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
                                const size_t node_unit_size,
                                const logging::Logger& logger,
                                std::unordered_set<const OrtNode*>& supported_nodes) const;

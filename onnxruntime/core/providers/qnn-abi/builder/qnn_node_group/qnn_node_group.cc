@@ -25,90 +25,88 @@ namespace qnn {
 /// </summary>
 class QnnNodeUnitWrapper : public IQnnNodeGroup {
  public:
-  explicit QnnNodeUnitWrapper(const OrtNode& node_unit) : node_unit_(&node_unit) {}
+  explicit QnnNodeUnitWrapper(const OrtNodeUnit& node_unit) : node_unit_(&node_unit) {}
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnNodeUnitWrapper);
 
   Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const override {
-    const char* op_type = nullptr;
-    OrtApi().Node_GetOperatorType(node_unit_, &op_type);
+    const std::string& op_type = node_unit_->OpType();
     const auto* op_builder = qnn::GetOpBuilder(op_type);
 
-    const char* name = nullptr;
-    OrtApi().Node_GetName(node_unit_, &name);
+    const std::string& name = node_unit_->Name();
     ORT_RETURN_IF_NOT(op_builder != nullptr, "Operators of type `", op_type,
                       "` are not supported by QNN EP.", op_type, " node `",
                       name, "` will not be assigned to QNN EP.");
 
-    return op_builder->IsOpSupported(qmw, *node_unit_, logger);
+    return op_builder->IsOpSupported(qmw, node_unit_->GetNode(), logger);
   }
 
   Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const override {
-    const char* op_type = nullptr;
-    OrtApi().Node_GetOperatorType(node_unit_, &op_type);
+    const std::string& op_type = node_unit_->OpType();
     const auto* op_builder = qnn::GetOpBuilder(op_type);
     ORT_RETURN_IF_NOT(op_builder != nullptr, "[QNN EP]: Missing OpBuilder for OpType ", op_type);
-    return op_builder->AddToModelBuilder(qmw, *node_unit_, logger, /*do_op_validation*/ false);
+    return op_builder->AddToModelBuilder(qmw, node_unit_->GetNode(), logger, /*do_op_validation*/ false);
   }
 
-  gsl::span<const OrtNode* const> GetNodeUnits() const override {
-    return gsl::span<const OrtNode* const>{&node_unit_, 1ULL};
+  gsl::span<const OrtNodeUnit* const> GetNodeUnits() const override {
+    return gsl::span<const OrtNodeUnit* const>{&node_unit_, 1ULL};
   }
 
-  const OrtNode* GetTargetNodeUnit() const override { return node_unit_; }
+  const OrtNodeUnit* GetTargetNodeUnit() const override { return node_unit_; }
   std::string_view Type() const override { return "NodeUnit"; }
 
  private:
-  const OrtNode* node_unit_;
+  const OrtNodeUnit* node_unit_;
 };
 
-// /// <summary>
-// /// The type of a function that tries to fuse NodeUnits into a IQnnNodeGroup.
-// /// </summary>
-// using FusionFunc = std::unique_ptr<IQnnNodeGroup> (*)(
-//     QnnModelWrapper&,
-//     const NodeUnit&,
-//     const std::unordered_map<const Node*, const NodeUnit*>&,
-//     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>&,
-//     const logging::Logger&);
+/// <summary>
+/// The type of a function that tries to fuse NodeUnits into a IQnnNodeGroup.
+/// </summary>
+using FusionFunc = std::unique_ptr<IQnnNodeGroup> (*)(
+    QnnModelWrapper&,
+    const OrtNodeUnit&,
+    const std::unordered_map<const OrtNode*, const OrtNodeUnit*>&,
+    const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>&,
+    const logging::Logger&);
 
-// /// <summary>
-// /// Given a starting NodeUnit, this function tries all possible fusions that start with that NodeUnit.
-// /// If successful, returns a IQnnNodeGroup object that represents the fusion of various NodeUnits.
-// /// Currently only handles standalone NodeUnits that are not in a QDQ unit but that can change in the future.
-// /// </summary>
-// /// <param name="qnn_model_wrapper">QnnModelWrapper that contains the ONNX GraphViewer. Used for validation.</param>
-// /// <param name="starting_node_unit">NodeUnit that potentially starts a fusion.</param>
-// /// <param name="node_to_node_unit">Maps a Node* to a NodeUnit*</param>
-// /// <param name="node_unit_to_qnn_node_group">Maps a NodeUnit* to a IQnnNodeGroup*</param>
-// /// <param name="logger"></param>
-// /// <returns>IQnnNodeGroup representing the fusion or an empty std::unique_ptr</returns>
-// static std::unique_ptr<IQnnNodeGroup> TryQnnFusions(
-//     QnnModelWrapper& qnn_model_wrapper,
-//     const NodeUnit& starting_node_unit,
-//     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-//     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
-//     const logging::Logger& logger) {
-//   // Maps a starting operator type to the fusion function.
-//   static std::unordered_map<std::string, FusionFunc> fusions = {
-//       {"DequantizeLinear", DQQFusion::TryFusion},
-//       {"HardSigmoid", HardSigmoidMulFusion::TryFusion},
-//       {"Gemm", ReshapeGemmFusion::TryFusion},
-//       {"Mul", ScaleSoftmaxFusion::TryFusion},
-//       {"Transpose", ChannelShuffleFusion::TryFusion}};
+// / <summary>
+// / Given a starting NodeUnit, this function tries all possible fusions that start with that NodeUnit.
+// / If successful, returns a IQnnNodeGroup object that represents the fusion of various NodeUnits.
+// / Currently only handles standalone NodeUnits that are not in a QDQ unit but that can change in the future.
+// / </summary>
+// / <param name="qnn_model_wrapper">QnnModelWrapper that contains the ONNX GraphViewer. Used for validation.</param>
+// / <param name="starting_node_unit">NodeUnit that potentially starts a fusion.</param>
+// / <param name="node_to_node_unit">Maps a Node* to a NodeUnit*</param>
+// / <param name="node_unit_to_qnn_node_group">Maps a NodeUnit* to a IQnnNodeGroup*</param>
+// / <param name="logger"></param>
+// / <returns>IQnnNodeGroup representing the fusion or an empty std::unique_ptr</returns>
+static std::unique_ptr<IQnnNodeGroup> TryQnnFusions(
+    QnnModelWrapper& qnn_model_wrapper,
+    const OrtNodeUnit& starting_node_unit,
+    const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_to_node_unit,
+    const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
+    const logging::Logger& logger) {
+  // Maps a starting operator type to the fusion function.
+  static std::unordered_map<std::string, FusionFunc> fusions = {
+    //   {"DequantizeLinear", DQQFusion::TryFusion},
+    //   {"HardSigmoid", HardSigmoidMulFusion::TryFusion},
+    //   {"Gemm", ReshapeGemmFusion::TryFusion},
+    //   {"Mul", ScaleSoftmaxFusion::TryFusion},
+    //   {"Transpose", ChannelShuffleFusion::TryFusion}
+    };
 
-//   // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).
-//   if (starting_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
-//     return nullptr;
-//   }
+  // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).
+  if (starting_node_unit.UnitType() != OrtNodeUnit::Type::SingleNode) {
+    return nullptr;
+  }
 
-//   auto iter = fusions.find(starting_node_unit.OpType());
-//   if (iter != fusions.end()) {
-//     FusionFunc fusion_func = iter->second;
-//     return fusion_func(qnn_model_wrapper, starting_node_unit, node_to_node_unit,
-//                        node_unit_to_qnn_node_group, logger);
-//   }
-//   return nullptr;
-// }
+  auto iter = fusions.find(starting_node_unit.OpType());
+  if (iter != fusions.end()) {
+    FusionFunc fusion_func = iter->second;
+    return fusion_func(qnn_model_wrapper, starting_node_unit, node_to_node_unit,
+                       node_unit_to_qnn_node_group, logger);
+  }
+  return nullptr;
+}
 
 // Traverses the ONNX Graph and groups NodeUnits into IQnnNodeGroup objects. Some IQnnNodeGroup objects
 // represent a fusion of various NodeUnits. This function generates a vector of indices that
@@ -116,13 +114,12 @@ class QnnNodeUnitWrapper : public IQnnNodeGroup {
 static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeGroup>>& qnn_node_groups,
                                    /*out*/ std::vector<size_t>& sorted_qnn_node_group_indices,
                                    QnnModelWrapper& qnn_model_wrapper,
-                                   const std::unordered_map<const OrtNode*, const OrtNode*>& node_to_node_unit,
+                                   const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_to_node_unit,
                                    const size_t num_node_units,
                                    const logging::Logger& logger) {
   const OrtGraph& graph = qnn_model_wrapper.GetOrtGraph();
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
 
-  std::cout << "DEBUG: SegFault QQ" << std::endl;
   OrtArrayOfConstObjects* nodes = nullptr;
   ort_api.Graph_GetNodes(&graph, &nodes);
 
@@ -135,9 +132,9 @@ static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeG
   sorted_qnn_node_group_indices.reserve(num_node_units);
   qnn_node_groups.reserve(num_node_units);
 
-  std::unordered_map<const OrtNode*, const IQnnNodeGroup*> node_unit_to_qnn_node_group;
+  std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*> node_unit_to_qnn_node_group;
   std::unordered_map<const IQnnNodeGroup*, size_t> fused_qnn_node_group_indices;
-  std::vector<gsl::not_null<const OrtNode*>> sorted_node_units;
+  std::vector<gsl::not_null<const OrtNodeUnit*>> sorted_node_units;
   sorted_node_units.reserve(num_node_units);
 
   // Process just the fusions of NodeUnits first to ensure a correct topological order of all IQnnNodeGroups.
@@ -148,12 +145,12 @@ static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeG
     // Get the NodeUnit associated with the node.
     const auto node_unit_it = node_to_node_unit.find(node);
     ORT_RETURN_IF_NOT(node_unit_it != node_to_node_unit.end(), "Could not find NodeUnit for Node.");
-    gsl::not_null<const OrtNode*> node_unit = node_unit_it->second;
+    gsl::not_null<const OrtNodeUnit*> node_unit = node_unit_it->second;
 
     // Skip this node if it is not the NodeUnit's target node to ensure NodeUnits are visited in topological order.
-    // if (node != &node_unit->GetNode()) {
-    //   continue;
-    // }
+    if (node != &node_unit->GetNode()) {
+      continue;
+    }
 
     sorted_node_units.push_back(node_unit);
 
@@ -162,9 +159,9 @@ static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeG
     }
 
     logger;
-    // std::unique_ptr<IQnnNodeGroup> fused_node_group = TryQnnFusions(qnn_model_wrapper, *node_unit,
-    //                                                                 node_to_node_unit, node_unit_to_qnn_node_group,
-    //                                                                 logger);
+    std::unique_ptr<IQnnNodeGroup> fused_node_group = TryQnnFusions(qnn_model_wrapper, *node_unit,
+                                                                    node_to_node_unit, node_unit_to_qnn_node_group,
+                                                                    logger);
 
     // if (fused_node_group) {
     //   const size_t index = qnn_node_groups.size();
@@ -180,7 +177,7 @@ static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeG
   }
 
   // Create IQnnNodeGroups for the leftover NodeUnits that were not fused.
-  for (gsl::not_null<const OrtNode*> node_unit : sorted_node_units) {
+  for (gsl::not_null<const OrtNodeUnit*> node_unit : sorted_node_units) {
     const auto it = node_unit_to_qnn_node_group.find(node_unit);
 
     if (it != node_unit_to_qnn_node_group.end()) {
@@ -209,7 +206,7 @@ static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeG
 
 Status GetQnnNodeGroups(/*out*/ std::vector<std::unique_ptr<IQnnNodeGroup>>& qnn_node_groups,
                         QnnModelWrapper& qnn_model_wrapper,
-                        const std::unordered_map<const OrtNode*, const OrtNode*>& node_to_node_unit,
+                        const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_to_node_unit,
                         const size_t num_node_units,
                         const logging::Logger& logger) {
   std::vector<size_t> sorted_qnn_node_group_indices;

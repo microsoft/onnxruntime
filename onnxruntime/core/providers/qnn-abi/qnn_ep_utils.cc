@@ -11,12 +11,12 @@ class QnnEp;
 
 
 // Implementation of GetQDQNodeUnits for OrtGraph
-std::pair<std::vector<const OrtNode*>, std::unordered_map<const OrtNode*, const OrtNode*>>
-GetAllNodeUnits(const OrtEp* this_ptr, const OrtGraph* graph, const logging::Logger& logger) {
+std::pair<std::vector<const OrtNode*>, std::unordered_map<const OrtNode*, const OrtNodeUnit*>>
+GetAllOrtNodeUnits(const OrtEp* this_ptr, const OrtGraph* graph, const logging::Logger& logger) {
   logger;
   const auto* ep = static_cast<const QnnEp*>(this_ptr);
   std::vector<const OrtNode*> node_holder;
-  std::unordered_map<const OrtNode*, const OrtNode*> node_map;
+  std::unordered_map<const OrtNode*, const OrtNodeUnit*> node_map;
 
   // Get all nodes from the graph
   OrtArrayOfConstObjects* nodes = nullptr;
@@ -28,12 +28,12 @@ GetAllNodeUnits(const OrtEp* this_ptr, const OrtGraph* graph, const logging::Log
   const void* const* node_data = nullptr;
   ep->ort_api.ArrayOfConstObjects_GetData(nodes, &node_data);
 
-  const auto add_node_unit_to_map = [&](const std::vector<int>& node_indices) {
-    for (auto node_idx : node_indices) {
-    const OrtNode* node = static_cast<const OrtNode*>(node_data[node_idx]);
-    node_map.insert({node, node});
-    }
-  };
+  // const auto add_node_unit_to_map = [&](const std::vector<int>& node_indices) {
+  //   for (auto node_idx : node_indices) {
+  //   const OrtNode* node = static_cast<const OrtNode*>(node_data[node_idx]);
+  //   node_map.insert({node, node});
+  //   }
+  // };
 
   // Get QDQ NodeUnits first
   // QDQ::SelectorManager selector_mgr;
@@ -53,11 +53,11 @@ GetAllNodeUnits(const OrtEp* this_ptr, const OrtGraph* graph, const logging::Log
   //   // node_unit_holder.push_back(std::move(qdq_unit));
   // }
 
-  for (size_t node_idx = 0; node_idx < num_nodes; ++node_idx) {
-    const OrtNode* node = static_cast<const OrtNode*>(node_data[node_idx]);
-    node_map.insert({node, node});
-    node_holder.push_back(node);
-  }
+  // for (size_t node_idx = 0; node_idx < num_nodes; ++node_idx) {
+  //   const OrtNode* node = static_cast<const OrtNode*>(node_data[node_idx]);
+  //   node_map.insert({node, node});
+  //   node_holder.push_back(node);
+  // }
 
   return std::make_pair(std::move(node_holder), std::move(node_map));
 }
