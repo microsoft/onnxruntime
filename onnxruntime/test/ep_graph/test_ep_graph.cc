@@ -235,7 +235,7 @@ TEST(EpGraphTest, SerializeToProto_ExternalInitializersInMemory) {
     ASSERT_EQ(offset_entry.key(), "offset");
 
     long long offset_int = std::stoll(offset_entry.value());
-    ASSERT_EQ(offset_int, reinterpret_cast<int64_t>(ort_value_data));
+    ASSERT_EQ(offset_int, reinterpret_cast<long long>(ort_value_data));
   }
 }
 
