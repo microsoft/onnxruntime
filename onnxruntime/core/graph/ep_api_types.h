@@ -111,6 +111,7 @@ struct EpNode : public OrtNode {
   struct SubgraphState {
     SubgraphState() = default;
     SubgraphState(SubgraphState&& other) = default;
+    std::string attribute_name;
     std::unique_ptr<GraphViewer> subgraph_viewer;  // The graph_viewer wrapped by EpGraph below.
     std::unique_ptr<EpGraph> ep_subgraph;
   };
@@ -182,7 +183,8 @@ struct EpNode : public OrtNode {
   Status GetNumSubgraphs(size_t& num_subgraphs) const override;
 
   // Gets the subgraphs contained by this node.
-  Status GetSubgraphs(gsl::span<const OrtGraph*> subgraphs) const override;
+  Status GetSubgraphs(gsl::span<const OrtGraph*> subgraphs,
+                      const char** opt_attribute_names) const override;
 
   // Gets this node's parent graph, which is the graph that directly contains this node.
   Status GetGraph(const OrtGraph*& parent_graph) const override;
@@ -205,6 +207,9 @@ struct EpNode : public OrtNode {
 
   // Helper that gets the node's attributes by name.
   const OrtOpAttr* GetAttribute(const std::string& name) const;
+
+  // Helper that gets the execution provider name that this node is assigned to run on.
+  const std::string& GetEpName() const;
 
  private:
   // Back pointer to containing graph. Useful when traversing through nested subgraphs.
@@ -249,14 +254,31 @@ struct EpGraph : public OrtGraph {
 
  public:
   EpGraph(const GraphViewer& graph_viewer, PrivateTag);
+  EpGraph(std::unique_ptr<GraphViewer> graph_viewer,
+          std::unique_ptr<IndexedSubGraph> indexed_sub_graph,
+          PrivateTag);
 
   /// <summary>
   /// Creates an instance of EpGraph, which wraps a GraphViewer.
+  /// This call is used when creating an EpGraph from a GraphViewer instance. The GraphViewer instance is not onwed by this EpGraph.
   /// </summary>
   /// <param name="graph_viewer"></param>
   /// <param name="result"></param>
   /// <returns></returns>
   static Status Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
+
+  /// <summary>
+  /// Creates an instance of EpGraph, which wraps a GraphViewer.
+  /// This call is used when creating an EpGraph from a subset of nodes in another EpGraph.
+  /// In this case, due to the implementation of OrtApis::Graph_GetGraphView, the new EpGraph instance
+  /// must take ownership of both the GraphViewer and IndexedSubGraph.
+  /// </summary>
+  /// <param name="graph_viewer"></param>
+  /// <param name="result"></param>
+  /// <returns></returns>
+  static Status Create(std::unique_ptr<GraphViewer> graph_viewer,
+                       std::unique_ptr<IndexedSubGraph> indexed_sub_graph,
+                       /*out*/ std::unique_ptr<EpGraph>& result);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and EpGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
@@ -270,6 +292,14 @@ struct EpGraph : public OrtGraph {
 
   // Returns the model's ONNX IR version.
   int64_t GetOnnxIRVersion() const override;
+
+  // Gets the number of operator sets that the graph's model uses.
+  Status GetNumOperatorSets(size_t& num_operator_sets) const override;
+
+  // Gets the operator sets that the graph's model uses. An operator set is uniquely identified by a
+  // (domain, opset version) pair.
+  Status GetOperatorSets(gsl::span<const char*> domains,
+                         gsl::span<int64_t> opset_versions) const override;
 
   // Get the number of graph inputs, including initializers that are listed as graph inputs.
   size_t GetNumInputs() const override;
@@ -321,8 +351,21 @@ struct EpGraph : public OrtGraph {
   const OrtValue* GetInitializerValue(std::string_view name) const;
 
  private:
+  /// <summary>
+  /// The real implementation of creating an EpGraph instance.
+  /// Please use one of the above 'Create' functions that internally call this function, and avoid calling this function directly.
+  /// </summary>
+  /// <param name="ep_graph"></param>
+  /// <param name="graph_viewer"></param>
+  /// <param name="result"></param>
+  /// <returns></returns>
+  static Status CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
+
   const GraphViewer& graph_viewer_;
   const EpNode* parent_node_ = nullptr;
+
+  std::unique_ptr<GraphViewer> owned_graph_viewer_ = nullptr;
+  std::unique_ptr<IndexedSubGraph> owned_indexed_sub_graph_ = nullptr;
 
   std::vector<std::unique_ptr<EpNode>> nodes_;
   IndexToEpNodeMap index_to_ep_node_;
