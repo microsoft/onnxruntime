@@ -137,9 +137,9 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   bool is_signed = x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
   bool is_int8 = x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
 
+  std::optional<Tensor> data_representation_4bit;
+  std::optional<Tensor> zero_points_representation_4bit;
   if (bits_ == 4 && is_int8) {
-    std::optional<Tensor> data_representation_4bit;
-    std::optional<Tensor> zero_points_representation_4bit;
     TensorShape data_representation_4bit_shape{x->Shape()};
     MLDataType new_dtype = (x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8) ? DataTypeImpl::GetType<UInt4x2>() : DataTypeImpl::GetType<Int4x2>();
     auto memory_info = OrtMemoryInfo{
