@@ -86,11 +86,11 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     uint32_t num_inputs_this_concat = std::min(max_inputs_per_concat, input_count - input_index);
 
     std::vector<uint32_t> sizes_in_concat_axis;
-    sizes_in_concat_axis.reserve(num_inputs_this_concat);
+    sizes_in_concat_axis.reserve(num_inputs_this_concat + 1);
     sizes_in_concat_axis.push_back(cumulative_size_in_concat_axis);
 
     uint32_t output_size = 0;
-    for (uint32_t i = 0; i < num_inputs_this_concat - 1; i++) {
+    for (uint32_t i = 0; i < num_inputs_this_concat; i++) {
       auto& input = prepare.inputs[input_index + i];
       program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank});
 
@@ -101,6 +101,8 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
       cumulative_size_in_concat_axis += axis_size;
       sizes_in_concat_axis.push_back(cumulative_size_in_concat_axis);
     }
+
+    sizes_in_concat_axis.pop_back();
 
     program.CacheHint(absl::StrJoin(std::make_tuple(num_inputs_this_concat, prepare.axis), ","))
         .AddOutputs({prepare.output_tensor})
