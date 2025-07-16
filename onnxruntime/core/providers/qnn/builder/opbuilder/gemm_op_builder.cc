@@ -31,6 +31,41 @@ class GemmOpBuilder : public BaseOpBuilder {
   Status ExplictOpCheck(const NodeUnit& node_unit) const;
 };
 
+
+namespace {
+  inline bool IsQuant16bit(Qnn_DataType_t qnn_data_type) {
+    return qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16 || qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16;
+  }
+  
+  Status CheckInputs(const QnnModelWrapper& qnn_model_wrapper, const NodeUnitIODef& input_def_0,
+                     const NodeUnitIODef& input_def_1, TensorInfo& input_info_0, TensorInfo& input_info_1,
+                     bool& use_fully_connected) {
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input_def_0, input_info_0));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input_def_1, input_info_1));
+  
+  #if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR <= 20
+    // Validation crashes if use QNN FullyConnected in QNN SDK versions 2.26 - 2.27
+    // Just use QNN MatMul for these older QNN SDK versions.
+    use_fully_connected = false;
+  #else
+    // Use FullyConnected if 2nd input is a rank 2 initializer or a rank 1 tensor.
+    // FullyConnected cannot pass the Op validation if keep_dims is true, so if input_0 is per-channel quantized tensor
+    // with rank > 2, it's not easy to set the quantization parameters for the output reshaped rank 2 tensor.
+    // In this case, we will not use FullyConnected.
+    use_fully_connected =
+        (input_info_1.shape.size() == 2 && input_info_1.is_initializer) || input_info_1.shape.size() == 1;
+    use_fully_connected =
+        use_fully_connected && !(input_info_0.quant_param.IsPerChannel() && input_info_0.shape.size() > 2);
+    // Don't use FullyConnected if both inputs are dynamic and uint16 (quantized)
+    use_fully_connected = use_fully_connected && !(IsQuant16bit(input_info_0.qnn_data_type) &&
+                                                   !input_info_0.is_initializer &&
+                                                   IsQuant16bit(input_info_1.qnn_data_type) &&
+                                                   !input_info_1.is_initializer);
+  #endif
+    return Status::OK();
+  }
+}  
+
 Status GemmOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
   NodeAttrHelper node_helper(node_unit);
   auto alpha = node_helper.Get("alpha", (float)1.0);
@@ -55,8 +90,9 @@ Status GemmOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
     auto transB = node_helper.Get("transB", static_cast<int64_t>(0));
     auto M = (transB == 0) ? inputB_shape.at(1) : inputB_shape.at(0);
     if (inputC_shape.size() == 0 || (inputC_shape.size() == 1 && inputC_shape.at(0) != M) ||
-        (inputC_shape.size() == 2 && (inputC_shape.at(0) != 1 || inputC_shape.at(1) != M))) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support C with shape [M].");
+    (inputC_shape.size() == 2 && inputC_shape.at(1) != M)) {
+      // Allow bias shape = [N, M] to pass by remove shape[0] != 1 failure condition.
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support C with shape [M].");
     }
   }
 
@@ -133,7 +169,8 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                                              qnn_model_wrapper.IsGraphInput(node_input_name)));
     }
 
-    if (2 == input_i && 2 == input_shape.size()) {
+    // Reshape [1, M] shape Bias.
+    if (2 == input_i && 2 == input_shape.size() && input_shape[0]==1) {
       input_shape[0] = input_shape[1];
       input_shape.resize(1);
     }
@@ -199,8 +236,107 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
                                                   bool do_op_validation) const {
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
-                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
+  bool have_bias = (node_unit.Inputs().size() == 3);
+  bool split_gemm = false;
+
+  // Need info when there's bias and only used when spliting Gemm with 2d bias to MatMul + Add.
+  const auto& inputs = node_unit.Inputs();
+  TensorInfo input_info_0{};
+  TensorInfo input_info_1{};
+  bool use_fully_connected = false;
+    ORT_RETURN_IF_ERROR(
+    CheckInputs(qnn_model_wrapper, inputs[0], inputs[1], input_info_0, input_info_1, use_fully_connected));
+
+  if (have_bias) {
+    auto& inputC = node_unit.Inputs()[2];
+    std::vector<uint32_t> inputC_shape;
+    QnnModelWrapper::GetOnnxShape(inputC.node_arg, inputC_shape);
+
+    // Split when inputC exist and shape is [N, M]
+    split_gemm = (inputC_shape.size() == 2 && inputC_shape.at(0) != 1);
+  }
+
+  if (split_gemm){
+    std::vector<std::string> param_tensor_names;
+    if (!use_fully_connected) {
+      Qnn_Scalar_t scalar_param = QNN_SCALAR_INIT;
+      scalar_param.dataType = QNN_DATATYPE_BOOL_8;
+      scalar_param.bool8Value = 0;
+      QnnParamWrapper transpose_in0_param(node_unit.Index(), node_unit.Name(), QNN_OP_MAT_MUL_PARAM_TRANSPOSE_IN0,
+                                          scalar_param);
+      param_tensor_names.push_back(transpose_in0_param.GetParamTensorName());
+      qnn_model_wrapper.AddParamWrapper(std::move(transpose_in0_param));
+  
+      QnnParamWrapper transpose_in1_param(node_unit.Index(), node_unit.Name(), QNN_OP_MAT_MUL_PARAM_TRANSPOSE_IN1,
+                                          scalar_param);
+      param_tensor_names.push_back(transpose_in1_param.GetParamTensorName());
+      qnn_model_wrapper.AddParamWrapper(std::move(transpose_in1_param));
+    }
+    // If split_gemm, input and output of Gemm must at least 2d.
+    const std::string& org_output_name = node_unit.Outputs()[0].node_arg.Name();
+    TensorInfo output_info{};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
+    std::vector<uint32_t> op_output_shape = output_info.shape;
+    QnnQuantParamsWrapper op_output_quant_param = output_info.quant_param.Copy();
+    bool reshape_output = (use_fully_connected && input_info_0.shape.size() > 2);
+    if (reshape_output) {
+      if (use_fully_connected && input_info_0.shape.size() > 2) {
+        op_output_shape = {std::accumulate(input_info_0.shape.begin(), input_info_0.shape.end() - 1,
+                                           static_cast<uint32_t>(1), std::multiplies<uint32_t>()),
+                           input_info_1.shape.back()};
+        ORT_ENFORCE(!op_output_quant_param.IsPerChannel());
+      } else {
+        ORT_RETURN_IF_ERROR(op_output_quant_param.HandleUnsqueeze<uint32_t>(output_info.shape, op_output_shape));
+      }
+    }
+    
+    const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(org_output_name);
+    const bool is_op_output_graph_output = is_graph_output && !reshape_output;
+    Qnn_TensorType_t op_output_tensor_type =
+        is_op_output_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+
+    // Create MatMul Node
+    std::string split_MatMul_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_MatMul";
+    std::string split_MatMul_output_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_MatMul_output";
+    std::vector<std::string> input_0_1;
+    input_0_1.push_back(input_names[0]);
+    input_0_1.push_back(input_names[1]);
+    QnnTensorWrapper matmul_output_wrapper(split_MatMul_output_name, QNN_TENSOR_TYPE_NATIVE, output_info.qnn_data_type,
+                                           op_output_quant_param.Copy(), std::vector<uint32_t>(op_output_shape));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(matmul_output_wrapper)),
+                      "Failed to add output tensor.");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(split_MatMul_name, QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                      use_fully_connected ? QNN_OP_FULLY_CONNECTED : QNN_OP_MAT_MUL,
+                                                      std::move(input_0_1), 
+                                                      {split_MatMul_output_name},
+                                                      std::move(param_tensor_names), do_op_validation),
+                      "Failed to add Matmul node.");
+
+    // Create Add Node
+    std::string split_Add_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_Add";
+    QnnTensorWrapper op_output_tensor_wrapper(org_output_name, op_output_tensor_type, output_info.qnn_data_type,
+                                              op_output_quant_param.Copy(), std::vector<uint32_t>(op_output_shape));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(op_output_tensor_wrapper)),
+                      "Failed to add output tensor.");
+    std::string bias_name = input_names[2];
+
+    auto& inputC = node_unit.Inputs()[2];
+    std::vector<uint32_t> inputC_shape;
+    QnnModelWrapper::GetOnnxShape(inputC.node_arg, inputC_shape);
+    
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(split_Add_name,
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                      QNN_OP_ELEMENT_WISE_ADD,
+                                                      {split_MatMul_output_name, bias_name}, // Matmul output as input
+                                                      {org_output_name}, // Original output as output
+                                                      {},
+                                                      do_op_validation),
+                      "Failed to add ElementWiseAdd node.");
+  }else{
+    ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
+    logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
+  }
+
   return Status::OK();
 }
 
