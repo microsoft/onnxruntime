@@ -441,7 +441,7 @@ inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
          ten_proto.has_raw_data();  // XXX: Figure out how to do in proto3
 }
 
-inline [[nodiscard]] bool HasExternalData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
+inline bool HasExternalData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   // Can not be UNDEFINED and can not be STRING but test for STRING is usually performed separately
   // to return an error
   return ten_proto.data_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED &&
