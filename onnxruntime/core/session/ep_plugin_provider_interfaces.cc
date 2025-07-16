@@ -594,4 +594,23 @@ Status PluginExecutionProvider::GetCompiledModelCompatibility(const onnxruntime:
   return Status::OK();
 }
 
+std::string PluginExecutionProvider::GenerateCompiledModelCompatibilityInfoString(const onnxruntime::GraphViewer& graph_viewer) const {
+  if (ort_ep_->GenerateCompiledModelCompatibilityInfoString == nullptr) {
+      // Plugin EP did not provide an implementation of this function, so we call a default implementation.
+    return Base::GenerateCompiledModelCompatibilityInfoString(graph_viewer);
+  }
+
+  std::unique_ptr<EpGraph> ep_graph = nullptr;
+  auto ort_status = EpGraph::Create(graph_viewer, ep_graph);
+  if (!ort_status.IsOK()) {
+    LOGS(*GetLogger(), ERROR) << "Failed to create EpGraph: " << ort_status.ToString();
+    return {};
+  }
+
+  // Call EP plugin's OrtEp::GenerateCompiledModelCompatibilityInfoString() function.
+  std::string compatibility_info_string;
+  compatibility_info_string = ort_ep_->GenerateCompiledModelCompatibilityInfoString(ort_ep_.get(), ep_graph.get());
+
+  return compatibility_info_string;
+}
 }  // namespace onnxruntime

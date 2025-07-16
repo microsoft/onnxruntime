@@ -571,16 +571,13 @@ struct OrtEp {
    *
    * \param[in] this_ptr The OrtEp instance.
    * \param[in] graph The OrtGraph instance for which to generate compatibility information.
-   * \param[in] model_metadata The OrtModelMetadata instance containing model metadata.
-   * \return the compatibility information string produced by the EP
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   const char*(ORT_API_CALL* GenerateCompiledModelCompatibilityInfoString)(_In_ OrtEp* this_ptr,
-                                                                          _In_ const OrtGraph* graph,
-                                                                          _In_ const OrtModelMetadata* model_metadata);
+                                                                          _In_ const OrtGraph* graph);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

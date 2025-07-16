@@ -324,6 +324,17 @@ class IExecutionProvider {
     return common::Status::OK();
   }
 
+  // TODO: add documentation comment.
+  virtual std::string GenerateCompiledModelCompatibilityInfoString(
+      const onnxruntime::GraphViewer& graph_viewer) const {
+    
+      // graph_viewer and model_metadata are not used in the default implementation.
+      ORT_UNUSED_PARAMETER(graph_viewer);
+      
+      // Default implementation returns empty string
+      return std::string();
+  }
+
 #endif
 
   void SetLogger(const logging::Logger* logger) {

@@ -10,6 +10,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/test_environment.h"
+#include "test/ep_graph/test_ep_graph_utils.h"
 
 namespace onnxruntime::test {
 
@@ -355,4 +356,22 @@ TEST(PluginExecutionProviderTest, TestGetCompiledModelCompatibility) {
     (void)compatibility;
   }
 }
+
+TEST(PluginExecutionProviderTest, GenerateCompiledModelCompatibilityInfoString) {
+  auto [ep_wrapper, ort_ep_plugin] = test_plugin_ep::MakeTestOrtEp();
+
+  // Test default behavior (EP plugin does not provide an implementation of the function).
+  {
+    ort_ep_plugin->GenerateCompiledModelCompatibilityInfoString = nullptr;  // EP plugin doesn't implement. Should get default value.
+
+    auto test_graph = TestGraph::Load(ORT_TSTR("testdata/mnist.onnx"));
+    ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+    auto empty_compat_string = ep_wrapper->GenerateCompiledModelCompatibilityInfoString(test_graph->GetGraphViewer());
+
+    ASSERT_EQ(empty_compat_string, "");
+  }
+}
+
+
 }  // namespace onnxruntime::test
