@@ -100,8 +100,8 @@
                                                                      const void* data, size_t bytes,
                                                                      bool& is_external, std::string& location,
                                                                      int64_t& offset) -> Ort::Status {
-       // OrtValueInfo* could be used to query initializer's name, type, shape, consumers, etc.
        (void)value_info;
+       (void)bytes;
 
        offset = reinterpret_cast<int64_t>(data);
        location = "_MEM_ADDR_";  // Some special location tag that indicates the offset is a pointer.
@@ -113,7 +113,7 @@
      OrtEpUtils::OrtGraphToProto(*ort_graph, graph_proto, handle_initializer_data);
 
      // graph_proto has initializers that look like they are stored in an external file,
-     // but they are actually point to the data in memory.
+     // but they are actually pointing to the data in memory.
    }
    ```
 */

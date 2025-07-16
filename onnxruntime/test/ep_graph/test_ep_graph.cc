@@ -178,6 +178,67 @@ TEST(EpGraphTest, SerializeToProto_Mnist) {
   EXPECT_EQ(output_serialized, output_original);
 }
 
+// Test serializing an OrtGraph (MNIST) to GraphProto. Initializers are configured as "external" but point to
+// existing data in memory (not standard ONNX).
+TEST(EpGraphTest, SerializeToProto_ExternalInitializersInMemory) {
+  const ORTCHAR_T* original_model_path = ORT_TSTR("testdata/mnist.onnx");
+  auto test_graph = TestGraph::Load(original_model_path);
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  const OrtGraph& ort_graph = test_graph->GetOrtGraph();
+
+  auto handle_initializer_data = [](const OrtValueInfo* value_info,
+                                    const void* data, size_t bytes,
+                                    bool& is_external, std::string& location,
+                                    int64_t& offset) -> Ort::Status {
+    (void)value_info;
+    (void)bytes;
+
+    offset = reinterpret_cast<int64_t>(data);
+    location = "_MEM_ADDR_";
+    is_external = true;  // True if is external initializer.
+
+    return Ort::Status{nullptr};
+  };
+
+  ONNX_NAMESPACE::GraphProto graph_proto;
+  OrtEpUtils::OrtGraphToProto(ort_graph, graph_proto, handle_initializer_data);
+
+  // Verify that TensorProto objects within GraphProto point to memory owned by OrtValues in the OrtGraph.
+  const OrtApi& ort_api = Ort::GetApi();
+
+  size_t api_num_initializers = 0;
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNumInitializers(&ort_graph, &api_num_initializers));
+
+  std::vector<const OrtValueInfo*> api_initializers(api_num_initializers);
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetInitializers(&ort_graph, api_initializers.data(), api_initializers.size()));
+
+  const auto& tensor_protos = graph_proto.initializer();
+  ASSERT_EQ(tensor_protos.size(), api_num_initializers);
+
+  for (size_t i = 0; i < api_num_initializers; ++i) {
+    const OrtValue* ort_value = nullptr;
+    const void* ort_value_data = nullptr;
+
+    ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(api_initializers[i], &ort_value));
+    ASSERT_ORTSTATUS_OK(ort_api.GetTensorData(ort_value, &ort_value_data));
+
+    ONNX_NAMESPACE::TensorProto_DataLocation data_location = tensor_protos[static_cast<int>(i)].data_location();
+    ASSERT_EQ(data_location, ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+    const auto& ext_data_entries = tensor_protos[static_cast<int>(i)].external_data();
+    const ONNX_NAMESPACE::StringStringEntryProto& location_entry = ext_data_entries[0];
+    const ONNX_NAMESPACE::StringStringEntryProto& offset_entry = ext_data_entries[1];
+
+    ASSERT_EQ(location_entry.key(), "location");
+    ASSERT_EQ(location_entry.value(), "_MEM_ADDR_");
+    ASSERT_EQ(offset_entry.key(), "offset");
+
+    long long offset_int = std::stoll(offset_entry.value());
+    ASSERT_EQ(offset_int, reinterpret_cast<int64_t>(ort_value_data));
+  }
+}
+
 static void Run3LayerModel(const ORTCHAR_T* model_path, bool input_cond, std::vector<float>& output_data) {
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   Ort::SessionOptions sess_options;
