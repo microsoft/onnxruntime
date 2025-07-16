@@ -4344,7 +4344,10 @@ Status Graph::ProcessSubgraphsInmemoryData(ONNX_NAMESPACE::GraphProto& output_gr
     }
 #else
     for (auto& initializer : *output_graph_proto.mutable_initializer()) {
-      ORT_RETURN_IF_ERROR(MaybeInlineInitializerData(*this, initializer));
+      if (utils::HasExternalDataInMemory(initializer)) {
+        // If the initializer has external data in memory, we need to inline it.
+        ORT_RETURN_IF_ERROR(InlineOrCopyInitializerToGraphProto(*this, initializer, initializer));
+      }
     }
 #endif
   }
@@ -4387,8 +4390,11 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
       }
     }
 #else
+    // Add initializers to parent graph by copy converting them from graph_proto_
+    // ToGraphProtoInternal() does not copy initializers for the main graph
+    auto* mutable_initializers = result.mutable_initializer();
     for (const auto& initializer : graph_proto_->initializer()) {
-      ORT_THROW_IF_ERROR(InlineOrCopyInitializerToGraphProto(*this, initializer, *mutable_initializers));
+      ORT_THROW_IF_ERROR(InlineOrCopyInitializerToGraphProto(*this, initializer, *mutable_initializers->Add()));
     }
 #endif
   }
