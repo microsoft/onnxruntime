@@ -1,14 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
 
-#include "qnn_ep.h"
+#include "core/providers/qnn-abi/qnn_ep.h"
 
-#include "qnn_ep_factory.h"
-
-// #include "core/providers/qnn-abi/shared_context.h"
-#include "core/providers/qnn-abi/builder/qnn_backend_manager.h"
-// #include "core/providers/qnn-abi/builder/qnn_utils.h"
-#include "core/providers/qnn-abi/qnn_ep_utils.h"
 #include <unordered_map>
 #include <vector>
 #include <memory>
@@ -18,6 +12,13 @@
 #include <cctype>
 #include <filesystem>
 #include <optional>
+
+#include "core/providers/qnn-abi/qnn_ep_factory.h"
+// #include "core/providers/qnn-abi/shared_context.h"
+#include "core/providers/qnn-abi/builder/qnn_backend_manager.h"
+#include "core/providers/qnn-abi/builder/qnn_node_group/qnn_node_group.h"
+// #include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/qnn_ep_utils.h"
 
 // Forward declarations for NodeUnit-related classes
 namespace onnxruntime {
@@ -145,69 +146,79 @@ const char* ORT_API_CALL QnnEp::GetNameImpl(const OrtEp* this_ptr) noexcept {
 // }
 
 
+OrtStatus* QnnEp::GetSupportedNodes(const OrtGraph* graph,
+                                    const std::unordered_map<const OrtNode*, const OrtNode*>& node_unit_map,
+                                    const size_t node_unit_size,
+                                    const logging::Logger& logger,
+                                    std::unordered_set<const OrtNode*>& supported_nodes) const {
+  OrtArrayOfConstObjects* graph_inputs = nullptr;
+  OrtArrayOfConstObjects* graph_outputs = nullptr;
+  this->ort_api.Graph_GetInputs(graph, &graph_inputs);
+  this->ort_api.Graph_GetOutputs(graph, &graph_outputs);
 
-// std::unordered_set<const Node*>
-// QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
-//                                         const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-//                                         const size_t node_unit_size,
-//                                         const logging::Logger& logger) const {
-//   std::unordered_set<const Node*> supported_nodes{};
+  // Util function that initializes a table that maps a graph input or output name to its index.
+  auto init_input_output_index_map = [&](std::unordered_map<std::string, size_t>& index_map,
+                                         OrtArrayOfConstObjects* inouts) {
+    size_t num_elements;
+    this->ort_api.ArrayOfConstObjects_GetSize(inouts, &num_elements);
+    for (size_t idx = 0; idx < num_elements; ++idx) {
+        const void* inout = nullptr;
+        this->ort_api.ArrayOfConstObjects_GetElementAt(inouts, idx, &inout);
+        const char* name = nullptr;
+        this->ort_api.GetValueInfoName(static_cast<const OrtValueInfo*>(inout), &name);
 
-//   // Util function that initializes a table that maps a graph input or output name to its index.
-//   auto init_input_output_index_map = [](std::unordered_map<std::string, size_t>& index_map,
-//                                         const std::vector<const NodeArg*>& node_args) {
-//     const size_t num_args = node_args.size();
-//     for (size_t i = 0; i < num_args; i++) {
-//       index_map.emplace(node_args[i]->Name(), i);
-//     }
-//   };
+        index_map.emplace(name, idx);
+    }
+  };
 
-//   std::unordered_map<std::string, size_t> model_input_index_map;
-//   init_input_output_index_map(model_input_index_map, graph_viewer.GetInputs());  // GetInputs excludes initializers.
+  std::unordered_map<std::string, size_t> model_input_index_map;
+  // TODO: Handle initializers as inputs.
+  init_input_output_index_map(model_input_index_map, graph_inputs);
 
-//   std::unordered_map<std::string, size_t> model_output_index_map;
-//   init_input_output_index_map(model_output_index_map, graph_viewer.GetOutputs());
+  std::unordered_map<std::string, size_t> model_output_index_map;
+  init_input_output_index_map(model_output_index_map, graph_outputs);
 
-//   auto qnn_model_wrapper = qnn::QnnModelWrapper(graph_viewer, logger,
-//                                                 qnn_backend_manager_->GetQnnInterface(),
-//                                                 qnn_backend_manager_->GetQnnBackendHandle(),
-//                                                 model_input_index_map,
-//                                                 model_output_index_map,
-//                                                 qnn_backend_manager_->GetQnnBackendType(),
-//                                                 model_settings_);
+  auto qnn_model_wrapper = qnn::QnnModelWrapper(*graph,
+                                                ApiPtrs{this->ort_api, this->ep_api, this->model_editor_api},
+                                                logger,
+                                                qnn_backend_manager_->GetQnnInterface(),
+                                                qnn_backend_manager_->GetQnnBackendHandle(),
+                                                model_input_index_map,
+                                                model_output_index_map,
+                                                qnn_backend_manager_->GetQnnBackendType(),
+                                                model_settings_);
 
-//   std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
-//   qnn_node_groups.reserve(node_unit_size);
+  std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
+  qnn_node_groups.reserve(node_unit_size);
 
-//   if (Status status = qnn::GetQnnNodeGroups(qnn_node_groups, qnn_model_wrapper,
-//                                             node_unit_map, node_unit_size, logger);
-//       !status.IsOK()) {
-//     LOGS(logger, ERROR) << status.ErrorMessage();
-//     return {};
-//   }
+  Status status = qnn::GetQnnNodeGroups(qnn_node_groups, qnn_model_wrapper, node_unit_map, node_unit_size, logger);
+  if (!status.IsOK()) {
+    return this->ort_api.CreateStatus(ORT_EP_FAIL, status.ErrorMessage().c_str());
+  }
 
-//   for (const std::unique_ptr<qnn::IQnnNodeGroup>& qnn_node_group : qnn_node_groups) {
-//     Status status = qnn_node_group->IsSupported(qnn_model_wrapper, logger);
-//     const bool supported = status.IsOK();
+  for (const std::unique_ptr<qnn::IQnnNodeGroup>& qnn_node_group : qnn_node_groups) {
+    const bool supported = qnn_node_group->IsSupported(qnn_model_wrapper, logger).IsOK();
 
-//     constexpr auto log_severity = logging::Severity::kINFO;
-//     constexpr auto log_data_type = logging::DataType::SYSTEM;
-//     if (logger.OutputIsEnabled(log_severity, log_data_type)) {
-//       LogNodeSupport(logger, log_severity, log_data_type, ORT_WHERE, *qnn_node_group, status);
-//     }
+    // constexpr auto log_severity = logging::Severity::kINFO;
+    // constexpr auto log_data_type = logging::DataType::SYSTEM;
+    // if (logger.OutputIsEnabled(log_severity, log_data_type)) {
+    //   LogNodeSupport(logger, log_severity, log_data_type, ORT_WHERE, *qnn_node_group, status);
+    // }
 
-//     if (supported) {
-//       for (const NodeUnit* node_unit : qnn_node_group->GetNodeUnits()) {
-//         for (const Node* node : node_unit->GetAllNodesInGroup()) {
-//           supported_nodes.insert(node);
-//         }
-//       }
-//     }
-//   }
+    if (supported) {
+      for (const OrtNode* node_unit : qnn_node_group->GetNodeUnits()) {
+        // for (const Node* node : node_unit->GetAllNodesInGroup()) {
+        //   supported_nodes.insert(node);
+        // }
+        supported_nodes.insert(node_unit);
+      }
+    }
+  }
 
-//   return supported_nodes;
-// }
-
+  this->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
+  this->ort_api.ReleaseArrayOfConstObjects(graph_outputs);
+  return nullptr;
+}
 
 
 // bool QnnEp::EpSharedContextsHasAllGraphs(const OrtGraph* graph) {
@@ -582,17 +593,19 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data));
 
   // Get node units for the ABI layer
-  std::vector<std::unique_ptr<OrtNode>> node_unit_holder;
+  std::vector<const OrtNode*> node_unit_holder;
   std::unordered_map<const OrtNode*, const OrtNode*> node_unit_map;
 
   std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(this_ptr, graph, logger);
+  std::cout << "DEBUG: #nodes: " << node_unit_holder.size() << std::endl;
 
   // Analyze nodes for QNN support
-//   std::vector<const OrtNode*> supported_nodes = GetSupportedNodes(this_ptr, graph, node_unit_map, node_unit_holder.size(), logger);
-    std::vector<const OrtNode*> supported_nodes ;
-    // Clean up intermediate resources
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_outputs);
+  std::unordered_set<const OrtNode*> supported_nodes;
+  ep->GetSupportedNodes(graph, node_unit_map, node_unit_holder.size(), logger, supported_nodes);
+
+  // Clean up intermediate resources
+  ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
+  ep->ort_api.ReleaseArrayOfConstObjects(graph_outputs);
 
     // Helper function that returns a string that lists all unsupported nodes.
     // Ex: { name: mul_123, type: Mul }, {}, ...
@@ -616,6 +629,7 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
 
     // If no supported nodes, return empty
     if (supported_nodes.empty()) {
+        std::cout << "DEBUG: No supported nodes." << std::endl;
         ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
         return nullptr;
     }

@@ -38,6 +38,7 @@ struct ModelSettings {
 class QnnModelWrapper {
  public:
   QnnModelWrapper(const OrtGraph& ort_graph,
+                  const ApiPtrs& api_ptrs,
                   const logging::Logger& logger,
                   const QNN_INTERFACE_VER_TYPE& qnn_interface,
                   const Qnn_BackendHandle_t& backend_handle,
@@ -53,7 +54,7 @@ class QnnModelWrapper {
         output_index_map_(output_index_map),
         qnn_backend_type_(qnn_backend_type),
         model_settings_(model_settings),
-        api_ptrs_{OrtApi(), OrtEpApi(), OrtModelEditorApi()} {
+        api_ptrs_{api_ptrs} {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
 
@@ -312,6 +313,8 @@ class QnnModelWrapper {
 
   const OrtGraph& GetOrtGraph() const { return ort_graph_; }
 
+  const OrtApi& GetOrtApi() const { return api_ptrs_.ort_api; }
+
   // Unpack float scales from initializer (1 scale for per-tensor, > 1 for per-axis).
   Status UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const;
 
@@ -382,7 +385,7 @@ class QnnModelWrapper {
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   ModelSettings model_settings_ = {};
   utils::QnnJSONGraph json_qnn_graph_;
-  ApiPtrs api_ptrs_;
+  const ApiPtrs& api_ptrs_;
 };  // QnnModelWrapper
 
 }  // namespace qnn

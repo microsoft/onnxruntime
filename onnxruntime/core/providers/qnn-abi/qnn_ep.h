@@ -13,6 +13,7 @@
 #include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/builder/qnn_def.h"
 #include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
+#include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
 #include "test/autoep/library/example_plugin_ep_utils.h"
 
 namespace onnxruntime {
@@ -41,6 +42,12 @@ class QnnEp : public OrtEp, public ApiPtrs {
   static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr,
                                                   const OrtGraph* graph,
                                                   OrtEpGraphSupportInfo* graph_support_info);
+
+  OrtStatus* GetSupportedNodes(const OrtGraph* graph,
+                               const std::unordered_map<const OrtNode*, const OrtNode*>& node_unit_map,
+                               const size_t node_unit_size,
+                               const logging::Logger& logger,
+                               std::unordered_set<const OrtNode*>& supported_nodes) const;
 
   // // Helper functions
   // int GenerateMetadefId(const OrtGraph* graph, uint64_t& model_hash);
@@ -131,6 +138,7 @@ class QnnEp : public OrtEp, public ApiPtrs {
   uint32_t device_id_{0};
   qnn::HtpPerformanceMode default_htp_performance_mode_{qnn::HtpPerformanceMode::kHtpDefault};
   uint32_t default_rpc_control_latency_{0};
+  qnn::ModelSettings model_settings_ = {};
 };
 
 }

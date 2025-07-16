@@ -11,11 +11,11 @@ class QnnEp;
 
 
 // Implementation of GetQDQNodeUnits for OrtGraph
-std::pair<std::vector<std::unique_ptr<OrtNode>>, std::unordered_map<const OrtNode*, const OrtNode*>>
+std::pair<std::vector<const OrtNode*>, std::unordered_map<const OrtNode*, const OrtNode*>>
 GetAllNodeUnits(const OrtEp* this_ptr, const OrtGraph* graph, const logging::Logger& logger) {
   logger;
   const auto* ep = static_cast<const QnnEp*>(this_ptr);
-  std::vector<std::unique_ptr<OrtNode>> node_holder;
+  std::vector<const OrtNode*> node_holder;
   std::unordered_map<const OrtNode*, const OrtNode*> node_map;
 
   // Get all nodes from the graph
@@ -53,7 +53,11 @@ GetAllNodeUnits(const OrtEp* this_ptr, const OrtGraph* graph, const logging::Log
   //   // node_unit_holder.push_back(std::move(qdq_unit));
   // }
 
-
+  for (size_t node_idx = 0; node_idx < num_nodes; ++node_idx) {
+    const OrtNode* node = static_cast<const OrtNode*>(node_data[node_idx]);
+    node_map.insert({node, node});
+    node_holder.push_back(node);
+  }
 
   return std::make_pair(std::move(node_holder), std::move(node_map));
 }

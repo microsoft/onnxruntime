@@ -1,70 +1,76 @@
-// // Copyright (c) Microsoft Corporation. All rights reserved.
-// // Licensed under the MIT License.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-// #pragma once
+#pragma once
 
-// #include <memory>
-// #include <string>
-// #include <utility>
-// #include "op_builder.h"
-// namespace onnxruntime {
-// namespace qnn {
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-// class OpBuilderRegistrations {
-//  public:
-//   OpBuilderRegistrations();
-//   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpBuilderRegistrations);
-//   const IOpBuilder* GetOpBuilderByOnnxOpType(const std::string& onnx_op_type) const {
-//     auto pos = op_builder_map_.find(onnx_op_type);
-//     if (pos != op_builder_map_.end()) {
-//       return pos->second;
-//     }
+#include "core/providers/qnn-abi/ort_api.h"
+#include "core/providers/qnn-abi/builder/op_builder.h"
 
-//     return nullptr;
-//   }
+namespace onnxruntime {
+namespace qnn {
 
-//   void AddOpBuilder(const std::string& onnx_op_type, std::unique_ptr<IOpBuilder> builder) {
-//     if (GetOpBuilderByOnnxOpType(onnx_op_type) != nullptr) {  // already have this Op added
-//       return;
-//     }
+class OpBuilderRegistrations {
+ public:
+  OpBuilderRegistrations();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpBuilderRegistrations);
 
-//     auto builder_type = builder->GetOpBuilderType();
-//     auto pos_in_builder_type_map = builder_type_builder_map_.find(builder_type);
-//     if (pos_in_builder_type_map != builder_type_builder_map_.end()) {
-//       // already have this builder type, re-use it for this onnx_op_type
-//       op_builder_map_.emplace(onnx_op_type, pos_in_builder_type_map->second);
-//     } else {
-//       // New Op builder, add to vector and all the maps
-//       builders_.push_back(std::move(builder));
-//       op_builder_map_.emplace(onnx_op_type, builders_.back().get());
-//       builder_type_builder_map_.emplace(builder_type, builders_.back().get());
-//     }
-//   }
+  const IOpBuilder* GetOpBuilderByOnnxOpType(const std::string& onnx_op_type) const {
+    auto pos = op_builder_map_.find(onnx_op_type);
+    if (pos != op_builder_map_.end()) {
+      return pos->second;
+    }
 
-//   void RegisterUDOBuilder(const std::string& op_type, std::unique_ptr<IOpBuilder> builder) {
-//     auto builder_type = builder->GetOpBuilderType();
-//     auto pos_in_builder_type_map = builder_type_builder_map_.find(builder_type);
-//     if (pos_in_builder_type_map != builder_type_builder_map_.end()) {
-//       // already have this builder type, re-use it for this op_type
-//       op_builder_map_[op_type] = pos_in_builder_type_map->second;
-//     } else {
-//       // New Op builder, add to vector and all the maps
-//       builders_.push_back(std::move(builder));
-//       op_builder_map_[op_type] = builders_.back().get();
-//       builder_type_builder_map_[builder_type] = builders_.back().get();
-//     }
-//   }
+    return nullptr;
+  }
 
-//  private:
-//   std::vector<std::unique_ptr<IOpBuilder>> builders_;
-//   // <onnx_op_type, IOpBuilder*>
-//   std::unordered_map<std::string, const IOpBuilder*> op_builder_map_;
-//   // <Op_builder_type, IOpBuilder*>
-//   std::unordered_map<std::string, const IOpBuilder*> builder_type_builder_map_;
-// };
+  void AddOpBuilder(const std::string& onnx_op_type, std::unique_ptr<IOpBuilder> builder) {
+    if (GetOpBuilderByOnnxOpType(onnx_op_type) != nullptr) {  // already have this Op added
+      return;
+    }
+
+    auto builder_type = builder->GetOpBuilderType();
+    auto pos_in_builder_type_map = builder_type_builder_map_.find(builder_type);
+    if (pos_in_builder_type_map != builder_type_builder_map_.end()) {
+      // already have this builder type, re-use it for this onnx_op_type
+      op_builder_map_.emplace(onnx_op_type, pos_in_builder_type_map->second);
+    } else {
+      // New Op builder, add to vector and all the maps
+      builders_.push_back(std::move(builder));
+      op_builder_map_.emplace(onnx_op_type, builders_.back().get());
+      builder_type_builder_map_.emplace(builder_type, builders_.back().get());
+    }
+  }
+
+  void RegisterUDOBuilder(const std::string& op_type, std::unique_ptr<IOpBuilder> builder) {
+    auto builder_type = builder->GetOpBuilderType();
+    auto pos_in_builder_type_map = builder_type_builder_map_.find(builder_type);
+    if (pos_in_builder_type_map != builder_type_builder_map_.end()) {
+      // already have this builder type, re-use it for this op_type
+      op_builder_map_[op_type] = pos_in_builder_type_map->second;
+    } else {
+      // New Op builder, add to vector and all the maps
+      builders_.push_back(std::move(builder));
+      op_builder_map_[op_type] = builders_.back().get();
+      builder_type_builder_map_[builder_type] = builders_.back().get();
+    }
+  }
+
+ private:
+  std::vector<std::unique_ptr<IOpBuilder>> builders_;
+  // <onnx_op_type, IOpBuilder*>
+  std::unordered_map<std::string, const IOpBuilder*> op_builder_map_;
+  // <Op_builder_type, IOpBuilder*>
+  std::unordered_map<std::string, const IOpBuilder*> builder_type_builder_map_;
+};
 // void RegisterUDOBuilder(const std::string& op_type, const std::string& op_package);
 
-// const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type);
+const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type);
 
 // void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
@@ -129,5 +135,5 @@
 // void CreateMeanOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 // void CreateUDOBuilder(const std::string& op_type, const std::string& op_package, OpBuilderRegistrations& op_registrations);
-// }  // namespace qnn
-// }  // namespace onnxruntime
+}  // namespace qnn
+}  // namespace onnxruntime

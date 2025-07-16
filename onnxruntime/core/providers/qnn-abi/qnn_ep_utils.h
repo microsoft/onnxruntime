@@ -21,7 +21,7 @@ namespace onnxruntime {
 class QnnEp;
 
 // Function to get QDQ node units from OrtGraph
-std::pair<std::vector<std::unique_ptr<OrtNode>>, std::unordered_map<const OrtNode*, const OrtNode*>>
+std::pair<std::vector<const OrtNode*>, std::unordered_map<const OrtNode*, const OrtNode*>>
 GetAllNodeUnits(const OrtEp* this_ptr, const OrtGraph* graph, const logging::Logger& logger);
 
 
