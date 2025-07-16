@@ -61,7 +61,8 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCpuEp() {
   };
 
   std::string ep_name = kCpuExecutionProvider;
-  auto cpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", get_supported, create_cpu_ep);
+  auto cpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", OrtDevice::VendorIds::MICROSOFT,
+                                                         get_supported, create_cpu_ep);
   return std::make_unique<EpLibraryInternal>(std::move(cpu_factory));
 }
 
@@ -83,7 +84,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
         // TODO: Should we ignore a user provided 'device_id' when they select an OrtEpDevice as that is associated with
         //       a specific device.
         //       How would we know what options should not allow user overrides if set in OrtEpDevice?
-        if (auto it = device.metadata.entries.find("DxgiAdapterNumber"); it != device.metadata.entries.end()) {
+        if (auto it = device.metadata.Entries().find("DxgiAdapterNumber"); it != device.metadata.Entries().end()) {
           ep_options = std::make_unique<OrtKeyValuePairs>();
           ep_options->Add("device_id", it->second.c_str());
         }
@@ -122,7 +123,8 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
     return nullptr;
   };
 
-  auto dml_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", is_supported, create_dml_ep);
+  auto dml_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", OrtDevice::VendorIds::MICROSOFT,
+                                                         is_supported, create_dml_ep);
 
   return std::make_unique<EpLibraryInternal>(std::move(dml_factory));
 }
@@ -170,7 +172,8 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateWebGpuEp() {
     return nullptr;
   };
 
-  auto webgpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", is_supported, create_webgpu_ep);
+  auto webgpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", OrtDevice::VendorIds::MICROSOFT,
+                                                            is_supported, create_webgpu_ep);
 
   return std::make_unique<EpLibraryInternal>(std::move(webgpu_factory));
 }

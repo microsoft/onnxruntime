@@ -10,6 +10,7 @@
 
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_devices.h"
+#include "core/session/abi_logger.h"
 #include "core/session/ep_factory_internal.h"
 #include "core/session/ep_plugin_provider_interfaces.h"
 #include "core/session/inference_session.h"
@@ -21,7 +22,13 @@
 namespace onnxruntime {
 namespace {
 bool MatchesEpVendor(const OrtEpDevice* d) {
-  // TODO: Would be better to match on Id. Should the EP add that in EP metadata?
+  // match on vendor id if provided
+  uint32_t factory_vendor_id = d->ep_factory->GetVendorId(d->ep_factory);
+  if (factory_vendor_id != 0 && d->device->vendor_id == factory_vendor_id) {
+    return true;
+  }
+
+  // match on vendor name
   return d->device->vendor == d->ep_vendor;
 }
 
@@ -30,7 +37,7 @@ bool IsDiscreteDevice(const OrtEpDevice* d) {
     return false;
   }
 
-  const auto& entries = d->device->metadata.entries;
+  const auto& entries = d->device->metadata.Entries();
   if (auto it = entries.find("Discrete"); it != entries.end()) {
     return it->second == "1";
   }
@@ -355,7 +362,7 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
         info.ep_factory->CreateEp(info.ep_factory, info.hardware_devices.data(), info.ep_metadata.data(),
                                   info.hardware_devices.size(), &options, &logger, &api_ep)));
     ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(api_ep, OrtEpDeleter(*info.ep_factory)), options,
-                                                   *info.ep_factory, info.devices);
+                                                   *info.ep_factory, info.devices, *logger.ToInternal());
   }
 
   return Status::OK();
@@ -366,7 +373,7 @@ Status ProviderPolicyContext::AddEpDefaultOptionsToSession(InferenceSession& ses
   auto& config_options = sess.GetMutableSessionOptions().config_options;
   for (auto device : devices) {
     const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(device->ep_name.c_str());
-    for (const auto& [key, value] : device->ep_options.entries) {
+    for (const auto& [key, value] : device->ep_options.Entries()) {
       const std::string option_key = ep_options_prefix + key;
       // preserve user-provided options as they override any defaults the EP factory specified earlier
       if (config_options.configurations.find(option_key) == config_options.configurations.end()) {

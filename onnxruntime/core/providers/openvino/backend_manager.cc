@@ -28,9 +28,10 @@ SessionContext& BackendManager::GetSessionContext() {
   return session_context_;
 }
 
-ov::CompiledModel& BackendManager::GetOVCompiledModel() {
-  ov::CompiledModel& ov_ptr = concrete_backend_->GetOVCompiledModel();
-  return (ov_ptr);
+ov::CompiledModel BackendManager::GetOVCompiledModel() {
+  if (concrete_backend_)
+    return concrete_backend_->GetOVCompiledModel();
+  return ov::CompiledModel();
 }
 
 BackendManager::BackendManager(SessionContext& session_context,
@@ -42,6 +43,9 @@ BackendManager::BackendManager(SessionContext& session_context,
                                                               session_context_(session_context),
                                                               shared_context_{shared_context} {
   subgraph_context_.is_ep_ctx_graph = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(subgraph);
+  // If the graph contains a OVIR wrapped node, we check if it has matching xml file name attribute
+  subgraph_context_.is_ep_ctx_ovir_encapsulated = ep_ctx_handle_.CheckEPCacheContextAttribute(subgraph,
+                                                                                              session_context_.onnx_model_path_name.filename().replace_extension("xml").string());
 
   subgraph_context_.model_precision = [&](const GraphViewer& graph_viewer) {
     // return empty if graph has no inputs or if types are not one of FP32/FP16
@@ -65,6 +69,9 @@ BackendManager::BackendManager(SessionContext& session_context,
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).
   for (uint32_t index = 0; const auto& node : subgraph.GetInputs()) {
+    if (subgraph.GetGraph().GetConsumerNodes(node->Name()).size() == 0) {
+      continue;  // Skip if the input is a dangling node
+    }
     subgraph_context_.input_names.insert({node->Name(), index++});
   }
 
@@ -77,6 +84,11 @@ BackendManager::BackendManager(SessionContext& session_context,
   ptr_stream_t model_stream;
   std::unique_ptr<onnx::ModelProto> model_proto;
   if (subgraph_context_.is_ep_ctx_graph) {
+    if (!session_context_.reshape.empty()) {
+      std::string exception_str =
+          "[OpenVINO-EP] Bounded dynamic model execution using provider option reshape_input is not supported for OVEP EPContext model";
+      ORT_THROW(exception_str);
+    }
     model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
   } else {
     model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
@@ -84,29 +96,29 @@ BackendManager::BackendManager(SessionContext& session_context,
   std::string device_type = session_context_.device_type;
 
   auto& sw = shared_context_.shared_weights;
-  if (session_context_.so_share_ep_contexts) {
+  if (session_context_.so_share_ep_contexts && !sw.metadata.empty()) {
     std::filesystem::path weight_filename = session_context_.onnx_model_path_name.parent_path();
-    if (sw.external_weight_filename.empty() && !sw.metadata.empty()) {
+    if (sw.external_weight_filename.empty()) {
       // Reasonable assumption that all metadata entries have the same external file location
       sw.external_weight_filename = sw.metadata.begin()->second.location;
     }
     weight_filename /= sw.external_weight_filename;
     std::ifstream weight_file(weight_filename);
 
-    if (weight_file) {
-      if (!sw.mapped_weights) {
-        sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
-      }
-      backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
+    ORT_ENFORCE(weight_file, "Initializer file not found: ", weight_filename.string());
+    if (!sw.mapped_weights) {
+      sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
     }
+    backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
   }
 
   if (ModelHasSymbolicInputDims(subgraph)) {
     subgraph_context_.has_dynamic_input_shape = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
-    if ((session_context_.device_type.find("CPU") != std::string::npos ||
-         session_context_.device_type.find("GPU") != std::string::npos) &&
-        !session_context_.disable_dynamic_shapes) {
+    if ((!session_context_.disable_dynamic_shapes &&
+         (session_context_.device_type.find("CPU") != std::string::npos ||
+          session_context_.device_type.find("GPU") != std::string::npos)) ||
+        (subgraph_context_.is_ep_ctx_graph)) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
                          << "Creating backend Dynamic Shapes";
       try {
@@ -141,58 +153,35 @@ BackendManager::BackendManager(SessionContext& session_context,
                                                       model_stream);
     } catch (const OnnxRuntimeException& ex) {
       std::string exception_str = ex.what();
-      bool eligible_for_cpu_fallback = device_type.find("NPU") != std::string::npos &&
-                                       !session_context_.so_disable_cpu_ep_fallback &&
-                                       !subgraph_context_.is_ep_ctx_graph;
-#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
-      eligible_for_cpu_fallback = false;
-#else
-      if (eligible_for_cpu_fallback) {
-        LOGS_DEFAULT(VERBOSE) << exception_str;
-        LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
-                              << "Falling back to OV CPU for execution";
-        session_context_.device_type = "CPU";
-        session_context_.precision = "FP32";
-        try {
-          concrete_backend_ = BackendFactory::MakeBackend(model_proto,
-                                                          session_context_,
-                                                          subgraph_context_,
-                                                          shared_context_,
-                                                          model_stream);
-        } catch (std::string const& msg) {
-          ORT_THROW(msg);
-        }
-      }
-#endif
-      if (!eligible_for_cpu_fallback) {
-        if (device_type.find("NPU") != std::string::npos &&
-            exception_str.find("intel_npu") != std::string::npos) {
-          // Handle NPU device related errors
+
+      if (session_context_.device_type.find("NPU") != std::string::npos &&
+          exception_str.find("intel_npu") != std::string::npos) {
+        // Handle NPU device related errors
 #ifndef NDEBUG
-          ORT_THROW(exception_str + "\nModel needs to be recompiled\n");
+        ORT_THROW(exception_str + "\nModel needs to be recompiled\n");
 #else
-          std::string error_message = "UNKNOWN NPU ERROR";
-          std::string error_code = "code 0x0";
-          std::regex error_message_pattern(R"(\bZE_\w*\b)");
-          std::regex error_code_pattern("code 0x[0-9a-fA-F]+");
-          std::smatch matches;
-          if (std::regex_search(exception_str, matches, error_message_pattern)) {
-            error_message = matches[0];
-          }
-          if (std::regex_search(exception_str, matches, error_code_pattern)) {
-            error_code = matches[0];
-          }
-          throw std::runtime_error(error_message + ", " + error_code + "\nModel needs to be recompiled\n");
-#endif
-        } else {
-          ORT_THROW(exception_str);
+        std::string error_message = "UNKNOWN NPU ERROR";
+        std::string error_code = "code 0x0";
+        std::regex error_message_pattern(R"(\bZE_\w*\b)");
+        std::regex error_code_pattern("code 0x[0-9a-fA-F]+");
+        std::smatch matches;
+        if (std::regex_search(exception_str, matches, error_message_pattern)) {
+          error_message = matches[0];
         }
+        if (std::regex_search(exception_str, matches, error_code_pattern)) {
+          error_code = matches[0];
+        }
+        throw std::runtime_error(error_message + ", " + error_code + "\nModel needs to be recompiled\n");
+#endif
+      } else {
+        ORT_THROW(exception_str);
       }
     }
   }
-  if (session_context_.so_context_enable && !subgraph_context_.is_ep_ctx_graph) {
+  if (session_context_.so_context_enable &&
+      (subgraph_context_.is_ep_ctx_ovir_encapsulated || !subgraph_context_.is_ep_ctx_graph)) {
     auto status = onnxruntime::openvino_ep::BackendManager::ExportCompiledBlobAsEPCtxNode(subgraph);
-    if ((!status.IsOK())) {
+    if (!status.IsOK()) {
       ORT_THROW(status);
     }
   }
@@ -287,24 +276,83 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& mod
 }
 
 bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const {
-  bool has_sym_dims = false;
-  auto graph_inputs = subgraph.GetInputs();
-  for (auto input : graph_inputs) {
-    if (input->Shape() == nullptr) {
-      has_sym_dims = true;
-      break;
-    }
-    for (auto& dim : input->Shape()->dim()) {
-      if (dim.value_case() != dim.kDimValue) {
-        has_sym_dims = true;
-        break;
-      }
-    }
-    if (has_sym_dims) {
-      break;
+  const auto& graph_inputs = subgraph.GetInputs();
+
+  // First validate shapes if provided by user
+  bool shapes_valid = true;
+  if (!session_context_.reshape.empty()) {
+    try {
+      ValidateInputShapes(session_context_.reshape, graph_inputs);
+    } catch (const std::exception& e) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] Shape validation failed: " << e.what();
+      session_context_.reshape.clear();  // Clear the shape map as it's invalid
+      shapes_valid = false;
     }
   }
-  return has_sym_dims;
+
+  // Count dynamic inputs and check if reshape covers all of them
+  size_t dynamic_input_count = 0;
+  bool all_dynamic_inputs_covered = true;
+
+  for (const auto* input : graph_inputs) {
+    // Skip dangling inputs (no consumers)
+    if (subgraph.GetGraph().GetConsumerNodes(input->Name()).empty()) {
+      continue;
+    }
+
+    // Check if input has dynamic dimensions
+    bool has_dynamic_dim = false;
+
+    // Case 1: Completely undefined shape
+    if (input->Shape() == nullptr) {
+      has_dynamic_dim = true;
+    }
+    // Case 2: Shape defined but with symbolic dimensions
+    else {
+      for (const auto& dim : input->Shape()->dim()) {
+        if (dim.value_case() != dim.kDimValue) {
+          has_dynamic_dim = true;
+          break;
+        }
+      }
+    }
+
+    // If dynamic, count it and check if reshape covers it
+    if (has_dynamic_dim) {
+      dynamic_input_count++;
+
+      // Check if this dynamic input is covered by reshape input
+      if (!session_context_.reshape.empty() &&
+          session_context_.reshape.find(input->Name()) == session_context_.reshape.end()) {
+        all_dynamic_inputs_covered = false;
+        LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] reshape_input is provided but doesn't cover dynamic input: "
+                              << input->Name();
+      }
+    }
+  }
+
+  const bool has_symbolic_dims = (dynamic_input_count > 0);
+
+  // Early return if no reshape input provided
+  if (session_context_.reshape.empty()) {
+    return has_symbolic_dims;  // Return based on whether model has symbolic dims
+  }
+
+  // For dynamic models with incomplete reshape coverage, clear shapes
+  if (has_symbolic_dims && !all_dynamic_inputs_covered) {
+    session_context_.reshape.clear();
+    LOGS_DEFAULT(WARNING) << "reshape_input does not cover all dynamic dimensions, "
+                          << "ignoring all provided shapes";
+    return true;  // Model is dynamic
+  }
+
+  // If shapes are valid with complete coverage for dynamic model, treat as concrete
+  if (has_symbolic_dims && shapes_valid && all_dynamic_inputs_covered) {
+    LOGS_DEFAULT(INFO) << "All dynamic dimensions successfully covered by reshape_input";
+    return false;  // Model is now effectively static with concrete shapes
+  }
+
+  return has_symbolic_dims;  // Return dynamic status based on symbolic dimensions
 }
 
 // Check to see if the graph is QDQ
@@ -380,8 +428,9 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 #endif
 
   const auto& onnx_model_path_name = subgraph.ModelPath();
-  // QDQ stripping enabled only for the NPU
-  if (session_context_.device_type.find("NPU") != std::string::npos &&
+  // QDQ stripping enabled only for the NPU and experimentally on the GPU
+  if ((session_context_.device_type.find("NPU") != std::string::npos ||
+       session_context_.device_type.find("GPU") != std::string::npos) &&
       (enable_ovep_qdq_optimizer || session_context_.so_share_ep_contexts)) {
     std::unique_ptr<onnxruntime::Model> model;
     Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, enable_ovep_qdq_optimizer, model, shared_context_.shared_weights);
@@ -475,9 +524,44 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
   return model_copy;
 }
 
+void BackendManager::ValidateInputShapes(const reshape_t& shapes,
+                                         const std::vector<const NodeArg*>& graph_inputs) const {
+  for (const auto& [tensor_name, requested_shape] : shapes) {
+    // Find matching input in graph
+    const NodeArg* graph_input = nullptr;
+    for (const auto* input : graph_inputs) {
+      if (input->Name() == tensor_name) {
+        graph_input = input;
+        break;
+      }
+    }
+
+    if (!graph_input) {
+      ORT_THROW("Input '" + tensor_name + "' specified in reshape_input does not exist in the graph");
+    }
+
+    const ONNX_NAMESPACE::TensorShapeProto* graph_shape = graph_input->Shape();
+    if (!graph_shape) {
+      ORT_THROW("Graph input '" + tensor_name + "' has no shape information");
+    }
+
+    // Check dimensions count matches
+    size_t graph_dim_count = graph_shape->dim_size();
+    size_t requested_dim_count = requested_shape.get_max_shape().size();
+
+    if (graph_dim_count != requested_dim_count) {
+      ORT_THROW("Dimensions mismatch for input '" + tensor_name +
+                "': graph expects " + std::to_string(graph_dim_count) +
+                " dimensions but reshape_input specifies " +
+                std::to_string(requested_dim_count) + " dimensions");
+    }
+  }
+}
+
 void BackendManager::Compute(OrtKernelContext* context) {
   Ort::KernelContext ctx(context);
   std::chrono::high_resolution_clock::time_point start_compute, end_compute;
+
 #ifdef OPENVINO_FIL_ENABLED
   static bool fil_enabled = true;
   if (fil_enabled) {
@@ -485,21 +569,26 @@ void BackendManager::Compute(OrtKernelContext* context) {
     LOGS_DEFAULT(INFO) << "Start Compute";
   }
 #endif
-  // OV NPU doesn't support dynamic shaped model inference.
+
   // if disable_dynamic_shapes is set to true then execution of dynamic model is done
   // by rewriting the model to static shaped model at runtime based on input shape.
-  // disable_dynamic_shapes is always set to true for OV NPU plugin.
-  if (subgraph_context_.has_dynamic_input_shape &&
-      !session_context_.disable_dynamic_shapes &&
-      (session_context_.device_type.find("CPU") != std::string::npos ||
-       session_context_.device_type.find("GPU") != std::string::npos)) {
+  // disable_dynamic_shapes should be set for devices that don't support dynamic shapes.
+  bool need_dynamic_backend = subgraph_context_.has_dynamic_input_shape &&
+                              session_context_.disable_dynamic_shapes && !subgraph_context_.is_ep_ctx_graph;
+
+  if (!need_dynamic_backend) {
     concrete_backend_->Infer(context);
-  } else if (subgraph_context_.has_dynamic_input_shape) {
+  } else {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(ctx);
     auto key = MakeMapKeyString(tensor_shapes, session_context_.device_type);
     std::shared_ptr<IBackend> dynamic_backend;
-    auto search = backend_map_.find(key);
-    if (search == backend_map_.end()) {
+
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      dynamic_backend = backend_map_[key];
+    }
+
+    if (!dynamic_backend) {
       ptr_stream_t model_stream;
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
                          << "Creating dynamic backend for key: " << key;
@@ -540,14 +629,11 @@ void BackendManager::Compute(OrtKernelContext* context) {
         }
 #endif
       }
+      std::unique_lock<std::mutex> lock(mutex_);
       backend_map_.insert({key, dynamic_backend});
-    } else {
-      dynamic_backend = search->second;
     }
 
     dynamic_backend->Infer(context);
-  } else {
-    concrete_backend_->Infer(context);
   }
 #ifdef OPENVINO_FIL_ENABLED
   if (fil_enabled) {
@@ -563,6 +649,12 @@ void BackendManager::Compute(OrtKernelContext* context) {
 void BackendManager::ShutdownBackendManager() {
   backend_map_.clear();
   concrete_backend_.reset();
+}
+
+void BackendManager::RewindKVCache(size_t index) {
+  if (concrete_backend_) {
+    concrete_backend_->RewindKVCache(index);
+  }
 }
 
 }  // namespace openvino_ep

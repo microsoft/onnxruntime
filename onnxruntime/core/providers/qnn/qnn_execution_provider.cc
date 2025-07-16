@@ -1356,7 +1356,8 @@ QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager*
                                                          uint32_t device_id,
                                                          uint32_t core_id,
                                                          qnn::HtpPerformanceMode default_htp_performance_mode,
-                                                         uint32_t default_rpc_control_latency)
+                                                         uint32_t default_rpc_control_latency,
+                                                         uint32_t default_rpc_polling_time)
     : qnn_backend_manager_(qnn_backend_manager) {
   Status rt = qnn_backend_manager_->CreateHtpPowerCfgId(device_id, core_id, htp_power_config_id_);
   is_htp_power_config_id_valid_ = rt.IsOK();
@@ -1367,9 +1368,10 @@ QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager*
       ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_,
                                                                       default_htp_performance_mode));
     }
-    if (default_rpc_control_latency > 0) {
-      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcControlLatency(htp_power_config_id_,
-                                                                         default_rpc_control_latency));
+    if (default_rpc_control_latency > 0 || default_rpc_polling_time > 0) {
+      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcPowerConfigs(htp_power_config_id_,
+                                                                       default_rpc_control_latency,
+                                                                       default_rpc_polling_time));
     }
   }
 }
@@ -1400,7 +1402,8 @@ QNNExecutionProvider::PerThreadContext& QNNExecutionProvider::GetPerThreadContex
     if (context_state_.retired_context_pool.empty()) {
       uint32_t core_id = 0;
       context = std::make_shared<PerThreadContext>(qnn_backend_manager_.get(), device_id_, core_id,
-                                                   default_htp_performance_mode_, default_rpc_control_latency_);
+                                                   default_htp_performance_mode_, default_rpc_control_latency_,
+                                                   default_rpc_polling_time_);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -1468,15 +1471,21 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
     LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
   }
 
+  uint32_t rpc_polling_time = 0;
+  if (qnn::HtpPerformanceMode::kHtpBurst != htp_performance_mode) {
+    rpc_polling_time = 9999;
+  }
+
   if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
     if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
       ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
                                                                   htp_performance_mode));
     }
 
-    if (rpc_control_latency > 0) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcControlLatency(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                     rpc_control_latency));
+    if (rpc_control_latency > 0 || rpc_polling_time > 0) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcPowerConfigs(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                   rpc_control_latency,
+                                                                   rpc_polling_time));
     }
   }
 
@@ -1543,6 +1552,40 @@ OrtDevice QNNExecutionProvider::GetOrtDeviceByMemType(OrtMemType /* em_type */) 
   //}
   // Default CPU allocator
   return default_device_;
+}
+
+Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                 gsl::span<const char* const> values) {
+  if (keys.size() != values.size()) {
+    LOGS_DEFAULT(ERROR) << "SetEpDynamicOptions: number of keys (" << keys.size()
+                        << ") does not equal number of values (" << values.size() << ").";
+  }
+  auto key_it = keys.begin();
+  auto value_it = values.begin();
+
+  while (key_it != keys.end() && value_it != values.end()) {
+    std::string key(*key_it);
+    std::string value(*value_it);
+
+    if (key == kOrtEpDynamicOptionsWorkloadType) {
+      if (value == "Default") {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->ResetContextPriority());
+      } else if (value == "Efficient") {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetContextPriority(qnn::ContextPriority::LOW));
+      } else {
+        LOGS_DEFAULT(ERROR) << "Invalid EP Workload Type: " << value;
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid EP Workload Type.");
+      }
+    } else {
+      LOGS_DEFAULT(ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported EP Dynamic Option");
+    }
+
+    key_it++;
+    value_it++;
+  }
+
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

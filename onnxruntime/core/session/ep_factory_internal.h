@@ -33,12 +33,14 @@ class EpFactoryInternal : public OrtEpFactory {
                                               const OrtSessionOptions* session_options,
                                               const OrtLogger* logger, std::unique_ptr<IExecutionProvider>* ep)>;
 
-  EpFactoryInternal(const std::string& ep_name, const std::string& vendor,
+  EpFactoryInternal(const std::string& ep_name, const std::string& vendor, uint32_t vendor_id,
                     GetSupportedFunc&& get_supported_func,
                     CreateFunc&& create_func);
 
   const char* GetName() const noexcept { return ep_name_.c_str(); }
   const char* GetVendor() const noexcept { return vendor_.c_str(); }
+  uint32_t GetVendorId() const noexcept { return vendor_id_; }
+  const char* GetVersion() const noexcept;
 
   OrtStatus* GetSupportedDevices(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
                                  _In_ size_t num_devices,
@@ -66,6 +68,7 @@ class EpFactoryInternal : public OrtEpFactory {
  private:
   const std::string ep_name_;                  // EP name library was registered with
   const std::string vendor_;                   // EP vendor name
+  const uint32_t vendor_id_;                   // EP vendor ID
   const GetSupportedFunc get_supported_func_;  // function to return supported devices
   const CreateFunc create_func_;               // function to create the EP instance
 

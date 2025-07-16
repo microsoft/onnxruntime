@@ -116,6 +116,7 @@ ORT_API(onnxruntime::Provider*, GetProvider) {
 }
 
 #include "core/framework/error_code_helper.h"
+#include "onnxruntime_config.h"  // for ORT_VERSION
 
 // OrtEpApi infrastructure to be able to use the QNN EP as an OrtEpFactory for auto EP selection.
 struct QnnEpFactory : OrtEpFactory {
@@ -124,8 +125,11 @@ struct QnnEpFactory : OrtEpFactory {
                OrtHardwareDeviceType hw_type,
                const char* qnn_backend_type)
       : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type}, qnn_backend_type{qnn_backend_type} {
+    ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVendorId = GetVendorIdImpl;
+    GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
@@ -140,7 +144,16 @@ struct QnnEpFactory : OrtEpFactory {
 
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const QnnEpFactory*>(this_ptr);
-    return factory->vendor.c_str();
+    return factory->ep_vendor.c_str();
+  }
+
+  static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const QnnEpFactory*>(this_ptr);
+    return factory->ep_vendor_id;
+  }
+
+  static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return ORT_VERSION;
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
@@ -189,8 +202,9 @@ struct QnnEpFactory : OrtEpFactory {
   }
 
   const OrtApi& ort_api;
-  const std::string ep_name;              // EP name
-  const std::string vendor{"Microsoft"};  // EP vendor name
+  const std::string ep_name;                 // EP name
+  const std::string ep_vendor{"Microsoft"};  // EP vendor name
+  uint32_t ep_vendor_id{0x1414};             // Microsoft vendor ID
 
   // Qualcomm vendor ID. Refer to the ACPI ID registry (search Qualcomm): https://uefi.org/ACPI_ID_List
   const uint32_t vendor_id{'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24)};

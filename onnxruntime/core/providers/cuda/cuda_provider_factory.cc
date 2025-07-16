@@ -308,12 +308,16 @@ CUDA_Provider* GetProvider() {
 }  // namespace onnxruntime
 
 #include "core/framework/error_code_helper.h"
+#include "onnxruntime_config.h"  // for ORT_VERSION
 
 // OrtEpApi infrastructure to be able to use the CUDA EP as an OrtEpFactory for auto EP selection.
 struct CudaEpFactory : OrtEpFactory {
   CudaEpFactory(const OrtApi& ort_api_in) : ort_api{ort_api_in} {
+    ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVendorId = GetVendorIdImpl;
+    GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
@@ -327,6 +331,15 @@ struct CudaEpFactory : OrtEpFactory {
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const CudaEpFactory*>(this_ptr);
     return factory->vendor.c_str();
+  }
+
+  static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const CudaEpFactory*>(this_ptr);
+    return factory->vendor_id;
+  }
+
+  static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return ORT_VERSION;
   }
 
   static OrtStatus* GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
@@ -368,6 +381,7 @@ struct CudaEpFactory : OrtEpFactory {
   const OrtApi& ort_api;
   const std::string ep_name{kCudaExecutionProvider};  // EP name
   const std::string vendor{"Microsoft"};              // EP vendor name
+  uint32_t vendor_id{0x1414};                         // Microsoft vendor ID
 };
 
 extern "C" {
