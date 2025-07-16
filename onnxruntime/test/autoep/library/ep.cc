@@ -226,7 +226,7 @@ OrtStatus* ExampleEp::SaveConstantInitializers(const OrtGraph* graph) {
 
 /*static*/
 OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* graph,
-                                                     OrtEpGraphSupportInfo* graph_support_info) {
+                                                     OrtEpGraphSupportInfo* graph_support_info) noexcept {
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
   size_t num_nodes = 0;
@@ -290,7 +290,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
 OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
                                                _In_ const OrtNode** fused_nodes, _In_ size_t count,
                                                _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
-                                               _Out_writes_(count) OrtNode** ep_context_nodes) {
+                                               _Out_writes_(count) OrtNode** ep_context_nodes) noexcept {
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
   const OrtApi& ort_api = ep->ort_api;
 
@@ -328,9 +328,9 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
   RETURN_IF_ERROR(ort_api.GetValueInfoName(node_inputs[0], &node_input_names[0]));
   RETURN_IF_ERROR(ort_api.GetValueInfoName(node_inputs[1], &node_input_names[1]));
 
-  const char* ep_type = nullptr;
-  RETURN_IF_ERROR(ort_api.Node_GetEpType(fused_nodes[0], &ep_type));
-  if (std::strncmp(ep_type, "example_ep", 11) != 0) {
+  const char* ep_name = nullptr;
+  RETURN_IF_ERROR(ort_api.Node_GetEpName(fused_nodes[0], &ep_name));
+  if (std::strncmp(ep_name, "example_ep", 11) != 0) {
     return ort_api.CreateStatus(ORT_EP_FAIL, "The fused node is expected to assigned to this EP to run on");
   }
 
@@ -360,7 +360,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 /*static*/
 void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
                                                          OrtNodeComputeInfo** node_compute_infos,
-                                                         size_t num_node_compute_infos) {
+                                                         size_t num_node_compute_infos) noexcept {
   (void)this_ptr;
   for (size_t i = 0; i < num_node_compute_infos; i++) {
     delete node_compute_infos[i];

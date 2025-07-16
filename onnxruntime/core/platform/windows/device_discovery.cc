@@ -89,23 +89,10 @@ uint64_t GetLuidKey(LUID luid) {
   return (uint64_t(luid.HighPart) << 32) | luid.LowPart;
 }
 
-// Converts a wide string (up to 4 characters) representing a hardware ID component (e.g., "ABCD" from "VEN_ABCD")
-// into a uint32_t. The conversion is done in a little-endian manner, meaning the first character
-// of the string becomes the least significant byte of the integer, and the fourth character
-// becomes the most significant byte.
-uint32_t WStringToUint32Id(const std::wstring& vendor_name) {
-  uint32_t vendor_id = 0;
-  for (size_t i = 0; i < 4 && i < vendor_name.size(); ++i) {
-    // For little-endian, place each character at the appropriate byte position
-    // First character goes into lowest byte, last character into highest byte
-    vendor_id |= static_cast<unsigned char>(vendor_name[i] & 0xFF) << (i * 8);
-  }
-  return vendor_id;
-}
-
 // returns info for display and processor entries. key is (vendor_id << 32 | device_id)
 // npus: (vendor_id << 32 | device_id) for devices we think are NPUs from DXCORE
-std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unordered_set<uint64_t>& npus) {
+std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unordered_set<uint64_t>& npus,
+                                                               bool& have_remote_display_adapter) {
   std::unordered_map<uint64_t, DeviceInfo> device_info;
 
   const GUID local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML = {0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88};
@@ -151,8 +138,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
           if (auto idx = hardware_id.find(prefix); idx != std::wstring::npos) {
             auto id = hardware_id.substr(idx + prefix.size(), 4);
             if (id.size() == 4) {
-              // DXCore reports vendor and device IDs as 32-bit integer representations of the ASCII string.
-              return WStringToUint32Id(id);
+              return static_cast<uint32_t>(std::stoul(id, nullptr, 16));
             }
           }
 
@@ -170,6 +156,11 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
 
         // Won't always have a vendor id from an ACPI entry.  ACPI is not defined for this purpose.
         if (vendor_id == 0 && device_id == 0) {
+          static const std::wstring remote_display_adapter_id(L"RdpIdd_IndirectDisplay");
+          if (guid == GUID_DEVCLASS_DISPLAY && remote_display_adapter_id == buffer) {
+            have_remote_display_adapter = true;
+          }
+
           continue;
         }
 
@@ -305,7 +296,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
 }
 
 // returns LUID to DeviceInfo
-std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
+std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12(bool have_remote_display_adapter) {
   std::unordered_map<uint64_t, DeviceInfo> device_info;
 
   ComPtr<IDXGIFactory6> factory;
@@ -313,6 +304,8 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
     std::cerr << "Failed to create DXGI factory.\n";
     return device_info;
   }
+
+  UINT num_adapters = 0;
 
   ComPtr<IDXGIAdapter1> adapter;
   for (UINT i = 0; factory->EnumAdapters1(i, adapter.ReleaseAndGetAddressOf()) != DXGI_ERROR_NOT_FOUND; ++i) {
@@ -339,9 +332,12 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
     info.metadata[L"LUID"] = std::to_wstring(key);
     info.metadata[L"DxgiAdapterNumber"] = std::to_wstring(i);
     info.metadata[L"DxgiVideoMemory"] = std::to_wstring(desc.DedicatedVideoMemory / (1024 * 1024)) + L" MB";
+
+    ++num_adapters;
   }
 
-  // iterate by high-performance GPU preference to add that info
+  // iterate by high-performance GPU preference to add that info.
+  UINT cur_adapter = 0;
   for (UINT i = 0; factory->EnumAdapterByGpuPreference(
                        i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
                        IID_PPV_ARGS(adapter.ReleaseAndGetAddressOf())) != DXGI_ERROR_NOT_FOUND;
@@ -352,12 +348,41 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
     }
 
     uint64_t key = GetLuidKey(desc.AdapterLuid);
-
     auto it = device_info.find(key);
-    if (it != device_info.end()) {
-      DeviceInfo& info = it->second;
-      info.metadata[L"DxgiHighPerformanceIndex"] = std::to_wstring(i);
+    if (it == device_info.end()) {
+      continue;
     }
+
+    DeviceInfo& info = it->second;
+
+    // try and drop the Microsoft Remote Display Adapter. it does not have the DXGI_ADAPTER_FLAG_SOFTWARE flag set
+    // and the vendor id, device id and description are the same as the real device. the LUID is different to the real
+    // device.
+    // Assumption: it will have the worst performance index of the devices we're considering so we only check the
+    //             last adapter
+    if (num_adapters > 1 && have_remote_display_adapter && cur_adapter == num_adapters - 1) {
+      ComPtr<IDXGIOutput> output;
+      if (adapter->EnumOutputs(0, &output) == DXGI_ERROR_NOT_FOUND) {
+        // D3D_DRIVER_TYPE_WARP. Software based or disabled adapter.
+        // An adapter can be disabled in an RDP session. e.g. integrated GPU is disabled if there's a discrete GPU
+
+        // if we have seen this vendor_id+device_id combination with a different LUID before we drop it.
+        if (std::any_of(device_info.begin(), device_info.end(),
+                        [key, &info](const auto& entry) {
+                          const auto& entry_info = entry.second;
+                          return key != entry.first &&
+                                 info.vendor_id == entry_info.vendor_id &&
+                                 info.device_id == entry_info.device_id;
+                        })) {
+          device_info.erase(key);
+          continue;
+        }
+      }
+    }
+
+    info.metadata[L"DxgiHighPerformanceIndex"] = std::to_wstring(i);
+
+    ++cur_adapter;
   }
 
   return device_info;
@@ -497,10 +522,12 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
     }
   }
 
-  // d3d12 info. key is luid
-  std::unordered_map<uint64_t, DeviceInfo> luid_to_d3d12_info = GetDeviceInfoD3D12();
   // setupapi_info. key is vendor_id+device_id
-  std::unordered_map<uint64_t, DeviceInfo> setupapi_info = GetDeviceInfoSetupApi(npus);
+  bool have_remote_display_adapter = false;  // set if we see the RdpIdd_IndirectDisplay hardware ID.
+  std::unordered_map<uint64_t, DeviceInfo> setupapi_info = GetDeviceInfoSetupApi(npus, have_remote_display_adapter);
+
+  // d3d12 info. key is luid
+  std::unordered_map<uint64_t, DeviceInfo> luid_to_d3d12_info = GetDeviceInfoD3D12(have_remote_display_adapter);
 
   // Ensure we have at least one CPU
   bool found_cpu = false;
