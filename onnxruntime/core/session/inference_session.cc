@@ -3648,7 +3648,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
   for (int i = static_cast<int>(TransformerLevel::Default); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
 
-    // Still enable free dimension override even if graph optimization level is 0
+    // Enable free dimension override even when the graph optimization level is 0.
+    // If the optimization level is above 0, the override will be applied during level 1 optimization.
     if ((graph_optimization_level == TransformerLevel::Default) && (level == TransformerLevel::Default)) {
       auto transformers_to_register = [&]() {
         return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
