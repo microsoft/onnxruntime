@@ -29,21 +29,22 @@ class AttentionBase : public OpKernel {
   ) const;
 
  protected:
-  void ComputeVxAttentionScore(T* output,                 // buffer for the result with size BxSxNxH_v
-                               T* tmp_buffer,             // buffer for temp use with size is BxNxSxH_v
-                               const T* attention_probs,  // Attention probs with size BxNxSxT
-                               const T* V,                // V value with size BxNxLxH_v
-                               int batch_size,            // batch size
-                               int sequence_length,       // sequence length
-                               int kv_sequence_length,    // sequence length of K or V
-                               int past_sequence_length,  // sequence length in past state
-                               int v_head_size,           // head size of V (H_v)
-                               int v_hidden_size,         // hidden size of V (D_v)
-                               int num_heads,             // number of attention heads
-                               int kv_num_heads,          // number of KV heads
-                               const T* past_value,       // past value only (if not using past state)
-                               T* present_value,          // present value only (if not using present state)
-                               bool transpose_output,     // whether to transpose the output from BxNxSxH to BxSxNxH
+  void ComputeVxAttentionScore(T* output,                  // buffer for the result with size BxSxNxH_v
+                               T* tmp_buffer,              // buffer for temp use with size is BxNxSxH_v
+                               const T* attention_probs,   // Attention probs with size BxNxSxT
+                               const T* V,                 // V value with size BxNxLxH_v
+                               int batch_size,             // batch size
+                               int sequence_length,        // sequence length
+                               int kv_sequence_length,     // sequence length of K or V
+                               int past_sequence_length,   // sequence length in past state
+                               int total_sequence_length,  // total sequence length = past_sequence_length + kv_sequence_length
+                               int v_head_size,            // head size of V (H_v)
+                               int v_hidden_size,          // hidden size of V (D_v)
+                               int num_heads,              // number of attention heads
+                               int kv_num_heads,           // number of KV heads
+                               const T* past_value,        // past value only (if not using past state)
+                               T* present_value,           // present value only (if not using present state)
+                               bool transpose_output,      // whether to transpose the output from BxNxSxH to BxSxNxH
                                concurrency::ThreadPool* tp) const;
 
   void ComputeAttentionProbs(T* attention_probs,                                       // output buffer with size BxNxSxT

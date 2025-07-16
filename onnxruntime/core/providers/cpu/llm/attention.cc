@@ -11,9 +11,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/math/gemm.h"
 
-using onnxruntime::attention_helper::AttentionMaskType;
 using onnxruntime::attention_helper::AttentionParameters;
-using onnxruntime::attention_helper::AttentionType;
 using onnxruntime::attention_helper::QKMatMulOutputMode;
 using onnxruntime::concurrency::ThreadPool;
 
@@ -90,8 +88,11 @@ Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
   kv_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_num_heads", 0));
   q_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("q_num_heads", 0));
   int mode = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_matmul_output_mode", 0));
-  qk_matmul_output_mode_ = static_cast<QKMatMulOutputMode>(mode);
-  ORT_ENFORCE(qk_matmul_output_mode_ == QKMatMulOutputMode::kQK ||
+  qk_matmul_output_mode_ = info.node().OutputDefs().size() >= 4 && info.node().OutputDefs()[3]->Exists()
+                               ? static_cast<QKMatMulOutputMode>(mode)
+                               : QKMatMulOutputMode::kNone;
+  ORT_ENFORCE(qk_matmul_output_mode_ == QKMatMulOutputMode::kNone ||
+                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQK ||
                   qk_matmul_output_mode_ == QKMatMulOutputMode::kQKMask ||
                   qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftCap ||
                   qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftMax,
@@ -118,30 +119,34 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> present_value_shape;
   std::vector<int64_t> output_qk_shape;
 
-  attention_helper::ComputeOutputShapeForAttention(
-      Q,
-      K,
-      V,
-      attn_mask,
-      past_key,
-      past_value,
-      is_causal_,
-      softcap_,
-      softmax_precision_,
-      qk_matmul_output_mode_,
-      kv_num_heads_,
-      q_num_heads_,
-      scale_,
-      parameters,
-      y_shape,
-      present_key_shape,
-      present_value_shape,
-      output_qk_shape);
+  ORT_ENFORCE(attention_helper::ComputeOutputShapeForAttention(
+                  Q,
+                  K,
+                  V,
+                  attn_mask,
+                  past_key,
+                  past_value,
+                  is_causal_,
+                  softcap_,
+                  softmax_precision_,
+                  qk_matmul_output_mode_,
+                  kv_num_heads_,
+                  q_num_heads_,
+                  scale_,
+                  parameters,
+                  y_shape,
+                  present_key_shape,
+                  present_value_shape,
+                  output_qk_shape)
+                  .IsOK(),
+              "Output shapes for Attention could not be computed.");
 
   Tensor* Y = context->Output(0, y_shape);
   Tensor* present_key = context->Output(1, present_key_shape);
   Tensor* present_value = context->Output(2, present_value_shape);
-  Tensor* output_qk = context->Output(3, output_qk_shape);
+  Tensor* output_qk = parameters.qk_matmul_output_mode == QKMatMulOutputMode::kNone
+                          ? nullptr
+                          : context->Output(3, output_qk_shape);
   return this->ApplyAttention(context,
                               Q->Data<T>(),   // Q
                               K->Data<T>(),   // K
@@ -168,7 +173,6 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                              T* output_qk,                           // Q*K output
                                              ThreadPool* tp,
                                              AllocatorPtr allocator) const {
-  const int total_sequence_length = parameters.past_sequence_length + parameters.kv_sequence_length;              // T = P + L
   const size_t past_chunk_length = static_cast<size_t>(parameters.past_sequence_length) * parameters.head_size;   // P x H
   const size_t q_input_chunk_length = static_cast<size_t>(parameters.q_sequence_length) * parameters.head_size;   // S x H
   const size_t k_input_chunk_length = static_cast<size_t>(parameters.kv_sequence_length) * parameters.head_size;  // L x H
@@ -178,11 +182,14 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
   const float alpha = parameters.scale;
 
   TensorOpCost unit_cost;
-  const ptrdiff_t probs_matrix_size = SafeInt<ptrdiff_t>(parameters.q_sequence_length) * total_sequence_length;
+  const ptrdiff_t probs_matrix_size = SafeInt<ptrdiff_t>(parameters.q_sequence_length) *
+                                      parameters.total_sequence_length;
   const ptrdiff_t probs_matrix_bytes = probs_matrix_size * sizeof(T);
   unit_cost.compute_cycles =
       static_cast<double>(SafeInt<ptrdiff_t>(2) * parameters.head_size * probs_matrix_size);
-  unit_cost.bytes_loaded = static_cast<double>((parameters.q_sequence_length + total_sequence_length) * parameters.head_size * sizeof(T));
+  unit_cost.bytes_loaded = static_cast<double>((parameters.q_sequence_length +
+                                                parameters.total_sequence_length) *
+                                               parameters.head_size * sizeof(T));
   unit_cost.bytes_stored = static_cast<double>(probs_matrix_bytes);
 
   if (present_key) {
@@ -193,10 +200,14 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
 
   // Prepare mask
   // Merge causal mask with padding mask, and convert values from 0/1 to -inf/0.
-  int mask_batch_size = static_cast<int>(mask_index == nullptr || mask_index->Shape().NumDimensions() < 4 ? 1 : mask_index->Shape().GetDims()[0]);
+  int mask_batch_size = static_cast<int>(mask_index == nullptr || mask_index->Shape().NumDimensions() < 4
+                                             ? 1
+                                             : mask_index->Shape().GetDims()[0]);
   int mask_num_heads = static_cast<int>(mask_index == nullptr || mask_index->Shape().NumDimensions() < 3
                                             ? 1
-                                            : (mask_index->Shape().NumDimensions() < 4 ? mask_index->Shape().GetDims()[0] : mask_index->Shape().GetDims()[1]));
+                                            : (mask_index->Shape().NumDimensions() < 4
+                                                   ? mask_index->Shape().GetDims()[0]
+                                                   : mask_index->Shape().GetDims()[1]));
 
   T* mask_data = nullptr;
   bool delete_mask_data = false;
@@ -204,13 +215,13 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
   if (mask_index == nullptr) {
     // No mask = null mask.
     if (causal) {
-      size_t mask_data_bytes = SafeInt<size_t>(parameters.q_sequence_length) * total_sequence_length * sizeof(T);
+      size_t mask_data_bytes = SafeInt<size_t>(parameters.q_sequence_length) * parameters.total_sequence_length * sizeof(T);
       void* allocated_ptr = allocator->Alloc(mask_data_bytes);
       memset(allocated_ptr, 0, mask_data_bytes);
       mask_data = static_cast<T*>(allocated_ptr);
       for (int s_i = 0; s_i < parameters.q_sequence_length; s_i++) {
-        for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < total_sequence_length; m_i++) {
-          mask_data[s_i * total_sequence_length + m_i] = std::numeric_limits<T>::lowest();
+        for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < parameters.total_sequence_length; m_i++) {
+          mask_data[s_i * parameters.total_sequence_length + m_i] = std::numeric_limits<T>::lowest();
         }
       }
       delete_mask_data = true;
@@ -235,8 +246,8 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       int n_iter = mask_batch_size * mask_num_heads;
       for (int i = 0; i < n_iter; ++i) {
         for (int s_i = 0; s_i < parameters.q_sequence_length; s_i++) {
-          for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < total_sequence_length; m_i++) {
-            mask_data[s_i * total_sequence_length + m_i + probs_matrix_size * i] = std::numeric_limits<T>::lowest();
+          for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < parameters.total_sequence_length; m_i++) {
+            mask_data[s_i * parameters.total_sequence_length + m_i + probs_matrix_size * i] = std::numeric_limits<T>::lowest();
           }
         }
       }
@@ -265,13 +276,15 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * probs_matrix_size;
       std::ptrdiff_t batch_i = i / parameters.q_num_heads;
       std::ptrdiff_t head_i = i % parameters.q_num_heads;
-      const ptrdiff_t mask_data_offset = probs_matrix_size * (head_i % mask_num_heads + (batch_i % mask_batch_size) * mask_num_heads);
+      const ptrdiff_t mask_data_offset = probs_matrix_size *
+                                         (head_i % mask_num_heads + (batch_i % mask_batch_size) * mask_num_heads);
 
       T* output = attention_probs + output_offset;
       T* out_qk = output_qk == nullptr ? nullptr : output_qk + output_offset;
       float beta;
 
-      if (mask_data != nullptr && (out_qk == nullptr || parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kQK)) {
+      if (mask_data != nullptr &&
+          (out_qk == nullptr || parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kQK)) {
         // Broadcast mask data: SxT -> SxT
         memcpy(output, mask_data + mask_data_offset, probs_matrix_bytes);
         beta = 1;
@@ -299,7 +312,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
       if constexpr (std::is_same<T, float>::value) {
         math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans,
-                                  parameters.q_sequence_length, total_sequence_length, parameters.head_size,
+                                  parameters.q_sequence_length, parameters.total_sequence_length, parameters.head_size,
                                   alpha,
                                   Q + q_input_chunk_length * i, k,
                                   beta,
@@ -307,7 +320,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       } else if constexpr (std::is_same<T, MLFloat16>::value) {
         if (MlasHGemmSupported(CblasNoTrans, CblasTrans)) {
           MlasGemm(CblasNoTrans, CblasTrans,
-                   parameters.q_sequence_length, total_sequence_length, parameters.head_size,  // M,N,K
+                   parameters.q_sequence_length, parameters.total_sequence_length, parameters.head_size,  // M,N,K
                    Q + q_input_chunk_length * i,
                    static_cast<int>(parameters.head_size),  // lda
                    k,
@@ -316,17 +329,19 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                    static_cast<int>(parameters.past_sequence_length + parameters.kv_sequence_length),  // ldc
                    MLFloat16(alpha).val, MLFloat16(beta).val, nullptr);
         } else {
-          TensorShape c_shape({parameters.q_sequence_length, total_sequence_length});
-          Gemm_MLFloat16(CblasNoTrans, CblasTrans,                                                                                                                           // 0, 1
-                         static_cast<ptrdiff_t>(parameters.q_sequence_length), static_cast<ptrdiff_t>(total_sequence_length), static_cast<ptrdiff_t>(parameters.head_size),  // M,N,K, 2, 3, 4
-                         MLFloat16(alpha),                                                                                                                                   // 5
-                         Q + q_input_chunk_length * i,                                                                                                                       // 6
-                         k,                                                                                                                                                  // 7
-                         MLFloat16(beta),                                                                                                                                    // 8
-                         output,                                                                                                                                             // 9
-                         &c_shape,                                                                                                                                           // 10
-                         output,                                                                                                                                             // 11
-                         nullptr);                                                                                                                                           // 12
+          TensorShape c_shape({parameters.q_sequence_length, parameters.total_sequence_length});
+          Gemm_MLFloat16(CblasNoTrans, CblasTrans,                                  // 0, 1
+                         static_cast<ptrdiff_t>(parameters.q_sequence_length),      // M, 2
+                         static_cast<ptrdiff_t>(parameters.total_sequence_length),  // N, 3
+                         static_cast<ptrdiff_t>(parameters.head_size),              // K, 4
+                         MLFloat16(alpha),                                          // 5
+                         Q + q_input_chunk_length * i,                              // 6
+                         k,                                                         // 7
+                         MLFloat16(beta),                                           // 8
+                         output,                                                    // 9
+                         &c_shape,                                                  // 10
+                         output,                                                    // 11
+                         nullptr);                                                  // 12
         }
       } else {
         ORT_THROW("Unsupported data type for attention Q*K multiplication: ", DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
@@ -347,16 +362,18 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
         } else if constexpr (std::is_same<T, MLFloat16>::value) {
           ComputeAttentionSoftcapInplace(output, static_cast<int>(probs_matrix_size), MLFloat16(parameters.softcap));
         } else {
-          ORT_THROW("Unsupported data type for ComputeAttentionSoftcapInplace: ", DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
+          ORT_THROW("Unsupported data type for ComputeAttentionSoftcapInplace: ",
+                    DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
         }
       }
       if (out_qk != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftCap) {
         memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
       }
-      ComputeAttentionSoftmaxInplace(output, parameters.q_sequence_length, total_sequence_length, nullptr, allocator);
+      ComputeAttentionSoftmaxInplace(output, parameters.q_sequence_length, parameters.total_sequence_length, nullptr, allocator);
 
       if (output_qk != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftMax) {
-        memcpy(output_qk + output_offset, output, SafeInt<size_t>(parameters.q_sequence_length) * total_sequence_length * sizeof(T));
+        memcpy(output_qk + output_offset, output,
+               SafeInt<size_t>(parameters.q_sequence_length) * parameters.total_sequence_length * sizeof(T));
       }
     }
   });
@@ -386,23 +403,23 @@ T* AttentionBase<T>::ConcatStateChunk(const T* past,
 }
 
 template <typename T>
-void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buffer for the result with size BxSxNxH_v
-                                               T* tmp_buffer,             // buffer for temp use with size is BxNxSxH_v
-                                               const T* attention_probs,  // Attention probs with size BxNxSxT
-                                               const T* V,                // V value with size BxNxLxH_v
-                                               int batch_size,            // batch size
-                                               int sequence_length,       // sequence length
-                                               int kv_sequence_length,    // sequence length of K or V
-                                               int past_sequence_length,  // sequence length in past state
-                                               int v_head_size,           // head size of V (H_v)
-                                               int v_hidden_size,         // hidden size of V (D_v)
-                                               int num_heads,             // number of attention heads
-                                               int kv_num_heads,          // number of KV heads
-                                               const T* past_value,       // past value only (if not using past state)
-                                               T* present_value,          // present value only (if not using present state)
-                                               bool transpose_output,     // whether to transpose the output (0, 2, 1, 3)
+void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // buffer for the result with size BxSxNxH_v
+                                               T* tmp_buffer,              // buffer for temp use with size is BxNxSxH_v
+                                               const T* attention_probs,   // Attention probs with size BxNxSxT
+                                               const T* V,                 // V value with size BxNxLxH_v
+                                               int batch_size,             // batch size
+                                               int sequence_length,        // sequence length
+                                               int kv_sequence_length,     // sequence length of K or V
+                                               int past_sequence_length,   // sequence length in past state
+                                               int total_sequence_length,  // total sequence length = past_sequence_length + kv_sequence_length
+                                               int v_head_size,            // head size of V (H_v)
+                                               int v_hidden_size,          // hidden size of V (D_v)
+                                               int num_heads,              // number of attention heads
+                                               int kv_num_heads,           // number of KV heads
+                                               const T* past_value,        // past value only (if not using past state)
+                                               T* present_value,           // present value only (if not using present state)
+                                               bool transpose_output,      // whether to transpose the output (0, 2, 1, 3)
                                                ThreadPool* tp) const {
-  const int total_sequence_length = past_sequence_length + kv_sequence_length;                  // T = P + L
   const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;   // P x H_v
   const ptrdiff_t q_input_chunk_length = SafeInt<ptrdiff_t>(sequence_length) * v_head_size;     // S x H_v
   const ptrdiff_t v_input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;  // L x H_v
@@ -473,19 +490,22 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buf
                          static_cast<int>(v_head_size),  // ldc
                          MLFloat16(1.f).val, MLFloat16(0.f).val, nullptr);
               } else {
-                Gemm_MLFloat16(CblasNoTrans, CblasNoTrans,                                                                                                   // 0, 1
-                               static_cast<ptrdiff_t>(sequence_length), static_cast<ptrdiff_t>(v_head_size), static_cast<ptrdiff_t>(total_sequence_length),  // M,N,K, 2, 3, 4
-                               MLFloat16(1.f),                                                                                                               // 5
-                               attention_probs + attention_probs_offset,                                                                                     // 6
-                               v,                                                                                                                            // 7
-                               MLFloat16(0.f),                                                                                                               // 8
-                               nullptr,                                                                                                                      // 9
-                               nullptr,                                                                                                                      // 10
-                               current_tmp_data,                                                                                                             // 11
-                               nullptr);                                                                                                                     // 12
+                Gemm_MLFloat16(CblasNoTrans, CblasNoTrans,                     // 0, 1
+                               static_cast<ptrdiff_t>(sequence_length),        // M, 2
+                               static_cast<ptrdiff_t>(v_head_size),            // N, 3
+                               static_cast<ptrdiff_t>(total_sequence_length),  // K, 4
+                               MLFloat16(1.f),                                 // 5
+                               attention_probs + attention_probs_offset,       // 6
+                               v,                                              // 7
+                               MLFloat16(0.f),                                 // 8
+                               nullptr,                                        // 9
+                               nullptr,                                        // 10
+                               current_tmp_data,                               // 11
+                               nullptr);                                       // 12
               }
             } else {
-              ORT_THROW("Unsupported data type for attention QK*V multiplication: ", DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
+              ORT_THROW("Unsupported data type for attention QK*V multiplication: ",
+                        DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
             }
 
             // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
@@ -522,19 +542,22 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buf
                          static_cast<int>(v_head_size),  // ldc
                          MLFloat16(1.f).val, MLFloat16(0.f).val, nullptr);
               } else {
-                Gemm_MLFloat16(CblasNoTrans, CblasNoTrans,                                                                                                   // 0, 1
-                               static_cast<ptrdiff_t>(sequence_length), static_cast<ptrdiff_t>(v_head_size), static_cast<ptrdiff_t>(total_sequence_length),  // M,N,K, 2, 3, 4
-                               MLFloat16(1.f),                                                                                                               // 5
-                               attention_probs + attention_probs_offset,                                                                                     // 6
-                               v,                                                                                                                            // 7
-                               MLFloat16(0.f),                                                                                                               // 8
-                               nullptr,                                                                                                                      // 9
-                               nullptr,                                                                                                                      // 10
-                               dest,                                                                                                                         // 11
-                               nullptr);                                                                                                                     // 12
+                Gemm_MLFloat16(CblasNoTrans, CblasNoTrans,                     // 0, 1
+                               static_cast<ptrdiff_t>(sequence_length),        // M, 2
+                               static_cast<ptrdiff_t>(v_head_size),            // N, 3
+                               static_cast<ptrdiff_t>(total_sequence_length),  // K, 4
+                               MLFloat16(1.f),                                 // 5
+                               attention_probs + attention_probs_offset,       // 6
+                               v,                                              // 7
+                               MLFloat16(0.f),                                 // 8
+                               nullptr,                                        // 9
+                               nullptr,                                        // 10
+                               dest,                                           // 11
+                               nullptr);                                       // 12
               }
             } else {
-              ORT_THROW("Unsupported data type for attention QK*V multiplication: ", DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
+              ORT_THROW("Unsupported data type for attention QK*V multiplication: ",
+                        DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
             }
           }
         }
@@ -570,7 +593,8 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   T* output_qk_data = output_qk != nullptr ? output_qk->MutableData<T>() : nullptr;
 
   // Compute the attention score.
-  size_t bytes = SafeInt<size_t>(parameters.batch_size) * parameters.q_num_heads * parameters.q_sequence_length * total_sequence_length * sizeof(T);
+  size_t bytes = SafeInt<size_t>(parameters.batch_size) * parameters.q_num_heads *
+                 parameters.q_sequence_length * total_sequence_length * sizeof(T);
   auto attention_probs = allocator->Alloc(bytes);
   BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
   this->ComputeAttentionProbs(static_cast<T*>(attention_probs),
@@ -587,9 +611,12 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   void* out_tmp_data = nullptr;
   if (parameters.transpose_output) {
     // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
-    out_tmp_data = allocator->Alloc(SafeInt<size_t>(parameters.batch_size) * parameters.q_num_heads * parameters.q_sequence_length * parameters.v_head_size * sizeof(T));
+    out_tmp_data = allocator->Alloc(SafeInt<size_t>(parameters.batch_size) * parameters.q_num_heads *
+                                    parameters.q_sequence_length * parameters.v_head_size * sizeof(T));
   }
-  BufferUniquePtr out_tmp_buffer(out_tmp_data, out_tmp_data == nullptr ? BufferDeleter(nullptr) : BufferDeleter(std::move(allocator)));
+  BufferUniquePtr out_tmp_buffer(out_tmp_data, out_tmp_data == nullptr
+                                                   ? BufferDeleter(nullptr)
+                                                   : BufferDeleter(std::move(allocator)));
 
   int v_hidden_size = parameters.q_num_heads * parameters.v_head_size;
   this->ComputeVxAttentionScore(output->MutableData<T>(),
@@ -600,6 +627,7 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
                                 parameters.q_sequence_length,
                                 parameters.kv_sequence_length,
                                 parameters.past_sequence_length,
+                                parameters.total_sequence_length,
                                 parameters.v_head_size,
                                 v_hidden_size,
                                 parameters.q_num_heads,

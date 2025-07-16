@@ -2,11 +2,26 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/llm/attention_helper.h"
+#include "core/util/shape_checker.h"
 
 namespace onnxruntime {
 namespace attention_helper {
 
-void ComputeOutputShapeForAttention(
+void AttentionParameters::checkParameters() const {
+  ORT_ENFORCE(batch_size > 0, "Batch size must be greater than 0");
+  ORT_ENFORCE(q_sequence_length > 0, "Q sequence length must be greater than 0");
+  ORT_ENFORCE(kv_sequence_length > 0, "KV sequence length must be greater than 0");
+  ORT_ENFORCE(head_size > 0, "Head size must be greater than 0");
+  ORT_ENFORCE(v_head_size > 0, "V head size must be greater than 0");
+  ORT_ENFORCE(past_sequence_length >= 0, "Past sequence length must be non-negative");
+  ORT_ENFORCE(total_sequence_length > 0, "Total sequence length must be greater than 0");
+  ORT_ENFORCE(kv_num_heads > 0, "KV number of heads must be greater than 0");
+  ORT_ENFORCE(q_num_heads > 0, "Q number of heads must be greater than 0");
+  ORT_ENFORCE(total_sequence_length == past_sequence_length + kv_sequence_length,
+              "Total sequence length must be equal to past sequence length plus KV sequence length");
+}
+
+Status ComputeOutputShapeForAttention(
     const Tensor* Q,
     const Tensor* K,
     const Tensor* V,
@@ -44,16 +59,11 @@ void ComputeOutputShapeForAttention(
   parameters.is_causal = is_causal;
   parameters.softcap = softcap;
   parameters.softmax_precision = softmax_precision;
-  parameters.qk_matmul_output_mode = qk_matmul_output_mode;                   // output mode for Q*K matmul
-  parameters.mask_type = attn_mask == nullptr ? AttentionMaskType::MASK_NONE  // mask type
-                                              : (attn_mask->IsDataType<bool>() ? AttentionMaskType::MASK_BOOL : AttentionMaskType::MASK_ADD);
+  parameters.qk_matmul_output_mode = qk_matmul_output_mode;         // output mode for Q*K matmul
   parameters.batch_size = onnxruntime::narrow<int>(Q->Shape()[0]);  // Q.shape[0], K.shape[0], V.shape[0] (4D)
 
   ORT_ENFORCE(parameters.batch_size > 0, "Batch size must be greater than 0");
-  ORT_ENFORCE(parameters.mask_type == AttentionMaskType::MASK_NONE ||
-                  parameters.mask_type == AttentionMaskType::MASK_BOOL ||
-                  attn_mask->IsDataType<float>(),
-              "Attention mask must be of type bool or float if provided.");
+  ORT_ENFORCE(attn_mask == nullptr || (attn_mask->Shape().NumDimensions() >= 2 && attn_mask->Shape().NumDimensions() <= 4), "attn_mask must be 2D or 3D or 4D tensor");
 
   if (q_dims == 4) {
     // 4D
@@ -76,9 +86,6 @@ void ComputeOutputShapeForAttention(
     parameters.past_sequence_length = past_key == nullptr                     // past_key.shape[2] or past_value.shape[2] (4D) or given by the mask
                                           ? 0
                                           : onnxruntime::narrow<int>(past_key->Shape()[2]);
-
-    ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1] == parameters.past_sequence_length + parameters.kv_sequence_length,
-                "inconsistent total_sequence_length (between attn_mask and past_key and past_value)");
 
     y_shape = {static_cast<int64_t>(parameters.batch_size),
                static_cast<int64_t>(parameters.q_num_heads),
@@ -106,17 +113,25 @@ void ComputeOutputShapeForAttention(
                static_cast<int64_t>(parameters.q_sequence_length),
                static_cast<int64_t>(parameters.q_num_heads * parameters.v_head_size)};
   }
-  ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1] == parameters.past_sequence_length + parameters.kv_sequence_length,
+  parameters.total_sequence_length = parameters.past_sequence_length + parameters.kv_sequence_length;
+
+  ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1] == parameters.total_sequence_length,
               "inconsistent total_sequence_length (between attn_mask and past_key and past_value)");
-  ORT_ENFORCE(past_key == nullptr || past_key->Shape()[1] == parameters.kv_num_heads, "inconsistent kv_num_heads (between past_key and Q)");
-  ORT_ENFORCE(past_value == nullptr || past_value->Shape()[1] == parameters.kv_num_heads, "inconsistent kv_num_heads (between past_value and Q)");
-  ORT_ENFORCE(past_key == nullptr || past_key->Shape()[2] == parameters.past_sequence_length, "inconsistent past_sequence_length (between past_key and Q)");
-  ORT_ENFORCE(past_value == nullptr || past_value->Shape()[2] == parameters.past_sequence_length, "inconsistent past_sequence_length (between past_value and Q)");
-  ORT_ENFORCE(past_key == nullptr || past_key->Shape()[3] == parameters.head_size, "inconsistent head_size (between past_key and Q)");
-  ORT_ENFORCE(past_value == nullptr || past_value->Shape()[3] == parameters.v_head_size, "inconsistent v_head_size (between past_value and Q)");
+  ORT_ENFORCE(attn_mask == nullptr ||
+                  attn_mask->Shape().NumDimensions() < 3 ||
+                  attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 3] == 1 ||
+                  attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 3] == parameters.kv_num_heads,
+              "attn_mask must be broadcastable to (batch_size, kv_num_heads, q_sequence_length, total_sequence_length) but is not compatible with kv_num_heads");
+  ORT_ENFORCE(attn_mask == nullptr ||
+                  attn_mask->Shape().NumDimensions() < 4 ||
+                  attn_mask->Shape()[0] == 1 ||
+                  attn_mask->Shape()[0] == parameters.batch_size,
+              "attn_mask must be broadcastable to (batch_size, kv_num_heads, q_sequence_length, total_sequence_length) but is not compatible with batch_size");
+  ASSERT_TENSOR_DIMS(past_key, parameters.batch_size, parameters.kv_num_heads, parameters.past_sequence_length, parameters.head_size);
+  ASSERT_TENSOR_DIMS(past_value, parameters.batch_size, parameters.kv_num_heads, parameters.past_sequence_length, parameters.v_head_size);
 
   parameters.scale = std::isnan(scale) ? static_cast<float>(1.0 / sqrt(parameters.head_size)) : scale;
-  ORT_ENFORCE(parameters.getAttentionType() != AttentionType::kInvalid, "Invalid attention type. q_num_heads must be equal to kv_num_heads or a multiple of it.");
+  parameters.checkParameters();
 
   present_key_shape = {static_cast<int64_t>(parameters.batch_size),
                        static_cast<int64_t>(parameters.kv_num_heads),
@@ -126,10 +141,15 @@ void ComputeOutputShapeForAttention(
                          static_cast<int64_t>(parameters.kv_num_heads),
                          static_cast<int64_t>(parameters.past_sequence_length + parameters.kv_sequence_length),
                          static_cast<int64_t>(parameters.v_head_size)};
-  output_qk_shape = {static_cast<int64_t>(parameters.batch_size),
-                     static_cast<int64_t>(parameters.q_num_heads),
-                     static_cast<int64_t>(parameters.q_sequence_length),
-                     static_cast<int64_t>(parameters.past_sequence_length + parameters.kv_sequence_length)};
+  if (qk_matmul_output_mode == QKMatMulOutputMode::kNone) {
+    output_qk_shape.clear();
+  } else {
+    output_qk_shape = {static_cast<int64_t>(parameters.batch_size),
+                       static_cast<int64_t>(parameters.q_num_heads),
+                       static_cast<int64_t>(parameters.q_sequence_length),
+                       static_cast<int64_t>(parameters.past_sequence_length + parameters.kv_sequence_length)};
+  }
+  return Status::OK();
 }
 }  // namespace attention_helper
 }  // namespace onnxruntime
