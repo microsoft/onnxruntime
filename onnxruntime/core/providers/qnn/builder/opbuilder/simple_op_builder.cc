@@ -60,8 +60,8 @@ Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
   // To DO: Remove once QNN CPU supports ScatterND
   const auto qnn_backend_type = qnn_model_wrapper.GetQnnBackendType();
   if (op_type == "ScatterND") {
-    ORT_RETURN_IF_NOT(qnn_backend_type == QnnBackendType::HTP,
-                      "QNN EP only supports ScatterND op on HTP backend. Falling back to ORT CPU.");
+    ORT_RETURN_IF(qnn_backend_type == QnnBackendType::CPU,
+                  "QNN EP does not support ScatterND op on CPU backend. Falling back to ORT CPU.");
   }
 
   // ONNX's Min, Max, and Sum operators accept a variable number of inputs (i.e., variadic).
