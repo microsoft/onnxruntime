@@ -189,6 +189,15 @@ bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::Ope
 /** Checks if the node has the same op set domain as the given one. */
 bool MatchesOpSetDomain(const Node& node, std::string_view domain);
 
+/// <summary>
+/// The function checks that the external data offset points to the same data as the tensor.
+/// </summary>
+/// <param name="tensor_proto"></param>
+/// <param name="tensor"></param>
+/// <returns>true if successfull</returns>
+[[nodiscard]] bool CheckInMemoryDataMatch(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                          const Tensor& tensor);
+
 #if !defined(ORT_MINIMAL_BUILD)
 
 /** Checks if the output at the specified index is input to downstream Nodes. */

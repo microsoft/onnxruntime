@@ -225,6 +225,17 @@ bool MatchesOpSetDomain(const Node& node, std::string_view domain) {
   return node_domain == domain;
 }
 
+bool CheckInMemoryDataMatch(const ONNX_NAMESPACE::TensorProto& tensor_proto, const Tensor& tensor) {
+  if (utils::HasExternalData(tensor_proto)) {
+    // Retrieve external data using ExternalData structure
+    std::unique_ptr<ExternalDataInfo> external_data;
+    ORT_THROW_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data));
+    return (external_data->GetRelPath().compare(utils::kTensorProtoMemoryAddressTag) == 0) &&
+           (tensor.DataRaw() == reinterpret_cast<const void*>(external_data->GetOffset()));
+  }
+  return false;
+}
+
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
