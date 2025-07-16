@@ -4,6 +4,7 @@
 #pragma once
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include <vector>
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
 #include "core/common/inlined_containers.h"
@@ -101,6 +102,52 @@ bool IsSupportedDataType(const Node& node, const T& supported_data_types) {
   return true;
 }
 
+// Merge 1-D weights (q, k and v) by concatenating them one by one.
+template <typename T>
+void MergeWeights1d(const T* q, const T* k, const T* v, std::vector<T>& result, int64_t q_element_count, int64_t kv_element_count) {
+  for (int64_t i = 0; i < q_element_count; i++) {
+    result.push_back(*q);
+    q++;
+  }
+
+  for (int64_t i = 0; i < kv_element_count; i++) {
+    result.push_back(*k);
+    k++;
+  }
+
+  for (int64_t i = 0; i < kv_element_count; i++) {
+    result.push_back(*v);
+    v++;
+  }
+}
+
+// Merge 2-D weights (q, k and v) by concatenating them row by row.
+template <typename T>
+void MergeMatMulWeightsByRow(const T* q_weight, const T* k_weight, const T* v_weight,
+                             std::vector<T>& result, int64_t row_hidden_size, int64_t q_col_hidden_size, int64_t kv_col_hidden_size) {
+  const T* q = q_weight;
+  const T* k = k_weight;
+  const T* v = v_weight;
+  for (int64_t i = 0; i < row_hidden_size; i++, q += q_col_hidden_size, k += kv_col_hidden_size, v += kv_col_hidden_size) {
+    MergeWeights1d(q, k, v, result, q_col_hidden_size, kv_col_hidden_size);
+  }
+}
+
+template <typename T>
+void AppendBlocks(const T* weight, std::vector<T>& result, int64_t N, int64_t blocks, int64_t block_size) {
+  result.insert(result.end(), weight, weight + N * blocks * block_size);
+}
+
+// Merge Q, K, V tensors into a single vector in the order:
+// [N rows of Q, M rows of K, M rows of V].
+template <typename T>
+void MergeMatMulWeightsByBlocks(const T* q_weight, const T* k_weight, const T* v_weight,
+                                std::vector<T>& result, int64_t q_hidden_size, int64_t kv_hidden_size, int64_t blocks, int64_t block_size) {
+  AppendBlocks(q_weight, result, q_hidden_size, blocks, block_size);
+  AppendBlocks(k_weight, result, kv_hidden_size, blocks, block_size);
+  AppendBlocks(v_weight, result, kv_hidden_size, blocks, block_size);
+}
+
 bool IsOperationDeterministic(const std::string& domain, const std::string& op);
 
 template <typename T>
@@ -116,10 +163,12 @@ bool GetScalarInitializerValue(const onnxruntime::Graph& graph, const onnxruntim
 */
 bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max);
 
-/** Check whether node's output edges count is expected.
-@remarks graph output is not included in output edges, and this node shall not have graph output.
-        A node with graph output cannot be fused unless the graph output also exists in outputs of fused node.
-@returns false when the node has graph output, or number of output edges are not expected.
+/** Check whether `node` has expected outputs.
+@remarks Graph outputs are not included in output edges, and this node should not have a graph output.
+         A node with a graph output cannot be fused unless the graph output also exists in outputs of the fused node.
+         Output edges to implicit inputs are also disallowed as we don't want to fuse with part of a subgraph.
+@returns False when `node` has a graph output or an output edge to an implicit input, or when the number of `node`'s
+         output edges is not `expected_output_edges`.
 */
 bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges);
 

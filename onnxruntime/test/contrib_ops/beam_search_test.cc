@@ -9,6 +9,8 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/model_tester.h"
 #include "test/util/include/current_test_name.h"
+#include "test/util/include/scoped_env_vars.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
@@ -19,7 +21,7 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 namespace test {
 
-TEST(BeamSearchTest, GptBeamSearchFp32) {
+void RunGptBeamSearchFp32() {
   std::vector<int64_t> input_ids_shape{3, 12};
   std::vector<int32_t> input_ids{
       0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
@@ -105,6 +107,16 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
   const auto* result_vals = sequences.GetTensorData<int32_t>();
   auto result_span = gsl::make_span(result_vals, expected_output.size());
   ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.begin(), result_span.end()));
+}
+
+TEST(BeamSearchTest, GptBeamSearchFp32) {
+  RunGptBeamSearchFp32();
+}
+
+TEST(BeamSearchTest, GptBeamSearchFp32_DisableFastTopK) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{onnxruntime::contrib::transformers::kBeamSearchUseFastTopK, "0"}}};
+  RunGptBeamSearchFp32();
 }
 
 TEST(BeamSearchTest, GptBeamSearchFp16) {
@@ -391,9 +403,6 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
 }
 
 TEST(BeamSearchTest, DummyT5) {
-#if defined(USE_CUDA) && defined(USE_DML)
-  SKIP_CUDA_TEST_WITH_DML;
-#endif
   // dummy_t5.onnx model generated using following command:
   // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5.onnx
   ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5.onnx"));
@@ -407,9 +416,6 @@ TEST(BeamSearchTest, DummyT5) {
 }
 
 TEST(BeamSearchTest, DummyT5WithOuterScopeInitializers) {
-#if defined(USE_CUDA) && defined(USE_DML)
-  SKIP_CUDA_TEST_WITH_DML;
-#endif
   // dummy_t5_with_outer_scope_initializers.onnx model generated using following command:
   // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5_with_outer_scope_initializers.onnx --move-initializers
   ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_with_outer_scope_initializers.onnx"));
@@ -423,9 +429,6 @@ TEST(BeamSearchTest, DummyT5WithOuterScopeInitializers) {
 }
 
 TEST(BeamSearchTest, DummyT5WithSequenceInputIds) {
-#if defined(USE_CUDA) && defined(USE_DML)
-  SKIP_CUDA_TEST_WITH_DML;
-#endif
   // dummy_t5_with_sequence_input_ids.onnx model generated using following command:
   // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5_with_sequence_input_ids.onnx --sequence-as-input
   ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_with_sequence_input_ids.onnx"));
@@ -439,9 +442,6 @@ TEST(BeamSearchTest, DummyT5WithSequenceInputIds) {
 }
 
 TEST(BeamSearchTest, DummyT5PointerGenerator) {
-#if defined(USE_CUDA) && defined(USE_DML)
-  SKIP_CUDA_TEST_WITH_DML;
-#endif
   // dummy_t5_pointer_generator.onnx model generated using following command:
   // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5_pointer_generator.onnx --decoder-needs-input-ids
   ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_pointer_generator.onnx"));

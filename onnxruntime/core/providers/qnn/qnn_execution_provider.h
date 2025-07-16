@@ -30,7 +30,9 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_view,
-                const IKernelLookup& /*kernel_lookup*/) const override;
+                const IKernelLookup& /*kernel_lookup*/,
+                const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                IResourceAccountant* /* resource_accountant */) const override;
 
   Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
@@ -41,6 +43,10 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override;
 
+  std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                   std::string_view node_op_type,
+                                                   DataLayout target_data_layout) const override;
+
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
@@ -48,6 +54,11 @@ class QNNExecutionProvider : public IExecutionProvider {
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+
+  Status SetEpDynamicOptions(gsl::span<const char* const> keys,
+                             gsl::span<const char* const> value) override;
 
  private:
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
@@ -64,7 +75,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string);
 
-  void InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
+  void InitQnnHtpGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
 
   qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level);
 
@@ -82,18 +93,23 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
   bool qnn_context_embed_mode_ = true;
   int32_t vtcm_size_in_mb_ = 0;
+  bool enable_vtcm_backup_buffer_sharing_ = false;
   std::unique_ptr<onnxruntime::Model> qnn_ep_context_model_;
   std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
   uint32_t device_id_ = 0;
   qnn::HtpPerformanceMode default_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   uint32_t default_rpc_control_latency_ = 0;
+  uint32_t default_rpc_polling_time_ = 0;
   bool enable_HTP_FP16_precision_ = true;
   bool share_ep_contexts_ = false;
+  bool stop_share_ep_contexts_ = false;
   bool enable_spill_fill_buffer_ = false;
 #if defined(_WIN32)
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif
   qnn::ModelSettings model_settings_ = {};
+  bool dump_json_qnn_graph_ = false;
+  std::string json_qnn_graph_dir_ = "";
 
   // Whether this is set depends on a session option enabling it and if the RPCMEM dynamic library is available.
   // This is potentially shared with HtpSharedMemoryAllocator which may be returned by CreatePreferredAllocators().
@@ -104,7 +120,8 @@ class QNNExecutionProvider : public IExecutionProvider {
     PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
                      uint32_t device_id, uint32_t core_id,
                      qnn::HtpPerformanceMode default_htp_performance_mode,
-                     uint32_t default_rpc_control_latency);
+                     uint32_t default_rpc_control_latency,
+                     uint32_t default_rpc_polling_time);
     ~PerThreadContext();
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerThreadContext);
 

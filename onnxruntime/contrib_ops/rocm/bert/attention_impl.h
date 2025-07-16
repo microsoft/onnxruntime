@@ -6,6 +6,7 @@
 #include <hip/hip_fp16.h>
 #include <hipblas/hipblas.h>
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
 

@@ -7,18 +7,24 @@
 import logging
 import os
 import tempfile
+from itertools import chain
 from pathlib import Path
 
-import numpy
+import numpy as np
 import onnx
 import torch
-from models.t5.past_helper import PastKeyValuesHelper
+from float16 import convert_float_to_float16
+from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
-from torch_onnx_export_helper import torch_onnx_export
 from transformers import WhisperConfig
-from whisper_decoder import WhisperDecoderInit
-from whisper_encoder import WhisperEncoder, WhisperEncoderInputs
-from whisper_openai_helper import WhisperDecoderInitOpenai
+from whisper_decoder import WhisperDecoder
+from whisper_encoder import WhisperEncoder
+from whisper_inputs import (
+    convert_inputs_for_ort,
+    get_model_dynamic_axes,
+    get_sample_encoder_decoder_init_inputs,
+    group_past_key_values,
+)
 
 from onnxruntime import InferenceSession
 
@@ -26,205 +32,275 @@ logger = logging.getLogger(__name__)
 
 
 class WhisperEncoderDecoderInit(torch.nn.Module):
-    """A combination of WhisperEncoder and WhisperDecoderInit."""
+    """Whisper encoder component + first pass through Whisper decoder component to initialize KV caches"""
 
-    def __init__(
-        self,
-        encoder: torch.nn.Module,
-        decoder: torch.nn.Module,
-        config: WhisperConfig,
-        decoder_start_token_id: int | None = None,
-        model_impl: str = "hf",
-        model: torch.nn.Module = None,
-    ):
+    def __init__(self, config: WhisperConfig, model: torch.nn.Module, model_impl: str, no_beam_search_op: bool = False):
         super().__init__()
         self.config = config
-        self.whisper_encoder = WhisperEncoder(encoder, config, model_impl=model_impl)
-        self.whisper_decoder_init = WhisperDecoderInit(decoder, config, decoder_start_token_id)
-        if model is not None:
-            self.whisper_decoder_openai_init = WhisperDecoderInitOpenai(model, decoder)
+        self.device = model.device
         self.model_impl = model_impl
+        self.no_beam_search_op = no_beam_search_op
 
-    def forward(
-        self,
-        encoder_input_ids: torch.Tensor,
-        decoder_input_ids: torch.Tensor = None,
-        remove_hooks: bool = False,
-    ):
-        encoder_hidden_states: torch.FloatTensor = self.whisper_encoder(encoder_input_ids)
-        # Decoder out: (logits, past_key_values, encoder_hidden_state)
-        if self.model_impl == "openai":
-            encoder_hidden_states.unsqueeze(0)
-            decinit_out, present = self.whisper_decoder_openai_init(
-                decoder_input_ids, encoder_hidden_states, remove_hooks=remove_hooks
+        self.encoder = WhisperEncoder(config, model, model_impl)
+        self.decoder = WhisperDecoder(config, model, model_impl, no_beam_search_op)
+
+        self.max_source_positions = self.config.max_source_positions
+        self.num_heads = self.config.decoder_attention_heads
+        self.head_size = self.config.d_model // self.num_heads
+
+    def hf_forward_for_beam_search_op(self, audio_features: torch.Tensor, decoder_input_ids: torch.Tensor):
+        encoder_hidden_states = self.encoder(audio_features)
+        logits, present_key_values = self.decoder(decoder_input_ids, encoder_hidden_states)
+        return logits, encoder_hidden_states, present_key_values
+
+    def hf_forward_for_no_beam_search_op(self, audio_features: torch.Tensor):
+        encoder_hidden_states = self.encoder(audio_features)
+
+        # Get cross attention KV caches and return them for this model
+        # We do this because these MatMuls are only run once before their outputs are being re-used in the decoder
+        present_cross_attention_key_value_caches = []
+        for layer in self.decoder.decoder.layers:
+            cross_attn_key_cache = (
+                layer.encoder_attn.k_proj(encoder_hidden_states)
+                .view(-1, self.max_source_positions, self.num_heads, self.head_size)
+                .transpose(1, 2)
             )
-            return decinit_out, encoder_hidden_states, present
+            cross_attn_value_cache = (
+                layer.encoder_attn.v_proj(encoder_hidden_states)
+                .view(-1, self.max_source_positions, self.num_heads, self.head_size)
+                .transpose(1, 2)
+            )
+            present_cross_attention_key_value_caches.append(cross_attn_key_cache)
+            present_cross_attention_key_value_caches.append(cross_attn_value_cache)
+
+        return encoder_hidden_states, present_cross_attention_key_value_caches
+
+    def oai_forward_for_beam_search_op(self, audio_features: torch.Tensor, decoder_input_ids: torch.Tensor):
+        encoder_hidden_states = self.encoder(audio_features)
+        logits, present_key_values = self.decoder(decoder_input_ids, encoder_hidden_states)
+        return logits, encoder_hidden_states, present_key_values
+
+    def oai_forward_for_no_beam_search_op(self, audio_features: torch.Tensor):
+        encoder_hidden_states = self.encoder(audio_features)
+
+        # Get cross attention KV caches and return them for this model
+        # We do this because these MatMuls are only run once before their outputs are being re-used in the decoder
+        present_cross_attention_key_value_caches = []
+        for block in self.decoder.model.decoder.blocks:
+            cross_attn_key_cache = (
+                block.cross_attn.key(encoder_hidden_states)
+                .view(-1, self.max_source_positions, self.num_heads, self.head_size)
+                .transpose(1, 2)
+            )
+            cross_attn_value_cache = (
+                block.cross_attn.value(encoder_hidden_states)
+                .view(-1, self.max_source_positions, self.num_heads, self.head_size)
+                .transpose(1, 2)
+            )
+            present_cross_attention_key_value_caches.append(cross_attn_key_cache)
+            present_cross_attention_key_value_caches.append(cross_attn_value_cache)
+
+        return encoder_hidden_states, present_cross_attention_key_value_caches
+
+    def forward(self, audio_features: torch.Tensor, decoder_input_ids: torch.Tensor | None = None):
+        if self.model_impl == "openai":
+            if self.no_beam_search_op:
+                return self.oai_forward_for_no_beam_search_op(audio_features)
+            return self.oai_forward_for_beam_search_op(audio_features, decoder_input_ids)
+
+        # Hugging Face implementation
+        if self.no_beam_search_op:
+            return self.hf_forward_for_no_beam_search_op(audio_features)
+        return self.hf_forward_for_beam_search_op(audio_features, decoder_input_ids)
+
+    def input_names(self):
+        if self.no_beam_search_op:
+            input_names = ["audio_features"]
         else:
-            decinit_out = self.whisper_decoder_init(decoder_input_ids, encoder_hidden_states)
-            present_self, present_cross = PastKeyValuesHelper.group_by_self_and_cross(decinit_out[1])
-            present = present_self + present_cross
-        return decinit_out[0], encoder_hidden_states, present
+            input_names = ["encoder_input_ids", "decoder_input_ids"]
+        return input_names
 
+    def output_names(self):
+        if self.no_beam_search_op:
+            output_names = [
+                "encoder_hidden_states",
+                *list(
+                    chain.from_iterable(
+                        (f"present_key_cross_{i}", f"present_value_cross_{i}")
+                        for i in range(self.config.decoder_layers)
+                    )
+                ),
+            ]
+        else:
+            output_names = [
+                "logits",
+                "encoder_hidden_states",
+                *list(
+                    chain.from_iterable(
+                        (
+                            f"present_key_self_{i}",
+                            f"present_value_self_{i}",
+                            f"present_key_cross_{i}",
+                            f"present_value_cross_{i}",
+                        )
+                        for i in range(self.config.decoder_layers)
+                    )
+                ),
+            ]
+        return output_names
 
-class WhisperEncoderDecoderInitInputs:
-    def __init__(self, encoder_input_ids, decoder_input_ids=None):
-        self.encoder_input_ids: torch.LongTensor = encoder_input_ids
-        self.decoder_input_ids: torch.LongTensor = decoder_input_ids
+    def dynamic_axes(self, input_names, output_names):
+        dynamic_axes = get_model_dynamic_axes(self.config, input_names, output_names)
+        return dynamic_axes
 
-    @staticmethod
-    def create_dummy(
-        config: WhisperConfig,
-        batch_size: int,
-        encode_sequence_length: int,
-        use_decoder_input_ids: bool,
-        device: torch.device,
-        use_int32_inputs: bool = False,
-    ):  # -> WhisperEncoderDecoderInitInputs:
-        encoder_inputs: WhisperEncoderInputs = WhisperEncoderInputs.create_dummy(
-            batch_size,
-            sequence_length=3000,
-            feature_size=config.num_mel_bins,
-            device=device,
+    def inputs(self, use_fp16_inputs: bool, use_int32_inputs: bool, return_dict: bool = False):
+        inputs = get_sample_encoder_decoder_init_inputs(
+            self.config,
+            self.device,
+            batch_size=2,
+            decoder_sequence_length=6,
+            use_fp16=use_fp16_inputs,
+            use_int32=use_int32_inputs,
         )
-        decoder_input_ids = None
-        if use_decoder_input_ids:
-            dtype = torch.int32 if use_int32_inputs else torch.int64
-            decoder_input_ids = torch.ones((batch_size, 2), dtype=dtype, device=device) * config.decoder_start_token_id
+        if return_dict:
+            if self.no_beam_search_op:
+                del inputs["decoder_input_ids"]
+            return inputs
 
-        return WhisperEncoderDecoderInitInputs(encoder_inputs.input_ids, decoder_input_ids)
+        if self.no_beam_search_op:
+            return (inputs["audio_features"],)
+        return (
+            inputs["audio_features"],
+            inputs["decoder_input_ids"],
+        )
 
-    def to_list(self) -> list:
-        input_list = [self.encoder_input_ids]
-        if self.decoder_input_ids is not None:
-            input_list.append(self.decoder_input_ids)
-        return input_list
+    def fix_key_value_cache_dims(self, output: ValueInfoProto, is_cross: bool = False):
+        # Shape should be (batch_size, num_heads, sequence_length, head_size) for self attention KV caches
+        # and (batch_size, num_heads, num_frames // 2, head_size) for cross attention KV caches
+        num_heads = output.type.tensor_type.shape.dim[1]
+        if "_dim_" in num_heads.dim_param:
+            num_heads.Clear()
+            num_heads.dim_value = self.num_heads
+        sequence_length = output.type.tensor_type.shape.dim[2]
+        if "_dim_" in sequence_length.dim_param:
+            sequence_length.Clear()
+            if is_cross:
+                sequence_length.dim_value = self.max_source_positions
+            else:
+                sequence_length.dim_param = "total_sequence_length"
+        head_size = output.type.tensor_type.shape.dim[3]
+        if "_dim_" in head_size.dim_param:
+            head_size.Clear()
+            head_size.dim_value = self.head_size
+        return output
 
+    def fix_outputs(self, model: ModelProto):
+        # ONNX exporter might mark dimensions like 'Transposepresent_value_self_1_dim_2' in shape inference.
+        # We now change the dim_values to the correct one.
+        reordered_outputs = []
+        self_attn_kv_caches = []
+        cross_attn_kv_caches = []
 
-class WhisperEncoderDecoderInitHelper:
-    @staticmethod
+        for output in model.graph.output:
+            if "present" not in output.name:
+                reordered_outputs.append(output)
+
+            elif "self" in output.name:
+                # Self attention KV caches
+                new_output = self.fix_key_value_cache_dims(output, is_cross=False)
+                if self.no_beam_search_op:
+                    reordered_outputs.append(new_output)
+                else:
+                    self_attn_kv_caches.append(new_output)
+            else:
+                # Cross attention KV caches
+                new_output = self.fix_key_value_cache_dims(output, is_cross=True)
+                if self.no_beam_search_op:
+                    reordered_outputs.append(new_output)
+                else:
+                    cross_attn_kv_caches.append(new_output)
+
+        if not self.no_beam_search_op:
+            reordered_outputs += self_attn_kv_caches + cross_attn_kv_caches
+
+        while len(model.graph.output) > 0:
+            model.graph.output.pop()
+        model.graph.output.extend(reordered_outputs)
+        return model
+
+    def fix_layernorm_weights(self, model: ModelProto, use_fp16_inputs: bool):
+        if self.model_impl == "openai" and use_fp16_inputs:
+            # Cast ONNX model to float16 to ensure LayerNorm weights are converted from
+            # float32 to float16 since exported model already has float16 weights everywhere
+            # except for LayerNorm ops. This happens because OpenAI always upcasts to float32
+            # when computing LayerNorm.
+            #
+            # Reference:
+            # https://github.com/openai/whisper/blob/90db0de1896c23cbfaf0c58bc2d30665f709f170/whisper/model.py#L41
+            model = convert_float_to_float16(model)
+        return model
+
     def export_onnx(
-        model: WhisperEncoderDecoderInit,
-        device: torch.device,
+        self,
         onnx_model_path: str,
-        use_decoder_input_ids: bool = True,
+        provider: str,
         verbose: bool = True,
         use_external_data_format: bool = False,
-        use_int32_inputs: bool = False,
+        use_fp16_inputs: bool = False,
+        use_int32_inputs: bool = True,
     ):
-        """Export decoder to ONNX
+        """Export encoder-decoder-init to ONNX
 
         Args:
-            model (WhisperEncoderDecoderInit): the model to export
-            device (torch.device): device of decoder object
-            onnx_model_path (str): onnx path
+            onnx_model_path (str): path to save ONNX model
+            provider (str): provider to use for verifying parity on ONNX model
             verbose (bool, optional): print verbose information. Defaults to True.
             use_external_data_format (bool, optional): use external data format or not. Defaults to False.
+            use_fp16_inputs (bool, optional): use float16 inputs for the audio_features. Defaults to False.
+            use_int32_inputs (bool, optional): use int32 inputs for the decoder_input_ids. Defaults to True.
         """
-        assert isinstance(model, WhisperEncoderDecoderInit)
+        # Shape of encoder's tensors:
+        # Inputs:
+        #    audio_features: (batch_size, num_mels, num_frames)
+        # Outputs:
+        #    encoder_hidden_states: (batch_size, num_frames // 2, hidden_size)
 
-        inputs = WhisperEncoderDecoderInitInputs.create_dummy(
-            model.config,
-            batch_size=2,
-            encode_sequence_length=3000,
-            use_decoder_input_ids=True,
-            device=device,
-            use_int32_inputs=use_int32_inputs,
-        )
-        input_list = inputs.to_list()
-
-        out = model(inputs.encoder_input_ids, inputs.decoder_input_ids, remove_hooks=True)
-        present = out[2]
-        present_names = PastKeyValuesHelper.get_input_names(present, encoder=True)
-
-        output_names = ["logits", "encoder_hidden_states", *present_names]
-
-        # Shape of input tensors (sequence_length==1):
-        #    input_ids: (batch_size, sequence_length)
-        #    encoder_hidden_states: (batch_size, encode_sequence_length, hidden_size)
-        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length, head_size)
-        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
-
-        # Shape of output tensors:
+        # Shape of decoder's tensors:
+        # Inputs:
+        #    decoder_input_ids: (batch_size, sequence_length)
+        #    encoder_hidden_states (comes from encoder's outputs): (batch_size, num_frames // 2, hidden_size)
+        # Outputs:
         #    logits: (batch_size, sequence_length, vocab_size)
-        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length + sequence_length, head_size)
-        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
+        #    present_{key/value}_self_* (present self attention KV caches): (batch_size, num_heads, past_sequence_length + sequence_length, head_size)
+        #    present_{key/value}_cross_* (present cross attention KV caches): (batch_size, num_heads, num_frames // 2, head_size)
 
-        input_names = ["encoder_input_ids"]
+        inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs)
+        input_names = self.input_names()
+        output_names = self.output_names()
+        dynamic_axes = self.dynamic_axes(input_names, output_names)
 
-        # ONNX exporter might mark dimension like 'Transposepresent_value_self_1_dim_2' in shape inference.
-        # We use a workaround here: first use dim_param "1" for sequence_length, and later change to dim_value.
-        sequence_length = "1"
-        num_heads = str(model.config.encoder_attention_heads)
-        hidden_size = str(model.config.d_model)
-        head_size = str(model.config.d_model // model.config.encoder_attention_heads)
-        dynamic_axes = {
-            "encoder_input_ids": {0: "batch_size", 1: "feature_size"},
-            "encoder_hidden_states": {
-                0: "batch_size",
-                1: "encode_sequence_length",
-                2: hidden_size,
-            },
-            "logits": {
-                0: "batch_size",
-                1: "decode_sequence_length",
-            },
-        }
-
-        if use_decoder_input_ids:
-            input_names.append("decoder_input_ids")
-            dynamic_axes["decoder_input_ids"] = {
-                0: "batch_size",
-                1: "decode_sequence_length",
-            }
-
-        for name in present_names:
-            if "cross" in name:
-                dynamic_axes[name] = {
-                    0: "batch_size",
-                    1: num_heads,
-                    2: "encode_sequence_length",
-                    3: head_size,
-                }
-
-            else:  # self attention past state
-                dynamic_axes[name] = {
-                    0: "batch_size",
-                    1: num_heads,
-                    2: "decode_sequence_length",
-                    3: head_size,
-                }
-
+        Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             temp_onnx_model_path = os.path.join(tmp_dir_name, "encoder_decoder_init.onnx")
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-            torch_onnx_export(
-                model,
-                args=tuple(input_list),
-                f=temp_onnx_model_path,
+            out_path = temp_onnx_model_path if use_external_data_format else onnx_model_path
+
+            torch.onnx.export(
+                self,
+                args=inputs,
+                f=out_path,
                 export_params=True,
                 input_names=input_names,
                 output_names=output_names,
                 dynamic_axes=dynamic_axes,
                 opset_version=17,
                 do_constant_folding=True,
-                use_external_data_format=use_external_data_format,
                 verbose=verbose,
             )
 
-            # Workaround as mentioned earlier: change numeric dim_param to dim_value
-            model = onnx.load(temp_onnx_model_path)
-            for tensor in model.graph.output:
-                for dim_proto in tensor.type.tensor_type.shape.dim:
-                    if dim_proto.HasField("dim_param") and dim_proto.dim_param in [
-                        sequence_length,
-                        num_heads,
-                        hidden_size,
-                        head_size,
-                    ]:
-                        dim_value = int(dim_proto.dim_param)
-                        dim_proto.Clear()
-                        dim_proto.dim_value = dim_value
-
+            model = onnx.load_model(out_path, load_external_data=use_external_data_format)
+            model = self.fix_outputs(model)
+            model = self.fix_layernorm_weights(model, use_fp16_inputs)
             OnnxModel.save(
                 model,
                 onnx_model_path,
@@ -232,74 +308,64 @@ class WhisperEncoderDecoderInitHelper:
                 all_tensors_to_one_file=True,
             )
 
-    @staticmethod
-    def onnxruntime_inference(ort_session, inputs: WhisperEncoderDecoderInitInputs):
-        """Run inference of ONNX model."""
-        logger.debug("start onnxruntime_inference")
+        self.verify_onnx(onnx_model_path, provider, use_fp16_inputs, use_int32_inputs)
 
-        ort_inputs = {
-            "encoder_input_ids": numpy.ascontiguousarray(inputs.encoder_input_ids.cpu().numpy()),
-        }
-        if inputs.decoder_input_ids is not None:
-            ort_inputs["decoder_input_ids"] = numpy.ascontiguousarray(inputs.decoder_input_ids.cpu().numpy())
-
-        ort_outputs = ort_session.run(None, ort_inputs)
-        return ort_outputs
-
-    @staticmethod
     def verify_onnx(
-        model: WhisperEncoderDecoderInit,
-        ort_session: InferenceSession,
-        device: torch.device,
+        self,
+        onnx_model_path: str,
+        provider: str,
+        use_fp16_inputs: bool,
         use_int32_inputs: bool,
-        max_cases: int = 4,
     ):
-        """Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good."""
-        ort_inputs = ort_session.get_inputs()
-        use_decoder_input_ids = len(ort_inputs) == 3
+        """Verify ONNX model outputs and PyTorch model outputs match
 
-        test_cases = [(4, 11), (1, 2), (3, 1), (8, 5)]
-        test_cases_max_diff = []
-        for batch_size, encode_sequence_length in test_cases[:max_cases]:
-            inputs = WhisperEncoderDecoderInitInputs.create_dummy(
-                model.config,
-                batch_size,
-                encode_sequence_length,
-                use_decoder_input_ids=use_decoder_input_ids,
-                device=device,
-                use_int32_inputs=use_int32_inputs,
+        Args:
+            onnx_model_path (str): path to save ONNX model
+            provider (str): execution provider for ONNX model
+            use_fp16_inputs (bool, optional): use float16 inputs for the audio_features
+            use_int32_inputs (bool, optional): use int32 inputs for the decoder_input_ids
+        """
+        # Shape of encoder's tensors:
+        # Inputs:
+        #    audio_features: (batch_size, num_mels, num_frames)
+        # Outputs:
+        #    encoder_hidden_states: (batch_size, num_frames // 2, hidden_size)
+
+        # Shape of decoder's tensors:
+        # Inputs:
+        #    decoder_input_ids: (batch_size, sequence_length)
+        #    encoder_hidden_states (comes from encoder's outputs): (batch_size, num_frames // 2, hidden_size)
+        # Outputs:
+        #    logits: (batch_size, sequence_length, vocab_size)
+        #    present_{key/value}_self_* (present self attention KV caches): (batch_size, num_heads, past_sequence_length + sequence_length, head_size)
+        #    present_{key/value}_cross_* (present cross attention KV caches): (batch_size, num_heads, num_frames // 2, head_size)
+
+        inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs, return_dict=True)
+
+        # Run PyTorch model
+        pt_outputs = []
+        if self.no_beam_search_op:
+            out = self.forward(**inputs)
+            pt_outputs.append(out[0].detach().cpu().numpy())
+            for present_cross_attn_cache in out[1]:
+                pt_outputs.append(present_cross_attn_cache.detach().cpu().numpy())
+        else:
+            out = self.forward(**inputs)
+            pt_outputs.append(out[0].detach().cpu().numpy())
+            pt_outputs.append(out[1].detach().cpu().numpy())
+
+            (self_attn_kv_caches, cross_attn_kv_caches) = group_past_key_values(out[2])
+            pt_outputs.extend([self_attn_kv_cache.detach().cpu().numpy() for self_attn_kv_cache in self_attn_kv_caches])
+            pt_outputs.extend(
+                [cross_attn_kv_cache.detach().cpu().numpy() for cross_attn_kv_cache in cross_attn_kv_caches]
             )
 
-            ort_outputs = WhisperEncoderDecoderInitHelper.onnxruntime_inference(ort_session, inputs)
+        # Run ONNX model
+        sess = InferenceSession(onnx_model_path, providers=[provider])
+        ort_outputs = sess.run(None, convert_inputs_for_ort(inputs, sess))
 
-            # Run inference of PyTorch model
-            input_list = inputs.to_list()
-            torch_outputs = model(*input_list)
-
-            assert torch_outputs[0].cpu().numpy().shape == ort_outputs[0].shape
-            max_diff = numpy.amax(numpy.abs(torch_outputs[0].cpu().numpy() - ort_outputs[0]))
-            logger.debug(f"logits max_diff={max_diff}")
-            max_diff_all = max_diff
-
-            assert torch_outputs[1].cpu().numpy().shape == ort_outputs[1].shape
-            max_diff = numpy.amax(numpy.abs(torch_outputs[1].cpu().numpy() - ort_outputs[1]))
-            logger.debug(f"encoder_hidden_states max_diff={max_diff}")
-            max_diff_all = max(max_diff_all, max_diff)
-
-            for i in range(2 * model.config.num_layers):
-                max_diff = numpy.amax(numpy.abs(torch_outputs[2][i].cpu().numpy() - ort_outputs[2 + i]))
-                logger.debug(f"self attention past state {i} max_diff={max_diff}")
-
-            for i in range(2 * model.config.num_layers):
-                max_diff = numpy.amax(
-                    numpy.abs(torch_outputs[3][i].cpu().numpy() - ort_outputs[2 + 2 * model.config.num_layers + i])
-                )
-                logger.debug(f"cross attention past state {i} max_diff={max_diff}")
-                max_diff_all = max(max_diff_all, max_diff)
-
-            test_cases_max_diff.append(max_diff_all)
-            logger.info(
-                f"batch_size={batch_size} encode_sequence_length={encode_sequence_length}, max_diff={max_diff_all}"
-            )
-
-        return max(test_cases_max_diff)
+        # Calculate output difference
+        for i, output_name in enumerate(self.output_names()):
+            diff = np.abs(pt_outputs[i] - ort_outputs[i])
+            logger.warning(f"Comparing {output_name}...")
+            logger.warning(f"Max diff: {np.max(diff)}")

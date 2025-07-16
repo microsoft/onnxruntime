@@ -5,6 +5,10 @@
 #include <cstdlib>
 #include <optional>
 #include <string>
+#ifdef _WIN32
+#include <iostream>
+#include <locale>
+#endif
 
 #ifndef USE_ONNXRUNTIME_DLL
 #ifdef __GNUC__
@@ -29,6 +33,11 @@ std::unique_ptr<Ort::Env> ort_env;
 
 // ortenv_setup() and ortenv_teardown() are used by onnxruntime/test/xctest/xcgtest.mm so can't be file local
 extern "C" void ortenv_setup() {
+#ifdef _WIN32
+  // Set the locale to UTF-8 to ensure proper handling of wide characters on Windows
+  std::wclog.imbue(std::locale(".UTF-8", std::locale::ctype));
+#endif
+
   OrtThreadingOptions tpo;
 
   // allow verbose logging to be enabled by setting this environment variable to a numeric log level

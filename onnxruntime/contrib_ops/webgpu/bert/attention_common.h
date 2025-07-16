@@ -7,9 +7,9 @@
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
-#include "contrib_ops/webgpu/bert/attention_common.h"
 
-#include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
+
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
@@ -123,7 +123,8 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
 
 Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
-                      WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr);
+                      WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context,
+                      const Tensor* head_sink = nullptr, const Tensor* seqlen_k = nullptr);
 
 }  // namespace webgpu
 }  // namespace contrib

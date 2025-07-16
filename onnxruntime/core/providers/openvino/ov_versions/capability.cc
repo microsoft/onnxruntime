@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 #include <map>
 #include <unordered_set>
+#include <type_traits>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/backend_utils.h"
@@ -26,23 +27,30 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 // Constructor
-GetCapability::GetCapability(const GraphViewer& graph_viewer_param,
+GetCapability::GetCapability(const EPCtxHandler& ep_ctx_handler,
+                             const GraphViewer& graph_viewer_param,
                              const std::string device_type_param,
-                             const bool enable_qdq_optimizer)
-    : graph_viewer_(graph_viewer_param), device_type_(device_type_param) {
+                             const bool enable_qdq_optimizer) : ep_ctx_handler_(ep_ctx_handler),
+                                                                graph_viewer_(graph_viewer_param),
+                                                                device_type_(std::move(device_type_param)) {
   bool npu_qdq_optimizer_enabled = false;
   if (device_type_.find("NPU") != std::string::npos) {
     device_type_ = "CPU";
     if (enable_qdq_optimizer) npu_qdq_optimizer_enabled = true;
+  } else if (enable_qdq_optimizer && device_type_.find("GPU") != std::string::npos) {
+    npu_qdq_optimizer_enabled = true;  // see data_ops.cc ~615 where we check for int16 types for gpu, this may change to a better approach later
   }
-#if OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 4
-  data_ops_ = new DataOps(graph_viewer_, V_2024_4, device_type_, npu_qdq_optimizer_enabled);
-#elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 5
+
+#if OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 5
   data_ops_ = new DataOps(graph_viewer_, V_2024_5, device_type_, npu_qdq_optimizer_enabled);
+#elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 6
+  data_ops_ = new DataOps(graph_viewer_, V_2024_6, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 0
   data_ops_ = new DataOps(graph_viewer_, V_2025_0, device_type_, npu_qdq_optimizer_enabled);
+#elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 1
+  data_ops_ = new DataOps(graph_viewer_, V_2025_1, device_type_, npu_qdq_optimizer_enabled);
 #else
-  data_ops_ = new DataOps(graph_viewer_, V_2025_0, device_type_, npu_qdq_optimizer_enabled);
+  data_ops_ = new DataOps(graph_viewer_, V_2025_1, device_type_, npu_qdq_optimizer_enabled);
 #endif
 }
 
@@ -54,6 +62,28 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     return result;
   }
 
+  auto Iterable2String = []<typename U, typename V>(U& strings, const V& node_args) {
+    constexpr bool has_name = requires(V v) {
+      (*v.begin())->Name();
+    };
+    for (const auto& arg : node_args) {
+      if constexpr (has_name) {
+        strings.push_back(arg->Name());
+      } else {
+        strings.push_back(arg);
+      }
+    }
+  };
+
+  // Check for EpContext nodes
+  const auto& nodes = graph_viewer_.GetNodesInTopologicalOrder();
+
+  // If all the nodes have been accounted for then no more processing is needed
+  if (result.size() == nodes.size()) {
+    is_wholly_supported_graph_ = true;
+    return result;
+  }
+
   // This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
   std::unordered_set<std::string> ng_required_initializers;
 
@@ -62,8 +92,8 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
     for (size_t i = 0; i < unsupported_nodes.size(); i++) {
-      const Node* node = graph_viewer_.GetNode(unsupported_nodes[i]);
-      std::cout << "Unsupported node op " << node->OpType() << std::endl;
+      const Node* unode = graph_viewer_.GetNode(unsupported_nodes[i]);
+      std::cout << "Unsupported node op " << unode->OpType() << std::endl;
     }
   }
 #endif
@@ -73,16 +103,13 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;
     // Fill inputs with names
-    std::for_each(graph_viewer_.GetInputs().begin(), graph_viewer_.GetInputs().end(),
-                  [&inputs](const NodeArg* node_arg) { inputs.push_back(node_arg->Name()); });
+    Iterable2String(inputs, graph_viewer_.GetInputs());
 
     /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
     if (inputs.empty()) {
       return result;
     }
-
-    const std::vector<NodeIndex>& nodes = graph_viewer_.GetNodesInTopologicalOrder();
 
     const Node* node = graph_viewer_.GetNode(nodes[0]);
 
@@ -102,13 +129,8 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       }
     }
 
-    // Initializers need to be part of meta_def->inputs
-    std::for_each(ng_required_initializers.begin(), ng_required_initializers.end(),
-                  [&inputs](const std::string& initializer) { inputs.push_back(initializer); });
-
     // Fill outputs with names
-    std::for_each(graph_viewer_.GetOutputs().begin(), graph_viewer_.GetOutputs().end(),
-                  [&outputs](const NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
+    Iterable2String(outputs, graph_viewer_.GetOutputs());
 
     // Create and add this graph to result.
     AppendClusterToSubGraph(graph_viewer_.GetNodesInTopologicalOrder(), inputs, outputs, result);
@@ -148,9 +170,15 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     int no_of_clusters = 0;
 
     for (auto this_cluster : connected_clusters) {
-      // If subgraph has less then three, graph is considered trivial
+      // If subgraph has less then three, graph is considered trivial unless its an epctx cluster
       if (this_cluster.size() < 3) {
-        continue;
+        bool is_epctx_node = false;
+        for (auto node_idx : this_cluster) {
+          if (graph_viewer_.GetNode(node_idx)->OpType() == "EPContext")
+            is_epctx_node = true;
+        }
+        if (!is_epctx_node)
+          continue;
       }
 
       std::vector<std::string> cluster_graph_inputs, cluster_inputs, cluster_outputs;
@@ -166,16 +194,6 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       // Omitting zero dim subgraphs
       for (auto index : this_cluster) {
         const Node* node = graph_viewer_.GetNode(index);
-        if (data_ops_->DoNotOmitSubGraph(node->OpType())) {
-          for (const auto& input : node->InputDefs()) {
-            const auto& input_name = input->Name();
-            auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
-            if (it != cluster_graph_inputs.end()) {
-              omit_subgraph = true;
-              break;
-            }
-          }
-        }
 
         if (node->OpType() == "Conv" || node->OpType() == "Identity") {
           const auto& output_name = node->OutputDefs()[0]->Name();
@@ -213,7 +231,6 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     }
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Supported subgraphs on OpenVINO: " << no_of_clusters;
   }
-
   return result;
 }
 

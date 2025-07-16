@@ -21,6 +21,7 @@
 #include "core/framework/external_data_loader_manager.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tuning_results.h"
 #include "core/framework/framework_provider_common.h"
@@ -46,6 +47,9 @@ namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
 
+// OrtModelEditorApi Model. Used to dynamically construct a model via C API at runtime.
+struct OrtModel;
+
 namespace onnxruntime {  // forward declarations
 class CustomRegistry;
 class Environment;
@@ -53,6 +57,8 @@ class GraphTransformer;
 class IExecutionProvider;
 class IOBinding;
 struct Notification;
+
+void reset_saturation_count();
 
 #ifdef ENABLE_TRAINING
 struct PartialGraphExecutionState;
@@ -74,6 +80,7 @@ struct ModelMetadata {
   ModelMetadata& operator=(const ModelMetadata&) = delete;
 
   std::string producer_name;
+  std::string producer_version;
   std::string graph_name;
   std::string domain;
   std::string description;
@@ -319,12 +326,33 @@ class InferenceSession {
    * @return OK if success.
    */
   [[nodiscard]] common::Status Load();
+
+  /**
+   * Load an OrtModel that was dynamically constructed via OrtModelEditorApi.
+   *
+   * @param graph_api_model OrtModel from OrtModelEditorApi
+   * @return OK if success.
+   */
+  [[nodiscard]] common::Status Load(const OrtModel& graph_api_model);
+
+  /**
+   * Apply updates from an OrtModel that was created via OrtModelEditorApi.
+   * This can:
+   *   - add nodes at the start and end of the model
+   *   - add initializers
+   *   - update the graph inputs/outputs
+   *
+   * @param graph_api_model OrtModel from OrtModelEditorApi
+   * @return OK if success.
+   */
+  [[nodiscard]] common::Status ApplyUpdates(const OrtModel& graph_api_model);
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   /**
    * Initializes a previously loaded ONNX model. Initialization includes but is not
-   * limited to graph transformations, construction of kernels, etc.
-   * This method assumes that a method has been loaded previously.
+   * limited to graph transformations, construction of kernels, EP policy decisions, etc.
+   * This method assumes that a model has been loaded previously.
    * This API is thread-safe.
    * @return OK if success
    */
@@ -454,6 +482,11 @@ class InferenceSession {
   const SessionOptions& GetSessionOptions() const;
 
   /*
+   * Get the options so auto-selected EPs can augment as they are added post-session creation.
+   */
+  SessionOptions& GetMutableSessionOptions();
+
+  /*
    * Get the DataTransferManager associated with this session
    */
   const DataTransferManager& GetDataTransferManager() const;
@@ -545,6 +578,62 @@ class InferenceSession {
    */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /**
+   * CreateNodeStats recorder and enable collection of node statistics that is useful
+   * for resource constrained partitioning and otherwise.
+   *
+   * @param node_stats_file - this file will be created at the same folder where the model file is present.
+   */
+  Status CreateNodeStatsRecorder(const std::filesystem::path& node_stats_file);
+
+  /**
+   * Returns true if collection is enabled
+   */
+  bool IsNodeStatsCollectionEnabled() const noexcept {
+    return node_stats_recorder_.has_value();
+  }
+
+  /**
+   * NodeStatsRecorder pointer. If not present, returns nullptr
+   */
+  NodeStatsRecorder* GetNodeStatsRecorder() noexcept {
+    return node_stats_recorder_.has_value() ? &*node_stats_recorder_ : nullptr;
+  }
+
+#endif
+
+  const Model& GetModel() const;
+  const Environment& GetEnvironment() const;
+
+  void SetWeightDataType(const std::string& type) {
+    weight_data_type_ = type;
+  }
+
+  const std::string& GetWeightDataType() const {
+    return weight_data_type_;
+  }
+
+  void SetGraphHash(const std::string& hash) {
+    graph_hash_ = hash;
+  }
+
+  const std::string& GetGraphHash() const {
+    return graph_hash_;
+  }
+
+  void SetWeightHash(const std::string& hash) {
+    weight_hash_ = hash;
+  }
+
+  const std::string& GetWeightHash() const {
+    return weight_hash_;
+  }
+
+  uint32_t GetCurrentSessionId() const {
+    return session_id_;
+  }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -601,6 +690,12 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
+  // The list of execution providers.
+  // This MUST be prior to model_ in case there are values in the model that were allocated using an allocator
+  // provided by the EP. If that is the case the allocator's `free` implementation may depend on other parts of the
+  // EP instance.
+  ExecutionProviders execution_providers_;
+
   // The model served by this inference session instance.
   // Currently this has to be a shared ptr because the Model::Load method
   // returns a shared_ptr only. Ideally factory functions should always return
@@ -611,8 +706,16 @@ class InferenceSession {
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   PathString model_location_;
 
-  // The list of execution providers.
-  ExecutionProviders execution_providers_;
+  // Input, Output and Weight tensor data types
+  std::string input_data_type_;
+  std::string output_data_type_;
+  std::string weight_data_type_;
+
+  // Graph hash of the model
+  std::string graph_hash_;
+
+  // Weight hash of the model
+  std::string weight_hash_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
@@ -726,6 +829,10 @@ class InferenceSession {
   // the session options are released after the individual operators are destroyed.
   SessionOptions session_options_;
 
+  CheckLoadCancellationFn check_load_cancellation_fn_ = [this]() {
+    return session_options_.IsLoadCancellationFlagSet();
+  };
+
   /// Logging manager if provided.
   logging::LoggingManager* logging_manager_;
 
@@ -815,14 +922,17 @@ class InferenceSession {
 
   struct Telemetry {
     Telemetry() : time_sent_last_() {}
-    uint32_t total_runs_since_last_ = 0;           // the total number of Run() calls since the last report
-    long long total_run_duration_since_last_ = 0;  // the total duration (us) of Run() calls since the last report
-    std::string event_name_;                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+    uint32_t total_runs_since_last_ = 0;                              // the total number of Run() calls since the last report
+    long long total_run_duration_since_last_ = 0;                     // the total duration (us) of Run() calls since the last report
+    std::string event_name_;                                          // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+    std::unordered_map<int64_t, long long> duration_per_batch_size_;  // the duration (us) of Run() calls per batch size since the last report
 
     TimePoint time_sent_last_;  // the TimePoint of the last report
     // Event Rate per provider < 20 peak events per second
     constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
   } telemetry_;
+
+  mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   bool session_activity_started_ = false;
@@ -911,6 +1021,11 @@ class InferenceSession {
   };
 
   CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Enable nodestats collection
+  std::optional<NodeStatsRecorder> node_stats_recorder_;
+#endif
 };
 
 struct SessionIOBinding {

@@ -8,22 +8,20 @@
 // not always available.
 
 // The purpose of this script is to download the required binaries for the platform and architecture.
-// Currently, most of the binaries are already bundled in the package, except for the following:
-// - Linux/x64/CUDA 11
-// - Linux/x64/CUDA 12
+// Currently, most of the binaries are already bundled in the package, except for the files that described in the file
+// install-metadata.js.
 //
-// The CUDA binaries are not bundled because they are too large to be allowed in the npm registry. Instead, they are
-// downloaded from the GitHub release page of ONNX Runtime. The script will download the binaries if they are not
-// already present in the package.
+// Some files (eg. the CUDA EP binaries) are not bundled because they are too large to be allowed in the npm registry.
+// Instead, they are downloaded from the Nuget feed. The script will download the binaries if they are not already
+// present in the NPM package.
 
 // Step.1: Check if we should exit early
 const os = require('os');
-const fs = require('fs');
-const https = require('https');
 const path = require('path');
-const tar = require('tar');
-const { execFileSync } = require('child_process');
 const { bootstrap: globalAgentBootstrap } = require('global-agent');
+const { installPackages, parseInstallFlag } = require('./install-utils.js');
+
+const INSTALL_METADATA = require('./install-metadata.js');
 
 // Bootstrap global-agent to honor the proxy settings in
 // environment variables, e.g. GLOBAL_AGENT_HTTPS_PROXY.
@@ -31,169 +29,106 @@ const { bootstrap: globalAgentBootstrap } = require('global-agent');
 globalAgentBootstrap();
 
 // commandline flag:
-// --onnxruntime-node-install-cuda         Force install the CUDA EP binaries. Try to detect the CUDA version.
-// --onnxruntime-node-install-cuda=v11     Force install the CUDA EP binaries for CUDA 11.
-// --onnxruntime-node-install-cuda=v12     Force install the CUDA EP binaries for CUDA 12.
+//
+// --onnxruntime-node-install              Force install the files that are not bundled in the package.
+//
+// --onnxruntime-node-install=skip         Skip the installation of the files that are not bundled in the package.
+//
+// --onnxruntime-node-install=cuda12       Force install the CUDA EP binaries for CUDA 12.
+//
+// --onnxruntime-node-install-cuda         Force install the CUDA EP binaries.
+//                                         (deprecated, use --onnxruntime-node-install=cuda12)
+//
 // --onnxruntime-node-install-cuda=skip    Skip the installation of the CUDA EP binaries.
+//                                         (deprecated, use --onnxruntime-node-install=skip)
 //
-// Alternatively, use environment variable "ONNXRUNTIME_NODE_INSTALL_CUDA"
 //
-// If the flag is not provided, the script will only install the CUDA EP binaries when:
-// - The platform is Linux/x64.
-// - The binaries are not already present in the package.
-// - The installation is not a local install (when used inside ONNX Runtime repo).
+// Alternatively, use environment variable "ONNXRUNTIME_NODE_INSTALL" or "ONNXRUNTIME_NODE_INSTALL_CUDA" (deprecated).
 //
-const INSTALL_CUDA_FLAG = parseInstallCudaFlag();
-const NO_INSTALL = INSTALL_CUDA_FLAG === 'skip';
-const FORCE_INSTALL = !NO_INSTALL && INSTALL_CUDA_FLAG;
+// If the flag is not provided, the script will look up the metadata file to determine the manifest.
+//
 
-const IS_LINUX_X64 = os.platform() === 'linux' && os.arch() === 'x64';
-const BIN_FOLDER = path.join(__dirname, '..', 'bin/napi-v3/linux/x64');
-const BIN_FOLDER_EXISTS = fs.existsSync(BIN_FOLDER);
-const CUDA_DLL_EXISTS = fs.existsSync(path.join(BIN_FOLDER, 'libonnxruntime_providers_cuda.so'));
-const ORT_VERSION = require('../package.json').version;
+/**
+ * Possible values:
+ * - undefined: the default behavior. This is the value when no installation flag is specified.
+ *
+ * - false: skip installation. This is the value when the installation flag is set to "skip":
+ *   --onnxruntime-node-install=skip
+ *
+ * - true: force installation. This is the value when the installation flag is set with no value:
+ *   --onnxruntime-node-install
+ *
+ * - string: the installation flag is set to a specific value:
+ *   --onnxruntime-node-install=cuda12
+ */
+const INSTALL_FLAG = parseInstallFlag();
 
-const npm_config_local_prefix = process.env.npm_config_local_prefix;
-const npm_package_json = process.env.npm_package_json;
-const SKIP_LOCAL_INSTALL =
-  npm_config_local_prefix && npm_package_json && path.dirname(npm_package_json) === npm_config_local_prefix;
-
-const shouldInstall = FORCE_INSTALL || (!SKIP_LOCAL_INSTALL && IS_LINUX_X64 && BIN_FOLDER_EXISTS && !CUDA_DLL_EXISTS);
-if (NO_INSTALL || !shouldInstall) {
+// if installation is skipped, exit early
+if (INSTALL_FLAG === false) {
   process.exit(0);
 }
+// if installation is not specified, exit early when the installation is local (e.g. `npm ci` in <ORT_ROOT>/js/node/)
+if (INSTALL_FLAG === undefined) {
+  const npm_config_local_prefix = process.env.npm_config_local_prefix;
+  const npm_package_json = process.env.npm_package_json;
+  const IS_LOCAL_INSTALL =
+    npm_config_local_prefix && npm_package_json && path.dirname(npm_package_json) === npm_config_local_prefix;
+  if (IS_LOCAL_INSTALL) {
+    process.exit(0);
+  }
+}
 
-// Step.2: Download the required binaries
-const artifactUrl = {
-  get 11() {
-    // TODO: support ORT Cuda v11 binaries
-    throw new Error(`CUDA 11 binaries are not supported by this script yet.
+const PLATFORM = `${os.platform()}/${os.arch()}`;
+let INSTALL_MANIFEST_NAMES = INSTALL_METADATA.requirements[PLATFORM] ?? [];
 
-To use ONNX Runtime Node.js binding with CUDA v11 support, please follow the manual steps:
+// if installation is specified explicitly, validate the manifest
+if (typeof INSTALL_FLAG === 'string') {
+  const installations = INSTALL_FLAG.split(',').map((x) => x.trim());
+  for (const installation of installations) {
+    if (INSTALL_MANIFEST_NAMES.indexOf(installation) === -1) {
+      throw new Error(`Invalid installation: ${installation} for platform: ${PLATFORM}`);
+    }
+  }
+  INSTALL_MANIFEST_NAMES = installations;
+}
 
-1. Use "--onnxruntime-node-install-cuda=skip" to skip the auto installation.
-2. Navigate to https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-11
-3. Download the binaries for your platform and architecture
-4. Extract the following binaries to "node_modules/onnxruntime-node/bin/napi-v3/linux/x64:
-   - libonnxruntime_providers_tensorrt.so
-   - libonnxruntime_providers_shared.so
-   - libonnxruntime.so.${ORT_VERSION}
-   - libonnxruntime_providers_cuda.so
-`);
-  },
-  12: `https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-gpu-${
-    ORT_VERSION
-  }.tgz`,
-}[INSTALL_CUDA_FLAG || tryGetCudaVersion()];
-console.log(`Downloading "${artifactUrl}"...`);
+const BIN_FOLDER = path.join(__dirname, '..', 'bin/napi-v6', PLATFORM);
+const INSTALL_MANIFESTS = [];
 
-const FILES = new Set([
-  'libonnxruntime_providers_tensorrt.so',
-  'libonnxruntime_providers_shared.so',
-  `libonnxruntime.so.${ORT_VERSION}`,
-  'libonnxruntime_providers_cuda.so',
-]);
+const PACKAGES = new Set();
+for (const name of INSTALL_MANIFEST_NAMES) {
+  const manifest = INSTALL_METADATA.manifests[`${PLATFORM}:${name}`];
+  if (!manifest) {
+    throw new Error(`Manifest not found: ${name} for platform: ${PLATFORM}`);
+  }
 
-downloadAndExtract(artifactUrl, BIN_FOLDER, FILES);
+  for (const [filename, { package: pkg, path: pathInPackage }] of Object.entries(manifest)) {
+    const packageCandidates = INSTALL_METADATA.packages[pkg];
+    if (!packageCandidates) {
+      throw new Error(`Package information not found: ${pkg}`);
+    }
+    PACKAGES.add(packageCandidates);
 
-async function downloadAndExtract(url, dest, files) {
-  return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
-      const { statusCode } = res;
-      const contentType = res.headers['content-type'];
-
-      if (statusCode === 301 || statusCode === 302) {
-        downloadAndExtract(res.headers.location, dest, files).then(
-          (value) => resolve(value),
-          (reason) => reject(reason),
-        );
-        return;
-      } else if (statusCode !== 200) {
-        throw new Error(`Failed to download the binaries: ${res.statusCode} ${res.statusMessage}.
-
-Use "--onnxruntime-node-install-cuda=skip" to skip the installation. You will still be able to use ONNX Runtime, but the CUDA EP will not be available.`);
-      }
-
-      if (!contentType || !/^application\/octet-stream/.test(contentType)) {
-        throw new Error(`unexpected content type: ${contentType}`);
-      }
-
-      res
-        .pipe(
-          tar.t({
-            strict: true,
-            onentry: (entry) => {
-              const filename = path.basename(entry.path);
-              if (entry.type === 'File' && files.has(filename)) {
-                console.log(`Extracting "${filename}" to "${dest}"...`);
-                entry.pipe(fs.createWriteStream(path.join(dest, filename)));
-                entry.on('finish', () => {
-                  console.log(`Finished extracting "${filename}".`);
-                });
-              }
-            },
-          }),
-        )
-        .on('error', (err) => {
-          throw new Error(`Failed to extract the binaries: ${err.message}.
-
-Use "--onnxruntime-node-install-cuda=skip" to skip the installation. You will still be able to use ONNX Runtime, but the CUDA EP will not be available.`);
-        });
+    INSTALL_MANIFESTS.push({
+      filepath: path.normalize(path.join(BIN_FOLDER, filename)),
+      packagesInfo: packageCandidates,
+      pathInPackage,
     });
-  });
-}
-
-function tryGetCudaVersion() {
-  // Should only return 11 or 12.
-
-  // try to get the CUDA version from the system ( `nvcc --version` )
-  let ver = 12;
-  try {
-    const nvccVersion = execFileSync('nvcc', ['--version'], { encoding: 'utf8' });
-    const match = nvccVersion.match(/release (\d+)/);
-    if (match) {
-      ver = parseInt(match[1]);
-      if (ver !== 11 && ver !== 12) {
-        throw new Error(`Unsupported CUDA version: ${ver}`);
-      }
-    }
-  } catch (e) {
-    if (e?.code === 'ENOENT') {
-      console.warn('`nvcc` not found. Assuming CUDA 12.');
-    } else {
-      console.warn('Failed to detect CUDA version from `nvcc --version`:', e.message);
-    }
-  }
-
-  // assume CUDA 12 if failed to detect
-  return ver;
-}
-
-function parseInstallCudaFlag() {
-  let flag = process.env.ONNXRUNTIME_NODE_INSTALL_CUDA || process.env.npm_config_onnxruntime_node_install_cuda;
-  if (!flag) {
-    for (let i = 0; i < process.argv.length; i++) {
-      if (process.argv[i].startsWith('--onnxruntime-node-install-cuda=')) {
-        flag = process.argv[i].split('=')[1];
-        break;
-      } else if (process.argv[i] === '--onnxruntime-node-install-cuda') {
-        flag = 'true';
-      }
-    }
-  }
-  switch (flag) {
-    case 'true':
-    case '1':
-    case 'ON':
-      return tryGetCudaVersion();
-    case 'v11':
-      return 11;
-    case 'v12':
-      return 12;
-    case 'skip':
-    case undefined:
-      return flag;
-    default:
-      throw new Error(`Invalid value for --onnxruntime-node-install-cuda: ${flag}`);
   }
 }
+
+// If the installation flag is not specified, we do a check to see if the files are already installed.
+if (INSTALL_FLAG === undefined) {
+  let hasMissingFiles = false;
+  for (const { filepath } of INSTALL_MANIFESTS) {
+    if (!require('fs').existsSync(filepath)) {
+      hasMissingFiles = true;
+      break;
+    }
+  }
+  if (!hasMissingFiles) {
+    process.exit(0);
+  }
+}
+
+void installPackages(PACKAGES, INSTALL_MANIFESTS, INSTALL_METADATA.feeds);

@@ -92,16 +92,18 @@ class IExecutionFrame {
 
   Status ReleaseMLValue(int ort_value_idx);
 
- protected:
   // get the ort_value_idx from NodeIndexInfo
   int GetNodeIdxToMLValueIdx(int index) const;
 
+ protected:
   OrtValue& GetMutableMLValue(int ort_value_index) { return const_cast<OrtValue&>(GetMLValue(ort_value_index)); }
 
   virtual Status ReleaseMLValueImpl(int ort_value_idx);
 
   // returns true if the ort_value_idx is an output from the graph
   bool IsOutput(int ort_value_idx) const;
+
+  const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_idx_map_; }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
@@ -165,6 +167,16 @@ class ExecutionFrame final : public IExecutionFrame {
   bool HasMemoryPatternPlanner() const {
     return planner_.has_value();
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  std::optional<size_t> GetOrtValueDynamicAllocation(int ort_value_index) const {
+    auto it = ort_value_to_dynamic_allocations_size_.find(ort_value_index);
+    if (it != ort_value_to_dynamic_allocations_size_.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+#endif
 
   // This function try retrieve the inferred shapes for the given NodeArg index.
   // If the retrival is successful, this function returns true and false otherwise.
@@ -258,10 +270,14 @@ class ExecutionFrame final : public IExecutionFrame {
   // This field is not physical memory size.
   // dynamic_activation_memory_sizes_in_byte_[location] is the dynamic memory consumption on "location".
   std::unordered_map<std::string, size_t> dynamic_activation_memory_sizes_in_byte_;
+#endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+  // OrtValue index to the size of dynamic memory allocation.
+  std::unordered_map<int, size_t> ort_value_to_dynamic_allocations_size_;
+#endif
   // Mutex which should be acquired when executing non-thread-safe member functions.
   // A current example is the tracker of dynamic memory allocation.
   mutable std::mutex mtx_;
-#endif
 };
 }  // namespace onnxruntime

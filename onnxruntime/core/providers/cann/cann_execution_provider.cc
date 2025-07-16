@@ -1028,7 +1028,10 @@ Status RegisterCANNKernels(KernelRegistry& kernel_registry) {
 }  // namespace cann
 
 CANNExecutionProvider::CANNExecutionProvider(const CANNExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCannExecutionProvider, OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info.device_id)}, info_{info} {
+    : IExecutionProvider{onnxruntime::kCannExecutionProvider,
+                         OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::HUAWEI,
+                                   info.device_id)},
+      info_{info} {
   InitProviderOrtApi();
 
   CANN_CALL_THROW(aclrtSetDevice(info_.device_id));
@@ -1253,7 +1256,9 @@ GetSubGraphPartition(const std::vector<NodeIndex>& topological_order, const std:
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                     const IKernelLookup& kernel_lookup) const {
+                                     const IKernelLookup& kernel_lookup,
+                                     const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                     IResourceAccountant*) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // TODO(FFFrog): Feature Enhancement
@@ -1469,7 +1474,7 @@ std::vector<AllocatorPtr> CANNExecutionProvider::CreatePreferredAllocators() {
       [](OrtDevice::DeviceId device_id) {
         return std::make_unique<CANNPinnedAllocator>(device_id, CANN_PINNED);
       },
-      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+      info_.device_id);
 
   return std::vector<AllocatorPtr>{
       CreateCannAllocator(info_.device_id, info_.npu_mem_limit, info_.arena_extend_strategy,
@@ -1483,8 +1488,11 @@ void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry&
 }
 
 OrtDevice CANNExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
-  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, 0);
+  if (mem_type == OrtMemTypeCPUInput)
+    return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput)
+    return OrtDevice(OrtDevice::NPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::HUAWEI,
+                     default_device_.Id());
   return default_device_;
 }
 

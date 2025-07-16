@@ -96,7 +96,7 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
             start_time = curr_time
 
         if args.view_graphs:
-            import torchviz
+            import torchviz  # noqa: PLC0415
 
             pytorch_backward_graph = torchviz.make_dot(outputs[0], params=dict(list(model.named_parameters())))
             pytorch_backward_graph.view()
@@ -319,7 +319,7 @@ def flat_accuracy(preds, labels):
 def format_time(elapsed):
     """Takes a time in seconds and returns a string hh:mm:ss"""
     # Round to the nearest second.
-    elapsed_rounded = int(round(elapsed))
+    elapsed_rounded = int(round(elapsed))  # noqa: RUF046
 
     # Format as hh:mm:ss
     return str(datetime.timedelta(seconds=elapsed_rounded))

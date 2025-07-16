@@ -8,6 +8,14 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "api.h"
 
+#ifdef USE_WEBGPU
+namespace onnxruntime {
+namespace webgpu {
+WGPUDevice GetDevice(int);
+}
+}  // namespace onnxruntime
+#endif
+
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -164,8 +172,12 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
   return UNREGISTER_AUTO_RELEASE(session_options);
 }
 
-int OrtAppendExecutionProvider(ort_session_options_handle_t session_options, const char* name) {
-  return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, nullptr, nullptr, 0);
+int OrtAppendExecutionProvider(ort_session_options_handle_t session_options,
+                               const char* name,
+                               const char* const* provider_options_keys,
+                               const char* const* provider_options_values,
+                               size_t num_keys) {
+  return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, provider_options_keys, provider_options_values, num_keys);
 }
 
 int OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,
@@ -208,6 +220,113 @@ int OrtReleaseSession(OrtSession* session) {
 int OrtGetInputOutputCount(OrtSession* session, size_t* input_count, size_t* output_count) {
   RETURN_ERROR_CODE_IF_ERROR(SessionGetInputCount, session, input_count);
   RETURN_ERROR_CODE_IF_ERROR(SessionGetOutputCount, session, output_count);
+  return ORT_OK;
+}
+
+int OrtGetInputOutputMetadata(ort_session_handle_t session, size_t index, char** name_cstr_ptr, void** type_info_ptr) {
+  OrtAllocator* allocator = nullptr;
+  RETURN_ERROR_CODE_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
+
+  size_t input_count, output_count;
+  int error_code = OrtGetInputOutputCount(session, &input_count, &output_count);
+  if (error_code != ORT_OK) {
+    return error_code;
+  }
+
+  if (index >= input_count + output_count) {
+    std::ostringstream ostr;
+    ostr << "Invalid index: " << index << ", input count: " << input_count << ", output count: " << output_count;
+    return CheckStatus(Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str()));
+  }
+
+  char* name_cstr;
+  if (index < input_count) {
+    RETURN_ERROR_CODE_IF_ERROR(SessionGetInputName, session, index, allocator, &name_cstr);
+  } else {
+    RETURN_ERROR_CODE_IF_ERROR(SessionGetOutputName, session, index - input_count, allocator, &name_cstr);
+  }
+  REGISTER_AUTO_RELEASE_BUFFER(char, name_cstr, allocator);
+
+  OrtTypeInfo* type_info;
+  if (index < input_count) {
+    RETURN_ERROR_CODE_IF_ERROR(SessionGetInputTypeInfo, session, index, &type_info);
+  } else {
+    RETURN_ERROR_CODE_IF_ERROR(SessionGetOutputTypeInfo, session, index - input_count, &type_info);
+  }
+  REGISTER_AUTO_RELEASE_HANDLE(TypeInfo, type_info);
+
+  const OrtTensorTypeAndShapeInfo* tensor_info;
+  RETURN_ERROR_CODE_IF_ERROR(CastTypeInfoToTensorInfo, type_info, &tensor_info);
+
+  size_t type_info_size = 4;
+  ONNXTensorElementDataType element_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  size_t dim_count = 0;
+  if (tensor_info != nullptr) {
+    RETURN_ERROR_CODE_IF_ERROR(GetTensorElementType, tensor_info, &element_type);
+    RETURN_ERROR_CODE_IF_ERROR(GetDimensionsCount, tensor_info, &dim_count);
+
+    // byte [0, 4): [i32] element type
+    // byte [4, 8): [u32] dimension count
+    // byte [8, 8 + dim_count * ptr_size): [ptr] symbolic dimension names for dim[0], dim[1], ..., dim[dim_count - 1]
+    // byte [8 + dim_count * ptr_size, 8 + dim_count * ptr_size * 2): [size_t] dimension values for dim[0], dim[1], ..., dim[dim_count - 1]
+    // from byte 8 + dim_count * ptr_size * 2: optional string copies for symbolic dimension names
+    type_info_size = 8 + dim_count * (sizeof(size_t) * 2);
+  }
+
+  std::vector<int64_t> dim_values(dim_count);
+  std::vector<const char*> dim_params(dim_count);
+  std::vector<size_t> dim_params_str_len(dim_count);
+  if (dim_count > 0) {
+    size_t str_len_total = 0;
+    RETURN_ERROR_CODE_IF_ERROR(GetDimensions, tensor_info, dim_values.data(), dim_count);
+    RETURN_ERROR_CODE_IF_ERROR(GetSymbolicDimensions, tensor_info, dim_params.data(), dim_count);
+    for (size_t i = 0; i < dim_count; ++i) {
+      size_t str_size = dim_params[i] ? strlen(dim_params[i]) : 0;
+      if (str_size > 0) {
+        str_len_total += str_size + 1;
+        dim_params_str_len[i] = str_size + 1;
+      } else {
+        dim_params_str_len[i] = 0;
+      }
+    }
+    type_info_size += str_len_total;
+  }
+
+  uint8_t* type_info_buffer = reinterpret_cast<uint8_t*>(allocator->Alloc(allocator, type_info_size));
+  // write to buffer @ byte [0, 4)
+  int32_t* p_type_info_element_type = reinterpret_cast<int32_t*>(type_info_buffer);
+  *p_type_info_element_type = static_cast<int32_t>(element_type);
+
+  if (tensor_info != nullptr) {
+    // write to buffer @ byte [4, 8)
+    uint32_t* p_type_info_dim_count = reinterpret_cast<uint32_t*>(type_info_buffer + 4);
+    *p_type_info_dim_count = static_cast<uint32_t>(dim_count);
+
+    if (dim_count > 0) {
+      // write to buffer @ byte [8, 8 + dim_count * ptr_size)
+      const char** p_dim_params = reinterpret_cast<const char**>(type_info_buffer + 8);
+      char* p_str_copy_dest = reinterpret_cast<char*>(type_info_buffer + 8 + dim_count * sizeof(size_t) * 2);
+      for (size_t i = 0; i < dim_count; ++i) {
+        if (dim_params_str_len[i] > 0) {
+          p_dim_params[i] = p_str_copy_dest;
+          memcpy(p_str_copy_dest, dim_params[i], dim_params_str_len[i]);
+          p_str_copy_dest += dim_params_str_len[i];
+        } else {
+          p_dim_params[i] = nullptr;
+        }
+      }
+
+      // write to buffer @ byte [8 + dim_count * ptr_size, 8 + dim_count * ptr_size + dim_count * 4 + dim_count * 4)
+      size_t* p_dim_values = reinterpret_cast<size_t*>(type_info_buffer + 8 + dim_count * sizeof(size_t));
+      for (size_t i = 0; i < dim_count; ++i) {
+        p_dim_values[i] = static_cast<size_t>(dim_values[i]);
+      }
+    }
+  }
+
+  UNREGISTER_AUTO_RELEASE(name_cstr);
+  *name_cstr_ptr = name_cstr;
+  *type_info_ptr = type_info_buffer;
   return ORT_OK;
 }
 
@@ -506,6 +625,16 @@ char* OrtEndProfiling(ort_session_handle_t session) {
              ? file_name
              : nullptr;
 }
+
+// WebGPU API Section
+
+#ifdef USE_WEBGPU
+
+WGPUDevice OrtGetWebGpuDevice(int device_id) {
+  return onnxruntime::webgpu::GetDevice(device_id);
+}
+
+#endif
 
 // Training API Section
 

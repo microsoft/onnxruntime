@@ -5,13 +5,16 @@
 
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "QnnInterface.h"
-#include "qnn_def.h"
+#include "nlohmann/json.hpp"
 
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -28,6 +31,7 @@ struct TensorInfo {
 
 struct ModelSettings {
   bool offload_graph_io_quantization = false;
+  bool htp_shared_memory = false;
 };
 
 class QnnModelWrapper {
@@ -38,7 +42,6 @@ class QnnModelWrapper {
                   const Qnn_BackendHandle_t& backend_handle,
                   const std::unordered_map<std::string, size_t>& input_index_map,
                   const std::unordered_map<std::string, size_t>& output_index_map,
-                  const std::unordered_set<std::string>& initializer_lookup,
                   QnnBackendType qnn_backend_type,
                   const ModelSettings& model_settings)
       : graph_viewer_(graph_viewer),
@@ -47,7 +50,6 @@ class QnnModelWrapper {
         backend_handle_(backend_handle),
         input_index_map_(input_index_map),
         output_index_map_(output_index_map),
-        initializer_lookup_(initializer_lookup),
         qnn_backend_type_(qnn_backend_type),
         model_settings_(model_settings) {
   }
@@ -91,7 +93,7 @@ class QnnModelWrapper {
                      std::vector<std::string>&& param_tensor_names,
                      bool do_op_validation = false);
 
-  bool ComposeQnnGraph();
+  bool ComposeQnnGraph(bool build_json_qnn_graph = false);
 
   Qnn_GraphHandle_t GetQnnGraph() const { return graph_; }
 
@@ -113,8 +115,12 @@ class QnnModelWrapper {
 
   const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
 
-  bool IsInitializerInput(std::string input_name) const {
-    return initializer_lookup_.find(input_name) != initializer_lookup_.end();
+  const ONNX_NAMESPACE::TensorProto* GetConstantTensor(const std::string& tensor_name) const {
+    return graph_viewer_.GetConstantInitializer(tensor_name);
+  }
+
+  bool IsConstantInput(std::string input_name) const {
+    return graph_viewer_.IsConstantInitializer(input_name, true);
   }
 
   static bool GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t>& shape);
@@ -129,8 +135,12 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
+  const nlohmann::json& GetQnnJSONGraph() {
+    return json_qnn_graph_.Finalize();
+  }
+
   Qnn_TensorType_t GetTensorType(const std::string& tensor_name) const {
-    if (IsInitializerInput(tensor_name)) {
+    if (IsConstantInput(tensor_name)) {
       return QNN_TENSOR_TYPE_STATIC;
     } else if (IsGraphInput(tensor_name)) {
       return QNN_TENSOR_TYPE_APP_WRITE;
@@ -270,7 +280,7 @@ class QnnModelWrapper {
                                    std::vector<Qnn_Tensor_t>& tensor_wrappers,
                                    bool do_op_validation = false);
 
-  bool IsQnnParamExit(const std::string& param_tensor_name) const;
+  bool QnnParamExists(const std::string& param_tensor_name) const;
 
   bool CreateQnnParamTensors(const std::string& qnn_node_name,
                              const std::vector<std::string>& param_tensor_names,
@@ -318,10 +328,57 @@ class QnnModelWrapper {
   std::unordered_map<std::string, bool> tensor_created_map_;
   const std::unordered_map<std::string, size_t>& input_index_map_;
   const std::unordered_map<std::string, size_t>& output_index_map_;
-  const std::unordered_set<std::string>& initializer_lookup_;
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   ModelSettings model_settings_ = {};
+  utils::QnnJSONGraph json_qnn_graph_;
 };  // QnnModelWrapper
+
+template <typename T>
+inline Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
+                           const NodeIndex& node_index,
+                           const std::string& node_name,
+                           const T& scalar,
+                           const std::string& qnn_scalar_param_name,
+                           std::vector<std::string>& param_names) {
+  Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
+  if (std::is_same<T, float>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
+    qnn_scalar.floatValue = static_cast<float>(scalar);
+  } else if (std::is_same<T, uint32_t>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
+    qnn_scalar.uint32Value = static_cast<uint32_t>(scalar);
+  } else if (std::is_same<T, int32_t>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_INT_32;
+    qnn_scalar.int32Value = static_cast<int32_t>(scalar);
+  } else if (std::is_same<T, int64_t>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_INT_64;
+    qnn_scalar.int64Value = static_cast<int64_t>(scalar);
+  } else if (std::is_same<T, bool>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_BOOL_8;
+    qnn_scalar.bool8Value = static_cast<uint8_t>(scalar);
+  } else {
+    ORT_RETURN_IF(true, "QNN EP: Unsupported scalar dtype");
+  }
+  QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
+  param_names.push_back(qnn_param_wrapper.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
+  return Status::OK();
+}
+
+inline Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
+                           const NodeIndex& node_index,
+                           const std::string& node_name,
+                           const std::string& scalar,
+                           const std::string& qnn_scalar_param_name,
+                           std::vector<std::string>& param_names) {
+  Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
+  qnn_scalar.dataType = QNN_DATATYPE_STRING;
+  qnn_scalar.stringValue = scalar.c_str();
+  QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
+  param_names.push_back(qnn_param_wrapper.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
+  return Status::OK();
+}
 
 }  // namespace qnn
 }  // namespace onnxruntime

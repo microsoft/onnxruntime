@@ -86,44 +86,48 @@ static void RunTest(
     return;
   }
 
-  OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
-  test.AddAttribute<int64_t>("interleaved", interleaved);
+  for (auto& ep : execution_providers) {
+    OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
+    test.AddAttribute<int64_t>("interleaved", interleaved);
 
-  if (rotary_embedding_dim > 0) {
-    test.AddAttribute<int64_t>("rotary_embedding_dim", rotary_embedding_dim);
-    test.AddAttribute<int64_t>("num_heads", num_heads);
-  }
+    if (rotary_embedding_dim > 0) {
+      test.AddAttribute<int64_t>("rotary_embedding_dim", rotary_embedding_dim);
+      test.AddAttribute<int64_t>("num_heads", num_heads);
+    }
 
-  if (rotary_embedding_dim > 0) {
-    test.AddAttribute<int64_t>("is_packed_batching", is_packed_batching);
-  }
+    if (rotary_embedding_dim > 0) {
+      test.AddAttribute<int64_t>("is_packed_batching", is_packed_batching);
+    }
 
-  if (tensor_type == TensorType::kFloat) {
-    test.AddInput<float>("input", input_dims, input_data);
-    test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
-    test.AddInput<float>("cos_cache", cache_dims, cos_cache);
-    test.AddInput<float>("sin_cache", cache_dims, sin_cache);
-    test.AddOutput<float>("output", input_dims, output_data);
-  } else if (tensor_type == TensorType::kFloat16) {
-    test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
-    test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
-    test.AddInput<MLFloat16>("cos_cache", cache_dims, ToFloat16(cos_cache));
-    test.AddInput<MLFloat16>("sin_cache", cache_dims, ToFloat16(sin_cache));
-    test.AddOutput<MLFloat16>("output", input_dims, ToFloat16(output_data));
-  } else {
-    test.AddInput<BFloat16>("input", input_dims, FloatsToBFloat16s(input_data));
-    test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
-    test.AddInput<BFloat16>("cos_cache", cache_dims, FloatsToBFloat16s(cos_cache));
-    test.AddInput<BFloat16>("sin_cache", cache_dims, FloatsToBFloat16s(sin_cache));
-    test.AddOutput<BFloat16>("output", input_dims, FloatsToBFloat16s(output_data));
-  }
-  if (tensor_type == TensorType::kBFloat16) {
-    test.SetOutputAbsErr("output", 0.03f);
-  } else {
-    test.SetOutputAbsErr("output", 0.002f);
-  }
+    if (tensor_type == TensorType::kFloat) {
+      test.AddInput<float>("input", input_dims, input_data);
+      test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+      test.AddInput<float>("cos_cache", cache_dims, cos_cache);
+      test.AddInput<float>("sin_cache", cache_dims, sin_cache);
+      test.AddOutput<float>("output", input_dims, output_data);
+    } else if (tensor_type == TensorType::kFloat16) {
+      test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
+      test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+      test.AddInput<MLFloat16>("cos_cache", cache_dims, ToFloat16(cos_cache));
+      test.AddInput<MLFloat16>("sin_cache", cache_dims, ToFloat16(sin_cache));
+      test.AddOutput<MLFloat16>("output", input_dims, ToFloat16(output_data));
+    } else {
+      test.AddInput<BFloat16>("input", input_dims, FloatsToBFloat16s(input_data));
+      test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+      test.AddInput<BFloat16>("cos_cache", cache_dims, FloatsToBFloat16s(cos_cache));
+      test.AddInput<BFloat16>("sin_cache", cache_dims, FloatsToBFloat16s(sin_cache));
+      test.AddOutput<BFloat16>("output", input_dims, FloatsToBFloat16s(output_data));
+    }
+    if (tensor_type == TensorType::kBFloat16) {
+      test.SetOutputAbsErr("output", 0.03f);
+    } else {
+      test.SetOutputAbsErr("output", 0.002f);
+    }
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    std::vector<std::unique_ptr<IExecutionProvider>> test_execution_providers;
+    test_execution_providers.push_back(std::move(ep));
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &test_execution_providers);
+  }
 }
 
 static void RunTests(const std::vector<float>& input_data,
@@ -182,7 +186,7 @@ static void RunTests(const std::vector<float>& input_data,
 }
 
 // Interleaved = true, pos ids shape = (1)
-TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_SmallData_LlamaMSFT) {
+TEST(ContribOpRotaryEmbeddingTest, RotaryEmbedding_Interleaved_SmallData_LlamaMSFT) {
   int batch_size = 1;
   int sequence_length = 3;
   int num_heads = 2;
@@ -226,7 +230,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_SmallData_LlamaMSFT) {
 }
 
 // Interleaved = true, pos ids shape = (1)
-TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_LargeData_LlamaMSFT) {
+TEST(ContribOpRotaryEmbeddingTest, RotaryEmbedding_Interleaved_LargeData_LlamaMSFT) {
   int batch_size = 2;
   int sequence_length = 8;
   int num_heads = 4;
@@ -426,7 +430,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_LargeData_LlamaMSFT) {
 }
 
 // Interleaved = false, pos ids shape = (1)
-TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_LargeData_LlamaMSFT) {
+TEST(ContribOpRotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_LargeData_LlamaMSFT) {
   int batch_size = 2;
   int sequence_length = 8;
   int num_heads = 4;
@@ -626,7 +630,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_LargeData_LlamaMSFT) {
 }
 
 // Interleaved = false, pos ids shape = (batch_size, sequence_length)
-TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_SmallData_LlamaMSFT) {
+TEST(ContribOpRotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_SmallData_LlamaMSFT) {
   int batch_size = 1;
   int sequence_length = 2;
   int num_heads = 3;
@@ -673,7 +677,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_SmallData_LlamaMSFT) {
            interleaved);
 }
 
-TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
+TEST(ContribOpRotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
   int batch_size = 1;
   int sequence_length = 2;
   int num_heads = 1;
@@ -714,7 +718,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
            true /*use_fp16*/);
 }
 
-TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi_Packed_Batching) {
+TEST(ContribOpRotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi_Packed_Batching) {
   int batch_size = 1;
   int sequence_length = 3;
   int num_heads = 1;

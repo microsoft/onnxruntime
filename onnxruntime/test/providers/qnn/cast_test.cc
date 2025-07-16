@@ -5,13 +5,14 @@
 
 #include <string>
 #include <unordered_map>
-
-#include "test/optimizer/qdq_test_utils.h"
-#include "test/providers/qnn/qnn_test_utils.h"
-
-#include "core/graph/onnx_protobuf.h"
+#include <vector>
 
 #include "gtest/gtest.h"
+
+#include "core/framework/float16.h"
+#include "core/graph/onnx_protobuf.h"
+#include "test/optimizer/qdq_test_utils.h"
+#include "test/providers/qnn/qnn_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -52,11 +53,8 @@ static void RunCastOpTest(const std::vector<int64_t>& shape, ONNX_NAMESPACE::Ten
                           bool use_htp,
                           bool enable_fp16_precision = true) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = use_htp ? "QnnHtp.dll" : "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = use_htp ? "libQnnHtp.so" : "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = use_htp ? "htp" : "cpu";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   if (use_htp && enable_fp16_precision) {
     provider_options["enable_htp_fp16_precision"] = "1";
@@ -69,6 +67,31 @@ static void RunCastOpTest(const std::vector<int64_t>& shape, ONNX_NAMESPACE::Ten
                   13,  // opset
                   expected_ep_assignment);
 }
+
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+static void RunCastFP16HTPTest(const std::vector<int64_t>& shape,
+                               ONNX_NAMESPACE::TensorProto_DataType dst_type,
+                               ExpectedEPNodeAssignment expected_ep_assignment) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  auto testcase = [shape, dst_type](ModelTestBuilder& builder) {
+    auto input_def_fp = TestInputDef(shape, false, static_cast<float>(0), static_cast<float>(20));
+    auto input_def = ConvertToFP16InputDef(input_def_fp);
+    auto input = MakeTestInput<MLFloat16>(builder, input_def);
+
+    auto* output = builder.MakeOutput();
+    Node& cast_node = builder.AddNode("Cast", {input}, {output});
+    cast_node.AddAttribute("to", static_cast<int64_t>(dst_type));
+  };
+
+  RunQnnModelTest(testcase, provider_options, /* opset */ 13, expected_ep_assignment);
+}
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 //
 // CPU tests:
@@ -104,7 +127,9 @@ TEST_F(QnnHTPBackendTests, TestCastInt32ToFloatHTP) {
 }
 
 // Cast uint8_t to float on HTP
-TEST_F(QnnHTPBackendTests, TestCastUInt8ToFloatHTP) {
+// Fails with QNN SDK 2.35.0:
+// value pair (13, 1.00000012) at index #0 don't match, which is -12 from 13
+TEST_F(QnnHTPBackendTests, DISABLED_TestCastUInt8ToFloatHTP) {
   RunCastOpTest<uint8_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All,
                          true, false);
 }
@@ -127,6 +152,21 @@ TEST_F(QnnHTPBackendTests, TestCastInt64ToInt32HTP) {
 TEST_F(QnnHTPBackendTests, TestCastInt32ToInt64HTP) {
   RunCastOpTest<int32_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
                          ExpectedEPNodeAssignment::All, true);
+}
+
+// Cast float to bool on HTP.
+TEST_F(QnnHTPBackendTests, TestCastFloatToBoolHTP) {
+  RunCastOpTest<float>({3, 3},
+                       ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL,
+                       ExpectedEPNodeAssignment::All,
+                       true);
+}
+
+// Cast float16 to bool on HTP.
+TEST_F(QnnHTPBackendTests, TestCastFloat16ToBoolHTP) {
+  RunCastFP16HTPTest({3, 3},
+                     ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL,
+                     ExpectedEPNodeAssignment::All);
 }
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 

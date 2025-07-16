@@ -32,14 +32,6 @@
 
 namespace onnxruntime {
 namespace utils {
-void* DefaultAlloc(size_t size) {
-  return onnxruntime::AllocatorDefaultAlloc(size);
-}
-
-void DefaultFree(void* p) {
-  onnxruntime::AllocatorDefaultFree(p);
-}
-
 void ConstructStrings(void* p_data, int64_t elements) {
   auto* ptr = static_cast<std::string*>(p_data);
   for (int64_t i = 0; i < elements; ++i) {
@@ -564,7 +556,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
     size_t num_streams = device_stream_collection->NumStreams();
     for (size_t i = 0; i < num_streams; i++) {
       Stream* stream = device_stream_collection->GetStream(i);
-      if (stream && stream->GetDevice().Type() != OrtDevice::CPU) {
+      if (stream && !stream->GetDevice().UsesCpuMemory()) {
         device_stream = stream;
         break;
       }

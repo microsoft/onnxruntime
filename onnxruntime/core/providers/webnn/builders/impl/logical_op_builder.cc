@@ -19,9 +19,9 @@ class LogicalOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -38,22 +38,23 @@ Status LogicalOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
 
-  std::string webnn_op_type;
-  ORT_RETURN_IF_NOT(GetWebNNOpType(op_type, webnn_op_type), "Cannot get WebNN op type");
+  const std::string_view webnn_op_type = GetWebNNOpType(op_type);
+  ORT_RETURN_IF(webnn_op_type.empty(), "Cannot get WebNN op type");
 
   if (input_defs.size() == 1) {
     // Not
-    output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_type.c_str(), input0, options);
+    output = model_builder.GetBuilder().call<emscripten::val>(std::string(webnn_op_type).c_str(), input0, options);
   } else {
     input1 = model_builder.GetOperand(input_defs[1]->Name());
-    output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_type.c_str(), input0, input1, options);
+    output = model_builder.GetBuilder().call<emscripten::val>(
+        std::string(webnn_op_type).c_str(), input0, input1, options);
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }
 
-bool LogicalOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool LogicalOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                          const Node& node,
                                          const WebnnDeviceType /* device_type */,
                                          const logging::Logger& logger) const {
@@ -71,10 +72,10 @@ bool LogicalOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
   return true;
 }
 
-bool LogicalOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool LogicalOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                               const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type;
   int32_t input1_type;
 
@@ -85,13 +86,13 @@ bool LogicalOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* ini
     if (!GetType(*input_defs[1], input1_type, logger))
       return false;
     std::array<int32_t, 2> input_types{input0_type, input1_type};
-    if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+    if (!AreDataTypesSame(op_type, input_types, logger)) {
       return false;
     }
   }
 
   std::string onnx_input_name = op_type == "Not" ? "X" : "A";
-  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", onnx_input_name, logger);
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", onnx_input_name, logger);
 }
 
 void CreateLogicalOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

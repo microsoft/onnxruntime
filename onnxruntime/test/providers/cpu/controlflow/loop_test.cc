@@ -576,11 +576,10 @@ TEST(Loop, InfiniteLoopTermination) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true",
            {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}, &session_run_options);  // Disable TensorRT on unsupported data type BOOL
 
-  // call get to propagate any exception
-  terminator_result.get();
-
   // done with the thread
   terminator_thread.join();
+  // call get to propagate any exception
+  terminator_result.get();
 }
 
 // Add basic test to trigger types override logic in Graph::InferAndVerifySubgraphTypes as well as

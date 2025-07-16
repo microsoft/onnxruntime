@@ -3,6 +3,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <numeric>
 #include <string>
@@ -10,9 +11,11 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <unordered_set>
 
 #include <gsl/gsl>
 
+#include "nlohmann/json.hpp"
 #include "QnnInterface.h"
 #include "QnnTypes.h"
 
@@ -21,11 +24,57 @@
 namespace onnxruntime {
 namespace qnn {
 class QnnOpConfigWrapper;
+class QnnModelWrapper;
 
 namespace utils {
+/**
+ * Returns a lowercase version of the input string.
+ * /param str The string to lowercase.
+ * /return The lowercased string.
+ */
+inline std::string GetLowercaseString(std::string str) {
+  // https://en.cppreference.com/w/cpp/string/byte/tolower
+  // The behavior of tolower from <cctype> is undefined if the argument is neither representable as unsigned char
+  // nor equal to EOF. To use tolower safely with a plain char (or signed char), the argument must be converted to
+  // unsigned char.
+  std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return str;
+}
+
 size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
 
 size_t GetElementSizeByType(ONNXTensorElementDataType elem_type);
+
+// Class that allows building a JSON representation of a QNN graph.
+// The JSON graph is built in a format that can be loaded with Qualcomm's QNN Netron visualizer.
+class QnnJSONGraph {
+ public:
+  QnnJSONGraph();
+
+  /**
+   * Add QNN operator to JSON graph.
+   *
+   * /param op_conf_wrapper QNN operator to add.
+   */
+  void AddOp(const QnnOpConfigWrapper& op_conf_wrapper);
+
+  /**
+   * Finalizes JSON graph (i.e., adds top-level graph metadata) and returns a reference
+   * to the JSON object.
+   *
+   * /return A const reference to the finalized JSON graph object.
+   */
+  const nlohmann::json& Finalize();
+
+ private:
+  void AddOpTensors(gsl::span<const Qnn_Tensor_t> tensors);
+
+  nlohmann::json json_;
+  std::unordered_set<std::string> seen_tensors_;   // Tracks tensors already added to JSON graph.
+  std::unordered_set<std::string> seen_op_types_;  // Tracks unique operator types.
+};
 
 size_t GetElementSizeByType(ONNX_NAMESPACE::TensorProto_DataType onnx_type);
 
@@ -222,6 +271,8 @@ std::vector<T> GetInitializerShape(const ONNX_NAMESPACE::TensorProto& tensor_pro
   return tensor_shape_vec;
 }
 
+TensorShape GetTensorProtoShape(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto);
+
 template <typename T, typename P>
 Status PermuteShape(gsl::span<const T> input_shape, gsl::span<const P> perm, gsl::span<T> output_shape) {
   const size_t rank = input_shape.size();
@@ -237,12 +288,112 @@ Status PermuteShape(gsl::span<const T> input_shape, gsl::span<const P> perm, gsl
 }
 
 // Gets error message associated with QNN error handle value.
-std::string_view GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
-                                    Qnn_ErrorHandle_t qnn_error_handle);
+std::string GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                               Qnn_ErrorHandle_t qnn_error_handle);
 
 // Gets verbose error message associated with QNN error handle value.
 std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                                       Qnn_ErrorHandle_t qnn_error_handle);
+
+// NCHW shape to channel last
+template <typename T>
+Status NchwShapeToNhwc(gsl::span<const T> nchw_shape, gsl::span<T> nhwc_shape) {
+  ORT_RETURN_IF_NOT(nchw_shape.size() == 4, "shape should have 4 dimension NCHW.");
+  nhwc_shape[0] = nchw_shape[0];
+  nhwc_shape[1] = nchw_shape[2];
+  nhwc_shape[2] = nchw_shape[3];
+  nhwc_shape[3] = nchw_shape[1];
+
+  return Status::OK();
+}
+
+// NCHW shape to HWCN shape, required for Conv weight
+template <typename T>
+Status NchwShapeToHwcn(gsl::span<const T> nchw_shape, gsl::span<T> hwcn_shape) {
+  if (nchw_shape.size() == 4) {
+    hwcn_shape[0] = nchw_shape[2];
+    hwcn_shape[1] = nchw_shape[3];
+    hwcn_shape[2] = nchw_shape[1];
+    hwcn_shape[3] = nchw_shape[0];
+  } else if (nchw_shape.size() == 5) {
+    hwcn_shape[0] = nchw_shape[2];
+    hwcn_shape[1] = nchw_shape[3];
+    hwcn_shape[2] = nchw_shape[4];
+    hwcn_shape[3] = nchw_shape[1];
+    hwcn_shape[4] = nchw_shape[0];
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported rank! only support 4 or 5.");
+  }
+
+  return Status::OK();
+}
+
+// CNHW shape to HWCN shape, required for Conv weight
+template <typename T>
+Status CnhwShapeToHwcn(gsl::span<const T> cnhw_shape, gsl::span<T> hwcn_shape) {
+  if (cnhw_shape.size() == 4) {
+    hwcn_shape[0] = cnhw_shape[2];
+    hwcn_shape[1] = cnhw_shape[3];
+    hwcn_shape[2] = cnhw_shape[0];
+    hwcn_shape[3] = cnhw_shape[1];
+  } else if (cnhw_shape.size() == 5) {
+    hwcn_shape[0] = cnhw_shape[2];
+    hwcn_shape[1] = cnhw_shape[3];
+    hwcn_shape[2] = cnhw_shape[4];
+    hwcn_shape[3] = cnhw_shape[0];
+    hwcn_shape[4] = cnhw_shape[1];
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported rank! only support 4 or 5.");
+  }
+
+  return Status::OK();
+}
+
+Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
+                               const onnx::TensorProto& initializer,
+                               std::vector<uint8_t>& transposed_data,
+                               bool is_3d = false);
+Status TransposeFromNchwToHwcn(std::vector<int64_t>&& input_shape_dims,
+                               size_t elem_byte_size,
+                               gsl::span<const uint8_t> input_buffer,
+                               gsl::span<uint8_t> output_buffer,
+                               bool is_3d = false);
+
+Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
+                               const onnx::TensorProto& initializer,
+                               std::vector<uint8_t>& transposed_data,
+                               bool is_3d = false);
+Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& input_shape_dims,
+                               size_t elem_byte_size,
+                               gsl::span<const uint8_t> input_buffer,
+                               gsl::span<uint8_t> output_buffer,
+                               bool is_3d = false);
+
+Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
+                             std::vector<uint32_t>& data_shape,
+                             const onnx::TensorProto& initializer,
+                             std::vector<uint8_t>& transposed_data);
+
+Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
+                       const std::string& convert_input_name,
+                       const std::string& convert_output_name,
+                       Qnn_DataType_t input_qnn_data_type,
+                       Qnn_DataType_t output_qnn_data_type,
+                       int32_t input_offset,
+                       float input_scale,
+                       const std::vector<uint32_t>& output_shape,
+                       bool output_symmetric,
+                       bool do_op_validation);
+
+/**
+ * Get permutation to transpose given axis to the last one.
+ *
+ * @param[in] axis the current axis to be transposed
+ * @param[in] rank the expected rank for permutation
+ * @param[out] perm the permutation for transpose
+ * @return execution status of this function
+ */
+Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm);
 
 }  // namespace utils
 }  // namespace qnn

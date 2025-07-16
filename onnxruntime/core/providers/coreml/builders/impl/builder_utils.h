@@ -50,7 +50,6 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
 // Copy the int64_t array to a coreml weight
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int64_t> data);
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 //
 // MLProgram utils
 //
@@ -99,6 +98,7 @@ COREML_SPEC::MILSpec::DataType DataTypeToMILSpec() {
 
 // The TensorProto.data_type field is an int, but must be a valid TensorProto_DataType value.
 // Use int for the arg so the caller can pass TensorProto.data_type() value and do the cast to enum internally
+// This method also automatically converts int64 to int32 since only int32 is supported for CoreML operations.
 COREML_SPEC::MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type);
 
 /// <summary>
@@ -157,12 +157,7 @@ void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::st
 /// </summary>
 /// <param name="op">Operation to update.</param>
 /// <param name="output">NodeArg with details of output to add.</param>
-/// <param name="override_element_type">
-///   Override the element type. Only set to handle cases where we believe the data at runtime will be int32 but
-///   the original ONNX node has type int64.
-/// </param>
-void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
-                        std::optional<int32_t> override_element_type = std::nullopt);
+void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output);
 
 /// <summary>
 /// Add pad_type and pad values.
@@ -174,6 +169,5 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
 /// <param name="num_spatial_dims">Number of spatial dims in input. Generally rank - 2 (ignore N and C dims).</param>
 void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, std::string_view op_type,
                        const NodeAttrHelper& helper, int num_spatial_dims);
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
 }  // namespace coreml
 }  // namespace onnxruntime

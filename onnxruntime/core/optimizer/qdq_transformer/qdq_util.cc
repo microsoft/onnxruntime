@@ -15,6 +15,7 @@
 namespace onnxruntime::QDQ {
 
 bool IsQDQPairSupported(
+    const Graph& graph,
     const Node& q_node, const Node& dq_node,
     const GetConstantInitializerFn& get_const_initializer,
     const std::filesystem::path& model_path,
@@ -56,13 +57,13 @@ bool IsQDQPairSupported(
   }
 
   // check Q/DQ have same scale and zero point
-  Initializer q_zp(*q_zp_tensor_proto, model_path);
-  Initializer q_scale(*q_scale_tensor_proto, model_path);
-  Initializer dq_zp(*dq_zp_tensor_proto, model_path);
-  Initializer dq_scale(*dq_scale_tensor_proto, model_path);
+  Initializer q_zp(graph, *q_zp_tensor_proto, model_path);
+  Initializer q_scale(graph, *q_scale_tensor_proto, model_path);
+  Initializer dq_zp(graph, *dq_zp_tensor_proto, model_path);
+  Initializer dq_scale(graph, *dq_scale_tensor_proto, model_path);
 
   if (q_zp.data_type() != dq_zp.data_type() ||
-      q_scale.data_type() != q_scale.data_type() ||
+      q_scale.data_type() != dq_scale.data_type() ||
       !SpanEq(q_zp.DataAsByteSpan(), dq_zp.DataAsByteSpan())) {
     return false;
   }
@@ -84,6 +85,7 @@ bool IsQDQPairSupported(
 }
 
 bool IsDQQConversion(
+    const Graph& graph,
     const Node& dq_node, const Node& q_node,
     const GetConstantInitializerFn& get_const_initializer,
     const std::filesystem::path& model_path) {
@@ -118,10 +120,10 @@ bool IsDQQConversion(
   }
 
   // check Q/DQ have same scale type and different zero point type
-  Initializer q_zp(*q_zp_tensor_proto, model_path);
-  Initializer q_scale(*q_scale_tensor_proto, model_path);
-  Initializer dq_zp(*dq_zp_tensor_proto, model_path);
-  Initializer dq_scale(*dq_scale_tensor_proto, model_path);
+  Initializer q_zp(graph, *q_zp_tensor_proto, model_path);
+  Initializer q_scale(graph, *q_scale_tensor_proto, model_path);
+  Initializer dq_zp(graph, *dq_zp_tensor_proto, model_path);
+  Initializer dq_scale(graph, *dq_scale_tensor_proto, model_path);
 
   return (dq_zp.data_type() != q_zp.data_type()) && (dq_scale.data_type() == q_scale.data_type());
 }
@@ -167,6 +169,7 @@ bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
 }
 
 bool IsQOrDQScalePositiveConstantScalar(
+    const Graph& graph,
     const Node& q_or_dq_node, const GetConstantInitializerFn& get_const_initializer,
     const std::filesystem::path& model_path) {
   auto q_or_dq_input_defs = q_or_dq_node.InputDefs();
@@ -183,7 +186,7 @@ bool IsQOrDQScalePositiveConstantScalar(
     return false;
   }
 
-  Initializer q_or_dq_scale(*q_or_dq_scale_tensor_proto, model_path);
+  Initializer q_or_dq_scale(graph, *q_or_dq_scale_tensor_proto, model_path);
 
   switch (q_or_dq_scale.data_type()) {
     case ONNX_NAMESPACE::TensorProto::FLOAT:
@@ -204,12 +207,12 @@ bool IsQOrDQScalePositiveConstantScalar(
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 bool MatchQNode(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, QOpName, {10, 13, 19, 21}) ||
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, QOpName, {10, 13, 19, 21, 23}) ||
          graph_utils::IsSupportedOptypeVersionAndDomain(node, QOpName, {1}, kMSDomain);
 }
 
 bool MatchDQNode(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {10, 13, 19, 21}) ||
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {10, 13, 19, 21, 23}) ||
          graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {1}, kMSDomain);
 }
 
@@ -250,7 +253,7 @@ bool GetQScalarScaleZp(const Graph& graph, const Node& q_node, float& scale, int
   }
 
   // Support scalar float scale only for now. Need to extend to other float types if needed.
-  Initializer scale_initializer(*scale_tensor_proto, graph.ModelPath());
+  Initializer scale_initializer(graph, *scale_tensor_proto, graph.ModelPath());
   if (scale_initializer.dims().size() != 0 || scale_initializer.data_type() != ONNX_NAMESPACE::TensorProto::FLOAT) {
     return false;
   }
@@ -275,7 +278,7 @@ bool GetQScalarScaleZp(const Graph& graph, const Node& q_node, float& scale, int
     return false;
   }
 
-  Initializer zp_initializer(*zp_tensor_proto, graph.ModelPath());
+  Initializer zp_initializer(graph, *zp_tensor_proto, graph.ModelPath());
   if (zp_initializer.dims().size() != 0) {
     return false;
   }

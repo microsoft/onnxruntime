@@ -24,9 +24,9 @@ class GruOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /*device_type*/, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer& graph_viewer, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                const logging::Logger& logger) const override;
@@ -119,7 +119,7 @@ Status GruOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   return Status::OK();
 }
 
-bool GruOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool GruOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                                      const WebnnDeviceType /*device_type*/, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 3) {
@@ -135,15 +135,15 @@ bool GruOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, c
   int32_t steps = static_cast<int32_t>(input_shape[0]);
 
   if (TensorExists(input_defs, 4)) {
-    if (!Contains(initializers, input_defs[4]->Name())) {
+    const auto* seq_initializer = graph_viewer.GetConstantInitializer(input_defs[4]->Name());
+    if (!seq_initializer) {
       LOGS(logger, ERROR) << "GRU: sequence_lens must be constant";
       return false;
     }
 
-    const auto& sequence_lens_tensor = *initializers.at(input_defs[4]->Name());
+    const auto& sequence_lens_tensor = *seq_initializer;
     std::vector<int32_t> sequence_lens;
-    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, logger)) {
-      LOGS(logger, ERROR) << "Cannot read sequence lens tensor";
+    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, graph_viewer, logger)) {
       return false;
     }
     if (!std::all_of(sequence_lens.begin(), sequence_lens.end(),
@@ -187,10 +187,10 @@ bool GruOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, c
   return true;
 }
 
-bool GruOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool GruOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input_X_type = 0;          // input data type
   int32_t input_W_type = 0;          // weight data type
   int32_t input_R_type = 0;          // recurrent weight data type
@@ -215,18 +215,18 @@ bool GruOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initial
   if (has_input_initial_h) {
     input_types.push_back(input_initial_h_type);
   }
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, input_X_type, wnn_limits, "input", "X", logger);
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input_X_type, wnn_limits, "input", "X", logger);
 }
 
 bool GruOpBuilder::HasSupportedOutputsImpl(const Node& node,
                                            const emscripten::val& wnn_limits,
                                            const logging::Logger& logger) const {
   const auto& output_defs = node.OutputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t Y_type = 0;
   int32_t Y_h_type = 0;
   bool has_Y = TensorExists(output_defs, 0);

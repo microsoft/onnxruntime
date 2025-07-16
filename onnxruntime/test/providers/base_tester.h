@@ -868,7 +868,7 @@ class BaseTester {
   void AddShapeToTensorData(NodeArg& node_arg, gsl::span<const int64_t> dims,
                             const std::vector<std::string>* dim_params);
 
-  void CopyDataToTensor(gsl::span<const gsl::byte> data, Tensor& dst);
+  void CopyDataToTensor(gsl::span<const std::byte> data, Tensor& dst);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   NodeArg MakeSparseNodeArg(int32_t dtype, const char* name,
@@ -879,7 +879,7 @@ class BaseTester {
                               MLDataType data_type,
                               const char* name,
                               gsl::span<const int64_t> dims,
-                              gsl::span<const gsl::byte> values,
+                              gsl::span<const std::byte> values,
                               gsl::span<const int64_t> indices,
                               const ValidateOutputParams& check_params,
                               const std::vector<std::string>* dim_params = nullptr);
@@ -895,7 +895,7 @@ class BaseTester {
                               MLDataType data_type,
                               const char* name,
                               gsl::span<const int64_t> dims,
-                              gsl::span<const gsl::byte> values,
+                              gsl::span<const std::byte> values,
                               gsl::span<const int64_t> inner_indices,
                               gsl::span<const int64_t> outer_indices,
                               const ValidateOutputParams& check_params,

@@ -789,7 +789,6 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
                             fast_reduce_fct* case_rk,
                             fast_reduce_fct* case_krk,
                             fast_reduce_fct* case_rkr) {
-  TensorShapeVector axes;
   const Tensor* input = ctx->Input<Tensor>(0);
   auto reduced_dims = input->Shape().GetDims();
   TensorShapeVector input_axes;
@@ -1055,7 +1054,6 @@ template <typename T>
 std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, gsl::span<const int64_t> reduce_axes,
                                            AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
                                            const TensorShape* input_shape_override) {
-  TensorShapeVector axes;
   TensorShapeVector output_shape, fast_shape, fast_axes;
   TensorShape new_input_shape = input_shape_override == nullptr ? input.Shape() : *input_shape_override;
   auto reduced_dims = new_input_shape.GetDims();

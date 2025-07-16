@@ -46,7 +46,8 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 namespace {
 // Check if cycle exists in the graph after partitioning
-bool FindCycleHelper(size_t i, const std::list<size_t>* adjacency_map, bool visited[], bool* st, std::vector<size_t>& cycles) {
+bool FindCycleHelper(size_t i, gsl::span<const InlinedVector<size_t>> adjacency_map, gsl::span<bool> visited, gsl::span<bool> st,
+                     InlinedVector<size_t>& cycles) {
   if (!visited[i]) {
     visited[i] = true;
     st[i] = true;
@@ -263,7 +264,6 @@ struct ShutdownProtobuf {
 } g_protobuf;
 
 namespace onnxruntime {
-
 namespace cuda {
 template <>
 void Impl_Cast(
@@ -538,9 +538,18 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
         input_explicit_shape_ranges[input_name][static_cast<int64_t>(j)][i].push_back(opt_value);
       }
 
+#if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 10) || NV_TENSORRT_MAJOR > 10
+      std::vector<int64_t> shapes_min_64(shapes_min.begin(), shapes_min.end());
+      std::vector<int64_t> shapes_opt_64(shapes_opt.begin(), shapes_opt.end());
+      std::vector<int64_t> shapes_max_64(shapes_max.begin(), shapes_max.end());
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min_64[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_opt_64[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_max_64[0], shape_size);
+#else
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+#endif
     }
     // Execution tensor
     else {
@@ -627,6 +636,17 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
       if (input->isShapeTensor()) {
         // shape tensor
         int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
+#if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 10) || NV_TENSORRT_MAJOR > 10
+        std::vector<int64_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
+        for (int j = 0; j < shape_size; j++) {
+          shapes_min[j] = *(trt_profiles[0]->getShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN));
+          shapes_max[j] = *(trt_profiles[0]->getShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX));
+          shapes_opt[j] = *(trt_profiles[0]->getShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT));
+        }
+        trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+        trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+        trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+#else
         std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
         for (int j = 0; j < shape_size; j++) {
           shapes_min[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN));
@@ -636,6 +656,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
         trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
         trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
         trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+#endif
       } else {
         // execution tensor
         nvinfer1::Dims dims_min, dims_opt, dims_max;
@@ -733,10 +754,18 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
         }
         *engine_update = true;
       }
-
+#if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 10) || NV_TENSORRT_MAJOR > 10
+      std::vector<int64_t> shapes_min_64(shapes_min.begin(), shapes_min.end());
+      std::vector<int64_t> shapes_opt_64(shapes_opt.begin(), shapes_opt.end());
+      std::vector<int64_t> shapes_max_64(shapes_max.begin(), shapes_max.end());
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min_64[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_opt_64[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_max_64[0], shape_size);
+#else
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+#endif
     } else {  // Execution tensor
       nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
       for (int j = 0, end = nb_dims; j < end; ++j) {
@@ -958,6 +987,7 @@ Status BindContextInput(Ort::KernelContext& ctx,
     switch (tensor_type) {
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
+      CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, uint16_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
@@ -1050,6 +1080,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
     switch (output_type) {
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, uint16_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
@@ -1119,6 +1150,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
   switch (output_type) {
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, uint16_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
@@ -1282,9 +1314,25 @@ TensorrtExecutionProvider::PerThreadContext& TensorrtExecutionProvider::GetPerTh
   return *context;
 }
 
+std::vector<nvinfer1::PreviewFeature> ParseTrtPreviewFeatures(const std::string& str) {
+  std::vector<std::string> featureNames{SplitToStringVec(str, ',')};
+
+  std::vector<nvinfer1::PreviewFeature> previewFeatures;
+  previewFeatures.reserve(featureNames.size());
+  for (auto featureName : featureNames) {
+    if (featureName == "ALIASED_PLUGIN_IO_10_03") {
+      previewFeatures.push_back(nvinfer1::PreviewFeature::kALIASED_PLUGIN_IO_10_03);
+    } else {
+      throw std::invalid_argument(std::string("Unkown or unsupported preview feature: ") + featureName);
+    }
+  }
+
+  return previewFeatures;
+}
+
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider,
-                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
                                    narrow<OrtDevice::DeviceId>(info.device_id))},
       info_(info),
       device_id_(info.device_id) {
@@ -1320,6 +1368,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     min_subgraph_size_ = info.min_subgraph_size;
     max_workspace_size_ = info.max_workspace_size;
     fp16_enable_ = info.fp16_enable;
+    bf16_enable_ = info.bf16_enable;
+    // BF16 support is primarily available on NVIDIA GPUs with the Ampere and later architectures with compute capability of 8.0 or higher.
+    if (bf16_enable_ && prop.major < 8) {
+      bf16_enable_ = false;
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] trt_bf16_enable is set, but platform doesn't support bf16.";
+    }
     int8_enable_ = info.int8_enable;
     if (int8_enable_) {
       int8_calibration_cache_name_ = info.int8_calibration_table_name;
@@ -1366,7 +1420,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
     force_sequential_engine_build_ = info.force_sequential_engine_build;
     context_memory_sharing_enable_ = info.context_memory_sharing_enable;
-    if (fp16_enable_) {
+    if (fp16_enable_ || bf16_enable_) {
       layer_norm_fp32_fallback_ = info.layer_norm_fp32_fallback;
     }
     build_heuristics_enable_ = info.build_heuristics_enable;
@@ -1379,6 +1433,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_opt_shapes = info.profile_opt_shapes;
     cuda_graph_enable_ = info.cuda_graph_enable;
     engine_hw_compatible_ = info.engine_hw_compatible;
+    op_types_to_exclude_ = info.op_types_to_exclude;
+    preview_features_ = ParseTrtPreviewFeatures(info.preview_features);
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -1399,6 +1455,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
       if (!fp16_enable_env.empty()) {
         fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
+      }
+
+      const std::string bf16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kBF16Enable);
+      if (!bf16_enable_env.empty()) {
+        bf16_enable_ = (std::stoi(bf16_enable_env) == 0 ? false : true);
       }
 
       const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8Enable);
@@ -1563,6 +1624,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string cuda_graph_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCudaGraphEnable);
       if (!cuda_graph_enable_env.empty()) {
         cuda_graph_enable_ = (std::stoi(cuda_graph_enable_env) == 0 ? false : true);
+      }
+
+      const std::string op_types_to_exclude_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kOpTypesToExclude);
+      if (!op_types_to_exclude_env.empty()) {
+        op_types_to_exclude_ = op_types_to_exclude_env;
       }
 
     } catch (const std::invalid_argument& ex) {
@@ -1737,6 +1803,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_min_subgraph_size: " << min_subgraph_size_
                         << ", trt_max_workspace_size: " << max_workspace_size_
                         << ", trt_fp16_enable: " << fp16_enable_
+                        << ", trt_bf16_enable: " << bf16_enable_
                         << ", trt_int8_enable: " << int8_enable_
                         << ", trt_int8_calibration_cache_name: " << int8_calibration_cache_name_
                         << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
@@ -1768,7 +1835,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_ep_context_embed_mode: " << ep_context_embed_mode_
                         << ", trt_cache_prefix: " << cache_prefix_
                         << ", trt_engine_hw_compatible: " << engine_hw_compatible_
-                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_;
+                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_
+                        << ", trt_op_types_to_exclude: " << op_types_to_exclude_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -1793,6 +1861,10 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
   ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
+
+  if (context_memory_) {
+    context_memory_.reset();
+  }
 
   if (alloc_ != nullptr) {
     // This code is same as OrtApis::ReleaseAllocator defined in allocator_adapters.cc.
@@ -1845,10 +1917,9 @@ std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators()
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
-        ORT_UNUSED_PARAMETER(device_id);
-        return CreateCUDAPinnedAllocator(onnxruntime::CUDA_PINNED);
+        return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
       },
-      0);
+      narrow<OrtDevice::DeviceId>(device_id_));
 
   return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
@@ -2132,28 +2203,22 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // subgraph's output list
         std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
+          // Initializers that refer to a memory location in OrtValue
+          // can not be handled by TRT (unlike those that are on disk).
+          // This prevents us from sharing the data and we have to make a copy here.
+          constexpr const bool load_initializers_inline_true = true;
           const auto& node = graph.GetNode(node_index[index]);
           std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-                graph_build.AddInitializedTensor(*(initializer));
-              }
-            }
+            graph_utils::MakeInitializerCopyIfNotExist(graph.GetGraph(), graph_build, input->Name(),
+                                                       load_initializers_inline_true);
           }
 
           for (auto input : node->ImplicitInputDefs()) {
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-                graph_build.AddInitializedTensor(*(initializer));
-              }
-            }
+            graph_utils::MakeInitializerCopyIfNotExist(graph.GetGraph(), graph_build, input->Name(),
+                                                       load_initializers_inline_true);
           }
           for (auto output : node->OutputDefs()) {
             auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
@@ -2271,9 +2336,10 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto trt_builder = GetBuilder(trt_logger);
         auto network_flags = 0;
 #if NV_TENSORRT_MAJOR > 8
-        network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
-#endif
+        network_flags |= (fp16_enable_ || int8_enable_ || bf16_enable_) ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+#else
         network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+#endif
 
         auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -2398,7 +2464,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
 
     // Create adjacency list
     size_t graph_size = node_to_index_map.size();
-    std::list<size_t>* adjacency_map = new std::list<size_t>[graph_size];
+    std::vector<InlinedVector<size_t>> adjacency_map(graph_size);
     for (const auto& node : node_to_outputs_map) {
       for (auto iter = node.second.begin(); iter != node.second.end(); ++iter) {
         const auto& loc = input_to_nodes_map.find(*iter);
@@ -2413,14 +2479,14 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
     }
 
     // Check cycle in the graph
-    bool* visited = new bool[graph_size];
-    bool* st = new bool[graph_size];
+    InlinedVector<bool> visited(graph_size);
+    InlinedVector<bool> st(graph_size);
     for (size_t i = 0; i < graph_size; ++i) {
       visited[i] = false;
       st[i] = false;
     }
 
-    std::vector<size_t> cycles;
+    InlinedVector<size_t> cycles;
     bool has_cycle = false;
     for (size_t i = 0; i < graph_size; ++i) {
       if (FindCycleHelper(i, adjacency_map, visited, st, cycles)) {
@@ -2441,17 +2507,15 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
         }
       }
     }
-
-    delete[] adjacency_map;
-    delete[] visited;
-    delete[] st;
   }
   return cycle_detected;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
-                                         const IKernelLookup& /*kernel_lookup*/) const {
+                                         const IKernelLookup& /*kernel_lookup*/,
+                                         const GraphOptimizerRegistry& graph_optimizer_registry,
+                                         IResourceAccountant* /* resource_accountant */) const {
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
   // Get ModelPath
@@ -2481,18 +2545,19 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
-  std::set<std::string> exclude_ops_set;
+  auto get_exclude_ops_set = [&](std::string node_list_to_exclude) -> std::set<std::string> {
+    std::set<std::string> set;
+    if (!node_list_to_exclude.empty()) {
+      std::stringstream node_list(node_list_to_exclude);
+      std::string node;
+      while (std::getline(node_list, node, ',')) {
+        set.insert(node);
+      }
+    }
+    return set;
+  };
 
-  /*
-   * There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) in TRT 10.
-   * TRT EP automatically excludes DDS ops from running on TRT.
-   */
-  if (trt_version_ >= 100000 && trt_version_ < 110000) {
-    exclude_ops_set.insert("NonMaxSuppression");
-    exclude_ops_set.insert("NonZero");
-    exclude_ops_set.insert("RoiAlign");
-    LOGS_DEFAULT(VERBOSE) << "There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) in TRT 10. TRT EP automatically excludes DDS ops from running on TRT, if applicable";
-  }
+  auto exclude_ops_set = get_exclude_ops_set(op_types_to_exclude_);
 
   SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
@@ -2559,11 +2624,12 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     supported_nodes_vector.clear();
   }
 
-  // Remove subgraphs if its size is less than the predefined minimal size
-  for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
+  for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end();) {
     const size_t subgraph_size = it->first.size();
     if (subgraph_size < min_subgraph_size_) {
-      supported_nodes_vector.erase(it--);
+      it = supported_nodes_vector.erase(it);
+    } else {
+      ++it;
     }
   }
 
@@ -2655,11 +2721,61 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
   }
 
+  /**
+   * Enable EP related L2+ graph optimizations:
+   *
+   * 1. Calls provider bridge API to lookup pre-defined optimizer by name and get selection function.
+   *    - Example: g_host->GetOptimizerByName(optimizer_name, graph_optimizer_registry, selection_func)
+   * 2. Executes the selection function to obtain the selection ComputeCapability.
+   *    - ComputeCapability.optimize_func would be set by the optimizer to the function that does the optimization.
+   * 3. Uses the selection ComputeCapability to create the optimization ComputeCapability.
+   * 4. Returns the final ComputeCapability, with nodes_to_optimize set to the optimization ComputeCapability.
+   *
+   * Current available optimizations:
+   *   - (ConstantFoldingDQ) constant folding on DQ nodes, i.e. dequantize INT32, UINT16, INT16 constant to FP32.
+   */
+
+  SelectionFunc selection_func;
+  std::vector<std::unique_ptr<ComputeCapability>> selection_cc;
+
+  // Prepare for ConstantFoldingDQ optimizer
+  // Note: The NodeIndex here is the node index in the graph, not the index in node vector in supported_nodes_vector.
+  std::unordered_set<NodeIndex> trt_selection_node_set;     // The qualified dq nodes selected by TRT EP
+  std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq;  // consumer node -> dq node
+
+  if (dla_enable_) {
+    std::string optimizer_name = "ConstantFoldingDQ";
+    const std::unordered_map<std::string, std::string> key_value_config;
+    auto status = g_host->GetOptimizerByName(optimizer_name, graph_optimizer_registry, selection_func);
+    if (status == Status::OK()) {
+      if (selection_func) {
+        selection_cc = selection_func(graph, key_value_config, graph_optimizer_registry);
+        SelectQualifiedDQNode(graph, trt_selection_node_set, consumer_to_dq);
+      }
+    } else {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Can't get optimizer " << optimizer_name;
+    }
+  }
+
+  // Create ComputeCapability
   int number_of_trt_nodes = 0, subgraph_index = 0;
-  for (const auto& group : supported_nodes_vector) {
+  for (auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
+      if (!selection_cc.empty()) {
+        // Include DQ nodes that are filtered out by TRT parser
+        UpdateSupportedNodeVectorForDQ(graph, group, supported_nodes_vector, consumer_to_dq);
+      }
+
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
-      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+      auto compute_capability = ComputeCapability::Create(std::move(sub_graph));
+
+      // add optimization ComputeCapability to node_to_optimize
+      for (auto& cc : selection_cc) {
+        std::unique_ptr<ComputeCapability> optimization_cc = CreateOptimizationComputeCapability(cc.get(), trt_selection_node_set, compute_capability.get());
+        compute_capability->add_nodes_to_optimize(std::move(optimization_cc));
+      }
+
+      result.push_back(std::move(compute_capability));
       number_of_trt_nodes += static_cast<int>(group.first.size());
       subgraph_index++;
     }
@@ -2829,9 +2945,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   auto trt_builder = GetBuilder(trt_logger);
   auto network_flags = 0;
 #if NV_TENSORRT_MAJOR > 8
-  network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
-#endif
+  network_flags |= (fp16_enable_ || int8_enable_ || bf16_enable_) ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+#else
   network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+#endif
   auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
   auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
   auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -2841,7 +2958,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 
   // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
-  if (fp16_enable_ && layer_norm_fp32_fallback_) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+  if ((fp16_enable_ || bf16_enable_) && layer_norm_fp32_fallback_) {
     for (auto idx = 1; idx < trt_network->getNbLayers() - 1; ++idx) {
       auto layer = trt_network->getLayer(idx);
       auto next_layer = trt_network->getLayer(idx + 1);
@@ -2854,6 +2975,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       }
     }
   }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
   int num_inputs = trt_network->getNbInputs();
   int num_outputs = trt_network->getNbOutputs();
@@ -2990,7 +3114,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 
   // Check platform availability for low precision
-  if (fp16_enable_) {
+  if (fp16_enable_ || bf16_enable_) {
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
@@ -3000,7 +3124,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #pragma warning(pop)
 #endif
       fp16_enable_ = false;
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE is set, but platform doesn't support fast native fp16";
+      bf16_enable_ = false;
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE or ORT_TENSORRT_BF16_ENABLE is set, but platform doesn't support fast native fp16/bf16";
     }
   }
 
@@ -3027,22 +3152,30 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     }
   }
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
   // Set precision flags
   std::string trt_node_name_with_precision = fused_node.Name();
-  if (fp16_enable_ && int8_enable_) {
-    trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
-    trt_node_name_with_precision += "_fp16_int8";
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled";
-  } else if (fp16_enable_) {
+  if (fp16_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
     trt_node_name_with_precision += "_fp16";
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
-  } else if (int8_enable_) {
+  }
+  if (bf16_enable_) {
+    trt_config->setFlag(nvinfer1::BuilderFlag::kBF16);
+    trt_node_name_with_precision += "_bf16";
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] BF16 mode is enabled";
+  }
+  if (int8_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
     trt_node_name_with_precision += "_int8";
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled";
   }
-
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
   // Set DLA
   if (fp16_enable_ || int8_enable_) {
     if (dla_enable_ && dla_core_ >= 0) {  // DLA can only run with FP16 and INT8
@@ -3124,6 +3257,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     tactics |= GetTacticSourceFromString(tactic_sources_);
     trt_config->setTacticSources(tactics);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
+  }
+
+  // Set preview feature flags
+  for (auto feature : preview_features_) {
+    trt_config->setPreviewFeature(feature, true);
   }
 
   // Build TRT engine (if needed) and load TRT engine if:
@@ -3363,17 +3501,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // Note: Creating an execution context from an engine is thread safe per TRT doc
     // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
     if (context_memory_sharing_enable_) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
-      size_t mem_size = trt_engine->getDeviceMemorySize();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-      if (mem_size > max_ctx_mem_size_) {
-        max_ctx_mem_size_ = mem_size;
-      }
+      // Reset the max_ctx_mem_size_ and context_memory_ since we don't have access to the allocator here.
+      max_ctx_mem_size_ = 0;
+      context_memory_ = nullptr;
 #if NV_TENSORRT_MAJOR < 10
       trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
 #else
@@ -3460,13 +3590,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
           &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
           &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-          input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
+          input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, bf16_enable_, int8_enable_, int8_calibration_cache_available_,
           dla_enable_, dla_core_, trt_node_name_with_precision,
           engine_cache_enable_, cache_path_, runtime_.get(), profiles_[context->node_name],
-          context_memory_sharing_enable_, &max_ctx_mem_size_, dynamic_range_map, engine_decryption_enable_,
+          context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_, dynamic_range_map, engine_decryption_enable_,
           engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
           detailed_build_log_, build_heuristics_enable_, sparsity_enable_, builder_optimization_level_,
-          auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_};
+          auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_,
+          preview_features_};
     *state = p.release();
     return 0;
   };
@@ -3501,6 +3632,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
     auto trt_profiles = trt_state->profiles;
+    auto context_memory = trt_state->context_memory;
     auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
     int num_inputs = static_cast<int>(input_indexes.size());
     int num_outputs = static_cast<int>(output_indexes.size());
@@ -3508,8 +3640,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     bool context_update = false;
     std::unordered_set<std::string> input_names;
 
-    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, narrow<OrtDevice::DeviceId>(device_id_));
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device, device_id_);
+    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                     narrow<OrtDevice::DeviceId>(device_id_));
+    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device);
     if (alloc_ == nullptr) {
       Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
     }
@@ -3658,16 +3791,26 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
         }
       }
-
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
       // Set precision
-      if (trt_state->fp16_enable && trt_state->int8_enable) {
-        trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
-      } else if (trt_state->fp16_enable) {
-        trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-      } else if (trt_state->int8_enable) {
+      if (trt_state->int8_enable) {
         trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled";
       }
-
+      if (trt_state->fp16_enable) {
+        trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
+      }
+      if (trt_state->bf16_enable) {
+        trt_config->setFlag(nvinfer1::BuilderFlag::kBF16);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] BF16 mode is enabled";
+      }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
       // Set DLA (DLA can only run with FP16 or INT8)
       if ((trt_state->fp16_enable || trt_state->int8_enable) && trt_state->dla_enable) {
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] use DLA core " << trt_state->dla_core;
@@ -3747,6 +3890,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         LOGS_DEFAULT(INFO) << "[TensorRT EP] Re-generate engine with hardware compatibility enabled.";
       }
 #endif
+
+      // Set preview feature flags
+      for (auto feature : trt_state->preview_features) {
+        trt_config->setPreviewFeature(feature, true);
+      }
 
       // Build engine
       std::unique_ptr<nvinfer1::IHostMemory> serialized_engine;
@@ -3940,8 +4088,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #endif
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
+        *context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr, true /*use_reserve*/);
       }
-      trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
+      trt_context->setDeviceMemory((*context_memory).get());
     }
 
     // Start CUDA graph capture.
@@ -4140,6 +4289,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
           output_info_[context->node_name],
           context_memory_sharing_enable_,
           &max_ctx_mem_size_,
+          &context_memory_,
           &tensorrt_mu_};
     *state = p.release();
     return 0;
@@ -4168,12 +4318,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
     auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
+    auto context_memory = trt_state->context_memory;
     int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
     std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
 
-    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, narrow<OrtDevice::DeviceId>(device_id_));
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device, device_id_);
+    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                     narrow<OrtDevice::DeviceId>(device_id_));
+    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device);
     if (alloc_ == nullptr) {
       Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
     }
@@ -4265,8 +4417,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 #endif
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
+        *context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr, true /*use_reserve*/);
       }
-      trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
+      trt_context->setDeviceMemory((*context_memory).get());
     }
 
     // Start CUDA graph capture.
@@ -4378,8 +4531,11 @@ void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
 }
 
 OrtDevice TensorrtExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
-  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device id always be 0*/);
+  if (mem_type == OrtMemTypeCPUInput)
+    return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput)
+    return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                     default_device_.Id());
   return default_device_;
 }
 

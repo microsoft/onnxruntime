@@ -11,6 +11,39 @@ import { isNode } from './wasm-utils-env';
  */
 const origin = isNode || typeof location === 'undefined' ? undefined : location.origin;
 
+/**
+ * Some bundlers (eg. Webpack) will rewrite `import.meta.url` to a file URL at compile time.
+ *
+ * This function checks if `import.meta.url` starts with `file:`, but using the `>` and `<` operators instead of
+ * `startsWith` function so that code minimizers can remove the dead code correctly.
+ *
+ * For example, if we use terser to minify the following code:
+ * ```js
+ * if ("file://hard-coded-filename".startsWith("file:")) {
+ *   console.log(1)
+ * } else {
+ *   console.log(2)
+ * }
+ *
+ * if ("file://hard-coded-filename" > "file:" && "file://hard-coded-filename" < "file;") {
+ *   console.log(3)
+ * } else {
+ *   console.log(4)
+ * }
+ * ```
+ *
+ * The minified code will be:
+ * ```js
+ * "file://hard-coded-filename".startsWith("file:")?console.log(1):console.log(2),console.log(3);
+ * ```
+ *
+ * (use Terser 5.39.0 with default options, https://try.terser.org/)
+ *
+ * @returns true if the import.meta.url is hardcoded as a file URI.
+ */
+export const isEsmImportMetaUrlHardcodedAsFileUri =
+  BUILD_DEFS.IS_ESM && BUILD_DEFS.ESM_IMPORT_META_URL! > 'file:' && BUILD_DEFS.ESM_IMPORT_META_URL! < 'file;';
+
 const getScriptSrc = (): string | undefined => {
   // if Nodejs, return undefined
   if (isNode) {
@@ -26,9 +59,22 @@ const getScriptSrc = (): string | undefined => {
     // new URL('actual-bundle-name.js', import.meta.url).href
     // ```
     // So that bundler can preprocess the URL correctly.
-    if (BUILD_DEFS.ESM_IMPORT_META_URL?.startsWith('file:')) {
+    if (isEsmImportMetaUrlHardcodedAsFileUri) {
       // if the rewritten URL is a relative path, we need to use the origin to resolve the URL.
-      return new URL(new URL(BUILD_DEFS.BUNDLE_FILENAME, BUILD_DEFS.ESM_IMPORT_META_URL).href, origin).href;
+
+      // The following is a workaround for Vite.
+      //
+      // Vite uses a bundler(rollup/rolldown) that does not rewrite `import.meta.url` to a file URL. So in theory, this
+      // code path should not be executed in Vite. However, the bundler does not know it and it still try to load the
+      // following pattern:
+      // - `return new URL('filename', import.meta.url).href`
+      //
+      // By replacing the pattern above with the following code, we can skip the resource loading behavior:
+      // - `const URL2 = URL; return new URL2('filename', import.meta.url).href;`
+      //
+      // And it still works in Webpack.
+      const URL2 = URL;
+      return new URL(new URL2(BUILD_DEFS.BUNDLE_FILENAME, BUILD_DEFS.ESM_IMPORT_META_URL).href, origin).href;
     }
 
     return BUILD_DEFS.ESM_IMPORT_META_URL;
@@ -168,7 +214,9 @@ const embeddedWasmModule: EmscriptenModuleFactory<OrtWasmModule> | undefined =
       require(
         !BUILD_DEFS.DISABLE_JSEP
           ? '../../dist/ort-wasm-simd-threaded.jsep.mjs'
-          : '../../dist/ort-wasm-simd-threaded.mjs',
+          : !BUILD_DEFS.DISABLE_WEBGPU
+            ? '../../dist/ort-wasm-simd-threaded.asyncify.mjs'
+            : '../../dist/ort-wasm-simd-threaded.mjs',
       ).default
     : undefined;
 
@@ -188,13 +236,51 @@ export const importWasmModule = async (
   urlOverride: string | undefined,
   prefixOverride: string | undefined,
   isMultiThreaded: boolean,
+  isWasmOverridden: boolean,
 ): Promise<[undefined | string, EmscriptenModuleFactory<OrtWasmModule>]> => {
-  if (!urlOverride && !prefixOverride && embeddedWasmModule && scriptSrc && isSameOrigin(scriptSrc)) {
-    return [undefined, embeddedWasmModule];
+  //
+  // Check if we should use the embedded module.
+  //
+
+  // To use the embedded module, it should be available, and no URL override or prefix override should be specified.
+  let useEmbeddedModule = embeddedWasmModule && !(urlOverride || prefixOverride);
+  if (useEmbeddedModule) {
+    if (!scriptSrc) {
+      // no URL info available.
+      //
+      // Note: when the embedded module is available, it means the current script is ESM. Usually, in ESM, the
+      // `import.meta.url` is available. But in some cases (eg. Cloudflare Workers), the value of `import.meta.url`
+      // can be `null` or `undefined`. In this case, we can only load the embedded module when:
+      //
+      // 1. The WebAssembly module binary is overridden:
+      //    ```js
+      //    env.wasm.wasmPaths = undefined;  // or not specified
+      //    env.wasm.wasmBinary = /* a Uint8Array containing the WebAssembly binary */;
+      //    ```
+      //
+      // 2. The ".wasm" only is overridden.
+      //    ```js
+      //    env.wasm.wasmPaths = { wasm: /* URL of the .wasm file */ };
+      //    ```
+      //
+      if (isWasmOverridden && !isMultiThreaded) {
+        useEmbeddedModule = true;
+      } else {
+        throw new Error('cannot determine the script source URL.');
+      }
+    } else {
+      // if the script source is available, we can check if it is from the same origin.
+      useEmbeddedModule = isSameOrigin(scriptSrc);
+    }
+  }
+  if (useEmbeddedModule) {
+    return [undefined, embeddedWasmModule!];
   } else {
     const wasmModuleFilename = !BUILD_DEFS.DISABLE_JSEP
       ? 'ort-wasm-simd-threaded.jsep.mjs'
-      : 'ort-wasm-simd-threaded.mjs';
+      : !BUILD_DEFS.DISABLE_WEBGPU
+        ? 'ort-wasm-simd-threaded.asyncify.mjs'
+        : 'ort-wasm-simd-threaded.mjs';
     const wasmModuleUrl = urlOverride ?? normalizeUrl(wasmModuleFilename, prefixOverride);
     // need to preload if all of the following conditions are met:
     // 1. not in Node.js.

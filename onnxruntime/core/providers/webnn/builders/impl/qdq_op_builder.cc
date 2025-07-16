@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -22,9 +21,9 @@ class QDQOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -100,7 +99,7 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (!has_zero_point) {
     if (zero_point_shape.empty()) {
       // zero_point has the same shape as the scale tensor.
-      zero_point_shape = GetVecUint32FromVecInt64(scale_shape);
+      zero_point_shape = GetNarrowedIntfromInt64<uint32_t>(scale_shape);
     }
     // Create a zero constant with the same shape as the scale tensor.
     // The zero value has been pre-processed in the CreateOrGetConstant function,
@@ -110,10 +109,11 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
-  std::string webnn_op_type;
-  ORT_RETURN_IF_NOT(GetWebNNOpType(op_type, webnn_op_type), "Cannot get WebNN op type");
-  emscripten::val output =
-      model_builder.GetBuilder().call<emscripten::val>(webnn_op_type.c_str(), input, scale, zero_point, options);
+  const std::string_view webnn_op_type = GetWebNNOpType(op_type);
+  ORT_RETURN_IF(webnn_op_type.empty(), "Cannot get WebNN op type");
+
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>(
+      std::string(webnn_op_type).c_str(), input, scale, zero_point, options);
 
   model_builder.AddOperand(output_defs[0]->Name(), std::move(output));
 
@@ -121,7 +121,7 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool QDQOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool QDQOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                      const Node& node,
                                      const WebnnDeviceType /* device_type */,
                                      const logging::Logger& logger) const {
@@ -152,10 +152,10 @@ bool QDQOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers
   return true;
 }
 
-bool QDQOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool QDQOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type = 0;  // input data type
   int32_t input1_type = 0;  // x_scale data type
   int32_t input2_type = 0;  // x_zero_point data type
@@ -167,7 +167,7 @@ bool QDQOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initial
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "x", logger) &&
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "x", logger) &&
          IsDataTypeSupportedByOp(op_type, input1_type, wnn_limits, "scale", "x_scale", logger) &&
          (!has_input2 || IsDataTypeSupportedByOp(op_type, input2_type, wnn_limits, "zeroPoint", "x_zero_point", logger));
 }

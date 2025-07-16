@@ -886,6 +886,14 @@ MlasGemmQuantGetDispatch(
     if(BIsSigned || !AIsSigned) {
         GemmQuantDispatch = &MlasGemmU8X8DispatchNeon;
     }
+#elif defined(MLAS_TARGET_WASM_RELAXED_SIMD)
+    if (!AIsSigned) {
+        if (HasUSDot()) {
+          GemmQuantDispatch = &MlasGemmU8X8DispatchWasmRelaxedSimd;
+        } else {
+          GemmQuantDispatch = &MlasGemmU8X8DispatchWasmSimd;
+        }
+    }
 #elif defined(MLAS_TARGET_WASM_SIMD)
     if (!AIsSigned) {
         GemmQuantDispatch = &MlasGemmU8X8DispatchWasmSimd;

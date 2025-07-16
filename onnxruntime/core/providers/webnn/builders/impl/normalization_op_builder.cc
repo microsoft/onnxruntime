@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -23,10 +22,12 @@ class NormalizationOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+  bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                               const logging::Logger& logger) const override;
 };
 
 Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -113,9 +114,33 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       ORT_RETURN_IF_NOT(GetType(*input_defs[0], input_type, logger), "Cannot get input type");
       emscripten::val common_options = emscripten::val::object();
 
+      if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+        // Decomposed *SimplifiedLayerNormalization may lose precision if its data type is float16.
+        // So cast all inputs to float32 to ensure precision.
+        common_options.set("label", node.Name() + "_cast_input_to_fp32");
+        input = model_builder.GetBuilder().call<emscripten::val>("cast", input,
+                                                                 emscripten::val("float32"), common_options);
+
+        common_options.set("label", node.Name() + "_cast_scale_to_fp32");
+        scale = model_builder.GetBuilder().call<emscripten::val>("cast", scale,
+                                                                 emscripten::val("float32"), common_options);
+
+        if (!bias.isUndefined()) {
+          common_options.set("label", node.Name() + "_cast_bias_to_fp32");
+          bias = model_builder.GetBuilder().call<emscripten::val>("cast", bias,
+                                                                  emscripten::val("float32"), common_options);
+        }
+      }
+
       // If it is SkipSimplifiedLayerNormalization, add the skip and bias (if it exists) to the input.
       if (op_type == "SkipSimplifiedLayerNormalization") {
         emscripten::val skip = model_builder.GetOperand(input_defs[1]->Name());
+        if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+          // Cast skip to float32
+          common_options.set("label", node.Name() + "_cast_skip_to_fp32");
+          skip = model_builder.GetBuilder().call<emscripten::val>("cast", skip,
+                                                                  emscripten::val("float32"), common_options);
+        }
         common_options.set("label", node.Name() + "_add_skip");
         input = model_builder.GetBuilder().call<emscripten::val>("add", input, skip, common_options);
         if (!bias.isUndefined()) {
@@ -126,12 +151,21 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
         // Add SkipSimplifiedLayerNormalization's output input_skip_bias_sum if it exists.
         // Now input equals to input_skip_bias_sum.
         if (TensorExists(output_defs, 3)) {
-          model_builder.AddOperand(output_defs[3]->Name(), input);
+          emscripten::val input_skip_bias_sum = input;
+          if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+            // Cast input_skip_bias_sum back to float16.
+            common_options.set("label", node.Name() + "_cast_input_skip_bias_sum_to_fp16");
+            input_skip_bias_sum = model_builder.GetBuilder().call<emscripten::val>("cast", input_skip_bias_sum,
+                                                                                   emscripten::val("float16"),
+                                                                                   common_options);
+          }
+          model_builder.AddOperand(output_defs[3]->Name(), input_skip_bias_sum);
         }
       }
 
       // Pow
-      emscripten::val pow_constant = model_builder.CreateOrGetConstant<float>(input_type, 2);
+      emscripten::val pow_constant =
+          model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 2);
       common_options.set("label", node.Name() + "_pow");
       emscripten::val pow =
           model_builder.GetBuilder().call<emscripten::val>("pow", input, pow_constant, common_options);
@@ -144,7 +178,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       emscripten::val reduce_mean = model_builder.GetBuilder().call<emscripten::val>("reduceMean", pow, reduce_options);
 
       // Add
-      emscripten::val add_constant = model_builder.CreateOrGetConstant<float>(input_type, epsilon);
+      emscripten::val add_constant =
+          model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, epsilon);
       common_options.set("label", node.Name() + "_add");
       emscripten::val add =
           model_builder.GetBuilder().call<emscripten::val>("add", reduce_mean, add_constant, common_options);
@@ -165,6 +200,13 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       if (!bias.isUndefined()) {
         common_options.set("label", node.Name() + "_add_bias");
         output = model_builder.GetBuilder().call<emscripten::val>("add", output, bias, common_options);
+      }
+
+      if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+        // Cast output back to float16.
+        common_options.set("label", node.Name() + "_cast_output_to_fp16");
+        output = model_builder.GetBuilder().call<emscripten::val>("cast", output,
+                                                                  emscripten::val("float16"), common_options);
       }
     }
   } else if (op_type == "InstanceNormalization") {
@@ -206,7 +248,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     output = model_builder.GetBuilder().call<emscripten::val>("instanceNormalization", input, options);
     // Reshape back to the original output shape for 3D input.
     if (input_shape.size() != 4) {
-      std::vector<uint32_t> output_shape = GetVecUint32FromVecInt64(input_shape);
+      std::vector<uint32_t> output_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
       emscripten::val reshape_output_options = emscripten::val::object();
       reshape_output_options.set("label", node.Name() + "reshape_output");
       output = model_builder.GetBuilder().call<emscripten::val>("reshape",
@@ -224,7 +266,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
 
 // Operator support related.
 
-bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool NormalizationOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                                const Node& node,
                                                const WebnnDeviceType /* device_type */,
                                                const logging::Logger& logger) const {
@@ -269,11 +311,11 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
   return true;
 }
 
-bool NormalizationOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                                     const emscripten::val& wnn_limits,
                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type;  // input data type
   int32_t input1_type;  // scale data type
   int32_t input2_type;  // B data type
@@ -301,11 +343,50 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& 
   if (has_input4) {
     input_types.push_back(input4_type);
   }
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
+  if (op_type == "SimplifiedLayerNormalization" || op_type == "SkipSimplifiedLayerNormalization") {
+    // SkipSimplifiedLayerNormalization and SimplifiedLayerNormalization are supported by decomposed WebNN ops.
+    // Check if the input data type is supported by each decomposed WebNN op.
+    // Decomposed ops include: "Add", "Div", "Mul", "Pow", "ReduceMean" and "Sqrt".
+    for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
+      const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
+      const std::string_view webnn_input_name = GetWebNNOpFirstInputName(decomposed_op_type);
+      if (!IsDataTypeSupportedByWebNNOp(
+              op_type, webnn_op_type, input0_type, wnn_limits, webnn_input_name, "input", logger)) {
+        return false;
+      }
+    }
+    return true;
+  } else {
+    return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
+  }
+}
+
+bool NormalizationOpBuilder::HasSupportedOutputsImpl(const Node& node,
+                                                     const emscripten::val& wnn_limits,
+                                                     const logging::Logger& logger) const {
+  const auto& output_defs = node.OutputDefs();
+  const std::string_view op_type = node.OpType();
+  int32_t output_type = 0;
+  if (!GetType(*output_defs[0], output_type, logger)) {
+    return false;
+  }
+
+  if (op_type == "SimplifiedLayerNormalization" || op_type == "SkipSimplifiedLayerNormalization") {
+    // Check if the output data type is supported by every decomposed WebNN op.
+    for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
+      const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
+      if (!IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, output_type, wnn_limits, "output", "output", logger)) {
+        return false;
+      }
+    }
+    return true;
+  } else {
+    return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger);
+  }
 }
 
 void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -8,159 +8,269 @@
 // WebAssembly side, so there is no need to rebuild WebAssembly.
 //
 // It performs the following operations:
-// 1. query build ID for latest successful build on main branch or the specified one from command line argument
-// 2. query download URL of build artifacts
-// 3. download and unzip the files to folders
+// 1. use GitHub Actions REST API as much as possible to get metadata about the status of build and workflow runs.
+//    - query the main branch if no "run" parameter is specified
+//    - if "run" is specified, it can be a run ID, PR number, branch name, or commit SHA. Try each possibility.
+//
+// 2. When the artifact is found, use GitHub CLI (gh) to download the artifacts directly to the dist folder.
 //
 
 import fs from 'fs';
 import { bootstrap as globalAgentBootstrap } from 'global-agent';
 import https from 'https';
-import jszip from 'jszip';
 import path from 'path';
+import minimist from 'minimist';
+import { execSync } from 'child_process';
 
 const HELP_MESSAGE = `
 pull-prebuilt-wasm-artifacts
 
 Usage:
-  npm run pull:wasm [config] [buildID] [help|h]
+  npm run pull:wasm [run] [options]
 
-  node ./pull-prebuilt-wasm-artifacts [config] [buildID] [help|h]
+  node ./pull-prebuilt-wasm-artifacts [run] [options]
 
+  Run can be specified in one of the following ways:
+    action_run_id
+    PR number
+    branch name (default: "main")
 
-  config       optional, "release"(default) or "debug"
-  buildID      optional, if not specified, use latest main branch, otherwise a number for a specified build ID
-  help|h       print this message and exit
+Options:
+  -d  --debug       specify the debug build type of the artifacts to download.
+  -l  --latest      if set, will always use the latest build, even if it is not completed yet.
+  -h  --help        print this message and exit
 `;
 
-const argv = process.argv.slice(2);
+const args = minimist(process.argv.slice(2), {
+  alias: {
+    debug: ['d'],
+    help: ['h'],
+    latest: ['l'],
+  },
+});
 
-if (
-  argv.indexOf('--help') !== -1 ||
-  argv.indexOf('-h') !== -1 ||
-  argv.indexOf('help') !== -1 ||
-  argv.indexOf('h') !== -1
-) {
+if (args.help || args.h) {
   console.log(HELP_MESSAGE);
   process.exit();
 }
 
-const arg0isConfig = argv[0] === 'debug' || argv[0] === 'release';
-const arg0isInteger = !arg0isConfig && !isNaN(parseInt(argv[0], 10));
-const config = arg0isConfig ? argv[0] : 'release';
-const buildId = arg0isInteger ? argv[0] : (argv[1] ?? '');
+// Check if GitHub CLI (gh) is installed and available in PATH
+try {
+  execSync('gh --version', { stdio: 'pipe' }).toString().trim();
+} catch (e) {
+  console.error('Error: GitHub CLI (gh) is not installed or not in PATH.');
+  console.error('Please install it from https://cli.github.com/ and try again.');
+  process.exit(1);
+}
 
-const folderName = config === 'release' ? 'Release_wasm' : 'Debug_wasm';
+// in NPM script, the args are parsed as:
+// npm [npm_command] [npm_flags] -- [user_flags]
+//
+// The npm_flags will be parsed and removed by NPM, so they will not be available in process.argv directly. Instead,
+// they are available in process.env.npm_config_* variables.
+//
+// For example, if the user runs the command like this:
+// > npm run pull:wasm -- --debug
+// In this case, `--debug` will be available in `args.debug`
+//
+// If the user runs the command like this:
+// > npm run pull:wasm --debug
+// In this case, `--debug` will be available in `process.env.npm_config_debug`, but not in `args.debug` directly.
+//
+// The following code checks both the command line arguments and the npm_config_* environment variables to get the correct values.
+const debug = args.debug || process.env.npm_config_d || process.env.npm_config_debug;
+const latest = args.latest || process.env.npm_config_l || process.env.npm_config_latest;
 
-function downloadJson(url: string, onSuccess: (data: any) => void) {
-  https.get(url, (res) => {
-    const { statusCode } = res;
-    const contentType = res.headers['content-type'];
+const folderName = debug ? 'Debug_wasm' : 'Release_wasm';
+const allowImcomplete = latest;
 
-    if (statusCode !== 200) {
-      throw new Error(`Failed to download build list. HTTP status code = ${statusCode}`);
-    }
-    if (!contentType || !/^application\/json/.test(contentType)) {
-      throw new Error(`unexpected content type: ${contentType}`);
-    }
-    res.setEncoding('utf8');
-    let rawData = '';
-    res.on('data', (chunk) => {
-      rawData += chunk;
-    });
-    res.on('end', () => {
-      onSuccess(JSON.parse(rawData));
-    });
+const run = args._[0]; // The first non-option argument
+
+const GITHUB_ACTION_REQUEST_OPTIONS = {
+  headers: {
+    'user-agent': 'onnxruntime-web artifact pull',
+    accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  },
+};
+
+async function downloadJson(url: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, GITHUB_ACTION_REQUEST_OPTIONS, (res) => {
+        const { statusCode } = res;
+        const contentType = res.headers['content-type'];
+
+        if (!statusCode) {
+          reject(new Error('No response statud code from server.'));
+          return;
+        }
+        if (statusCode >= 400 && statusCode < 500) {
+          resolve(null);
+          return;
+        } else if (statusCode !== 200) {
+          reject(new Error(`Failed to download build list. HTTP status code = ${statusCode}`));
+          return;
+        }
+        if (!contentType || !/^application\/json/.test(contentType)) {
+          reject(new Error(`unexpected content type: ${contentType}`));
+          return;
+        }
+        res.setEncoding('utf8');
+        let rawData = '';
+        res.on('data', (chunk) => {
+          rawData += chunk;
+        });
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(rawData));
+          } catch (e) {
+            reject(e);
+          }
+        });
+        res.on('error', (err) => {
+          reject(err);
+        });
+      })
+      .on('error', (err) => {
+        reject(err);
+      });
   });
 }
 
-function downloadZip(url: string, onSuccess: (data: Buffer) => void) {
-  https.get(url, (res) => {
-    const { statusCode } = res;
-    const contentType = res.headers['content-type'];
+async function downloadArtifactsForRun(run: any): Promise<void> {
+  const data = await downloadJson(run.artifacts_url);
 
-    if (statusCode !== 200) {
-      throw new Error(`Failed to download build list. HTTP status code = ${statusCode}`);
-    }
-    if (!contentType || !/^application\/zip/.test(contentType)) {
-      throw new Error(`unexpected content type: ${contentType}`);
-    }
+  for (const v of data.artifacts) {
+    if (v.name === folderName && !v.expired) {
+      console.log(`=== Ready to download artifacts "${folderName}" from run: ${run.id} ===`);
 
-    const chunks: Buffer[] = [];
-    res.on('data', (chunk) => {
-      chunks.push(chunk);
-    });
-    res.on('end', () => {
-      onSuccess(Buffer.concat(chunks));
-    });
-  });
+      const WASM_FOLDER = path.join(__dirname, '../dist');
+      if (!fs.existsSync(WASM_FOLDER)) {
+        fs.mkdirSync(WASM_FOLDER);
+      } else {
+        fs.readdirSync(WASM_FOLDER).forEach((file) => {
+          if (
+            [
+              'ort-wasm-simd-threaded.jsep.mjs',
+              'ort-wasm-simd-threaded.jsep.wasm',
+              'ort-wasm-simd-threaded.jsep.mjs',
+              'ort-wasm-simd-threaded.jsep.wasm',
+              'ort-wasm-simd-threaded.mjs',
+              'ort-wasm-simd-threaded.wasm',
+            ].includes(file)
+          ) {
+            const filePath = path.join(WASM_FOLDER, file);
+            console.log(`Deleting old file: ${filePath}`);
+            fs.unlinkSync(filePath);
+          }
+        });
+      }
+
+      execSync(`gh run download ${run.id} -n ${folderName} -D "${WASM_FOLDER}" -R Microsoft/onnxruntime`);
+
+      return;
+    }
+  }
+
+  throw new Error(`No artifact "${folderName}" found for the specified build.`);
 }
 
-function extractFile(zip: jszip, folder: string, file: string, artifactName: string) {
-  zip
-    .file(`${artifactName}/${file}`)!
-    .nodeStream()
-    .pipe(fs.createWriteStream(path.join(folder, file)))
-    .on('finish', () => {
-      console.log('# file downloaded and extracted: ' + file);
-    });
-}
+async function main() {
+  // Bootstrap global-agent to honor the proxy settings in
+  // environment variables, e.g. GLOBAL_AGENT_HTTPS_PROXY.
+  // See https://github.com/gajus/global-agent/blob/v3.0.0/README.md#environment-variables for details.
+  globalAgentBootstrap();
 
-console.log(
-  `=== Start to pull ${config} WebAssembly artifacts from CI for ${
-    buildId ? `build "${buildId}"` : 'latest "main" branch'
-  } ===`,
-);
+  console.log(
+    `=== Start to pull WebAssembly artifacts "${folderName}" from CI for ${run ? `Run: "${run}"` : 'main branch'} ===`,
+  );
 
-// Bootstrap global-agent to honor the proxy settings in
-// environment variables, e.g. GLOBAL_AGENT_HTTPS_PROXY.
-// See https://github.com/gajus/global-agent/blob/v3.0.0/README.md#environment-variables for details.
-globalAgentBootstrap();
+  let sha: string | undefined;
 
-const filter = buildId
-  ? `&buildIds=${buildId}`
-  : '&definitions=161' +
-    '&resultFilter=succeeded%2CpartiallySucceeded' +
-    '&$top=1' +
-    '&repositoryId=Microsoft/onnxruntime' +
-    '&repositoryType=GitHub' +
-    '&branchName=refs/heads/main';
+  // If param `run` is specified, we try to figure out what it is.
+  if (!run) {
+    // API reference: https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28#list-workflow-runs-for-a-workflow
+    const mainRunData = await downloadJson(
+      `https://api.github.com/repos/Microsoft/onnxruntime/actions/workflows/152051496/runs?branch=main${allowImcomplete ? '' : '&status=success'}&per_page=1&exclude_pull_requests=1`,
+    );
+    if (mainRunData.workflow_runs.length === 0) {
+      throw new Error('No build found');
+    }
+    const run = mainRunData.workflow_runs[0];
+    await downloadArtifactsForRun(run);
+  } else {
+    // If `run` is a number, it is a run ID or PR number
+    const runId = parseInt(run, 10);
+    // check if runId only contains digits
+    const isRunIdDigitsOnly = /^\d+$/.test(run);
+    if (isRunIdDigitsOnly && !isNaN(runId)) {
+      // Try to treat it as a run ID
+      console.log('  # Trying to treat it as a run ID: ' + runId);
+      const runData = await downloadJson(`https://api.github.com/repos/Microsoft/onnxruntime/actions/runs/${runId}`);
+      if (runData) {
+        console.log(`=== Found run: ${runId} ===`);
+        await downloadArtifactsForRun(runData);
+        return;
+      }
 
-// API reference: https://docs.microsoft.com/en-us/rest/api/azure/devops/build/builds/list
-downloadJson(
-  `https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/builds?api-version=6.1-preview.6${filter}`,
-  (data) => {
-    const buildId = data.value[0].id;
+      // If not found, try to treat it as a PR number
+      console.log(`  # Run ID ${runId} not found or not accessible.`);
 
-    console.log(`=== Found latest build on main branch: ${buildId} ===`);
+      // API reference: https://docs.github.com/en/rest/pulls/pulls?apiVersion=2022-11-28#get-a-pull-request
+      const prData = await downloadJson(`https://api.github.com/repos/Microsoft/onnxruntime/pulls/${runId}`);
+      sha = prData?.head?.sha;
+    }
 
-    // API reference: https://docs.microsoft.com/en-us/rest/api/azure/devops/build/artifacts/get%20artifact
-    downloadJson(
-      `https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/builds/${buildId}/artifacts?api-version=6.1-preview.5`,
-      (data) => {
-        let zipLink;
-        for (const v of data.value) {
-          if (v.name === folderName) {
-            zipLink = v.resource.downloadUrl;
+    if (sha) {
+      console.log(`  # Found PR #${run} with SHA: ${sha}`);
+    } else {
+      // Try to treat the run parameter as a branch name or commit SHA
+      console.log(`  # Trying to treat "${run}" as a branch name`);
+
+      // First, try as a branch name
+      const branchData = await downloadJson(
+        `https://api.github.com/repos/Microsoft/onnxruntime/branches/${encodeURIComponent(run)}`,
+      );
+      if (branchData) {
+        sha = branchData.commit.sha;
+        console.log(`  # Found branch "${run}" with SHA: ${sha}`);
+      } else {
+        const isPossibleSha = /^[0-9a-f]{7,40}$/.test(`${run}`.trim());
+        if (isPossibleSha) {
+          // If not a branch, try as a commit SHA (works with both full and short SHA)
+          console.log(`  # Trying to treat "${run}" as a commit SHA`);
+          const commitData = await downloadJson(
+            `https://api.github.com/repos/Microsoft/onnxruntime/commits/${encodeURIComponent(run)}`,
+          );
+          if (commitData) {
+            sha = commitData.sha;
+            console.log(`  # Found commit with full SHA: ${sha}`);
           }
         }
+      }
 
-        console.log('=== Ready to download zip files ===');
+      if (!sha) {
+        throw new Error(`Could not identify "${run}" as a run ID, PR number, branch name, or commit SHA`);
+      }
+    }
 
-        const WASM_FOLDER = path.join(__dirname, '../dist');
-        if (!fs.existsSync(WASM_FOLDER)) {
-          fs.mkdirSync(WASM_FOLDER);
-        }
-        downloadZip(zipLink, (buffer) => {
-          void jszip.loadAsync(buffer).then((zip) => {
-            extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', folderName);
-            extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm', folderName);
-
-            extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.mjs', folderName);
-            extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.mjs', folderName);
-          });
-        });
-      },
+    // Now that we have the SHA, query for workflow runs associated with this SHA
+    const workflowRunsData = await downloadJson(
+      `https://api.github.com/repos/Microsoft/onnxruntime/actions/workflows/152051496/runs?head_sha=${sha}`,
     );
-  },
-);
+
+    if (!workflowRunsData || workflowRunsData.workflow_runs.length === 0) {
+      throw new Error(`No Web CI workflow runs found for SHA: ${sha}`);
+    }
+
+    // Get the latest run
+    const latestRun = workflowRunsData.workflow_runs[0];
+    console.log(`=== Found run for SHA ${sha}: ${latestRun.html_url} ===`);
+
+    // Download artifacts from this run
+    await downloadArtifactsForRun(latestRun);
+  }
+}
+
+void main();

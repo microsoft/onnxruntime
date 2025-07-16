@@ -37,7 +37,9 @@ jobs:
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/ccache_proto
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ccache_ort
   pool:
-    vmImage: 'macOS-13'
+    name: "Azure Pipelines"
+    image: 'macOS-14'
+    os: macOS
   timeoutInMinutes: 300
   steps:
   - checkout: self
@@ -63,15 +65,6 @@ jobs:
 
   - template: use-xcode-version.yml
 
-  - template: download-deps.yml
-
-  - task: PythonScript@0
-    displayName: 'Update deps.txt'
-    inputs:
-      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-      arguments: --new_dir $(Build.BinariesDirectory)/deps
-      workingDirectory: $(Build.BinariesDirectory)
-
   - script: |
       set -e -x
       export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
@@ -84,7 +77,7 @@ jobs:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --use_webgpu --no_kleidiai --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
         BuildJava: false
         BuildNodejs: false
         WithCache: ${{ parameters.WithCache }}

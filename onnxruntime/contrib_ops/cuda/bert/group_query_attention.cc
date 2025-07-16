@@ -63,6 +63,7 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
 
   if (!disable_flash_attention_) {
     zeros_ = this->GetScratchBuffer<int>(kZerosCount, nullptr);
+    CUDA_CALL_THROW(cudaMemset(zeros_.get(), 0, kZerosCount * sizeof(int)));
   }
 }
 
@@ -156,13 +157,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool use_memory_efficient_attention =
       !use_flash_attention &&
       !disable_memory_efficient_attention_ &&
-      local_window_size_ == -1 &&
-      (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.head_size);
-  if (!use_flash_attention && !use_memory_efficient_attention && local_window_size_ != -1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Local attention UNSUPPORTED for sm < 80 on CUDA.");
-  }
+
   // allocate buffers
   size_t kv_buffer_bytes = 0;
   // need a buffer if we must ungroup kv
@@ -255,17 +251,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.seqlens_k_buff = reinterpret_cast<int*>(seqlens_k_buffer.get());
   }
   // Memory Efficient Buffers
-  if (k_buffer != nullptr) {
-    data.k = reinterpret_cast<CudaT*>(k_buffer.get());
-    data.v = reinterpret_cast<CudaT*>(v_buffer.get());
-  }
-  if (fmha_buffer != nullptr) {
-    data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
-  }
-  if (k_buffer != nullptr) {
-    data.k = reinterpret_cast<CudaT*>(k_buffer.get());
-    data.v = reinterpret_cast<CudaT*>(v_buffer.get());
-  }
   if (k_buffer != nullptr) {
     data.k = reinterpret_cast<CudaT*>(k_buffer.get());
     data.v = reinterpret_cast<CudaT*>(v_buffer.get());

@@ -20,9 +20,9 @@ class ScatterNDOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer& graph_viewer, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -45,7 +45,7 @@ Status ScatterNDOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
 // Operator support related.
 
-bool ScatterNDOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool ScatterNDOpBuilder::IsOpSupportedImpl(const GraphViewer&, const Node& node,
                                            const WebnnDeviceType /* device_type */,
                                            const logging::Logger& logger) const {
   NodeAttrHelper helper(node);
@@ -57,13 +57,12 @@ bool ScatterNDOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initia
   return true;
 }
 
-bool ScatterNDOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool ScatterNDOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                                 const emscripten::val& wnn_limits,
                                                 const logging::Logger& logger) const {
   const auto& data = *node.InputDefs()[0];
   const auto& indices = *node.InputDefs()[1];
   const auto& updates = *node.InputDefs()[2];
-  const auto& op_type = node.OpType();
 
   int32_t data_type;
   int32_t indices_type;
@@ -76,8 +75,8 @@ bool ScatterNDOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* i
   if (data_type != updates_type) {
     return false;
   }
-
-  return IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) &&
+  const std::string_view op_type = node.OpType();
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) &&
          IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
 }
 

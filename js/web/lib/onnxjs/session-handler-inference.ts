@@ -12,6 +12,14 @@ export class OnnxjsSessionHandler implements InferenceSessionHandler {
     this.outputNames = this.session.outputNames;
   }
 
+  get inputMetadata(): readonly InferenceSession.ValueMetadata[] {
+    throw new Error('Getting model metadata is not supported in webgl backend.');
+  }
+
+  get outputMetadata(): readonly InferenceSession.ValueMetadata[] {
+    throw new Error('Getting model metadata is not supported in webgl backend.');
+  }
+
   async dispose(): Promise<void> {}
   inputNames: readonly string[];
   outputNames: readonly string[];

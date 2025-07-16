@@ -3,7 +3,7 @@
 
 'use strict';
 
-const { runDevTest, runProdTest } = require('./test');
+const { runDevTest, runProdTest, verifyAssets } = require('./test');
 const { installOrtPackages } = require('./utils');
 
 /**
@@ -29,5 +29,14 @@ module.exports = async function main(PRESERVE, PACKAGES_TO_INSTALL) {
 
     await runDevTest('vite-default', '\x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:', 5173);
     await runProdTest('vite-default', '\x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:', 4173);
+
+    await verifyAssets('vite-default', async (cwd) => {
+      const globby = await import('globby');
+
+      return {
+        test: 'File "dist/assets/**/ort.*.mjs" should not exist',
+        success: globby.globbySync('dist/assets/**/ort.*.mjs', { cwd }).length === 0,
+      };
+    });
   }
 };

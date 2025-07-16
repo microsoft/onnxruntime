@@ -115,6 +115,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGatherNDOpBuilder("GatherND", op_registrations);
   }
 
+  {  // GroupQueryAttention
+    CreateGroupQueryAttentionOpBuilder("GroupQueryAttention", op_registrations);
+  }
+
   {  // Flatten
     CreateFlattenOpBuilder("Flatten", op_registrations);
   }
@@ -149,9 +153,17 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLstmOpBuilder("LSTM", op_registrations);
   }
 
+  {  // MatMulNBits
+    CreateMatMulNBitsOpBuilder("MatMulNBits", op_registrations);
+  }
+
   {  // Max/Min
     CreateMaxMinOpBuilder("Max", op_registrations);
     CreateMaxMinOpBuilder("Min", op_registrations);
+  }
+
+  {  // MultiHeadAttention
+    CreateMultiHeadAttentionOpBuilder("MultiHeadAttention", op_registrations);
   }
 
   {  // Normalization

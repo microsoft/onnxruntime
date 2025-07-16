@@ -1,8 +1,6 @@
 # This file is auto updated by dependabot
 # When any package below is changed, you shall run "lintrunner init" again.
-lintrunner==0.12.5
+lintrunner==0.12.7
 lintrunner-adapters==0.12.4
-# RUFF
-ruff==0.9.2
-# CLANGFORMAT
-clang-format==19.1.7
+ruff==0.12.2
+clang-format==20.1.8

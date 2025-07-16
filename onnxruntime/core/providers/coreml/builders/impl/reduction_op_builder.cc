@@ -59,8 +59,8 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
   NodeAttrHelper helper(node);
   if (input_defs.size() > 1 && input_defs[1]->Exists()) {
-    auto& axes_tensor = *model_builder.GetConstantInitializer(input_defs[1]->Name());
-    Initializer axes_initializer(axes_tensor);
+    const auto& axes_tensor = *model_builder.GetConstantInitializer(input_defs[1]->Name());
+    Initializer axes_initializer(model_builder.GetGraphViewer().GetGraph(), axes_tensor);
     int64_t* data = axes_initializer.data<int64_t>();
     int64_t size = axes_initializer.size();
 
@@ -71,7 +71,6 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
   const bool keepdims = helper.Get("keepdims", 1) != 0;
   const bool noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0) != 0;
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -103,9 +102,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
     AddOperationOutput(*op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(op));
-  } else
-#endif  // (COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
     if (op_type == "ReduceSum") {

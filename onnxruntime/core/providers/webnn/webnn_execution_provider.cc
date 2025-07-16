@@ -10,7 +10,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/common/safeint.h"
 #include "core/providers/webnn/allocator.h"
 #include "core/providers/webnn/data_transfer.h"
 #include "core/providers/partitioning_utils.h"
@@ -32,6 +31,7 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
           OrtDevice(
               webnn::IsMLTensorSupported() ? OrtDevice::GPU : OrtDevice::CPU,
               OrtDevice::MemType::DEFAULT,
+              OrtDevice::VendorIds::NONE,
               0)},
       wnn_device_type_(webnn::DeviceTypeFromString(webnn_device_flags)) {
   wnn_context_ = emscripten::val::module_property("currentContext");
@@ -55,7 +55,9 @@ WebNNExecutionProvider::~WebNNExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                      const IKernelLookup& /*kernel_registries*/) const {
+                                      const IKernelLookup& /*kernel_registries*/,
+                                      const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                      IResourceAccountant* /* resource_accountant */) const {
   // For subgraph which is the attribute of the control flow nodes, part of its initializers are stored in its
   // ancestor graphs as common initializers shared for other subgraphs. We need to collect all of them used for
   // identifying the required initializer names and storing into 'meta_def->constant_initializers'.
@@ -282,7 +284,7 @@ class WebNNMemcpy : public OpKernel {
   explicit WebNNMemcpy(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* context) const override {
-    auto jsepEnsureTensor = emscripten::val::module_property("jsepEnsureTensor");
+    auto webnnEnsureTensor = emscripten::val::module_property("webnnEnsureTensor");
     const auto* X = context->Input<Tensor>(0);
     ORT_ENFORCE(X != nullptr, "Memcpy: input tensor is null");
     auto* Y = context->Output(0, X->Shape());
@@ -292,9 +294,10 @@ class WebNNMemcpy : public OpKernel {
       shape.call<void>("push", SafeInt<uint32_t>(dim).Ref());
     }
 
-    jsepEnsureTensor(reinterpret_cast<intptr_t>(Y->MutableDataRaw()),
-                     Y->GetElementType(),
-                     shape, false)
+    webnnEnsureTensor(emscripten::val::undefined(),
+                      reinterpret_cast<intptr_t>(Y->MutableDataRaw()),
+                      Y->GetElementType(),
+                      shape, false)
         .await();
 
     const auto* data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);

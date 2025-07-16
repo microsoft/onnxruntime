@@ -11,6 +11,7 @@
 #include <unordered_set>
 
 #include <gsl/gsl>
+#include "core/common/logging/logging.h"
 #include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -20,7 +21,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/allocator_adapters.h"
-#include "core/session/api_utils.h"
+#include "core/session/utils.h"
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
@@ -251,7 +252,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetLogger, _In_ const OrtKernelContex
   return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
     const auto& kernel_ctx_logger = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->Logger();
 
-    *logger = reinterpret_cast<const OrtLogger*>(&kernel_ctx_logger);
+    *logger = kernel_ctx_logger.ToExternal();
     return nullptr;
   });
 }
@@ -582,21 +583,19 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_tensor, _In_ const OrtKernel
     onnxruntime::TensorShape tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorProto(tensor_proto);
     const auto* type = onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
     onnxruntime::AllocatorPtr alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
-    auto tensorp = std::make_unique<onnxruntime::Tensor>(type, tensor_shape, std::move(alloc_ptr));
+    auto tensor = onnxruntime::Tensor{type, tensor_shape, std::move(alloc_ptr)};
 
     // Deserialize TensorProto into pre-allocated, empty Tensor.
     // TODO: here the TensorProto loses model path information, so it cannot be an external tensor.
     status = onnxruntime::utils::TensorProtoToTensor(onnxruntime::Env::Default(), std::filesystem::path(),
-                                                     tensor_proto, *tensorp);
+                                                     tensor_proto, tensor);
     if (!status.IsOK()) {
       return onnxruntime::ToOrtStatus(status);
     }
 
     // Initialize OrtValue from Tensor.
-    auto ml_tensor = onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>();
     auto value = std::make_unique<OrtValue>();
-    value->Init(tensorp.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-
+    onnxruntime::Tensor::InitOrtValue(std::move(tensor), *value);
     *out = value.release();
     return nullptr;
   });
@@ -734,7 +733,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetLogger, _In_ const OrtKernelInfo* inf
                                    "its execution provider");
     }
 
-    *logger = reinterpret_cast<const OrtLogger*>(ep_logger);
+    *logger = ep_logger->ToExternal();
     return nullptr;
   });
 }
@@ -796,8 +795,7 @@ struct CustomOpKernel : OpKernel {
   Status Compute(OpKernelContext* ctx) const override {
     if (op_.version >= min_ort_version_with_compute_v2_support &&
         op_.KernelComputeV2) {
-      auto status_ptr = op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
-      return ToStatus(status_ptr);
+      return ToStatusAndRelease(op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx)));
     } else {
       op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
       return Status::OK();
@@ -900,13 +898,14 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
 ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops) {
   // The function registers the first schema assuming all the other one are the same except the types constraints.
   ORT_ENFORCE(ops.size() > 0, "No kernels to registers.");
-  int undefined = 0;
+  int num_inputs_with_dynamic_type = 0;
 
   // Creation of the schema for the first kernel in ops.
   const OrtCustomOp* op = *ops.begin();
   ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
 
-  auto create_type_constraint = [&ops, &schema, &undefined](const OrtCustomOp* op, int count, int i, bool is_input) {
+  auto create_type_constraint = [&ops, &schema, &num_inputs_with_dynamic_type](
+                                    const OrtCustomOp* op, int count, int i, bool is_input) {
     onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
     bool is_homogeneous = true;
     int min_arity = 1;
@@ -976,7 +975,9 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
     } else {
       // all_types is empty. As mentioned in the previous loop, all types are allowed.
       schema.TypeConstraint(name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
-      undefined++;
+      if (is_input) {
+        ++num_inputs_with_dynamic_type;
+      }
     }
   };
 
@@ -985,19 +986,21 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
     create_type_constraint(op, static_cast<int>(input_count), static_cast<int>(i), true);
   }
 
+  const bool have_shape_infer_fn = op->version >= min_ort_version_with_shape_inference && op->InferOutputShapeFn;
+
   const size_t output_count = op->GetOutputTypeCount(op);
   for (size_t i = 0; i < output_count; i++) {
     const auto type = op->GetOutputType(op, i);
     if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
       if (op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED) {
-        ORT_ENFORCE(1 == undefined,
-                    "There must be one (and only one) dynamic typed input to the custom op. "
-                    "Its type info at runtime will be used to infer the type info of this dynamic typed output "
-                    "which is required for the success of the model loading step. "
-                    "More than one dynamic typed inputs are currently not supported as differing types at runtime "
-                    "means the output type cannot be inferred without which model loading cannot proceed.");
+        // if there's a dynamically typed input and output we infer they both have the same type from the input.
+        // if that isn't the case the user must provide an output shape inference fn which must set the output type.
+        ORT_ENFORCE(num_inputs_with_dynamic_type == 1 || have_shape_infer_fn,
+                    "The type of a dynamically typed output can be inferred from a single dynamically typed input, "
+                    "or by a user provided OrtCustomOp->InferOutputShapeFn that sets the output type.");
       }
     }
+
     create_type_constraint(op, static_cast<int>(output_count), static_cast<int>(i), false);
   }
 

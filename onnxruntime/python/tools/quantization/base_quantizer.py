@@ -24,6 +24,7 @@ from .quant_utils import (
     QUANT_OP_NAME,
     TENSOR_NAME_QUANT_SUFFIX,
     find_by_name,
+    get_opset_version,
     model_has_infer_metadata,
     normalize_axis,
     pack_bytes_to_4bit,
@@ -41,7 +42,7 @@ class QuantizationParams:
         for k, v in data.items():
             if not isinstance(k, str):
                 raise TypeError(f"Keys must be strings not {type(k)} for k={k!r}.")
-            if k != "axis" and not isinstance(v, (int, str, np.ndarray)):
+            if k != "axis" and not isinstance(v, (int, str, np.ndarray, float)):
                 raise TypeError(f"Values must be numpy arrays, int, float, str not {type(v)} for k={k!r}.")
             if k == "axis" and not isinstance(v, int) and v is not None:
                 raise TypeError(f"Axis value must be an int or None, not {type(v)}.")
@@ -86,6 +87,7 @@ class BaseQuantizer:
         self.value_infos.update({it.name: it for it in model.graph.input})
 
         self.model = ONNXModel(model)
+        self.opset_version = get_opset_version(model)
         self.per_channel = per_channel  # weight-pack per channel
         self.reduce_range = reduce_range
 
@@ -126,8 +128,6 @@ class BaseQuantizer:
         self.nodes_to_quantize = nodes_to_quantize  # specific nodes to quantize
         self.nodes_to_exclude = nodes_to_exclude  # specific nodes to exclude
         self.op_types_to_quantize = op_types_to_quantize
-
-        self.opset_version = self.check_opset_version()
 
         # Get tensor-level quantization overrides and ensure they are valid.
         self.tensor_quant_overrides = TensorQuantOverridesHelper(self.extra_options.get("TensorQuantOverrides", {}))
@@ -187,41 +187,6 @@ class BaseQuantizer:
             return False
 
         return True
-
-    def check_opset_version(self):
-        ai_onnx_domain = [
-            opset for opset in self.model.model.opset_import if not opset.domain or opset.domain == "ai.onnx"
-        ]
-        if len(ai_onnx_domain) != 1:
-            raise ValueError("Failed to find proper ai.onnx domain")
-        opset_version = ai_onnx_domain[0].version
-
-        if opset_version == 10:
-            logging.warning(
-                f"The original model opset version is {opset_version}, which does not support node fusions. Please update the model to opset >= 11 for better performance."
-            )
-            return 10
-
-        if opset_version < 10:
-            logging.warning(
-                f"The original model opset version is {opset_version}, which does not support quantization. Please update the model to opset >= 11. Updating the model automatically to opset 11. Please verify the quantized model."
-            )
-            self.model.model.opset_import.remove(ai_onnx_domain[0])
-            self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 11)])
-            opset_version = 11
-
-        if opset_version < 19 and self.weight_qType == onnx.TensorProto.FLOAT8E4M3FN:
-            logging.warning(
-                f"The original model opset version is {opset_version}, which does not support quantization to float 8. "
-                "Please update the model to opset >= 19. Updating the model automatically to opset 19. "
-                "Please verify the quantized model."
-            )
-            self.model.model.opset_import.remove(ai_onnx_domain[0])
-            self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 19)])
-            self.model.model.ir_version = 9
-            opset_version = 19
-
-        return opset_version
 
     def quantize_bias_static_impl(self, bias_name, input_scale, weight_scale, beta=1.0):
         """

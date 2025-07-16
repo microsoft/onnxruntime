@@ -9,6 +9,7 @@ from convert_to_packing_mode import PackingMode
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_bart_attention import FusionBartAttention
 from fusion_biasgelu import FusionBiasGelu
+from fusion_constant_fold import FusionConstantFold
 from fusion_embedlayer import FusionEmbedLayerNormalization
 from fusion_fastgelu import FusionFastGelu
 from fusion_gelu import FusionGelu
@@ -54,6 +55,10 @@ class BertOnnxModel(OnnxModel):
             self, self.hidden_size, self.num_heads, self.attention_mask
         )
         self.utils = FusionUtils(self)
+
+    def fuse_constant_fold(self):
+        fusion = FusionConstantFold(self)
+        fusion.apply()
 
     def fuse_attention(self):
         self.attention_fusion.apply()
@@ -330,6 +335,9 @@ class BertOnnxModel(OnnxModel):
 
         # Remove cast nodes that having same data type of input and output based on symbolic shape inference.
         self.utils.remove_useless_cast_nodes()
+
+        # Apply any missed constant-folding model optimizations (e.g. for Dynamo-exported models)
+        self.fuse_constant_fold()
 
         if (options is None) or options.enable_layer_norm:
             self.fuse_layer_norm()

@@ -20,9 +20,9 @@ class MaxMinOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -68,7 +68,7 @@ Status MaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool MaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool MaxMinOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                         const Node& node,
                                         WebnnDeviceType /* device_type */,
                                         const logging::Logger& logger) const {
@@ -87,10 +87,10 @@ bool MaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
   return true;
 }
 
-bool MaxMinOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool MaxMinOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                              const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type;
 
   if (!GetType(*input_defs[0], input0_type, logger))
@@ -103,12 +103,12 @@ bool MaxMinOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* init
     }
 
     std::array<int32_t, 2> input_types{input0_type, input_type};
-    if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+    if (!AreDataTypesSame(op_type, input_types, logger)) {
       return false;
     }
   }
 
-  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "data_0", logger);
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "data_0", logger);
 }
 
 void CreateMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

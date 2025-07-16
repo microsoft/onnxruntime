@@ -3,6 +3,8 @@
 
 #include "vitisai_provider_factory_creator.h"
 
+#include <algorithm>
+#include <cctype>
 #include <unordered_map>
 #include <string>
 
@@ -18,6 +20,8 @@ struct VitisAIProviderFactory : IExecutionProviderFactory {
   ~VitisAIProviderFactory() = default;
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
+                                                     const OrtLogger& session_logger) override;
 
  private:
   ProviderOptions info_;
@@ -25,6 +29,40 @@ struct VitisAIProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider() {
   return std::make_unique<VitisAIExecutionProvider>(info_);
+}
+
+std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
+                                                                           const OrtLogger& session_logger) {
+  const ConfigOptions& config_options = session_options.GetConfigOptions();
+  const std::unordered_map<std::string, std::string>& config_options_map = config_options.GetConfigOptionsMap();
+
+  // The implementation of the SessionOptionsAppendExecutionProvider C API function automatically adds EP options to
+  // the session option configurations with the key prefix "ep.<lowercase_ep_name>.".
+  // Extract those EP options into a new "provider_options" map.
+  std::string lowercase_ep_name = kVitisAIExecutionProvider;
+  std::transform(lowercase_ep_name.begin(), lowercase_ep_name.end(), lowercase_ep_name.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+
+  std::string key_prefix = "ep.";
+  key_prefix += lowercase_ep_name;
+  key_prefix += ".";
+
+  std::unordered_map<std::string, std::string> provider_options = info_;
+  for (const auto& [key, value] : config_options_map) {
+    if (key.rfind(key_prefix, 0) == 0) {
+      provider_options[key.substr(key_prefix.size())] = value;
+    } else {
+      provider_options["ort_session_config." + key] = value;
+    }
+  }
+
+  // Store pointer to session options as done in SessionOptionsAppendExecutionProvider_VitisAI
+  provider_options["session_options"] = std::to_string((uintptr_t)(void*)&session_options);
+
+  auto ep_instance = std::make_unique<VitisAIExecutionProvider>(provider_options);
+  ep_instance->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
+  return ep_instance;
 }
 
 struct VitisAI_Provider : Provider {

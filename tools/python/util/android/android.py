@@ -46,18 +46,36 @@ def get_sdk_tool_paths(sdk_root: str):
 
 def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_name: str, avd_name: str):
     run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name, input=b"y")
+    android_avd_home = os.environ["ANDROID_AVD_HOME"]
 
-    run(
-        sdk_tool_paths.avdmanager,
-        "create",
-        "avd",
-        "--name",
-        avd_name,
-        "--package",
-        system_image_package_name,
-        "--force",
-        input=b"no",
-    )
+    if android_avd_home is not None:
+        if not os.path.exists(android_avd_home):
+            os.makedirs(android_avd_home)
+        run(
+            sdk_tool_paths.avdmanager,
+            "create",
+            "avd",
+            "--name",
+            avd_name,
+            "--package",
+            system_image_package_name,
+            "--force",
+            "--path",
+            android_avd_home,
+            input=b"no",
+        )
+    else:
+        run(
+            sdk_tool_paths.avdmanager,
+            "create",
+            "avd",
+            "--name",
+            avd_name,
+            "--package",
+            system_image_package_name,
+            "--force",
+            input=b"no",
+        )
 
 
 _process_creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if is_windows() else 0
@@ -88,7 +106,7 @@ def _stop_process(proc: subprocess.Popen):
 
 def _stop_process_with_pid(pid: int):
     # minimize scope of external module usage
-    import psutil
+    import psutil  # noqa: PLC0415
 
     if psutil.pid_exists(pid):
         process = psutil.Process(pid)

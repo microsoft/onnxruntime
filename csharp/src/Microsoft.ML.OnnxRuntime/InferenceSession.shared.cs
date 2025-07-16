@@ -1046,7 +1046,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        private static void OrtCallback(IntPtr userData, IntPtr[] ouputs, uint numOutputs, IntPtr status)
+        private static void OrtCallback(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status)
         {
             var hostHdl = GCHandle.FromIntPtr(userData);
             CallbackHost host = (CallbackHost)hostHdl.Target;
@@ -1635,7 +1635,7 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// Represents sequnce metdata
+    /// Represents sequence metadata
     /// </summary>
     public class SequenceMetadata
     {
@@ -1648,7 +1648,7 @@ namespace Microsoft.ML.OnnxRuntime
             ElementMeta = elementData;
         }
         /// <summary>
-        /// Element Metatada, recursive definition with a Tensor being a base case
+        /// Element Metadata, recursive definition with a Tensor being a base case
         /// may contain maps, tensors and other sequences
         /// </summary>
         public NodeMetadata ElementMeta { get; }
@@ -1669,7 +1669,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Element Metatada, recursive definition with a Tensor being a base case
+        /// Element Metadata, recursive definition with a Tensor being a base case
         /// may contain maps, tensors and sequences
         /// </summary>
         public NodeMetadata ElementMeta { get; }
@@ -1876,7 +1876,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Convinience method to check for string
+        /// Convenience method to check for string
         /// </summary>
         public bool IsString
         {

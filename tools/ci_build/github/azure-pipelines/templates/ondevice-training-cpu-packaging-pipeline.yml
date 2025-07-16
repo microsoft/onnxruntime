@@ -70,7 +70,7 @@ stages:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: false
     buildJava: false
     buildNodejs: false
@@ -297,15 +297,10 @@ stages:
         msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-
 
 - template: ../nuget/templates/test_win.yml
   parameters:
     AgentPool : 'onnxruntime-Win-CPU-2022'
-    Skipx86Tests : false
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Training'
     ArtifactSuffix: 'Training-CPU'
     StageSuffix: 'Training_CPU'

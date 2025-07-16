@@ -63,7 +63,10 @@ Abstract:
 #endif
 #if defined(__wasm__)
 #define MLAS_TARGET_WASM
-#if defined(__wasm_simd128__)
+#if defined(__wasm_relaxed_simd__)
+#define MLAS_TARGET_WASM_RELAXED_SIMD
+#define MLAS_TARGET_WASM_SIMD
+#elif defined(__wasm_simd128__)
 #define MLAS_TARGET_WASM_SIMD
 #else
 #define MLAS_TARGET_WASM_SCALAR
@@ -990,11 +993,12 @@ MlasComputeErf(
     size_t N
     );
 
+template <typename T>
 void
 MLASCALL
 MlasComputeExp(
-    const float* Input,
-    float* Output,
+    const T* Input,
+    T* Output,
     size_t N
     );
 
@@ -1006,23 +1010,46 @@ MlasComputeLogistic(
     size_t N
     );
 
+template <typename T>
 void
 MLASCALL
 MlasComputeSoftmax(
-    const float* Input,
-    float* Output,
+    const T* Input,
+    T* Output,
     size_t N,
     size_t D,
     bool LogSoftmax,
     bool SmoothSoftmax,
+    float Sink,
     MLAS_THREADPOOL* ThreadPool
     );
 
+template <typename T>
+void
+MLASCALL
+MlasComputeSoftcap(
+    const T* Input,
+    T* Output,
+    size_t N,
+    T cap
+    );
+
+template <typename T>
+void
+MLASCALL
+MlasEltwiseAdd(
+    const T* left,
+    const T* right,
+    T* output,
+    size_t N
+    );
+
+template<typename T>
 void
 MLASCALL
 MlasComputeTanh(
-    const float* Input,
-    float* Output,
+    const T* Input,
+    T* Output,
     size_t N
     );
 
@@ -1030,49 +1057,15 @@ MlasComputeTanh(
 // Transpose routines.
 //
 
+template<typename DataType>
 void
 MLASCALL
 MlasTranspose(
-    const uint8_t* Input,
-    uint8_t* Output,
+    const DataType* Input,
+    DataType* Output,
     size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const int8_t* Input,
-    int8_t* Output,
-    size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const uint16_t* Input,
-    uint16_t* Output,
-    size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const uint32_t* Input,
-    uint32_t* Output,
-    size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const float* Input,
-    float* Output,
-    size_t M,
-    size_t N
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -1229,6 +1222,21 @@ MlasQuantizeLinearS4(
     size_t N,
     float Scale,
     int8_t ZeroPoint
+    );
+
+//
+// Linear dequantization routines.
+//
+
+template<typename InputType>
+void
+MLASCALL
+MlasDequantizeLinear(
+    const InputType* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    InputType ZeroPoint
     );
 
 /**
@@ -1427,6 +1435,17 @@ MlasConvertHalfToFloatBuffer(
     size_t Count
 );
 
+#define MLAS_MIN_TENSOR_SIZE_FOR_HALF_TO_FLOAT_CONVERSION_IN_PARALLEL 128000
+
+void
+MLASCALL
+MlasConvertHalfToFloatBufferInParallel(
+    const MLAS_FP16* Source,
+    float* Destination,
+    size_t Count,
+    MLAS_THREADPOOL* ThreadPool
+);
+
 void
 MLASCALL
 MlasConvertFloatToHalfBuffer(
@@ -1451,8 +1470,8 @@ void
 MLASCALL
 MlasRotaryEmbedOneRow(
     const T* input,
-    const T* sin,
-    const T* cos,
+    const T* sin_data,
+    const T* cos_data,
     size_t dim,
     bool interleaved,
     T* output
@@ -1478,6 +1497,17 @@ struct MLAS_HGEMM_DATA_PARAMS {
 bool
 MLASCALL
 MlasHGemmSupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    );
+
+/**
+ * @brief Check whether mlas supports GQA kernels with the type and transpose settings.
+ */
+template <typename T>
+bool
+MLASCALL
+MlasGQASupported(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB
     );
@@ -1903,20 +1933,22 @@ MlasConvDepthwise(
     MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
     );
 
-
 inline
 void
 MlasTranspose(
     const MLAS_FP16* Input,
     MLAS_FP16* Output,
     size_t M,
-    size_t N
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
     )
 {
     MlasTranspose(
         reinterpret_cast<const uint16_t*>(Input),
         reinterpret_cast<uint16_t*>(Output),
-        M, N);
+        M,
+        N,
+        ThreadPool);
 }
 
 

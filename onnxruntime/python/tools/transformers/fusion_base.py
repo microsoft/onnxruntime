@@ -8,7 +8,7 @@ from logging import getLogger
 from typing import Any
 
 import numpy as np
-from onnx import NodeProto, helper
+from onnx import NodeProto, TensorProto, helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -114,6 +114,9 @@ class Fusion:
 
         self.model.add_initializer(tensor, self.this_graph_name)
         return tensor
+
+    def remove_initializer(self, tensor: TensorProto):
+        self.model.remove_initializer(tensor)
 
     def add_nodes_to_remove(self, nodes: list[NodeProto]):
         # Some nodes are shared between paths (e.g. rotary embedding nodes in the Q and K paths).

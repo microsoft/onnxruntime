@@ -50,30 +50,46 @@ parameters:
   displayName: 'Linux packages cmake build type. Linux Only.'
   default: 'Release'
   values:
-   - Debug
-   - Release
-   - RelWithDebInfo
-   - MinSizeRel
+  - Debug
+  - Release
+  - RelWithDebInfo
+  - MinSizeRel
 
 # Only applies to QNN packages.
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.30.0.250109
+  default: 2.36.0.250627
 
 trigger: none
 
-stages:
-- template: stages/py-cpu-packaging-stage.yml
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    enable_linux_cpu: ${{ parameters.enable_linux_cpu }}
-    enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
-    enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
-    enable_linux_arm: ${{ parameters.enable_linux_arm }}
-    enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
-    enable_windows_arm64ec_qnn: ${{ parameters.enable_windows_arm64ec_qnn }}
-    enable_windows_x64_qnn: ${{ parameters.enable_windows_x64_qnn }}
-    enable_linux_x64_qnn: ${{ parameters.enable_linux_x64_qnn }}
-    build_py_parameters: ${{ parameters.build_py_parameters }}
-    cmake_build_type: ${{ parameters.cmake_build_type }}
-    qnn_sdk_version: ${{ parameters.qnn_sdk_version }}
+    sdl:
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows
+    stages:
+    - template: stages/py-cpu-packaging-stage.yml
+      parameters:
+        enable_linux_cpu: ${{ parameters.enable_linux_cpu }}
+        enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
+        enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
+        enable_linux_arm: ${{ parameters.enable_linux_arm }}
+        enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
+        enable_windows_arm64ec_qnn: ${{ parameters.enable_windows_arm64ec_qnn }}
+        enable_windows_x64_qnn: ${{ parameters.enable_windows_x64_qnn }}
+        enable_linux_x64_qnn: ${{ parameters.enable_linux_x64_qnn }}
+        build_py_parameters: ${{ parameters.build_py_parameters }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+        qnn_sdk_version: ${{ parameters.qnn_sdk_version }}

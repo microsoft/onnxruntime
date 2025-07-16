@@ -83,6 +83,12 @@ async function main() {
     await testExportsMain(PRESERVE, PACKAGES_TO_INSTALL);
   }
 
+  // perform type (typescript related) testing
+  {
+    const testTypeMain = require(path.join(TEST_E2E_RUN_FOLDER, './type/main'));
+    await testTypeMain(PRESERVE, PACKAGES_TO_INSTALL);
+  }
+
   // prepare .wasm files for path override testing
   prepareWasmPathOverrideFiles();
 
@@ -162,6 +168,7 @@ function prepareWasmPathOverrideFiles() {
   fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'ort-wasm-simd-threaded.wasm'));
   fs.copyFileSync(`${sourceFile}.mjs`, path.join(folder, 'renamed.mjs'));
   fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'renamed.wasm'));
+  // TODO: add .asyncify/.jspi
   fs.copyFileSync(`${sourceFile}.jsep.mjs`, path.join(folder, 'ort-wasm-simd-threaded.jsep.mjs'));
   fs.copyFileSync(`${sourceFile}.jsep.wasm`, path.join(folder, 'ort-wasm-simd-threaded.jsep.wasm'));
   fs.copyFileSync(`${sourceFile}.jsep.mjs`, path.join(folder, 'jsep-renamed.mjs'));

@@ -169,4 +169,10 @@ if __name__ == "__main__":
     print("Test suite details: ", test_suite_details_url)
     print("=" * 30)
     if tests_status != "passed":
-        raise Exception(f"Tests failed. Go to {test_suite_details_url} for more details.")
+        output_str = f"""Tests failed. Go to {test_suite_details_url} for the BrowserStack run.
+
+        For more details on how to access the BrowserStack logs, go to the following page in the team OneNote:
+        ONNX Ecosystem Team Notebook -> ORT Mobile -> End-to-end tests for iOS & Android
+        """
+
+        raise Exception(output_str)

@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
@@ -26,7 +25,7 @@ class PadOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -84,16 +83,18 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto opset = node.SinceVersion();
   // From opset 11, pads, constant value and axes are inputs.
   if (opset >= 11) {
+    const auto& graph_viewer = model_builder.GetGraphViewer();
     ORT_RETURN_IF(input_defs.size() < 2, "Pads is required at opset ", opset);
     std::vector<int64_t> pads;
     const auto& pads_tensor = *initializers.at(input_defs[1]->Name());
-    ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(pads_tensor, pads, logger), "Error while read pads tensor");
+    ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(pads_tensor, pads, graph_viewer, logger),
+                      "Error while reading pads tensor");
 
     // Constant value and axes are optional. Make sure they are not empty.
     if (!GetTensorName(input_defs, 2).empty()) {
       const auto value_tensor = *initializers.at(input_defs[2]->Name());
       emscripten::val value = emscripten::val::object();
-      ORT_RETURN_IF_NOT(ReadScalarTensorData(value_tensor, value, logger), "Cannot read constant value");
+      ORT_RETURN_IF_NOT(ReadScalarTensorData(value_tensor, value, graph_viewer, logger), "Cannot read constant value");
       options.set("value", value);
     }
 
@@ -101,7 +102,8 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       const auto input_rank = input_shape.size();
       std::vector<int64_t> axes;
       const auto& axes_tensor = *initializers.at(input_defs[3]->Name());
-      ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(axes_tensor, axes, logger), "Error while read axes tensor");
+      ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(axes_tensor, axes, graph_viewer, logger),
+                        "Error while reading axes tensor");
       std::vector<size_t> axes_index;
       std::transform(
           axes.begin(), axes.end(), std::back_inserter(axes_index),
@@ -156,7 +158,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool PadOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                      const Node& node,
                                      const WebnnDeviceType /* device_type */,
                                      const logging::Logger& logger) const {
@@ -184,7 +186,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     for (size_t i = 1; i < input_defs.size(); i++) {
       // Optional tensors (constant_value, axes) can be indicated by an empty name, just ignore it.
       const std::string input_name = GetTensorName(input_defs, i);
-      if (!input_name.empty() && !Contains(initializers, input_name)) {
+      if (!input_name.empty() && !graph_viewer.GetConstantInitializer(input_name)) {
         LOGS(logger, VERBOSE) << "Input [" << input_name << "] must be known as initializer";
         return false;
       }

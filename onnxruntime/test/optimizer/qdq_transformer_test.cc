@@ -27,6 +27,7 @@
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/common/dnnl_op_test_utils.h"
 
 #include "gtest/gtest.h"
 #include "graph_transform_test_builder.h"
@@ -116,6 +117,8 @@ void QDQTransformerConvTests() {
 }
 
 TEST(QDQTransformerTests, Conv_U8X8U8) {
+  DNNL_GTEST_SKIP();
+
   QDQTransformerConvTests<uint8_t, uint8_t, int32_t, uint8_t>();
   QDQTransformerConvTests<uint8_t, int8_t, int32_t, uint8_t>();
 }
@@ -145,6 +148,8 @@ TEST(QDQTransformerTests, Conv_S8X8S8) {
 }
 
 TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        int opset_version, bool use_contrib_qdq = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -216,6 +221,8 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
 }
 
 TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        bool use_contrib_qdq = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -1521,6 +1528,52 @@ TEST(QDQTransformerTests, DoubleQDQ) {
                    bad_float_point, good_float_point_2, true);  // Use com.microsoft QDQ ops
 }
 
+// Verifies fix for bug in the IsQDQPairSupported utility function, which is used by
+// various optimizers such as DoubleQDQPairsRemover. The bug causes an exception when
+// IsQDQPairIsSupported() is called with a Q -> DQ sequence that uses different scale types.
+TEST(QDQTransformerTests, DoubleQDQPairsRemover_Bug_RejectDifferentScaleTypes) {
+  // Function that builds a model with a QDQ nodes that use different scale data types:
+  // input_fp32 -> Q(scale_fp32) -> DQ(scale_fp16) -> Mul(fp16) -> Q(scale_fp16) -> DQ(scale_fp32) -> output_fp32
+  auto build_model_func = [](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({1, 1, 1, 3}, {1.0f, 2.0f, 3.0f});
+    NodeArg* q1_output = builder.MakeIntermediate();
+    NodeArg* dq1_output = builder.MakeIntermediate();
+    NodeArg* mul_output = builder.MakeIntermediate();
+    NodeArg* q2_output = builder.MakeIntermediate();
+    NodeArg* dq2_output = builder.MakeOutput();
+    NodeArg* const_arg = builder.MakeScalarInitializer(MLFloat16(10.0f));
+
+    const float scale_fp32 = 1.0f;
+    const MLFloat16 scale_fp16 = MLFloat16(scale_fp32);
+    const uint8_t zp = 127;
+
+    builder.AddQuantizeLinearNode<uint8_t, float>(input0_arg, scale_fp32, zp, q1_output);
+    builder.AddDequantizeLinearNode<uint8_t, MLFloat16>(q1_output, scale_fp16, zp, dq1_output);
+    builder.AddNode("Mul", {dq1_output, const_arg}, {mul_output});
+    builder.AddQuantizeLinearNode<uint8_t, MLFloat16>(mul_output, scale_fp16, zp, q2_output);
+    builder.AddDequantizeLinearNode<uint8_t, float>(q2_output, scale_fp32, zp, dq2_output);
+  };
+
+  // Previously, using different scale data types caused an exception in IsQDQPairSupported.
+  // Now, we just reject the sequence. The DoubleQDQPairsRemover optimizer should not change the
+  // graph.
+  auto graph_checker = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
+    EXPECT_EQ(op_to_count["Mul"], 1);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+  };
+  TransformerTester(
+      build_model_func,
+      graph_checker,
+      TransformerLevel::Default,
+      TransformerLevel::Level1,
+      21,
+      /*per_sample_tolerance*/ 0.0,
+      /*relative_per_sample_tolerance*/ 0.0,
+      std::make_unique<DoubleQDQPairsRemover>());
+}
+
 template <typename QuantType>
 static void RunDoubleQDQWithoutLastNodeBeingOutput(int output_index, int expected_Q_count, int expected_DQ_count,
                                                    bool use_contrib_qdq = false, int opset = 12) {
@@ -2266,6 +2319,8 @@ TEST(QDQTransformerTests, MatMulIntegerToFloat) {
 }
 
 TEST(QDQTransformerTests, ConvRelu) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        bool is_zp_zero, bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2321,6 +2376,8 @@ TEST(QDQTransformerTests, ConvRelu) {
 }
 
 TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2390,6 +2447,8 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
 }
 
 TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2708,6 +2767,8 @@ TEST(QDQTransformerTests, Sigmoid_U8S8) {
 }
 
 TEST(QDQTransformerTests, ConvTranspose_QBackward) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        const std::vector<int64_t>& perms, bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2758,6 +2819,8 @@ TEST(QDQTransformerTests, ConvTranspose_QBackward) {
 }
 
 TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2840,6 +2903,8 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
 }
 
 TEST(QDQTransformerTests, ConvTranspose_DQForward) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        const std::vector<int64_t>& perms, bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2906,6 +2971,8 @@ TEST(QDQTransformerTests, ConvTranspose_DQForward) {
 }
 
 TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        const std::vector<int64_t>& perms, bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -5301,6 +5368,62 @@ TEST(QDQTransformerTests, WeightBiasQuantization_Conv_Weight_Bias) {
 #if !defined(DISABLE_CONTRIB_OPS)
   test_case(true);
 #endif
+}
+
+// Tests that the WeightBiasQuantization optimizer does not process nodes that do not
+// already have an output that is consumed by a single QuantizeLinear node.
+TEST(QDQTransformerTests, WeightBiasQuantization_SkipIfOutputNotQuantized) {
+  auto test_case = [](bool add_final_reshape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_arg = builder.MakeInput<uint8_t>({1, 24, 67, 67}, std::numeric_limits<uint8_t>::min(),
+                                                      std::numeric_limits<uint8_t>::max());
+      NodeArg* weight_arg = builder.MakeInitializer<float>({24, 1, 5, 5}, -0.1f, 0.1f);
+      NodeArg* bias_arg = builder.MakeInitializer<float>({24}, -0.1f, 0.1f);
+      NodeArg* input_dq_arg = builder.MakeIntermediate();
+      NodeArg* conv_output_arg = add_final_reshape ? builder.MakeIntermediate() : builder.MakeOutput();
+
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.014f, static_cast<uint8_t>(127), input_dq_arg);
+      auto& conv_node = builder.AddNode("Conv", {input_dq_arg, weight_arg, bias_arg}, {conv_output_arg});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{5, 5});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
+      conv_node.AddAttribute("group", static_cast<int64_t>(24));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+
+      // Make adding a final Reshape node configurable to test two cases:
+      //  - Conv produces a graph output
+      //  - Conv output is consumed by some node that is NOT a QuantizeLinear
+      // In either case, the WeightBiasQuantization optimizer should skip this node.
+      if (add_final_reshape) {
+        NodeArg* reshape_output_arg = builder.MakeOutput();
+        NodeArg* new_shape_arg = builder.Make1DInitializer<int64_t>({1, -1});
+        builder.AddNode("Reshape", {conv_output_arg, new_shape_arg}, {reshape_output_arg});
+      }
+    };
+
+    auto check_graph = [add_final_reshape](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+
+      // Should retain the same nodes in the original graph.
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
+      EXPECT_EQ(op_to_count["Conv"], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count["Reshape"], static_cast<int>(add_final_reshape));
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      21,
+                      /*per_sample_tolerance*/ 0.0,
+                      /*relative_per_sample_tolerance*/ 0.0,
+                      std::make_unique<WeightBiasQuantization>());
+  };
+
+  test_case(false);  // Conv produces a graph output directly
+  test_case(true);   // Conv -> Reshape -> graph_output
 }
 
 TEST(QDQTransformerTests, WeightBiasQuantization_ConvTranspose_Weight) {

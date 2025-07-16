@@ -31,13 +31,13 @@ bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer& graph
     // idealy, QlinearSoftmax or QDQSoftmax will keep this output scale and zp, but we have to handle some
     // qdq models converted from other framework
     auto [scale_tensor, zero_tensor] = GetQuantizationZeroPointAndScale(graph, node_unit.Outputs()[0]);
-    Initializer q_scale(*scale_tensor, node_unit.ModelPath());
+    Initializer q_scale(graph.GetGraph(), *scale_tensor, node_unit.ModelPath());
     if (fabs(q_scale.DataAsSpan<float>()[0] - 1.0f / 256.0f) > 0.0001f) {
       break;
     }
 
     if (zero_tensor) {
-      Initializer q_zp(*zero_tensor, node_unit.ModelPath());
+      Initializer q_zp(graph.GetGraph(), *zero_tensor, node_unit.ModelPath());
       if (q_zp.DataAsSpan<uint8_t>()[0] != 0) {
         break;
       }
@@ -160,7 +160,7 @@ Softmax::Softmax(const OpKernelInfo& info) : XnnpackKernel{info} {
   // we have checked it in GetCapability
   const auto* x_shape = input_defs[0]->Shape();
   size_t rank = x_shape->dim_size();
-  axis_ = gsl::narrow<int>(HandleNegativeAxis(axis_, int64_t(rank)));
+  axis_ = narrow<int>(HandleNegativeAxis(axis_, int64_t(rank)));
 
   auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
   int64_t channels = opset_ < 13 ? input_shape.SizeFromDimension(axis_) : input_shape[axis_];

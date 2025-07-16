@@ -16,6 +16,8 @@ class Transpose final : public WebGpuKernel, public TransposeBase {
   Transpose(const OpKernelInfo& info) : WebGpuKernel{info}, TransposeBase{info} {
   }
   Status ComputeInternal(ComputeContext& context) const override;
+  static Status DoTranspose(onnxruntime::webgpu::ComputeContext& context, gsl::span<const size_t> permutations, const Tensor& input, Tensor& output);
+
   constexpr static uint32_t TILE_SIZE = 16;
 };
 

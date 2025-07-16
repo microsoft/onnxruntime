@@ -4,6 +4,7 @@
 import { InferenceSession as InferenceSessionImpl } from './inference-session-impl.js';
 import { OnnxModelOptions } from './onnx-model.js';
 import { OnnxValue, OnnxValueDataLocation } from './onnx-value.js';
+import type { Tensor } from './tensor.js';
 import { TryGetGlobalType } from './type-helper.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
@@ -80,7 +81,7 @@ export declare namespace InferenceSession {
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
-    graphOptimizationLevel?: 'disabled' | 'basic' | 'extended' | 'all';
+    graphOptimizationLevel?: 'disabled' | 'basic' | 'extended' | 'layout' | 'all';
 
     /**
      * Whether enable CPU memory arena.
@@ -308,7 +309,24 @@ export declare namespace InferenceSession {
 
   export interface QnnExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'qnn';
-    // TODO add flags
+    /**
+     * Specify the QNN backend type. E.g., 'cpu' or 'htp'.
+     * Mutually exclusive with `backendPath`.
+     *
+     * @default 'htp'
+     */
+    backendType?: string;
+    /**
+     * Specify a path to the QNN backend library.
+     * Mutually exclusive with `backendType`.
+     */
+    backendPath?: string;
+    /**
+     * Specify whether to enable HTP FP16 precision.
+     *
+     * @default true
+     */
+    enableFp16Precision?: boolean;
   }
   export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'coreml';
@@ -419,10 +437,52 @@ export declare namespace InferenceSession {
 
   // #region value metadata
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-interface
-  interface ValueMetadata {
-    // TBD
+  /**
+   * The common part of the value metadata type for both tensor and non-tensor values.
+   */
+  export interface ValueMetadataBase {
+    /**
+     * The name of the specified input or output.
+     */
+    readonly name: string;
   }
+
+  /**
+   * Represents the metadata of a non-tensor value.
+   */
+  export interface NonTensorValueMetadata extends ValueMetadataBase {
+    /**
+     * Get a value indicating whether the value is a tensor.
+     */
+    readonly isTensor: false;
+  }
+
+  /**
+   * Represents the metadata of a tensor value.
+   */
+  export interface TensorValueMetadata extends ValueMetadataBase {
+    /**
+     * Get a value indicating whether the value is a tensor.
+     */
+    readonly isTensor: true;
+    /**
+     * Get the data type of the tensor.
+     */
+    readonly type: Tensor.Type;
+    /**
+     * Get the shape of the tensor.
+     *
+     * If the shape is not defined, the value will an empty array. Otherwise, it will be an array representing the shape
+     * of the tensor. Each element in the array can be a number or a string. If the element is a number, it represents
+     * the corresponding dimension size. If the element is a string, it represents a symbolic dimension.
+     */
+    readonly shape: ReadonlyArray<number | string>;
+  }
+
+  /**
+   * Represents the metadata of a value.
+   */
+  export type ValueMetadata = NonTensorValueMetadata | TensorValueMetadata;
 
   // #endregion
 }
@@ -494,15 +554,15 @@ export interface InferenceSession {
    */
   readonly outputNames: readonly string[];
 
-  // /**
-  //  * Get input metadata of the loaded model.
-  //  */
-  // readonly inputMetadata: ReadonlyArray<Readonly<InferenceSession.ValueMetadata>>;
+  /**
+   * Get input metadata of the loaded model.
+   */
+  readonly inputMetadata: readonly InferenceSession.ValueMetadata[];
 
-  // /**
-  //  * Get output metadata of the loaded model.
-  //  */
-  // readonly outputMetadata: ReadonlyArray<Readonly<InferenceSession.ValueMetadata>>;
+  /**
+   * Get output metadata of the loaded model.
+   */
+  readonly outputMetadata: readonly InferenceSession.ValueMetadata[];
 
   // #endregion
 }

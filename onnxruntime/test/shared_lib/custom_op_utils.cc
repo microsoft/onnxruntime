@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <gsl/gsl>
 #include "gtest/gtest.h"
 
 #include "custom_op_utils.h"
@@ -34,9 +35,11 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   int64_t size = output_info.GetElementCount();
 
 #ifdef USE_CUDA
-  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
 #else
-  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0));
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator,
+                         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
 #endif
   OrtAllocator* allocator;
   Ort::ThrowOnError(ort_.KernelContext_GetAllocator(context, &mem_info, &allocator));
@@ -638,4 +641,23 @@ void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
 }
 
 StandaloneCustomKernel::~StandaloneCustomKernel() {
+}
+
+OrtStatusPtr CustomCastKernel::ComputeV2(OrtKernelContext* context) {
+  Ort::KernelContext ctx(context);
+
+  auto in = ctx.GetInput(0);
+  std::vector<int64_t> shape = in.GetTensorTypeAndShapeInfo().GetShape();
+  int64_t num_elements = std::accumulate(shape.cbegin(), shape.cend(), int64_t(1), std::multiplies<int64_t>());
+
+  // CustomCast::GetInputType constraint ensures we only get float input
+  const float* data = in.GetTensorData<float>();
+  double* out_data = ctx.GetOutput(0, shape).GetTensorMutableData<double>();
+  gsl::span<const float> input_span(data, num_elements);
+  gsl::span<double> output_span(out_data, num_elements);
+
+  std::transform(input_span.begin(), input_span.end(), output_span.begin(),
+                 [](float val) { return static_cast<double>(val); });
+
+  return nullptr;
 }

@@ -30,14 +30,20 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& output_name = node.OutputDefs()[0]->Name();
 
   std::vector<int64_t> data_shape;
-  ORT_RETURN_IF_NOT(GetStaticShape(*node.InputDefs()[0], data_shape, logger), "Failed to get input shape.");
 
   NodeAttrHelper helper(node);
   int32_t axis_default_value = (node.SinceVersion() < 13) ? 1 : -1;
   const auto axis = helper.Get("axis", axis_default_value);
-  auto axis_nonnegative = HandleNegativeAxis(axis, data_shape.size());
+  int64_t axis_nonnegative = axis;
 
-#if defined(COREML_ENABLE_MLPROGRAM)
+  if (node.SinceVersion() < 13) {
+    ORT_RETURN_IF_NOT(GetStaticShape(*node.InputDefs()[0], data_shape, logger), "Failed to get input shape.");
+    axis_nonnegative = HandleNegativeAxis(axis, data_shape.size());
+  } else {
+    ORT_RETURN_IF_NOT(GetShape(*node.InputDefs()[0], data_shape, logger),
+                      "Softmax input must have shape information.");
+  }
+
   // CoreML's softmax match onnx's softmax behavior since opset 13.
   // For opset < 13, we need to reshape to 2D and set axis to -1 to simulate onnx softmax behavior.
   // [B,D,...](onnx softmax opset 12, axis=1)->[B,D*...](CoreML softmax, axis=-1)->[B,D,...](reshape back)
@@ -78,9 +84,7 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       AddOperationOutput(*reshape2, *node.OutputDefs()[0]);
       model_builder.AddOperation(std::move(reshape2));
     }
-  } else  // NOLINT
-#endif
-  {
+  } else {
     if (node.SinceVersion() >= 13 || (data_shape.size() == 2)) {
       auto* coreml_softmaxnd = layer->mutable_softmaxnd();
       coreml_softmaxnd->set_axis(axis);
@@ -132,12 +136,14 @@ bool SoftmaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
-  if (!GetStaticShape(*input_defs[0], input_shape, logger))
-    return false;
 
-  const TensorShape shape(input_shape);
-  if (shape.Size() == 0) {
-    LOGS(logger, VERBOSE) << "Empty input data is not supported.";
+  if (!GetShape(*input_defs[0], input_shape, logger)) {
+    LOGS(logger, VERBOSE) << "Softmax input [" << input_defs[0]->Name() << "] must have shape information.";
+    return false;
+  }
+
+  if (!IsStaticShape(input_shape) && node.SinceVersion() < 13) {
+    LOGS(logger, VERBOSE) << "Softmax input must have static shape for ONNX opset < 13";
     return false;
   }
 

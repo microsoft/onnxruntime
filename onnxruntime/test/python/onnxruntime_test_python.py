@@ -17,6 +17,7 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
+from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
@@ -92,7 +93,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_tvm_imported(self):
         if "TvmExecutionProvider" not in onnxrt.get_available_providers():
             return
-        import tvm
+        import tvm  # noqa: PLC0415
 
         self.assertTrue(tvm is not None)
 
@@ -183,7 +184,7 @@ class TestInferenceSession(unittest.TestCase):
             so.add_session_config_entry(
                 "session.optimized_model_external_initializers_file_name", external_initializers_file
             )
-            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
+            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "20")
             onnxrt.InferenceSession(get_name("model_with_orig_ext_data.onnx"), sess_options=so)
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
             self.assertTrue(os.path.isfile(os.path.join(directory, external_initializers_file)))
@@ -213,14 +214,10 @@ class TestInferenceSession(unittest.TestCase):
             "session.optimized_model_external_initializers_file_name", external_initializers_file
         )
 
-        # TODO(anyone): Set this to 100 will cause test error since some tensor below the threshold
-        # still refers to the original external data file. We shall fix this issue so that the
-        # optimized model only refers to one external data file.
-        so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "10")
+        so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
         session1 = onnxrt.InferenceSession(get_name("model_with_orig_ext_data.onnx"), sess_options=so)
         del session1
         self.assertTrue(os.path.isfile(optimized_model_filepath))
-        self.assertTrue(os.path.isfile(external_initializers_file))
 
         so2 = onnxrt.SessionOptions()
         so2.log_severity_level = 1
@@ -240,7 +237,6 @@ class TestInferenceSession(unittest.TestCase):
 
         # Remove model 1 to make sure optimized model 2 can be loaded independently from model 1
         os.remove(optimized_model_filepath)
-        os.remove(external_initializers_file)
 
         session3 = onnxrt.InferenceSession(optimized_model_filepath_2, sess_options=onnxrt.SessionOptions())
         del session3
@@ -330,8 +326,6 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(option["user_compute_stream"], "1")
             self.assertEqual(option["has_user_compute_stream"], "1")
 
-            from onnxruntime.capi import _pybind_state as C
-
             session_options = C.get_default_session_options()
 
             # TRT plugins registered as custom op domain should only be added once in session option regardless of number of session creation
@@ -358,7 +352,7 @@ class TestInferenceSession(unittest.TestCase):
             """
 
             try:
-                import torch
+                import torch  # noqa: PLC0415
 
                 if torch.cuda.is_available():
                     s = torch.cuda.Stream()
@@ -463,7 +457,7 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(options["CUDAExecutionProvider"]["user_compute_stream"], "0")
 
                 try:
-                    import torch
+                    import torch  # noqa: PLC0415
 
                     if torch.cuda.is_available():
                         s = torch.cuda.Stream()
@@ -1313,7 +1307,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def test_register_custom_ops_library(self):
         if sys.platform.startswith("win"):
-            shared_library = "custom_op_library.dll"
+            shared_library = os.path.abspath("custom_op_library.dll")
             if not os.path.exists(shared_library):
                 raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
@@ -1366,13 +1360,20 @@ class TestInferenceSession(unittest.TestCase):
         )
 
     def test_ort_value(self):
+        providers_to_test = onnxrt.get_available_providers()
         numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
 
-        def test_session_with_ortvalue_input(ortvalue):
-            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
+        def test_session_with_ortvalue_input(ortvalue, providers):
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=providers)
             res = sess.run(["Y"], {"X": ortvalue})
-            self.assertTrue(np.array_equal(res[0], numpy_arr_output))
+
+            if "QNNExecutionProvider" in providers:
+                # QNN runs float32 with fp16 precision, so relax accuracy expectations
+                np.testing.assert_allclose(numpy_arr_output, res[0], rtol=1e-04, atol=1e-06)
+            else:
+                self.assertTrue(np.array_equal(res[0], numpy_arr_output))
+
             vect = sess._sess.run_with_ort_values({"X": ortvalue._get_c_value()}, ["Y"], RunOptions())
             self.assertIsInstance(vect, OrtValueVector)
 
@@ -1381,10 +1382,12 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(ortvalue1.shape(), [3, 2])
         self.assertEqual(ortvalue1.data_type(), "tensor(float)")
         self.assertEqual(ortvalue1.is_tensor(), True)
+        # Assumes float32 and shape {3, 2} as above
+        self.assertEqual(ortvalue1.tensor_size_in_bytes(), 4 * 2 * 3)
         self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
 
         # Pass in the constructed OrtValue to a session via Run() and check results
-        test_session_with_ortvalue_input(ortvalue1)
+        test_session_with_ortvalue_input(ortvalue1, providers_to_test)
 
         # The constructed OrtValue should still be valid after being used in a session
         self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
@@ -1398,7 +1401,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(float_tensor_data_type, ort_value_with_type.element_type())
         self.assertEqual([3, 2], ort_value_with_type.shape())
 
-        if "CUDAExecutionProvider" in onnxrt.get_available_providers():
+        if "CUDAExecutionProvider" in providers_to_test:
             ortvalue2 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input, "cuda", 0)
             self.assertEqual(ortvalue2.device_name(), "cuda")
             self.assertEqual(ortvalue2.shape(), [3, 2])
@@ -1407,7 +1410,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
 
             # Pass in the constructed OrtValue to a session via Run() and check results
-            test_session_with_ortvalue_input(ortvalue2)
+            test_session_with_ortvalue_input(ortvalue2, providers_to_test)
 
             # The constructed OrtValue should still be valid after being used in a session
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
@@ -1425,6 +1428,31 @@ class TestInferenceSession(unittest.TestCase):
                 upstreams_onnxrt = {"input": ort_val}
                 outs = session.run(output_names=["output"], input_feed=upstreams_onnxrt)[0]
                 self.assertTrue(np.allclose(inps, outs))
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_dlpack(self):
+        # Tests originally from orttraining/orttraining/test/python/orttraining_test_ortvalue.py testOrtValueDlPack_float32
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
+        self.assertEqual(numpy_arr_input.shape, tuple(ortvalue.shape()))
+        ptr = ortvalue._ortvalue.data_ptr()
+
+        dlp = ortvalue._ortvalue.to_dlpack()
+        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
+        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        self.assertEqual(ptr, ortvalue2.data_ptr())
+        new_array = ortvalue2.numpy()
+        np.testing.assert_equal(numpy_arr_input, new_array)
+
+        dlp = ortvalue._ortvalue.__dlpack__()
+        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
+        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        self.assertEqual(ptr, ortvalue2.data_ptr())
+        new_array = ortvalue2.numpy()
+        np.testing.assert_equal(numpy_arr_input, new_array)
+
+        device = ortvalue._ortvalue.__dlpack_device__()
+        self.assertEqual((1, 0), device)
 
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
@@ -1647,7 +1675,7 @@ class TestInferenceSession(unittest.TestCase):
                 sess2.run([], {input_name: x}, ro2)
 
     def test_check_and_normalize_provider_args(self):
-        from onnxruntime.capi.onnxruntime_inference_collection import check_and_normalize_provider_args
+        from onnxruntime.capi.onnxruntime_inference_collection import check_and_normalize_provider_args  # noqa: PLC0415
 
         valid_providers = ["a", "b", "c"]
 
@@ -1699,15 +1727,13 @@ class TestInferenceSession(unittest.TestCase):
         check_failure([("a", {1: 2})], [{3: 4}])
 
     def test_register_custom_e_ps_library(self):
-        from onnxruntime.capi import _pybind_state as C
-
         available_eps = C.get_available_providers()
         # skip amd gpu build
         if "ROCMExecutionProvider" in available_eps:
             return
 
         if sys.platform.startswith("win"):
-            shared_library = "test_execution_provider.dll"
+            shared_library = os.path.abspath("test_execution_provider.dll")
 
         elif sys.platform.startswith("darwin"):
             # exclude for macos

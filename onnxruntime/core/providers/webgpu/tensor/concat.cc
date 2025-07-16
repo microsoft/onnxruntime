@@ -104,7 +104,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  uint32_t output_size = gsl::narrow_cast<int32_t>(prepare.output_tensor->Shape().Size());
+  uint32_t output_size = onnxruntime::narrow<int32_t>(prepare.output_tensor->Shape().Size());
 
   size_t axis = static_cast<size_t>(prepare.axis);
   ConcatProgram program{axis};

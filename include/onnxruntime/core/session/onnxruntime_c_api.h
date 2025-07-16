@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 // See docs\c_cxx\README.md on generating the Doxygen documentation from this file
@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 21
+#define ORT_API_VERSION 23
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,8 +52,9 @@ extern "C" {
 #define _In_opt_
 #define _In_opt_z_
 #define _Out_
-#define _Outptr_
 #define _Out_opt_
+#define _Outptr_
+#define _Outptr_opt_
 #define _Inout_
 #define _Inout_opt_
 #define _Frees_ptr_opt_
@@ -61,9 +62,11 @@ extern "C" {
 #define _Ret_notnull_
 #define _Check_return_
 #define _Outptr_result_maybenull_
+#define _Outptr_result_maybenull_z_
 #define _In_reads_(X)
 #define _Inout_updates_(X)
 #define _Out_writes_(X)
+#define _Out_writes_opt_(X)
 #define _Inout_updates_all_(X)
 #define _Out_writes_bytes_all_(X)
 #define _Out_writes_all_(X)
@@ -141,6 +144,9 @@ extern "C" {
 
 // __VA_ARGS__ on Windows and Linux are different
 #define ORT_API(RETURN_TYPE, NAME, ...) RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
+
+#define ORT_API_T(RETURN_TYPE, NAME, ...) \
+  RETURN_TYPE(ORT_API_CALL* NAME)(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_API_STATUS(NAME, ...)                                                                   \
   _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) \
@@ -255,6 +261,8 @@ typedef enum OrtErrorCode {
   ORT_NOT_IMPLEMENTED,
   ORT_INVALID_GRAPH,
   ORT_EP_FAIL,
+  ORT_MODEL_LOAD_CANCELED,
+  ORT_MODEL_REQUIRES_COMPILATION,
 } OrtErrorCode;
 
 typedef enum OrtOpAttrType {
@@ -297,6 +305,7 @@ ORT_RUNTIME_CLASS(ThreadingOptions);
 ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
+ORT_RUNTIME_CLASS(NvTensorRtRtxProviderOptions);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(CANNProviderOptions);
 ORT_RUNTIME_CLASS(DnnlProviderOptions);
@@ -305,8 +314,16 @@ ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(Logger);
 ORT_RUNTIME_CLASS(ShapeInferContext);
 ORT_RUNTIME_CLASS(LoraAdapter);
+ORT_RUNTIME_CLASS(ValueInfo);
+ORT_RUNTIME_CLASS(Node);
+ORT_RUNTIME_CLASS(Graph);
+ORT_RUNTIME_CLASS(Model);
+ORT_RUNTIME_CLASS(ModelCompilationOptions);
+ORT_RUNTIME_CLASS(HardwareDevice);
+ORT_RUNTIME_CLASS(EpDevice);
+ORT_RUNTIME_CLASS(KeyValuePairs);
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
 #else
 typedef OrtStatus* OrtStatusPtr;
@@ -319,16 +336,42 @@ typedef OrtStatus* OrtStatusPtr;
  * When an allocator is passed to any function, be sure that the allocator object is not destroyed until the last allocated object using it is freed.
  */
 typedef struct OrtAllocator {
-  uint32_t version;                                                                   ///< Must be initialized to ORT_API_VERSION
-  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);                ///< Returns a pointer to an allocated block of `size` bytes
-  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);                      ///< Free a block of memory previously allocated with OrtAllocator::Alloc
-  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);  ///< Return a pointer to an ::OrtMemoryInfo that describes this allocator
+  uint32_t version;  ///< Must be initialized to ORT_API_VERSION
+
+  /// Returns a pointer to an allocated block of `size` bytes
+  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);
+
+  /// Free a block of memory previously allocated with OrtAllocator::Alloc
+  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
+
+  /// Return a pointer to an ::OrtMemoryInfo that describes this allocator
+  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
   /**
    * @brief Optional allocation function to use for memory allocations made during session initialization.
    * Use this function if you want to separate allocations made by ORT during Run() calls from
    * those made during session initialization. This allows for separate memory management strategies for these allocations.
    */
   void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);  ///< Returns a pointer to an allocated block of `size` bytes
+
+  /**
+   * @brief Function used to get the statistics of the allocator.
+   *
+   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator
+   * and the user should call OrtApi::ReleaseKeyValuePairs.
+   * Supported keys are:
+   * - Limit: Bytes limit of the allocator. -1 if no limit is set.
+   * - InUse: Number of bytes in use.
+   * - TotalAllocated: The total number of allocated bytes by the allocator.
+   * - MaxInUse: The maximum bytes in use.
+   * - NumAllocs: Number of allocations.
+   * - NumReserves: Number of reserves. (Number of calls to Reserve() in arena-based allocators)
+   * - NumArenaExtensions: Number of arena extensions (Relevant only for arena based allocators)
+   * - NumArenaShrinkages: Number of arena shrinkages (Relevant only for arena based allocators)
+   * - MaxAllocSize: The max single allocation seen.
+   *
+   * NOTE: If the allocator does not implement this function, the OrtKeyValuePairs instance will be empty.
+   */
+  ORT_API2_STATUS(GetStats, _In_ const struct OrtAllocator* this_, _Outptr_ OrtKeyValuePairs** out);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -344,6 +387,7 @@ typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
   ORT_ENABLE_EXTENDED = 2,
+  ORT_ENABLE_LAYOUT = 3,
   ORT_ENABLE_ALL = 99
 } GraphOptimizationLevel;
 
@@ -388,13 +432,66 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                ///< The default allocator for execution provider
 } OrtMemType;
 
+/** \brief This matches OrtDevice::MemoryType values */
+typedef enum OrtDeviceMemoryType {
+  OrtDeviceMemoryType_DEFAULT = 0,          ///< Device memory
+  OrtDeviceMemoryType_HOST_ACCESSIBLE = 5,  ///< Shared/pinned memory for transferring between CPU and the device
+} OrtDeviceMemoryType;
+
 /** \brief This mimics OrtDevice type constants so they can be returned in the API
  */
 typedef enum OrtMemoryInfoDeviceType {
   OrtMemoryInfoDeviceType_CPU = 0,
   OrtMemoryInfoDeviceType_GPU = 1,
-  OrtMemoryInfoDeviceType_FPGA = 2
+  OrtMemoryInfoDeviceType_FPGA = 2,
+  OrtMemoryInfoDeviceType_NPU = 3,
 } OrtMemoryInfoDeviceType;
+
+typedef enum OrtHardwareDeviceType {
+  OrtHardwareDeviceType_CPU,
+  OrtHardwareDeviceType_GPU,
+  OrtHardwareDeviceType_NPU
+} OrtHardwareDeviceType;
+
+/** \brief These are the default EP selection policies used by ORT when doing automatic EP selection.
+ */
+typedef enum OrtExecutionProviderDevicePolicy {
+  OrtExecutionProviderDevicePolicy_DEFAULT,
+  OrtExecutionProviderDevicePolicy_PREFER_CPU,
+  OrtExecutionProviderDevicePolicy_PREFER_NPU,
+  OrtExecutionProviderDevicePolicy_PREFER_GPU,
+  OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE,
+  OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY,
+  OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER,
+} OrtExecutionProviderDevicePolicy;
+
+/** \brief Delegate to allow providing custom OrtEpDevice selection logic
+ *
+ * This delegate is called by the EP selection code to allow the user to provide custom device selection logic.
+ * The user can use this to select OrtEpDevice instances from the list of available devices.
+ *
+ * \param ep_devices The list of available devices.
+ * \param num_devices The number of available devices.
+ * \param model_metadata The model metadata.
+ * \param runtime_metadata The runtime metadata. May be nullptr.
+ * \param selected Pre-allocated array to populate with selected OrtEpDevice pointers from ep_devices.
+ * \param max_selected The maximum number of devices that can be selected in the pre-allocated array.
+                       Currently the maximum is 8.
+ * \param num_selected The number of selected devices.
+ * \param state Opaque pointer. Required to use the delegate from other languages like C# and python.
+ *
+ * \return OrtStatus* Selection status. Return nullptr on success.
+ *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
+ *                    ORT will release the OrtStatus* if not null.
+ */
+typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** ep_devices,
+                                                      _In_ size_t num_devices,
+                                                      _In_ const OrtKeyValuePairs* model_metadata,
+                                                      _In_opt_ const OrtKeyValuePairs* runtime_metadata,
+                                                      _Inout_ const OrtEpDevice** selected,
+                                                      _In_ size_t max_selected,
+                                                      _Out_ size_t* num_selected,
+                                                      _In_ void* state);
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -517,7 +614,7 @@ typedef struct OrtROCMProviderOptions {
    */
   int device_id;
 
-  /** \brief ROCM MIOpen Convolution algorithm exaustive search option.
+  /** \brief ROCM MIOpen Convolution algorithm exhaustive search option.
    *   Defaults to 0 (false).
    */
   int miopen_conv_exhaustive_search;
@@ -615,6 +712,7 @@ typedef struct OrtTensorRTProviderOptions {
 typedef struct OrtMIGraphXProviderOptions {
   int device_id;                                     // hip device id.
   int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_fp8_enable;                           // MIGraphX FP8 precision. Default 0 = false, nonzero = true
   int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
   int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
@@ -623,6 +721,21 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
   const char* migraphx_load_model_path;              // migraphx model path name
   bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
+
+  /** \brief MIGraphX memory limit (To use all possible memory pass in maximum size_t)
+   *   Defaults to SIZE_MAX.
+   *   \note If a ::OrtArenaCfg has been applied, it will override this field
+   */
+  size_t migraphx_mem_limit;
+
+  /** \brief Strategy used to grow the memory arena
+   *   0 = kNextPowerOfTwo<br>
+   *   1 = kSameAsRequested<br>
+   *   Defaults to 0.
+   *   \note If a ::OrtArenaCfg has been applied, it will override this field
+   */
+  int migraphx_arena_extend_strategy;
+
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -664,6 +777,15 @@ typedef struct OrtApi OrtApi;
 
 struct OrtTrainingApi;
 typedef struct OrtTrainingApi OrtTrainingApi;
+
+struct OrtModelEditorApi;
+typedef struct OrtModelEditorApi OrtModelEditorApi;
+
+struct OrtCompileApi;
+typedef struct OrtCompileApi OrtCompileApi;
+
+struct OrtEpApi;
+typedef struct OrtEpApi OrtEpApi;
 
 /** \brief The helper interface to get the right version of OrtApi
  *
@@ -847,7 +969,8 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
-  ORT_API2_STATUS(CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
+  ORT_API2_STATUS(CreateSessionFromArray, _In_ const OrtEnv* env,
+                  _In_ const void* model_data, size_t model_data_length,
                   _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 
   /** \brief Run the model in an ::OrtSession
@@ -1339,6 +1462,8 @@ struct OrtApi {
    *
    * Create a tensor with user's buffer. You can fill the buffer either before calling this function or after.
    * p_data is owned by caller. ReleaseValue won't release p_data.
+   *
+   * If you wish to transfer ownership of p_data to ORT use CreateTensorWithDataAndDeleterAsOrtValue.
    *
    * \param[in] info Memory description of where the p_data buffer resides (CPU vs GPU etc).
    * \param[in] p_data Pointer to the data buffer.
@@ -1997,7 +2122,8 @@ struct OrtApi {
   /** \brief Get the value type from an ::OrtMapTypeInfo
    *
    * \param[in] map_type_info
-   * \param[out] type_info
+   * \param[out] type_info A copy of the OrtTypeInfo for the map value type.
+   *                       The user must free this value with ReleaseTypeInfo.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -2012,7 +2138,8 @@ struct OrtApi {
    * This is used by WinML to support model reflection APIs.
    *
    * \param[in] sequence_type_info
-   * \param[out] type_info
+   * \param[out] type_info A copy of the OrtTypeInfo for the sequence element type.
+   *                       The user must free this value with ReleaseTypeInfo.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -2293,6 +2420,8 @@ struct OrtApi {
   /// @{
 
   /** \brief Create an allocator for an ::OrtSession following an ::OrtMemoryInfo
+   *
+   * The allocator wraps the internal allocator from the OrtSession and becomes invalid when the session does.
    *
    * \param[in] session
    * \param[in] mem_info valid ::OrtMemoryInfo instance
@@ -2804,7 +2933,7 @@ struct OrtApi {
    *  crossing which the current chunk is chunked into 2.
    * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena.
    *  Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
-   * "max_power_of_two_extend_bytes": The maximum enxtend size if arena strategy is `kNextPowerOfTwo`.
+   * "max_power_of_two_extend_bytes": The maximum extend size if arena strategy is `kNextPowerOfTwo`.
    *  It is not an allocation limit, it is only a limit for extension when requested byte is less than the limit.
    *  When requested bytes is more than the limit, allocator will still return as requested.
    *  Use -1 to allow ORT to choose the default 1GB for max_power_of_two_extend_bytes.
@@ -2887,7 +3016,8 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(CreateSessionWithPrepackedWeightsContainer, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
-                  _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                  _In_ const OrtSessionOptions* options,
+                  _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                   _Outptr_ OrtSession** out);
 
   /** \brief Create session from memory with prepacked weights container
@@ -2910,7 +3040,8 @@ struct OrtApi {
    */
   ORT_API2_STATUS(CreateSessionFromArrayWithPrepackedWeightsContainer, _In_ const OrtEnv* env,
                   _In_ const void* model_data, size_t model_data_length,
-                  _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                  _In_ const OrtSessionOptions* options,
+                  _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                   _Outptr_ OrtSession** out);
 
   /// @}
@@ -3536,7 +3667,7 @@ struct OrtApi {
    *
    * \param[in] name Name of the attribute
    * \param[in] data Data content of the attribute
-   * \param[in] len Number of bytes stored in data
+   * \param[in] len Number of elements if data represents an array (e.g., ORT_OP_ATTR_INTS). Otherwise, set to 1.
    * \param[in] type Data type
    * \param[out] op_attr Attribute that has been created, which must be released by OrtApi::ReleaseOpAttr
    *
@@ -3563,9 +3694,9 @@ struct OrtApi {
    * \param[in] op_name Operator name
    * \param[in] domain Operator domain
    * \param[in] version Operator opset version
-   * \param[in] type_constraint_names Name of the type contraints, such as "T" or "T1"
-   * \param[in] type_constraint_values Type of each contraints
-   * \param[in] type_constraint_count Number of contraints
+   * \param[in] type_constraint_names Name of the type constraints, such as "T" or "T1"
+   * \param[in] type_constraint_values Type of each constraints
+   * \param[in] type_constraint_count Number of constraints
    * \param[in] attr_values Attributes used to initialize the operator
    * \param[in] attr_count Number of the attributes
    * \param[in] input_count Number of inputs
@@ -3623,72 +3754,110 @@ struct OrtApi {
    * \param[in] provider_options_values - values to configure the provider options
    * \param[in] num_keys - number of keys passed in
    *
-   * Currently supported providers:
-   *   QNN
-   *   SNPE
-   *   XNNPACK
+   * Currently supported provider names:
+   *   QNNExecutionProvider (or QNN)
+   *   OpenVINOExecutionProvider (or OpenVINO)
+   *   XnnpackExecutionProvider (or XNNPACK)
+   *   WebNNExecutionProvider (or WEBNN)
+   *   WebGpuExecutionProvider (or WebGPU)
+   *   AzureExecutionProvider (or AZURE)
+   *   JsExecutionProvider (or JS)
+   *   VitisAIExecutionProvider (or VitisAI)
+   *   CoreMLExecutionProvider (or CoreML)
    *
    * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
    *       that should be used to add it.
    *
    * QNN supported keys:
-   *   "backend_path": file path to QNN backend library.
-   *   "profiling_level": QNN profiling level, options: "off", "basic", "detailed". Default to off.
+   *   "backend_type": Type of QNN backend. Specifies a backend path that is the associated QNN backend library file
+   *      name. E.g., given backend type "htp", on Windows, the backend path would be "QnnHtp.dll", and on other
+   *      platforms, it would be "libQnnHtp.so". Mutually exclusive with "backend_path".
+   *      Available options:
+   *      -# "cpu"
+   *      -# "gpu"
+   *      -# "htp": Default.
+   *      -# "saver"
+   *      -# "ir"
+   *   "backend_path": File path to QNN backend library. Mutually exclusive with "backend_type".
+   *   "profiling_level": QNN profiling level.
+   *      Available options:
+   *      -# "off": Default.
+   *      -# "basic"
+   *      -# "detailed"
    *   "profiling_file_path": QNN profiling file path if ETW not enabled.
    *   "rpc_control_latency": QNN RPC control latency.
    *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
-   *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
-   *   "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
+   *   "htp_performance_mode": QNN performance mode.
+   *      Available options:
+   *      -# "burst"
+   *      -# "balanced"
+   *      -# "default": Default.
+   *      -# "high_performance"
+   *      -# "high_power_saver"
+   *      -# "low_balanced"
+   *      -# "extreme_power_saver"
+   *      -# "low_power_saver"
+   *      -# "power_saver"
+   *      -# "sustained_high_performance"
+   *   "dump_qnn_ir_dlc": Use the QnnIr backend library to write .dlc files for each subgraph dispatched to QNN. When
+   *       enabled, inference results will be incorrect. Use only for debugging.
+   *      -# "0": Default: disabled
+   *      -# "1": enabled
+   *   "dump_qnn_ir_dlc_dir": Set the directory into which QnnIr will be configured to write QNN graphs as .dlc files.
+   *      Default is current working directory.
+   *   "qnn_ir_backend_path": File path to the QnnIr backend library. If "dump_qnn_ir_dlc" is enabled, use this path
+   *      instead of looking for the Ir backend in the standard location.
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
-   *   dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
-   *   may alter model/EP partitioning. Use only for debugging.
-   *   "qnn_context_priority": QNN context priority, options: "low", "normal", "normal_high", "high". Default to "normal".
-   *   "htp_graph_finalization_optimization_mode": Set the optimization mode for graph finalization on the HTP backend. Available options:
-   *     - "0": Default.
-   *     - "1": Faster preparation time, less optimal graph.
-   *     - "2": Longer preparation time, more optimal graph.
-   *     - "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific details.
-   *   "soc_model": The SoC model number. Refer to the QNN SDK documentation for valid values. Defaults to "0" (unknown).
-   *   "htp_arch": The minimum HTP architecture the driver will use to select compatible QNN operators. Available options:
-   *     - "0": Default (none).
-   *     - "68"
-   *     - "69"
-   *     - "73"
-   *     - "75"
+   *      dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
+   *      may alter model/EP partitioning. Use only for debugging.
+   *   "qnn_context_priority": QNN context priority.
+   *      Available options:
+   *      -# "low"
+   *      -# "normal": Default.
+   *      -# "normal_high"
+   *      -# "high"
+   *   "htp_graph_finalization_optimization_mode": Set the optimization mode for graph finalization on the HTP backend.
+   *      Available options:
+   *      -# "0": Default.
+   *      -# "1": Faster preparation time, less optimal graph.
+   *      -# "2": Longer preparation time, more optimal graph.
+   *      -# "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific
+   *        details.
+   *   "soc_model": The SoC model number. Refer to the QNN SDK documentation for valid values.
+   *      Defaults to "0" (unknown).
+   *   "htp_arch": The minimum HTP architecture the driver will use to select compatible QNN operators.
+   *      Available options:
+   *      -# "0": Default (none).
+   *      -# "68"
+   *      -# "69"
+   *      -# "73"
+   *      -# "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
    *   "enable_htp_fp16_precision": Used for float32 model for HTP backend.
-   *   Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
-   *     - "0": With fp32 precision.
-   *     - "1": Default. With fp16 precision.
-   *   "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
-   *     - "0": Default. Disabled.
-   *     - "1": Enabled.
+   *      Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
+   *      -# "0": With fp32 precision.
+   *      -# "1": Default. With fp16 precision.
    *   "offload_graph_io_quantization": Offload graph input quantization and graph output dequantization to another
-   *   execution provider (typically CPU EP).
-   *     - "0": Default. Disabled. QNN EP will handle quantization and dequantization of graph I/O.
-   *     - "1": Enabled.
-   *   "enable_htp_spill_fill_buffer": Enable HTP spill fill buffer setting. The flag is used while generating context binary.
-   *     - "0": Default. Disabled.
-   *     - "1": Enabled.
+   *      execution provider (typically CPU EP).
+   *      -# "0": Disabled. QNN EP will handle quantization and dequantization of graph I/O.
+   *      -# "1": Enabled. This is the default value.
+   *   "enable_htp_spill_fill_buffer": Enable HTP spill fill buffer setting. The flag is used while generating context
+   *      binary.
+   *      -# "0": Default. Disabled.
+   *      -# "1": Enabled.
    *   "enable_htp_shared_memory_allocator": Enable the QNN HTP shared memory allocator. Requires libcdsprpc.so/dll to
-   *   be available.
-   *     - "0": Default. Disabled.
-   *     - "1": Enabled.
-   *
-   * SNPE supported keys:
-   *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
-   *   "DSP", "DSP_FIXED8_TF", "AIP_FIXED_TF", "AIP_FIXED8_TF".
-   *   Mapping to SNPE Runtime_t definition: CPU, CPU_FLOAT32 => zdl::DlSystem::Runtime_t::CPU;
-   *   GPU, GPU_FLOAT32_16_HYBRID => zdl::DlSystem::Runtime_t::GPU;
-   *   GPU_FLOAT16 => zdl::DlSystem::Runtime_t::GPU_FLOAT16;
-   *   DSP, DSP_FIXED8_TF => zdl::DlSystem::Runtime_t::DSP.
-   *   AIP_FIXED_TF, AIP_FIXED8_TF => zdl::DlSystem::Runtime_t::AIP_FIXED_TF.
-   *   "priority": execution priority, options: "low", "normal".
-   *   "buffer_type": ITensor or user buffers, options: "ITENSOR", user buffer with different types - "TF8", "TF16", "UINT8", "FLOAT".
-   *   "ITENSOR" -- default, ITensor which is float only.
-   *   "TF8" -- quantized model required, "FLOAT" -- for both quantized or non-quantized model
-   *   "enable_init_cache": enable SNPE init caching feature, set to 1 to enabled it. Disabled by default.
-   *   If SNPE is not available (due to a non Snpe enabled build or its dependencies not being installed), this function will fail.
+   *      be available.
+   *      -# "0": Default. Disabled.
+   *      -# "1": Enabled.
+   *   "dump_json_qnn_graph": Set to "1" to dump QNN graphs generated by QNN EP as JSON files. Each graph partition
+   *      assigned to QNN EP is dumped to a separate file.
+   *   "json_qnn_graph_dir": Directory in which to dump QNN JSON graphs. If not specified, QNN graphs are dumped in the
+   *      program's current working directory. Ignored if "dump_json_qnn_graph" is not set.
+   *   "op_packages": QNN UDO op_package for QNN EP, allowed format:
+   *     "<op_type>:<op_package_path>:<interface>[:<target>],<op_type2>:<op_package_path2>:<interface2>[:<target>]",
+   *     where op_type is the name of the operation, op_package_path is the path to the op package shared library,
+   *     interface is the symbol name to register the op life cycle functions, and target is the backend type. For more
+   *     details, refer to: https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/op_packages.html
    *
    * XNNPACK supported keys:
    *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
@@ -4229,7 +4398,7 @@ struct OrtApi {
 
   /** \brief Get the logging severity level of the ::OrtLogger.
    *
-   * Can be used in a custom operator to get the logging serverity level of the ::OrtLogger associated with
+   * Can be used in a custom operator to get the logging severity level of the ::OrtLogger associated with
    * the ::OrtKernelInfo.
    *
    * \param[in] logger The ::OrtLogger instance.
@@ -4289,8 +4458,8 @@ struct OrtApi {
    * specific type that is described by the returned ::OrtTypeInfo.
    *
    * \param[in] optional_type_info
-   * \param[out] out A pointer to the ::OrtTypeInfo for what the optional value could be.
-   * it is owned by OrtOptionalTypeInfo instance.
+   * \param[out] out A copy of ::OrtTypeInfo for what the optional value could be.
+   *                 The user must free this value with ReleaseTypeInfo.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -4403,7 +4572,8 @@ struct OrtApi {
    *  \param[in] provider_options_values value of the provider options map
    *  \param[in] num_keys Length of the provider options map
    */
-  ORT_API2_STATUS(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
+  ORT_API2_STATUS(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type,
+                  _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
                   _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 
   /** \brief Run the model asynchronously in a thread owned by intra op thread pool
@@ -4580,6 +4750,8 @@ struct OrtApi {
    * \param[in] len Number of bytes allowed to store in data
    * \param[out] out Number of bytes required to save the data when the call failed, or the real number of bytes saved to data on success
    *
+   * \note Does not support reading graph attributes. Refer to Node_GetSubgraphs.
+   *
    * \since Version 1.17.
    */
   ORT_API2_STATUS(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
@@ -4647,12 +4819,12 @@ struct OrtApi {
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
 
-  /** \brief Get scratch buffer from the corresponding allocator under the sepcific OrtMemoryInfo object.
+  /** \brief Get scratch buffer from the corresponding allocator under the specific OrtMemoryInfo object.
    *         NOTE: callers are responsible to release this scratch buffer from the corresponding allocator
    *  \param[in] context OrtKernelContext instance
    *  \param[in] mem_info OrtMemoryInfo instance
    *  \param[in] count_or_bytes How many bytes is this scratch buffer
-   *  \param[out] out A pointer to the scrach buffer
+   *  \param[out] out A pointer to the scratch buffer
    *
    *  \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -4782,6 +4954,1215 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                   _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
+
+  /// @}
+
+  /** \brief Release an OrtValueInfo instance if it was not added to an OrtGraph.
+   * \since Version 1.22.
+   */
+  ORT_CLASS_RELEASE(ValueInfo);
+
+  /** \brief Release an OrtNode if it was not added to an OrtGraph.
+   * \since Version 1.22.
+   */
+  ORT_CLASS_RELEASE(Node);
+
+  /** \brief Release an OrtGraph.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.22.
+   */
+  ORT_CLASS_RELEASE(Graph);
+
+  /** \brief Release an OrtModel.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.22.
+   */
+  ORT_CLASS_RELEASE(Model);
+
+  /** \brief Get the value name from an OrtValueInfo instance.
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] name The name of the OrtValueInfo
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(GetValueInfoName, _In_ const OrtValueInfo* value_info, _Out_ const char** name);
+
+  /** \brief Get the type information from an OrtValueInfo instance.
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] type_info The type info of the OrtValueInfo
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(GetValueInfoTypeInfo, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtTypeInfo** type_info);
+
+  /** \brief Get the Model Editor API instance
+   *
+   * Get the Model Editor API instance to create a new model or augment an existing model.
+   *
+   * \return Model Editor API struct
+   *
+   * \since Version 1.22.
+   */
+  const OrtModelEditorApi*(ORT_API_CALL* GetModelEditorApi)();
+
+  /** \brief Create an OrtValue for a Tensor that uses pre-existing memory.
+   *
+   * ORT will take ownership of the memory and free it using the provided deleter when no longer in use.
+   *
+   * \param[in] deleter OrtAllocator instance that will be used to free the memory.
+   *                    Only the OrtAllocator:Info and OrtAllocator::Release functions are required.
+   *                    The OrtMemoryInfo returned by OrtAllocator::Info must match the location of p_data.
+   * \param[in] p_data Pointer to the memory that will be used by the Tensor. ORT will take ownership of the memory.
+   * \param[in] p_data_len Length of the memory in bytes.
+   * \param[in] shape Dimensions of the Tensor. All values should be > 0.
+   * \param[in] shape_len Number of dimensions in the shape array.
+   * \param[in] type Data type of the Tensor.
+   * \param[out] out Newly created ::OrtValue. Must be freed with OrtApi::ReleaseValue
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateTensorWithDataAndDeleterAsOrtValue, _In_ OrtAllocator* deleter,
+                  _In_ void* p_data, size_t p_data_len,
+                  _In_ const int64_t* shape, size_t shape_len,
+                  ONNXTensorElementDataType type,
+                  _Outptr_ OrtValue** out);
+
+  /** \brief sets load cancellation flag to abort session loading process.
+   *
+   * \param[in] options instance that was passed to the session at creation time.
+   * \param[in] cancel setting this to true after model loading process was initiated will
+   *            attempt to cancel the loading process. If cancellation is successful, CreateSession()
+   *            CreateSessionFromArray() or any other session creation API that take session options as an
+   *            argument will return an OrtStatus indicating that session loading was canceled at user request,
+   *            error code ORT_MODEL_LOAD_CANCELED.
+   *            The APIs above would not return any valid Session instance. This is the best case effort and the result
+   *            is not guaranteed. The session may have already been created and initialized
+   *            before the cancellation request was issued.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,
+                  _In_ bool cancel);
+
+  /** \brief Get the Compile API instance.
+   *
+   * Get the Compile API instance to compile ONNX models. Execution providers that support compilation fuse a subgraph
+   * into an EPContext node that wraps a provider-specific binary representation of the subgraph.
+   * For more details about the EPContext design, refer to:
+   *  \htmlonly
+   *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
+   *  \endhtmlonly
+   *
+   * \return Compile API struct instance.
+   *
+   * \since Version 1.22.
+   */
+  const OrtCompileApi*(ORT_API_CALL* GetCompileApi)();
+
+  //
+  // OrtKeyValuePairs
+  //
+
+  /** \brief Create an OrtKeyValuePairs instance.
+   *
+   * \param[out] out A pointer to a newly created OrtKeyValuePairs instance.
+   *
+   * \note Must be released by calling ReleaseKeyValuePairs.
+   *
+   * \since Version 1.22.
+   */
+  void(ORT_API_CALL* CreateKeyValuePairs)(_Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Add a key-value pair to the OrtKeyValuePairs instance.
+   *
+   * If a pair with the same key already exists, it is overwritten.
+   *
+   * \param[in] kvps OrtKeyValuePairs instance.
+   * \param[in] key Key to be added.
+   * \param[in] value Value to be added.
+   *
+   * \note The `key` and `value` are copied internally.
+   *
+   * \since Version 1.22.
+   */
+
+  void(ORT_API_CALL* AddKeyValuePair)(_In_ OrtKeyValuePairs* kvps, _In_ const char* key, _In_ const char* value);
+
+  /** \brief Get the value associated with a key in the OrtKeyValuePairs instance.
+   *
+   * \param[in] kvps OrtKeyValuePairs instance.
+   * \param[in] key Key to be searched.
+   *
+   * \return The value associated with the key, or nullptr if the key does not exist.
+   *
+   * \since Version 1.22.
+   */
+  const char*(ORT_API_CALL* GetKeyValue)(_In_ const OrtKeyValuePairs* kvps, _In_ const char* key);
+
+  /** \brief Get all the key-value pairs from the OrtKeyValuePairs instance.
+   *
+   * \param[in] kvps OrtKeyValuePairs instance.
+   * \param[out] keys Array of keys from `kvps`.
+   * \param[out] values Array of values from `kvps`.
+   * \param[out] num_entries Number of entries in `keys` and `values`.
+   *
+   * \since Version 1.22.
+   */
+  void(ORT_API_CALL* GetKeyValuePairs)(_In_ const OrtKeyValuePairs* kvps,
+                                       _Outptr_ const char* const** keys, _Outptr_ const char* const** values,
+                                       _Out_ size_t* num_entries);
+
+  /** \brief Remove a key-value pair from the OrtKeyValuePairs instance.
+   *
+   * \param[in] kvps OrtKeyValuePairs instance.
+   * \param[in] key Key to be removed. No error if not found.
+   *
+   * \since Version 1.22.
+   */
+  void(ORT_API_CALL* RemoveKeyValuePair)(_In_ OrtKeyValuePairs* kvps, _In_ const char* key);
+
+  /** \brief Release an OrtKeyValuePairs instance.
+   *
+   * \param[in] input OrtKeyValuePairs instance to be released.
+   *
+   * \since Version 1.22.
+   */
+  ORT_CLASS_RELEASE(KeyValuePairs);
+
+  /** \brief Register an execution provider library with ORT.
+   *
+   * The library must export 'CreateEpFactories' and 'ReleaseEpFactory' functions.
+   * See OrtEpApi for more details.
+   *
+   * \param[in] env The OrtEnv instance to register the library in.
+   * \param[in] registration_name The name to register the execution provider library under.
+   * \param[in] path The path to the execution provider library.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name,
+                  _In_ const ORTCHAR_T* path);
+
+  /** \brief Unregister an execution provider library with ORT.
+   *
+   * ORT will call ReleaseEpFactory for all factories created by the library, and unload the library.
+   *
+   * You <b>MUST</b> ensure there are no Session instances using execution providers created by the library
+   * before calling this function.
+   *
+   * \param[in] env The OrtEnv instance to unregister the library from.
+   * \param[in] registration_name The name the execution provider library was registered under.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name);
+
+  /** \brief Get the list of available OrtEpDevice instances.
+   *
+   * Each OrtEpDevice instance contains details of the execution provider and the device it will use.
+   *
+   * \param[in] env The OrtEnv instance to query.
+   * \param[out] ep_devices The OrtEpDevice instances that the execution provider will use.
+   * \param[out] num_ep_devices The number of OrtEpDevice instances returned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(GetEpDevices, _In_ const OrtEnv* env,
+                  _Outptr_ const OrtEpDevice* const** ep_devices, _Out_ size_t* num_ep_devices);
+
+  /** \brief Append the execution provider that is responsible for the selected OrtEpDevice instances
+   *         to the session options.
+   *
+   * \param[in] session_options Session options to add execution provider to.
+   * \param[in] env Environment that execution providers were registered with.
+   * \param[in] ep_devices One or more OrtEpDevice instances to create an execution provider for.
+   *                       Obtain from GetEpDevices. All OrtEpDevice instances must be from the same execution
+   *                       provider. It is only necessary to provide multiple OrtEpDevices if you want to use the
+   *                       same execution provider for multiple devices.
+   *                       e.g. the EP is capable of running on GPU and NPU.
+   * \param[in] num_ep_devices Number of OrtEpDevice instances.
+   * \param[in] ep_option_keys Optional keys to configure the execution provider.
+   * \param[in] ep_option_vals Optional values to configure the execution provider.
+   * \param[in] num_ep_options Number of execution provide options to add.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* session_options,
+                  _In_ OrtEnv* env,
+                  _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices, _In_ size_t num_ep_devices,
+                  _In_reads_(num_op_options) const char* const* ep_option_keys,
+                  _In_reads_(num_op_options) const char* const* ep_option_vals,
+                  size_t num_ep_options);
+
+  /** \brief Set the execution provider selection policy for the session.
+   *
+   * Allows users to specify a device selection policy for automatic execution provider (EP) selection.
+   * If custom selection is required please use SessionOptionsSetEpSelectionPolicyDelegate instead.
+   *
+   * \param[in] session_options The OrtSessionOptions instance.
+   * \param[in] policy The device selection policy to use (see OrtExecutionProviderDevicePolicy).
+   *
+   * \since Version 1.22
+   */
+  ORT_API2_STATUS(SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* session_options,
+                  _In_ OrtExecutionProviderDevicePolicy policy);
+
+  /** \brief Set the execution provider selection policy delegate for the session.
+   *
+   * Allows users to provide a custom device selection policy for automatic execution provider (EP) selection.
+   *
+   * \param[in] session_options The OrtSessionOptions instance.
+   * \param[in] delegate Delegate callback for custom selection.
+   * \param[in] delegate_state Optional state that will be passed to the delegate callback. nullptr if not required.
+   *
+   * \since Version 1.22
+   */
+  ORT_API2_STATUS(SessionOptionsSetEpSelectionPolicyDelegate, _In_ OrtSessionOptions* session_options,
+                  _In_ EpSelectionDelegate delegate,
+                  _In_opt_ void* delegate_state);
+
+  /** \brief Get the hardware device type.
+   *
+   * \param[in] device The OrtHardwareDevice instance to query.
+   * \return The hardware device type.
+   *
+   * \since Version 1.22.
+   */
+  OrtHardwareDeviceType(ORT_API_CALL* HardwareDevice_Type)(_In_ const OrtHardwareDevice* device);
+
+  /** \brief Get the hardware device's vendor identifier.
+   *
+   * \param[in] device The OrtHardwareDevice instance to query.
+   * \return The hardware device vendor identifier.
+   *
+   * \since Version 1.22.
+   */
+  uint32_t(ORT_API_CALL* HardwareDevice_VendorId)(_In_ const OrtHardwareDevice* device);
+
+  /** \brief Get the hardware device's vendor name.
+   *
+   * \param[in] device The OrtHardwareDevice instance to query.
+   * \return The hardware device's vendor name.
+   *
+   * \since Version 1.22.
+   */
+  const char*(ORT_API_CALL* HardwareDevice_Vendor)(_In_ const OrtHardwareDevice* device);
+
+  /** \brief Get the hardware device's unique identifier.
+   *
+   * \param[in] device The OrtHardwareDevice instance to query.
+   * \return The device id.
+   *
+   * \note This is not a unique identifier. It identifies the hardware type when combined with vendor id.
+   * \since Version 1.22.
+   */
+  uint32_t(ORT_API_CALL* HardwareDevice_DeviceId)(_In_ const OrtHardwareDevice* device);
+
+  /** \brief Get hardware device metadata.
+   *
+   * \param[in] device The OrtHardwareDevice instance to query.
+   * \return An OrtKeyValuePairs instance containing the metadata for the device.
+   *         Note: ORT owns the instance so the user must not call ReleaseKeyValuePairs with it.
+   *
+   * \since Version 1.22.
+   */
+  const OrtKeyValuePairs*(ORT_API_CALL* HardwareDevice_Metadata)(_In_ const OrtHardwareDevice* device);
+
+  /** \brief Get the execution provider name.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \return The execution provider name.
+   *
+   * \since Version 1.22.
+   */
+  const char*(ORT_API_CALL* EpDevice_EpName)(_In_ const OrtEpDevice* ep_device);
+
+  /** \brief Get the execution provider's vendor name.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \return The execution provider's vendor name.
+   *
+   * \since Version 1.22.
+   */
+  const char*(ORT_API_CALL* EpDevice_EpVendor)(_In_ const OrtEpDevice* ep_device);
+
+  /** \brief Get the metadata for the OrtEpDevice.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \return An OrtKeyValuePairs instance containing the metadata for the device.
+   *
+   * \since Version 1.22.
+   */
+  const OrtKeyValuePairs*(ORT_API_CALL* EpDevice_EpMetadata)(_In_ const OrtEpDevice* ep_device);
+
+  /** \brief Get the execution provider options for the OrtEpDevice.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \return An OrtKeyValuePairs instance containing the execution provider options for the device.
+   *
+   * \since Version 1.22.
+   */
+  const OrtKeyValuePairs*(ORT_API_CALL* EpDevice_EpOptions)(_In_ const OrtEpDevice* ep_device);
+
+  /** \brief Get the OrtHardwareDevice instance for the OrtEpDevice.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \return The OrtHardwareDevice instance for the device.
+   *
+   * \since Version 1.22.
+   */
+  const OrtHardwareDevice*(ORT_API_CALL* EpDevice_Device)(_In_ const OrtEpDevice* ep_device);
+
+  /** \brief Get the OrtEpApi instance for implementing an execution provider.
+   *
+   * \since Version 1.22.
+   */
+  const OrtEpApi*(ORT_API_CALL* GetEpApi)();
+
+  /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
+   *
+   * Returns the total number of bytes used to store the tensor data. For numeric tensors,
+   * this is sizeof(element_type) * total_element_count. OrtValues that are not tensors or
+   * that are tensors that contain strings will cause an error to be returned.
+   *
+   * \param[in] ort_value OrtValue instance containing a tensor
+   * \param[out] size The total size of the tensor data in bytes
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
+
+  /** \brief Calls OrtAllocator::GetStats function
+   *
+   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator
+   * and the user should call OrtApi::ReleaseKeyValuePairs.
+   *
+   * NOTE: If the allocator does not implement this function, the OrtKeyValuePairs instance will be empty.
+   *
+   * \param[in] ort_allocator The allocator to get stats from
+   * \param[out] out A pointer to the OrtKeyValuePairs instance that contains the stats
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Create an ::OrtMemoryInfo
+   *
+   * \param[in] name Arbitrary name.
+   * \param[in] device_type Device type.
+   * \param[in] vendor_id PCI Vendor ID. Use 0 for a generic allocator (e.g. WebGPU).
+   * \param[in] device_id Device ID if there are multiple devices of the same type. e.g. 2 GPU devices.
+   * \param[in] mem_type Memory type. Use OrtDeviceMemoryType_DEFAULT for device memory, and
+   *                     OrtDeviceMemoryType_HOST_ACCESSIBLE (if applicable) for memory used to transfer between the
+   *                     device and the CPU. Use the device_type and device_id of the GPU/NPU that the memory is also
+   *                     accessible to.
+   * \param[in] alignment Alignment of the memory if required. Pass 0 for default alignment.
+   * \param[in] allocator_type Allocator type. If OrtAllocatorType::OrtArenaAllocator, the ORT arena will be used.
+   *                           Caveat: Support for OrtArenaAllocator is currently limited to usage of internal ORT
+   *                           allocators via CreateAllocator/CreateAndRegisterAllocator/CreateAndRegisterAllocatorV2.
+   * \param[out] out Newly created ::OrtMemoryInfo. Must be freed with OrtApi::ReleaseMemoryInfo
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(CreateMemoryInfo_V2, _In_ const char* name, _In_ enum OrtMemoryInfoDeviceType device_type,
+                  _In_ uint32_t vendor_id, _In_ int16_t device_id, _In_ enum OrtDeviceMemoryType mem_type,
+                  _In_ size_t alignment, enum OrtAllocatorType allocator_type,
+                  _Outptr_ OrtMemoryInfo** out);
+
+  /// \name OrtValueInfo
+  /// @{
+
+  /** \brief Get the OrtNode that produces the value represented by the given OrtValueInfo.
+   * Optionally returns the associated output index.
+   *
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] producer_node Output parameter set to the OrtNode that produces the OrtValueInfo.
+   * \param[out] producer_output_index Optional output parameter set to the OrtNode instance's output index
+   *                                   that produces the value. Ignored if set to NULL.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValueInfo_GetValueProducer, _In_ const OrtValueInfo* value_info,
+                  _Outptr_ const OrtNode** producer_node, _Out_opt_ size_t* producer_output_index);
+
+  /** \brief Get the number of consumers of a value as a node input.
+   *
+   * Only nodes are considered "consumers" by this function. To check if an OrtValueInfo is a graph output,
+   * call ValueInfo_IsGraphOutput().
+   *
+   * A single OrtNode may use a single value for more than one input (e.g., Mul(x, x)), so the returned
+   * `num_consumers` may be larger than the number of unique OrtNode instances that consume the value.
+   *
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] num_consumers Output parameter set to the number of consumers of the value.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValueInfo_GetValueNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumers);
+
+  /** \brief Returns information (OrtNode and input index) for all consumer nodes that use the value as an input.
+   *
+   * Only nodes are considered "consumers" by this function.
+   *
+   * Caller provides 2 pre-allocated arrays that will be filled with the OrtNode and input index values.
+   * Use ValueInfo_GetValueNumConsumers() to get the number of consumers of the value.
+   *
+   * An OrtNode instance may appear multiple times if it uses the given value more than once.
+   * Example: For a node MulNode(x, x) that consumes the value 'x' twice, the following is returned:
+   *   - nodes: [MulNode, MulNode]
+   *   - input_indices: [0, 1]
+   *
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] nodes Pre-allocated array of size `num_consumers` that is filled with OrtNode instances.
+   * \param[out] input_indices Pre-allocated array of `num_consumers` elements that is filled
+   *                           with input indices. Index is set to -1 for an "implicit" input to a consumer node
+   *                           that contains a subgraph (e.g., If, Loop) with nodes that use the value internally.
+   * \param[in] num_consumers The size of the `consumer_nodes` and `consumer_input_indices` arrays.
+   *                          Typical usage sets this to the value of ValueInfo_GetValueNumConsumers().
+   *                          An error status is returned if `num_consumers` is less than the number of actual
+   *                          consumers.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValueInfo_GetValueConsumers, _In_ const OrtValueInfo* value_info,
+                  _Out_writes_all_(num_consumers) const OrtNode** nodes,
+                  _Out_writes_all_(num_consumers) int64_t* input_indices,
+                  _In_ size_t num_consumers);
+
+  /** \brief Get the underlying initializer value, as an OrtValue, from the given OrtValueInfo.
+   *
+   * Sets the output parameter to NULL if the given OrtValueInfo does not represent an initializer.
+   * Does not return an error status in this case.
+   *
+   * Supports initializers defined in an outer scope (i.e., a parent graph).
+   *
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] initializer_value Output parameter set to the initializer value or NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValueInfo_GetInitializerValue, _In_ const OrtValueInfo* value_info,
+                  _Outptr_ const OrtValue** initializer_value);
+
+  /** \brief Returns a boolean indicating if the given value is a required graph input.
+   *
+   * For ONNX IR version < 4, all graph inputs without a matching initializer are required.
+   *
+   * For ONNX IR version >=4, a graph input with a matching initializer is an optional graph input
+   * with the initializer serving as the default value.
+   *
+   * \param[in] value_info The OrtValueInfo instance representing the graph value.
+   * \param[out] is_required_graph_input Output parameter set to true if the graph value is a required graph input.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValueInfo_IsRequiredGraphInput, _In_ const OrtValueInfo* value_info,
+                  _Out_ bool* is_required_graph_input);
+
+  /** \brief Returns a boolean indicating if the given value is an optional graph input.
+   *
+   * Optional graph inputs were introduced in ONNX IR version 4. For ONNX IR version >=4, a graph input with a
+   * matching initializer is an optional graph input with the initializer serving as the default value.
+   * The matching initializer is also known as a non-constant initializer.
+   *
+   * \param[in] value_info The OrtValueInfo instance representing the graph value.
+   * \param[out] is_optional_graph_input Output parameter set to true if the graph value is an optional graph input.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValueInfo_IsOptionalGraphInput, _In_ const OrtValueInfo* value_info,
+                  _Out_ bool* is_optional_graph_input);
+
+  /** \brief Returns a boolean indicating if the given value is a graph output.
+   *
+   * \param[in] value_info The OrtValueInfo instance representing the graph value.
+   * \param[out] is_graph_output Output parameter set to true if the graph value is a graph output.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValueInfo_IsGraphOutput, _In_ const OrtValueInfo* value_info, _Out_ bool* is_graph_output);
+
+  /** \brief Returns a boolean indicating if the given value is a constant initializer.
+   *
+   * For ONNX IR version < 4, all initializers are constant.
+   *
+   * For ONNX IR version >=4, an initializer that serves as the default value for a matching graph input is not a
+   * constant initializer.
+   *
+   * \param[in] value_info The OrtValueInfo instance representing the graph value.
+   * \param[out] is_constant_initializer Output parameter set to true if the graph value is a constant initializer.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValueInfo_IsConstantInitializer, _In_ const OrtValueInfo* value_info,
+                  _Out_ bool* is_constant_initializer);
+
+  /** \brief Returns a boolean indicating if the given value is defined in an outer scope.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs. This function enables
+   * determining whether a value is defined in a parent node's graph.
+   *
+   * \param[in] value_info The OrtValueInfo instance representing the graph value.
+   * \param[out] is_from_outer_scope Output parameter set to true if the value is defined in an outer
+   *                                 scope (i.e., a parent graph).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValueInfo_IsFromOuterScope, _In_ const OrtValueInfo* value_info,
+                  _Out_ bool* is_from_outer_scope);
+
+  /// @}
+
+  /// \name OrtGraph
+  /// @{
+
+  /** \brief Returns a graph's name.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] graph_name Output parameter set to the graph's name.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetName, _In_ const OrtGraph* graph, _Outptr_ const char** graph_name);
+
+  /** \brief Returns the ONNX IR version.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] onnx_ir_version Output parameter set to the ONNX IR version.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph, _Out_ int64_t* onnx_ir_version);
+
+  /** \brief Returns the number of operator sets that the graph's model uses.
+   *
+   * \note An operator set is uniquely identified by the (domain, opset_version) pair. All models must have at
+   * least one entry that specifies which entry of the ONNX operator set is used. The ONNX domain is represented by
+   * an empty string.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] num_operator_sets Output parameter set to the number of operator sets that the graph's model uses.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNumOperatorSets, _In_ const OrtGraph* graph, _Out_ size_t* num_operator_sets);
+
+  /** \brief Returns the operator sets that the graph's model uses.
+   *
+   * \note An operator set is uniquely identified by the (domain, opset_version) pair. All models must have at
+   * least one entry that specifies which entry of the ONNX operator set is used. The ONNX domain is represented by
+   * an empty string.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] domains Pre-allocated array of `num_operator_sets` elements that is filled with
+   *                     null-terminated domain names.
+   * \param[out] opset_versions Pre-allocated array of `num_operator_sets` elements that is filled with
+   *                            the opset version of the corresponding domain in the `domains` array.
+   * \param[in] num_operator_sets The size of the `domains` and `opset_versions` arrays.
+   *                              Typical usage sets this to the result of Graph_GetNumOperatorSets().
+   *                              An error status is returned if `num_operator_sets` is less than the actual number
+   *                              of operator sets.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetOperatorSets, _In_ const OrtGraph* graph,
+                  _Out_writes_(num_operator_sets) const char** domains,
+                  _Out_writes_(num_operator_sets) int64_t* opset_versions, _In_ size_t num_operator_sets);
+
+  /** \brief Returns the number of graph inputs.
+   *
+   * \note The count includes initializers that are included in the list of graph inputs.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] num_inputs Output parameter set to the number of graph inputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNumInputs, _In_ const OrtGraph* graph, _Out_ size_t* num_inputs);
+
+  /** \brief Returns the graph's inputs as OrtValueInfo instances.
+   *
+   * \note The result includes initializers that are included in the list of graph inputs.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] inputs Pre-allocated array of `num_inputs` elements that is filled with the graph's inputs.
+   * \param[in] num_inputs The size of the `inputs` array.
+   *                       Typical usage sets this to the result of Graph_GetNumInputs(). An error status is
+   *                       returned if `num_inputs` is less than the number of graph inputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetInputs, _In_ const OrtGraph* graph,
+                  _Out_writes_(num_inputs) const OrtValueInfo** inputs, _In_ size_t num_inputs);
+
+  /** \brief Returns the number of graph outputs.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] num_outputs Output parameter set to the number of graph outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNumOutputs, _In_ const OrtGraph* graph, _Out_ size_t* num_outputs);
+
+  /** \brief Returns the graph's outputs as OrtValueInfo instances.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] outputs Pre-allocated array of `num_outputs` elements that is filled with the graph's outputs.
+   * \param[in] num_outputs The size of the `outputs` array.
+   *                        Typical usage sets this to the result of Graph_GetNumOutputs(). An error status is
+   *                        returned if `num_outputs` is less than the number of graph outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetOutputs, _In_ const OrtGraph* graph,
+                  _Out_writes_(num_outputs) const OrtValueInfo** outputs, _In_ size_t num_outputs);
+
+  /** \brief Returns the number of graph initializers.
+   *
+   * Counts constant and non-constant initializers.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] num_initializers Output parameter set to the number of graph initializers.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNumInitializers, _In_ const OrtGraph* graph, _Out_ size_t* num_initializers);
+
+  /** \brief Returns the graph's initializers as OrtValueInfo instances.
+   *
+   * Includes constant and non-constant initializers.
+   *
+   * For ONNX IR version < 4, all initializers are constant.
+   *
+   * For ONNX IR version >= 4, an initializer with a name that matches a graph input is considered a
+   * non-constant initializer.
+   *
+   * Call ValueInfo_GetInitializerValue to get the initializer's data.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] initializers Pre-allocated array of `num_outputs` elements that is filled with the initializers.
+   * \param[in] num_initializers The size of the `initializers` array. Typical usage sets this to the
+   *                             result of Graph_GetNumInitializers(). An error status is returned if
+   *                            `num_initializers` is less than the number of graph initializers.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetInitializers, _In_ const OrtGraph* graph,
+                  _Out_writes_(num_initializers) const OrtValueInfo** initializers,
+                  _In_ size_t num_initializers);
+
+  /** \brief Returns the number of graph nodes.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] num_nodes Output parameter set to the number of graph nodes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes);
+
+  /** \brief Returns the graph's nodes as OrtNode instances.
+   *
+   * The nodes are sorted using a stable topological ordering. Callers are responsible for maintaining their
+   * own node ordering if a different order is required.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] nodes Pre-allocated array of `num_nodes` elements that is filled with the graph's nodes.
+   * \param[in] num_nodes The size of the `nodes` array. Typical usage sets this to the
+   *                      result of Graph_GetNumNodes(). An error status is returned if
+   *                      `num_nodes` is less than the number of graph nodes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph,
+                  _Out_writes_(num_nodes) const OrtNode** nodes, _In_ size_t num_nodes);
+
+  /** \brief Get the parent node for the given graph, if any exists.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs. This function enables
+   * access to the parent node (e.g., the If and Loop node) from a nested subgraph.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] node Output parameter that is set to the graph's parent node.
+   *                  Set to NULL if a parent node does not exist (e.g., for a top-level graph).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
+
+  /** \brief Returns an OrtGraph that contains a subset of nodes in the source OrtGraph.
+   *
+   * Note:
+   * The lifetime of "dst_graph" is tied to that of "src_graph", as they both internally reference
+   * the same underlying graph.
+   *
+   * \param[in] src_graph The source OrtGraph instance.
+   * \param[in] nodes A subset of the nodes/OrtNodes in 'graph'.
+   * \param[in] num_nodes Number of nodes.
+   * \param[out] dst_sub_graph An OrtGraph created from a given set of nodes. Must be released by calling ReleaseGraph.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetGraphView, _In_ const OrtGraph* src_graph, _In_ const OrtNode** nodes,
+                  _In_ size_t num_nodes, _Outptr_ OrtGraph** dst_graph);
+
+  /// @}
+
+  /// \name OrtNode
+  /// @{
+
+  /** \brief Returns a node's identifier.
+   *
+   * The node's identifier is only unique in the node's parent graph. Different nested subgraphs
+   * (e.g., subgraphs contained by If and Loop nodes) may reuse identifiers.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] node_id Output parameter set to the node's identifier.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetId, _In_ const OrtNode* node, _Out_ size_t* node_id);
+
+  /** \brief Returns a node's name. Can be an empty string.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] node_name Output parameter set to the node's name.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetName, _In_ const OrtNode* node, _Outptr_ const char** node_name);
+
+  /** \brief Returns a node's operator type (e.g., "Conv").
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] operator_type Output parameter set to the name of the node's operator type.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetOperatorType, _In_ const OrtNode* node, _Outptr_ const char** operator_type);
+
+  /** \brief Returns a node's domain name.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] domain_name Output parameter set to the node's domain name.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetDomain, _In_ const OrtNode* node, _Outptr_ const char** domain_name);
+
+  /** \brief Get the opset version in which the given node's operator type was first defined.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] since_version The opset version in which the node's operator type was first defined.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetSinceVersion, _In_ const OrtNode* node, _Out_ int* since_version);
+
+  /** \brief Returns the number of node inputs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] num_inputs Output parameter set to the number of node inputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumInputs, _In_ const OrtNode* node, _Out_ size_t* num_inputs);
+
+  /** \brief Returns the node's inputs as OrtValueInfo instances.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] inputs Pre-allocated array of `num_inputs` elements that is filled with the node's inputs.
+   * \param[in] num_inputs The size of the `inputs` array.
+   *                       Typical usage sets this to the result of Node_GetNumInputs(). An error status is
+   *                       returned if `num_inputs` is less than the number of node inputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetInputs, _In_ const OrtNode* node,
+                  _Out_writes_(num_inputs) const OrtValueInfo** inputs, _In_ size_t num_inputs);
+
+  /** \brief Returns the number of node outputs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] num_outputs Output parameter set to the number of node outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumOutputs, _In_ const OrtNode* node, _Out_ size_t* num_outputs);
+
+  /** \brief Returns the node's outputs as OrtValueInfo instances.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] outputs Pre-allocated array of `num_outputs` elements that is filled with the node's outputs.
+   * \param[in] num_outputs The size of the `outputs` array.
+   *                        Typical usage sets this to the result of Node_GetNumOutputs(). An error status is
+   *                        returned if `num_outputs` is less than the number of node outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetOutputs, _In_ const OrtNode* node,
+                  _Out_writes_(num_outputs) const OrtValueInfo** outputs, _In_ size_t num_outputs);
+
+  /** \brief Returns the number of node implicit inputs.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs. The internal nodes within the nested subgraphs
+   * may use values from the outer scope. Those "outer scope" values are considered implicit inputs to the node that
+   * contains the subgraphs (e.g., the If or Loop node).
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] num_implicit_inputs Output parameter set to the number of node implicit inputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumImplicitInputs, _In_ const OrtNode* node, _Out_ size_t* num_implicit_inputs);
+
+  /** \brief Get the implicit inputs, as OrtValueInfo instances, that are used within the given node's subgraphs.
+   *
+   * \note Only certain operator types (e.g., If and Loop) contain nested subgraphs.
+   * The internal nodes within the nested subgraphs may use values from the outer scope. Those "outer scope" values
+   * are considered implicit inputs to the node that contains the subgraphs (e.g., the If or Loop node).
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] implicit_inputs Pre-allocated array of `num_implicit_inputs` elements that is filled the node's
+   *                             implicit inputs.
+   * \param[in] num_implicit_inputs The size of the `implicit_inputs` array. Typical usage sets this to the result
+   *                                of Node_GetNumImplicitInputs(). An error status is returned if
+   *                                `num_implicit_inputs` is less than the number of node implicit inputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetImplicitInputs, _In_ const OrtNode* node,
+                  _Out_writes_(num_implicit_inputs) const OrtValueInfo** implicit_inputs,
+                  _In_ size_t num_implicit_inputs);
+
+  /** \brief Returns the number of node attributes.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] num_attributes Output parameter set to the number of node attributes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumAttributes, _In_ const OrtNode* node, _Out_ size_t* num_attributes);
+
+  /** \brief Returns a node's attributes as OrtOpAttr instances.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] attributes Pre-allocated array of `num_attributes` elements that is filled with the node's attributes.
+   * \param[in] num_attributes The size of the `num_attributes` array.
+   *                           Typical usage sets this to the result of Node_GetNumAttributes(). An error status is
+   *                           returned if `num_attributes` is less than the number of node attributes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetAttributes, _In_ const OrtNode* node,
+                  _Out_writes_(num_attributes) const OrtOpAttr** attributes, _In_ size_t num_attributes);
+
+  /** \brief Gets the OrtNode's attribute as OrtOpAttr by name.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[in] attribute_name The name of the attribute
+   * \param[out] attribute Output the attribute if its name matches 'attribute_name', otherwise output nullptr.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name,
+                  _Outptr_ const OrtOpAttr** attribute);
+
+  /** \brief Get the attribute type as OrtOpAttrType from an OrtOpAttr.
+   *
+   * \param[in] attribute The OrtOpAttr instance.
+   * \param[out] type Output the attribute type as OrtOpAttrType.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(OpAttr_GetType, _In_ const OrtOpAttr* attribute, _Out_ OrtOpAttrType* type);
+
+  /** \brief Get the attribute name from an OrtOpAttr.
+   *
+   * \param[in] attribute The OrtOpAttr instance.
+   * \param[out] name Output parameter set to the attribute's name. The name is a null-terminated string.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(OpAttr_GetName, _In_ const OrtOpAttr* attribute, _Outptr_ const char** name);
+
+  /** \brief Returns the number of subgraphs contained by the given node.
+   *
+   * \note Only certain operator types (e.g., If and Loop) contain nested subgraphs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] num_subgraphs Output parameter set to the number of node subgraphs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumSubgraphs, _In_ const OrtNode* node, _Out_ size_t* num_subgraphs);
+
+  /** \brief Get the subgraphs, as OrtGraph instances, contained by the given node.
+   *
+   * \note Only certain operator types (e.g., If and Loop) contain nested subgraphs. ONNX nodes store subgraphs in
+   * their attributes, however, this function must be used to obtain subgraphs from an OrtNode.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] subgraphs Pre-allocated array of `num_subgraphs` elements that is filled with the node's subgraphs.
+   * \param[in] num_subgraphs The size of the `num_subgraphs` array.
+   *                          Typical usage sets this to the result of Node_GetNumSubgraphs(). An error status is
+   *                          returned if `num_subgraphs` is less than the number of node subgraphs.
+   * \param[out] attribute_names Optional pre-allocated array of `num_subgraphs` elements that is filled with the
+   *                             attribute names that correspond to the subgraphs. Ignored if set to NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetSubgraphs, _In_ const OrtNode* node,
+                  _Out_writes_(num_subgraphs) const OrtGraph** subgraphs, _In_ size_t num_subgraphs,
+                  _Out_writes_opt_(num_subgraphs) const char** attribute_names);
+
+  /** \brief Get the node's parent OrtGraph instance.
+   *
+   * Can return NULL if the OrtNode was created without an owning graph.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] graph Output parameter set to the node's OrtGraph. Can be set to NULL
+   *                   if the node is not currently contained by a graph.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetGraph, _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtGraph** graph);
+
+  /** \brief Returns the execution provider name that this node is assigned to run on.
+   *         Returns NULL if the node has not been assigned to any execution provider yet.
+   *         For plugin execution providers, the name is the one returned by OrtEp::GetName.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] out Output execution provider type and can be NULL if node has not been assigned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetEpName, _In_ const OrtNode* node, _Outptr_result_maybenull_ const char** out);
+
+  /// @}
+
+  /// \name OrtRunOptions
+  /// @{
+
+  /** \brief Get a run configuration entry.
+   *
+   * If a run configuration entry with key `config_key` doesn't exist, `config_value` will be set to NULL.
+   *
+   * `config_key`s are defined in onnxruntime_run_options_config_keys.h.
+   *
+   * \param[in] options The OrtRunOptions instance.
+   * \param[in] config_key The configuration entry key. A null-terminated string.
+   * \param[out] config_value Output parameter set to the configuration entry value. Either a null-terminated string if
+   *                          a configuration entry exists or NULL otherwise.
+   *                          Do not free this value. It is owned by `options` and will be invalidated if another call
+   *                          to `AddRunConfigEntry()` overwrites it.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(GetRunConfigEntry, _In_ const OrtRunOptions* options,
+                  _In_z_ const char* config_key, _Outptr_result_maybenull_z_ const char** config_value);
+
+  /// @}
+
+  /** \brief Get the OrtMemoryInfo for the device.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \return A pointer to the OrtMemoryInfo for the device.
+   *
+   * \since Version 1.23
+   */
+  ORT_API_T(const OrtMemoryInfo*, EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device);
+
+  /** \brief Create/replace a shared allocator for the OrtEpDevice in the OrtEnv.
+   *
+   * OrtEpDevice maps to the EP factory, and the factory provides the allocator implementation.
+   *
+   * Both OrtDeviceMemoryType_DEFAULT and OrtDeviceMemoryType_HOST_ACCESSIBLE are optional for an EP to provide.
+   * It is EP implementation dependent as to what is available.
+   *
+   * If a shared allocator already exists for the OrtEpDevice and OrtDeviceMemoryType, it is replaced. This allows
+   * changing the shared allocator configuration from the default. e.g. adding an arena.
+   *
+   * \param[in] env The OrtEnv instance to create the shared allocator in.
+   * \param[in] ep_device The OrtEpDevice instance to create the shared allocator for.
+   * \param[in] mem_type The memory type to use for the shared allocator.
+   * \param[in] allocator_type The type of allocator to create (e.g. OrtAllocatorType::OrtArenaAllocator).
+   * \param[in] allocator_options Optional key-value pairs to configure the allocator. If arena based, see
+   *                              include/onnxruntime/core/framework/allocator.h for the keys and values that can be
+   *                              used.
+   * \param[out] allocator A pointer to the created shared allocator. Owned by the OrtEnv instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtDeviceMemoryType mem_type, _In_ OrtAllocatorType allocator_type,
+                  _In_opt_ const OrtKeyValuePairs* allocator_options,
+                  _Outptr_opt_ OrtAllocator** allocator);
+
+  /** \brief Get a shared allocator from the OrtEnv.
+   *
+   * By default there is a shared allocator created for all OrtEpDevice instances, so if you get the OrtMemoryInfo
+   * from the OrtEpDevice using EpDevice_MemoryInfo a shared allocator is guaranteed to exist.
+   *
+   * This will also match and return custom allocators added with RegisterAllocator.
+   *
+   * It is not an error to not find a matching allocator.
+   *
+   * \param[in] env The OrtEnv instance to get the shared allocator from.
+   * \param[in] mem_info The OrtMemoryInfo instance to get the shared allocator for.
+   * \param[out] allocator A pointer to the shared allocator, or nullptr if no shared allocator exists for
+   *                       the given memory info.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(GetSharedAllocator, _In_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
+                  _Outptr_result_maybenull_ OrtAllocator** allocator);
+
+  /** \brief Release a shared allocator from the OrtEnv for the OrtEpDevice and memory type.
+   *
+   * This will release the shared allocator for the given OrtEpDevice and memory type.
+   * If no shared allocator exists, this is a no-op.
+   *
+   * \param[in] env The OrtEnv instance to release the shared allocator from.
+   * \param[in] ep_device The OrtEpDevice instance to release the shared allocator for.
+   * \param[in] mem_type The memory type of the shared allocator to release.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(ReleaseSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtDeviceMemoryType mem_type);
+
+  /** \brief Get a const pointer to the raw data inside a tensor
+   *
+   * Used to read the internal tensor data directly.
+   * \note The returned pointer is valid until the \p value is destroyed.
+   *
+   * \param[in] value A tensor type (string tensors are not supported)
+   * \param[out] out Filled in with a pointer to the internal storage
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(GetTensorData, _In_ const OrtValue* value, _Outptr_ const void** out);
+
+  /** \brief Get Session configuration entries.
+   *
+   * \param[in] options The session options.
+   * \param[out] out A pointer to a newly created OrtKeyValuePairs instance.
+   *
+   *  An OrtKeyValuePairs instance containing all session configuration entries.
+   *  Note: the user should call OrtApi::ReleaseKeyValuePairs.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetSessionOptionsConfigEntries, _In_ const OrtSessionOptions* options, _Outptr_ OrtKeyValuePairs** out);
 };
 
 /*
@@ -4844,7 +6225,7 @@ struct OrtCustomOp {
   // Returns the memory type of the input tensors. This API allows the custom op
   // to place the inputs on specific devices. By default, it returns
   // OrtMemTypeDefault, which means the input is placed on the default device for
-  // the execution provider. If the inputs need to be with different memory tyeps,
+  // the execution provider. If the inputs need to be with different memory types,
   // this function can be overridden to return the specific memory types.
   OrtMemType(ORT_API_CALL* GetInputMemoryType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
 
@@ -4894,6 +6275,636 @@ struct OrtCustomOp {
   // Same as GetMayInplace() and ReleaseMayInplace()
   size_t(ORT_API_CALL* GetAliasMap)(_Out_ int** input_index, _Out_ int** output_index);
   void(ORT_API_CALL* ReleaseAliasMap)(_Frees_ptr_opt_ int* input_index, _Frees_ptr_opt_ int* output_index);
+};
+
+/**
+ * ORT Model Editor API
+ */
+
+/**
+ * \brief The OrtModelEditorApi struct provides functions to create or edit an ONNX model.
+ *
+ * See onnxruntime/test/shared_lib/test_model_editor_api.cc for example usage.
+ *
+ * \since Version 1.22.
+ */
+struct OrtModelEditorApi {
+  // Model building/editing requires a full build. We return nullptr from GetModelEditorApi if this is a minimal
+  // build, so it doesn't matter if there are no function pointers in this struct as a user will never get an
+  // OrtModelEditorApi instance. We do however need a dummy field to avoid empty struct warning.
+#if defined(ORT_MINIMAL_BUILD)
+  const bool not_defined_in_this_build;
+#else
+  /** \brief Create an OrtTypeInfo instance for a Tensor.
+   *
+   * Create an OrtTypeInfo instance for a Tensor to use as graph inputs/outputs with the Model Editor API.
+   *
+   * User can release `tensor_info` after creating the OrtTypeInfo.
+   *
+   * \param[in] tensor_info Tensor type and shape information.
+   * \param[out] type_info TypeInfo instance for the tensor.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateTensorTypeInfo, _In_ const OrtTensorTypeAndShapeInfo* tensor_info,
+                  _Outptr_ OrtTypeInfo** type_info);
+
+  /** \brief Create an OrtTypeInfo instance for a SparseTensor.
+   *
+   * Create an OrtTypeInfo instance for a SparseTensor to use as graph inputs/outputs with the Model Editor API.
+   *
+   * User can release `tensor_info` after creating the OrtTypeInfo.
+   *
+   * \param[in] tensor_info SparseTensor type and shape information.
+   * \param[out] type_info TypeInfo instance for the tensor.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateSparseTensorTypeInfo, _In_ const OrtTensorTypeAndShapeInfo* tensor_info,
+                  _Outptr_ OrtTypeInfo** type_info);
+
+  /** \brief Create an OrtTypeInfo instance for a Map.
+   *
+   * Create an OrtTypeInfo instance for a Map to use as graph inputs/outputs with the Model Editor API.
+   *
+   * User can release `map_value_type` after creating the OrtTypeInfo.
+   *
+   * \param[in] map_key_type Key type for the map.
+   * \param[in] map_value_type Value type for the map.
+   * \param[out] type_info TypeInfo instance for the map.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateMapTypeInfo, ONNXTensorElementDataType map_key_type, _In_ const OrtTypeInfo* map_value_type,
+                  _Outptr_ OrtTypeInfo** type_info);
+
+  /** \brief Create an OrtTypeInfo instance for a Sequence.
+   *
+   * Create an OrtTypeInfo instance for a Sequence to use as graph inputs/outputs with the Model Editor API.
+   *
+   * User can release `sequence_type` after creating the OrtTypeInfo.
+   *
+   * \param[in] sequence_type Sequence type and shape information.
+   * \param[out] type_info TypeInfo instance for the sequence.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateSequenceTypeInfo, _In_ const OrtTypeInfo* sequence_type, _Outptr_ OrtTypeInfo** type_info);
+
+  /** \brief Create an OrtTypeInfo instance for an Optional.
+   *
+   * Create an OrtTypeInfo instance for an Optional to use as graph inputs/outputs with the Model Editor API.
+   *
+   * User can release `contained_type` after creating the OrtTypeInfo.
+   *
+   * \param[in] contained_type Tensor type and shape information.
+   * \param[out] type_info TypeInfo instance for the tensor.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateOptionalTypeInfo, _In_ const OrtTypeInfo* contained_type, _Outptr_ OrtTypeInfo** type_info);
+
+  /** \brief Create an OrtValueInfo for use as an OrtGraph input or output.
+   *
+   * \param[in] name The name of the input or output.
+   * \param[in] type_info The type information for the input or output. The provided value is copied.
+   * \param[out] value_info The OrtValueInfo instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateValueInfo, _In_ const char* name, _In_ const OrtTypeInfo* type_info,
+                  _Outptr_ OrtValueInfo** value_info);
+
+  /** \brief Create an OrtNode to add to an OrtGraph.
+   *
+   * Create an OrtNode.
+   *
+   * Create attributes with CreateOpAttr. OrtOpAttr instances are copied.
+   *
+   * \param[in] operator_name The name of the operator.
+   * \param[in] domain_name The domain of the operator. Use an empty string for ONNX operators.
+   * \param[in] node_name The name of the node.
+   * \param[in] input_names The names of the inputs.
+   * \param[in] input_names_len The number of input names.
+   * \param[in] output_names The names of the outputs.
+   * \param[in] output_names_len The number of output names.
+   * \param[in] attributes The optional attributes of the node.
+   * \param[in] attribs_len The number of attributes. May be zero.
+   * \param[out] node The OrtNode instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateNode, _In_ const char* operator_name, _In_ const char* domain_name, _In_ const char* node_name,
+                  _In_reads_(input_names_len) const char* const* input_names, size_t input_names_len,
+                  _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
+                  _In_reads_(attribs_len) _In_opt_ OrtOpAttr** attributes, _In_ size_t attribs_len,
+                  _Outptr_ OrtNode** node);
+
+  /** \brief Create an OrtGraph
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateGraph, _Outptr_ OrtGraph** graph);
+
+  /** \brief Set the inputs for the OrtGraph.
+   *
+   * Set the graph inputs. This will replace any existing inputs with the new values.
+   * The OrtGraph takes ownership of the OrtValueInfo instances and you should NOT call ReleaseOrtValueInfo.
+   *
+   * \param[in] graph The OrtGraph instance to update.
+   * \param[in] inputs The input OrtValueInfo instances.
+   * \param[in] inputs_len The number of input OrtValueInfo instances.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(SetGraphInputs, _Inout_ OrtGraph* graph,
+                  _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len);
+
+  /** \brief Set the outputs for the OrtGraph.
+   *
+   * Set the graph outputs. This will replace any existing outputs with the new values.
+   * The OrtGraph takes ownership of the OrtValueInfo instances provided and you should NOT call ReleaseOrtValueInfo.
+   *
+   * \param[in] graph The OrtGraph instance to update.
+   * \param[in] outputs The output OrtValueInfo instances.
+   * \param[in] outputs_len The number of output OrtValueInfo instances.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(SetGraphOutputs, _Inout_ OrtGraph* graph,
+                  _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len);
+
+  /** \brief Add an initializer to the OrtGraph
+   *
+   * ORT will take ownership of the OrtValue and you should NOT call ReleaseOrtValue.
+   *
+   * Two options:
+   *
+   * Allocated memory:
+   *    Use CreateTensorAsOrtValue (allocates memory) and populate the tensor with the data.
+   *    Set `data_is_external` to false.
+   *
+   * Pre-existing memory:
+   *    Use CreateTensorWithDataAsOrtValue or CreateTensorWithDataAndDeleterAsOrtValue to create an OrtValue
+   *    with a tensor that contains a pointer to the existing data.
+   *    Set `data_is_external` to true.
+   *
+   *    The pointer must remain valid for the duration of the inference session.
+   *    If using CreateTensorWithDataAsOrtValue you are responsible for freeing the memory after the inference session
+   *    is released.
+   *    If using CreateTensorWithDataAndDeleterAsOrtValue, ORT will free the memory using the provided deleter as
+   *    soon as the OrtValue is no longer in use.
+   *
+   *    NOTE: A tensor containing pre-existing memory MUST have 128 bytes of data or more.
+   *          For smaller tensors use CreateTensorAsOrtValue.
+   *
+   *          ONNX shape inferencing does not support external data. An initializer involved in shape inferencing is
+   *          typically small (a single value or limited by the rank of a tensor) and uses less than 128 bytes of
+   *          memory, so this limit acts as a simple catch-all rule to avoid issues.
+   *          e.g. Reshape's `shape`, Clip's `min` and `max`, various ops `axes`.
+   *
+   * \param[in] graph The OrtGraph instance to update.
+   * \param[in] name The value name for the initializer.
+   * \param[in] tensor The OrtValue instance containing the tensor data.
+   * \param[in] data_is_external Set to true if the data is external and should not be copied.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name, _In_ OrtValue* tensor,
+                  bool data_is_external);
+
+  /** \brief Add an OrtNode to an OrtGraph
+   *
+   * Add the node to the graph. The OrtGraph will take ownership of OrtNode and you should NOT call ReleaseOrtNode.
+   *
+   * \param[in] graph The OrtGraph instance to update.
+   * \param[in] node The OrtNode instance to add to the graph.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(AddNodeToGraph, _Inout_ OrtGraph* graph, _In_ OrtNode* node);
+
+  /** \brief Create an OrtModel.
+   *
+   * Create an OrtModel.
+   *
+   * This can be used to build a new model, or to augment an existing model.
+   *
+   * \param[in] domain_names The domain names for the model.
+   *                         If augmenting an existing model add additional domains if needed.
+   * \param[in] opset_versions The opset versions for the model.
+   *                           If augmenting an existing model add additional opset versions if needed.
+   * \param[in] opset_entries_len The number of domain_names and opset_versions entries.
+   *                              Domain and opset entries should be 1:1
+   * \param[out] model The OrtModel instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateModel,
+                  _In_reads_(opset_entries_len) const char* const* domain_names,
+                  _In_reads_(opset_entries_len) const int* opset_versions,
+                  size_t opset_entries_len,
+                  _Outptr_ OrtModel** model);
+
+  /** \brief Add an OrtGraph to an OrtModel.
+   *
+   * Add the graph to a model. This should be called once when creating a new model.
+   *
+   * The OrtModel takes ownership of the OrtGraph and you should NOT call ReleaseOrtGraph.
+   *
+   * \param[in] model The OrtModel instance to update.
+   * \param[in] graph The OrtGraph instance to add to the model.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(AddGraphToModel, _Inout_ OrtModel* model, _In_ OrtGraph* graph);
+
+  /** \brief Create an OrtSession using the OrtModel.
+   *
+   * Create an inference session using the OrtModel instance.
+   * The OrtModel should have been populated with an OrtGraph containing nodes and initializers, and SetGraphInputs
+   * and SetGraphOutputs must have been called.
+   * This will validate the model, run optimizers, and prepare the session for inferencing.
+   *
+   * ReleaseOrtModel must be called to free the OrtModel after session creation.
+   *
+   * \param[in] env The OrtEnv instance.
+   * \param[in] model The OrtModel instance.
+   * \param[in] options The OrtSessionOptions instance.
+   * \param[out] out The OrtSession instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateSessionFromModel, _In_ const OrtEnv* env, _In_ const OrtModel* model,
+                  _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
+
+  /** \brief Create an OrtSession to augment an existing model.
+   *
+   * Create an OrtSession with an existing model that will be augmented with additional nodes and initializers.
+   * Nodes can be added before or after the existing nodes in the model. ONNX Runtime will connect the nodes when the
+   * model is finalized.
+   *
+   * To add nodes and initializers to the existing model, first create an OrtModel using CreateModel.
+   * Add nodes and initializers to the OrtModel using AddNodeToGraph and AddInitializerToGraph.
+   * Graph inputs/outputs should be updated with SetGraphInputs and SetGraphOutputs as needed to reflect changes made
+   * by the new nodes. The list of graph inputs/outputs should be for the overall model and not just the new nodes.
+   *
+   * Add the new information from the OrtModel to the original model using ApplyModelToSession, and prepare the
+   * session for inferencing by calling FinalizeModelEditorSession.
+   *
+   * \param{in} env The OrtEnv instance.
+   * \param{in} model_path The path to the existing ONNX model to augment.
+   * \param{in} options The OrtSessionOptions instance.
+   * \param{out} out The created OrtSession instance.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateModelEditorSession, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+                  _In_ const OrtSessionOptions* options,
+                  _Outptr_ OrtSession** out);
+
+  /** \brief Create an OrtSession to augment an existing model.
+   *
+   * Create an OrtSession with an existing model that will be augmented with additional nodes and initializers.
+   * Nodes can be added before or after the existing nodes in the model. ONNX Runtime will connect the nodes when the
+   * model is finalized.
+   *
+   * To add nodes and initializers to the existing model, first create an OrtModel using CreateModel.
+   * Add nodes and initializers to the OrtModel using AddNodeToGraph and AddInitializerToGraph.
+   * Graph inputs/outputs should be updated with SetGraphInputs and SetGraphOutputs as needed to reflect changes made
+   * by the new nodes. The list of graph inputs/outputs should be for the overall model and not just the new nodes.
+   *
+   * Add the new information from the OrtModel to the original model using ApplyModelToSession, and prepare the
+   * session for inferencing by calling FinalizeModelEditorSession.
+   *
+   * \param{in} env The OrtEnv instance.
+   * \param{in} model_data The model data for the existing model to augment.
+   * \param{in} model_data_length The length of the model data.
+   * \param{in} options The OrtSessionOptions instance.
+   * \param{out} out The created OrtSession instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateModelEditorSessionFromArray, _In_ const OrtEnv* env,
+                  _In_ const void* model_data, size_t model_data_length,
+                  _In_ const OrtSessionOptions* options,
+                  _Outptr_ OrtSession** out);
+
+  /** \brief Query the session for the opset version of a domain.
+   *
+   * When using the Model Editor API to augment a model, any new nodes must conform to the opset version of the
+   * original model. To do that the user must be able to discover that opset version.
+   * Returns an error if the domain is not used in the model.
+   *
+   * \param[in] session OrtSession to query
+   * \param[in] domain Domain to query. The ONNX domain is an empty string.
+   * \param[out] opset The opset version of the domain.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(SessionGetOpsetForDomain, _In_ const OrtSession* session, _In_ const char* domain, _Out_ int* opset);
+
+  /** \brief Apply changes to augment the ONNX model in a session created using CreateModelEditorSession[FromArray]
+   *
+   * Adds new nodes and updates graph inputs/outputs using `model` to augment the original ONNX model in the session.
+   * All changes will be validated.
+   * Call FinalizeModelEditorSession to prepare the session for inferencing.
+   *
+   * Existing input/outputs will only be updated if the OrtGraph inputs/outputs are set in the OrtModel.
+   *   i.e. you don't need to call SetGraphInputs/SetGraphOutputs if they are unchanged.
+   *
+   * ReleaseOrtModel must be called to free the OrtModel after it is applied to the session.
+   *
+   * \param[in] session OrtSession to update. Session must have been created using CreateModelEditorSession[FromArray].
+   * \param[in] model OrtModel containing new nodes, new initializers, and updated graph input and/or output info.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(ApplyModelToModelEditorSession, _Inout_ OrtSession* session, _In_ OrtModel* model);
+
+  /** \brief Finalize the Model Editor session that was created using CreateModelEditorSession[FromArray].
+   *
+   * Finalize the Model Editor session that augmented an ONNX model by adding new nodes.
+   * This will run optimizers and prepare the session for inferencing.
+   *
+   * \param[in] session OrtSession to finalize. Session must have been created using CreateModelEditorSession[FromArray].
+   * \param[in] options OrtSessionOptions to use for the session.
+   * \param[in] prepacked_weights_container Optional OrtPrepackedWeightsContainer to use for the session.
+                Set to nullptr if not used.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(FinalizeModelEditorSession, _Inout_ OrtSession* session, _In_ const OrtSessionOptions* options,
+                  _In_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container);
+#endif  // !defined(ORT_MINIMAL_BUILD)
+};
+
+/**
+ * ORT Compile API
+ */
+
+/** \brief Flags representing options to enable when compiling a model.
+ */
+typedef enum OrtCompileApiFlags {
+  // Default. Do not enable any additional compilation options.
+  OrtCompileApiFlags_NONE = 0,
+
+  // Force compilation to return an error (ORT_FAIL) if no nodes were compiled.
+  // Otherwise, a model with basic optimizations (ORT_ENABLE_BASIC) is still generated by default.
+  OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED = 1 << 0,
+
+  // Force compilation to return an error (ORT_FAIL) if a file with the same filename as the output model exists.
+  // Otherwise, compilation will automatically overwrite the output file if it exists.
+  OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS = 1 << 1,
+} OrtCompileApiFlags;
+
+/**
+ * \brief The OrtCompileApi struct provides functions to compile ONNX models.
+ *
+ * Execution providers that support compilation fuse a subgraph into an EPContext node that wraps a provider-specific
+ * binary representation of the subgraph.
+ * For more details about the EPContext design, refer to:
+ *  \htmlonly
+ *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
+ *  \endhtmlonly
+ *
+ * Example (error handling not shown):
+ *   OrtStatus* status = NULL;
+ *   OrtCompileApi* compile_api = ort_api->GetCompileApi();
+ *   OrtModelCompilationOptions* compile_options = NULL;
+ *
+ *   status = compile_api->CreateModelCompilationOptionsFromSessionOptions(env, session_options, &compile_options);
+ *   status = compile_api->ModelCompilationOptions_SetInputModelPath(compile_options, ORT_TSTR("model.onnx"));
+ *   status = compile_api->ModelCompilationOptions_SetOutputModelPath(compile_options, ORT_TSTR("model.compiled.onnx"));
+ *   status = compile_api->CompileModel(env, compile_options);
+ *   compile_api->ReleaseModelCompilationOptions(compile_options);
+ *
+ * \since Version 1.22.
+ */
+struct OrtCompileApi {
+  /// \name OrtModelCompilationOptions
+  /// @{
+  ORT_CLASS_RELEASE(ModelCompilationOptions);
+
+  /** \brief Creates an OrtModelCompilationOptions object from an existing OrtSessionOptions object.
+   *
+   * An OrtModelCompilationOptions object contains the settings used to generate a compiled ONNX model.
+   * The OrtSessionOptions object has the execution providers with which the model will be compiled.
+   *
+   * ReleaseOrtModelCompilationsOptions must be called to free the OrtModelCompilationOptions after calling
+   * CompileModel.
+   *
+   * \param[in] env OrtEnv object.
+   * \param[in] session_options The OrtSessionOptions instance from which to create the OrtModelCompilationOptions.
+   * \param[out] out The created OrtModelCompilationOptions instance.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateModelCompilationOptionsFromSessionOptions, _In_ const OrtEnv* env,
+                  _In_ const OrtSessionOptions* session_options, _Outptr_ OrtModelCompilationOptions** out);
+
+  /** \brief Sets the file path to the input ONNX model to compile.
+   *
+   * The input model's location (e.g., file path or memory buffer) must be set with either
+   * ModelCompilationOptions_SetInputModelPath or ModelCompilationOptions_SetInputModelFromBuffer.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] input_model_path Null terminated string of the path (wchar on Windows, char otherwise).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetInputModelPath, _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const ORTCHAR_T* input_model_path);
+
+  /** \brief Sets the buffer that stores the bytes of the loaded ONNX model to compile.
+   *
+   * The input model's location (e.g., file path or memory buffer) must be set with either
+   * ModelCompilationOptions_SetInputModelPath or ModelCompilationOptions_SetInputModelFromBuffer.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] input_model_data Buffer containing the loaded ONNX model bytes.
+   * \param[in] input_model_data_size The number of bytes in the `input_model_data` buffer.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetInputModelFromBuffer,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const void* input_model_data,
+                  size_t input_model_data_size);
+
+  /** \brief Sets the file path for the output ONNX model generated by CompileModel.
+   *
+   * The output model's location (e.g., file path or memory buffer) can be set with either
+   * ModelCompilationOptions_SetOutputModelPath or ModelCompilationOptions_SetOutputModelBuffer.
+   *
+   * If the output model's location is not set, ONNX Runtime will generate an output file with a path based on
+   * the input model's file path. Examples:
+   *   /Path/my_model.onnx -> /Path/my_model_ctx.onnx
+   *   /Path/my_model -> /Path/my_model_ctx.onnx
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] output_model_path Null terminated string of the path (wchar on Windows, char otherwise).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelPath, _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const ORTCHAR_T* output_model_path);
+
+  /** \brief Optionally sets the file that should store external initializers for the compiled ONNX model.
+   * If not set, initializers are stored within the model.
+   *
+   * Only initializers for nodes that were not compiled are stored in the external initializers file.
+   * Compiled nodes contain their initializer data within the `ep_cache_context` attribute of EPContext nodes.
+   * Refer to ModelCompilationOptions_SetEpContextEmbedMode.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] external_initializers_file_path Null terminated string of the path to the file.
+   * \param[in] external_initializers_size_threshold Initializers larger than this threshold are stored in the file.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelExternalInitializersFile,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const ORTCHAR_T* external_initializers_file_path,
+                  size_t external_initializers_size_threshold);
+
+  /** \brief Configures model compilation to store the output compiled ONNX model in a buffer.
+   *
+   * The caller passes an OrtAllocator that ONNX Runtime uses to allocate memory for the buffer.
+   *
+   * The output model's location (e.g., file path or memory buffer) can be set with either
+   * ModelCompilationOptions_SetOutputModelPath or ModelCompilationOptions_SetOutputModelBuffer.
+   *
+   * If the output model's location is not set, ONNX Runtime will generate an output file with a path based on
+   * the input model's file path. Examples:
+   *   /Path/my_model.onnx -> /Path/my_model_ctx.onnx
+   *   /Path/my_model -> /Path/my_model_ctx.onnx
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] allocator The allocator used to allocate the buffer for the compiled model.
+   * \param[out] output_model_buffer_ptr Pointer to the buffer that stores the compiled model.
+   * \param[out] output_model_buffer_size_ptr Pointer set to the size of output model in bytes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelBuffer,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _Inout_ OrtAllocator* allocator,
+                  _Outptr_ void** output_model_buffer_ptr,
+                  _Out_ size_t* output_model_buffer_size_ptr);
+
+  /** \brief Enables or disables the embedding of EPContext binary data into the `ep_cache_context` attribute
+   * of EPContext nodes. Defaults to false.
+   *
+   * If enabled, the `ep_cache_context` attribute of EPContext nodes will store the context binary data, which may
+   * include weights for compiled subgraphs.
+   *
+   * If disabled, the `ep_cache_context` attribute of EPContext nodes will contain the path to the file containing the
+   * context binary data. The path is set by the execution provider creating the EPContext node.
+   *
+   * More details relate to EPContext design refers to:
+   *  \htmlonly
+   *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
+   *  \endhtmlonly
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] embed_ep_context_in_model True to embed EPContext binary data into the EPContext node
+   *                                      `ep_cache_context` attributes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetEpContextEmbedMode, _In_ OrtModelCompilationOptions* model_compile_options,
+                  bool embed_ep_context_in_model);
+
+  /** \brief Compiles an input ONNX model with the given compilation options.
+   *
+   * \param[in] env OrtEnv object.
+   * \param[in] model_options The compilation options that defines compilation options for a model.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
+
+  /** \brief Sets flags from OrtCompileApiFlags that represent one or more boolean options to enable.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] flags bitwise OR of flags in OrtCompileApiFlags to enable.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOptions* model_compile_options,
+                  size_t flags);
+
+  /** Sets information related to EP context binary file.
+   *
+   * EP uses this information to decide the location and context binary file name.
+   * Used while compiling model with input and output in memory buffer
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] output_directory Null terminated string of the path (wchar on Windows, char otherwise).
+   * \param[in] model_name Null terminated string of the model name (wchar on Windows, char otherwise).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetEpContextBinaryInformation,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const ORTCHAR_T* output_directory,
+                  _In_ const ORTCHAR_T* model_name);
 };
 
 /*
@@ -4946,3 +6957,5 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessio
 }
 #endif
 /// @}
+
+#include "onnxruntime_ep_c_api.h"

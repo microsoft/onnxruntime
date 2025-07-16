@@ -198,7 +198,7 @@ class OnnxModel:
                 node.input[j] = new_input_name
 
     def replace_input_of_all_nodes(self, old_input_name, new_input_name):
-        for node in self.model.graph.node:
+        for node in self.nodes():
             OnnxModel.replace_node_input(node, old_input_name, new_input_name)
 
     @staticmethod
@@ -1028,6 +1028,10 @@ class OnnxModel:
                 nodes_to_keep.append(node)
             else:
                 num_nodes_removed += 1
+
+        self.all_graphs = (
+            None  # to prevent pass-by-copy after ClearField(), forces the use of pass-by-reference instead
+        )
         self.model.graph.ClearField("node")
         self.model.graph.node.extend(nodes_to_keep)
 
@@ -1179,11 +1183,21 @@ class OnnxModel:
         graph.ClearField("node")
         graph.node.extend(sorted_nodes)
 
-    def topological_sort(self, is_deterministic=False):
+    def topological_sort(self, is_deterministic=False, dump_model_on_failure=False):
         # TODO: support graph_topological_sort() in subgraphs
         # for graph in self.graphs():
         #    self.graph_topological_sort(graph)
-        OnnxModel.graph_topological_sort(self.model.graph, is_deterministic)
+        try:
+            OnnxModel.graph_topological_sort(self.model.graph, is_deterministic)
+        except RuntimeError as e:
+            if dump_model_on_failure:
+                logger.info(
+                    "Failed to sort graph in topological order. Dumping model to _topo_sort_failed.onnx for debugging."
+                )
+                OnnxModel.save(
+                    self.model, "_topo_sort_failed.onnx", save_as_external_data=True, all_tensors_to_one_file=True
+                )
+            raise e
 
     @staticmethod
     def save(
@@ -1238,7 +1252,14 @@ class OnnxModel:
         else:
             save_model(model, output_path)
 
-    def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True):
+    def save_model_to_file(
+        self,
+        output_path,
+        use_external_data_format=False,
+        all_tensors_to_one_file=True,
+        size_threshold=1024,
+        convert_attribute=False,
+    ):
         logger.info("Sort graphs in topological order")
         self.topological_sort()
 
@@ -1246,7 +1267,14 @@ class OnnxModel:
         #       You need reload the onnx model if you want to read tensor from self.model object.
         #       It is because the base directory is not updated for self.model object so attempt to read tensor data
         #       might encounter error since external data cannot be located.
-        OnnxModel.save(self.model, output_path, use_external_data_format, all_tensors_to_one_file)
+        OnnxModel.save(
+            self.model,
+            output_path,
+            use_external_data_format,
+            all_tensors_to_one_file,
+            size_threshold,
+            convert_attribute,
+        )
         logger.info(f"Model saved to {output_path}")
 
     def get_graph_inputs_excluding_initializers(self):
@@ -1321,6 +1349,8 @@ class OnnxModel:
         tensor2: TensorProto,
         signature_cache1: dict | None = None,
         signature_cache2: dict | None = None,
+        rtol: float = 1e-05,
+        atol: float = 1e-08,
     ) -> bool:
         """Returns True when two tensors have same value.
            Note that name can be different.
@@ -1330,6 +1360,8 @@ class OnnxModel:
             tensor2 (TensorProto): initializer 2
             signature_cache1 (dict): Optional dictionary to store data signatures of tensor1 in order to speed up comparison.
             signature_cache2 (dict): Optional dictionary to store data signatures of tensor2 in order to speed up comparison.
+            rtol (float): Optional relative difference threshold for minor precision differences
+            atol (float): Optional absolute difference threshold for minor precision differences
         Returns:
             bool: True when two initializers has same value.
         """
@@ -1347,13 +1379,28 @@ class OnnxModel:
             signature_cache1[tensor1.name] = sig1
         if signature_cache2 is not None:
             signature_cache2[tensor2.name] = sig2
-        if sig1 == sig2 and tensor1.data_type == tensor2.data_type and tensor1.dims == tensor2.dims:
-            # Same signature, now do the expensive check to confirm the data is the same
-            return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
+        if tensor1.data_type == tensor2.data_type and tensor1.dims == tensor2.dims:
+            n1 = numpy_helper.to_array(tensor1)
+            n2 = numpy_helper.to_array(tensor2)
+            if sig1 == sig2:
+                # Same signature, now do the expensive check to confirm the data is the same
+                return (n1 == n2).all()
+            else:
+                # Check if tensors are allclose
+                from numpy import allclose  # noqa: PLC0415
+
+                return allclose(n1, n2, rtol=rtol, atol=atol)
 
         return False
 
-    def remove_duplicated_initializer(self, cache: dict | None = None):
+    def remove_initializer(self, tensor):
+        for graph in self.graphs():
+            if tensor in graph.initializer:
+                graph.initializer.remove(tensor)
+                return
+        logger.warning("Failed to remove initializer %s", tensor)  # It might be a bug to hit this line.
+
+    def remove_duplicated_initializer(self, cache: dict | None):
         """Remove initializers with duplicated values, and only keep the first one.
         It could help reduce size of models (like ALBert) with shared weights.
         If require_raw_data passed, method will only compare raw_data initializers to speed runtime

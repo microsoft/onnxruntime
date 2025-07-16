@@ -24,6 +24,7 @@
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
+#include "core/optimizer/cast_chain_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/constant_sharing.h"
@@ -45,6 +46,7 @@
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
+#include "core/optimizer/group_query_attention_fusion.h"
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/label_encoder_fusion.h"
@@ -60,6 +62,7 @@
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/pad_fusion.h"
 #include "core/optimizer/pre_shape_node_elimination.h"
+#include "core/optimizer/fuse_initializers_transformer.h"
 #ifdef MLAS_TARGET_AMD64_IX86
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 #endif
@@ -113,8 +116,10 @@ std::string GenerateRuleBasedTransformerName(TransformerLevel level) {
 
 InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
     TransformerLevel level,
-    const InlinedHashSet<std::string>& rules_to_disable) {
+    const InlinedHashSet<std::string>& rules_to_disable,
+    const bool enable_cast_chain_elimination) {
   InlinedVector<std::unique_ptr<RewriteRule>> rules;
+
   switch (level) {
     case TransformerLevel::Level1:
       rules.push_back(std::make_unique<EliminateIdentity>());
@@ -123,6 +128,9 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<EliminateDropout>());
       rules.push_back(std::make_unique<ExpandElimination>());
       rules.push_back(std::make_unique<CastElimination>());
+      if (enable_cast_chain_elimination) {
+        rules.push_back(std::make_unique<CastChainElimination>());
+      }
       rules.push_back(std::make_unique<PreShapeNodeElimination>());
       rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
@@ -145,6 +153,9 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       break;
 
     case TransformerLevel::Level3:
+      break;
+
+    case TransformerLevel::Level4:
       break;
 
     default:
@@ -170,8 +181,9 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
 std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
     TransformerLevel level,
     const InlinedHashSet<std::string>& rules_to_disable,
-    const InlinedHashSet<std::string_view>& compatible_execution_providers) {
-  auto rewrite_rules_to_register = GenerateRewriteRules(level, rules_to_disable);
+    const InlinedHashSet<std::string_view>& compatible_execution_providers,
+    const bool enable_cast_chain_elimination) {
+  auto rewrite_rules_to_register = GenerateRewriteRules(level, rules_to_disable, enable_cast_chain_elimination);
   if (rewrite_rules_to_register.empty()) {
     return nullptr;
   }
@@ -192,25 +204,27 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
     const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
-    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
+    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+  const bool enable_cast_chain_elimination =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableCastChainElimination, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
   const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
   const InlinedHashSet<std::string_view> cpu_acl_eps = {onnxruntime::kCpuExecutionProvider,
                                                         onnxruntime::kAclExecutionProvider};
 #endif
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
   const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
 
   switch (level) {
     case TransformerLevel::Level1: {
       // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
       // so run them first so there is potentially less for the more intensive optimizations like ConstantFolding,
       // CommonSubexpressionElimination and TransposeOptimizer to do.
-      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
+      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {}, enable_cast_chain_elimination);
       if (rule_transformer != nullptr) {
         transformers.emplace_back(std::move(rule_transformer));
       }
@@ -230,7 +244,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       for (const auto& p : session_options.initializers_to_share_map) {
         excluded_initializers.insert(p.first);
       }
-      const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
       transformers.emplace_back(std::make_unique<ConstantSharing>(no_limit_empty_ep_list, excluded_initializers));
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq,
@@ -264,7 +277,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     } break;
 
     case TransformerLevel::Level2: {
-      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
+      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {}, enable_cast_chain_elimination);
       if (rule_transformer != nullptr) {
         transformers.emplace_back(std::move(rule_transformer));
       }
@@ -282,6 +295,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const bool enable_gelu_approximation =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 
+      const InlinedHashSet<std::string_view> cuda_eps = {onnxruntime::kCudaExecutionProvider};
+
       const InlinedHashSet<std::string_view> cuda_rocm_eps = {onnxruntime::kCudaExecutionProvider,
                                                               onnxruntime::kRocmExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,
@@ -296,17 +311,19 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                           onnxruntime::kCudaExecutionProvider,
                                                                           onnxruntime::kRocmExecutionProvider,
                                                                           onnxruntime::kDmlExecutionProvider};
-      const InlinedHashSet<std::string_view> cpu_rocm_acl_armnn_js_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                          onnxruntime::kRocmExecutionProvider,
-                                                                          onnxruntime::kAclExecutionProvider,
-                                                                          onnxruntime::kArmNNExecutionProvider,
-                                                                          onnxruntime::kJsExecutionProvider};
-      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_js_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                               onnxruntime::kCudaExecutionProvider,
-                                                                               onnxruntime::kRocmExecutionProvider,
-                                                                               onnxruntime::kAclExecutionProvider,
-                                                                               onnxruntime::kArmNNExecutionProvider,
-                                                                               onnxruntime::kJsExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_rocm_acl_armnn_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                                 onnxruntime::kRocmExecutionProvider,
+                                                                                 onnxruntime::kAclExecutionProvider,
+                                                                                 onnxruntime::kArmNNExecutionProvider,
+                                                                                 onnxruntime::kJsExecutionProvider,
+                                                                                 onnxruntime::kWebGpuExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                                      onnxruntime::kCudaExecutionProvider,
+                                                                                      onnxruntime::kRocmExecutionProvider,
+                                                                                      onnxruntime::kAclExecutionProvider,
+                                                                                      onnxruntime::kArmNNExecutionProvider,
+                                                                                      onnxruntime::kJsExecutionProvider,
+                                                                                      onnxruntime::kWebGpuExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_dml_acl_eps = {onnxruntime::kCpuExecutionProvider,
                                                                 onnxruntime::kDmlExecutionProvider,
                                                                 onnxruntime::kAclExecutionProvider};
@@ -330,15 +347,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
                                                                                  SatApplyContextVariant{},
                                                                                  qdq_matmulnbits_accuracy_level,
-                                                                                 intra_op_thread_pool,
-                                                                                 p_buffered_tensors));
+                                                                                 intra_op_thread_pool));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_dml_acl_eps));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_acl_eps));
 
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_rocm_acl_armnn_js_eps));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_rocm_acl_armnn_js_webgpu_eps));
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_acl_cuda_dml_rocm_eps, level));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_acl_cuda_dml_rocm_eps, level));
@@ -347,12 +363,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_acl_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_rocm_eps));
-
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_rocm_eps));
-
+      transformers.emplace_back(std::make_unique<GroupQueryAttentionFusion>(cuda_eps));
+      // Run MatMulAddFusion again after *AttentionFusion transforms with `preserve_attention_pattern = false`,
+      // to cleanup the remaining MatMul-Add that were part of the attention pattern but not detected or fused.
+      transformers.emplace_back(std::make_unique<MatMulAddFusion>(no_limit_empty_ep_list, false));
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_rocm_eps));
-
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_rocm_eps));
 
@@ -421,6 +438,16 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
     } break;
 
+    case TransformerLevel::Level4: {
+      auto fuse_initializers_transformer_fp16_to_fp32 = std::make_unique<FuseInitializersTransformer>(
+          "FuseFp16InitializerToFp32NodeTransformer",
+          DataTypeImpl::GetTensorType<MLFloat16>(),
+          DataTypeImpl::GetTensorType<float>(),
+          intra_op_thread_pool);
+      transformers.emplace_back(std::move(fuse_initializers_transformer_fp16_to_fp32));
+
+    } break;
+
     default:
       ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
   }
@@ -441,8 +468,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const IExecutionProvider& cpu_execution_provider,
     const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
-    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
+    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool saving = std::holds_alternative<SatRuntimeOptimizationSaveContext>(apply_context);
 
@@ -467,8 +493,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
                                                                                  apply_context,
                                                                                  qdq_matmulnbits_accuracy_level,
-                                                                                 intra_op_thread_pool,
-                                                                                 p_buffered_tensors));
+                                                                                 intra_op_thread_pool));
       }
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
@@ -491,7 +516,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       // currently the only level 3 optimizer is the NhwcTransformer which is fully supported at runtime
       if (!saving) {
 #ifndef DISABLE_CONTRIB_OPS
-        AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+        AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
         auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
         auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
                                                                   logger);
@@ -503,6 +528,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
 #endif
       }
     } break;
+
+    case TransformerLevel::Level4:
+      break;
+
     default:
       ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
   }

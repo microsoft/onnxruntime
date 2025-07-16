@@ -10,12 +10,12 @@ from onnx import TensorProto, numpy_helper
 import onnxruntime as ort
 
 
-def _get_numpy_type(model_info, name):
+def _get_numpy_type(model_info, name) -> np.dtype:
     for i in model_info:
         if i.name == name:
             type_name = i.type.WhichOneof("value")
             if type_name == "tensor_type":
-                return onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[i.type.tensor_type.elem_type]
+                return onnx.helper.tensor_dtype_to_np_dtype(i.type.tensor_type.elem_type)
             else:
                 raise ValueError(f"Type is not handled: {type_name}")
 
@@ -65,7 +65,7 @@ def _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values
         if onnx_type not in [TensorProto.FLOAT, TensorProto.BFLOAT16, TensorProto.DOUBLE, TensorProto.FLOAT16]:
             data *= 256
 
-        np_type = onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[onnx_type]
+        np_type = onnx.helper.tensor_dtype_to_np_dtype(onnx_type)
         data = data.astype(np_type)
 
         name_input_map[input.name] = data
@@ -147,7 +147,7 @@ def create_test_dir(
 
         # try and enable onnxruntime-extensions if present
         try:
-            import onnxruntime_extensions
+            import onnxruntime_extensions  # noqa: PLC0415
 
             so.register_custom_ops_library(onnxruntime_extensions.get_library_path())
 

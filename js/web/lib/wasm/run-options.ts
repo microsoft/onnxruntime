@@ -22,7 +22,7 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
       options.logSeverityLevel < 0 ||
       options.logSeverityLevel > 4
     ) {
-      throw new Error(`log serverity level is not valid: ${options.logSeverityLevel}`);
+      throw new Error(`log severity level is not valid: ${options.logSeverityLevel}`);
     }
 
     if (options?.logVerbosityLevel === undefined) {

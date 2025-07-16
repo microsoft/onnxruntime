@@ -4,14 +4,17 @@
 #include "core/providers/common.h"
 #include "core/providers/webgpu/math/binary_elementwise_ops.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/string_macros.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime {
 namespace webgpu {
 Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& c = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+
+  shader.AdditionalImplementation() << additional_impl_;
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
@@ -141,9 +144,16 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     }
   }
 
-  uint32_t vec_size = gsl::narrow<uint32_t>((size + 3) / 4);
+  uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
+
+  std::string additional_impl;
+  if (get_additional_impl_) {
+    additional_impl = get_additional_impl_(lhs_tensor->GetElementType(), rhs_tensor->GetElementType());
+  }
+
   BinaryElementwiseProgram program{kernel_name_,
                                    expression_,
+                                   additional_impl,
                                    is_broadcast,
                                    is_lhs_scalar,
                                    is_rhs_scalar,
@@ -190,9 +200,9 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     // Mode Vectorize broadcast
     // cache hint: "V{a_rank};{b_rank};{output_rank}"
     program
-        .AddIndices(reshaped_output_shape)
-        .AddIndices(reshaped_lhs_shape)
-        .AddIndices(reshaped_rhs_shape)
+        .AddIndices(std::move(reshaped_output_shape))
+        .AddIndices(std::move(reshaped_lhs_shape))
+        .AddIndices(std::move(reshaped_rhs_shape))
         .CacheHint("V");
   } else {
     // Mode Broadcast
@@ -273,33 +283,63 @@ WEBGPU_BINARY_VERSIONED_KERNEL(Sub, 7, 12, Sub, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL(Sub, 13, 13, Sub, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(Sub, 14, Sub, WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(Pow, "output_value_t(pow(vec4<f32>(a), vec4<f32>(b)))")
+std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
+  SS(s, 1024);
+  std::string round_str;
+  if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
+    round_str = "round";
+  }
+  std::string use_sqrt_for_pow;
+  if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT || lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
+    // use sqrt instead of pow when base (a) is a positive float and exponent (b) is 0.5
+    use_sqrt_for_pow =
+        "  else if (a >= input_a_element_t(0.0) && b == 0.5) {\n"
+        "    return sqrt(a);\n"
+        "  }\n";
+  }
+
+  s << "fn pow_custom(a : input_a_element_t, b : f32) -> input_a_element_t {\n"
+       "  if (b == 0.0) {\n"
+       "    return input_a_element_t(1.0);\n"
+       "  } else if (a < input_a_element_t(0.0) && b != floor(b)) {\n"
+       "    return input_a_element_t(pow(f32(a), b)); // NaN\n"
+       "  }\n"
+    << use_sqrt_for_pow
+    << "  return select(sign(a), input_a_element_t(1.0), round(abs(b) % 2.0) != 1.0) * input_a_element_t(" << round_str << "(pow(f32(abs(a)), b)));\n"
+    << "}\n"
+       "fn pow_v(a : vec4<input_a_element_t>, b : vec4<input_b_element_t>) -> vec4<input_a_element_t> {\n"
+       "  return vec4<input_a_element_t>(pow_custom(a.x, f32(b.x)), pow_custom(a.y, f32(b.y)), pow_custom(a.z, f32(b.z)), pow_custom(a.w, f32(b.w)));\n"
+       "}\n";
+  return SS_GET(s);
+}
+
+WEBGPU_BINARY_IMPL(Pow, "pow_v(a, b)", GetPowImpl)
 WEBGPU_BINARY_VERSIONED_KERNEL(Pow, 7, 11, Pow, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL_2(Pow, 12, 12, Pow, WebGpuSupportedNumberTypes(), WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL_2(Pow, 13, 14, Pow, WebGpuSupportedNumberTypes(), WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL_2(Pow, 15, Pow, WebGpuSupportedNumberTypes(), WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(a == b)")
+WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(vec4<input_a_element_t>(a) == vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 7, 10, Equal, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 11, 12, Equal, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 13, 18, Equal, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(Equal, 19, Equal, WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(a > b)")
+WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(vec4<input_a_element_t>(a) > vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(Greater, 7, 8, Greater, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL(Greater, 9, 12, Greater, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(Greater, 13, Greater, WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(Less, "vec4<u32>(a < b)")
+WEBGPU_BINARY_IMPL(Less, "vec4<u32>(vec4<input_a_element_t>(a) < vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(Less, 7, 8, Less, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL(Less, 9, 12, Less, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(Less, 13, Less, WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(GreaterOrEqual, "vec4<u32>(a >= b)")
+WEBGPU_BINARY_IMPL(GreaterOrEqual, "vec4<u32>(vec4<input_a_element_t>(a) >= vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(GreaterOrEqual, 12, 15, GreaterOrEqual, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(GreaterOrEqual, 16, GreaterOrEqual, WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(LessOrEqual, "vec4<u32>(a <= b)")
+WEBGPU_BINARY_IMPL(LessOrEqual, "vec4<u32>(vec4<input_a_element_t>(a) <= vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(LessOrEqual, 12, 15, LessOrEqual, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(LessOrEqual, 16, LessOrEqual, WebGpuSupportedNumberTypes())
 

@@ -147,6 +147,14 @@ class ModelTestBuilder {
     }
   }
 
+  // Make optional tensor
+  NodeArg* MakeOptionalTensor() {
+    ONNX_NAMESPACE::TypeProto type_proto;
+    type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<float>());
+    std::string name;
+    return &graph_.GetOrCreateNodeArg(name, &type_proto);
+  }
+
   template <typename T>
   NodeArg* MakeSymbolicInput(const std::vector<std::variant<int64_t, std::string>>& shape) {
     ONNX_NAMESPACE::TypeProto type_proto;
@@ -304,17 +312,17 @@ class ModelTestBuilder {
     return AddNode("Conv", input_args, {output_arg});
   }
 
-  template <typename T>
-  typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, Node&>::type
+  template <typename ZpType, typename ScaleType = float>
+  typename std::enable_if<IsTypeQuantLinearCompatible<ZpType>::value, Node&>::type
   AddQuantizeLinearNode(NodeArg* input_arg,
-                        float input_scale,
-                        T input_zero_point,
+                        ScaleType input_scale,
+                        ZpType input_zero_point,
                         NodeArg* output_arg,
                         bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
-    input_args.push_back(MakeScalarInitializer<float>(input_scale));
-    input_args.push_back(MakeScalarInitializer<T>(input_zero_point));
+    input_args.push_back(MakeScalarInitializer<ScaleType>(input_scale));
+    input_args.push_back(MakeScalarInitializer<ZpType>(input_zero_point));
 
     std::string domain = use_ms_domain ? kMSDomain : "";
     return AddNode("QuantizeLinear", input_args, {output_arg}, domain);
@@ -382,17 +390,17 @@ class ModelTestBuilder {
                               NodeArg* output_arg,
                               bool use_ms_domain = false);
 
-  template <typename T>
-  typename std::enable_if<IsTypeDequantLinearCompatible<T>::value, Node&>::type
+  template <typename ZpType, typename ScaleType = float>
+  typename std::enable_if<IsTypeDequantLinearCompatible<ZpType>::value, Node&>::type
   AddDequantizeLinearNode(NodeArg* input_arg,
-                          float input_scale,
-                          T input_zero_point,
+                          ScaleType input_scale,
+                          ZpType input_zero_point,
                           NodeArg* output_arg,
                           bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
-    input_args.push_back(MakeScalarInitializer<float>(input_scale));
-    input_args.push_back(MakeScalarInitializer<T>(input_zero_point));
+    input_args.push_back(MakeScalarInitializer<ScaleType>(input_scale));
+    input_args.push_back(MakeScalarInitializer<ZpType>(input_zero_point));
 
     std::string domain = use_ms_domain ? kMSDomain : "";
     return AddNode("DequantizeLinear", input_args, {output_arg}, domain);

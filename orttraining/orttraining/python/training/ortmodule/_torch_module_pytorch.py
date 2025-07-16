@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterator
 from typing import Optional, TypeVar
 
 import torch
+from typing_extensions import Self
 
 from ._torch_module_interface import TorchModuleInterface
 
@@ -22,14 +23,14 @@ class TorchModulePytorch(TorchModuleInterface):
         self._original_module._apply(fn)
         return self
 
-    def apply(self: T, fn: Callable[[T], None]) -> T:
+    def apply(self, fn: Callable[[Self], None]) -> Self:
         self._original_module.apply(fn)
         return self
 
     def is_training(self):
         return self._original_module.training and torch.is_grad_enabled()
 
-    def train(self: T, mode: bool = True) -> T:
+    def train(self, mode: bool = True) -> Self:
         self._original_module.train(mode)
         return self
 

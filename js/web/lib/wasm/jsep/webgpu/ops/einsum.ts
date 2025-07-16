@@ -22,12 +22,12 @@ export interface EinsumAttributes extends AttributeWithCacheKey {
 
 const symbolPattern = '[a-zA-Z]|\\.\\.\\.'; // The pattern each symbol in each term in the symbolic equation should match
 const termPattern = '(' + symbolPattern + ')+'; // The pattern each term in the symbolic equation should match
-const termPatternOnly = '^' + termPattern + '$'; // The patterns only matchs a term begin to end.
+const termPatternOnly = '^' + termPattern + '$'; // The patterns only matches a term begin to end.
 const lhsPattern = '(' + termPattern + ',)*' + termPattern; // The pattern the LHS should match
-const lhsPatternOnly = '^' + lhsPattern + '$'; // The patterns only matchs a LHS begin to end.
+const lhsPatternOnly = '^' + lhsPattern + '$'; // The patterns only matches a LHS begin to end.
 
 interface SymbolInfo {
-  count: number; // Symbol corresponding to a dimmension of an input
+  count: number; // Symbol corresponding to a dimension of an input
   inputIndices: number[]; // Number of input variables the symbol corresponds to
   dimValue: number; // Number of dimensions the symbol corresponds to
 }

@@ -20,7 +20,7 @@ class GatherElementsOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -49,20 +49,19 @@ Status GatherElementsOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
 
 // Operator support related.
 
-bool GatherElementsOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool GatherElementsOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                                      const emscripten::val& wnn_limits,
                                                      const logging::Logger& logger) const {
   const auto& data = *node.InputDefs()[0];
   const auto& indices = *node.InputDefs()[1];
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
 
-  int32_t data_type;
-  int32_t indices_type;
+  int32_t data_type, indices_type;
   if (!GetType(data, data_type, logger) || !GetType(indices, indices_type, logger)) {
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) &&
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) &&
          IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
 }
 

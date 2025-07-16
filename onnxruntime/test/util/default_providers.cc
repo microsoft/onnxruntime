@@ -50,6 +50,14 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> DefaultNvTensorRTRTXExecutionProvider() {
+#ifdef USE_NV
+  if (auto factory = NvProviderFactoryCreator::Create(0))
+    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params) {
 #ifdef USE_TENSORRT
   if (auto factory = TensorrtProviderFactoryCreator::Create(params))
@@ -77,12 +85,15 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
       0,
       0,
       0,
+      0,
       nullptr,
       1,
       "./compiled_model.mxr",
       1,
       "./compiled_model.mxr",
-      1};
+      1,
+      SIZE_MAX,
+      0};
   return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;
@@ -220,20 +231,6 @@ std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_ar
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunable_op) {
-#ifdef USE_ROCM
-  OrtROCMProviderOptions provider_options{};
-  provider_options.do_copy_in_default_stream = true;
-  provider_options.tunable_op_enable = test_tunable_op ? 1 : 0;
-  provider_options.tunable_op_tuning_enable = test_tunable_op ? 1 : 0;
-  provider_options.tunable_op_max_tuning_duration_ms = 0;
-  if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
-    return factory->CreateProvider();
-#endif
-  ORT_UNUSED_PARAMETER(test_tunable_op);
-  return nullptr;
-}
-
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
   // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
   // The test will create a model but execution of it will obviously fail.
@@ -296,15 +293,31 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider() {
+std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc) {
 #ifdef USE_WEBGPU
   ConfigOptions config_options{};
   // Disable storage buffer cache
   ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
                                             webgpu::options::kBufferCacheMode_Disabled)
                   .IsOK());
+  if (!is_nhwc) {
+    // Enable NCHW support
+    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredLayout,
+                                              webgpu::options::kPreferredLayout_NCHW)
+                    .IsOK());
+  }
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(is_nhwc);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options) {
+#ifdef USE_WEBGPU
+  return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(config_options);
   return nullptr;
 #endif
 }
@@ -328,5 +341,8 @@ std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool) {
+  return nullptr;
+}
 }  // namespace test
 }  // namespace onnxruntime

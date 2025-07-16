@@ -54,9 +54,19 @@ bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger
                     y_shape_proto->dim().begin(), y_shape_proto->dim().end(),
                     dim_eq);
 }
+
+bool ShouldUseFloorDiv(const Node& node, const logging::Logger& logger) {
+  // since ONNX spec requires both inputs to have the same type, we only need
+  // to check the first input type
+  const auto& input0 = *node.InputDefs()[0];
+  int32_t input_type0 = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  GetType(input0, input_type0, logger);
+
+  return input_type0 == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
+         input_type0 == ONNX_NAMESPACE::TensorProto_DataType_INT64;
+}
 }  // namespace
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 static std::vector<int64_t> InferOutputShape(const std::vector<int64_t>& a, const std::vector<int64_t>& b) {
   std::vector<int64_t> output_shape;
   int64_t i_a = 0, j_b = 0;
@@ -112,14 +122,12 @@ static void AddVariadicInputs(std::unique_ptr<CoreML::Specification::MILSpec::Op
   }
   *op = std::move(op_prev);
 }
-#endif
 
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& logger) const {
   const auto& op_type(node.OpType());
   const auto& input_defs(node.InputDefs());
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -134,9 +142,13 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     } else if (op_type == "Sub") {
       coreml_op_type = "sub";
     } else if (op_type == "Div") {
-      // we support fp32/fp16 currently. when we add support for integers we need to check the type and use
-      // "floor_div" or "real_div" accordingly
-      coreml_op_type = "real_div";
+      // Use "floor_div" op for integer division (int32 or int64)
+      // use "real_div" for float division (fp16 or fp32)
+      if (ShouldUseFloorDiv(node, logger)) {
+        coreml_op_type = "floor_div";
+      } else {
+        coreml_op_type = "real_div";
+      }
     } else if (op_type == "Pow") {
       coreml_op_type = "pow";
     } else {
@@ -153,9 +165,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
-  } else
-#endif  // defined (COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
     if (op_type == "Add") {

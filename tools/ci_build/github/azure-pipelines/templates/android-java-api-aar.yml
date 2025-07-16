@@ -48,17 +48,32 @@ parameters:
   type: string
   default: ''
 
+# Do not update this to a version that does not exist for the qnn-runtime Maven package:
+# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.30.0.250109'
+  default: '2.36.0.250627'
+
+- name: is1ES
+  displayName: Is 1ES pipeline
+  type: boolean
+  default: false
 
 jobs:
 - job: Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: ${{parameters.pool_name}}
+  pool:
+    name: ${{ parameters.pool_name }}
+    ${{ if or(contains(parameters.pool_name, 'ubuntu'), contains(parameters.PoolName, 'linux')) }}:
+      os: linux
+    ${{ if contains(parameters.pool_name, 'win')}}:
+      os: windows
+    ${{ if contains(parameters.pool_name, 'mac')}}:
+      os: macOS
+
 
   variables:
     artifacts_directory: $(Build.BinariesDirectory)/.artifacts
@@ -111,7 +126,7 @@ jobs:
           QNN_VOLUME=""
           USE_QNN="0"
         fi
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
@@ -135,8 +150,13 @@ jobs:
     - template: jar-maven-signing-linux.yml
       parameters:
         JarFileDirectory: '$(artifacts_directory)'
-
-  - task: PublishBuildArtifacts@1
-    inputs:
-      pathtoPublish: '$(artifacts_directory)'
-      artifactName: '${{parameters.artifactName}}'
+  - ${{ if eq(parameters.is1ES, false) }}:
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(artifacts_directory)'
+        artifactName: '${{parameters.artifactName}}'
+  - ${{ if eq(parameters.is1ES, true) }}:
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(artifacts_directory)'
+        artifactName: '${{parameters.artifactName}}'

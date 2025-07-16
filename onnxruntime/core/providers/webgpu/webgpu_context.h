@@ -6,13 +6,16 @@
 #include <memory>
 #include <mutex>
 
-#include <webgpu/webgpu_cpp.h>
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
 #include "core/framework/library_handles.h"
-#include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+#include "core/providers/webgpu/webgpu_pix_frame_generator.h"
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
 namespace onnxruntime {
 class Tensor;
@@ -22,13 +25,21 @@ class WebGpuContext;
 class ComputeContext;
 class ProgramBase;
 
+// Definition for CapturedCommandInfo in the webgpu namespace
+struct CapturedCommandInfo {
+  wgpu::ComputePipeline compute_pipeline;
+  WGPUBindGroup bind_group;
+  WGPUBindGroupLayout bind_group_layout;
+  std::array<uint32_t, 3> dispatch_group;
+};
+
 struct WebGpuContextConfig {
   int context_id;
   WGPUInstance instance;
-  WGPUAdapter adapter;
   WGPUDevice device;
   const void* dawn_proc_table;
   ValidationMode validation_mode;
+  bool preserve_device;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -68,15 +79,18 @@ class WebGpuContextFactory {
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
  public:
-  void Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type);
+  void Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture);
 
   Status Wait(wgpu::Future f);
 
-  const wgpu::Adapter& Adapter() const { return adapter_; }
   const wgpu::Device& Device() const { return device_; }
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
+  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.find(feature) != device_features_.end(); }
+#if !defined(__wasm__)
+  const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
+#endif
 
   const wgpu::CommandEncoder& GetCommandEncoder() {
     if (!current_command_encoder_) {
@@ -92,8 +106,11 @@ class WebGpuContext final {
       wgpu::ComputePassDescriptor compute_pass_desc{};
 
       if (is_profiling_ && query_type_ == TimestampQueryType::AtPasses) {
-        wgpu::ComputePassTimestampWrites timestampWrites = {
-            query_set_, num_pending_dispatches_ * 2, num_pending_dispatches_ * 2 + 1};
+        wgpu::PassTimestampWrites timestampWrites = {
+            nullptr,
+            query_set_,
+            num_pending_dispatches_ * 2,
+            num_pending_dispatches_ * 2 + 1};
         compute_pass_desc.timestampWrites = &timestampWrites;
       }
 
@@ -108,8 +125,12 @@ class WebGpuContext final {
       current_compute_pass_encoder_ = nullptr;
     }
   }
+  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager);
+  void CaptureEnd();
+  void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager);
+  void ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands);
 
-  void Flush();
+  void Flush(const webgpu::BufferManager& buffer_mgr);
 
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
 
@@ -121,7 +142,22 @@ class WebGpuContext final {
   void CollectProfilingData(profiling::Events& events);
   void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
 
+  //
+  // Push error scope.
+  //
+  // This is useful only when "skip_validation" is not set.
+  //
+  void PushErrorScope();
+
+  //
+  // Pop error scope.
+  //
+  // This is useful only when "skip_validation" is not set.
+  //
+  Status PopErrorScope();
+
   Status Run(ComputeContext& context, const ProgramBase& program);
+  void OnRunEnd();
 
  private:
   enum class TimestampQueryType {
@@ -130,15 +166,20 @@ class WebGpuContext final {
     AtPasses
   };
 
-  WebGpuContext(WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device, webgpu::ValidationMode validation_mode)
-      : instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None} {}
+  WebGpuContext(WGPUInstance instance, WGPUDevice device, webgpu::ValidationMode validation_mode, bool preserve_device)
+      : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None}, preserve_device_{preserve_device} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
+
+  void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
+                             const std::vector<WGPUBuffer>& bind_buffers,
+                             const ProgramArtifact& program_artifact,
+                             uint32_t x, uint32_t y, uint32_t z);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
   std::vector<const char*> GetDisabledDeviceToggles() const;
   std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
-  wgpu::RequiredLimits GetRequiredLimits(const wgpu::Adapter& adapter) const;
+  wgpu::Limits GetRequiredLimits(const wgpu::Adapter& adapter) const;
   void WriteTimestamp(uint32_t query_index);
 
   struct PendingKernelInfo {
@@ -179,13 +220,17 @@ class WebGpuContext final {
   LibraryHandles modules_;
 
   wgpu::Instance instance_;
-  wgpu::Adapter adapter_;
   wgpu::Device device_;
 
   webgpu::ValidationMode validation_mode_;
 
+  wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;
   wgpu::Limits device_limits_;
+  std::unordered_set<wgpu::FeatureName> device_features_;
+#if !defined(__wasm__)
+  wgpu::AdapterPropertiesSubgroupMatrixConfigs subgroup_matrix_configs_;
+#endif
 
   wgpu::CommandEncoder current_command_encoder_;
   wgpu::ComputePassEncoder current_compute_pass_encoder_;
@@ -208,6 +253,15 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
+  bool preserve_device_;
+  GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
+
+  // External vector to store captured commands, owned by EP
+  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 };
 
 }  // namespace webgpu

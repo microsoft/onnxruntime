@@ -2,30 +2,44 @@ resources:
   pipelines:
   - pipeline: build
     source: 'CUDA-Zip-Nuget-Java-Packaging-Pipeline'
-    trigger: 
+    trigger:
       branches:
         include:
         - main
         - rel-*
     branch: main
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
 
 parameters:
-  - name: isReleaseBuild
-    type: boolean
-    default: false
+- name: isReleaseBuild
+  type: boolean
+  default: false
 
 variables:
-  - name: ArtifactFeed
-    ${{ if eq(parameters.isReleaseBuild, false) }}:
-      value: ORT-Nightly
-    ${{ else }}:
-      value: onnxruntime-cuda-12
+- name: ArtifactFeed
+  ${{ if eq(parameters.isReleaseBuild, false) }}:
+    value: ORT-Nightly
+  ${{ else }}:
+    value: onnxruntime-cuda-12
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    sdl:
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows
+    stages:
+    - template: stages/nuget-cuda-publishing-stage.yml
+      parameters:
+        artifact_feed: $(ArtifactFeed)
 
-stages:
-  - template: stages/nuget-cuda-publishing-stage.yml
-    parameters:
-      artifact_feed: $(ArtifactFeed)
-
-  - template: stages/java-cuda-publishing-stage.yml
-    parameters:
-      artifact_feed: $(ArtifactFeed)
+    - template: stages/java-cuda-publishing-stage.yml
+      parameters:
+        artifact_feed: $(ArtifactFeed)

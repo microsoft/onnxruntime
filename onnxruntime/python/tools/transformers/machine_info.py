@@ -122,7 +122,7 @@ class MachineInfo:
         return result
 
     def get_related_packages(self) -> list[str]:
-        import pkg_resources
+        import pkg_resources  # noqa: PLC0415
 
         installed_packages = pkg_resources.working_set
         related_packages = [
@@ -143,7 +143,7 @@ class MachineInfo:
 
     def get_onnxruntime_info(self) -> dict:
         try:
-            import onnxruntime
+            import onnxruntime  # noqa: PLC0415
 
             return {
                 "version": onnxruntime.__version__,
@@ -160,7 +160,7 @@ class MachineInfo:
 
     def get_pytorch_info(self) -> dict:
         try:
-            import torch
+            import torch  # noqa: PLC0415
 
             return {
                 "version": torch.__version__,
@@ -178,7 +178,7 @@ class MachineInfo:
 
     def get_tensorflow_info(self) -> dict:
         try:
-            import tensorflow as tf
+            import tensorflow as tf  # noqa: PLC0415
 
             return {
                 "version": tf.version.VERSION,
@@ -213,6 +213,14 @@ def parse_arguments():
 def get_machine_info(silent=True) -> str:
     machine = MachineInfo(silent)
     return json.dumps(machine.machine_info, indent=2)
+
+
+def get_device_info(silent=True) -> str:
+    machine = MachineInfo(silent)
+    info = machine.machine_info
+    if info:
+        info = {key: value for key, value in info.items() if key in ["gpu", "cpu", "memory"]}
+    return json.dumps(info, indent=2)
 
 
 if __name__ == "__main__":

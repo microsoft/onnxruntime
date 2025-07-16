@@ -15,6 +15,7 @@ export declare namespace Env {
      * If not modified, the filename of the .wasm file is:
      * - `ort-wasm-simd-threaded.wasm` for default build
      * - `ort-wasm-simd-threaded.jsep.wasm` for JSEP build (with WebGPU and WebNN)
+     * - `ort-wasm-simd-threaded.asyncify.wasm` for WebGPU build with Asyncify (with WebNN)
      */
     wasm?: URL | string;
     /**
@@ -25,6 +26,7 @@ export declare namespace Env {
      * If not modified, the filename of the .mjs file is:
      * - `ort-wasm-simd-threaded.mjs` for default build
      * - `ort-wasm-simd-threaded.jsep.mjs` for JSEP build (with WebGPU and WebNN)
+     * - `ort-wasm-simd-threaded.asyncify.mjs` for WebGPU build with Asyncify (with WebNN)
      */
     mjs?: URL | string;
   }
@@ -41,16 +43,22 @@ export declare namespace Env {
     numThreads?: number;
 
     /**
-     * set or get a boolean value indicating whether to enable SIMD. If set to false, SIMD will be forcely disabled.
+     * set a value indicating whether to enable SIMD.
+     *
+     * ONNX Runtime will perform feature detection based on the value of this property. Specifically, when the value is
+     * set to:
+     * - `undefined`, `true` or `"fixed"`: will check availability of Fixed-width SIMD.
+     * - `"relaxed"`: will check availability of Relaxed SIMD.
+     * - `false`: will not perform SIMD feature checking.
+     *
+     * Setting this property does not make ONNX Runtime to switch to the corresponding runtime automatically. User need
+     * to set `wasmPaths` or `wasmBinary` property to load the corresponding runtime.
      *
      * This setting is available only when WebAssembly SIMD feature is available in current context.
      *
      * @defaultValue `true`
-     *
-     * @deprecated This property is deprecated. Since SIMD is supported by all major JavaScript engines, non-SIMD
-     * build is no longer provided. This property will be removed in future release.
      */
-    simd?: boolean;
+    simd?: boolean | 'fixed' | 'relaxed';
 
     /**
      * set or get a boolean value indicating whether to enable trace.

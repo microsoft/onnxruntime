@@ -116,6 +116,19 @@ OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device) {
     mem_info = GetCudaAllocator(ort_device.Id())->Info();
   }
 #endif
+#if USE_ROCM
+  else if (ort_device.Type() == OrtDevice::GPU) {
+    if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), ort_device.Id())) {
+      ORT_THROW("The provided device id doesn't match any available GPUs on the machine: ", ort_device.Id());
+    }
+    mem_info = GetRocmAllocator(ort_device.Id())->Info();
+  }
+#endif
+#if USE_MIGRAPHX
+  else if (ort_device.Type() == OrtDevice::GPU) {
+    mem_info = GetMIGraphXAllocator(ort_device.Id())->Info();
+  }
+#endif
   else {
     ORT_THROW("Unsupported OrtDevice type: ", ort_device.Type());
   }
@@ -189,6 +202,38 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
 std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
   // Using default stream
   return GetProviderInfo_CUDA().CreateGPUDataTransfer();
+}
+
+#endif
+
+#ifdef USE_MIGRAPHX
+void CpuToMIGraphXMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_MIGraphX().MIGraphXMemcpy_HostToDevice(dst, src, num_bytes);
+}
+
+void MIGraphXToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_MIGraphX().MIGraphXMemcpy_DeviceToHost(dst, src, num_bytes);
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetMIGraphXToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, MIGraphXToCpuMemCpy}};
+
+  return &map;
+}
+
+AllocatorPtr GetMIGraphXAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded MIGraphX allocation work we need to maintain a per-thread MIGraphX allocator
+
+  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+
+  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
+    id_to_allocator_map->insert({id, GetProviderInfo_MIGraphX().CreateMIGraphXAllocator(id, gpu_mem_limit, arena_extend_strategy, migx_external_allocator_info, nullptr)});
+  }
+
+  return (*id_to_allocator_map)[id];
 }
 
 #endif
@@ -291,7 +336,7 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
 
 const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction() {
   static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::DML, DmlToCpuMemCpy}};
+      {OrtDevice::GPU, DmlToCpuMemCpy}};
 
   return &map;
 }

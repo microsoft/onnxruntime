@@ -4,39 +4,25 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/nn/layer_norm.h"
 
 namespace onnxruntime {
 namespace webgpu {
-
-static int GetMaxComponents(int64_t size) {
-  if (size % 4 == 0) {
-    return 4;
-  } else if (size % 2 == 0) {
-    return 2;
-  }
-  return 1;
-}
 
 static size_t NormalizeAxis(int64_t axis, size_t tensor_rank) {
   int64_t rank = static_cast<int64_t>(tensor_rank);
   if (axis < -rank && axis >= rank) {
     ORT_THROW("invalid axis: ", axis);
   }
-  return gsl::narrow<size_t>(axis < 0 ? axis + rank : axis);
+  return onnxruntime::narrow<size_t>(axis < 0 ? axis + rank : axis);
 }
 
-static std::string SumVector(std::string x, int components) {
-  switch (components) {
-    case 1:
-      return x;
-    case 2:
-      return "(" + x + ".x + " + x + ".y" + ")";
-    case 4:
-      return "(" + x + ".x + " + x + ".y + " + x + ".w + " + x + ".z" + ")";
-    default:
-      ORT_THROW("Unsupported number of components: ", components);
-  }
+// Get a dummy override shape to bypass the program's check of shape and components for inputs and outputs. It's okay,
+// as 'LayerNormProgram' doesn't actually use the override shape.
+static TensorShape GetOverrideShape(const TensorShape& shape, int components) {
+  TensorShape override_shape{shape.Size() / components};
+  return override_shape;
 }
 
 Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -45,7 +31,13 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("output", ShaderUsage::UseUniform);
+  shader.AddOutput("y", ShaderUsage::UseUniform);
+  if (has_mean_output_) {
+    shader.AddOutput("mean_output", ShaderUsage::None);
+  }
+  if (has_inv_std_dev_output_) {
+    shader.AddOutput("inv_std_dev_output", ShaderUsage::None);
+  }
 
   int components = x.NumComponents();
   std::string bias = (has_bias_) ? " + bias[j]" : "";
@@ -69,8 +61,14 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "for (var j: u32 = 0; j < uniforms.norm_size_vectorized; j++) {\n"
                             << "   let f32input = f32_val_t(x[j + offset]);\n"
                             << "   let f32scale = f32_val_t(scale[j]);\n"
-                            << "   output[j + offset] =  x_value_t((f32input" << simpl2 << ") * inv_std_dev * f32scale)" << bias << ";\n"
+                            << "   y[j + offset] =  x_value_t((f32input" << simpl2 << ") * inv_std_dev * f32scale)" << bias << ";\n"
                             << "}\n";
+  if (has_mean_output_) {
+    shader.MainFunctionBody() << "mean_output[global_idx] = mean;\n";
+  }
+  if (has_inv_std_dev_output_) {
+    shader.MainFunctionBody() << "inv_std_dev_output[global_idx] = inv_std_dev;\n";
+  }
 
   return Status::OK();
 }
@@ -83,19 +81,13 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
 
   const auto x_shape = x->Shape();
 
-  auto* output = context.Output(0, x_shape);
-
-  if (x_shape.Size() == 0) {
-    return Status::OK();
-  }
-
   const bool is_fp16 = x->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
 
   const size_t axis = NormalizeAxis(axis_, x_shape.NumDimensions());
-  const uint32_t norm_count = gsl::narrow<uint32_t>(x_shape.SizeToDimension(axis));
+  const uint32_t norm_count = onnxruntime::narrow<uint32_t>(x_shape.SizeToDimension(axis));
   const int64_t norm_size = x_shape.SizeFromDimension(axis);
   const int components = GetMaxComponents(norm_size);
-  const uint32_t norm_size_vectorized = gsl::narrow<uint32_t>((norm_size + components - 1) / components);
+  const uint32_t norm_size_vectorized = onnxruntime::narrow<uint32_t>((norm_size + components - 1) / components);
 
   const auto scale_size = scale->Shape().Size();
   const auto bias_size = (bias) ? bias->Shape().Size() : 0;
@@ -106,13 +98,31 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
                            scale_size, " and bias size of ", bias_size);
   }
 
-  LayerNormProgram program{bias != nullptr, is_fp16, simplified};
+  TensorShapeVector mean_dim;
+  for (size_t i = 0; i < x_shape.NumDimensions(); ++i) {
+    if (i < axis) {
+      mean_dim.push_back(x_shape[i]);
+    } else {
+      mean_dim.push_back(1);
+    }
+  }
+  TensorShape mean_shape(mean_dim);
 
-  program
-      .CacheHint(simplified)
-      .AddInputs({{x, ProgramTensorMetadataDependency::Type, components}})
-      .AddInputs({{scale, ProgramTensorMetadataDependency::Type, components}})
-      .AddOutputs({{output, ProgramTensorMetadataDependency::None, components}})
+  auto* y = context.Output(0, x_shape);
+  auto* mean = context.Output(1, mean_shape);
+  auto* inv_std_dev = context.Output(2, mean_shape);
+
+  if (x_shape.Size() == 0) {
+    return Status::OK();
+  }
+
+  LayerNormProgram program{bias != nullptr, is_fp16, simplified, mean != nullptr, inv_std_dev != nullptr};
+
+  program.CacheHint(components, simplified)
+      .AddInputs({{x, ProgramTensorMetadataDependency::Type, GetOverrideShape(x->Shape(), components), components}})
+      .AddInputs(
+          {{scale, ProgramTensorMetadataDependency::Type, GetOverrideShape(scale->Shape(), components), components}})
+      .AddOutputs({{y, ProgramTensorMetadataDependency::None, GetOverrideShape(y->Shape(), components), components}})
       .SetDispatchGroupSize((norm_count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(norm_count)},
@@ -128,27 +138,29 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       });
 
   if (bias != nullptr) {
-    program.AddInput({bias, ProgramTensorMetadataDependency::Type, components});
+    program.AddInput(
+        {bias, ProgramTensorMetadataDependency::Type, GetOverrideShape(bias->Shape(), components), components});
   }
+
+  if (mean != nullptr) {
+    program.AddOutputs({{mean, ProgramTensorMetadataDependency::None}});
+  }
+  if (inv_std_dev != nullptr) {
+    program.AddOutputs({{inv_std_dev, ProgramTensorMetadataDependency::None}});
+  }
+
   return context.RunProgram(program);
 }
 
-ONNX_OPERATOR_KERNEL_EX(
-    LayerNormalization,
-    kOnnxDomain,
-    17,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes()),
-    LayerNorm<false>);
+ONNX_OPERATOR_KERNEL_EX(LayerNormalization, kOnnxDomain, 17, kWebGpuExecutionProvider,
+                        (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
+                        LayerNorm<false>);
 
-ONNX_OPERATOR_KERNEL_EX(
-    SimplifiedLayerNormalization,
-    kOnnxDomain,
-    1,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
-    LayerNorm<true>);
+ONNX_OPERATOR_KERNEL_EX(SimplifiedLayerNormalization, kOnnxDomain, 1, kWebGpuExecutionProvider,
+                        (*KernelDefBuilder::Create())
+                            .TypeConstraint("T", WebGpuSupportedFloatTypes())
+                            .TypeConstraint("U", WebGpuSupportedFloatTypes()),
+                        LayerNorm<true>);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

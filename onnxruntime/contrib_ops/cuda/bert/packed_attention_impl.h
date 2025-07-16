@@ -6,6 +6,8 @@
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cuda/bert/attention_data.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -28,22 +30,6 @@ size_t GetAttentionWorkspaceSize(
     bool use_flash_attention,
     bool use_memory_efficient_attention,
     bool no_qkv_workspace);
-
-template <typename T>
-struct PackedAttentionData {
-  T* gemm_buffer;
-  const T* bias;
-  const T* attention_bias;
-  const int32_t* token_offset;
-  const int32_t* cumulative_sequence_length;
-
-  T* workspace;
-  T* output;
-
-  void* fused_runner;
-
-  bool use_memory_efficient_attention;
-};
 
 template <typename T>
 Status QkvToContext(

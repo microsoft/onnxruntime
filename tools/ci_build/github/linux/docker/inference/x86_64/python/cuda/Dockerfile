@@ -2,10 +2,10 @@
 # Please overwrite BASEIMAGE, TRT_VERSION and other arguments with
 # --docker-build-args ' --build-arg BASEIMAGE=other_base_image --build-arg TRT_VERSION=other_trt_version etc...'
 # for other cuda version and TRT version
-ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+ARG BASEIMAGE=nvidia/cuda:12.5.1-cudnn-devel-ubi8
 
 FROM $BASEIMAGE
-ARG TRT_VERSION=10.7.0.23-1.cuda11.8
+ARG TRT_VERSION=10.9.0.34-1.cuda12.8
 
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "${TRT_VERSION}" ]; then  \

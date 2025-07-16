@@ -51,7 +51,7 @@ stages:
         EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
         additionalBuildFlags: >-
-          --enable_pybind --enable_training --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
+          --build_wheel --enable_training --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
           --skip_onnx_tests
           --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64

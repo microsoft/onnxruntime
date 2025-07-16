@@ -17,11 +17,11 @@ if(CMAKE_ANDROID_ARCH_ABI STREQUAL armeabi-v7a)
 endif()
 
 # pthreadpool depends on fxdiv
-FetchContent_Declare(fxdiv URL ${DEP_URL_fxdiv} URL_HASH SHA1=${DEP_SHA1_fxdiv})
+onnxruntime_fetchcontent_declare(fxdiv URL ${DEP_URL_fxdiv} URL_HASH SHA1=${DEP_SHA1_fxdiv} EXCLUDE_FROM_ALL FIND_PACKAGE_ARGS NAMES fxdiv)
 onnxruntime_fetchcontent_makeavailable(fxdiv)
 set(FXDIV_SOURCE_DIR ${fxdiv_SOURCE_DIR})
 
-FetchContent_Declare(pthreadpool URL ${DEP_URL_pthreadpool} URL_HASH SHA1=${DEP_SHA1_pthreadpool})
+onnxruntime_fetchcontent_declare(pthreadpool URL ${DEP_URL_pthreadpool} URL_HASH SHA1=${DEP_SHA1_pthreadpool} EXCLUDE_FROM_ALL FIND_PACKAGE_ARGS NAMES unofficial-pthreadpool)
 onnxruntime_fetchcontent_makeavailable(pthreadpool)
 
 # ---  Determine target processor
@@ -75,14 +75,16 @@ if(ORT_TARGET_PROCESSOR MATCHES "^arm64.*" AND NOT CMAKE_C_COMPILER_ID STREQUAL 
   # kleidiAI use CMAKE_SYSTEM_PROCESSOR to determine whether includes aarch64/arm64 ukernels
   # https://gitlab.arm.com/kleidi/kleidiai/-/blob/main/CMakeLists.txt#L134
   set(CMAKE_SYSTEM_PROCESSOR arm64)
-  FetchContent_Declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai})
+  onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
   onnxruntime_fetchcontent_makeavailable(kleidiai)
   set(KLEIDIAI_SOURCE_DIR ${kleidiai_SOURCE_DIR})
 endif()
 
 
-FetchContent_Declare(googlexnnpack URL ${DEP_URL_googlexnnpack} URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
+onnxruntime_fetchcontent_declare(googlexnnpack URL ${DEP_URL_googlexnnpack} URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
                      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch
+		     EXCLUDE_FROM_ALL
+		     FIND_PACKAGE_ARGS NAMES xnnpack
                     )
 onnxruntime_fetchcontent_makeavailable(googlexnnpack)
 set(XNNPACK_DIR ${googlexnnpack_SOURCE_DIR})
@@ -141,7 +143,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/scalar.c)
   list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/wasm.c)
 
-  if(onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+  if(onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD)
+    list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/wasmsimd.c)
+    list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/wasmrelaxedsimd.c)
+    target_compile_options(XNNPACK PRIVATE "-msimd128")
+    target_compile_options(XNNPACK PRIVATE "-mrelaxed-simd")
+  elseif(onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/wasmsimd.c)
     target_compile_options(XNNPACK PRIVATE "-msimd128")
   endif()

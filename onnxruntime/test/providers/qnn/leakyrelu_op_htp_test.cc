@@ -23,11 +23,8 @@ static void RunLeakyReluOpQDQTest(const TestInputDef<float>& input_def,
                                   int opset,
                                   ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildOpTestCase<float>("LeakyRelu", {input_def}, {}, attrs),
                        BuildQDQOpTestCase<QuantType>("LeakyRelu", {input_def}, {}, attrs),
@@ -61,11 +58,8 @@ TEST_F(QnnHTPBackendTests, LeakyReluOpSet16) {
 // Test Leaky Relu where input is FP16 and alpha is FP32
 TEST_F(QnnHTPBackendTests, LeakyReluFP16OpSet16) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto input_def = TestInputDef<float>({1, 2, 3}, false, {-40.0f, -20.0f, 1.0f, 10.0f, 30.0f, 40.0f});
   TestInputDef<MLFloat16> input_fp16_def = ConvertToFP16InputDef(input_def);

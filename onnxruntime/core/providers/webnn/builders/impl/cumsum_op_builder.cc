@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
@@ -28,7 +27,7 @@ class CumSumOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -51,7 +50,8 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const std::string axis_name = GetTensorName(input_defs, 1);
   const auto axis_tensor = *initializers.at(axis_name);
   emscripten::val axis = emscripten::val::undefined();
-  ORT_RETURN_IF_NOT(ReadScalarTensorData(axis_tensor, axis, logger), "Cannot get axis value");
+  ORT_RETURN_IF_NOT(ReadScalarTensorData(axis_tensor, axis, model_builder.GetGraphViewer(), logger),
+                    "Cannot get axis value");
   int64_t webnn_axis = HandleNegativeAxis(axis.as<int64_t>(), input_rank);
 
   NodeAttrHelper helper(node);
@@ -64,14 +64,14 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   options.set("label", node.Name());
 
   emscripten::val output = emscripten::val::object();
-  output = model_builder.GetBuilder().call<emscripten::val>("cumulativeSum", input, gsl::narrow<uint32_t>(webnn_axis),
-                                                            options);
+  output = model_builder.GetBuilder().call<emscripten::val>("cumulativeSum", input,
+                                                            SafeInt<uint32_t>(webnn_axis).Ref(), options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }
 
 // Operator support related.
-bool CumSumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool CumSumOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                         const Node& node,
                                         WebnnDeviceType /* device_type */,
                                         const logging::Logger& logger) const {
@@ -83,7 +83,8 @@ bool CumSumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
 
   const std::string axis_name = GetTensorName(input_defs, 1);
   // Inputs contain optional 'axis' input.
-  if (!Contains(initializers, axis_name)) {
+  const auto* init = graph_viewer.GetConstantInitializer(axis_name);
+  if (init == nullptr) {
     LOGS(logger, VERBOSE) << "The axis must be a constant initializer.";
     return false;
   }

@@ -23,9 +23,9 @@ class LstmOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /*device_type*/, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                const logging::Logger& logger) const override;
@@ -125,7 +125,7 @@ Status LstmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   return Status::OK();
 }
 
-bool LstmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool LstmOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                                       const WebnnDeviceType /*device_type*/, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 3) {
@@ -141,15 +141,15 @@ bool LstmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
   int32_t steps = static_cast<int32_t>(input_shape[0]);
 
   if (TensorExists(input_defs, 4)) {
-    if (!Contains(initializers, input_defs[4]->Name())) {
+    const auto* sequence_lens_init = graph_viewer.GetConstantInitializer(input_defs[4]->Name());
+    if (!sequence_lens_init) {
       LOGS(logger, ERROR) << "LSTM: sequence_lens must be constant";
       return false;
     }
 
-    const auto& sequence_lens_tensor = *initializers.at(input_defs[4]->Name());
+    const auto& sequence_lens_tensor = *sequence_lens_init;
     std::vector<int32_t> sequence_lens;
-    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, logger)) {
-      LOGS(logger, ERROR) << "Cannot read sequence lens tensor";
+    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, graph_viewer, logger)) {
       return false;
     }
     if (std::any_of(sequence_lens.begin(), sequence_lens.end(),
@@ -198,10 +198,10 @@ bool LstmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
   return true;
 }
 
-bool LstmOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool LstmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                            const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type = 0;  // input data type
   int32_t input1_type = 0;  // weight data type
   int32_t input2_type = 0;  // recurrentWeight data type
@@ -238,11 +238,11 @@ bool LstmOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initia
   if (has_input7) {
     input_types.push_back(input7_type);
   }
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
 }
 
 bool LstmOpBuilder::HasSupportedOutputsImpl(const Node& node,

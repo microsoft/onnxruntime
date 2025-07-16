@@ -8,9 +8,9 @@ parameters:
 - name: artifactName
   type: string
   default: ''
-  
+
 steps:
-    - task: PublishPipelineArtifact@1
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.SourcesDirectory)/js/node/bin/napi-v3/${{ parameters.os }}/${{ parameters.arch }}/onnxruntime_binding.node' 
+        targetPath: '$(Build.SourcesDirectory)/js/node/bin/napi-v6/${{ parameters.os }}/${{ parameters.arch }}'
         artifactName: '${{parameters.artifactName}}'

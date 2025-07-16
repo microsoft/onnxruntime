@@ -58,11 +58,8 @@ static void RunQDQGatherOpTest(const TestInputDef<float>& input_def,
                                ExpectedEPNodeAssignment expected_ep_assignment,
                                bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float, IndicesType>("Gather", {input_def}, {indices_def}, attrs);
   auto qdq_model_builder = BuildQDQGatherTestCase<QuantType, IndicesType>(input_def, indices_def, attrs,
@@ -150,11 +147,7 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesDynamicInt32_Axis0) {
 //
 // Static int32 indices with axis = 1
 // Issue fixed in 2.30
-#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
 TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_Axis1) {
-#else
-TEST_F(QnnHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt32_Axis1) {
-#endif
   RunQDQGatherOpTest<uint8_t, int32_t>(TestInputDef<float>({3, 3}, false, {1.0f, 1.2f, 1.9f, 2.3f, 3.4f, 3.9f, 4.5f, 5.7f, 5.9f}),
                                        TestInputDef<int32_t>({1, 2}, true, {0, 2}),
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
@@ -173,11 +166,8 @@ static void RunOpTest(const std::string& op_type,
                       const std::string& op_domain = kOnnxDomain,
                       float fp32_abs_err = 1e-3f) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
   RunQnnModelTest(BuildOpTestCase<InputType1, InputType2>(op_type, {input_def_1}, {input_defs_2}, attrs, op_domain),
@@ -188,7 +178,9 @@ static void RunOpTest(const std::string& op_type,
 }
 
 // Non-QDQ model, Gather with static input and dynamic int64 indices
-TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt64) {
+// Fails with QNN SDK 2.35.0:
+// Failed to finalize QNN graph. Error code: 1002
+TEST_F(QnnHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt64) {
   RunOpTest<float, int64_t>("Gather",
                             TestInputDef<float>({3, 2}, true, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
                             TestInputDef<int64_t>({2, 2}, false, {0, 1, 1, 2}),

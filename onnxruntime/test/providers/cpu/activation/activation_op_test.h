@@ -20,7 +20,8 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
                              const std::unordered_map<std::string, float> float_attribs = {},
                              const std::unordered_map<std::string, std::string> string_attribs = {},
                              bool is_tensorrt_supported = true, int opset_version = 7,
-                             const char* domain = kOnnxDomain) {
+                             const char* domain = kOnnxDomain,
+                             BaseTester::CustomOutputVerifierFn custom_output_verifier = nullptr) {
   for (const std::vector<T>& input_vals : input_vals_vec) {
     OpTester test(szOp, opset_version, domain);
 
@@ -74,6 +75,10 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
       test.SetOutputTolerance(0.0001f);
     }
 
+    if (custom_output_verifier) {
+      test.SetCustomOutputVerifier(custom_output_verifier);
+    }
+
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   }
 }
@@ -105,7 +110,7 @@ class ActivationOpTest : public ::testing::Test {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dist(low, high);
-#ifdef COREML_ENABLE_MLPROGRAM
+#ifdef USE_COREML
     // please check onnxruntime/onnxruntime/core/providers/coreml/builders/helper.cc:81
     std::vector<std::size_t> batch_size_list = {1, 2, 4, 9, 100};
 #else

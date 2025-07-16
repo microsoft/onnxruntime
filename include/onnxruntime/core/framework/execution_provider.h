@@ -5,6 +5,8 @@
 
 #ifndef SHARED_PROVIDER
 #include <memory>
+#include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -20,6 +22,7 @@ struct ComputeCapability;
 class KernelRegistry;
 struct KernelCreateInfo;
 class Node;
+class GraphOptimizerRegistry;
 }  // namespace onnxruntime
 #else
 #include <memory>
@@ -34,9 +37,12 @@ class Node;
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
 
+struct OrtEpDevice;
 struct OrtRunOptions;
 
 namespace onnxruntime {
+
+class IResourceAccountant;
 
 /**
    Logical device representation.
@@ -59,7 +65,9 @@ using RunOptions = ::OrtRunOptions;
 enum class DataLayout {
   NCHW,
   NHWC,
-  NCHWC,
+
+  // NCHW is the default ONNX standard data layout. So default to it.
+  Default = NCHW,
 };
 
 class IExecutionProvider {
@@ -69,6 +77,10 @@ class IExecutionProvider {
 
   IExecutionProvider(const std::string& type, OrtDevice device)
       : default_device_(device), type_{type} {
+  }
+
+  IExecutionProvider(const std::string& type, OrtDevice device, const logging::Logger& logger)
+      : default_device_(device), type_{type}, logger_{&logger} {
   }
 
   /*
@@ -127,10 +139,26 @@ class IExecutionProvider {
      and decide whether a node will be assigned to <*this> execution provider.
      For kernels registered in a kernel registry, `kernel_lookup` must be used
      to find a matching kernel for this EP.
+
+     The graph_optimizer_registry is designed for enabling L2+ graph optimizations tailored for EPs.
+     These optimizations are applied after the graph partitioner assigns ComputeCapability to the EP
+     and before EP's "Compile" or fusion.
+
+     Steps to use graph_optimizer_registry and create the optimization ComputeCapability:
+     1. Lookup Optimizer: The EP calls provider bridge API to lookup pre-defined optimizer by name and get selection function.
+        - Example: g_host->GetOptimizerByName(optimizer_name, graph_optimizer_registry, selection_func)
+     2. Run Selection Function: The EP executes the selection function to obtain the selection ComputeCapability.
+        - ComputeCapability.optimize_func would be set by the optimizer to the function that does the optimization.
+     3. Create Optimization ComputeCapability: The EP uses the selection ComputeCapability to create the optimization ComputeCapability.
+     4. Return ComputeCapability: The EP returns the final ComputeCapability, with nodes_to_optimize set to the optimization ComputeCapability.
+
+     Note: For more detailed implementations of using graph_optimizer_registry, please refer to TensorRT EP.
   */
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                const IKernelLookup& kernel_lookup) const;
+                const IKernelLookup& kernel_lookup,
+                const GraphOptimizerRegistry& graph_optimizer_registry,
+                IResourceAccountant* resource_accountant = nullptr) const;
 
   /**
      Get kernel registry per execution provider type.
@@ -151,7 +179,7 @@ class IExecutionProvider {
   /**
      Get the device id of current execution provider
   */
-  virtual int GetDeviceId() const { return 0; };
+  virtual int GetDeviceId() const { return default_device_.Id(); };
 
   /**
      Get execution provider's configuration options.
@@ -304,9 +332,21 @@ class IExecutionProvider {
   }
 
   virtual DataLayout GetPreferredLayout() const {
-    // NCHW is the default ONNX standard data layout. So default to it.
     // EPs which prefer a different layout should override to return their preferred layout.
-    return DataLayout::NCHW;
+    return DataLayout::Default;
+  }
+
+  /**
+    Given an op with domain `domain` and type `op_type`, determine whether an associated node's data layout should be
+    converted to `target_data_layout`.
+    If the EP prefers a non-default data layout (see `GetPreferredLayout()`), this function will be called during
+    layout transformation with `target_data_layout` set to the EP's preferred data layout.
+    A return value of `std::nullopt` indicates that this decision is left to ORT.
+  */
+  virtual std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view /*domain*/,
+                                                           std::string_view /*op_type*/,
+                                                           DataLayout /*target_data_layout*/) const {
+    return std::nullopt;
   }
 
   virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/, AllocatorMap&) const {}

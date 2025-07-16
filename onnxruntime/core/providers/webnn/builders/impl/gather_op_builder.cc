@@ -20,9 +20,9 @@ class GatherOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -51,7 +51,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 
-bool GatherOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool GatherOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                         const Node& node,
                                         const WebnnDeviceType /* device_type */,
                                         const logging::Logger& logger) const {
@@ -69,18 +69,18 @@ bool GatherOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
   return true;
 }
 
-bool GatherOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool GatherOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                              const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input = *node.InputDefs()[0];
   const auto& indices = *node.InputDefs()[1];
-  const auto& op_type = node.OpType();
-  int32_t input_type;
-  int32_t indices_type;
+  const std::string_view op_type = node.OpType();
+  int32_t input_type, indices_type;
+
   if (!GetType(input, input_type, logger) ||
       !GetType(indices, indices_type, logger))
     return false;
 
-  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger) &&
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger) &&
          IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
 }
 

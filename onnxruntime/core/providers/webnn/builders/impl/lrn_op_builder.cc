@@ -21,8 +21,12 @@ class LRNOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+  bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                               const logging::Logger& logger) const override;
 };
 
 Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -124,7 +128,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool LRNOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool LRNOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                      const Node& node,
                                      const WebnnDeviceType /* device_type */,
                                      const logging::Logger& logger) const {
@@ -137,6 +141,49 @@ bool LRNOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     LOGS(logger, VERBOSE) << "LRN only supports 4D input shape, input is "
                           << input_size << "D shape";
     return false;
+  }
+
+  return true;
+}
+
+bool LRNOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                                          const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const std::string_view op_type = node.OpType();
+  int32_t input_type = 0;
+  if (!GetType(*input_defs[0], input_type, logger)) {
+    return false;
+  }
+
+  // Check if the input data type is supported by each decomposed WebNN op.
+  // Decomposed ops include: "Add", "AveragePool", "Div", "Mul", "Pad", "Pow" and "Transpose".
+  for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
+    const std::string_view webnn_input_name = GetWebNNOpFirstInputName(decomposed_op_type);
+    if (!IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, input_type, wnn_limits, webnn_input_name, "X", logger)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool LRNOpBuilder::HasSupportedOutputsImpl(const Node& node,
+                                           const emscripten::val& wnn_limits,
+                                           const logging::Logger& logger) const {
+  const auto& output_defs = node.OutputDefs();
+  const std::string_view op_type = node.OpType();
+  int32_t output_type = 0;
+  if (!GetType(*output_defs[0], output_type, logger)) {
+    return false;
+  }
+
+  // Check if the output data type is supported by every decomposed WebNN op.
+  for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
+    if (!IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, output_type, wnn_limits, "output", "Y", logger)) {
+      return false;
+    }
   }
 
   return true;

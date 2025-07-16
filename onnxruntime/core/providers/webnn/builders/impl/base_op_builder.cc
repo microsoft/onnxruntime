@@ -17,7 +17,7 @@ namespace webnn {
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                                         const logging::Logger& logger) const {
   ORT_RETURN_IF_NOT(
-      IsOpSupported(model_builder.GetInitializerTensors(), node, model_builder.GetWebnnDeviceType(),
+      IsOpSupported(model_builder.GetGraphViewer(), node, model_builder.GetWebnnDeviceType(),
                     model_builder.GetOpSupportLimits(), logger),
       "Unsupported operator ", node.OpType());
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node, logger));
@@ -26,10 +26,10 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 
 // Operator support related.
 
-bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
+bool BaseOpBuilder::IsOpSupported(const GraphViewer& graph_viewer, const Node& node,
                                   const WebnnDeviceType device_type, const emscripten::val& wnn_limits,
                                   const logging::Logger& logger) const {
-  if (!HasSupportedInputs(initializers, node, wnn_limits, logger))
+  if (!HasSupportedInputs(graph_viewer, node, wnn_limits, logger))
     return false;
 
   if (!HasSupportedOutputs(node, wnn_limits, logger))
@@ -38,11 +38,11 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
   if (!HasSupportedOpSet(node, logger))
     return false;
 
-  return IsOpSupportedImpl(initializers, node, device_type, logger);
+  return IsOpSupportedImpl(graph_viewer, node, device_type, logger);
 }
 
-bool BaseOpBuilder::HasSupportedInputs(const InitializedTensorSet& initializers, const Node& node, const emscripten::val& wnn_limits,
-                                       const logging::Logger& logger) const {
+bool BaseOpBuilder::HasSupportedInputs(const GraphViewer& graph_viewer, const Node& node,
+                                       const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* input : node.InputDefs()) {
     if (!IsTensorShapeSupported(*input, node_name, logger, allow_empty_tensor_as_input_)) {
@@ -50,20 +50,25 @@ bool BaseOpBuilder::HasSupportedInputs(const InitializedTensorSet& initializers,
     }
   }
 
-  return HasSupportedInputsImpl(initializers, node, wnn_limits, logger);
+  return HasSupportedInputsImpl(graph_viewer, node, wnn_limits, logger);
 }
 
-bool BaseOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& initializers, const Node& node,
+bool BaseOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                            const emscripten::val& wnn_limits,
                                            const logging::Logger& logger) const {
   // We only check the type of input 0 by default, specific op builder can override this.
   const auto& input = *node.InputDefs()[0];
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input_type;
   if (!GetType(input, input_type, logger))
     return false;
+  const std::string_view webnn_op_type = GetWebNNOpType(op_type);
+  if (webnn_op_type.empty())
+    return false;
 
-  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "Input", logger);
+  const std::string_view webnn_input_name = GetWebNNOpFirstInputName(op_type);
+  return IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, input_type, wnn_limits,
+                                      webnn_input_name, "input", logger);
 }
 
 bool BaseOpBuilder::HasSupportedOutputs(const Node& node, const emscripten::val& wnn_limits,
@@ -83,7 +88,7 @@ bool BaseOpBuilder::HasSupportedOutputsImpl(const Node& node,
                                             const logging::Logger& logger) const {
   // We only check the type of output 0 by default, specific op builder can override this.
   const auto& output = *node.OutputDefs()[0];
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t output_type;
   if (!GetType(output, output_type, logger))
     return false;

@@ -23,6 +23,9 @@ interface SessionHandler {
 
   readonly inputNames: readonly string[];
   readonly outputNames: readonly string[];
+
+  readonly inputMetadata: readonly InferenceSession.ValueMetadata[];
+  readonly outputMetadata: readonly InferenceSession.ValueMetadata[];
 }
 
 /**

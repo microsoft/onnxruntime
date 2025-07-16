@@ -309,11 +309,9 @@ class NumpyHelper:
         # When weights are in external data format but not presented, we can still test the optimizer with two changes:
         # (1) set fill_zeros = True  (2) change load_external_data=False in optimizer.py
         if fill_zeros:
-            from onnx import mapping
-
             return ndarray(
                 shape=tensor.dims,
-                dtype=mapping.TENSOR_TYPE_TO_NP_TYPE[tensor.data_type],
+                dtype=helper.tensor_dtype_to_np_dtype(tensor.data_type),
             )
 
         return numpy_helper.to_array(tensor)

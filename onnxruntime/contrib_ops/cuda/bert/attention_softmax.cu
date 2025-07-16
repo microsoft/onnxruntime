@@ -29,16 +29,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace attention_softmax_cuda {
 
-#define DISPATCH_BIAS(attn_bias, HAS_BIAS, ...)                 \
-  [&] {                                                         \
-    const dim3 grid(num_heads* sequence_length, batch_size, 1); \
-    if (attn_bias != nullptr) {                                 \
-      constexpr static bool HAS_BIAS = true;                    \
-      return __VA_ARGS__();                                     \
-    } else {                                                    \
-      constexpr static bool HAS_BIAS = false;                   \
-      return __VA_ARGS__();                                     \
-    }                                                           \
+#define DISPATCH_BIAS(attn_bias, HAS_BIAS, ...)                  \
+  [&] {                                                          \
+    const dim3 grid(num_heads * sequence_length, batch_size, 1); \
+    if (attn_bias != nullptr) {                                  \
+      constexpr static bool HAS_BIAS = true;                     \
+      return __VA_ARGS__();                                      \
+    } else {                                                     \
+      constexpr static bool HAS_BIAS = false;                    \
+      return __VA_ARGS__();                                      \
+    }                                                            \
   }()
 
 // Macro to declare variables:
@@ -49,14 +49,15 @@ namespace attention_softmax_cuda {
 // grid size is (num_heads * sequence_length, batch_size, 1)
 // input and output shape is (batch_size, num_heads, sequence_length, total_sequence_length)
 // bias shape is (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)
-#define DECLARE_SOFTMAX_VARS()                                                                                      \
-  [[maybe_unused]] const int s = blockIdx.x % sequence_length;                                                      \
-  const int b = blockIdx.y;                                                                                         \
-  int64_t offset = static_cast<int64_t>(b * gridDim.x + blockIdx.x) * static_cast<int64_t>(total_sequence_length);  \
-  [[maybe_unused]] int64_t bias_offset = 0;                                                                         \
-  if constexpr (HAS_BIAS) {                                                                                         \
-    const int j = (broadcast_attn_bias_dim_0 ? 0 : (b * gridDim.x)) + (broadcast_attn_bias_dim_1 ? s : blockIdx.x); \
-    bias_offset = static_cast<int64_t>(j) * static_cast<int64_t>(total_sequence_length);                            \
+#define DECLARE_SOFTMAX_VARS()                                                                                        \
+  [[maybe_unused]] const int s = blockIdx.x % sequence_length;                                                        \
+  const int b = blockIdx.y;                                                                                           \
+  int64_t offset = static_cast<int64_t>(b * gridDim.x + blockIdx.x) * static_cast<int64_t>(total_sequence_length);    \
+  [[maybe_unused]] int64_t bias_offset = 0;                                                                           \
+  if constexpr (HAS_BIAS) {                                                                                           \
+    const int j = (broadcast_attn_bias_dim_0 ? 0 : (b * (broadcast_attn_bias_dim_1 ? sequence_length : gridDim.x))) + \
+                  (broadcast_attn_bias_dim_1 ? s : blockIdx.x);                                                       \
+    bias_offset = static_cast<int64_t>(j) * static_cast<int64_t>(total_sequence_length);                              \
   }
 
 // This kernel is for non causal, attention mask 1D or None, and total_sequence_length > 1024.
@@ -94,7 +95,12 @@ __device__ inline void Softmax(const int total_sequence_length,
       }
     }
   }
+
+#if CUDART_VERSION >= 12090
+  const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, ::cuda::maximum());
+#else
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max());
+#endif
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -113,7 +119,12 @@ __device__ inline void Softmax(const int total_sequence_length,
     }
   }
 
+#if CUDART_VERSION >= 12090
+  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_sum, ::cuda::std::plus());
+#else
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_sum, cub::Sum());
+#endif
+
   if (threadIdx.x == 0) {
     sum_reverse_block = 1.f / sum;
   }
@@ -170,7 +181,11 @@ __device__ inline void SoftmaxSmall(const int total_sequence_length,
   // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
   // a math transform as below is leveraged to get a stable softmax:
   // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
+#if CUDART_VERSION >= 12090
+  const auto max = BlockReduce(tmp_storage).Reduce(input_data, ::cuda::maximum(), end);
+#else
   const auto max = BlockReduce(tmp_storage).Reduce(input_data, cub::Max(), end);
+#endif
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -183,7 +198,11 @@ __device__ inline void SoftmaxSmall(const int total_sequence_length,
     thread_data_exp = expf(input_data - max_block);
   }
 
+#if CUDART_VERSION >= 12090
+  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, ::cuda::std::plus(), end);
+#else
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), end);
+#endif
 
   // Store value of 1.0/sum.
   if (threadIdx.x == 0) {
@@ -239,7 +258,12 @@ __global__ void SoftmaxLargeKernel(const int total_sequence_length,
     cached_data[i] = input_data;
     thread_data_max = max(thread_data_max, input_data);
   }
+
+#if CUDART_VERSION >= 12090
+  const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, ::cuda::maximum(), end);
+#else
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
+#endif
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -253,7 +277,12 @@ __global__ void SoftmaxLargeKernel(const int total_sequence_length,
     cached_data[i] = is_valid ? expf(cached_data[i] - max_block) : 0.0f;
     thread_data_exp += cached_data[i];
   }
+
+#if CUDART_VERSION >= 12090
+  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, ::cuda::std::plus(), end);
+#else
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), end);
+#endif
 
   // Store value of 1.0/sum.
   if (threadIdx.x == 0) {
@@ -342,7 +371,11 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int total_sequence_length,
     return;
   }
 
+#if CUDART_VERSION >= 12090
+  const float max = BlockReduce(tmp_storage).Reduce(max_thread_data, ::cuda::maximum(), total_sequence_length);
+#else
   const float max = BlockReduce(tmp_storage).Reduce(max_thread_data, cub::Max(), total_sequence_length);
+#endif
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -356,7 +389,12 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int total_sequence_length,
     cached_data[i] = ev;
     sum_thread_data_exp += ev;
   }
+
+#if CUDART_VERSION >= 12090
+  const auto sum = BlockReduce(tmp_storage).Reduce(sum_thread_data_exp, ::cuda::std::plus(), TPB);
+#else
   const auto sum = BlockReduce(tmp_storage).Reduce(sum_thread_data_exp, cub::Sum(), TPB);
+#endif
 
   // Store value of 1.0/sum
   if (threadIdx.x == 0) {
@@ -440,7 +478,11 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int total_sequence_length,
     return;
   }
 
+#if CUDART_VERSION >= 12090
+  const float max = BlockReduce(tmp_storage).Reduce(thread_data, ::cuda::maximum(), total_sequence_length);
+#else
   const float max = BlockReduce(tmp_storage).Reduce(thread_data, cub::Max(), total_sequence_length);
+#endif
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -449,7 +491,12 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int total_sequence_length,
   __syncthreads();
 
   float thread_data_exp = threadIdx.x < total_sequence_length ? expf(thread_data - max_block) : 0.0f;
+
+#if CUDART_VERSION >= 12090
+  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, ::cuda::std::plus(), total_sequence_length);
+#else
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), total_sequence_length);
+#endif
 
   // Store value of 1.0/sum
   if (threadIdx.x == 0) {
@@ -595,7 +642,12 @@ __device__ inline void SoftmaxSmallPacked(const int total_sequence_length,
   float input_data = HAS_BIAS ? float(input[index]) + float(attn_bias[bias_offset + threadIdx.x]) : float(input[index]);
 
   float thread_data_max = is_valid ? input_data : float(-CUDART_INF_F);
+
+#if CUDART_VERSION >= 12090
+  const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, ::cuda::maximum(), end);
+#else
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
+#endif
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -608,7 +660,11 @@ __device__ inline void SoftmaxSmallPacked(const int total_sequence_length,
     thread_data_exp = expf(input_data - max_block);
   }
 
+#if CUDART_VERSION >= 12090
+  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, ::cuda::std::plus(), end);
+#else
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), end);
+#endif
 
   // Store value of 1.0/sum.
   if (threadIdx.x == 0) {

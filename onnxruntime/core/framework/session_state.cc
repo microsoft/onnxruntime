@@ -33,8 +33,12 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
   // Wait is a little special as we need to consider the source stream the notification generated,
   // and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType notification_owner_device_type,
-                                   const OrtDevice::DeviceType executor_device_type) const override {
+  WaitNotificationFn GetWaitHandle(const OrtDevice& notification_owner_device,
+                                   const OrtDevice& executor_device) const override {
+    auto notification_owner_device_type = notification_owner_device.UsesCpuMemory() ? OrtDevice::CPU
+                                                                                    : notification_owner_device.Type();
+    auto executor_device_type = executor_device.UsesCpuMemory() ? OrtDevice::CPU : executor_device.Type();
+
     auto it = notification_wait_map_.find(GetWaitKey(notification_owner_device_type, executor_device_type));
     return it == notification_wait_map_.end() ? nullptr : it->second;
   }
@@ -54,11 +58,24 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
     create_stream_map_.insert({device_type, f});
   }
 
+  void RegisterSetDeviceFn(const OrtDevice::DeviceType device_type, SetDeviceFn f) override {
+    set_device_map_.insert({device_type, f});
+  }
+
+  std::optional<SetDeviceFn> GetSetDeviceFn(const OrtDevice::DeviceType device_type) const override {
+    auto it = set_device_map_.find(device_type);
+    if (it != set_device_map_.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
   StreamCommandHandleRegistryImpl() = default;
 
  private:
   InlinedHashMap<std::string, WaitNotificationFn> notification_wait_map_;
   InlinedHashMap<OrtDevice::DeviceType, CreateStreamFn> create_stream_map_;
+  InlinedHashMap<OrtDevice::DeviceType, SetDeviceFn> set_device_map_;
 };
 #endif
 
@@ -287,16 +304,12 @@ const std::vector<AllocPlanPerValue>& SessionState::GetPerValueAllocPlan() const
   return p_seq_exec_plan_->allocation_plan;
 }
 
-Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
+Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value,
                                           bool constant, bool sparse) {
   auto p = initialized_tensors_.insert({ort_value_index, ort_value});
   if (!p.second)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated ort_value index:", ort_value_index,
                            ". Do you have duplicated calls to SessionState::AddInitializedTensor function?");
-
-  if (d != nullptr && d->f != nullptr) {
-    deleter_for_initialized_tensors_.insert_or_assign(ort_value_index, *d);
-  }
 
   if (constant) {
     constant_initialized_tensors_.insert({ort_value_index, ort_value});
@@ -409,6 +422,10 @@ Status SessionState::PrepackConstantInitializedTensors(
   auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
     for (auto& node : GetGraphViewer().Nodes()) {
+      if (sess_options_.IsLoadCancellationFlagSet()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                               "Weight pre-packing was canceled due to user request.");
+      }
       auto kernel = GetMutableKernel(node.Index());
       int input_idx = 0;
       for (auto& input_def : node.InputDefs()) {
@@ -1127,7 +1144,7 @@ Status SessionState::CreateSubgraphSessionState() {
       if (!ep.empty() &&
           ep != kCpuExecutionProvider && ep != kCudaExecutionProvider &&
           ep != kRocmExecutionProvider && ep != kDmlExecutionProvider &&
-          ep != kJsExecutionProvider) {
+          ep != kJsExecutionProvider && ep != kWebGpuExecutionProvider) {
         // SessionState is only used when ORT is executing the subgraph. If a non-ORT EP has taken the control flow
         // node containing the subgraph it will create whatever state it needs internally.
         continue;
@@ -1528,6 +1545,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               p_seq_exec_plan_);
   ORT_RETURN_IF_ERROR(status);
 
+  if (session_options.IsLoadCancellationFlagSet()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                           "SessionState finalize is canceled due to user request");
+  }
+
   // Record the allocation plan
 
   // Uncomment the below to dump the allocation plan to std::cout
@@ -1598,16 +1620,16 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       Env::Default(), graph_location, *graph_viewer_,
       GetAllocator(OrtDevice()),
       ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator,
-      [this, remove_initializers](const std::string& name, int idx, const OrtValue& value, const OrtCallback& d,
+      [this, remove_initializers](const std::string& name, int idx, const OrtValue& value,
                                   bool constant, bool sparse) -> Status {
-        ORT_RETURN_IF_ERROR(AddInitializedTensor(idx, value, &d, constant, sparse));
+        ORT_RETURN_IF_ERROR(AddInitializedTensor(idx, value, constant, sparse));
         if (remove_initializers) {
           graph_.RemoveInitializedTensor(name);
         }
         return Status::OK();
       },
       logger_, data_transfer_mgr_, external_data_loader_mgr_, *p_seq_exec_plan_, session_options,
-      memory_profile_func, name_to_buffered_tensor_, graph_.GetPrepacked()));
+      memory_profile_func, graph_.GetPrepacked()));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device

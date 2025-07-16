@@ -5,6 +5,7 @@
 #include "contrib_ops/webgpu/bert/attention_common.h"
 #include "contrib_ops/webgpu/bert/multihead_attention.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "contrib_ops/webgpu/bert/flash_attention.h"
 
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
@@ -41,6 +42,11 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   const Tensor* past_key = context.Input(6);
   const Tensor* past_value = context.Input(7);
 
+  // Not supported in WebGPU EP currently
+  const Tensor* cache_indirection = nullptr;
+  const Tensor* past_sequence_length = nullptr;
+  constexpr bool past_present_share_buffer = false;
+
   if (query->Shape().GetDims().size() == 5) {
     ORT_NOT_IMPLEMENTED("Packed QKV of shape (B, L, N, 3, H) not implemented for webgpu");
   }
@@ -52,9 +58,23 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   }
 
   AttentionParameters params;
-  ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query, key, value,
-                                                                      bias, key_padding_mask, attention_bias, past_key, past_value, nullptr, &params,
-                                                                      num_heads_, mask_filter_value_, scale_, is_unidirectional_, false, kMultiHeadAttention,
+  ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
+                                                                      key,
+                                                                      value,
+                                                                      bias,
+                                                                      key_padding_mask,
+                                                                      attention_bias,
+                                                                      past_key,
+                                                                      past_value,
+                                                                      cache_indirection,
+                                                                      past_sequence_length,
+                                                                      &params,
+                                                                      num_heads_,
+                                                                      mask_filter_value_,
+                                                                      scale_,
+                                                                      is_unidirectional_,
+                                                                      past_present_share_buffer,
+                                                                      kMultiHeadAttention,
                                                                       context.DeviceLimits().maxComputeInvocationsPerWorkgroup));
   WebgpuAttentionParameters parameters(params);
   TensorShapeVector output_shape(3);
@@ -73,6 +93,11 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   TensorShape present_shape(present_dims);
   Tensor* present_key = context.Output(1, present_shape);
   Tensor* present_value = context.Output(2, present_shape);
+
+  if (CanApplyFlashAttention(bias, present_key, present_value, parameters, context)) {
+    return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
+                               present_value, parameters, context);
+  }
 
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,
                                 parameters.sequence_length_, parameters.head_size_});
