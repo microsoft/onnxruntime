@@ -3647,7 +3647,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Default); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
-    onnxruntime::InlinedVector<std::unique_ptr<GraphTransformer>> transformers_to_register;
+    std::function<onnxruntime::InlinedVector<std::unique_ptr<GraphTransformer>>()> transformers_to_register;
 
     // Enable free dimension override even when the graph optimization level is 0.
     // If the optimization level is above 0, the override will be applied during level 1 optimization.
@@ -3656,7 +3656,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
         return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                      optimizers_to_disable_,
                                                      GetIntraOpThreadPoolToUse());
-      }();
+      };
     }
 
     if (graph_optimization_level >= level) {
@@ -3682,10 +3682,10 @@ common::Status InferenceSession::AddPredefinedTransformers(
                                                                       optimizers_to_disable_,
                                                                       GetIntraOpThreadPoolToUse());
         }
-      }();
+      };
     }
 
-    for (auto& entry : transformers_to_register) {
+    for (auto& entry : transformers_to_register()) {
       ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
     }
   }
