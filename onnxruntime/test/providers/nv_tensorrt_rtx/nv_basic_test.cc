@@ -429,7 +429,7 @@ TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
 
   env.UnregisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider);
 }
-#endif // defined(WIN32)
+#endif  // defined(WIN32)
 
 }  // namespace test
 }  // namespace onnxruntime
