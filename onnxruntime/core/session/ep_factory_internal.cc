@@ -8,25 +8,33 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ep_api_utils.h"
 #include "core/session/ort_apis.h"
+#include "onnxruntime_config.h"  // for ORT_VERSION
 
 namespace onnxruntime {
 
 using Forward = ForwardToFactory<EpFactoryInternal>;
 
-EpFactoryInternal::EpFactoryInternal(const std::string& ep_name, const std::string& vendor,
+EpFactoryInternal::EpFactoryInternal(const std::string& ep_name, const std::string& vendor, uint32_t vendor_id,
                                      GetSupportedFunc&& get_supported_func,
                                      CreateFunc&& create_func)
     : ep_name_{ep_name},
       vendor_{vendor},
+      vendor_id_{vendor_id},
       get_supported_func_{std::move(get_supported_func)},
       create_func_{create_func} {
   ort_version_supported = ORT_API_VERSION;
 
   OrtEpFactory::GetName = Forward::GetFactoryName;
   OrtEpFactory::GetVendor = Forward::GetVendor;
+  OrtEpFactory::GetVendorId = Forward::GetVendorId;
+  OrtEpFactory::GetVersion = Forward::GetVersion;
   OrtEpFactory::GetSupportedDevices = Forward::GetSupportedDevices;
   OrtEpFactory::CreateEp = Forward::CreateEp;
   OrtEpFactory::ReleaseEp = Forward::ReleaseEp;
+}
+
+const char* EpFactoryInternal::GetVersion() const noexcept {
+  return ORT_VERSION;
 }
 
 OrtStatus* EpFactoryInternal::GetSupportedDevices(const OrtHardwareDevice* const* devices,

@@ -43,7 +43,6 @@
     "ms-gsl",
     "nlohmann-json",
     "onnx",
-    "optional-lite",
     {
       "name": "protobuf",
       "version>=": "3.21.12"
@@ -94,6 +93,10 @@
     "webgpu-ep": {
       "description": "Build with WebGPU EP",
       "dependencies": []
+    },
+    "webgpu-ep-wgsl-template-dynamic": {
+      "description": "Build with WebGPU EP with dynamic WGSL template code generator",
+      "dependencies": ["duktape"]
     }
   },
   "overrides": [
@@ -104,6 +107,10 @@
     {
       "name": "flatbuffers",
       "version": "23.5.26"
+    },
+    {
+      "name": "duktape",
+      "version": "2.7.0#2"
     }
   ]
 }

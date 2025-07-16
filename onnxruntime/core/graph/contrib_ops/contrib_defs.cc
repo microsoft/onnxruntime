@@ -3599,6 +3599,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             "(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.",
             AttributeProto::INT,
             static_cast<int64_t>(128))
+      .Attr("bits",
+            "Number of bits used for weight quantization. Must be either 4 or 8. ",
+            AttributeProto::INT,
+            static_cast<int64_t>(4))
       .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
       .Input(1,
              "indices",
@@ -3614,22 +3618,25 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 2, 0);
-        // Shape inference
+
+        // The first 3 inputs must have shape.
         if (!hasNInputShapes(ctx, 3)) {
           return;
         }
         const TensorShapeProto& data_shape = ctx.getInputType(0)->tensor_type().shape();
         const TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
         const TensorShapeProto& scales_shape = ctx.getInputType(2)->tensor_type().shape();
-        int r = data_shape.dim_size();
 
-        if (r < 1) {
-          fail_shape_inference("data tensor must have rank >= 1");
+        int r = data_shape.dim_size();
+        if (r <= 1) {
+          fail_shape_inference("data tensor must have rank > 1");
         }
 
         int gather_axis = static_cast<int>(getAttribute(ctx, "gather_axis", 0));
         int quantize_axis = static_cast<int>(getAttribute(ctx, "quantize_axis", 1));
+        int bits = static_cast<int>(getAttribute(ctx, "bits", 4));
         auto block_size = getAttribute(ctx, "block_size", 128);
+
         if (gather_axis < -r || gather_axis >= r) {
           fail_shape_inference("gather_axis must be in [-r, r-1]");
         }
@@ -3643,15 +3650,19 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         gather_axis = (gather_axis + r) % r;
         quantize_axis = (quantize_axis + r) % r;
 
-        if ((ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) && gather_axis != 0) {
-          fail_shape_inference("gather_axis must be 0, for uint8 data");
+        if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) {
+          if (gather_axis != 0) {
+            fail_shape_inference("gather_axis must be 0, for uint8 data");
+          }
+          // CPU implementation requires quantize_axis to be the last dimension right now.
+          // we are relaxing it in the spec and shape inference since other EP might not have such restriction.
         }
 
         if (scales_shape.dim_size() != r) {
           fail_shape_inference("scales must have the same rank as data");
         }
 
-        uint32_t components = ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8 ? 2 : 1;
+        uint32_t components = (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) ? (8 / bits) : 1;
         for (int i = 0; i < r; ++i) {
           if (!data_shape.dim(i).has_dim_value() ||
               !scales_shape.dim(i).has_dim_value() ||
@@ -3663,10 +3674,6 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
 
         // validate zero point shape
         if (ctx.hasInput(3)) {
-          if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) {
-            fail_type_inference("zero_points are not supported for uint8_t data type");
-          }
-
           if (!hasInputShape(ctx, 3)) {
             fail_shape_inference("zero_points shape must be known");
           }
@@ -3679,6 +3686,12 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
           for (int i = 0; i < r; ++i) {
             if (!zp_shape.dim(i).has_dim_value() ||
                 zp_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value()) {
+              if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8 &&
+                  bits == 4 &&
+                  i == quantize_axis &&
+                  zp_shape.dim(i).dim_value() == (scales_shape.dim(i).dim_value() + 1) / 2) {
+                continue;
+              }
               fail_shape_inference("zero points shape and scales shape do not match");
             }
           }
@@ -3686,19 +3699,27 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
 
         int q = indices_shape.dim_size();
         int out_rank = q + r - 1;
-        if (out_rank == 0) {
-          ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        auto* output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        output_shape->clear_dim();
+        for (int i = 0; i < gather_axis; ++i) {
+          *output_shape->add_dim() = data_shape.dim(i);
         }
-        for (int i = 0; i < out_rank; ++i) {
-          // For uint8_t data type the last dimension needs to be expanded back to actual dimension,
-          // because the data 2 int4s are stored packed in a single uint8_t.
-          auto last_dimension_components = (i == out_rank - 1) ? components : 1;
-          *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape()->add_dim() =
-              (i < gather_axis)
-                  ? data_shape.dim(i)
-              : (i >= gather_axis && i < gather_axis + q)
-                  ? indices_shape.dim(i - gather_axis)
-                  : data_shape.dim(i - q + 1) * last_dimension_components;
+        for (int i = 0; i < q; ++i) {
+          *output_shape->add_dim() = indices_shape.dim(i);
+        }
+        for (int i = gather_axis + 1; i < r; ++i) {
+          *output_shape->add_dim() = data_shape.dim(i);
+        }
+
+        // Find the correct dimension to expand and multiply it by components
+        if (components > 1) {
+          int quantize_output_dim_idx = (quantize_axis < gather_axis) ? quantize_axis : quantize_axis + q - 1;
+          if (quantize_output_dim_idx < out_rank) {
+            auto* dim_to_update = output_shape->mutable_dim(quantize_output_dim_idx);
+            if (dim_to_update->has_dim_value()) {
+              dim_to_update->set_dim_value(dim_to_update->dim_value() * components);
+            }
+          }
         }
       });
 

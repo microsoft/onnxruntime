@@ -78,7 +78,7 @@ class ModelBuilder {
   const GraphViewer& graph_viewer_;
   const logging::Logger& logger_;
   const bool is_float16array_available_ = !emscripten::val::global("Float16Array").isUndefined() &&
-                                          emscripten::val::global("Float16Array").hasOwnProperty("from");
+                                          !emscripten::val::global("Float16Array")["from"].isUndefined();
 
   emscripten::val wnn_context_ = emscripten::val::undefined();
   emscripten::val wnn_builder_ = emscripten::val::undefined();

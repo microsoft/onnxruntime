@@ -235,6 +235,7 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         op_types_to_quantize: tuple[str, ...] | None = None,
         quant_axes: tuple[tuple[str, int], ...] | None = None,
         bits: int = 4,
+        channel_wised_quantize: bool = False,
     ):
         """
         This is a class for weight only affine quantization configuration.
@@ -269,6 +270,9 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         self.is_symmetric = is_symmetric
         self.bits = bits
         self.accuracy_level = accuracy_level
+        self.channel_wised_quantize = channel_wised_quantize
+        if channel_wised_quantize and quant_format == QuantFormat.QOperator:
+            raise NotImplementedError("QuantFormat.QOperator is not supported channel_wised_quantize yet")
 
 
 class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
@@ -290,8 +294,8 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         """
         # Import torch and DataLoader
         try:
-            import torch
-            from torch.utils.data import DataLoader
+            import torch  # noqa: PLC0415
+            from torch.utils.data import DataLoader  # noqa: PLC0415
 
             self.torch = torch
             self.DataLoader = DataLoader
@@ -303,7 +307,7 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
 
         # Import datasets
         try:
-            from datasets import load_dataset
+            from datasets import load_dataset  # noqa: PLC0415
 
             self.load_dataset = load_dataset
         except ImportError:
@@ -314,7 +318,7 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
 
         # Import transformers
         try:
-            from transformers import AutoConfig, AutoTokenizer
+            from transformers import AutoConfig, AutoTokenizer  # noqa: PLC0415
 
             self.AutoConfig = AutoConfig
             self.AutoTokenizer = AutoTokenizer
@@ -539,7 +543,7 @@ class HQQWeightOnlyQuantizer:
         opt_params: dict | None = None,
         verbose=False,
     ):
-        import torch
+        import torch  # noqa: PLC0415
 
         opt_params = {"lp_norm": 0.7, "beta": 1e1, "kappa": 1.01, "iters": 20} if opt_params is None else opt_params
         lp_norm, beta, kappa, iters = (
@@ -598,7 +602,7 @@ class HQQWeightOnlyQuantizer:
     def quantize_internal(
         self, tensor, bits=4, channel_wise=True, group_size=64, optimize=True, round_zero=True, axis=1
     ):
-        import torch
+        import torch  # noqa: PLC0415
 
         weight = tensor.float()
         ori_shape = weight.shape
@@ -676,7 +680,7 @@ class HQQWeightOnlyQuantizer:
         if node.op_type == "Gather":
             raise NotImplementedError("Gather quantization is not supported yet in HQQ")
 
-        import torch
+        import torch  # noqa: PLC0415
 
         logger.info(f"start to quantize {node.name} ...")
         input_b = node.input[1]
@@ -767,6 +771,26 @@ def get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, Gr
     return None, None
 
 
+# transpose int4 matrix (packed as uint8)
+def transpose_packed_int4_matrix(packed, rows, cols):
+    # unpack to int4 matrix
+    total = rows * cols
+    high = (packed >> 4) & 0x0F
+    low = packed & 0x0F
+    int4_vals = np.empty(total, dtype=np.uint8)
+    int4_vals[0::2] = low
+    int4_vals[1::2] = high
+    int4_matrix = int4_vals.reshape((rows, cols))
+
+    # transpose int4 matrix
+    int4_matrix_transposed = int4_matrix.T
+
+    # pack to uint8
+    flat = int4_matrix_transposed.reshape(-1)
+    packed = ((flat[1::2] << 4) & 0xF0) | (flat[0::2] & 0x0F)
+    return packed.astype(np.uint8)
+
+
 class DefaultWeightOnlyQuantizer:
     def __init__(self, config: DefaultWeightOnlyQuantConfig):
         self.config = config
@@ -803,6 +827,10 @@ class DefaultWeightOnlyQuantizer:
                     packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
                 )
         else:
+            # block size equal to rows (K) if channel wised quantize enabled
+            block_size = rows if self.config.channel_wised_quantize else self.config.block_size
+            k_blocks = (rows + block_size - 1) // block_size
+
             assert qbits == 4, "QDQ format only support 4 bits quantization"
             packed = np.zeros((rows * cols + 1) // 2, dtype="uint8")
             zero_point = np.zeros((cols * k_blocks + 1) // 2, dtype="uint8")
@@ -845,6 +873,21 @@ class DefaultWeightOnlyQuantizer:
             )
             scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_DQ_scales")
 
+        # if QDQ, CW and SYM enabled, optimize for Intel NPU, tranpose the weight to NHWC format will increase performance
+        qdq_opt_for_intel_npu_enabled = (
+            self.config.quant_format == QuantFormat.QDQ
+            and self.config.channel_wised_quantize
+            and self.config.is_symmetric
+        )
+        if qdq_opt_for_intel_npu_enabled:
+            rows, cols = b_ndarray.shape
+            packed = transpose_packed_int4_matrix(packed, rows, cols)
+            scales = scales.reshape((cols, 1))  # (cols, 1)
+            b_quant = onnx.helper.make_tensor(
+                b_tensor.name + f"_DQ_Q{bits}", qtype, [cols, rows], packed.tobytes(), True
+            )
+            scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_DQ_scales")
+
         for input in b_graph.input:
             if input.name == input_b:
                 b_graph.input.remove(input)
@@ -884,7 +927,12 @@ class DefaultWeightOnlyQuantizer:
         else:
             dq_input_names = [b_quant.name, scales_tensor.name]
             dq_output_names = [b_quant.name + "_output"]
-            matmul_input_names = [node.input[0], dq_output_names[0]]
+            tp_input_names = [dq_output_names[0]]
+            tp_output_names = [dq_output_names[0] + "_transposed"]
+            matmul_input_names = [
+                node.input[0],
+                tp_output_names[0] if qdq_opt_for_intel_npu_enabled else dq_output_names[0],
+            ]
             matmul_output_names = [node.output[0]]
             if not self.config.is_symmetric:
                 zp_tensor = onnx.helper.make_tensor(
@@ -892,7 +940,11 @@ class DefaultWeightOnlyQuantizer:
                 )
                 dq_input_names.append(zp_tensor.name)
                 b_graph.initializer.extend([zp_tensor])
-            dq_kwargs = {"axis": 0, "block_size": self.config.block_size}
+            rows, cols = b_ndarray.shape
+            dq_kwargs = {
+                "axis": 1 if qdq_opt_for_intel_npu_enabled else 0,
+                "block_size": rows if self.config.channel_wised_quantize else self.config.block_size,
+            }
             dq_node = onnx.helper.make_node(
                 "DequantizeLinear",
                 inputs=dq_input_names,
@@ -906,7 +958,16 @@ class DefaultWeightOnlyQuantizer:
                 outputs=matmul_output_names,
                 name=node.name + f"_matmul_Q{bits}" if node.name else "",
             )
-            output_nodes.extend([dq_node, matmul_node])
+            if qdq_opt_for_intel_npu_enabled:
+                tp_node = onnx.helper.make_node(
+                    "Transpose",
+                    inputs=tp_input_names,
+                    outputs=tp_output_names,
+                    perm=[1, 0],
+                )
+                output_nodes.extend([dq_node, tp_node, matmul_node])
+            else:
+                output_nodes.extend([dq_node, matmul_node])
 
         return output_nodes
 
@@ -1114,7 +1175,7 @@ class NVAWQWeightOnlyQuantizer:
             ModelProto: The quantized ONNX model.
         """
         try:
-            from modelopt.onnx.quantization.int4 import quantize as quantize_int4
+            from modelopt.onnx.quantization.int4 import quantize as quantize_int4  # noqa: PLC0415
         except ImportError:
             print(
                 "Please ensure that the 'modelopt' package is installed. Please install it using pip install nvidia_modelopt."
@@ -1171,6 +1232,7 @@ class MatMulNBitsQuantizer:
         quant_format=QuantFormat.QOperator,
         op_types_to_quantize: tuple[str, ...] | None = None,
         quant_axes: tuple[tuple[str, int], ...] | None = None,
+        channel_wised_quantize: bool = False,
         algo_config: WeightOnlyQuantConfig | None = None,
     ):
         if nodes_to_exclude is None:
@@ -1193,6 +1255,7 @@ class MatMulNBitsQuantizer:
                 op_types_to_quantize=op_types_to_quantize,
                 quant_axes=quant_axes,
                 bits=4,  # default to 4 bits
+                channel_wised_quantize=channel_wised_quantize,
             )
 
         self.algo_config = algo_config

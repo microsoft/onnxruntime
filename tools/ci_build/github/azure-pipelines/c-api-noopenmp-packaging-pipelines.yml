@@ -60,7 +60,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.35.0.250530
+  default: 2.36.1.250708
 
 resources:
   repositories:

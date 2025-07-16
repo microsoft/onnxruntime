@@ -9,6 +9,7 @@
 #include "core/session/abi_devices.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/test_environment.h"
 
 namespace onnxruntime::test {
 
@@ -35,7 +36,7 @@ struct TestOrtEp : ::OrtEp, ApiPtrs {
     // Individual tests should fill out the other function pointers as needed.
   }
 
-  static const char* ORT_API_CALL GetNameImpl(const OrtEp* /*this_ptr*/) {
+  static const char* ORT_API_CALL GetNameImpl(const OrtEp* /*this_ptr*/) noexcept {
     constexpr const char* ep_name = "TestOrtEp";
     return ep_name;
   }
@@ -49,12 +50,38 @@ struct TestOrtEpFactory : ::OrtEpFactory {
     ReleaseEp = ReleaseEpImpl;
   }
 
-  static void ORT_API_CALL ReleaseEpImpl(::OrtEpFactory* /*this_ptr*/, OrtEp* ep) {
+  static void ORT_API_CALL ReleaseEpImpl(::OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
     delete static_cast<TestOrtEp*>(ep);
   }
 };
 
 static TestOrtEpFactory g_test_ort_ep_factory{};
+
+std::unique_ptr<OrtHardwareDevice> MakeTestOrtHardwareDevice(OrtHardwareDeviceType type) {
+  auto hw_device = std::make_unique<OrtHardwareDevice>();
+  hw_device->type = type;
+  hw_device->vendor_id = 0xBE57;
+  hw_device->device_id = 0;
+  hw_device->vendor = "Contoso";
+  return hw_device;
+}
+
+std::unique_ptr<OrtEpDevice> MakeTestOrtEpDevice(const OrtHardwareDevice* hardware_device,
+                                                 const OrtMemoryInfo* device_memory_info = nullptr,
+                                                 const OrtMemoryInfo* host_accessible_memory_info = nullptr) {
+  auto ep_device = std::make_unique<OrtEpDevice>();
+  ep_device->ep_name = "TestOrtEp";
+  ep_device->ep_vendor = "Contoso";
+  ep_device->device = hardware_device;
+  ep_device->ep_factory = &g_test_ort_ep_factory;
+  ep_device->device_memory_info = device_memory_info;
+  ep_device->host_accessible_memory_info = host_accessible_memory_info;
+  return ep_device;
+}
+
+OrtDevice MakeTestOrtDevice(OrtDevice::DeviceType device_type, OrtDevice::MemoryType memory_type) {
+  return OrtDevice(device_type, memory_type, /*vendor_id*/ 0xBE57, /*device_id*/ 0, /*alignment*/ 16);
+}
 
 struct MakeTestOrtEpResult {
   std::unique_ptr<IExecutionProvider> ep;  // the IExecutionProvider wrapping the TestOrtEp
@@ -63,17 +90,25 @@ struct MakeTestOrtEpResult {
 
 // Creates an IExecutionProvider that wraps a TestOrtEp.
 // The TestOrtEp is also exposed so that tests can manipulate its function pointers directly.
-MakeTestOrtEpResult MakeTestOrtEp() {
+MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {}) {
+  // Default OrtHardwareDevice and OrtEpDevice used if the caller does not explicitly provide ep_devices.
+  static std::unique_ptr<OrtHardwareDevice> ort_hw_device = MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
+  static std::unique_ptr<OrtEpDevice> ort_ep_device = MakeTestOrtEpDevice(ort_hw_device.get());
+
   auto ort_ep_raw = std::make_unique<TestOrtEp>().release();
   auto ort_ep = UniqueOrtEp(ort_ep_raw, OrtEpDeleter{g_test_ort_ep_factory});
   auto ort_session_options = Ort::SessionOptions{};
-  auto ort_ep_device = OrtEpDevice{};
-  std::vector<const OrtEpDevice*> ep_devices{&ort_ep_device};
 
+  if (ep_devices.empty()) {
+    ep_devices.push_back(ort_ep_device.get());
+  }
+
+  auto& logging_manager = DefaultLoggingManager();
   auto ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep),
                                                       *static_cast<const OrtSessionOptions*>(ort_session_options),
                                                       g_test_ort_ep_factory,
-                                                      ep_devices);
+                                                      ep_devices,
+                                                      logging_manager.DefaultLogger());
 
   auto result = MakeTestOrtEpResult{std::move(ep), ort_ep_raw};
   return result;
@@ -90,7 +125,7 @@ TEST(PluginExecutionProviderTest, GetPreferredLayout) {
   }
 
   {
-    auto prefer_nhwc_fn = [](OrtEp* /*this_ptr*/, OrtEpDataLayout* preferred_data_layout) -> ::OrtStatus* {
+    auto prefer_nhwc_fn = [](OrtEp* /*this_ptr*/, OrtEpDataLayout* preferred_data_layout) noexcept -> ::OrtStatus* {
       *preferred_data_layout = OrtEpDataLayout::OrtEpDataLayout_NCHW;
       return nullptr;
     };
@@ -100,7 +135,7 @@ TEST(PluginExecutionProviderTest, GetPreferredLayout) {
 
 #if !defined(ORT_NO_EXCEPTIONS)
   {
-    auto invalid_layout_fn = [](OrtEp* /*this_ptr*/, OrtEpDataLayout* preferred_data_layout) -> ::OrtStatus* {
+    auto invalid_layout_fn = [](OrtEp* /*this_ptr*/, OrtEpDataLayout* preferred_data_layout) noexcept -> ::OrtStatus* {
       *preferred_data_layout = static_cast<OrtEpDataLayout>(-1);
       return nullptr;
     };
@@ -109,7 +144,7 @@ TEST(PluginExecutionProviderTest, GetPreferredLayout) {
   }
 
   {
-    auto failing_fn = [](OrtEp* this_ptr, OrtEpDataLayout* /*preferred_data_layout*/) -> ::OrtStatus* {
+    auto failing_fn = [](OrtEp* this_ptr, OrtEpDataLayout* /*preferred_data_layout*/) noexcept -> ::OrtStatus* {
       auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
       return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL, "I can't decide what data layout I prefer.");
     };
@@ -132,7 +167,7 @@ TEST(PluginExecutionProviderTest, ShouldConvertDataLayoutForOp) {
                                               const char* /*node_domain*/,
                                               const char* node_op_type,
                                               OrtEpDataLayout target_data_layout,
-                                              int* should_convert) -> ::OrtStatus* {
+                                              int* should_convert) noexcept -> ::OrtStatus* {
       EXPECT_EQ(target_data_layout, OrtEpDataLayout::OrtEpDataLayout_NHWC);
 
       if (node_op_type == std::string_view{"Conv"}) {
@@ -166,13 +201,118 @@ TEST(PluginExecutionProviderTest, ShouldConvertDataLayoutForOp) {
                          const char* /*node_domain*/,
                          const char* /*node_op_type*/,
                          OrtEpDataLayout /*target_data_layout*/,
-                         int* /*should_convert*/) -> ::OrtStatus* {
+                         int* /*should_convert*/) noexcept -> ::OrtStatus* {
       auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
       return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL,
                                                 "To convert to NHWC or not to convert to NHWC...");
     };
     ort_ep->ShouldConvertDataLayoutForOp = failing_fn;
     ASSERT_THROW(ep->ShouldConvertDataLayoutForOp("", "Conv", DataLayout::NHWC), OnnxRuntimeException);
+  }
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+}
+
+TEST(PluginExecutionProviderTest, InferOrtDeviceFromDeviceMemoryInfo) {
+  // 1 OrtEpDevice without a device_memory_info.
+  // PluginExecutionProvider should decide to use a default OrtDevice.
+  {
+    auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
+    auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get());
+    std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+
+    auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+    ASSERT_EQ(ep->GetOrtDeviceByMemType(OrtMemTypeDefault), OrtDevice());
+  }
+
+  // 1 OrtEpDevice with a device_memory_info.
+  // PluginExecutionProvider should decide to use the OrtDevice from the device_memory_info.
+  {
+    auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+    auto ort_memory_info = std::make_unique<OrtMemoryInfo>("TestOrtEp GPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                           ort_device, OrtMemTypeDefault);
+
+    auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+    auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(),
+                                                             /*device_memory_info*/ ort_memory_info.get());
+    std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+
+    auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+    ASSERT_EQ(ep->GetOrtDeviceByMemType(OrtMemTypeDefault), ort_device);
+  }
+
+  // 2 OrtEpDevice instances with the same device_memory_info.
+  // PluginExecutionProvider should decide to use the OrtDevice from the device_memory_info.
+  {
+    auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT);
+    auto ort_memory_info = std::make_unique<OrtMemoryInfo>("TestOrtEp CPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                           ort_device, OrtMemTypeDefault);
+
+    auto ort_hw_device_gpu = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+    auto ort_hw_device_npu = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_NPU);
+    auto ort_ep_device_gpu = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device_gpu.get(), ort_memory_info.get());
+    auto ort_ep_device_npu = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device_npu.get(), ort_memory_info.get());
+    std::vector<const OrtEpDevice*> ep_devices{ort_ep_device_gpu.get(), ort_ep_device_npu.get()};
+
+    auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+    ASSERT_EQ(ep->GetOrtDeviceByMemType(OrtMemTypeDefault), ort_device);
+  }
+
+  // 2 OrtEpDevice instances with the different (but equivalent) device_memory_info pointers.
+  // PluginExecutionProvider should decide to use a OrtDevice that is equal to the devices used by both
+  // device_memory_info pointers.
+  {
+    auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT);
+    auto ort_memory_info_0 = std::make_unique<OrtMemoryInfo>("TestOrtEp CPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                             ort_device, OrtMemTypeDefault);
+    auto ort_memory_info_1 = std::make_unique<OrtMemoryInfo>("TestOrtEp CPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                             ort_device, OrtMemTypeDefault);
+
+    auto ort_hw_device_gpu = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+    auto ort_hw_device_npu = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_NPU);
+    auto ort_ep_device_gpu = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device_gpu.get(), ort_memory_info_0.get());
+    auto ort_ep_device_npu = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device_npu.get(), ort_memory_info_1.get());
+    std::vector<const OrtEpDevice*> ep_devices{ort_ep_device_gpu.get(), ort_ep_device_npu.get()};
+
+    auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+    ASSERT_EQ(ep->GetOrtDeviceByMemType(OrtMemTypeDefault), ort_device);
+  }
+
+  // 1 OrtEpDevice with only a host_accessible_memory_info.
+  // PluginExecutionProvider should decide to use a default OrtDevice (cpu).
+  {
+    auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE);
+    auto ort_memory_info = std::make_unique<OrtMemoryInfo>("TestOrtEp GPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                           ort_device, OrtMemTypeDefault);
+
+    auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+    auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(),
+                                                             /*device_memory_info*/ nullptr,
+                                                             /*host_accessible_memory_info*/ ort_memory_info.get());
+    std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+
+    auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+    ASSERT_EQ(ep->GetOrtDeviceByMemType(OrtMemTypeDefault), OrtDevice());
+  }
+
+#if !defined(ORT_NO_EXCEPTIONS)
+  // 2 OrtEpDevice instances with DIFFERENT device_memory_info instances.
+  // Should throw an exception on construction of PluginExecutionProvider.
+  {
+    auto ort_device_gpu = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+    auto ort_memory_info_gpu = std::make_unique<OrtMemoryInfo>("TestOrtEp GPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                               ort_device_gpu, OrtMemTypeDefault);
+
+    auto ort_device_npu = test_plugin_ep::MakeTestOrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT);
+    auto ort_memory_info_npu = std::make_unique<OrtMemoryInfo>("TestOrtEp NPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                               ort_device_npu, OrtMemTypeDefault);
+
+    auto ort_hw_device_gpu = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+    auto ort_hw_device_npu = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_NPU);
+    auto ort_ep_device_gpu = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device_gpu.get(), ort_memory_info_gpu.get());
+    auto ort_ep_device_npu = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device_npu.get(), ort_memory_info_npu.get());
+    std::vector<const OrtEpDevice*> ep_devices{ort_ep_device_gpu.get(), ort_ep_device_npu.get()};
+
+    ASSERT_THROW(test_plugin_ep::MakeTestOrtEp(ep_devices), OnnxRuntimeException);
   }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 }

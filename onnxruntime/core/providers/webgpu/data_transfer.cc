@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/data_transfer.h"
-#include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/buffer_manager.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -25,15 +25,15 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
     if (dst_device.Type() == OrtDevice::GPU) {
       if (src_device.Type() == OrtDevice::GPU) {
         // copy from GPU to GPU
-        context_.BufferManager().MemCpy(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
-                                        static_cast<WGPUBuffer>(dst_data), bytes);
+        buffer_manager_.MemCpy(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
+                               static_cast<WGPUBuffer>(dst_data), bytes);
       } else {
         // copy from CPU to GPU
-        context_.BufferManager().Upload(const_cast<void*>(src_data), static_cast<WGPUBuffer>(dst_data), bytes);
+        buffer_manager_.Upload(const_cast<void*>(src_data), static_cast<WGPUBuffer>(dst_data), bytes);
       }
     } else /* if (src_device.Type() == OrtDevice::GPU) */ {
       // copy from GPU to CPU
-      context_.BufferManager().Download(static_cast<WGPUBuffer>(const_cast<void*>(src_data)), dst_data, bytes);
+      buffer_manager_.Download(static_cast<WGPUBuffer>(const_cast<void*>(src_data)), dst_data, bytes);
     }
   }
 
