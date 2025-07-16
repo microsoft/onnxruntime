@@ -2852,6 +2852,7 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
                                                       bool detailed_build_log) {
 #if NV_TENSORRT_MAJOR >= 10
   bool refit_from_file = onnx_model_bytestream == nullptr && onnx_model_bytestream_size == 0;
+  bool refit_with_external_data = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
   bool refit_complete = false;
   std::filesystem::path onnx_model_path{onnx_model_folder_path};
   if (refit_from_file) {
@@ -2891,8 +2892,6 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
       nvonnxparser::createParserRefitter(*refitter, trt_logger));
 
 #if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 12) || NV_TENSORRT_MAJOR > 10
-  bool refit_with_external_data = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
-
   // New refit APIs
   if (refit_with_external_data) {
     // A valid model bytestream must be passed.
@@ -2963,7 +2962,7 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
               sizes.push_back(length);
             } else {
               return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                     "[TensorRT EP] Proto: " + proto_name + " has default as data location which is not supported");
+                                     "[TensorRT EP] Proto: " + proto_name + " expected to have external datalocation, but default datalocation was provided instead.");
             }
           } else {
             if (!proto.has_raw_data()) {
@@ -2988,7 +2987,7 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
         bool refloadInit = parser_refitter->loadInitializer(names[i].c_str(), bytes[i], sizes[i]);
         if (!refloadInit) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in the provided bytestraem");
+                                 "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in the provided bytestream");
         }
       }
     }
@@ -2998,6 +2997,11 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
                              "TensorRT EP's IParserRefitter refitModelProto() failed with the provided external data bytestream.");
     }
     refit_complete = true;
+  }
+#else
+  // Refitting with external data is not supported prior to TensorRT 10.13. Log a warning in this case for the user.
+  if (refit_with_external_data) {
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Refitting with an onnx_external_data_bytestream is only supported on TensorRT versions >= 10.13! This parameter will be ignored for refitting, and the resulting refitted engine may be incorrect.";
   }
 #endif  // (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 12) || NV_TENSORRT_MAJOR > 10
   // If new refit flow was not completed, then fallback to refit_from_file.
