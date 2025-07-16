@@ -120,58 +120,62 @@ class QnnModelWrapper {
     return ort_graph_.GetInitializers(initializers);
   }
 
-  const OrtValueInfo* GetConstantTensor(const std::string& tensor_name) const {
+  // Find an initializer by name
+  Status FindInitializer(const std::string& tensor_name,
+                         const OrtValueInfo** found_value_info = nullptr) const {
     std::unique_ptr<OrtArrayOfConstObjects> initializers_ptr;
     Status status = GetInitializerTensors(initializers_ptr);
     if (!status.IsOK()) {
-      return nullptr;
+      return status;
     }
+
     const OrtArrayOfConstObjects* initializers = initializers_ptr.get();
     size_t num_initializers = 0;
     api_ptrs_.ort_api.ArrayOfConstObjects_GetSize(initializers, &num_initializers);
+
     const void* const* initializers_data = nullptr;
     api_ptrs_.ort_api.ArrayOfConstObjects_GetData(initializers, &initializers_data);
 
-    bool is_constant_initializer = false;
-    bool find_tensor_name = false;
-    for (size_t i = 0; i < num_initializers && !find_tensor_name; ++i) {
+    for (size_t i = 0; i < num_initializers; ++i) {
       const OrtValueInfo* value_info = static_cast<const OrtValueInfo*>(initializers_data[i]);
       const char* value_info_name = nullptr;
       api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name);
+
       if (std::string(value_info_name) == tensor_name) {
-        find_tensor_name = true;
-        api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
-        if (is_constant_initializer) {
-          return value_info;
-        }
+        *found_value_info = value_info;
+        return Status::OK();
       }
     }
-    return nullptr;
+
+    return Status(common::ONNXRUNTIME, common::FAIL, "Initializer not found");
   }
 
-  bool IsConstantInput(std::string input_name) const {
-    std::unique_ptr<OrtArrayOfConstObjects> initializers_ptr;
-    Status status = GetInitializerTensors(initializers_ptr);
-    if (!status.IsOK()) {
+  const OrtValueInfo* GetConstantTensor(const std::string& tensor_name) const {
+    const OrtValueInfo* value_info = nullptr;
+    Status status = FindInitializer(tensor_name, &value_info);
+    if (!status.IsOK() || value_info == nullptr) {
+      return nullptr;
+    }
+
+    bool is_constant_initializer = false;
+    api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
+    if (!is_constant_initializer) {
+      return nullptr;
+    }
+
+    return value_info;
+  }
+
+  bool IsConstantInput(const std::string& input_name) const {
+    const OrtValueInfo* value_info = nullptr;
+    Status status = FindInitializer(input_name, &value_info);
+    if (!status.IsOK() || value_info == nullptr) {
       return false;
     }
-    const OrtArrayOfConstObjects* initializers = initializers_ptr.get();
-    size_t num_initializers = 0;
-    RETURN_IF_ERROR(api_ptrs_.ort_api.ArrayOfConstObjects_GetSize(initializers, &num_initializers));
-    const void* const* initializers_data = nullptr;
-    RETURN_IF_ERROR(api_ptrs_.ort_api.ArrayOfConstObjects_GetData(initializers, &initializers_data));
 
     bool is_optional_graph_input = false;
-    bool find_input_name = false;
-    for (size_t i = 0; i < num_initializers && !find_input_name; ++i) {
-      const OrtValueInfo* value_info = static_cast<const OrtValueInfo*>(initializers_data[i]);
-      const char* value_info_name = nullptr;
-      RETURN_IF_ERROR(api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name));
-      if (std::string(value_info_name) == input_name) {
-        find_input_name = true;
-        RETURN_IF_ERROR(api_ptrs_.ort_api.ValueInfo_IsOptionalGraphInput(value_info, &is_optional_graph_input));
-      }
-    }
+    api_ptrs_.ort_api.ValueInfo_IsOptionalGraphInput(value_info, &is_optional_graph_input);
+
     return is_optional_graph_input;
   }
 

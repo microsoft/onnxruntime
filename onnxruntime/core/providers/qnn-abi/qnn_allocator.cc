@@ -115,12 +115,12 @@ AllocationTracker& GlobalAllocationTracker() {
 
 }  // namespace
 
-// OrtMemoryInfo HtpSharedMemoryAllocator::AssociatedMemoryInfo() {
-//   return OrtMemoryInfo{QNN_HTP_SHARED, OrtAllocatorType::OrtDeviceAllocator,
-//                        OrtDevice{OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::QUALCOMM,
-//                                  /*device_id*/ 0},
-//                        OrtMemTypeDefault};
-// }
+OrtMemoryInfo HtpSharedMemoryAllocator::AssociatedMemoryInfo() {
+  return OrtMemoryInfo{QNN_HTP_SHARED, OrtAllocatorType::OrtDeviceAllocator,
+                       OrtDevice{OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::QUALCOMM,
+                                 /*device_id*/ 0},
+                       OrtMemTypeDefault};
+}
 
 void* ORT_API_CALL HtpSharedMemoryAllocator::AllocImpl(struct OrtAllocator* this_, size_t requested_size) {
   HtpSharedMemoryAllocator* allocator = static_cast<HtpSharedMemoryAllocator*>(this_);
@@ -204,7 +204,7 @@ void ORT_API_CALL HtpSharedMemoryAllocator::FreeImpl(struct OrtAllocator* this_,
       const bool unregistered = GlobalAllocationTracker().UnregisterAllocation(allocation_address);
       if (!unregistered) {
         LOGS(allocator->logger_, ERROR) << "Attempted to deregister allocation but it is untracked for address ("
-                             << allocation_address << ").";
+                                        << allocation_address << ").";
       }
     }
 

@@ -11,6 +11,7 @@
 #include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn-abi/builder/qnn_backend_manager.h"
 #include "core/providers/qnn-abi/rpcmem_library.h"
+#include "test/autoep/library/example_plugin_ep_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -23,8 +24,10 @@ struct QnnTensorInfo {
 
 class QnnModel {
  public:
-  QnnModel(QnnBackendManager* qnn_backend_manager)
-      : qnn_backend_manager_(qnn_backend_manager) {
+  QnnModel(QnnBackendManager* qnn_backend_manager,
+           const ApiPtrs& api_ptrs)
+      : qnn_backend_manager_(qnn_backend_manager),
+        api_ptrs_{api_ptrs} {
     qnn_backend_type_ = qnn_backend_manager_->GetQnnBackendType();
   }
 
@@ -32,7 +35,7 @@ class QnnModel {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModel);
 
   Status ComposeGraph(const OrtGraph& ort_graph,
-                      const onnxruntime::Node& fused_node,
+                      const OrtNode& fused_node,
                       const qnn::ModelSettings& model_settings,
                       const logging::Logger& logger,
                       const QnnGraph_Config_t** graph_configs = nullptr,
@@ -55,10 +58,10 @@ class QnnModel {
   }
 
   Status SetGraphInputOutputInfo(const OrtGraph& ort_graph,
-                                 const onnxruntime::Node& fused_node,
+                                 const OrtNode& fused_node,
                                  const logging::Logger& logger);
   Status ParseGraphInputOrOutput(const OrtGraph& ort_graph,
-                                 ConstPointerContainer<std::vector<NodeArg*>>& input_output_defs,
+                                 OrtArrayOfConstObjects* input_output_defs,
                                  std::vector<std::string>& input_output_names,
                                  std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
                                  std::unordered_map<std::string, size_t>& input_output_index,
@@ -108,8 +111,8 @@ class QnnModel {
   const std::string& Name() const { return graph_info_->Name(); }
 
  private:
-  const NodeUnit& GetNodeUnit(const OrtNode* node,
-                              const std::unordered_map<const OrtNode*, const NodeUnit*>& node_unit_map) const;
+  const OrtNode& GetNodeUnit(const OrtNode* node,
+                             const std::unordered_map<const OrtNode*, const OrtNode*>& node_unit_map) const;
   bool GetGraphInfoFromModel(QnnModelWrapper& model_wrapper, const logging::Logger& logger);
 
   Status SetupTensors(std::vector<QnnTensorInfo>& tensors, const std::vector<QnnTensorWrapper>& tensor_wrappers,
@@ -139,6 +142,7 @@ class QnnModel {
 
   // Mutex acquired during graph execution to support multi-threaded inference of a single session.
   std::mutex graph_exec_mutex_;
+  const ApiPtrs& api_ptrs_;
 };
 
 }  // namespace qnn
