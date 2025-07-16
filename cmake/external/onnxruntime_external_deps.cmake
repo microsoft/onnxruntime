@@ -777,13 +777,24 @@ if (onnxruntime_USE_WEBGPU)
   endif()
 
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-    onnxruntime_fetchcontent_declare(
-      duktape
-      URL ${DEP_URL_duktape}
-      URL_HASH SHA1=${DEP_SHA1_duktape}
-      EXCLUDE_FROM_ALL
-    )
-    onnxruntime_fetchcontent_makeavailable(duktape)
+    if(onnxruntime_USE_VCPKG)
+      find_package(unofficial-duktape CONFIG REQUIRED)
+      add_library(duktape_static ALIAS unofficial::duktape::duktape)
+    else()
+      onnxruntime_fetchcontent_declare(
+        duktape
+        URL ${DEP_URL_duktape}
+        URL_HASH SHA1=${DEP_SHA1_duktape}
+        EXCLUDE_FROM_ALL
+      )
+      onnxruntime_fetchcontent_makeavailable(duktape)
+
+      if(NOT TARGET duktape_static)
+        add_library(duktape_static STATIC "${duktape_SOURCE_DIR}/src/duktape.c")
+        target_compile_features(duktape_static PRIVATE c_std_99)
+        target_include_directories(duktape_static INTERFACE $<BUILD_INTERFACE:${duktape_SOURCE_DIR}/src>)
+      endif()
+    endif()
   endif()
 endif()
 

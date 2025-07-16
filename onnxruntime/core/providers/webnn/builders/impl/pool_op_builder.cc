@@ -133,20 +133,6 @@ bool PoolOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                       const WebnnDeviceType /* device_type */,
                                       const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
-  const auto& input_defs = node.InputDefs();
-
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-
-  const auto input_size = input_shape.size();
-  if (input_size != 4) {
-    LOGS(logger, VERBOSE)
-        << op_type << " only supports rank-4 tensor, input ["
-        << input_defs[0]->Name() << "] has actual dim count " << input_size;
-    return false;
-  }
-
   NodeAttrHelper helper(node);
   if (op_type == "AveragePool" || op_type == "LpPool" || op_type == "MaxPool") {
     if (helper.Get("kernel_shape", std::vector<int32_t>{1, 1}).size() != 2) {

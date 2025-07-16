@@ -136,7 +136,8 @@ struct ModelEditorNode : public OrtNode {
                            "OrtModelEditorApi does not support getting the subgraphs for OrtNode");
   }
 
-  Status GetSubgraphs(gsl::span<const OrtGraph*> /*subgraphs*/) const override {
+  Status GetSubgraphs(gsl::span<const OrtGraph*> /*subgraphs*/,
+                      const char** /*opt_attribute_names*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the subgraphs for OrtNode");
   }
@@ -174,6 +175,17 @@ struct ModelEditorGraph : public OrtGraph {
 
   int64_t GetOnnxIRVersion() const override {
     return ONNX_NAMESPACE::Version::IR_VERSION;
+  }
+
+  Status GetNumOperatorSets(size_t& /*num_operator_sets*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the graph's operator sets.");
+  }
+
+  Status GetOperatorSets(gsl::span<const char*> /*domains*/,
+                         gsl::span<int64_t> /*opset_versions*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the graph's operator sets.");
   }
 
   size_t GetNumInputs() const override { return inputs.size(); }
