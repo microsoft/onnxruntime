@@ -4392,7 +4392,6 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
 #else
     // Add initializers to parent graph by copy converting them from graph_proto_
     // ToGraphProtoInternal() does not copy initializers for the main graph
-    auto* mutable_initializers = result.mutable_initializer();
     for (const auto& initializer : graph_proto_->initializer()) {
       ORT_THROW_IF_ERROR(InlineOrCopyInitializerToGraphProto(*this, initializer, *mutable_initializers->Add()));
     }
