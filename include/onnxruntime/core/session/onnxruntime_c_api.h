@@ -5460,7 +5460,8 @@ struct OrtApi {
    *
    * \param[in] value_info The OrtValueInfo instance.
    * \param[out] initializer_value Output parameter set to the initializer value or NULL. The OrtValue data pointer
-   *                               is stable during the lifetime of the session that owns the OrtGraph.
+   *                               (obtained via GetTensorData) is stable during the lifetime of the OrtSession
+   *                               that owns the OrtGraph.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
