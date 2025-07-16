@@ -59,6 +59,11 @@ constexpr const char* kONNXBytestream = "trt_onnx_bytestream";
 constexpr const char* kONNXBytestreamSize = "trt_onnx_bytestream_size";
 constexpr const char* kOpTypesToExclude = "trt_op_types_to_exclude";
 constexpr const char* kPreviewFeatures = "trt_preview_features";
+constexpr const char* kDlaLocalDramSize = "trt_dla_local_dram_size";
+constexpr const char* kDlaGlobalDramSize = "trt_dla_global_dram_size";
+constexpr const char* kDlaManagedSramSize = "trt_dla_managed_sram_size";
+constexpr const char* kTacticDramSize = "trt_tactic_dram_size";
+constexpr const char* kTacticSharedMemorySize = "trt_tactic_shared_memory_size";
 
 }  // namespace provider_option_names
 }  // namespace tensorrt
@@ -140,6 +145,11 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kONNXBytestreamSize, info.onnx_bytestream_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kOpTypesToExclude, info.op_types_to_exclude)
           .AddAssignmentToReference(tensorrt::provider_option_names::kPreviewFeatures, info.preview_features)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kDlaLocalDramSize, info.dla_local_dram_size)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kDlaGlobalDramSize, info.dla_global_dram_size)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kDlaManagedSramSize, info.dla_managed_sram_size)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kTacticDramSize, info.tactic_dram_size)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kTacticSharedMemorySize, info.tactic_shared_memory_size)
           .Parse(options));  // add new provider option here.
 
   info.user_compute_stream = user_compute_stream;
@@ -197,7 +207,11 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.onnx_bytestream_size)},
       {tensorrt::provider_option_names::kOpTypesToExclude, MakeStringWithClassicLocale(info.op_types_to_exclude)},
       {tensorrt::provider_option_names::kPreviewFeatures, MakeStringWithClassicLocale(info.preview_features)},
-  };
+      {tensorrt::provider_option_names::kDlaLocalDramSize, MakeStringWithClassicLocale(info.dla_local_dram_size)},
+      {tensorrt::provider_option_names::kDlaGlobalDramSize, MakeStringWithClassicLocale(info.dla_global_dram_size)},
+      {tensorrt::provider_option_names::kDlaManagedSramSize, MakeStringWithClassicLocale(info.dla_managed_sram_size)},
+      {tensorrt::provider_option_names::kTacticDramSize, MakeStringWithClassicLocale(info.tactic_dram_size)},
+      {tensorrt::provider_option_names::kTacticSharedMemorySize, MakeStringWithClassicLocale(info.tactic_shared_memory_size)}};
   return options;
 }
 
@@ -263,7 +277,11 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.trt_onnx_bytestream))},
       {tensorrt::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.trt_onnx_bytestream_size)},
       {tensorrt::provider_option_names::kOpTypesToExclude, kOpTypesToExclude_},
-  };
+      {tensorrt::provider_option_names::kDlaLocalDramSize, MakeStringWithClassicLocale(info.trt_dla_local_dram_size)},
+      {tensorrt::provider_option_names::kDlaGlobalDramSize, MakeStringWithClassicLocale(info.trt_dla_global_dram_size)},
+      {tensorrt::provider_option_names::kDlaManagedSramSize, MakeStringWithClassicLocale(info.trt_dla_managed_sram_size)},
+      {tensorrt::provider_option_names::kTacticDramSize, MakeStringWithClassicLocale(info.trt_tactic_dram_size)},
+      {tensorrt::provider_option_names::kTacticSharedMemorySize, MakeStringWithClassicLocale(info.trt_tactic_shared_memory_size)}};
   return options;
 }
 
@@ -370,5 +388,10 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_onnx_bytestream_size = internal_options.onnx_bytestream_size;
   trt_provider_options_v2.trt_op_types_to_exclude = copy_string_if_needed(internal_options.op_types_to_exclude);
   trt_provider_options_v2.trt_preview_features = copy_string_if_needed(internal_options.preview_features);
+  trt_provider_options_v2.trt_dla_local_dram_size = internal_options.dla_local_dram_size;
+  trt_provider_options_v2.trt_dla_global_dram_size = internal_options.dla_global_dram_size;
+  trt_provider_options_v2.trt_dla_managed_sram_size = internal_options.dla_managed_sram_size;
+  trt_provider_options_v2.trt_tactic_dram_size = internal_options.tactic_dram_size;
+  trt_provider_options_v2.trt_tactic_shared_memory_size = internal_options.tactic_shared_memory_size;
 }
 }  // namespace onnxruntime
