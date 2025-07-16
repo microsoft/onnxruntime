@@ -370,7 +370,7 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
                             {static_cast<uint32_t>(total_sequence_length_comp)},
                             {static_cast<uint32_t>(elementsPerThread)},
                             {static_cast<uint32_t>(is_first_prompt ? 1 : 0)},
-                            {static_cast<int32_t>(local_window_size)}});
+                            {static_cast<uint32_t>(local_window_size)}});
 
   return context.RunProgram(program);
 }
