@@ -3645,8 +3645,18 @@ common::Status InferenceSession::AddPredefinedTransformers(
     RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
     const logging::Logger& logger) const {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+  for (int i = static_cast<int>(TransformerLevel::Default); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
+
+    // Still enable free dimension override even if graph optimization level is 0
+    if ((graph_optimization_level == TransformerLevel::Default) && (level == TransformerLevel::Default)) {
+      auto transformers_to_register = [&]() {
+        return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
+                                                     optimizers_to_disable_,
+                                                     GetIntraOpThreadPoolToUse());
+      }();
+    }
+
     if (graph_optimization_level >= level) {
       // Generate and register transformers for level
       auto transformers_to_register = [&]() {
