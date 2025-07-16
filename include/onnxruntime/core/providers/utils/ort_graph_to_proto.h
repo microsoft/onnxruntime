@@ -93,13 +93,10 @@
 
    OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* ort_graph,
                                              OrtEpGraphSupportInfo* graph_support_info) {
-     std::string external_file_path = "weights.bin";
-     std::ofstream out_file(external_file_path, std::ios::binary);
-
-     auto handle_initializer_data = [&external_file_path, &out_file](const OrtValueInfo* value_info,
-                                                                     const void* data, size_t bytes,
-                                                                     bool& is_external, std::string& location,
-                                                                     int64_t& offset) -> Ort::Status {
+     auto handle_initializer_data = [](const OrtValueInfo* value_info,
+                                       const void* data, size_t bytes,
+                                       bool& is_external, std::string& location,
+                                       int64_t& offset) -> Ort::Status {
        (void)value_info;
        (void)bytes;
 
