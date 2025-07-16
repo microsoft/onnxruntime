@@ -53,6 +53,8 @@
   if(MSVC)
     set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY LINK_FLAGS /DEF:${ONNXRUNTIME_ROOT}/core/providers/migraphx/symbols.def)
     target_link_libraries(onnxruntime_providers_migraphx PRIVATE ws2_32)
+    target_link_options(onnxruntime_providers_migraphx PRIVATE "/DYNAMICBASE")
+    target_compile_options(onnxruntime_providers_migraphx PRIVATE "/guard:cf")
   else()
     target_compile_options(onnxruntime_providers_migraphx PRIVATE -Wno-error=sign-compare)
     set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
