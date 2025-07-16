@@ -3651,40 +3651,40 @@ common::Status InferenceSession::AddPredefinedTransformers(
 
     // Enable free dimension override even when the graph optimization level is 0.
     // If the optimization level is above 0, the override will be applied during level 1 optimization.
-    if ((level == TransformerLevel::Default) && (graph_optimization_level == TransformerLevel::Default)) {
-      transformers_to_register = [&]() {
-        return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
-                                                     optimizers_to_disable_,
-                                                     GetIntraOpThreadPoolToUse());
-      };
-    } else if (level == TransformerLevel::Default) {
-      continue;
-    }
-
-    if (graph_optimization_level >= level) {
-      // Generate and register transformers for level
-      transformers_to_register = [&]() {
-        const bool use_full_build_optimizations =
-            level == TransformerLevel::Level1 ||
-            minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations;
-
-        if (use_full_build_optimizations) {
+    if ((level == TransformerLevel::Default)) {
+      if (graph_optimization_level == TransformerLevel::Default) {
+        transformers_to_register = [&]() {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
                                                        GetIntraOpThreadPoolToUse());
-        } else {
-          const auto sat_context =
-              minimal_build_optimization_handling ==
-                      MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations
-                  ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{
-                        record_runtime_optimization_produced_op_schema_fn}}
-                  : SatApplyContextVariant{SatDirectApplicationContext{}};
-          return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
-                                                                      logger,
-                                                                      optimizers_to_disable_,
-                                                                      GetIntraOpThreadPoolToUse());
-        }
-      };
+        };
+      }
+    } else {
+      if (graph_optimization_level >= level) {
+        // Generate and register transformers for level
+        transformers_to_register = [&]() {
+          const bool use_full_build_optimizations =
+              level == TransformerLevel::Level1 ||
+              minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations;
+
+          if (use_full_build_optimizations) {
+            return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
+                                                         optimizers_to_disable_,
+                                                         GetIntraOpThreadPoolToUse());
+          } else {
+            const auto sat_context =
+                minimal_build_optimization_handling ==
+                        MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations
+                    ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{
+                          record_runtime_optimization_produced_op_schema_fn}}
+                    : SatApplyContextVariant{SatDirectApplicationContext{}};
+            return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
+                                                                        logger,
+                                                                        optimizers_to_disable_,
+                                                                        GetIntraOpThreadPoolToUse());
+          }
+        };
+      }
     }
 
     if (transformers_to_register) {  // Ensure the lambda is initialized before invoking it
