@@ -97,15 +97,18 @@ bool IsSubgroupMatrixConfigSupportedOnIntel(onnxruntime::webgpu::ComputeContext&
 class LayoutProgram final : public Program<LayoutProgram> {
  public:
   LayoutProgram(uint32_t m, uint32_t k, std::string_view component_type) : Program{"SubgroupMatrixMatMulLayout"},
-                                                                        m_(m), k_(k), component_type_(component_type) {}
+                                                                           m_(m),
+                                                                           k_(k),
+                                                                           component_type_(component_type) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32});
+
  private:
-    uint32_t m_;
-    uint32_t k_;
-    std::string_view component_type_;
+  uint32_t m_;
+  uint32_t k_;
+  std::string_view component_type_;
 };
 
 Status LayoutProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -128,7 +131,6 @@ Status LayoutProgram::GenerateShaderCode(ShaderHelper& shader) const {
   )MAIN_FN";
   return Status::OK();
 }
-
 
 Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t config_index, bool has_zero_points) {
   auto& config = intel_supported_subgroup_matrix_configs[config_index];
@@ -489,30 +491,34 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       int32_t config_index,
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y) {
-  const auto& config = intel_supported_subgroup_matrix_configs[config_index];
-  const auto component_type = ComponentTypeName[static_cast<uint32_t>(std::get<2>(config))];
-  const auto m = std::get<4>(config);
-  const auto k = std::get<6>(config);
+  // If applicable, layout optimization of input matrix A(MxK) can be used for SubgroupMatrixLoad.
+  Tensor a_layout;
+  if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
+    const auto& config = intel_supported_subgroup_matrix_configs[config_index];
+    const auto component_type = ComponentTypeName[static_cast<uint32_t>(std::get<2>(config))];
+    const auto m = std::get<4>(config);
+    const auto k = std::get<6>(config);
 
-  // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
-  LayoutProgram layout_program{m, k, component_type};
-  constexpr uint32_t kSubgroupSize = 32;
-  layout_program.SetWorkgroupSize(kSubgroupSize);
+    // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
+    LayoutProgram layout_program{m, k, component_type};
+    constexpr uint32_t kSubgroupSize = 32;
+    layout_program.SetWorkgroupSize(kSubgroupSize);
 
-  const auto dispatch_group_size_x = (M + m - 1) / m;
-  ORT_ENFORCE(K % k == 0, "K must be a multiple of ", k);
-  const auto dispatch_group_size_y = K / k;
-  // Each workgroup will process one subgroup matrix of size m x k.
-  layout_program.SetDispatchGroupSize(dispatch_group_size_x, dispatch_group_size_y, 1);
+    const auto dispatch_group_size_x = (M + m - 1) / m;
+    ORT_ENFORCE(K % k == 0, "K must be a multiple of ", k);
+    const auto dispatch_group_size_y = K / k;
+    // Each workgroup will process one subgroup matrix of size m x k.
+    layout_program.SetDispatchGroupSize(dispatch_group_size_x, dispatch_group_size_y, 1);
 
-  TensorShape a_layout_shape{dispatch_group_size_x * m, K};
-  Tensor a_layout = context.CreateGPUTensor(a->DataType(), a_layout_shape);
-  layout_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-      .AddOutputs({{&a_layout, ProgramTensorMetadataDependency::Rank, a_layout.Shape(), 1}})
-      .AddUniformVariables({{static_cast<uint32_t>(M)},
-                            {static_cast<uint32_t>(K)}});
-  ORT_RETURN_IF_ERROR(context.RunProgram(layout_program));
-
+    TensorShape a_layout_shape{dispatch_group_size_x * m, K};
+    a_layout = context.CreateGPUTensor(a->DataType(), a_layout_shape);
+    layout_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+        .AddOutputs({{&a_layout, ProgramTensorMetadataDependency::Rank, a_layout.Shape(), 1}})
+        .AddUniformVariables({{static_cast<uint32_t>(M)},
+                              {static_cast<uint32_t>(K)}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(layout_program));
+    a = &a_layout;
+  }
   uint32_t tile_size_a = 32;
   uint32_t work_group_size = 128;
   constexpr uint32_t kTileSizeB = 64;
@@ -528,7 +534,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   mul_program.SetDispatchGroupSize(
       (N + kTileSizeB - 1) / kTileSizeB,
       (M + tile_size_a - 1) / tile_size_a, 1);
-  mul_program.AddInputs({{&a_layout, ProgramTensorMetadataDependency::TypeAndRank, 1},
+  mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
                          {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kU32Components : 2 * kU32Components)},
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
       .AddUniformVariables({{static_cast<uint32_t>(M)},
