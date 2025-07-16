@@ -73,7 +73,6 @@ TEST(ConcatOpTest, Concat1D_2) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider,  // TensorRT: no support for dynamic shape tensor
             kNnapiExecutionProvider,     // NNAPI: concat does not support 0 size input
-            kWebGpuExecutionProvider,    // WebGPU: concat does not support 0 size input
             kQnnExecutionProvider});     // QNN: not support dynamic shape tensor
 }
 
@@ -520,6 +519,22 @@ TEST(ConcatOpTest, Concat3D_exceed_maxStorageBuffersPerShaderStage) {
                                                        1, 3, 5, 7, 9, 11, 13, 15, 17,
                                                        // batch 1
                                                        2, 4, 6, 8, 10, 12, 14, 16, 18});
+  test.Run();
+}
+
+TEST(ConcatOpTest, Concat3D_exceed_maxStorageBuffersPerShaderStage_mixed_sizes) {
+  // maxStorageBuffersPerShaderStage==8
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{1});
+
+  test.AddInput<int32_t>("input1", {2, 1, 1}, {1, 2});
+  test.AddInput<int32_t>("input2", {2, 3, 1}, {3, 4, 5, 6, 7, 8});
+  test.AddInput<int32_t>("input3", {2, 2, 1}, {9, 10, 11, 12});
+  test.AddInput<int32_t>("input4", {2, 1, 1}, {13, 14});
+  test.AddOutput<int32_t>("concat_result", {2, 7, 1}, {// batch 0
+                                                       1, 3, 4, 5, 9, 10, 13,
+                                                       // batch 1
+                                                       2, 6, 7, 8, 11, 12, 14});
   test.Run();
 }
 #endif  // USE_WEBGPU
