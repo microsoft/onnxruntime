@@ -413,8 +413,6 @@ struct OrtEp {
    * \note Do NOT cache the provided OrtGraph instances in any of the OrtNodeComputeInfo functions because the
    *       graphs are only valid for the duration of the call to Compile. Any graph/node/input/output
    *       names that are needed by the OrtNodeComputeInfo functions must be copied and stored by the OrtEp.
-   *       The OrtValue data for initializers (obtained via GetTensorData), however, is stable for the lifetime of
-   *       the owning OrtSession instance.
    *
    * \since Version 1.23.
    */
