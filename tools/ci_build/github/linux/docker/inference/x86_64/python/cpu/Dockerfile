@@ -1,4 +1,4 @@
-FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_ubi8_gcc14:20250124.1
+FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20250714.2
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && rm -rf /tmp/scripts
