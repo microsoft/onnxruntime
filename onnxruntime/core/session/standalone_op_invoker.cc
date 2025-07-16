@@ -345,7 +345,7 @@ onnxruntime::Status CreateOpAttr(const char* name, const void* data, int len, Or
       attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS);
       break;
     case OrtOpAttrType::ORT_OP_ATTR_STRING:
-      attr->set_s(std::string{str, str + len});
+      attr->set_s(std::string{str, len});
       attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
       break;
     case OrtOpAttrType::ORT_OP_ATTR_STRINGS:
