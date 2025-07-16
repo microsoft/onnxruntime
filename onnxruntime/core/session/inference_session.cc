@@ -3659,7 +3659,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
       };
     } else if (level == TransformerLevel::Default) {
       continue;
-    } 
+    }
 
     if (graph_optimization_level >= level) {
       // Generate and register transformers for level
