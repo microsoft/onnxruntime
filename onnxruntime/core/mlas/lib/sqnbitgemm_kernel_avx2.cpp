@@ -1446,6 +1446,9 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
 
     d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
     d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
+    d.Q2BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<2>;
+    d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
+
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum;
     d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum;
@@ -1459,11 +1462,6 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2;
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx2<false>;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
-
-    d.Q2BitGemmPackQuantBDataSize = Q2BitGemmPackQuantBDataSize;
-    d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
-
-    d.Q2BitGemmPerGemmWorkspaceSize = Q2BitGemmPerGemmWorkspaceSize;
 
     d.SQ2BitGemmKernel_CompInt8 = SQ2BitGemmKernel_CompInt8_avx2;
     d.QuantizeARow_CompInt8 = QuantizeARow_CompInt8;
@@ -1480,6 +1478,9 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum;
     d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum;
 
+    d.Q2BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<2>;
+    d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
+
     d.QNBitGemmPerGemmWorkspaceSize = QNBitGemmPerGemmWorkspaceSize;
     d.QNBitGemmPerGemmWorkspaceAlignment = QNBitGemmPerGemmWorkspaceAlignment;
 
@@ -1489,12 +1490,6 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni;
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx2<true>;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
-
-    // change funcions if implementation are different from avx2
-    d.Q2BitGemmPackQuantBDataSize = Q2BitGemmPackQuantBDataSize;
-    d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
-
-    d.Q2BitGemmPerGemmWorkspaceSize = Q2BitGemmPerGemmWorkspaceSize;
 
     d.SQ2BitGemmKernel_CompInt8 = SQ2BitGemmKernel_CompInt8_avx2;
     d.QuantizeARow_CompInt8 = QuantizeARow_CompInt8;

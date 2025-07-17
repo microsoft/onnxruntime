@@ -102,6 +102,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
 
     Q4BitGemmPackQuantBDataSize_Fn* Q4BitGemmPackQuantBDataSize = nullptr;
 
+    Q4BitGemmPackQuantBDataSize_Fn* Q2BitGemmPackQuantBDataSize = nullptr;
+
     /** Gets size of packed quantized B data containing 8-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
     typedef size_t(Q8BitGemmPackQuantBDataSize_Fn)(
         size_t N,

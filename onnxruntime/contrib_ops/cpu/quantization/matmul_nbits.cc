@@ -471,7 +471,6 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
           static_cast<int32_t>(N_),                       // number of columns in quantized input
           thread_pool);
     } else if (this->nbits_ == 4) {
-    if (nbits_ == 4) {
       MlasDequantizeBlockwise<float, 4>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input

@@ -600,8 +600,6 @@ struct BlockwiseQuantizer {
 
         const auto row_blks = (rows + QuantBlk::kRow - 1) / QuantBlk::kRow;
 
-        constexpr int pack_size = BitsTraits<qbits, false>::kPackSize;
-
         int q_rows, q_cols;
         quantizedShape(rows, columns, q_rows, q_cols);
         constexpr int32_t kPackSize = BitsTraits<qbits, false>::kPackSize;

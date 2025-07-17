@@ -495,7 +495,6 @@ TEST(MatMulNBits, LegacyShape) {
 
 #endif
 #endif
-#endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_WEBGPU)
 

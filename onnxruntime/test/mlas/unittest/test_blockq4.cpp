@@ -212,10 +212,10 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
       }
     }
 
-    MlasDequantizeBlockwise<float, qbits>(dequant_buf, elements, scales, zp, block_size,
+    MlasDequantizeBlockwise<float, qbits>(input, elements, scales, zp, block_size,
                                       columnwise, rows, columns, threadpool_ptr);
 
-    MlasTranspose(dequant_buf, transposed, columns, rows);
+    MlasTranspose(input, transposed, columns, rows);
 
     uint8_t* o_elements = OutputElements.GetBuffer(q_rows * q_cols, true);
     float* o_scales = OutputScales.GetBuffer(meta_rows * meta_cols);
@@ -304,6 +304,7 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
           }
         }
       }
+  }
 
       for (int c = 0; c < meta_cols; c++) {
         for (int r = 0; r < meta_rows; r++) {
