@@ -37,14 +37,14 @@ class QnnNodeUnitWrapper : public IQnnNodeGroup {
                       "` are not supported by QNN EP.", op_type, " node `",
                       name, "` will not be assigned to QNN EP.");
 
-    return op_builder->IsOpSupported(qmw, node_unit_->GetNode(), logger);
+    return op_builder->IsOpSupported(qmw, *node_unit_, logger);
   }
 
   Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const override {
     const std::string& op_type = node_unit_->OpType();
     const auto* op_builder = qnn::GetOpBuilder(op_type);
     ORT_RETURN_IF_NOT(op_builder != nullptr, "[QNN EP]: Missing OpBuilder for OpType ", op_type);
-    return op_builder->AddToModelBuilder(qmw, node_unit_->GetNode(), logger, /*do_op_validation*/ false);
+    return op_builder->AddToModelBuilder(qmw, *node_unit_, logger, /*do_op_validation*/ false);
   }
 
   gsl::span<const OrtNodeUnit* const> GetNodeUnits() const override {

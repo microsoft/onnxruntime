@@ -57,12 +57,10 @@
 // #include "core/session/onnxruntime_cxx_api.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
-
-
 namespace onnxruntime {
-
 
 // inline void InitOrtCppApi() {
 //   // Call util function in provider bridge that initializes the global api_ object.
@@ -151,6 +149,11 @@ namespace onnxruntime {
 
 // Forward declaration for OrtNode which is used in OrtNodeUnit
 
+struct OrtNodeUnitIODef {
+  std::string name;
+  ONNXTensorElementDataType type;
+  std::vector<int64_t> shape;
+};
 
 class OrtNodeUnit {
  public:
@@ -161,7 +164,7 @@ class OrtNodeUnit {
   };
 
  public:
-  explicit OrtNodeUnit(const OrtNode& node) : target_node_(node), type_(Type::SingleNode) {};
+  explicit OrtNodeUnit(const OrtNode& node, const OrtApi& ort_api);
   // explicit NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group);
   // NodeUnit(gsl::span<const Node* const> dq_nodes, const Node& target_node, const Node* redundant_clip_node,
   //          gsl::span<const Node* const> q_nodes, Type unit_type,
@@ -172,6 +175,8 @@ class OrtNodeUnit {
 
   // const std::vector<NodeUnitIODef>& Inputs() const noexcept { return inputs_; }
   // const std::vector<NodeUnitIODef>& Outputs() const noexcept { return outputs_; }
+  const std::vector<OrtNodeUnitIODef>& Inputs() const noexcept { return inputs_; }
+  const std::vector<OrtNodeUnitIODef>& Outputs() const noexcept { return outputs_; }
 
   // const std::string& Domain() const noexcept;
   const std::string& OpType() const noexcept{ return target_node_.GetOpType(); }
@@ -208,7 +213,7 @@ class OrtNodeUnit {
 
  private:
   // // Initialization for a NodeUnit that contains a single node
-  // void InitForSingleNode();
+  void InitForSingleNode(const OrtApi& ort_api);
 
   const std::vector<const OrtNode*> dq_nodes_;  // dq nodes for this NodeUnit, not necessarily all inputs
   const OrtNode& target_node_;
@@ -218,12 +223,13 @@ class OrtNodeUnit {
 
   // std::vector<NodeUnitIODef> inputs_;
   // std::vector<NodeUnitIODef> outputs_;
+  std::vector<OrtNodeUnitIODef> inputs_;
+  std::vector<OrtNodeUnitIODef> outputs_;
 
   // size_t input_edge_count_;  // total number of input edges
 
   // // output edges, hiding any Q nodes involved. src_idx will be value from target node. only used for QDQ node group.
   // Node::EdgeSet output_edges_;
 };
-
 
 }  // namespace onnxruntime

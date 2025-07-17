@@ -1,28 +1,19 @@
-// // Copyright (c) Microsoft Corporation. All rights reserved.
-// // Licensed under the MIT License.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-// #include "core/providers/qnn-abi/builder/opbuilder/base_op_builder.h"
-// #include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
-// #include "core/providers/qnn-abi/builder/op_builder_factory.h"
-// #include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/builder/opbuilder/base_op_builder.h"
+#include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn-abi/builder/op_builder_factory.h"
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
 
-// namespace onnxruntime {
-// namespace qnn {
+namespace onnxruntime {
+namespace qnn {
 
-// // Operator which only need to hanle node inputs & outputs, no attributes or no need to handle attributes
-// class SimpleOpBuilder : public BaseOpBuilder {
-//  public:
-//   SimpleOpBuilder() : BaseOpBuilder("SimpleOpBuilder") {}
-//   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SimpleOpBuilder);
-
-// #if !BUILD_QNN_EP_STATIC_LIB
-//   // ABI-compatible version of IsOpSupported for shared library builds
-//   bool IsOpSupportedForABI(const OrtNode* ort_node,
-//                           const OrtApi& ort_api,
-//                           const OrtGraph* graph,
-//                           const OrtLogger* logger,
-//                           const OrtEpGraphSupportInfo* graph_support_info) const override;
-// #endif
+// Operator which only need to hanle node inputs & outputs, no attributes or no need to handle attributes
+class SimpleOpBuilder : public BaseOpBuilder {
+ public:
+  SimpleOpBuilder() : BaseOpBuilder("SimpleOpBuilder") {}
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SimpleOpBuilder);
 
 //  protected:
 //   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -497,25 +488,11 @@
 //   }
 
 //   return Status::OK();
-// }
+};
 
-// #if !BUILD_QNN_EP_STATIC_LIB
-// // ABI-compatible version of IsOpSupported for Simple operations
-// bool SimpleOpBuilder::IsOpSupportedForABI(const OrtNode* ort_node,
-//                                           const OrtApi& ort_api,
-//                                           const OrtGraph* graph,
-//                                           const OrtLogger* logger,
-//                                           const OrtEpGraphSupportInfo* graph_support_info) const {
-//   // Use the base class implementation which calls the exact IsOpSupported function
-//   // This ensures we get the same validation logic as the regular IsOpSupported call
-//   std::cout << "DEBUG: SimpleOpBuilder::IsOpSupportedForABI called." << std::endl;
-//   return BaseOpBuilder::IsOpSupportedForABI(ort_node, ort_api, graph, logger, graph_support_info);
-// }
-// #endif
+void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.AddOpBuilder(op_type, std::make_unique<SimpleOpBuilder>());
+}
 
-// void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-//   op_registrations.AddOpBuilder(op_type, std::make_unique<SimpleOpBuilder>());
-// }
-
-// }  // namespace qnn
-// }  // namespace onnxruntime
+}  // namespace qnn
+}  // namespace onnxruntime

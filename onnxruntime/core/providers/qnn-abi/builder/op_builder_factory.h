@@ -72,7 +72,7 @@ class OpBuilderRegistrations {
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type);
 
-// void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 // void CreateSoftmaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
@@ -135,5 +135,6 @@ const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type);
 // void CreateMeanOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 // void CreateUDOBuilder(const std::string& op_type, const std::string& op_package, OpBuilderRegistrations& op_registrations);
+
 }  // namespace qnn
 }  // namespace onnxruntime

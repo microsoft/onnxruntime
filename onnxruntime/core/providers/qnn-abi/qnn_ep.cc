@@ -629,8 +629,8 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
     return nullptr;
   }
 
-  size_t num_of_supported_nodes = 0;
-  num_of_supported_nodes;
+  size_t num_of_supported_nodes = supported_nodes.size();
+  std::cout << "DEBUG: #supported nodes " << num_of_supported_nodes << std::endl;
 
   //     if (!supported_nodes.empty()) {
   //         // Mock: Validate partitions (filter out single QuantizeLinear/DequantizeLinear nodes)

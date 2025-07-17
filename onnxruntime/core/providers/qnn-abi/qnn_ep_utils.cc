@@ -59,7 +59,7 @@ GetAllOrtNodeUnits(OrtApi ort_api, const OrtGraph* graph, const logging::Logger&
     if (node_unit_map.find(node) != node_unit_map.cend())
       continue;
 
-    auto node_unit = std::make_unique<OrtNodeUnit>(*node);
+    auto node_unit = std::make_unique<OrtNodeUnit>(*node, ort_api);
     node_unit_map[node] = node_unit.get();
     node_unit_holder.push_back(std::move(node_unit));
   }

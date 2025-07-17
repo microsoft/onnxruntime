@@ -1,200 +1,79 @@
-// // Copyright (c) Microsoft Corporation. All rights reserved.
-// // Licensed under the MIT License.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-// #include "core/providers/qnn-abi/builder/opbuilder/base_op_builder.h"
-// #include <utility>
-// #include <unordered_set>
-// #include "core/providers/qnn-abi/builder/qnn_utils.h"
-// // #include "core/graph/ep_api_types.h"
-// #include <iostream>
+#include "core/providers/qnn-abi/builder/opbuilder/base_op_builder.h"
 
-// namespace onnxruntime {
-// namespace qnn {
+#include <utility>
+#include <unordered_set>
 
-// // Define the constant locally for ABI compatibility
-// constexpr const char* kMSInternalNHWCDomain = "com.ms.internal.nhwc";
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/ort_api.h"
 
-// std::string BaseOpBuilder::GetOpBuilderType() const {
-//   return op_builder_type_;
-// }
+namespace onnxruntime {
+namespace qnn {
 
-// // Add operator related
-// Status BaseOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
-//                                     const NodeUnit& node_unit,
-//                                     const logging::Logger& logger) const {
-//   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
-// }
+std::string BaseOpBuilder::GetOpBuilderType() const {
+  return op_builder_type_;
+}
 
-// // ABI-compatible version of IsOpSupported for shared library builds
-// // Converts ABI types to internal types and calls the full IsOpSupported method
-// bool BaseOpBuilder::IsOpSupportedForABI(const OrtNode* ort_node,
-//                                         const OrtApi& ort_api,
-//                                         const OrtGraph* graph,
-//                                         const OrtLogger* logger,
-//                                         const OrtEpGraphSupportInfo* graph_support_info) const {
-// #if !BUILD_QNN_EP_STATIC_LIB
-//   graph_support_info;//->ort_graph->GetGraphViewer(); // Ensure graph viewer is initialized
-//   graph;
-//   ort_api;
-//   if (!ort_node || !logger) {
-//     return false;
-//   }
+Status BaseOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
+                                    const OrtNodeUnit& node_unit,
+                                    const logging::Logger& logger) const {
+  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
+}
 
-//   try {
-//     std::cout << "DEBUG: BaseOpBuilder::IsOpSupportedForABI called." << std::endl;
-//     // Convert ABI types to internal types using shared library safe methods
-//     // Use the provider wrapper types available in shared library context
+Status BaseOpBuilder::AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
+                                        const OrtNodeUnit& node_unit,
+                                        const logging::Logger& logger,
+                                        bool do_op_validation) const {
+  LOGS(logger, VERBOSE) << "QNN node builder is trying to add node. Onnx node name: [" << node_unit.Name()
+                        << "] onnx node type: [" << node_unit.OpType() << "].";
 
-//     // Get the internal node from OrtNode using shared library conversion
-//     const auto* internal_node = reinterpret_cast<const Node*>(ort_node);
-//     if (!internal_node) {
-//       return false;
-//     }
+  std::vector<std::string> input_names;
+  // Inputs & output handling mostly same for most of the Ops, just node attributes are different
+  ORT_RETURN_IF_ERROR(ProcessInputs(qnn_model_wrapper, node_unit, logger,
+                                    input_names, do_op_validation));
+  // ORT_RETURN_IF_ERROR(ProcessInt64Tensors(qnn_model_wrapper, node_unit, input_names));
+  ORT_RETURN_IF_ERROR(ProcessAttributesAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names),
+                                                  logger, do_op_validation));
+  return Status::OK();
+}
 
-//     // // Get the internal logger from OrtLogger using shared library conversion
-//     const auto* internal_logger = reinterpret_cast<const logging::Logger*>(logger);
-//     if (!internal_logger) {
-//       return false;
-//     }
+Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
+                                   const OrtNodeUnitIODef& input,
+                                   const logging::Logger& logger,
+                                   std::vector<std::string>& input_names) const {
+  const std::string& input_name = input.name;
 
-//     // // Option A Implementation: Use factory methods to create proper objects
+  if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
+    LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
+    input_names.push_back(input_name);
+    return Status::OK();
+  }
 
-//     // // Step 1: Create Graph and GraphViewer using shared library factory methods
-//     // const Graph* internal_graph = reinterpret_cast<const Graph*>(graph);
-//     // if (!internal_graph) {
-//     //   return false;  // Cannot proceed without graph context
-//     // }
+  // QnnTensorWrapper input_tensorwrapper;
+  // ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input, input_tensorwrapper));
+  // ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+  input_names.push_back(input_name);
 
-//     // std::cout << "DEBUG: Creating GraphViewer for validation." << std::endl;
+  return Status::OK();
+}
 
-//     // const auto* ep_graph = onnxruntime::EpGraph::ToInternal(graph);
+Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                    const OrtNodeUnit& node_unit,
+                                    const logging::Logger& logger,
+                                    std::vector<std::string>& input_names,
+                                    bool do_op_validation) const {
+  ORT_UNUSED_PARAMETER(do_op_validation);
 
-//     // // Use shared library factory method to create GraphViewer
-//     // // Cast to non-const temporarily for factory method (safe for read-only validation)
-//     // // auto* mutable_graph = const_cast<Graph*>(internal_graph);
-//     // std::cout << "DEBUG: Graph created successfully." << std::endl;
-//     // // auto graph_viewer_ptr = mutable_graph->CreateGraphViewer();
-//     // const GraphViewer& graph_viewer = graph->GetGraphViewer();
-//     // std::cout << "DEBUG: GraphViewer created." << std::endl;
-//     // if (!graph_viewer_ptr) {
-//     //   return false;  // Failed to create GraphViewer
-//     // }
-//     // std::cout << "DEBUG: GraphViewer created successfully." << std::endl;
+  const auto& inputs = node_unit.Inputs();
+  const auto input_count = GetInputCountQnnRequired(node_unit);
+  for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
+    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[input_idx], logger, input_names));
+  }
 
-//     // // Step 2: Create NodeUnit using the shared library factory method
-//     // // Use QDQ::GetAllNodeUnits to create all NodeUnits, then find ours
-
-
-//     // auto [node_units, node_unit_map] = QDQ::GetAllNodeUnits(graph_viewer, *internal_logger);
-
-//     // // Find the NodeUnit corresponding to our target node
-//     // auto node_unit_iter = node_unit_map.find(internal_node);
-//     // if (node_unit_iter == node_unit_map.end()) {
-//     //   return false;  // NodeUnit not found for the target node
-//     // }
-//     // const NodeUnit* target_node_unit = node_unit_iter->second;
-//     // target_node_unit;
-//     // std::cout << "DEBUG: Found NodeUnit for validation: " << std::endl;
-
-//     // // Step 3: Create QnnModelWrapper with minimal but valid parameters
-//     // // Use default/empty values for optional parameters
-//     // QNN_INTERFACE_VER_TYPE qnn_interface = {};  // Default interface
-//     // Qnn_BackendHandle_t backend_handle = nullptr;  // NULL handle for validation
-//     // std::unordered_map<std::string, size_t> empty_input_map;
-//     // std::unordered_map<std::string, size_t> empty_output_map;
-//     // ModelSettings default_settings;  // Default model settings
-
-//     // std::cout << "DEBUG: Creating QnnModelWrapper for validation." << std::endl;
-
-//     // QnnModelWrapper validation_wrapper(
-//     //     *internal_graph,
-//     //     *internal_logger,
-//     //     qnn_interface,
-//     //     backend_handle,
-//     //     empty_input_map,
-//     //     empty_output_map,
-//     //     QnnBackendType::CPU,
-//     //     default_settings);
-
-//     // std::cout << "DEBUG: QnnModelWrapper created successfully." << std::endl;
-
-//     // // GOAL ACHIEVED: Call the full IsOpSupported method with proper objects
-//     // // All three key points are maintained:
-//     // // 1. qnn-abi/ stays as shared library material
-//     // // 2. IsOpSupportedForABI calls IsOpSupported
-//     // // 3. Architectural integrity is maintained with proper factory methods
-//     // Status result = this->IsOpSupported(validation_wrapper, *target_node_unit, *internal_logger);
-//     // std::cout << "DEBUG: IsOpSupported called" << std::endl;
-//     return false; //result.IsOK();
-
-//   } catch (const std::exception& ex) {
-//     ex;
-//     // Log error if possible and return false
-//     return false;
-//   } catch (...) {
-//     // Any other exception means not supported
-//     return false;
-//   }
-// #else
-//   // For static builds, this function should not be called
-//   return false;
-// #endif
-// }
-
-
-// // Add operator related
-// Status BaseOpBuilder::AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
-//                                         const NodeUnit& node_unit,
-//                                         const logging::Logger& logger,
-//                                         bool do_op_validation) const {
-//   LOGS(logger, VERBOSE) << "QNN node builder is trying to add node. Onnx node name: [" << node_unit.Name()
-//                         << "] onnx node type: [" << node_unit.OpType() << "].";
-
-//   std::vector<std::string> input_names;
-//   // Inputs & output handling mostly same for most of the Ops, just node attributes are different
-//   ORT_RETURN_IF_ERROR(ProcessInputs(qnn_model_wrapper, node_unit, logger,
-//                                     input_names, do_op_validation));
-//   ORT_RETURN_IF_ERROR(ProcessInt64Tensors(qnn_model_wrapper, node_unit, input_names));
-//   ORT_RETURN_IF_ERROR(ProcessAttributesAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names),
-//                                                   logger, do_op_validation));
-//   return Status::OK();
-// }
-
-// Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
-//                                    const NodeUnitIODef& input,
-//                                    const logging::Logger& logger,
-//                                    std::vector<std::string>& input_names) const {
-//   const auto& input_name = input.node_arg.Name();
-
-//   if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
-//     LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
-//     input_names.push_back(input_name);
-//     return Status::OK();
-//   }
-
-//   QnnTensorWrapper input_tensorwrapper;
-//   ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input, input_tensorwrapper));
-//   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
-//   input_names.push_back(input_name);
-
-//   return Status::OK();
-// }
-
-// Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-//                                     const NodeUnit& node_unit,
-//                                     const logging::Logger& logger,
-//                                     std::vector<std::string>& input_names,
-//                                     bool do_op_validation) const {
-//   ORT_UNUSED_PARAMETER(do_op_validation);
-
-//   const auto& inputs = node_unit.Inputs();
-//   const auto input_count = GetInputCountQnnRequired(node_unit);
-//   for (size_t input_i = 0; input_i < input_count; ++input_i) {
-//     ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[input_i], logger, input_names));
-//   }
-
-//   return Status::OK();
-// }
+  return Status::OK();
+}
 
 // Status BaseOpBuilder::AddZeroBiasInput(QnnModelWrapper& qnn_model_wrapper,
 //                                        const QnnQuantParamsWrapper& input0_qparams,
@@ -255,7 +134,7 @@
 // }
 
 // Status BaseOpBuilder::ProcessInt64Tensors(QnnModelWrapper& qnn_model_wrapper,
-//                                           const NodeUnit& node_unit,
+//                                           const OrtNodeUnit& node_unit,
 //                                           std::vector<std::string>& input_names) const {
 //   if (input_names.size() < 1) {
 //     return Status::OK();
@@ -300,132 +179,140 @@
 //   return Status::OK();
 // }
 
-// Status BaseOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-//                                                   const NodeUnit& node_unit,
-//                                                   std::vector<std::string>&& input_names,
-//                                                   const logging::Logger& logger,
-//                                                   bool do_op_validation) const {
-//   if (input_names.size() < 1) {
-//     return Status::OK();
-//   }
-//   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
-//                                      logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
-//   return Status::OK();
-// }
+Status BaseOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                  const OrtNodeUnit& node_unit,
+                                                  std::vector<std::string>&& input_names,
+                                                  const logging::Logger& logger,
+                                                  bool do_op_validation) const {
+  if (input_names.size() < 1) {
+    return Status::OK();
+  }
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
+                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
+  return Status::OK();
+}
 
-// Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
-//                                      const NodeUnit& node_unit,
-//                                      std::vector<std::string>&& input_names,
-//                                      std::vector<std::string>&& param_tensor_names,
-//                                      const logging::Logger& logger,
-//                                      bool do_op_validation,
-//                                      const std::string& qnn_op_type) const {
-//   ORT_UNUSED_PARAMETER(logger);
-//   // Add output
-//   // Output part is common for all Ops, only difference is the Op attribute
-//   const auto& outputs = node_unit.Outputs();
-//   std::vector<std::string> output_names;
-//   struct CastNodeInfo {
-//     std::string node_name;
-//     std::string input_name;
-//     std::string output_name;
-//   };
-//   std::vector<CastNodeInfo> cast_node_info_vec;
-//   auto mem_type = QNN_TENSORMEMTYPE_RAW;
-//   if (true == qnn_model_wrapper.GetModelSettings().htp_shared_memory) {
-//     mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
-//   }
-//   const auto output_count = GetOutputCountQnnRequired(node_unit);
-//   for (size_t output_i = 0; output_i < output_count; ++output_i) {
-//     const auto& output_name = outputs[output_i].node_arg.Name();
+Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                     const OrtNodeUnit& node_unit,
+                                     std::vector<std::string>&& input_names,
+                                     std::vector<std::string>&& param_tensor_names,
+                                     const logging::Logger& logger,
+                                     bool do_op_validation,
+                                     const std::string& qnn_op_type) const {
+  ORT_UNUSED_PARAMETER(logger);
 
-//     TensorInfo output_info = {};
-//     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[output_i], output_info));
+  qnn_model_wrapper;
+  input_names;
+  param_tensor_names;
+  do_op_validation;
+  qnn_op_type;
 
-//     if (output_info.quant_param.IsQuantized()) {
-//       ORT_RETURN_IF_ERROR(OverrideOutputQuantParam(qnn_model_wrapper, node_unit, logger, input_names,
-//                                                    output_i, output_info.qnn_data_type, output_info.quant_param));
-//     }
+  // std::vector<std::string> output_names;
+  // struct CastNodeInfo {
+  //   std::string node_name;
+  //   std::string input_name;
+  //   std::string output_name;
+  // };
+  // std::vector<CastNodeInfo> cast_node_info_vec;
+  // auto mem_type = QNN_TENSORMEMTYPE_RAW;
+  // if (true == qnn_model_wrapper.GetModelSettings().htp_shared_memory) {
+  //   mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
+  // }
 
-//     Qnn_DataType_t supported_qnn_data_type = GetSupportedOutputDataType(output_i, output_info.qnn_data_type);
-//     bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
+  const auto& outputs = node_unit.Outputs();
+  const auto output_count = GetOutputCountQnnRequired(node_unit);
+  for (size_t output_idx = 0; output_idx < output_count; ++output_idx) {
+    const std::string& output_name = outputs[output_idx].name;
+    output_name;
 
-//     // Check if we need to add a cast node for int64
-//     bool needs_int64_cast = false;
-//     if (is_graph_output) {
-//       for (const auto& input_name : input_names) {
-//         if (input_name.find("_cast_int32") != std::string::npos) {
-//           needs_int64_cast = true;
-//           break;
-//         }
-//       }
-//     }
+  //   TensorInfo output_info = {};
+  //   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[output_i], output_info));
 
-//     if (needs_int64_cast) {
-//       std::string cast_node_name = output_name + "_cast_int64";
-//       std::string cast_input_name = output_name + "_cast_int64_aux";
-//       QnnQuantParamsWrapper quant_params = output_info.quant_param.Copy();
-//       std::vector<uint32_t> cast_output_shape = output_info.shape;
+  //   if (output_info.quant_param.IsQuantized()) {
+  //     ORT_RETURN_IF_ERROR(OverrideOutputQuantParam(qnn_model_wrapper, node_unit, logger, input_names,
+  //                                                  output_i, output_info.qnn_data_type, output_info.quant_param));
+  //   }
 
-//       // Create the cast input tensor wrapper
-//       QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
-//                                                 QNN_TENSOR_TYPE_NATIVE,
-//                                                 supported_qnn_data_type,
-//                                                 output_info.quant_param.Copy(),
-//                                                 std::move(cast_output_shape));
-//       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
-//       output_names.push_back(cast_input_name);
-//       // Store the cast node information for later addition
-//       cast_node_info_vec.push_back({cast_node_name, cast_input_name, output_name});
-//     } else if (supported_qnn_data_type != output_info.qnn_data_type && is_graph_output && !do_op_validation) {
-//       std::string cast_node_name = output_name + "_ort_qnn_ep_cast";
-//       std::string cast_input_name = output_name + "_ort_qnn_ep_aux";
-//       std::vector<uint32_t> cast_output_shape = output_info.shape;
-//       QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
-//                                                 QNN_TENSOR_TYPE_NATIVE,
-//                                                 supported_qnn_data_type,
-//                                                 output_info.quant_param.Copy(),
-//                                                 std::move(cast_output_shape), {},
-//                                                 mem_type);
-//       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
-//       output_names.push_back(cast_input_name);
-//       cast_node_info_vec.push_back({cast_node_name, cast_input_name, output_name});
-//     } else {
-//       output_info.qnn_data_type = supported_qnn_data_type;
-//       output_names.push_back(output_name);
-//     }
-//     Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-//     QnnTensorWrapper output_tensorwrapper(output_name,
-//                                           tensor_type,
-//                                           output_info.qnn_data_type,
-//                                           std::move(output_info.quant_param),
-//                                           std::move(output_info.shape));
-//     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-//   }
+  //   Qnn_DataType_t supported_qnn_data_type = GetSupportedOutputDataType(output_i, output_info.qnn_data_type);
+  //   bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
 
-//   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
-//                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
-//                                                     qnn_op_type,  // Typically GetQnnOpType(), but can be overridden.
-//                                                     std::move(input_names),
-//                                                     std::move(output_names),
-//                                                     std::move(param_tensor_names),
-//                                                     do_op_validation),
-//                     "Failed to add node.");
-//   for (const auto& cast_node_info : cast_node_info_vec) {
-//     // Insert cast node.
-//     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_node_info.node_name,
-//                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
-//                                                       "Cast",
-//                                                       {cast_node_info.input_name},
-//                                                       {cast_node_info.output_name},
-//                                                       {}),
-//                       " Failed to add Cast node");
-//   }
-//   return Status::OK();
-// }
+  //   // Check if we need to add a cast node for int64
+  //   bool needs_int64_cast = false;
+  //   if (is_graph_output) {
+  //     for (const auto& input_name : input_names) {
+  //       if (input_name.find("_cast_int32") != std::string::npos) {
+  //         needs_int64_cast = true;
+  //         break;
+  //       }
+  //     }
+  //   }
+
+  //   if (needs_int64_cast) {
+  //     std::string cast_node_name = output_name + "_cast_int64";
+  //     std::string cast_input_name = output_name + "_cast_int64_aux";
+  //     QnnQuantParamsWrapper quant_params = output_info.quant_param.Copy();
+  //     std::vector<uint32_t> cast_output_shape = output_info.shape;
+
+  //     // Create the cast input tensor wrapper
+  //     QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
+  //                                               QNN_TENSOR_TYPE_NATIVE,
+  //                                               supported_qnn_data_type,
+  //                                               output_info.quant_param.Copy(),
+  //                                               std::move(cast_output_shape));
+  //     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
+  //     output_names.push_back(cast_input_name);
+  //     // Store the cast node information for later addition
+  //     cast_node_info_vec.push_back({cast_node_name, cast_input_name, output_name});
+  //   } else if (supported_qnn_data_type != output_info.qnn_data_type && is_graph_output && !do_op_validation) {
+  //     std::string cast_node_name = output_name + "_ort_qnn_ep_cast";
+  //     std::string cast_input_name = output_name + "_ort_qnn_ep_aux";
+  //     std::vector<uint32_t> cast_output_shape = output_info.shape;
+  //     QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
+  //                                               QNN_TENSOR_TYPE_NATIVE,
+  //                                               supported_qnn_data_type,
+  //                                               output_info.quant_param.Copy(),
+  //                                               std::move(cast_output_shape), {},
+  //                                               mem_type);
+  //     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
+  //     output_names.push_back(cast_input_name);
+  //     cast_node_info_vec.push_back({cast_node_name, cast_input_name, output_name});
+  //   } else {
+  //     output_info.qnn_data_type = supported_qnn_data_type;
+  //     output_names.push_back(output_name);
+  //   }
+  //   Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+  //   QnnTensorWrapper output_tensorwrapper(output_name,
+  //                                         tensor_type,
+  //                                         output_info.qnn_data_type,
+  //                                         std::move(output_info.quant_param),
+  //                                         std::move(output_info.shape));
+  //   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
+  }
+
+  // ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
+  //                                                   QNN_OP_PACKAGE_NAME_QTI_AISW,
+  //                                                   qnn_op_type,  // Typically GetQnnOpType(), but can be overridden.
+  //                                                   std::move(input_names),
+  //                                                   std::move(output_names),
+  //                                                   std::move(param_tensor_names),
+  //                                                   do_op_validation),
+  //                   "Failed to add node.");
+  // for (const auto& cast_node_info : cast_node_info_vec) {
+  //   // Insert cast node.
+  //   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_node_info.node_name,
+  //                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
+  //                                                     "Cast",
+  //                                                     {cast_node_info.input_name},
+  //                                                     {cast_node_info.output_name},
+  //                                                     {}),
+  //                     " Failed to add Cast node");
+  // }
+
+  return Status::OK();
+}
 
 // Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
-//                                                                const NodeUnit& node_unit,
+//                                                                const OrtNodeUnit& node_unit,
 //                                                                const logging::Logger& logger,
 //                                                                const std::vector<std::string>& input_names,
 //                                                                size_t input_index,
@@ -465,7 +352,7 @@
 // }
 
 // Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrapper,
-//                                            const NodeUnit& node_unit,
+//                                            const OrtNodeUnit& node_unit,
 //                                            Qnn_Scalar_t& axis_qnn_scalar,
 //                                            int32_t& default_axis_value) const {
 //   const auto& inputs = node_unit.Inputs();
@@ -503,5 +390,5 @@
 // }
 
 
-// }  // namespace qnn
-// }  // namespace onnxruntime
+}  // namespace qnn
+}  // namespace onnxruntime

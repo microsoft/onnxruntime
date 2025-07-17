@@ -17,7 +17,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   //   CreateSimpleOpBuilder("Add", *this);
   //   CreateSimpleOpBuilder("Asin", *this);
   //   CreateSimpleOpBuilder("Atan", *this);
-  //   CreateSimpleOpBuilder("Mul", *this);
+    CreateSimpleOpBuilder("Mul", *this);
   //   CreateSimpleOpBuilder("Abs", *this);
   //   CreateSimpleOpBuilder("And", *this);
   //   CreateSimpleOpBuilder("Ceil", *this);
