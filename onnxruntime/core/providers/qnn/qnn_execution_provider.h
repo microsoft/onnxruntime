@@ -57,9 +57,6 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 
-  Status SetEpDynamicOptions(gsl::span<const char* const> keys,
-                             gsl::span<const char* const> value) override;
-
  private:
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
@@ -99,7 +96,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   uint32_t device_id_ = 0;
   qnn::HtpPerformanceMode default_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   uint32_t default_rpc_control_latency_ = 0;
-  uint32_t default_rpc_polling_time_ = 0;
   bool enable_HTP_FP16_precision_ = true;
   bool share_ep_contexts_ = false;
   bool stop_share_ep_contexts_ = false;
@@ -120,8 +116,7 @@ class QNNExecutionProvider : public IExecutionProvider {
     PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
                      uint32_t device_id, uint32_t core_id,
                      qnn::HtpPerformanceMode default_htp_performance_mode,
-                     uint32_t default_rpc_control_latency,
-                     uint32_t default_rpc_polling_time);
+                     uint32_t default_rpc_control_latency);
     ~PerThreadContext();
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerThreadContext);
 

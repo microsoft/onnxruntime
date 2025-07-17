@@ -72,7 +72,6 @@ Status EpLibraryProviderBridge::Load() {
 
     auto internal_factory = std::make_unique<EpFactoryInternal>(factory->GetName(factory),
                                                                 factory->GetVendor(factory),
-                                                                factory->GetVendorId(factory),
                                                                 is_supported_fn,
                                                                 create_fn);
     factory_ptrs_.push_back(internal_factory.get());

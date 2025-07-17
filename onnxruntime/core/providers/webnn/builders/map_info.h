@@ -47,7 +47,6 @@ constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 5> supported_fallback
 // Use ONNX-to-ONNX op mapping to improve the search complexity for WebNN ops in the op_inputs_map.
 const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_map = {
     {"ConvInteger", {"Cast", "Conv", "DequantizeLinear"}},
-    {"Einsum", {"MatMul", "Mul", "ReduceSum", "Reshape", "Transpose", "Trilu"}},
     {"GroupQueryAttention",
      {"Add", "Cast", "Concat", "CumSum", "Div", "Expand", "Less", "MatMul", "Reshape", "ScatterND",
       "Softmax", "Transpose", "Where"}},
@@ -140,7 +139,7 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"Mul", {"mul", {{0, "a"}, {1, "b"}}}},
     {"Pow", {"pow", {{0, "a"}, {1, "b"}}}},
     {"Concat", {"concat", {{0, "inputs"}}}},
-    {"Not", {"logicalNot", {{0, "a"}}}},
+    {"Not", {"logicalNot", {{0, "input"}}}},
     {"Flatten", {"reshape", {{0, "input"}}}},
     {"LpPool", {"l2Pool2d", {{0, "input"}}}},
     {"Reshape", {"reshape", {{0, "input"}}}},
@@ -160,6 +159,7 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"Softsign", {"softsign", {{0, "input"}}}},
     {"Unsqueeze", {"reshape", {{0, "input"}}}},
     {"Or", {"logicalOr", {{0, "a"}, {1, "b"}}}},
+    {"Einsum", {"matmul", {{0, "a"}, {1, "b"}}}},
     {"HardSwish", {"hardSwish", {{0, "input"}}}},
     {"LeakyRelu", {"leakyRelu", {{0, "input"}}}},
     {"MatMul", {"matmul", {{0, "a"}, {1, "b"}}}},

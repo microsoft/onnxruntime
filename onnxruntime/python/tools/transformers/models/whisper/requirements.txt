@@ -1,5 +1,5 @@
 torch>=2.7.0
-transformers==4.52.3
+transformers>=4.52.3
 openai-whisper==20240927
 ffmpeg-python
 datasets

@@ -269,48 +269,42 @@ class FusionAttentionClip(FusionAttention):
         attention_last_node = reshape_qkv
 
         add_qk = ""
-        causal_mask_nodes_1 = None
-        causal_mask_nodes_2 = None
         if add_mask is not None:
-            if add_mask.input[1] == "attention_mask":
+            # 4D Add after Q x K'
+            add_qk_nodes = self.model.match_parent_path(
+                add_mask,
+                [
+                    "Where",
+                    "Sub",
+                    "Cast",
+                    "Expand",
+                    "Unsqueeze",
+                    "Unsqueeze",
+                    "Reshape",
+                    "Reshape",
+                    "Cast",
+                ],
+                [1, 2, 1, 0, 0, 0, 0, 0, 0],
+            )
+            if add_qk_nodes is not None:
                 add_qk = add_mask.input[1]
             else:
-                # 4D Add after Q x K'
-                add_qk_nodes = self.model.match_parent_path(
+                # Here we do not match the whole subgraph since it is very complex. Instead, we just check whether a key path
+                # of computing causal mask.
+                causal_mask_nodes_1 = self.model.match_parent_path(
                     add_mask,
-                    [
-                        "Where",
-                        "Sub",
-                        "Cast",
-                        "Expand",
-                        "Unsqueeze",
-                        "Unsqueeze",
-                        "Reshape",
-                        "Reshape",
-                        "Cast",
-                    ],
-                    [1, 2, 1, 0, 0, 0, 0, 0, 0],
+                    ["Concat", "Expand", "Unsqueeze", "Unsqueeze", "Where", "Less"],
+                    [causal_mask_input_index, 0, 0, 0, 0, 0],
                 )
-                if add_qk_nodes is not None:
-                    add_qk = add_mask.input[1]
-                else:
-                    # Here we do not match the whole subgraph since it is very complex. Instead, we just check whether a key path
-                    # of computing causal mask.
-                    causal_mask_nodes_1 = self.model.match_parent_path(
-                        add_mask,
-                        ["Concat", "Expand", "Unsqueeze", "Unsqueeze", "Where", "Less"],
-                        [causal_mask_input_index, 0, 0, 0, 0, 0],
-                    )
-                    # If the model is exported with batch_size == 1, there is no Concat node
-                    causal_mask_nodes_2 = self.model.match_parent_path(
-                        add_mask,
-                        ["Expand", "Unsqueeze", "Unsqueeze", "Where", "Less"],
-                        [causal_mask_input_index, 0, 0, 0, 0],
-                    )
-
-                    if causal_mask_nodes_1 is None and causal_mask_nodes_2 is None:
-                        logger.debug("fuse_attention: failed to match causal mask subgraph")
-                        return
+                # If the model is exported with batch_size == 1, there is no Concat node
+                causal_mask_nodes_2 = self.model.match_parent_path(
+                    add_mask,
+                    ["Expand", "Unsqueeze", "Unsqueeze", "Where", "Less"],
+                    [causal_mask_input_index, 0, 0, 0, 0],
+                )
+                if causal_mask_nodes_1 is None and causal_mask_nodes_2 is None:
+                    logger.debug("fuse_attention: failed to match causal mask subgraph")
+                    return
 
         new_node = self.create_attention_node(
             mask_index=None,
@@ -326,7 +320,7 @@ class FusionAttentionClip(FusionAttention):
             output=attention_last_node.output[0],
             add_qk_str=add_qk,
             scale=None,
-            causal=(causal_mask_nodes_1 is not None) or (causal_mask_nodes_2 is not None),
+            causal=(add_mask is not None),
         )
         if new_node is None:
             logger.debug("fuse_attention: failed to create fused node")

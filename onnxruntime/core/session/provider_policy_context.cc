@@ -22,13 +22,7 @@
 namespace onnxruntime {
 namespace {
 bool MatchesEpVendor(const OrtEpDevice* d) {
-  // match on vendor id if provided
-  uint32_t factory_vendor_id = d->ep_factory->GetVendorId(d->ep_factory);
-  if (factory_vendor_id != 0 && d->device->vendor_id == factory_vendor_id) {
-    return true;
-  }
-
-  // match on vendor name
+  // TODO: Would be better to match on Id. Should the EP add that in EP metadata?
   return d->device->vendor == d->ep_vendor;
 }
 

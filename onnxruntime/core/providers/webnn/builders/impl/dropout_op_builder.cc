@@ -21,6 +21,11 @@ class DropoutOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+
+  // Operator support related.
+ private:
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
+                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -60,11 +65,24 @@ Status DropoutOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     emscripten::val options = emscripten::val::object();
     options.set("label", output_defs[1]->Name() + "_identity");
     // Add additional identity op in case the mask is the output of a WebNN graph,
-    // because WebNN does not support a constant operand as output.
+    // beacuse WebNN does not support a constant operand as output.
     emscripten::val mask_output = model_builder.GetBuilder().call<emscripten::val>("identity", one_constant, options);
     model_builder.AddOperand(output_defs[1]->Name(), std::move(mask_output));
   }
   return Status::OK();
+}
+
+// Operator support related.
+bool DropoutOpBuilder::IsOpSupportedImpl(const GraphViewer&,
+                                         const Node& node,
+                                         const WebnnDeviceType /* device_type */,
+                                         const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  std::vector<int64_t> input_shape;
+  if (!GetShape(*input_defs[0], input_shape, logger))
+    return false;
+
+  return true;
 }
 
 void CreateDropoutOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -66,8 +66,7 @@ bool TernaryOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& no
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, input1_type, wnn_limits, "trueValue", "X", logger) &&
-         IsInputRankSupportedByOp(node, wnn_limits, logger);
+  return IsDataTypeSupportedByOp(op_type, input1_type, wnn_limits, "trueValue", "X", logger);
 }
 
 void CreateTernaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

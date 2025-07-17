@@ -30,7 +30,6 @@ std::unique_ptr<TestGraph> TestGraph::Load(const ORTCHAR_T* model_path) {
 
 const OrtGraph& TestGraph::GetOrtGraph() const { return *api_graph; }
 const GraphViewer& TestGraph::GetGraphViewer() const { return graph_viewer; }
-const Model& TestGraph::GetModel() const { return *model; }
 
 static Status GetInputIndices(const Node& consumer_node, const std::string& name,
                               /*out*/ std::vector<int64_t>& indices) {

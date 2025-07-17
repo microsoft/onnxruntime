@@ -146,24 +146,24 @@ Status ScatterND::ComputeInternal(ComputeContext& context) const {
   const auto* updates = context.Input<Tensor>(2);
   const auto& input_shape = input->Shape();
   const auto& indices_shape = indices->Shape();
-  auto* output = context.Output(0, input_shape);
-  const void* source = input->DataRaw();
-  void* target = output->MutableDataRaw();
-  // If source and target pointers are not equal (non-inplace operation), we need to copy the data.
-  if (target != source) {
-    ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(*input, *output));
-  }
-  if (indices_shape.Size() == 0) {
-    // If the indices are empty, we can return early.
-    return Status::OK();
-  }
   auto indices_rank = indices_shape.NumDimensions();
   auto last_index_dimension = static_cast<uint32_t>(indices_shape[indices_rank - 1]);
   auto num_updates_elements = static_cast<uint32_t>(input_shape.SizeFromDimension(last_index_dimension));
   // TODO: support bool with components 4.
   const size_t components = 1;
   auto output_size = static_cast<uint32_t>((indices_shape.SizeToDimension(indices_rank - 1) + components - 1) / components);
+  auto* output = context.Output(0, input_shape);
+  if (output_size == 0) {
+    // If the output tensor is empty, we can return early.
+    return Status::OK();
+  }
   MLDataType data_type = input->DataType();
+  const void* source = input->DataRaw();
+  void* target = output->MutableDataRaw();
+  // If source and target pointers are not equal (non-inplace operation), we need to copy the data.
+  if (target != source) {
+    ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(*input, *output));
+  }
   ScatterNDProgram program(reduction_, data_type);
   program
       .CacheHint(static_cast<uint32_t>(reduction_))

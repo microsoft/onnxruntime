@@ -284,8 +284,6 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=vsinpu-ep")
     if args.use_webgpu:
         vcpkg_install_options.append("--x-feature=webgpu-ep")
-        if args.wgsl_template == "dynamic":
-            vcpkg_install_options.append("--x-feature=webgpu-ep-wgsl-template-dynamic")
     if args.use_webnn:
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
@@ -472,7 +470,6 @@ def generate_build_tree(
             else "OFF"
         ),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        "-Donnxruntime_CLIENT_PACKAGE_BUILD=" + ("ON" if args.client_package_build else "OFF"),
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),

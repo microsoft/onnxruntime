@@ -61,8 +61,7 @@ TEST(SoftmaxOperator, webgpu_nan) {
   test.AddOutput<float>("Y", dimensions, expected_result);
 
   // explicitly disable for EPs that do not handle NaN
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCpuExecutionProvider, kCoreMLExecutionProvider, kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider, kCoreMLExecutionProvider});
 }
 #endif
 

@@ -819,15 +819,6 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelPath(
   return *this;
 }
 
-inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextBinaryInformation(
-    const ORTCHAR_T* output_directory, const ORTCHAR_T* model_name) {
-  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextBinaryInformation(
-      this->p_,
-      output_directory,
-      model_name));
-  return *this;
-}
-
 inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalInitializersFile(
     const ORTCHAR_T* file_path, size_t initializer_size_threshold) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelExternalInitializersFile(

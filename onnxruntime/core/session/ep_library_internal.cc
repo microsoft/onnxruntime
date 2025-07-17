@@ -61,8 +61,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCpuEp() {
   };
 
   std::string ep_name = kCpuExecutionProvider;
-  auto cpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", OrtDevice::VendorIds::MICROSOFT,
-                                                         get_supported, create_cpu_ep);
+  auto cpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", get_supported, create_cpu_ep);
   return std::make_unique<EpLibraryInternal>(std::move(cpu_factory));
 }
 
@@ -123,8 +122,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
     return nullptr;
   };
 
-  auto dml_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", OrtDevice::VendorIds::MICROSOFT,
-                                                         is_supported, create_dml_ep);
+  auto dml_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", is_supported, create_dml_ep);
 
   return std::make_unique<EpLibraryInternal>(std::move(dml_factory));
 }
@@ -172,8 +170,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateWebGpuEp() {
     return nullptr;
   };
 
-  auto webgpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", OrtDevice::VendorIds::MICROSOFT,
-                                                            is_supported, create_webgpu_ep);
+  auto webgpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", is_supported, create_webgpu_ep);
 
   return std::make_unique<EpLibraryInternal>(std::move(webgpu_factory));
 }

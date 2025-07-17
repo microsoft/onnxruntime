@@ -76,6 +76,15 @@ bool TriangularOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                             const WebnnDeviceType /* device_type */,
                                             const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
+  std::vector<int64_t> input_shape;
+  if (!GetShape(*input_defs[0], input_shape, logger))
+    return false;
+  const auto input_size = input_shape.size();
+  if (input_size < 2) {
+    LOGS(logger, VERBOSE) << "Triangular only supports input size >= 2D shape, input is "
+                          << input_size << "d shape";
+    return false;
+  }
 
   const std::string diagonal_name = GetTensorName(input_defs, 1);
   // Inputs contain optional 'diagonal' input.

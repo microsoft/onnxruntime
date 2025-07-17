@@ -91,7 +91,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       a_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
       std::vector<int64_t> a_zero_point_shape;
       ORT_RETURN_IF_NOT(GetShape(*input_defs[2], a_zero_point_shape, logger), "Cannot get shape of a_zero_point");
-      // Scale is not used by MatMulInteger but required by DequantizeLinear. So set it to default value 1.0f.
+      // Scale is not used by MatMulInteger but required by DequantizeLinear. So set it to deafult value 1.0f.
       // The scale input should have the same shape as the zero point input.
       a_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                                          1.0f,
@@ -268,45 +268,11 @@ bool GemmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
     return false;
   }
 
-  if (op_type == "Gemm") {
-    return IsInputRankSupportedByOp(node, wnn_limits, logger) &&
-           IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "A", logger);
-  } else if (op_type == "MatMulInteger") {
-    // Check up to 4 inputs for MatMulInteger
-    for (size_t i = 0; i < input_defs.size(); ++i) {
-      std::vector<int64_t> shape;
-      if (!GetShape(*input_defs[i], shape, logger)) {
-        return false;
-      }
-
-      // We made workaround to support 1D for input A and B, skip further checks if they are 1D
-      if (i <= 1 && shape.size() == 1) {
-        continue;
-      }
-
-      // For DequantizeLinear, input indices: 0 (x), 1 (scale), 2 (zero_point)
-      if (!IsInputRankSupported(wnn_limits, "dequantizeLinear",
-                                (i < 2) ? "input" : "zeroPoint",
-                                shape.size(), node.Name(), logger)) {
-        return false;
-      }
-    }
+  if (op_type == "MatMulInteger") {
+    // The first decomposed op of MatMulInteger is DequantizeLinear, and so
+    // we only need to ensure it supports the input0_type.
     return IsDataTypeSupportedByOp("DequantizeLinear", input0_type, wnn_limits, "input", "x", logger);
-  } else {  // MatMul
-    for (int i = 0; i < 2; ++i) {
-      std::vector<int64_t> shape;
-      if (!GetShape(*input_defs[i], shape, logger)) {
-        return false;
-      }
-
-      if (shape.size() == 1) {
-        continue;
-      }
-
-      if (!IsInputRankSupported(wnn_limits, "matmul", (i == 0) ? "a" : "b", shape.size(), node.Name(), logger)) {
-        return false;
-      }
-    }
+  } else {
     return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "A", logger);
   }
 }

@@ -358,7 +358,7 @@ struct OrtEp {
    *
    * \since Version 1.22.
    */
-  ORT_API_T(const char*, GetName, _In_ const OrtEp* this_ptr);
+  const char*(ORT_API_CALL* GetName)(_In_ const OrtEp* this_ptr);
 
   /** \brief Get information about the nodes supported by the OrtEp instance.
    *
@@ -376,8 +376,8 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetCapability, _In_ OrtEp* this_ptr, _In_ const OrtGraph* graph,
-                  _Inout_ OrtEpGraphSupportInfo* graph_support_info);
+  OrtStatus*(ORT_API_CALL* GetCapability)(_In_ OrtEp* this_ptr, _In_ const OrtGraph* graph,
+                                          _Inout_ OrtEpGraphSupportInfo* graph_support_info);
 
   /** \brief Compile OrtGraph instances assigned to the OrtEp. Implementer must set a OrtNodeComputeInfo instance
    * for each OrtGraph in order to define its computation function.
@@ -416,10 +416,10 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Compile, _In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
-                  _In_ const OrtNode** fused_nodes, _In_ size_t count,
-                  _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
-                  _Out_writes_(count) OrtNode** ep_context_nodes);
+  OrtStatus*(ORT_API_CALL* Compile)(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
+                                    _In_ const OrtNode** fused_nodes, _In_ size_t count,
+                                    _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
+                                    _Out_writes_(count) OrtNode** ep_context_nodes);
 
   /** \brief Release OrtNodeComputeInfo instances.
    *
@@ -429,9 +429,9 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(void, ReleaseNodeComputeInfos, _In_ OrtEp* this_ptr,
-            OrtNodeComputeInfo** node_compute_infos,
-            _In_ size_t num_node_compute_infos);
+  void(ORT_API_CALL* ReleaseNodeComputeInfos)(_In_ OrtEp* this_ptr,
+                                              OrtNodeComputeInfo** node_compute_infos,
+                                              _In_ size_t num_node_compute_infos);
 
   /** \brief Get the EP's preferred data layout.
    *
@@ -445,7 +445,8 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetPreferredDataLayout, _In_ OrtEp* this_ptr, _Out_ OrtEpDataLayout* preferred_data_layout);
+  OrtStatus*(ORT_API_CALL* GetPreferredDataLayout)(_In_ OrtEp* this_ptr,
+                                                   _Out_ OrtEpDataLayout* preferred_data_layout);
 
   /** \brief Given an op with domain `domain` and type `op_type`, determine whether an associated node's data layout
    *         should be converted to `target_data_layout`.
@@ -469,10 +470,11 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(ShouldConvertDataLayoutForOp, _In_ OrtEp* this_ptr,
-                  _In_z_ const char* domain, _In_z_ const char* op_type,
-                  _In_ OrtEpDataLayout target_data_layout,
-                  _Outptr_ int* should_convert);
+  OrtStatus*(ORT_API_CALL* ShouldConvertDataLayoutForOp)(_In_ OrtEp* this_ptr,
+                                                         _In_z_ const char* domain,
+                                                         _In_z_ const char* op_type,
+                                                         _In_ OrtEpDataLayout target_data_layout,
+                                                         _Outptr_ int* should_convert);
 
   /** \brief Set dynamic options on this EP.
    *
@@ -490,10 +492,10 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(SetDynamicOptions, _In_ OrtEp* this_ptr,
-                  _In_reads_(num_options) const char* const* option_keys,
-                  _In_reads_(num_options) const char* const* option_values,
-                  _In_ size_t num_options);
+  OrtStatus*(ORT_API_CALL* SetDynamicOptions)(_In_ OrtEp* this_ptr,
+                                              _In_reads_(num_options) const char* const* option_keys,
+                                              _In_reads_(num_options) const char* const* option_values,
+                                              _In_ size_t num_options);
 
   /** \brief Called by ORT to notify the EP of the start of a run.
    *
@@ -506,7 +508,8 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(OnRunStart, _In_ OrtEp* this_ptr, _In_ const OrtRunOptions* run_options);
+  OrtStatus*(ORT_API_CALL* OnRunStart)(_In_ OrtEp* this_ptr,
+                                       _In_ const OrtRunOptions* run_options);
 
   /** \brief Called by ORT to notify the EP of the end of a run.
    *
@@ -521,7 +524,9 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(OnRunEnd, _In_ OrtEp* this_ptr, _In_ const OrtRunOptions* run_options, _In_ bool sync_stream);
+  OrtStatus*(ORT_API_CALL* OnRunEnd)(_In_ OrtEp* this_ptr,
+                                     _In_ const OrtRunOptions* run_options,
+                                     _In_ bool sync_stream);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -581,7 +586,7 @@ struct OrtEpFactory {
    *
    * \since Version 1.22.
    */
-  ORT_API_T(const char*, GetName, const OrtEpFactory* this_ptr);
+  const char*(ORT_API_CALL* GetName)(const OrtEpFactory* this_ptr);
 
   /** \brief Get the name of vendor who owns the execution provider that the factory creates.
    *
@@ -592,7 +597,7 @@ struct OrtEpFactory {
    *
    * \since Version 1.22.
    */
-  ORT_API_T(const char*, GetVendor, const OrtEpFactory* this_ptr);  // return EP vendor
+  const char*(ORT_API_CALL* GetVendor)(const OrtEpFactory* this_ptr);  // return EP vendor
 
   /** \brief Get information from the execution provider about OrtHardwareDevice support.
    *
@@ -611,12 +616,12 @@ struct OrtEpFactory {
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(GetSupportedDevices, _In_ OrtEpFactory* this_ptr,
-                  _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
-                  _In_ size_t num_devices,
-                  _Inout_ OrtEpDevice** ep_devices,
-                  _In_ size_t max_ep_devices,
-                  _Out_ size_t* num_ep_devices);
+  OrtStatus*(ORT_API_CALL* GetSupportedDevices)(_In_ OrtEpFactory* this_ptr,
+                                                _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                                _In_ size_t num_devices,
+                                                _Inout_ OrtEpDevice** ep_devices,
+                                                _In_ size_t max_ep_devices,
+                                                _Out_ size_t* num_ep_devices);
 
   /** \brief Function to create an OrtEp instance for use in a Session.
    *
@@ -642,12 +647,12 @@ struct OrtEpFactory {
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(CreateEp, _In_ OrtEpFactory* this_ptr,
-                  _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
-                  _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
-                  _In_ size_t num_devices,
-                  _In_ const OrtSessionOptions* session_options,
-                  _In_ const OrtLogger* logger, _Outptr_ OrtEp** ep);
+  OrtStatus*(ORT_API_CALL* CreateEp)(_In_ OrtEpFactory* this_ptr,
+                                     _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                     _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
+                                     _In_ size_t num_devices,
+                                     _In_ const OrtSessionOptions* session_options,
+                                     _In_ const OrtLogger* logger, _Outptr_ OrtEp** ep);
 
   /** \brief Release the OrtEp instance.
    *
@@ -656,18 +661,7 @@ struct OrtEpFactory {
    *
    * \since Version 1.22.
    */
-  ORT_API_T(void, ReleaseEp, OrtEpFactory* this_ptr, struct OrtEp* ep);
-
-  /** \brief Get the vendor id who owns the execution provider that the factory creates.
-   *
-   * This is typically the PCI vendor ID. See https://pcisig.com/membership/member-companies
-   *
-   * \param[in] this_ptr The OrtEpFactory instance.
-   * \return vendor_id The vendor ID of the execution provider the factory creates.
-   *
-   * \since Version 1.23.
-   */
-  ORT_API_T(uint32_t, GetVendorId, const OrtEpFactory* this_ptr);
+  void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, struct OrtEp* ep);
 
   /** \brief Get the version of the execution provider that the factory creates.
    *
@@ -681,7 +675,7 @@ struct OrtEpFactory {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(const char*, GetVersion, _In_ const OrtEpFactory* this_ptr);
+  const char*(ORT_API_CALL* GetVersion)(_In_ const OrtEpFactory* this_ptr);
 
   /** \brief Create an OrtAllocator for the given OrtMemoryInfo.
    *

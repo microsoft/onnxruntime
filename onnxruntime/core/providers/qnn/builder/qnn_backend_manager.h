@@ -159,9 +159,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
                            HtpPerformanceMode htp_performance_mode);
 
-  Status SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
-                            uint32_t rpc_control_latency,
-                            uint32_t rpc_polling_time);
+  Status SetRpcControlLatency(uint32_t htp_power_config_client_id,
+                              uint32_t rpc_control_latency);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -219,11 +218,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // notifyParam is expected to be a pointer to a vector of node names associated with that context handle
   // For each node name, a mapping to the context handle will be created
   void ProcessContextFromBinListAsync(Qnn_ContextHandle_t handle, void* notifyParam);
-
-  // Sets the context priority to the given value, if valid
-  Status SetContextPriority(ContextPriority context_priority);
-  // Resets the context priority to the session default as defined by context_priority_
-  Status ResetContextPriority();
 
  private:
   Status LoadBackend();

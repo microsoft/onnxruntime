@@ -79,6 +79,11 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                          const WebnnDeviceType /* device_type */,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
+
+  std::vector<int64_t> input_shape;
+  if (!GetShape(*input_defs[0], input_shape, logger))
+    return false;
+
   const auto& perm_name = input_defs[1]->Name();
   const auto* perm_init = graph_viewer.GetConstantInitializer(perm_name);
   if (!perm_init) {

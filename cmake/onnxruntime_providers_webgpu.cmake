@@ -172,12 +172,10 @@
     file(MAKE_DIRECTORY ${WGSL_GENERATED_DIR})
 
     # Find all WGSL template input files
-    file(GLOB_RECURSE WGSL_TEMPLATE_FILES
-      "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.wgsl.template"
-      "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu/*.wgsl.template")
+    file(GLOB_RECURSE WGSL_TEMPLATE_FILES "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.wgsl.template")
 
     # Set wgsl-gen command line options as a list
-    set(WGSL_GEN_OPTIONS "-i" "${ONNXRUNTIME_ROOT}/core/providers/webgpu/" "-i" "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu/" "--output" "${WGSL_GENERATED_DIR}" "-I" "wgsl_template_gen/" "--preserve-code-ref" "--verbose")
+    set(WGSL_GEN_OPTIONS "-i" "../" "--output" "${WGSL_GENERATED_DIR}" "-I" "wgsl_template_gen/" "--preserve-code-ref" "--verbose")
     if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
       if (CMAKE_BUILD_TYPE STREQUAL "Debug")
         list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp-literal")
@@ -209,9 +207,10 @@
       # Add the generated directory to include paths
       target_include_directories(onnxruntime_providers_webgpu PRIVATE ${WGSL_GENERATED_ROOT})
     elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
+      add_library(duktape_static STATIC "${duktape_SOURCE_DIR}/src/duktape.c")
+      target_compile_features(duktape_static PRIVATE c_std_99)
       target_link_libraries(onnxruntime_providers_webgpu duktape_static)
-      onnxruntime_add_include_to_target(onnxruntime_providers_webgpu duktape_static)
-
+      target_include_directories(onnxruntime_providers_webgpu PRIVATE ${duktape_SOURCE_DIR}/src)
       # Define the path to the generated templates.js file
       target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
         "ORT_WGSL_TEMPLATES_JS_PATH=\"${WGSL_GENERATED_TEMPLATES_JS}\"")

@@ -763,7 +763,7 @@ class WhisperHelper:
         is_float16: bool,
         num_attention_heads: int,
         hidden_size: int,
-        num_decoder_layers: int,
+        num_layers: int,
         use_external_data_format: bool = False,
         use_gpu: bool = False,
         provider: str = "cpu",
@@ -801,7 +801,7 @@ class WhisperHelper:
                 m = add_cache_indirection_to_mha(m, past_seq_len_name)
 
             if output_qk:
-                m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2 * num_decoder_layers, 2)))
+                m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2 * num_layers, 2)))
 
         m.save_model_to_file(optimized_model_path, use_external_data_format, all_tensors_to_one_file=True)
 

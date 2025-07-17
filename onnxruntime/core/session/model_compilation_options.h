@@ -73,16 +73,6 @@ class ModelCompilationOptions {
                               size_t* output_model_buffer_size_ptr);
 
   /// <summary>
-  /// Sets information relate to EP context binary file.
-  /// EP use this information to decide the location and context binary file name.
-  /// Used while compiling model with input and output in memory buffer
-  /// </summary>
-  /// <param name="output_directory">The folder path to the generated context binary file</param>
-  /// <param name="model_name">Model name used to decide the context binary file name: [model_name]_[ep].bin</param>
-  /// <returns>Status indicating potential error</returns>
-  Status SetEpContextBinaryInformation(const std::string& output_directory, const std::string& model_name);
-
-  /// <summary>
   /// Enables or disables the embedding of EPContext binary data into the `ep_cache_context` attribute of EPContext
   /// nodes. Defaults to false (dumped to file).
   /// </summary>

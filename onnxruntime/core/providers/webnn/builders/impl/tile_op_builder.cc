@@ -77,6 +77,15 @@ bool TileOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
     return false;
   }
 
+  std::vector<int64_t> input_shape;
+  if (!GetShape(*input_defs[0], input_shape, logger))
+    return false;
+
+  if (input_shape.empty()) {
+    LOGS(logger, VERBOSE) << "Tile does not support empty input shape";
+    return false;
+  }
+
   return true;
 }
 

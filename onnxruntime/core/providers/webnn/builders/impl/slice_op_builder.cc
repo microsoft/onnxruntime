@@ -136,6 +136,10 @@ bool SliceOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const No
   const auto& name = node.Name();
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
+  std::vector<int64_t> input_shape;
+  if (!GetShape(*input_defs[0], input_shape, logger)) {
+    return false;
+  }
 
   if (input_defs.size() < 3) {
     LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires at least 3 inputs (data, starts, ends) but got "
@@ -162,17 +166,10 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const GraphViewer& graph_viewer, con
                                             const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& input = *input_defs[0];
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger)) {
-    return false;
-  }
-
-  int32_t input_type;
-  if (!GetType(input, input_type, logger)) {
-    return false;
-  }
-
   const std::string_view op_type = node.OpType();
+  int32_t input_type;
+  if (!GetType(input, input_type, logger))
+    return false;
 
   // If there is step < 0, check data type support of reverse.
   if (TensorExists(input_defs, 4)) {
@@ -181,15 +178,13 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const GraphViewer& graph_viewer, con
     if (!init || !ReadIntArrayFrom1DTensor(*init, steps, graph_viewer, logger))
       return false;
     if (std::any_of(steps.begin(), steps.end(), [](int64_t step) { return step < 0; })) {
-      if (!IsDataTypeSupportedByWebNNOp(op_type, "reverse", input_type, wnn_limits, "input", "data", logger) ||
-          !IsInputRankSupported(wnn_limits, "reverse", "input", input_shape.size(), node.Name(), logger)) {
+      if (!IsDataTypeSupportedByWebNNOp(op_type, "reverse", input_type, wnn_limits, "input", "data", logger)) {
         return false;
       }
     }
   }
 
-  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger) &&
-         IsInputRankSupportedByOp(node, wnn_limits, logger);
+  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger);
 }
 
 void CreateSliceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

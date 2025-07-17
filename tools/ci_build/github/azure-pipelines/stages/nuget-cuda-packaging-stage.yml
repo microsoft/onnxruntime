@@ -72,8 +72,6 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
-    - template: ../templates/set-version-number-variables-step.yml
-
     # Reconstruct the build dir
     - task: PowerShell@2
       displayName: 'PS: Extract nuget files gpu'
@@ -116,7 +114,6 @@ stages:
           -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"
           -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
           -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
-          -p:PackageVersion=$(OnnxRuntimeVersion)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - template: ../templates/win-esrp-dll.yml

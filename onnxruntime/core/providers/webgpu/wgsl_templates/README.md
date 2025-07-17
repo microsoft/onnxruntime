@@ -64,7 +64,7 @@ This section includes instructions for how to use the template system in the dev
 1. Create WGSL template files in `.wgsl.template` extension.
 
    - [Reference: Template Syntax](https://github.com/fs-eire/wgsl-template?tab=readme-ov-file#template-syntax)
-   - [Reference: Built-in Utilities](https://github.com/fs-eire/wgsl-template?tab=readme-ov-file#Utilities)
+   - [Reference: Built-in Utilities](#Utilities)
    - [Example: Pad](../tensor/pad.wgsl.template)
 
 2. In the implementation of `YourProgram::GenerateShaderCode()`, load and use the generated template files.
@@ -117,4 +117,4 @@ This section includes instructions for how to use the template system in the dev
       1. Build ORT once with dynamic template mode
       2. Launch wgsl-gen in watch mode
       3. Run ORT to debug/validate the shader
-      4. Make changes to the template files, and repeat step (c)
+      4. Make changes to the template files, and repeat step (3)

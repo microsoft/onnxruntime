@@ -95,11 +95,6 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 endif()
 
-# ORT build with default settings more appropriate for client/on-device workloads.
-if (onnxruntime_CLIENT_PACKAGE_BUILD)
-  add_compile_definitions(ORT_CLIENT_PACKAGE_BUILD)
-endif()
-
 if (onnxruntime_ENABLE_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)

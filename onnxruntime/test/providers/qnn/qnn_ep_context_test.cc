@@ -509,11 +509,6 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
     Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
     compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
     compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
-    std::string target_dir = "./testdata/";
-    std::string model_name = "test_model_in_mem.onnx";
-    auto pos = model_name.rfind(".onnx");
-    std::string bin_file_name = model_name.substr(0, pos) + "_qnn.bin";
-    compile_options.SetEpContextBinaryInformation(ToWideString(target_dir).c_str(), ToWideString(model_name).c_str());
     compile_options.SetEpContextEmbedMode(false);
 
     // Compile the model.
@@ -524,18 +519,12 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
     ASSERT_TRUE(output_model_buffer != nullptr);
     ASSERT_TRUE(output_model_buffer_size > 0);
 
-    ASSERT_TRUE(std::filesystem::exists(target_dir + bin_file_name)) << "expected context binary file should exist";
-
     // Check that the compiled model has the expected number of EPContext nodes.
     CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
 
-    // Add session option "ep.context_file_path" so that the session can use it to locate the [model_name]_qnn.bin file
-    std::string ctx_model = target_dir + model_name;
-    session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ctx_model.c_str());
     // Should be able to create a session with the compiled model and the original session options.
     EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_buffer, output_model_buffer_size, session_options)));
 
-    std::filesystem::remove(target_dir + bin_file_name);
     allocator.Free(output_model_buffer);
   }
 }
@@ -1660,6 +1649,7 @@ static void DumpModelWithSharedCtx(ProviderOptions provider_options,
   Ort::Session session2(*ort_env, ToPathString(onnx_model_path2).c_str(), so);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64)
 static void GetModelInputNames(const std::string& model_path,
                                std::vector<std::string>& input_names,
                                std::vector<std::string>& output_names,
@@ -1679,6 +1669,7 @@ static void GetModelInputNames(const std::string& model_path,
     output_names.push_back(output->Name());
   }
 }
+#endif
 
 // 1. Create 2 QDQ models
 // 2. Initialize 2 Ort sessions which share the same QNN EP from these 2 QDQ models
@@ -2001,73 +1992,6 @@ TEST_F(QnnHTPBackendTests, LoadFromArrayWithQnnEpContextGenPathValidation) {
       std::string e_message2(std::string(ex.what()));
       ASSERT_TRUE(e_message2.find("Please specify a valid ep.context_file_path") != std::string::npos);
     });
-  }
-}
-
-TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
-  ProviderOptions provider_options;
-  provider_options["backend_type"] = "htp";
-  provider_options["offload_graph_io_quantization"] = "0";
-
-  Ort::SessionOptions so;
-  so.AppendExecutionProvider("QNN", provider_options);
-  so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
-
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx"), so);
-
-  std::vector<std::string> input_names;
-  std::vector<std::string> output_names;
-  GetModelInputNames("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx", input_names, output_names,
-                     DefaultLoggingManager().DefaultLogger());
-
-  // Run sessions
-  // prepare input
-  std::vector<int64_t> input_dim{3, 4};
-  std::vector<float> input_value(3 * 4, 0.0f);
-  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-  std::vector<Ort::Value> ort_inputs;
-  std::vector<const char*> input_names_c;
-  for (size_t i = 0; i < input_names.size(); ++i) {
-    auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
-                                                 input_dim.data(), input_dim.size());
-    ort_inputs.push_back(std::move(input_tensor));
-    input_names_c.push_back(input_names[i].c_str());
-  }
-  std::vector<const char*> output_names_c;
-  for (size_t i = 0; i < output_names.size(); ++i) {
-    output_names_c.push_back(output_names[i].c_str());
-  }
-
-  auto ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
-                                output_names_c.data(), 1);
-
-  const char* const workload_type[] = {"ep.dynamic.workload_type"};
-  const char* const efficient_type[] = {"Efficient"};
-  const char* const default_type[] = {"Default"};
-
-  // Test Efficient & Default options
-  session.SetEpDynamicOptions(workload_type, efficient_type, 1);
-  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
-                           output_names_c.data(), 1);
-
-  session.SetEpDynamicOptions(workload_type, default_type, 1);
-  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
-                           output_names_c.data(), 1);
-
-  // Test invalid EP dynamic option and invalid workload type
-  const char* const dne[] = {"DNE"};
-  try {
-    session.SetEpDynamicOptions(workload_type, dne, 1);
-    FAIL() << "Expected exception to be thrown for workload type DNE but was set successfully";
-  } catch (const std::exception& e) {
-    EXPECT_STREQ("Invalid EP Workload Type.", e.what());
-  }
-
-  try {
-    session.SetEpDynamicOptions(dne, efficient_type, 1);
-    FAIL() << "Expected exception to be thrown for dynamic option DNE but was set successfully";
-  } catch (const std::exception& e) {
-    EXPECT_STREQ("Unsupported EP Dynamic Option", e.what());
   }
 }
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

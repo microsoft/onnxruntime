@@ -178,10 +178,6 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                                head_sink,
                                                                                params));
 
-  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckNoQKOutput(
-      context.OutputCount(),
-      static_cast<int>(Info().GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)))));
-
   WebgpuAttentionParameters parameters(params);
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);

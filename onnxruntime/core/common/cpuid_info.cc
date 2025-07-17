@@ -170,7 +170,7 @@ std::string CPUIDInfo::GetX86Vendor(int32_t* data) {
 
 uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
   if (vendor == "GenuineIntel") return 0x8086;
-  if (vendor == "AuthenticAMD") return 0x1022;
+  if (vendor == "GenuineAMD") return 0x1022;
   if (vendor.find("Qualcomm") == 0) return 'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24);
   if (vendor.find("NV") == 0) return 0x10DE;
   return 0;

@@ -148,9 +148,7 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
 // "0": thread will block if found no job to run
-// "1": thread will spin a number of times before blocking
-// The default is "0" when ORT is built with "ORT_CLIENT_PACKAGE_BUILD" and "1" otherwise.
-// Thread spinning is disabled by default for client/on-device workloads to reduce cpu utilization and improve power efficiency.
+// "1": default, thread will spin a number of times before blocking
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
 

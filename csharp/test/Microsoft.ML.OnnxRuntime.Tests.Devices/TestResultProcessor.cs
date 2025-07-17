@@ -45,7 +45,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Devices
         public string GetSerializedResults()
         {
             var resultSummary = GetResults();
-	    JsonConvert.DefaultSettings = () => new JsonSerializerSettings { MaxDepth = 128 };
             var serializedResultSummary = JsonConvert.SerializeObject(resultSummary, Formatting.Indented);
             return serializedResultSummary;
         }

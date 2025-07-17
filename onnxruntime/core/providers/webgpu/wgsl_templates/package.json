@@ -10,6 +10,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@fs-eire/wgsl-template": "^0.1.13"
+    "@fs-eire/wgsl-template": "^0.1.3"
   }
 }

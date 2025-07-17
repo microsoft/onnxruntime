@@ -28,7 +28,6 @@ class TestGraph {
   static std::unique_ptr<TestGraph> Load(const ORTCHAR_T* model_path);
   const OrtGraph& GetOrtGraph() const;
   const GraphViewer& GetGraphViewer() const;
-  const Model& GetModel() const;
 
  private:
   std::shared_ptr<Model> model;

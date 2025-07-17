@@ -21,6 +21,8 @@ class LRNOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
+                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
@@ -126,10 +128,11 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool LRNOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
-                                          const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+bool LRNOpBuilder::IsOpSupportedImpl(const GraphViewer&,
+                                     const Node& node,
+                                     const WebnnDeviceType /* device_type */,
+                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
@@ -140,6 +143,12 @@ bool LRNOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
     return false;
   }
 
+  return true;
+}
+
+bool LRNOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                                          const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
   const std::string_view op_type = node.OpType();
   int32_t input_type = 0;
   if (!GetType(*input_defs[0], input_type, logger)) {

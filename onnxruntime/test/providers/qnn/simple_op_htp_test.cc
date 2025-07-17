@@ -1254,38 +1254,6 @@ TEST_F(QnnHTPBackendTests, GridSample_U16_Nearest) {
                          true);
 }
 
-// Test QDQ GridSample with `linear` mode on opset 20+.
-TEST_F(QnnHTPBackendTests, GridSample_Linear_ZerosPadding) {
-  RunQDQOpTest<uint8_t>("GridSample",
-                        {TestInputDef<float>({1, 3, 4, 6}, false, GetFloatDataInRange(-10.0f, 10.0f, 72)),
-                         TestInputDef<float>({1, 4, 6, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 48))},
-                        {utils::MakeAttribute("mode", "linear"), utils::MakeAttribute("padding_mode", "zeros")},
-                        /*opset_version=*/20,
-                        /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All);
-}
-
-TEST_F(QnnHTPBackendTests, GridSample_Linear_AlignCorners_BorderPadding) {
-  RunQDQOpTest<uint8_t>("GridSample",
-                        {TestInputDef<float>({1, 3, 4, 6}, false, GetFloatDataInRange(-10.0f, 10.0f, 72)),
-                         TestInputDef<float>({1, 4, 6, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 48))},
-                        {utils::MakeAttribute("align_corners", static_cast<int64_t>(1)),
-                         utils::MakeAttribute("mode", "linear"),
-                         utils::MakeAttribute("padding_mode", "border")},
-                        /*opset_version=*/20,
-                        /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All);
-}
-
-TEST_F(QnnHTPBackendTests, GridSample_Linear_ReflectionPadding_U16) {
-  RunQDQOpTest<uint16_t>("GridSample",
-                         {TestInputDef<float>({1, 3, 4, 6}, false, GetFloatDataInRange(-10.0f, 10.0f, 72)),
-                          TestInputDef<float>({1, 4, 6, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 48))},
-                         {utils::MakeAttribute("mode", "linear"), utils::MakeAttribute("padding_mode", "reflection")},
-                         /*opset_version=*/21,
-                         /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
-                         /*op_domain=*/kOnnxDomain,
-                         /*use_contrib_qdq=*/true);
-}
-
 // Test QDQ GridSample with reflection padding mode
 // Inaccuracy detected for output 'output', element 2.
 // Output quant params: scale=0.024269860237836838, zero_point=0.

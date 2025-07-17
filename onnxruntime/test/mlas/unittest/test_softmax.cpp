@@ -152,7 +152,7 @@ class MlasSoftmaxTest : public MlasTestBase {
   }
 
   void Test(const float* Input, float* Output, float* OutputReference, size_t N, size_t D, bool LogSoftmax, bool SmoothSoftmax) {
-    MlasComputeSoftmax(Input, Output, N, D, LogSoftmax, SmoothSoftmax, 0.0f, threadpool_);
+    MlasComputeSoftmax(Input, Output, N, D, LogSoftmax, SmoothSoftmax, threadpool_);
     ReferenceSoftmax(Input, OutputReference, N, D, LogSoftmax, SmoothSoftmax);
 
     constexpr float AbsoluteTolerance = 1e-6f;
@@ -206,7 +206,7 @@ class MlasSoftmaxTest : public MlasTestBase {
       InputReference[nd] = Input[nd].ToFloat();
     }
 
-    MlasComputeSoftmax(Input, Output, N, D, LogSoftmax, SmoothSoftmax, 0.0f, threadpool_);
+    MlasComputeSoftmax(Input, Output, N, D, LogSoftmax, SmoothSoftmax, threadpool_);
     ReferenceSoftmax(InputReference, OutputReference, N, D, LogSoftmax, SmoothSoftmax);
 
     constexpr float AbsoluteTolerance = 5e-3f;

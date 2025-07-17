@@ -527,20 +527,18 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   if (std::is_same_v<T, MLFloat16>) {
 #ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
-    RunTest<MLFloat16>(opts, std::move(execution_providers));
 #endif
 #ifdef USE_ROCM
     execution_providers.push_back(DefaultRocmExecutionProvider());
-    RunTest<MLFloat16>(opts, std::move(execution_providers));
 #endif
 #ifdef USE_DML
     execution_providers.push_back(DefaultDmlExecutionProvider());
-    RunTest<MLFloat16>(opts, std::move(execution_providers));
 #endif
 #ifdef USE_WEBGPU
     execution_providers.push_back(DefaultWebGpuExecutionProvider());
-    RunTest<MLFloat16>(opts, std::move(execution_providers));
 #endif
+
+    RunTest<MLFloat16>(opts, std::move(execution_providers));
   } else {
 #ifdef USE_ROCM
     execution_providers.push_back(DefaultRocmExecutionProvider());

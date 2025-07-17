@@ -95,11 +95,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* present_k = context->Output(1, present_k_shape);
   Tensor* present_v = context->Output(2, present_v_shape);
 
-  std::vector<int64_t> output_qk_shape{static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(parameters.sequence_length), static_cast<int64_t>(parameters.total_sequence_length)};
-  Tensor* output_qk = context->Output(3, output_qk_shape);
-
-  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckOutputs(output_qk, qk_output_));
-
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -211,12 +206,10 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
-  const T* head_sink_data = (head_sink != nullptr) ? head_sink->Data<T>() : nullptr;
-
   // Compute the attention score and apply the score to V
   return ApplyAttention(q_rotary, packed_qkv ? nullptr : k_rotary, packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(),
-                        head_sink_data, attention_bias, past_key, past_value, output, present_k, present_v,
-                        output_qk, seqlens_k, parameters, allocator, context);
+                        attention_bias, past_key, past_value, output, present_k, present_v,
+                        seqlens_k, parameters, allocator, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

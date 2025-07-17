@@ -75,8 +75,7 @@ bool ConcatOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& nod
     }
   }
 
-  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "inputs", "inputs", logger) &&
-         IsInputRankSupportedByOp(node, wnn_limits, logger);
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "inputs", "inputs", logger);
 }
 
 void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
