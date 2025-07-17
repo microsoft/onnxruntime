@@ -30,7 +30,6 @@ class AttentionBase : public OpKernel {
 
  protected:
   void ComputeVxAttentionScore(T* output,                  // buffer for the result with size BxSxNxH_v
-                               T* tmp_buffer,              // buffer for temp use with size is BxNxSxH_v
                                const T* attention_probs,   // Attention probs with size BxNxSxT
                                const T* V,                 // V value with size BxNxLxH_v
                                int batch_size,             // batch size
@@ -39,7 +38,6 @@ class AttentionBase : public OpKernel {
                                int past_sequence_length,   // sequence length in past state
                                int total_sequence_length,  // total sequence length = past_sequence_length + kv_sequence_length
                                int v_head_size,            // head size of V (H_v)
-                               int v_hidden_size,          // hidden size of V (D_v)
                                int num_heads,              // number of attention heads
                                int kv_num_heads,           // number of KV heads
                                const T* past_value,        // past value only (if not using past state)
