@@ -161,7 +161,7 @@ class OrtNodeUnit {
   };
 
  public:
-  // explicit NodeUnit(const Node& node);
+  explicit OrtNodeUnit(const OrtNode& node) : target_node_(node), type_(Type::SingleNode) {};
   // explicit NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group);
   // NodeUnit(gsl::span<const Node* const> dq_nodes, const Node& target_node, const Node* redundant_clip_node,
   //          gsl::span<const Node* const> q_nodes, Type unit_type,

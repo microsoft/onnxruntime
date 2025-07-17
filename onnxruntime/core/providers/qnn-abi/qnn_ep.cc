@@ -152,7 +152,8 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
                                     const size_t node_unit_size,
                                     const logging::Logger& logger,
                                     std::unordered_set<const OrtNode*>& supported_nodes) const {
-    const auto* ep = static_cast<const QnnEp*>(this_ptr);
+  const QnnEp* ep = static_cast<const QnnEp*>(this_ptr);
+
   OrtArrayOfConstObjects* graph_inputs = nullptr;
   OrtArrayOfConstObjects* graph_outputs = nullptr;
   ep->ort_api.Graph_GetInputs(graph, &graph_inputs);
@@ -594,7 +595,7 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data));
 
   // Get node units for the ABI layer
-  std::vector<const OrtNode*> node_unit_holder;
+  std::vector<std::unique_ptr<OrtNodeUnit>> node_unit_holder;
   std::unordered_map<const OrtNode*, const OrtNodeUnit*> node_unit_map;
 
   std::tie(node_unit_holder, node_unit_map) = GetAllOrtNodeUnits(this_ptr, graph, logger);

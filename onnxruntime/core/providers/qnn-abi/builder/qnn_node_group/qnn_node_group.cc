@@ -52,7 +52,7 @@ class QnnNodeUnitWrapper : public IQnnNodeGroup {
   }
 
   const OrtNodeUnit* GetTargetNodeUnit() const override { return node_unit_; }
-  std::string_view Type() const override { return "NodeUnit"; }
+  std::string_view Type() const override { return "OrtNodeUnit"; }
 
  private:
   const OrtNodeUnit* node_unit_;

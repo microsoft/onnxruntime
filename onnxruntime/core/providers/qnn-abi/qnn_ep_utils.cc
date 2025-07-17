@@ -11,12 +11,12 @@ class QnnEp;
 
 
 // Implementation of GetQDQNodeUnits for OrtGraph
-std::pair<std::vector<const OrtNode*>, std::unordered_map<const OrtNode*, const OrtNodeUnit*>>
+std::pair<std::vector<std::unique_ptr<OrtNodeUnit>>, std::unordered_map<const OrtNode*, const OrtNodeUnit*>>
 GetAllOrtNodeUnits(const OrtEp* this_ptr, const OrtGraph* graph, const logging::Logger& logger) {
   logger;
   const auto* ep = static_cast<const QnnEp*>(this_ptr);
-  std::vector<const OrtNode*> node_holder;
-  std::unordered_map<const OrtNode*, const OrtNodeUnit*> node_map;
+  std::vector<std::unique_ptr<OrtNodeUnit>> node_unit_holder;
+  std::unordered_map<const OrtNode*, const OrtNodeUnit*> node_unit_map;
 
   // Get all nodes from the graph
   OrtArrayOfConstObjects* nodes = nullptr;
@@ -31,7 +31,7 @@ GetAllOrtNodeUnits(const OrtEp* this_ptr, const OrtGraph* graph, const logging::
   // const auto add_node_unit_to_map = [&](const std::vector<int>& node_indices) {
   //   for (auto node_idx : node_indices) {
   //   const OrtNode* node = static_cast<const OrtNode*>(node_data[node_idx]);
-  //   node_map.insert({node, node});
+  //   node_unit_map.insert({node, node});
   //   }
   // };
 
@@ -53,13 +53,20 @@ GetAllOrtNodeUnits(const OrtEp* this_ptr, const OrtGraph* graph, const logging::
   //   // node_unit_holder.push_back(std::move(qdq_unit));
   // }
 
-  // for (size_t node_idx = 0; node_idx < num_nodes; ++node_idx) {
-  //   const OrtNode* node = static_cast<const OrtNode*>(node_data[node_idx]);
-  //   node_map.insert({node, node});
-  //   node_holder.push_back(node);
-  // }
+  // Get the left over single-node OrtNodeUnit.
+  for (size_t node_idx = 0; node_idx < num_nodes; ++node_idx) {
+    const OrtNode* node = static_cast<const OrtNode*>(node_data[node_idx]);
 
-  return std::make_pair(std::move(node_holder), std::move(node_map));
+    // This is already part of a QDQ OrtNodeUnit.
+    if (node_unit_map.find(node) != node_unit_map.cend())
+      continue;
+
+    auto node_unit = std::make_unique<OrtNodeUnit>(*node);
+    node_unit_map[node] = node_unit.get();
+    node_unit_holder.push_back(std::move(node_unit));
+  }
+
+  return std::make_pair(std::move(node_unit_holder), std::move(node_unit_map));
 }
 
 
