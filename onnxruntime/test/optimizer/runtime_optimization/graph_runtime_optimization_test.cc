@@ -289,9 +289,9 @@ void CheckFreeDimensionOverrideIsApplied(const PathString& model_path,
   so.graph_optimization_level = level;
   if (overrideType == FreeDimensionOverrideType::Denotation) {
     so.free_dimension_overrides.push_back(
-        onnxruntime::FreeDimensionOverride{onnx::DATA_BATCH, overrideType, 1});
+        onnxruntime::FreeDimensionOverride{"DATA_BATCH", overrideType, 1});
     so.free_dimension_overrides.push_back(
-        onnxruntime::FreeDimensionOverride{onnx::DATA_CHANNEL, overrideType, 42});
+        onnxruntime::FreeDimensionOverride{"DATA_CHANNEL", overrideType, 42});
   } else {
     so.free_dimension_overrides.push_back(
         onnxruntime::FreeDimensionOverride{"Dim1", overrideType, 1});
@@ -308,11 +308,11 @@ void CheckFreeDimensionOverrideIsApplied(const PathString& model_path,
     const auto* input_shape = graph_inputs[0]->Shape();
     ASSERT_TRUE(input_shape->dim_size() == 3);  // Model takes a 3D tensor as input; two of those dimensions are (were) free dimensions
 
-    ASSERT_TRUE(input_shape->dim(0).denotation() == onnx::DATA_BATCH);
+    ASSERT_TRUE(input_shape->dim(0).denotation() == "DATA_BATCH");
     ASSERT_TRUE(input_shape->dim(0).has_dim_value());
     ASSERT_TRUE(input_shape->dim(0).dim_value() == 1);
 
-    ASSERT_TRUE(input_shape->dim(1).denotation() == onnx::DATA_CHANNEL);
+    ASSERT_TRUE(input_shape->dim(1).denotation() == "DATA_CHANNEL");
     ASSERT_TRUE(input_shape->dim(1).has_dim_value());
     ASSERT_TRUE(input_shape->dim(1).dim_value() == 42);
   };
