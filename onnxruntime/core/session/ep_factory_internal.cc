@@ -20,6 +20,7 @@ EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl
 
   OrtEpFactory::GetName = Forward::GetFactoryName;
   OrtEpFactory::GetVendor = Forward::GetVendor;
+  OrtEpFactory::GetVendorId = Forward::GetVendorId;
   OrtEpFactory::GetVersion = Forward::GetVersion;
   OrtEpFactory::GetSupportedDevices = Forward::GetSupportedDevices;
   OrtEpFactory::CreateEp = Forward::CreateEp;

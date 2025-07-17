@@ -20,12 +20,13 @@ struct SessionOptions;
 // class with virtual methods that are implemented for each internal EP
 class EpFactoryInternalImpl {
  public:
-  EpFactoryInternalImpl(const std::string& ep_name, const std::string& vendor)
-      : ep_name_(ep_name), vendor_(vendor) {
+  EpFactoryInternalImpl(const std::string& ep_name, const std::string& vendor, uint32_t vendor_id)
+      : ep_name_(ep_name), vendor_(vendor), vendor_id_(vendor_id) {
   }
 
   const char* GetName() const noexcept { return ep_name_.c_str(); }
   const char* GetVendor() const noexcept { return vendor_.c_str(); }
+  uint32_t GetVendorId() const noexcept { return vendor_id_; }
   const char* GetVersion() const noexcept;
 
   virtual OrtStatus* GetSupportedDevices(EpFactoryInternal& ep_factory,
@@ -84,6 +85,7 @@ class EpFactoryInternalImpl {
  private:
   const std::string ep_name_;  // EP name library was registered with
   const std::string vendor_;   // EP vendor name
+  const uint32_t vendor_id_;   // EP vendor ID
 };
 
 // this class can't have any virtual methods as they break using it as an OrtEpFactory* in OrtEpDevice.
@@ -93,6 +95,7 @@ class EpFactoryInternal : public OrtEpFactory {
 
   const char* GetName() const noexcept { return impl_->GetName(); }
   const char* GetVendor() const noexcept { return impl_->GetVendor(); }
+  uint32_t GetVendorId() const noexcept { return impl_->GetVendorId(); }
   const char* GetVersion() const noexcept;
 
   OrtStatus* GetSupportedDevices(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,

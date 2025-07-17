@@ -670,6 +670,7 @@ struct CudaEpFactory : OrtEpFactory {
                                             data_transfer_impl{ort_api_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVendorId = GetVendorIdImpl;
     GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
@@ -692,6 +693,11 @@ struct CudaEpFactory : OrtEpFactory {
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto& factory = *static_cast<const CudaEpFactory*>(this_ptr);
     return factory.vendor.c_str();
+  }
+
+  static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const CudaEpFactory*>(this_ptr);
+    return factory->vendor_id;
   }
 
   static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
@@ -908,6 +914,7 @@ struct CudaEpFactory : OrtEpFactory {
   const OrtEpApi& ep_api;
   const std::string ep_name{kCudaExecutionProvider};  // EP name
   const std::string vendor{"Microsoft"};              // EP vendor name
+  uint32_t vendor_id{0x1414};                         // Microsoft vendor ID
 
   // per-device memory info
   std::vector<MemoryInfoUniquePtr> gpu_memory_infos;

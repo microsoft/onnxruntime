@@ -25,7 +25,7 @@ namespace onnxruntime {
 
 class CpuEpFactory : public EpFactoryInternalImpl {
  public:
-  CpuEpFactory() : EpFactoryInternalImpl(kCpuExecutionProvider, "Microsoft") {
+  CpuEpFactory() : EpFactoryInternalImpl(kCpuExecutionProvider, "Microsoft", OrtDevice::VendorIds::MICROSOFT) {
   }
 
  private:
@@ -76,7 +76,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCpuEp() {
 #if defined(USE_DML)
 class DmlEpFactory : public EpFactoryInternalImpl {
  public:
-  DmlEpFactory() : EpFactoryInternalImpl(kDmlExecutionProvider, "Microsoft") {
+  DmlEpFactory() : EpFactoryInternalImpl(kDmlExecutionProvider, "Microsoft", OrtDevice::VendorIds::MICROSOFT) {
   }
 
  private:
@@ -192,7 +192,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
 #if defined(USE_WEBGPU)
 class WebGpuEpFactory : public EpFactoryInternalImpl {
  public:
-  WebGpuEpFactory() : EpFactoryInternalImpl(kWebGpuExecutionProvider, "Microsoft") {
+  WebGpuEpFactory() : EpFactoryInternalImpl(kWebGpuExecutionProvider, "Microsoft", OrtDevice::VendorIds::MICROSOFT) {
   }
 
  private:

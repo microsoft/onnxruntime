@@ -15,6 +15,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
+  GetVendorId = GetVendorIdImpl;
   GetVersion = GetVersionImpl;
 
   GetSupportedDevices = GetSupportedDevicesImpl;
@@ -68,6 +69,12 @@ const char* ORT_API_CALL ExampleEpFactory::GetNameImpl(const OrtEpFactory* this_
 const char* ORT_API_CALL ExampleEpFactory::GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
   const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
   return factory->vendor_.c_str();
+}
+
+/*static*/
+uint32_t ORT_API_CALL ExampleEpFactory::GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
+  const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
+  return factory->vendor_id_;
 }
 
 /*static*/
