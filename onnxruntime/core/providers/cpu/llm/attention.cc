@@ -581,7 +581,7 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
                          MLFloat16(1.f).val, MLFloat16(0.f).val, nullptr);
               } else {
                 // There is no implementation of Gemm for float16 supporting lda, ldb, ldc.
-                ORT_ENFORCE(!transposed_v, "Transposed V is not yet implemented for float16 in Attention");
+                ORT_THROW("float16 Gemm is not available for attention QK*V multiplication");
               }
             } else {
               ORT_THROW("Unsupported data type for attention QK*V multiplication: ",
