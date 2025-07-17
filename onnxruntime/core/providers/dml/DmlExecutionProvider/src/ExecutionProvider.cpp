@@ -781,7 +781,10 @@ namespace Dml
                 // this branch could be reached with a bad custom operator or malformed file. If
                 // a legitimate case reaches here and DML needs to support a new input/output type
                 // besides tensors, then remove the assert.
-                assert(false);
+
+                // If the model has nodes that use Optional we will arrive here. It's a valid ONNX model but 
+                // TryGetTensorDataType doesn't handle Optional.              
+                // assert(false);
                 nodeContainsSupportedDataTypes = false;
                 return;
             }
