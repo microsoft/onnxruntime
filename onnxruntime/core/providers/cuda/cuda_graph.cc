@@ -81,8 +81,10 @@ Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id) 
   if (!cuda_graph_set_.Contains(cuda_graph_annotation_id)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No CUDA graph found for annotation ID: ", cuda_graph_annotation_id);
   }
-
+  cudaGraphExec_t graph_exec = cuda_graph_set_.Get(cuda_graph_annotation_id);
   CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec, stream_));
+
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   return Status::OK();
 }
 
