@@ -13,11 +13,12 @@ ORT_RUNTIME_CLASS(EpGraphSupportInfo);
 ORT_RUNTIME_CLASS(MemoryDevice);  // opaque class to wrap onnxruntime::OrtDevice
 ORT_RUNTIME_CLASS(NodeComputeContext);
 
-// Opaque class to wrap onnxruntime::synchronize::Notification
-ORT_RUNTIME_CLASS(SyncNotification);
+ORT_RUNTIME_CLASS(DataTransferImpl);
+ORT_RUNTIME_CLASS(SyncNotificationImpl);
+ORT_RUNTIME_CLASS(SyncStreamImpl);
 
 // struct that an EP implements for IDataTransfer to copy between devices it uses and CPU
-typedef struct OrtDataTransferImpl {
+struct OrtDataTransferImpl {
   uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief Release the OrtDataTransferImpl instance.
@@ -64,13 +65,13 @@ typedef struct OrtDataTransferImpl {
                   _In_reads_(num_tensors) OrtValue** dst_tensors,
                   _In_reads_(num_tensors) OrtSyncStream** streams,
                   _In_ size_t num_tensors);
-} OrtDataTransferImpl;
+};
 
 /** \brief Struct that an EP implements for Stream Notifications.
  *
  * \since Version 1.23.
  */
-typedef struct OrtSyncNotificationImpl {
+struct OrtSyncNotificationImpl {
   uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief Release the OrtSyncNotificationImpl instance.
@@ -108,7 +109,7 @@ typedef struct OrtSyncNotificationImpl {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(WaitOnHost, _In_ OrtSyncNotificationImpl* this_ptr);
-} OrtSyncNotificationImpl;
+};
 
 /** \brief Struct that an EP implements if it wishes to implement Stream support.
  *
@@ -116,7 +117,7 @@ typedef struct OrtSyncNotificationImpl {
  *
  * \since Version 1.23.
  */
-typedef struct OrtSyncStreamImpl {
+struct OrtSyncStreamImpl {
   uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief Release the OrtSyncStreamImpl instance.
@@ -171,7 +172,7 @@ typedef struct OrtSyncStreamImpl {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(OnSessionRunEnd, _In_ OrtSyncStreamImpl* this_ptr);
-} OrtSyncStreamImpl;
+};
 
 struct OrtNodeFusionOptions;
 typedef struct OrtNodeFusionOptions OrtNodeFusionOptions;
