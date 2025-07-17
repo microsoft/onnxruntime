@@ -468,9 +468,6 @@ Status FlashAttention(
   DUMP_TENSOR("Q", reinterpret_cast<T*>(query), batch_size, sequence_length, num_heads, head_size);
   DUMP_TENSOR("K", reinterpret_cast<T*>(present_key), batch_size, parameters.seqlen_present_kv_cache, kv_num_heads, head_size);
   DUMP_TENSOR("V", reinterpret_cast<T*>(present_value), batch_size, parameters.seqlen_present_kv_cache, kv_num_heads, head_size);
-  if (head_sink != nullptr) {
-    DUMP_TENSOR("head_sink", reinterpret_cast<T*>(head_sink), 1, num_heads);
-  }
 
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
       device_prop, stream, query, present_key, present_value, key, value, data.output,

@@ -135,7 +135,6 @@ def apply_rotary_embedding(x, cos, sin, pos, interleaved, device="cpu"):
             return rotary_embedding_cuda(x, cos, sin, seqlen_offsets=pos, interleaved=interleaved)
         except ImportError:
             print("WARNING: Triton-based rotary embedding not found. Falling back to PyTorch version.")
-            use_cuda_triton = False
 
     # PyTorch implementation for CPU or as a fallback for CUDA
     rot = LlamaMSRotaryEmbedding().to(device)

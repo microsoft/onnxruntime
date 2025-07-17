@@ -148,18 +148,15 @@ struct Softmax {
       float max_unscaled = row_max(mi);  // Max of the qk scores, NOT scaled.
 
       if (use_sink) {
-        // 1. Find the max of the *scaled* scores.
-        //    The `sink` is already scaled, but `max_unscaled` is not.
         const float max_scaled = (max_unscaled == -kInfinity)
                                      ? -kInfinity
                                      : max_unscaled * softmax_scale;
 
-        // 2. The true maximum is the max of all scaled values.
         const float true_max_scaled = max(max_scaled, sink);
 
-        // 3. Rescale the intermediate sum and the output accumulator (acc_o).
-        //    They were calculated relative to `max_scaled` and must be
-        //    rescaled to be relative to `true_max_scaled`.
+        // Rescale the intermediate the output accumulator (acc_o) and sum.
+        // They were calculated relative to `max_scaled` and must be
+        // rescaled to be relative to `true_max_scaled`.
         const float rescale_factor = expf(max_scaled - true_max_scaled);
 
 #pragma unroll
@@ -167,13 +164,12 @@ struct Softmax {
           acc_o_rowcol(mi, ni) *= rescale_factor;
         }
 
-        // 4. Calculate the final sum, including the sink's contribution.
         sum *= rescale_factor;
+
+        // Add the sink to the sum.
         sum += expf(sink - true_max_scaled);
 
-        // 5. Optional: Update row_max and row_sum in-place.
-        // row_max(mi) = true_max_scaled / softmax_scale;
-        // row_sum(mi) = sum5
+        // The unscaled max that reflects the sink. It is used for the below LSE calculation.
         max_unscaled = true_max_scaled / softmax_scale;
       }
 
@@ -181,9 +177,7 @@ struct Softmax {
                     ? (Split ? -kInfinity : kInfinity)
                     : max_unscaled * softmax_scale + __logf(sum);
 
-      // 6. Perform the final normalization with the corrected sum.
       float inv_sum = (sum == 0.f || !isfinite(sum)) ? 1.f : 1.f / sum;
-
 #pragma unroll
       for (int ni = 0; ni < size<1>(acc_o_rowcol); ++ni) {
         acc_o_rowcol(mi, ni) *= inv_sum;
