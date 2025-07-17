@@ -782,7 +782,8 @@ def attention_ref(
         scores.masked_fill_(local_mask, float("-inf"))
 
     if use_smooth_softmax:
-        attention = smooth_softmax_ref(scores)
+        head_sink = None
+        attention = smooth_softmax_ref(scores, head_sink)
     else:
         attention = torch.softmax(scores, dim=-1)
 

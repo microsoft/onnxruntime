@@ -59,7 +59,7 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.36.0.250627
+  default: 2.36.1.250708
 
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
