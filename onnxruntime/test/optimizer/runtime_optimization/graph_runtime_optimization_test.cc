@@ -416,7 +416,7 @@ TEST(GraphRuntimeOptimizationTest, TestNhwcTransformerDirectlyUpdatesQLinearConv
                               {"com.microsoft.QLinearConv", n}}));
       });
 }
-
+#if !defined(ORT_MINIMAL_BUILD)
 TEST(GraphRuntimeOptimizationTest, TestFreeDimensionOverride) {
   CheckFreeDimensionOverrideIsApplied(ORT_TSTR("testdata/abs_free_dimensions.onnx"), TransformerLevel::Default, FreeDimensionOverrideType::Denotation);
   CheckFreeDimensionOverrideIsApplied(ORT_TSTR("testdata/abs_free_dimensions.onnx"), TransformerLevel::Default, FreeDimensionOverrideType::Name);
@@ -424,7 +424,6 @@ TEST(GraphRuntimeOptimizationTest, TestFreeDimensionOverride) {
   CheckFreeDimensionOverrideIsApplied(ORT_TSTR("testdata/abs_free_dimensions.onnx"), TransformerLevel::Level1, FreeDimensionOverrideType::Name);
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 TEST(GraphRuntimeOptimizationTest, TestOnlyApplyMinimalBuildOptimizations) {
   // This test assumes that AttentionFusion is not included in the minimal build optimizations.
   // Update it if that changes.
