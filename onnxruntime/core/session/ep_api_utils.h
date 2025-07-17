@@ -47,10 +47,9 @@ struct ForwardToFactory {
 
   static OrtStatus* ORT_API_CALL CreateAllocator(_In_ OrtEpFactory* this_ptr,
                                                  _In_ const OrtMemoryInfo* memory_info,
-                                                 _In_opt_ const OrtEp* ep,
                                                  _In_opt_ const OrtKeyValuePairs* allocator_options,
                                                  _Outptr_ OrtAllocator** allocator) noexcept {
-    return static_cast<TFactory*>(this_ptr)->CreateAllocator(memory_info, ep, allocator_options, allocator);
+    return static_cast<TFactory*>(this_ptr)->CreateAllocator(memory_info, allocator_options, allocator);
   }
 
   static void ORT_API_CALL ReleaseAllocator(_In_ OrtEpFactory* this_ptr, _In_ OrtAllocator* allocator) noexcept {
@@ -68,7 +67,6 @@ struct ForwardToFactory {
 
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDevice(_In_ OrtEpFactory* this_ptr,
                                                            _In_ const OrtMemoryDevice* memory_device,
-                                                           _In_opt_ const OrtEp* /*ep*/,
                                                            _In_opt_ const OrtKeyValuePairs* stream_options,
                                                            _Outptr_opt_ OrtSyncStreamImpl** stream) noexcept {
     // ignore the OrtEp input as we won't ever have one for internal EPs

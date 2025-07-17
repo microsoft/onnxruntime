@@ -75,8 +75,7 @@ class Stream : public onnxruntime::Stream {
                 OrtApis::GetErrorMessage(ort_status));
     }
 
-    std::unique_ptr<synchronize::Notification> result(plugin_notification.release());
-    return result;
+    return plugin_notification;
   }
 
   void Flush() override {

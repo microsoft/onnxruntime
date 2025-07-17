@@ -22,12 +22,12 @@ class StreamImpl : public OrtSyncStreamImpl, public ApiPtrs {
   }
 
  private:
-  static OrtStatus* ORT_API_CALL CreateNotificationImpl(_In_ void* this_ptr,
+  static OrtStatus* ORT_API_CALL CreateNotificationImpl(_In_ OrtSyncStreamImpl* this_ptr,
                                                         _Outptr_ OrtSyncNotificationImpl** sync_notification) noexcept;
-  static void* ORT_API_CALL GetHandleImpl(_In_ void* this_ptr) noexcept;
-  static OrtStatus* ORT_API_CALL FlushImpl(_In_ void* this_ptr) noexcept;
-  static OrtStatus* ORT_API_CALL OnSessionRunEndImpl(_In_ void* this_ptr) noexcept;
-  static void ORT_API_CALL ReleaseImpl(_In_ void* this_ptr) noexcept;
+  static void* ORT_API_CALL GetHandleImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL FlushImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL OnSessionRunEndImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept;
+  static void ORT_API_CALL ReleaseImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept;
 
   void* handle_{nullptr};  // use the real stream type, like cudaStream_t or aclrtStream, etc.
 
@@ -50,10 +50,11 @@ class NotificationImpl : public OrtSyncNotificationImpl, public ApiPtrs {
   }
 
  private:
-  static OrtStatus* ORT_API_CALL ActivateImpl(_In_ void* this_ptr) noexcept;
-  static OrtStatus* ORT_API_CALL WaitOnDeviceImpl(_In_ void* this_ptr, _In_ OrtSyncStream* stream) noexcept;
-  static OrtStatus* ORT_API_CALL WaitOnHostImpl(_In_ void* this_ptr) noexcept;
-  static void ORT_API_CALL ReleaseImpl(_In_ void* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL ActivateImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL WaitOnDeviceImpl(_In_ OrtSyncNotificationImpl* this_ptr,
+                                                  _In_ OrtSyncStream* stream) noexcept;
+  static OrtStatus* ORT_API_CALL WaitOnHostImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept;
+  static void ORT_API_CALL ReleaseImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept;
 
   void* event_{NULL};  // placeholder. e.g. CANN uses aclrtEvent, CUDA uses cudaEvent_t
 };

@@ -557,8 +557,11 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
 
   for (const auto* memory_info : allocator_mem_infos_) {
     OrtAllocator* ort_allocator_ptr = nullptr;
-    OrtStatus* ort_status = ep_factory_.CreateAllocator(&ep_factory_, memory_info, ort_ep_.get(), /*options*/ nullptr,
-                                                        &ort_allocator_ptr);
+    // prefer OrtEp function if available, otherwise fall back to using the OrtEpFactory implementation.
+    OrtStatus* ort_status = ort_ep_->CreateAllocator
+                                ? ort_ep_->CreateAllocator(ort_ep_.get(), memory_info, &ort_allocator_ptr)
+                                : ep_factory_.CreateAllocator(&ep_factory_, memory_info, /*options*/ nullptr,
+                                                              &ort_allocator_ptr);
 
     // throw or log? start with throw
     if (ort_status != nullptr) {
@@ -595,8 +598,13 @@ void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistr
         [mem_info, this](const OrtDevice& device) {
           OrtSyncStreamImpl* stream = nullptr;
           const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&mem_info->device);
-          auto* status = ep_factory_.CreateSyncStreamForDevice(&ep_factory_, memory_device, ort_ep_.get(),
-                                                               /*stream_options*/ nullptr, &stream);
+
+          // prefer OrtEp function if available, otherwise fall back to using the OrtEpFactory implementation.
+          OrtStatus* status = ort_ep_->CreateSyncStreamForDevice
+                                  ? ort_ep_->CreateSyncStreamForDevice(ort_ep_.get(), memory_device, &stream)
+                                  : ep_factory_.CreateSyncStreamForDevice(&ep_factory_, memory_device,
+                                                                          /*stream_options*/ nullptr, &stream);
+
           ORT_ENFORCE(status == nullptr && stream != nullptr,
                       "Error creating sync stream for device: ", ToStatusAndRelease(status).ToString());
           return std::make_unique<plugin_ep::Stream>(device, *stream, *GetLogger());

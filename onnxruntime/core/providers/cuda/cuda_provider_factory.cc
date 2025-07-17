@@ -401,10 +401,10 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
     Release = ReleaseImpl;
   }
 
-  static bool CanCopyImpl(void* this_ptr,
+  static bool CanCopyImpl(const OrtDataTransferImpl* this_ptr,
                           const OrtMemoryDevice* src_memory_device,
                           const OrtMemoryDevice* dst_memory_device) noexcept {
-    auto& impl = *static_cast<CudaDataTransferImpl*>(this_ptr);
+    const auto& impl = *static_cast<const CudaDataTransferImpl*>(this_ptr);
 
     // logic copied from GPUDataTransfer::CanCopy
     OrtMemoryInfoDeviceType src_type = impl.ep_api.MemoryDevice_GetDeviceType(src_memory_device);
@@ -423,7 +423,7 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
            (src_type == OrtMemoryInfoDeviceType_CPU && dst_type == OrtMemoryInfoDeviceType_GPU);
   }
 
-  static OrtStatus* CopyTensorsImpl(void* this_ptr,
+  static OrtStatus* CopyTensorsImpl(OrtDataTransferImpl* this_ptr,
                                     const OrtValue** src_tensors,
                                     OrtValue** dst_tensors,
                                     OrtSyncStream** streams,
@@ -525,7 +525,7 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
     return nullptr;
   }
 
-  static void ReleaseImpl(void* /*this_ptr*/) noexcept {
+  static void ReleaseImpl(OrtDataTransferImpl* /*this_ptr*/) noexcept {
     // no-op as we have a single shared instance in OrtEpFactory which is returned from CreateDataTransferImpl, and is
     // owned by and freed by the factory.
   }
@@ -543,18 +543,19 @@ struct CudaSyncNotificationImpl : OrtSyncNotificationImpl {
     return nullptr;
   }
 
-  static void ReleaseImpl(_In_ void* this_ptr) noexcept {
+  static void ReleaseImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept {
     delete static_cast<CudaSyncNotificationImpl*>(this_ptr);
   }
 
-  static OrtStatus* ActivateImpl(_In_ void* this_ptr) noexcept {
+  static OrtStatus* ActivateImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept {
     auto& impl = *static_cast<CudaSyncNotificationImpl*>(this_ptr);
     CUDA_RETURN_IF_ERROR(cudaEventRecord(impl.event_, impl.stream_));
 
     return nullptr;
   }
 
-  static OrtStatus* WaitOnDeviceImpl(_In_ void* this_ptr, _In_ OrtSyncStream* consumer_stream) noexcept {
+  static OrtStatus* WaitOnDeviceImpl(_In_ OrtSyncNotificationImpl* this_ptr,
+                                     _In_ OrtSyncStream* consumer_stream) noexcept {
     auto& impl = *static_cast<CudaSyncNotificationImpl*>(this_ptr);
 
     // setup the consumer stream to wait on our event.
@@ -564,7 +565,7 @@ struct CudaSyncNotificationImpl : OrtSyncNotificationImpl {
     return nullptr;
   }
 
-  static OrtStatus* WaitOnHostImpl(_In_ void* this_ptr) noexcept {
+  static OrtStatus* WaitOnHostImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept {
     auto& impl = *static_cast<CudaSyncNotificationImpl*>(this_ptr);
     CUDA_RETURN_IF_ERROR(cudaEventSynchronize(impl.event_));
 
@@ -616,16 +617,16 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
     Release = ReleaseImpl;
   }
 
-  static void ReleaseImpl(_In_ void* this_ptr) noexcept {
+  static void ReleaseImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
     delete static_cast<CudaSyncStreamImpl*>(this_ptr);
   }
 
-  static void* GetHandleImpl(_In_ void* this_ptr) noexcept {
+  static void* GetHandleImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
     auto& impl = *static_cast<CudaSyncStreamImpl*>(this_ptr);
     return impl.stream_.GetHandle();
   }
 
-  static OrtStatus* CreateNotificationImpl(_In_ void* this_ptr,
+  static OrtStatus* CreateNotificationImpl(_In_ OrtSyncStreamImpl* this_ptr,
                                            _Outptr_ OrtSyncNotificationImpl** notification_impl) noexcept {
     auto& impl = *static_cast<CudaSyncStreamImpl*>(this_ptr);
     *notification_impl = nullptr;
@@ -639,14 +640,14 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
     return nullptr;
   }
 
-  static OrtStatus* FlushImpl(_In_ void* this_ptr) noexcept {
+  static OrtStatus* FlushImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
     auto& impl = *static_cast<CudaSyncStreamImpl*>(this_ptr);
     impl.stream_.Flush();
 
     return nullptr;
   }
 
-  static OrtStatus* OnSessionRunEndImpl(_In_ void* this_ptr) noexcept {
+  static OrtStatus* OnSessionRunEndImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
     auto& impl = *static_cast<CudaSyncStreamImpl*>(this_ptr);
     RETURN_IF_STATUS_NOTOK(impl.stream_.CleanUpOnRunEnd());
 
@@ -811,7 +812,6 @@ struct CudaEpFactory : OrtEpFactory {
 
   static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
                                                      const OrtMemoryInfo* memory_info,
-                                                     const OrtEp* /*ep*/,
                                                      const OrtKeyValuePairs* /*allocator_options*/,
                                                      OrtAllocator** allocator) noexcept {
     // this function is free to return the same allocator instance for all calls and make ReleaseAllocator a no-op
@@ -844,7 +844,6 @@ struct CudaEpFactory : OrtEpFactory {
 
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
                                                                const OrtMemoryDevice* memory_device,
-                                                               const OrtEp* /*ep*/,
                                                                const OrtKeyValuePairs* /*stream_options*/,
                                                                OrtSyncStreamImpl** ort_stream) noexcept {
     auto& factory = *static_cast<CudaEpFactory*>(this_ptr);

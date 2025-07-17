@@ -5394,10 +5394,24 @@ struct OrtApi {
                   _Outptr_ OrtMemoryInfo** out);
 
   /** \brief Get the device memory type from ::OrtMemoryInfo
+   *
+   * \param[in] ptr The OrtMemoryInfo instance to query.
+   * \param[out] out The device memory type.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
    */
   ORT_API2_STATUS(MemoryInfoGetDeviceMemType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtDeviceMemoryType* out);
 
   /** \brief Get the vendor id from ::OrtMemoryInfo
+   *
+   * \param[in] ptr The OrtMemoryInfo instance to query.
+   * \param[out] out The vendor id.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
    */
   ORT_API2_STATUS(MemoryInfoGetVendorId, _In_ const OrtMemoryInfo* ptr, _Out_ uint32_t* out);
 
@@ -6208,7 +6222,7 @@ struct OrtApi {
    * The user can pre-allocate an OrtValue using this information or use IOBinding to keep the data on the device.
    * ORT will copy the output to CPU otherwise.
    *
-   * The session must be fully initialized before calling this function as the input locations are not known until
+   * The session must be fully initialized before calling this function as the output locations are not known until
    * this has occurred.
    *
    * \param[in] session The OrtSession instance.
@@ -6288,8 +6302,9 @@ struct OrtApi {
 
   /** \brief Copy OrtValue instances containing Tensors between devices.
    *
-   * The overall copy must be between two devices.
-   * i.e. all src_tensors and dst_tensors must have the same OrtMemoryInfo.
+   * The overall copy must be between a single source device and a single destination device. i.e.
+   *   - all src_tensors must have matching OrtMemoryInfo,
+   *   - all dst_tensors must have matching OrtMemoryInfo.
    *
    * OrtValue instances can be created by:
    *   - Use GetSharedAllocator to get the shared allocator for the OrtMemoryInfo if you need to allocate memory
@@ -6310,8 +6325,8 @@ struct OrtApi {
    * \since Version 1.23
    */
   ORT_API2_STATUS(CopyTensors, _In_ const OrtEnv* env,
-                  _In_reads_(num_tensors) const OrtValue** src_tensors,
-                  _In_reads_(num_tensors) OrtValue** dst_tensors,
+                  _In_reads_(num_tensors) const OrtValue* const* src_tensors,
+                  _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                   _In_opt_ OrtSyncStream* stream,
                   _In_ size_t num_tensors);
 };

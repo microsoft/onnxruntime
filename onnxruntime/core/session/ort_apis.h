@@ -726,8 +726,8 @@ ORT_API(void*, SyncStream_GetHandle, _In_ OrtSyncStream* stream);
 ORT_API(void, ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* stream);
 
 ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
-                    _In_reads_(num_tensors) const OrtValue** src_tensors,
-                    _In_reads_(num_tensors) OrtValue** dst_tensors,
+                    _In_reads_(num_tensors) const OrtValue* const* src_tensors,
+                    _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                     _In_opt_ OrtSyncStream* stream,
                     _In_ size_t num_tensors);
 }  // namespace OrtApis

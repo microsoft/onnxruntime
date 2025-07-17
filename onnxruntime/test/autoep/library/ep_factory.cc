@@ -195,7 +195,6 @@ void ORT_API_CALL ExampleEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, Or
 /*static*/
 OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this_ptr,
                                                               const OrtMemoryInfo* memory_info,
-                                                              const OrtEp* /*ep*/,
                                                               const OrtKeyValuePairs* /*allocator_options*/,
                                                               OrtAllocator** allocator) noexcept {
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
@@ -237,7 +236,6 @@ bool ORT_API_CALL ExampleEpFactory::IsStreamAwareImpl(const OrtEpFactory* /*this
 /*static*/
 OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
                                                                         const OrtMemoryDevice* memory_device,
-                                                                        const OrtEp* ep,
                                                                         const OrtKeyValuePairs* stream_options,
                                                                         OrtSyncStreamImpl** stream) noexcept {
   auto& factory = *static_cast<const ExampleEpFactory*>(this_ptr);
@@ -245,7 +243,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
 
   // we only need stream synchronization on the device stream
   if (factory.ep_api.MemoryDevice_GetMemoryType(memory_device) == OrtDeviceMemoryType_DEFAULT) {
-    auto sync_stream = std::make_unique<StreamImpl>(factory, ep, stream_options);
+    auto sync_stream = std::make_unique<StreamImpl>(factory, /*OrtEp**/ nullptr, stream_options);
     *stream = sync_stream.release();
   }
 

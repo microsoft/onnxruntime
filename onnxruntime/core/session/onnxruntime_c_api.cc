@@ -3249,7 +3249,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   OrtSyncStreamImpl* stream_impl = nullptr;
   ORT_API_RETURN_IF_ERROR(factory->CreateSyncStreamForDevice(ep_device->GetMutableFactory(),
                                                              static_cast<const OrtMemoryDevice*>(device),  // alias
-                                                             /*ep*/ nullptr, stream_options, &stream_impl));
+                                                             stream_options, &stream_impl));
 
   if (stream_impl == nullptr) {
     return OrtApis::CreateStatus(ORT_FAIL, "Failed to get a stream implementation from the EP factory.");
@@ -3281,8 +3281,8 @@ ORT_API(void, OrtApis::ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* ort_str
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
-                    _In_reads_(num_tensors) const OrtValue** src_tensors,
-                    _In_reads_(num_tensors) OrtValue** dst_tensors,
+                    _In_reads_(num_tensors) const OrtValue* const* src_tensors,
+                    _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                     _In_opt_ OrtSyncStream* stream,
                     _In_ size_t num_tensors) {
   API_IMPL_BEGIN
@@ -3294,7 +3294,7 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
   const OrtMemoryInfo* dst_memory_info = nullptr;
 
   const auto validate_and_get_mem_info =
-      [](const OrtValue** values, size_t num_values, const OrtMemoryInfo*& mem_info) -> OrtStatus* {
+      [](const OrtValue* const* values, size_t num_values, const OrtMemoryInfo*& mem_info) -> OrtStatus* {
     for (size_t i = 0; i < num_values; ++i) {
       const OrtValue* value = values[i];
       if (value == nullptr || !value->IsTensor() || !value->IsAllocated()) {

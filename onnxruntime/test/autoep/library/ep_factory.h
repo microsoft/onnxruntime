@@ -44,7 +44,6 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
                                                      const OrtMemoryInfo* memory_info,
-                                                     const OrtEp* /*ep*/,
                                                      const OrtKeyValuePairs* /*allocator_options*/,
                                                      OrtAllocator** allocator) noexcept;
 
@@ -57,7 +56,6 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
                                                                const OrtMemoryDevice* memory_device,
-                                                               const OrtEp* ep,
                                                                const OrtKeyValuePairs* stream_options,
                                                                OrtSyncStreamImpl** stream) noexcept;
 

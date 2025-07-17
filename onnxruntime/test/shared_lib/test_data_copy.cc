@@ -78,7 +78,7 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
 
       size_t stream_addr = reinterpret_cast<size_t>(api->SyncStream_GetHandle(stream));
       options.AddConfigEntry("ep.cudaexecutionprovider.user_compute_stream", std::to_string(stream_addr).c_str());
-      // no idea why this is needed...
+      // we explicitly specify user_compute_stream, so why do we also need to set has_user_compute_stream?
       options.AddConfigEntry("ep.cudaexecutionprovider.has_user_compute_stream", "1");
     }
 
@@ -149,7 +149,7 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
 
     if (!src_tensor_ptrs.empty()) {
       ASSERT_ORTSTATUS_OK(api->CopyTensors(env, src_tensor_ptrs.data(), dst_tensor_ptrs.data(), stream,
-                                           cpu_tensors.size()));
+                                           src_tensor_ptrs.size()));
 
       // Stream support is still a work in progress.
       //

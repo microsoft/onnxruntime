@@ -8,7 +8,7 @@
 //
 
 /*static*/
-OrtStatus* ORT_API_CALL StreamImpl::CreateNotificationImpl(_In_ void* this_ptr,
+OrtStatus* ORT_API_CALL StreamImpl::CreateNotificationImpl(_In_ OrtSyncStreamImpl* this_ptr,
                                                            _Outptr_ OrtSyncNotificationImpl** notification) noexcept {
   auto& impl = *static_cast<StreamImpl*>(this_ptr);
   *notification = std::make_unique<NotificationImpl>(impl).release();
@@ -16,24 +16,24 @@ OrtStatus* ORT_API_CALL StreamImpl::CreateNotificationImpl(_In_ void* this_ptr,
 }
 
 /*static*/
-void* ORT_API_CALL StreamImpl::GetHandleImpl(_In_ void* this_ptr) noexcept {
+void* ORT_API_CALL StreamImpl::GetHandleImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
   auto& impl = *static_cast<StreamImpl*>(this_ptr);
   return impl.handle_;
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL StreamImpl::FlushImpl(_In_ void* /*this_ptr*/) noexcept {
+OrtStatus* ORT_API_CALL StreamImpl::FlushImpl(_In_ OrtSyncStreamImpl* /*this_ptr*/) noexcept {
   return nullptr;
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL StreamImpl::OnSessionRunEndImpl(_In_ void* /*this_ptr*/) noexcept {
+OrtStatus* ORT_API_CALL StreamImpl::OnSessionRunEndImpl(_In_ OrtSyncStreamImpl* /*this_ptr*/) noexcept {
   return nullptr;
 }
 
 // callback for EP library to release any internal state
 /*static*/
-void ORT_API_CALL StreamImpl::ReleaseImpl(_In_ void* this_ptr) noexcept {
+void ORT_API_CALL StreamImpl::ReleaseImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
   delete static_cast<StreamImpl*>(this_ptr);
 }
 
@@ -42,7 +42,7 @@ void ORT_API_CALL StreamImpl::ReleaseImpl(_In_ void* this_ptr) noexcept {
 //
 
 /*static*/
-OrtStatus* ORT_API_CALL NotificationImpl::ActivateImpl(_In_ void* this_ptr) noexcept {
+OrtStatus* ORT_API_CALL NotificationImpl::ActivateImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept {
   auto& impl = *static_cast<NotificationImpl*>(this_ptr);
   static_cast<void>(impl);
 
@@ -53,7 +53,8 @@ OrtStatus* ORT_API_CALL NotificationImpl::ActivateImpl(_In_ void* this_ptr) noex
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL NotificationImpl::WaitOnDeviceImpl(_In_ void* this_ptr, _In_ OrtSyncStream* stream) noexcept {
+OrtStatus* ORT_API_CALL NotificationImpl::WaitOnDeviceImpl(_In_ OrtSyncNotificationImpl* this_ptr,
+                                                           _In_ OrtSyncStream* stream) noexcept {
   auto& impl = *static_cast<NotificationImpl*>(this_ptr);
   void* handle = impl.ort_api.SyncStream_GetHandle(stream);
   static_cast<void>(handle);
@@ -71,7 +72,7 @@ OrtStatus* ORT_API_CALL NotificationImpl::WaitOnDeviceImpl(_In_ void* this_ptr, 
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL NotificationImpl::WaitOnHostImpl(_In_ void* this_ptr) noexcept {
+OrtStatus* ORT_API_CALL NotificationImpl::WaitOnHostImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept {
   auto& impl = *static_cast<NotificationImpl*>(this_ptr);
   static_cast<void>(impl);
 
@@ -82,6 +83,6 @@ OrtStatus* ORT_API_CALL NotificationImpl::WaitOnHostImpl(_In_ void* this_ptr) no
 }
 
 /*static*/
-void ORT_API_CALL NotificationImpl::ReleaseImpl(_In_ void* this_ptr) noexcept {
+void ORT_API_CALL NotificationImpl::ReleaseImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept {
   delete static_cast<NotificationImpl*>(this_ptr);
 }

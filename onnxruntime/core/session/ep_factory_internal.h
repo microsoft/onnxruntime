@@ -44,7 +44,6 @@ class EpFactoryInternalImpl {
                                               _Out_ std::unique_ptr<IExecutionProvider>* ep) = 0;
 
   virtual OrtStatus* CreateAllocator(_In_ const OrtMemoryInfo* /*memory_info*/,
-                                     _In_opt_ const OrtEp* /*ep*/,
                                      _In_opt_ const OrtKeyValuePairs* /*allocator_options*/,
                                      _Outptr_ OrtAllocator** allocator) noexcept {
     // default implementation does not add OrtMemoryInfo to OrtEpDevice instances returned
@@ -124,10 +123,9 @@ class EpFactoryInternal : public OrtEpFactory {
   }
 
   OrtStatus* CreateAllocator(_In_ const OrtMemoryInfo* memory_info,
-                             _In_opt_ const OrtEp* ep,
                              _In_opt_ const OrtKeyValuePairs* allocator_options,
                              _Outptr_ OrtAllocator** allocator) noexcept {
-    return impl_->CreateAllocator(memory_info, ep, allocator_options, allocator);
+    return impl_->CreateAllocator(memory_info, allocator_options, allocator);
   }
 
   void ReleaseAllocator(_In_ OrtAllocator* allocator) noexcept {

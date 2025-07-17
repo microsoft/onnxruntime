@@ -7,10 +7,10 @@
 #include <gsl/span>
 
 /*static*/
-bool ORT_API_CALL ExampleDataTransfer::CanCopyImpl(void* this_ptr,
+bool ORT_API_CALL ExampleDataTransfer::CanCopyImpl(const OrtDataTransferImpl* this_ptr,
                                                    const OrtMemoryDevice* src_memory_device,
                                                    const OrtMemoryDevice* dst_memory_device) noexcept {
-  auto& impl = *static_cast<ExampleDataTransfer*>(this_ptr);
+  const auto& impl = *static_cast<const ExampleDataTransfer*>(this_ptr);
   bool src_is_our_device = impl.ep_api.MemoryDevice_AreEqual(src_memory_device, impl.device_mem_info);
   bool dst_is_our_device = impl.ep_api.MemoryDevice_AreEqual(dst_memory_device, impl.device_mem_info);
 
@@ -52,7 +52,7 @@ void CopyImpl(const void* src_data, void* dst_data, size_t bytes, OrtSyncStream*
 // function to copy one or more tensors.
 // implementation can optionally use async copy if a stream is available for the input.
 /*static*/
-OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(void* this_ptr,
+OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(OrtDataTransferImpl* this_ptr,
                                                              const OrtValue** src_tensors_ptr,
                                                              OrtValue** dst_tensors_ptr,
                                                              OrtSyncStream** streams_ptr,
@@ -106,7 +106,7 @@ OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(void* this_ptr,
 }
 
 /*static*/
-void ORT_API_CALL ExampleDataTransfer::ReleaseImpl(void* /*this_ptr*/) noexcept {
+void ORT_API_CALL ExampleDataTransfer::ReleaseImpl(OrtDataTransferImpl* /*this_ptr*/) noexcept {
   // In our setup the factory owns a shared ExampleDataTransfer instance so it will do the cleanup, and we ignore
   // the call to Release from the plugin_ep::DataTransfer dtor (see /onnxruntime/core/framework/plugin_data_transfer.h)
   //

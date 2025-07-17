@@ -29,7 +29,7 @@ typedef struct OrtDataTransferImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(void, Release, _In_ void* this_ptr);
+  ORT_API_T(void, Release, _In_ OrtDataTransferImpl* this_ptr);
 
   /** \brief Check if the implementation can copy between the source and destination memory devices.
    *
@@ -40,7 +40,7 @@ typedef struct OrtDataTransferImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(bool, CanCopy, _In_ void* this_ptr,
+  ORT_API_T(bool, CanCopy, _In_ const OrtDataTransferImpl* this_ptr,
             _In_ const OrtMemoryDevice* src_memory_device, _In_ const OrtMemoryDevice* dst_memory_device);
 
   /** \brief Copy tensors from src_tensors to dst_tensors using the provided streams.
@@ -59,7 +59,7 @@ typedef struct OrtDataTransferImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(CopyTensors, _In_ void* this_ptr,
+  ORT_API2_STATUS(CopyTensors, _In_ OrtDataTransferImpl* this_ptr,
                   _In_reads_(num_tensors) const OrtValue** src_tensors,
                   _In_reads_(num_tensors) OrtValue** dst_tensors,
                   _In_reads_(num_tensors) OrtSyncStream** streams,
@@ -82,7 +82,7 @@ typedef struct OrtSyncNotificationImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(void, Release, _In_ void* this_ptr);
+  ORT_API_T(void, Release, _In_ OrtSyncNotificationImpl* this_ptr);
 
   /** \brief Called by ORT to activate the notification.
    *
@@ -90,7 +90,7 @@ typedef struct OrtSyncNotificationImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Activate, _In_ void* this_ptr);
+  ORT_API2_STATUS(Activate, _In_ OrtSyncNotificationImpl* this_ptr);
 
   /** \brief Wait for a device to device operation to complete.
    *
@@ -99,7 +99,7 @@ typedef struct OrtSyncNotificationImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(WaitOnDevice, _In_ void* this_ptr, _In_ OrtSyncStream* consumer_stream);
+  ORT_API2_STATUS(WaitOnDevice, _In_ OrtSyncNotificationImpl* this_ptr, _In_ OrtSyncStream* consumer_stream);
 
   /** \brief Wait for a device to host operation to complete.
    *
@@ -107,7 +107,7 @@ typedef struct OrtSyncNotificationImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(WaitOnHost, _In_ void* this_ptr);
+  ORT_API2_STATUS(WaitOnHost, _In_ OrtSyncNotificationImpl* this_ptr);
 } OrtSyncNotificationImpl;
 
 /** \brief Struct that an EP implements if it wishes to implement Stream support.
@@ -128,7 +128,7 @@ typedef struct OrtSyncStreamImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(void, Release, _In_ void* this_ptr);
+  ORT_API_T(void, Release, _In_ OrtSyncStreamImpl* this_ptr);
 
   /** \brief Get the handle of the stream.
    *
@@ -139,18 +139,16 @@ typedef struct OrtSyncStreamImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(void*, GetHandle, _In_ void* this_ptr);
+  ORT_API_T(void*, GetHandle, _In_ OrtSyncStreamImpl* this_ptr);
 
-  /** \brief Create an OrtSyncNotificationImpl for the OrtSyncStream
+  /** \brief Create an OrtSyncNotificationImpl for the OrtSyncStreamImpl instance.
    *
    * \param[in] this_ptr Pointer to the OrtSyncStreamImpl instance
-   * \param[in] stream The OrtSyncStream instance to create the notification for.
-   * \param[in] num_consumers The number of consumers that will use this notification. 0 if unknown/irrelevant.
-   * \param[out] notification Pointer to the OrtSyncNotificationImpl instance that will be created.
+   * \param[out] notification The new OrtSyncNotificationImpl instance.
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(CreateNotification, _In_ void* this_ptr,
+  ORT_API2_STATUS(CreateNotification, _In_ OrtSyncStreamImpl* this_ptr,
                   _Outptr_ OrtSyncNotificationImpl** notification);
 
   /** \brief Flush the stream.
@@ -161,7 +159,7 @@ typedef struct OrtSyncStreamImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Flush, _In_ void* this_ptr);
+  ORT_API2_STATUS(Flush, _In_ OrtSyncStreamImpl* this_ptr);
 
   /** \brief Notify the stream that a session run has ended.
    *
@@ -172,7 +170,7 @@ typedef struct OrtSyncStreamImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(OnSessionRunEnd, _In_ void* this_ptr);
+  ORT_API2_STATUS(OnSessionRunEnd, _In_ OrtSyncStreamImpl* this_ptr);
 } OrtSyncStreamImpl;
 
 struct OrtNodeFusionOptions;
@@ -630,6 +628,45 @@ struct OrtEp {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(OnRunEnd, _In_ OrtEp* this_ptr, _In_ const OrtRunOptions* run_options, _In_ bool sync_stream);
+
+  /** \brief Create an OrtAllocator for the given OrtMemoryInfo for an OrtSession.
+   *
+   * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
+   * Any allocator specific options should be read from the session options.
+   *
+   * If nullptr OrtEpFactory::CreateAllocator will be used.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
+   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the default CPU allocator is used.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(CreateAllocator, _In_ OrtEp* this_ptr,
+                  _In_ const OrtMemoryInfo* memory_info,
+                  _Outptr_result_maybenull_ OrtAllocator** allocator);
+
+  /** \brief Create a synchronization stream for the given memory device for an OrtSession.
+   *
+   * This is used to create a synchronization stream for the execution provider and is used to synchronize
+   * operations on the device during model execution.
+   * Any stream specific options should be read from the session options.
+   *
+   * If nullptr OrtEpFactory::CreateSyncStreamForDevice will be used.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] memory_device The OrtMemoryDevice to create the synchronization stream for.
+   * \param[out] stream The created OrtSyncStreamImpl instance. nullptr if the execution provider is not stream aware.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ OrtEp* this_ptr,
+                  _In_ const OrtMemoryDevice* memory_device,
+                  _Outptr_ OrtSyncStreamImpl** stream);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -791,14 +828,12 @@ struct OrtEpFactory {
    */
   ORT_API_T(const char*, GetVersion, _In_ const OrtEpFactory* this_ptr);
 
-  /** \brief Create an OrtAllocator for the given OrtMemoryInfo.
+  /** \brief Create an OrtAllocator that can be shared across sessions for the given OrtMemoryInfo.
    *
-   * This is used to create an allocator that an execution provider requires. The factory that creates the EP is
-   * responsible for providing the required allocators.
+   * The factory that creates the EP is responsible for providing the allocators required by the EP.
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] ep The OrtEp if the allocator is being created for a specific EP instance. nullptr otherwise.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
    * \param[in] allocator_options Optional key-value pairs for allocator options, can be nullptr.
    * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the default CPU allocator is used.
@@ -809,7 +844,6 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(CreateAllocator, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtMemoryInfo* memory_info,
-                  _In_opt_ const OrtEp* ep,
                   _In_opt_ const OrtKeyValuePairs* allocator_options,
                   _Outptr_result_maybenull_ OrtAllocator** allocator);
 
@@ -845,14 +879,11 @@ struct OrtEpFactory {
 
   /** \brief Create a synchronization stream for the given memory device.
    *
-   * This is used to create a synchronization stream for the execution provider and is used to synchronize
-   * operations on the device during model execution.
+   * This is used to create a synchronization stream for the memory device that can be used for operations outside of
+   * a session.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_device The OrtMemoryDevice to create the synchronization stream for.
-   * \param[in] ep The OrtEp if the stream is being created for a specific EP instance. nullptr otherwise.
-   *               The EP instance options may affect stream behavior (e.g. whether graph capture is enabled).
-   *               Nullptr when called from outside of an inference session.
    * \param[in] stream_options Options for stream creation. May be nullptr.
    * \param[out] stream The created OrtSyncStreamImpl instance. nullptr if the execution provider is not stream aware.
    *
@@ -862,7 +893,6 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtMemoryDevice* memory_device,
-                  _In_opt_ const OrtEp* ep,
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStreamImpl** stream);
 };
