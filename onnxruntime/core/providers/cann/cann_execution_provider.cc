@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <iterator>
 #include <map>
-#include <chrono>
 #include <unordered_set>
 
 #define ORT_API_MANUAL_INIT
