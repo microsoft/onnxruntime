@@ -324,7 +324,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       x_zero_point = model_builder.CreateOrGetConstant<uint8_t>(x_type, 0);
     }
 
-    // Scale is not used by ConvInteger but required by DequantizeLinear. So set it to deafult value 1.0f.
+    // Scale is not used by ConvInteger but required by DequantizeLinear. So set it to default value 1.0f.
     // The x_zero_point must be a scalar and the scale input should have the same shape as the zero point input.
     // So the x_scale must be a scalar too.
     x_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f);
