@@ -22,10 +22,10 @@ index c01d64e40f..0f1f4beae4 100644
              usedKnobs._16BitStorageFeatures.storageInputOutput16 = VK_TRUE;
          }
 diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
-index f9902776c7..8d64da750f 100644
+index a324c101ed..8d64da750f 100644
 --- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
 +++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
-@@ -252,8 +252,9 @@ void PhysicalDevice::InitializeSupportedFeaturesImpl() {
+@@ -269,8 +269,9 @@ void PhysicalDevice::InitializeSupportedFeaturesImpl() {
      if (mDeviceInfo.HasExt(DeviceExt::ShaderFloat16Int8) &&
          mDeviceInfo.HasExt(DeviceExt::_16BitStorage) &&
          mDeviceInfo.shaderFloat16Int8Features.shaderFloat16 == VK_TRUE &&
@@ -34,6 +34,6 @@ index f9902776c7..8d64da750f 100644
 +        mDeviceInfo._16BitStorageFeatures.storageBuffer16BitAccess == VK_TRUE /*&&
 +        WebGPU EP needs to ensure we don't put fp16 values in uniforms when this patch is applied.
 +        mDeviceInfo._16BitStorageFeatures.uniformAndStorageBuffer16BitAccess == VK_TRUE*/) {
-         // TODO(crbug.com/tint/2164): Investigate crashes in f16 CTS tests to enable on NVIDIA.
-         if (!gpu_info::IsNvidia(GetVendorId())) {
-             EnableFeature(Feature::ShaderF16);
+         // ONNX Runtime Patch: enable shaderF16 on all devices.
+         EnableFeature(Feature::ShaderF16);
+         shaderF16Enabled = true;
