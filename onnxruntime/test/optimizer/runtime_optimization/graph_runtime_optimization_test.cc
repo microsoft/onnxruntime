@@ -281,6 +281,7 @@ void CheckNhwcTransformerIsApplied(const PathString& ort_model_path,
       graph_checker));
 };
 
+#if !defined(ORT_MINIMAL_BUILD)
 // if level 0 optimization is enabled the free dimension override should be enabled.
 void CheckFreeDimensionOverrideIsApplied(const PathString& model_path,
                                          TransformerLevel level,
@@ -322,6 +323,7 @@ void CheckFreeDimensionOverrideIsApplied(const PathString& model_path,
       nullptr,
       graph_checker));
 };
+#endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace
 
 TEST(GraphRuntimeOptimizationTest, QDQConv) {
