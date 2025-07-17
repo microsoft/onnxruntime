@@ -41,7 +41,8 @@ struct AttentionParameters {
   int v_head_size;            // V.shape[4] (4D)
   int past_sequence_length;   // pask_key.shape[2] or past_value.shape[2] (4D)
   int total_sequence_length;  // past_sequence_length + kv_sequence_length
-  bool transpose_output;      // Whether to transpose the output from BxNxSxH to BxSxNxH
+  bool transpose_output;      // Whether to transpose the inputs and the outputs from BxNxSxH to BxSxNxH
+                              // This covers the case where the inputs are 3D.
 
   // Checks the consistency of the parameters.
   void checkParameters() const;

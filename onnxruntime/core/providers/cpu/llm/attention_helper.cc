@@ -78,7 +78,7 @@ Status ComputeOutputShapeForAttention(
     ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 2] == Q->Shape()[2], "inconsistent q_sequence_length (between attn_mask and Q)");
 
     // From shapes
-    parameters.transpose_output = false;                                      // whether to transpose the output from BxNxSxH to BxSxNxH
+    parameters.transpose_output = false;                                      // whether to transpose the input/output with permutation (0, 2, 1, 3)
     parameters.q_sequence_length = onnxruntime::narrow<int>(Q->Shape()[2]);   // Q.shape[2] (4D)
     parameters.head_size = onnxruntime::narrow<int>(Q->Shape()[3]);           // Q.shape[3] (4D)
     parameters.kv_sequence_length = onnxruntime::narrow<int>(K->Shape()[2]);  // K.shape[2] or V.shape[2] (4D)
@@ -100,7 +100,7 @@ Status ComputeOutputShapeForAttention(
     ORT_ENFORCE(Q->Shape()[2] % parameters.q_num_heads == 0, "inconsistent q_hidden_size, it should be a multiple of q_num_heads");
     ORT_ENFORCE(V->Shape()[2] % parameters.kv_num_heads == 0, "inconsistent v_hidden_size, it should be a multiple of kv_num_heads");
 
-    parameters.transpose_output = true;  // whether to transpose the output from BxNxSxH to BxSxNxH
+    parameters.transpose_output = true;  // whether to transpose the input/output with permutation (0, 2, 1, 3)
     parameters.q_sequence_length = onnxruntime::narrow<int>(Q->Shape()[1]);
     parameters.head_size = onnxruntime::narrow<int>(Q->Shape()[2]) / parameters.q_num_heads;
     parameters.kv_sequence_length = onnxruntime::narrow<int>(K->Shape()[1]);
@@ -115,6 +115,7 @@ Status ComputeOutputShapeForAttention(
   }
   parameters.total_sequence_length = parameters.past_sequence_length + parameters.kv_sequence_length;
 
+  ORT_ENFORCE(parameters.q_num_heads % parameters.kv_num_heads == 0, "q_num_heads % kv_num_heads == 0 is not verified");
   ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1] == parameters.total_sequence_length,
               "inconsistent total_sequence_length (between attn_mask and past_key and past_value)");
   ORT_ENFORCE(attn_mask == nullptr ||
@@ -135,11 +136,11 @@ Status ComputeOutputShapeForAttention(
 
   present_key_shape = {static_cast<int64_t>(parameters.batch_size),
                        static_cast<int64_t>(parameters.kv_num_heads),
-                       static_cast<int64_t>(parameters.past_sequence_length + parameters.kv_sequence_length),
+                       static_cast<int64_t>(parameters.total_sequence_length),
                        static_cast<int64_t>(parameters.head_size)};
   present_value_shape = {static_cast<int64_t>(parameters.batch_size),
                          static_cast<int64_t>(parameters.kv_num_heads),
-                         static_cast<int64_t>(parameters.past_sequence_length + parameters.kv_sequence_length),
+                         static_cast<int64_t>(parameters.total_sequence_length),
                          static_cast<int64_t>(parameters.v_head_size)};
   if (qk_matmul_output_mode == QKMatMulOutputMode::kNone) {
     output_qk_shape.clear();
@@ -147,7 +148,7 @@ Status ComputeOutputShapeForAttention(
     output_qk_shape = {static_cast<int64_t>(parameters.batch_size),
                        static_cast<int64_t>(parameters.q_num_heads),
                        static_cast<int64_t>(parameters.q_sequence_length),
-                       static_cast<int64_t>(parameters.past_sequence_length + parameters.kv_sequence_length)};
+                       static_cast<int64_t>(parameters.total_sequence_length)};
   }
   return Status::OK();
 }
