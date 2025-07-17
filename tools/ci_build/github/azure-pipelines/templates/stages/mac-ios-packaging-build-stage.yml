@@ -1,10 +1,4 @@
 parameters:
-- name: packageVariant
-  type: string
-  values:
-  - Full
-  - Training
-
 - name: buildType
   type: string
   values:
@@ -13,11 +7,11 @@ parameters:
   default: normal
 
 stages:
-- stage: IosPackaging_Build_${{ parameters.packageVariant }}
+- stage: IosPackaging_Build_Full
   dependsOn: []
   jobs:
   - job:
-    displayName: "Build iOS package for variant: ${{ parameters.packageVariant}}"
+    displayName: "Build iOS package for Full variant"
 
     variables:
       # Note: Keep the Xcode version and iOS simulator version compatible.
@@ -25,21 +19,15 @@ stages:
       # https://developer.apple.com/support/xcode/
       xcodeVersion: "15.3.0"
       iosSimulatorRuntimeVersion: "17.4"
-      ${{ if eq(parameters.packageVariant, 'Full') }}:
-        buildSettingsFile: "tools/ci_build/github/apple/default_full_apple_framework_build_settings.json"
-        cPodName: onnxruntime-c
-        objcPodName: onnxruntime-objc
-
-      ${{ if eq(parameters.packageVariant, 'Training') }}:
-        buildSettingsFile: "tools/ci_build/github/apple/default_training_ios_framework_build_settings.json"
-        cPodName: onnxruntime-training-c
-        objcPodName: onnxruntime-training-objc
+      buildSettingsFile: "tools/ci_build/github/apple/default_full_apple_framework_build_settings.json"
+      cPodName: onnxruntime-c
+      objcPodName: onnxruntime-objc
     timeoutInMinutes: 240
     templateContext:
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
-        artifactName: ios_packaging_artifacts_${{ lower(parameters.packageVariant) }}
+        artifactName: ios_packaging_artifacts_full
 
     steps:
     - bash: |
@@ -108,9 +96,8 @@ stages:
           --staging-dir "$(Build.BinariesDirectory)/staging" \
           --pod-version "$(ortPodVersion)" \
           --test \
-          --variant ${{ parameters.packageVariant }} \
-          --build-settings-file "${{ variables.buildSettingsFile }}" \
-          ${{ variables.optionalIncludeOpsByConfigOption }}
+          --variant Full \
+          --build-settings-file "${{ variables.buildSettingsFile }}"
       displayName: "Build macOS/iOS framework and assemble pod package files"
       env:
         ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: $(iosSimulatorRuntimeVersion)
@@ -120,7 +107,7 @@ stages:
           --fail_if_cocoapods_missing \
           --framework_info_file "$(Build.BinariesDirectory)/apple_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/apple_framework/framework_out" \
-          --variant ${{ parameters.packageVariant }} \
+          --variant Full \
           --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test" \
           --prepare_test_project_only
       displayName: "Assemble test project for App Center"
@@ -190,7 +177,7 @@ stages:
     - task: 1ES.PublishPipelineArtifact@1
       inputs:
         path: $(Build.ArtifactStagingDirectory)
-        artifact: browserstack_test_artifacts_${{ lower(parameters.packageVariant) }}
+        artifact: browserstack_test_artifacts_full
       displayName: "Publish BrowserStack artifacts"
 
     - script: |

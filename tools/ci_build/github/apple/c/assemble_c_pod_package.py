@@ -13,7 +13,6 @@ sys.path.append(str(_script_dir.parent))
 
 
 from package_assembly_utils import (  # noqa: E402
-    PackageVariant,
     copy_repo_relative_to_dir,
     gen_file_from_template,
     get_podspec_values,
@@ -21,16 +20,11 @@ from package_assembly_utils import (  # noqa: E402
 )
 
 
-def get_pod_config_file(package_variant: PackageVariant):
+def get_pod_config_file():
     """
-    Gets the pod configuration file path for the given package variant.
+    Gets the pod configuration file path for the Full package variant.
     """
-    if package_variant == PackageVariant.Full:
-        return _script_dir / "onnxruntime-c.config.json"
-    elif package_variant == PackageVariant.Training:
-        return _script_dir / "onnxruntime-training-c.config.json"
-    else:
-        raise ValueError(f"Unhandled package variant: {package_variant}")
+    return _script_dir / "onnxruntime-c.config.json"
 
 
 def assemble_c_pod_package(
@@ -39,7 +33,6 @@ def assemble_c_pod_package(
     framework_info_file: pathlib.Path,
     public_headers_dir: pathlib.Path,
     framework_dir: pathlib.Path,
-    package_variant: PackageVariant,
 ):
     """
     Assembles the files for the C/C++ pod package in a staging directory.
@@ -58,7 +51,7 @@ def assemble_c_pod_package(
     framework_dir = framework_dir.resolve(strict=True)
 
     framework_info = load_json_config(framework_info_file)
-    pod_config = load_json_config(get_pod_config_file(package_variant))
+    pod_config = load_json_config(get_pod_config_file())
 
     pod_name = pod_config["name"]
 
@@ -130,9 +123,6 @@ def parse_args():
         required=True,
         help="Path to the onnxruntime framework directory to include in the pod.",
     )
-    parser.add_argument(
-        "--variant", choices=PackageVariant.all_variant_names(), required=True, help="Pod package variant."
-    )
 
     return parser.parse_args()
 
@@ -146,7 +136,6 @@ def main():
         framework_info_file=args.framework_info_file,
         public_headers_dir=args.public_headers_dir,
         framework_dir=args.framework_dir,
-        package_variant=PackageVariant[args.variant],
     )
 
     return 0
