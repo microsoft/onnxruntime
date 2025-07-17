@@ -263,7 +263,7 @@ static Status ConvertEpContextNodes(const std::string& ep_name, const std::vecto
   ep_context_nodes_holder.reserve(plugin_ep_context_nodes.size());
   int index = -1;
   for (const OrtNode* ort_node : plugin_ep_context_nodes) {
-    index = index + 1;
+    ++index;
     auto& fused_node_filtered_graph = fused_nodes[index].filtered_graph;
     ORT_RETURN_IF_NOT(ort_node != nullptr, ep_name, ": OrtEp::Compile() returned a NULL EPContext node.");
 
