@@ -60,8 +60,13 @@ class AttentionBase : public OpKernel {
                       const T* chunk,
                       T* present,
                       size_t past_chunk_length,
+                      size_t input_chunk_length,
                       size_t present_chunk_length,
-                      std::ptrdiff_t i) const;
+                      size_t num_heads,
+                      size_t head_size,
+                      std::ptrdiff_t batch_i,
+                      std::ptrdiff_t head_i,
+                      bool transposed) const;
 };
 
 template <typename T>

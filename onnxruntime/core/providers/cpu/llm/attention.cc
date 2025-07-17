@@ -268,9 +268,10 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
     // parameters.batch_size * parameters.q_num_heads
     for (std::ptrdiff_t batch_i = 0; batch_i < parameters.batch_size; ++batch_i) {
       for (std::ptrdiff_t head_i = 0; head_i < parameters.kv_num_heads; ++head_i) {
-        std::ptrdiff_t ki = batch_i * parameters.kv_num_heads + head_i;
-        const T* k = K + k_input_chunk_length * ki;
-        ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, ki);
+        ConcatStateChunk(past_key, K, present_key,
+                         past_chunk_length, k_input_chunk_length, present_chunk_length,
+                         parameters.kv_num_heads, parameters.head_size, batch_i, head_i,
+                         parameters.transpose_output);
       }
     }
   }
@@ -313,7 +314,10 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
           // Already done in a loop before this one.
           k = present_key + ki * present_chunk_length;
         } else {
-          k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, ki);
+          k = ConcatStateChunk(past_key, K, present_key,
+                               past_chunk_length, k_input_chunk_length, present_chunk_length,
+                               parameters.kv_num_heads, parameters.head_size, batch_i, head_i,
+                               parameters.transpose_output);
         }
       }
 
@@ -431,11 +435,18 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
 
 template <typename T>
 T* AttentionBase<T>::ConcatStateChunk(const T* past,
-                                      const T* chunk,
+                                      const T* base_chunk,  // chunk is K or V, it can be transposed or not
                                       T* present,
                                       size_t past_chunk_length,
+                                      size_t input_chunk_length,  // chunk length of K or V
                                       size_t present_chunk_length,
-                                      std::ptrdiff_t i) const {
+                                      size_t num_heads,
+                                      size_t head_size,
+                                      std::ptrdiff_t batch_i,
+                                      std::ptrdiff_t head_i,
+                                      bool transposed) const {
+  std::ptrdiff_t i = batch_i * num_heads + head_i % num_heads;
+
   T* start = present + i * present_chunk_length;
 
   T* p = start;
@@ -445,7 +456,20 @@ T* AttentionBase<T>::ConcatStateChunk(const T* past,
     p += past_chunk_length;
   }
 
-  memcpy(p, chunk, (present_chunk_length - past_chunk_length) * sizeof(T));
+  if (transposed) {
+    ORT_ENFORCE(head_size > 0 && num_heads > 0 && batch_i >= 0 && head_i >= 0,
+                "Invalid parameters for ConcatStateChunk: head_size=", head_size, ", batch_i=", batch_i, ", head_i=", head_i);
+    size_t sequence_length = SafeInt<size_t>(input_chunk_length / head_size);
+    const T* chunk = base_chunk + head_i * head_size + input_chunk_length * num_heads * batch_i;
+    for (size_t j = 0; j < sequence_length; ++j) {
+      memcpy(p, chunk, head_size * sizeof(T));
+      p += head_size;
+      chunk += num_heads * head_size;
+    }
+  } else {
+    const T* chunk = base_chunk + input_chunk_length * i;
+    memcpy(p, chunk, (present_chunk_length - past_chunk_length) * sizeof(T));
+  }
   return start;
 }
 
@@ -491,9 +515,10 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
     // parameters.batch_size * parameters.q_num_heads
     for (std::ptrdiff_t batch_i = 0; batch_i < batch_size; ++batch_i) {
       for (std::ptrdiff_t head_i = 0; head_i < kv_num_heads; ++head_i) {
-        std::ptrdiff_t vi = batch_i * kv_num_heads + head_i;
-        const T* v = V + v_input_chunk_length * vi;
-        ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, vi);
+        ConcatStateChunk(past_value, V, present_value,
+                         past_chunk_length, v_input_chunk_length, present_chunk_length,
+                         kv_num_heads, v_head_size, batch_i, head_i,
+                         transpose_output);
       }
     }
   }
@@ -512,7 +537,11 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
               // Already done in a loop before this one.
               v = present_value + vi * present_chunk_length;
             } else {
-              v = ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, vi);
+              // transposed_v is false here.
+              v = ConcatStateChunk(past_value, V, present_value,
+                                   past_chunk_length, v_input_chunk_length, present_chunk_length,
+                                   kv_num_heads, v_head_size, batch_i, head_i,
+                                   transpose_output);
             }
           }
 
