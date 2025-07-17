@@ -1074,55 +1074,6 @@ def gqa_cuda_past_test_cases(allow_head_sink: bool = True):
                                         yield name, config
 
 
-def gqa_cpu_prompt_test_cases():
-    precisions = [
-        {"ort": TensorProto.FLOAT, "torch": torch.float32, "numpy": numpy.float32, "rtol": 1e-5, "atol": 1e-5},
-        {"ort": TensorProto.FLOAT16, "torch": torch.float16, "numpy": numpy.float16, "rtol": 1e-2, "atol": 1e-2},
-    ]
-    batches = [3] if pipeline_mode else [1, 3]
-    seqs = [(64, 64)] if pipeline_mode else [(35, 35), (127, 127)]
-    num_h = [(6, 3)] if pipeline_mode else [(6, 6), (6, 3)]
-    h_sizes = [64] if pipeline_mode else [32, 64]
-    has_pos_ids__attn_bias = (
-        [(True, True)] if pipeline_mode else [(False, False), (True, True), (False, True), (True, False)]
-    )
-    smmoth_softmax__head_sink = get_softmax_options()
-
-    for p in precisions:
-        for b in batches:
-            for sq, skv in seqs:
-                for n, n2 in num_h:
-                    for h in h_sizes:
-                        for lws in [-1, random.randint(1, skv)]:
-                            for rotary, rotary_interleaved in get_cpu_rotary_options():
-                                for packed in [False, True]:
-                                    for softcap in [0.0, 50.0]:
-                                        for use_smooth_softmax, has_head_sink in smmoth_softmax__head_sink:
-                                            for has_pos, has_attn_bias in has_pos_ids__attn_bias:
-                                                config = GQAConfig(
-                                                    batch_size=b,
-                                                    q_sequence_length=sq,
-                                                    kv_sequence_length=skv,
-                                                    past_kv_sequence_length=0,
-                                                    buffer_sequence_length=sq + skv + 8,
-                                                    num_heads=n,
-                                                    kv_num_heads=n2,
-                                                    head_size=h,
-                                                    local_window_size=lws,
-                                                    rotary=rotary,
-                                                    rotary_interleaved=rotary_interleaved,
-                                                    packed=packed,
-                                                    softcap=softcap,
-                                                    use_smooth_softmax=use_smooth_softmax,
-                                                    has_position_ids=has_pos,
-                                                    has_attention_bias=has_attn_bias,
-                                                    has_head_sink=has_head_sink,
-                                                )
-                                                p_str = "fp32" if p["ort"] == TensorProto.FLOAT else "fp16"
-                                                name = f"p{p_str}_b{b}_s{sq}_{skv}_nh{n}_{n2}_h{h}_w{lws}_rot{rotary}{rotary_interleaved}_pkd{packed}_sc{softcap}_sm{use_smooth_softmax}_{has_head_sink}_ex{has_pos}_{has_attn_bias}"
-                                                yield name, config, p
-
-
 # #################################################################################################
 #  Unit Test Classes
 # #################################################################################################
@@ -1210,23 +1161,6 @@ class TestMemoryEfficientGQA(unittest.TestCase):
             rtol=5e-3,
             atol=5e-3,
         )
-
-
-# TODO: merge test_qga_cpu.py with this file
-# class TestGQACPU(unittest.TestCase):
-#     @parameterized.expand(gqa_cpu_prompt_test_cases())
-#     def test_gqa_prompt_cpu(self, name, config, precision):
-#         parity_check_gqa_prompt(
-#             config=config,
-#             ep="CPUExecutionProvider",
-#             device="cpu",
-#             torch_type=precision["torch"],
-#             numpy_type=precision["numpy"],
-#             ort_type=precision["ort"],
-#             causal=True,
-#             rtol=precision["rtol"],
-#             atol=precision["atol"],
-#         )
 
 
 if __name__ == "__main__":
