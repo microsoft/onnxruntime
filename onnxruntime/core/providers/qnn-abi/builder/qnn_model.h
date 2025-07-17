@@ -92,6 +92,34 @@ class QnnModel {
   Status DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info,
                                             const Qnn_ContextHandle_t& context);
 
+  bool IsConstantInitializer(const OrtGraph& ort_graph,
+                             const std::string& tensor_name) const {
+    std::unique_ptr<OrtArrayOfConstObjects> initializers_ptr;
+    Status status = ort_graph.GetInitializers(initializers_ptr);
+    if (!status.IsOK()) {
+      return false;
+    }
+
+    const OrtArrayOfConstObjects* initializers = initializers_ptr.get();
+    size_t num_initializers = 0;
+    api_ptrs_.ort_api.ArrayOfConstObjects_GetSize(initializers, &num_initializers);
+    const void* const* initializers_data = nullptr;
+    api_ptrs_.ort_api.ArrayOfConstObjects_GetData(initializers, &initializers_data);
+
+    for (size_t i = 0; i < num_initializers; ++i) {
+      const OrtValueInfo* value_info = static_cast<const OrtValueInfo*>(initializers_data[i]);
+      const char* value_info_name = nullptr;
+      api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name);
+
+      if (std::string(value_info_name) == tensor_name) {
+        bool is_constant_initializer = false;
+        api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
+        return is_constant_initializer;
+      }
+    }
+    return false;
+  }
+
   const std::vector<std::string>& GetInputNames() const {
     return input_names_;
   }
@@ -111,8 +139,8 @@ class QnnModel {
   const std::string& Name() const { return graph_info_->Name(); }
 
  private:
-  const OrtNode& GetNodeUnit(const OrtNode* node,
-                             const std::unordered_map<const OrtNode*, const OrtNode*>& node_unit_map) const;
+  const OrtNodeUnit& GetNodeUnit(const OrtNode* node,
+                                 const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map) const;
   bool GetGraphInfoFromModel(QnnModelWrapper& model_wrapper, const logging::Logger& logger);
 
   Status SetupTensors(std::vector<QnnTensorInfo>& tensors, const std::vector<QnnTensorWrapper>& tensor_wrappers,

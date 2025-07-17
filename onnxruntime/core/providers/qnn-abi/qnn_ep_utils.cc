@@ -9,24 +9,22 @@
 namespace onnxruntime {
 class QnnEp;
 
-
 // Implementation of GetQDQNodeUnits for OrtGraph
 std::pair<std::vector<std::unique_ptr<OrtNodeUnit>>, std::unordered_map<const OrtNode*, const OrtNodeUnit*>>
-GetAllOrtNodeUnits(const OrtEp* this_ptr, const OrtGraph* graph, const logging::Logger& logger) {
+GetAllOrtNodeUnits(OrtApi ort_api, const OrtGraph* graph, const logging::Logger& logger) {
   logger;
-  const auto* ep = static_cast<const QnnEp*>(this_ptr);
   std::vector<std::unique_ptr<OrtNodeUnit>> node_unit_holder;
   std::unordered_map<const OrtNode*, const OrtNodeUnit*> node_unit_map;
 
   // Get all nodes from the graph
   OrtArrayOfConstObjects* nodes = nullptr;
-  ep->ort_api.Graph_GetNodes(graph, &nodes);
+  ort_api.Graph_GetNodes(graph, &nodes);
 
   size_t num_nodes = 0;
-  ep->ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
+  ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
 
   const void* const* node_data = nullptr;
-  ep->ort_api.ArrayOfConstObjects_GetData(nodes, &node_data);
+  ort_api.ArrayOfConstObjects_GetData(nodes, &node_data);
 
   // const auto add_node_unit_to_map = [&](const std::vector<int>& node_indices) {
   //   for (auto node_idx : node_indices) {
@@ -68,6 +66,5 @@ GetAllOrtNodeUnits(const OrtEp* this_ptr, const OrtGraph* graph, const logging::
 
   return std::make_pair(std::move(node_unit_holder), std::move(node_unit_map));
 }
-
 
 }  // namespace onnxruntime
