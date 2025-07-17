@@ -23,10 +23,10 @@ struct TreeNodeElementId {
   int64_t tree_id;
   int64_t node_id;
   bool operator==(const TreeNodeElementId& xyz) const {
-    return (tree_id == xyz.tree_id) && (node_id == xyz.node_id);
+    return (node_id == xyz.node_id) && (tree_id == xyz.tree_id);
   }
   bool operator<(const TreeNodeElementId& xyz) const {
-    return ((tree_id < xyz.tree_id) || (tree_id == xyz.tree_id && node_id < xyz.node_id));
+    return ((tree_id < xyz.tree_id) || (node_id < xyz.node_id && tree_id == xyz.tree_id));
   }
   struct hash_fn {
     std::size_t operator()(const TreeNodeElementId& key) const {
