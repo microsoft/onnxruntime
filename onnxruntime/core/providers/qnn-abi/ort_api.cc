@@ -77,23 +77,19 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 // }
 
 
-// #define NODE_ATTR_ITER_VAL(iter) (iter)->second()
+#define NODE_ATTR_ITER_VAL(iter) (iter)->second()
 
-// NodeAttrHelper::NodeAttrHelper(const onnxruntime::Node& node)
-//     : node_attributes_(node.GetAttributes()) {}
+OrtNodeAttrHelper::OrtNodeAttrHelper(const OrtApi& ort_api, const OrtNode& node) : node_(node), ort_api_(ort_api) {}
 
-// NodeAttrHelper::NodeAttrHelper(const NodeUnit& node_unit)
-//     : node_attributes_(node_unit.GetNode().GetAttributes()) {}
+OrtNodeAttrHelper::OrtNodeAttrHelper(const OrtApi& ort_api, const OrtNodeUnit& node_unit) : node_(node_unit.GetNode()), ort_api_(ort_api) {}
 
-// float NodeAttrHelper::Get(const std::string& key, float def_val) const {
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     return NODE_ATTR_ITER_VAL(entry).f();
-//   }
+float OrtNodeAttrHelper::Get(const std::string& key, float def_val) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  return rt ? def_val : api_node_attr->attr_proto.f();
+}
 
-//   return def_val;
-// }
-
-// int32_t NodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
+// int32_t OrtNodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     return narrow<int32_t>(NODE_ATTR_ITER_VAL(entry).i());
 //   }
@@ -101,7 +97,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return def_val;
 // }
 
-// uint32_t NodeAttrHelper::Get(const std::string& key, uint32_t def_val) const {
+// uint32_t OrtNodeAttrHelper::Get(const std::string& key, uint32_t def_val) const {
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     return narrow<uint32_t>(NODE_ATTR_ITER_VAL(entry).i());
 //   }
@@ -109,7 +105,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return def_val;
 // }
 
-// int64_t NodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
+// int64_t OrtNodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     return NODE_ATTR_ITER_VAL(entry).i();
 //   }
@@ -117,7 +113,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return def_val;
 // }
 
-// const std::string& NodeAttrHelper::Get(const std::string& key, const std::string& def_val) const {
+// const std::string& OrtNodeAttrHelper::Get(const std::string& key, const std::string& def_val) const {
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     return NODE_ATTR_ITER_VAL(entry).s();
 //   }
@@ -125,7 +121,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return def_val;
 // }
 
-// std::vector<std::string> NodeAttrHelper::Get(const std::string& key, const std::vector<std::string>& def_val) const {
+// std::vector<std::string> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<std::string>& def_val) const {
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     std::vector<std::string> res;
 //     for (int i = 0; i < NODE_ATTR_ITER_VAL(entry).strings_size(); i++) {
@@ -137,7 +133,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return def_val;
 // }
 
-// std::vector<int32_t> NodeAttrHelper::Get(const std::string& key, const std::vector<int32_t>& def_val) const {
+// std::vector<int32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int32_t>& def_val) const {
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     const auto& values = NODE_ATTR_ITER_VAL(entry).ints();
 //     const int64_t* cbegin = values.data();
@@ -152,7 +148,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return def_val;
 // }
 
-// std::vector<uint32_t> NodeAttrHelper::Get(const std::string& key, const std::vector<uint32_t>& def_val) const {
+// std::vector<uint32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<uint32_t>& def_val) const {
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     const auto& values = NODE_ATTR_ITER_VAL(entry).ints();
 //     const int64_t* cbegin = values.data();
@@ -167,7 +163,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return def_val;
 // }
 
-// std::vector<int64_t> NodeAttrHelper::Get(const std::string& key, const std::vector<int64_t>& def_val) const {
+// std::vector<int64_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int64_t>& def_val) const {
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     const auto& values = NODE_ATTR_ITER_VAL(entry).ints();
 //     const int64_t* cbegin = values.data();
@@ -178,7 +174,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return def_val;
 // }
 
-// std::vector<float> NodeAttrHelper::Get(const std::string& key, const std::vector<float>& def_val) const {
+// std::vector<float> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<float>& def_val) const {
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     const auto& values = NODE_ATTR_ITER_VAL(entry).floats();
 //     const float* cbegin = values.data();
@@ -189,7 +185,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return def_val;
 // }
 
-// std::optional<float> NodeAttrHelper::GetFloat(const std::string& key) const {
+// std::optional<float> OrtNodeAttrHelper::GetFloat(const std::string& key) const {
 //   std::optional<float> result;
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     result = NODE_ATTR_ITER_VAL(entry).f();
@@ -198,7 +194,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return result;
 // }
 
-// std::optional<int64_t> NodeAttrHelper::GetInt64(const std::string& key) const {
+// std::optional<int64_t> OrtNodeAttrHelper::GetInt64(const std::string& key) const {
 //   std::optional<int64_t> result;
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     result = NODE_ATTR_ITER_VAL(entry).i();
@@ -207,7 +203,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return result;
 // }
 
-// std::optional<std::vector<float>> NodeAttrHelper::GetFloats(const std::string& key) const {
+// std::optional<std::vector<float>> OrtNodeAttrHelper::GetFloats(const std::string& key) const {
 //   std::optional<std::vector<float>> result;
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     const auto& values = NODE_ATTR_ITER_VAL(entry).floats();
@@ -219,7 +215,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return result;
 // }
 
-// std::optional<std::vector<int64_t>> NodeAttrHelper::GetInt64s(const std::string& key) const {
+// std::optional<std::vector<int64_t>> OrtNodeAttrHelper::GetInt64s(const std::string& key) const {
 //   std::optional<std::vector<int64_t>> result;
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     const auto& values = NODE_ATTR_ITER_VAL(entry).ints();
@@ -231,7 +227,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return result;
 // }
 
-// std::optional<std::string> NodeAttrHelper::GetString(const std::string& key) const {
+// std::optional<std::string> OrtNodeAttrHelper::GetString(const std::string& key) const {
 //   std::optional<std::string> result;
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
 //     result = NODE_ATTR_ITER_VAL(entry).s();
@@ -240,7 +236,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 //   return result;
 // }
 
-// bool NodeAttrHelper::HasAttr(const std::string& key) const {
+// bool OrtNodeAttrHelper::HasAttr(const std::string& key) const {
 //   return node_attributes_.find(key) != node_attributes_.end();
 // }
 
