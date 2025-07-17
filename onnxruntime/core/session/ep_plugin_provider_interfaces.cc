@@ -281,7 +281,7 @@ static Status ConvertEpContextNodes(const std::string& ep_name, const std::vecto
     for (const std::string& input_name : editor_node->input_names) {
       auto node_arg_on_fused_graph = fused_node_filtered_graph.get().GetNodeArg(input_name);
       const ONNX_NAMESPACE::TypeProto* p_arg_type = node_arg_on_fused_graph ? node_arg_on_fused_graph->TypeAsProto() : nullptr;
-      auto node_arg = std::make_unique<NodeArg>(input_name, p_arg_type);  // Graph.Resolve() cannot set type because EP Context OP does not have proper shape infererence function avaliable.
+      auto node_arg = std::make_unique<NodeArg>(input_name, p_arg_type);  // Graph.Resolve() cannot set type because EP Context OP does not have proper shape inference function available.
       input_node_args.push_back(node_arg.get());
       ep_context_node_args_holder.push_back(std::move(node_arg));
     }
