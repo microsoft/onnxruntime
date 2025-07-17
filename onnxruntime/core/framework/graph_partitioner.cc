@@ -22,6 +22,8 @@
 #include "core/graph/model.h"
 #include "core/graph/model_saving_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+// Include for PluginExecutionProvider type checking
+#include "core/session/ep_plugin_provider_interfaces.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 // #define COUNT_NON_CUDA_OPS
@@ -865,6 +867,43 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   auto& ep_graph = ep_context_model.MainGraph();
   ep_graph.SetDescription(graph.Description());
 
+  // Generate EP compatibility strings for OrtEp types and add to model metadata
+  {
+    const GraphViewer graph_viewer(graph);
+    int ep_index = 0;
+    for (const auto& ep : execution_providers) {
+      // Check if this is a PluginExecutionProvider (which wraps OrtEp types)
+      const auto* plugin_ep = dynamic_cast<const PluginExecutionProvider*>(ep.get());
+      if (plugin_ep != nullptr) {
+        try {
+          // Generate the compatibility string for this EP
+          std::string compatibility_string = plugin_ep->GenerateCompiledModelCompatibilityInfoString(graph_viewer);
+          
+          if (!compatibility_string.empty()) {
+            // Create a unique key for this EP's compatibility info
+            // Use format: "ep_compatibility_info.<EP_TYPE>.<INDEX>"
+            // TODO: GetName doesn't seem to be exposed on the PluginExecutionProvider interface? 
+            std::string metadata_key = "ep_compatibility_info." + ep->Type();
+            
+            // Add to the model's custom metadata
+            // We need to access the mutable metadata through the model's internal structure
+            const_cast<ModelMetaData&>(ep_context_model.MetaData())[metadata_key] = compatibility_string;
+            
+            LOGS(logger, INFO) << "Added EP compatibility info for " << ep->Type() 
+                               << " with key: " << metadata_key;
+          } else {
+            LOGS(logger, WARNING) << "EP " << ep->Type() 
+                                  << " returned empty compatibility string";
+          }
+        } catch (const std::exception& ex) {
+          LOGS(logger, WARNING) << "Failed to generate compatibility string for EP " << ep->Type() 
+                                << ": " << ex.what();
+        }
+      }
+      ep_index++;
+    }
+  }
+
   // Set inputs outputs explicitly to make sure the order is same as the user model.
   auto inputs = graph.GetInputs();
   auto outputs = graph.GetOutputs();
@@ -1075,6 +1114,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       // TODO: Could avoid the topological sort in the GraphViewer ctor by constructing from an existing
       // GraphViewer instance instead of the Graph (copying the topological order instead of recalculating).
       auto viewer = std::make_unique<GraphViewer>(graph, indexed_sub_graph);
+
       compilation_entries.push_back(CompilationEntry{std::move(viewer), fused_node, *capability});
 #else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Compiling capabilities is not supported in this build.");
