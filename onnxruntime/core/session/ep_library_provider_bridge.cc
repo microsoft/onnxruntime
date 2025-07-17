@@ -70,10 +70,18 @@ Status EpLibraryProviderBridge::Load() {
       return ToOrtStatus(status);
     };
 
+    const auto validate_compat_info_fn = [&factory](OrtEpFactory* /*ep_factory_internal*/,
+                                                    const char* compatibility_info,
+                                                    OrtCompiledModelCompatibility* model_compatibility) -> OrtStatus* {
+      ORT_API_RETURN_IF_ERROR(factory->ValidateCompiledModelCompatibilityInfoString(factory, compatibility_info, model_compatibility));
+      return ToOrtStatus(Status::OK());
+    };
+
     auto internal_factory = std::make_unique<EpFactoryInternal>(factory->GetName(factory),
                                                                 factory->GetVendor(factory),
                                                                 is_supported_fn,
-                                                                create_fn);
+                                                                create_fn,
+                                                                validate_compat_info_fn);
     factory_ptrs_.push_back(internal_factory.get());
     internal_factory_ptrs_.push_back(internal_factory.get());
     factories_.push_back(std::move(internal_factory));

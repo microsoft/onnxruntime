@@ -44,5 +44,11 @@ struct ForwardToFactory {
   static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
     static_cast<TFactory*>(this_ptr)->ReleaseEp(ep);
   }
+
+  static OrtStatus* ORT_API_CALL ValidateCompiledModelCompatibilityInfoString(OrtEpFactory* this_ptr,
+                                                                              const char* compatibility_info,
+                                                                              OrtCompiledModelCompatibility* model_compatibility) noexcept {
+    return static_cast<TFactory*>(this_ptr)->ValidateCompiledModelCompatibilityInfoString(compatibility_info, model_compatibility);
+  }
 };
 }  // namespace onnxruntime

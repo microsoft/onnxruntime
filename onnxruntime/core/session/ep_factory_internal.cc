@@ -16,11 +16,13 @@ using Forward = ForwardToFactory<EpFactoryInternal>;
 
 EpFactoryInternal::EpFactoryInternal(const std::string& ep_name, const std::string& vendor,
                                      GetSupportedFunc&& get_supported_func,
-                                     CreateFunc&& create_func)
+                                     CreateFunc&& create_func,
+                                     ValidateCompatibilityInfoFunc&& validate_compat_info_func)
     : ep_name_{ep_name},
       vendor_{vendor},
       get_supported_func_{std::move(get_supported_func)},
-      create_func_{create_func} {
+      create_func_{create_func},
+      validate_compatibility_info_func_{std::move(validate_compat_info_func)} {
   ort_version_supported = ORT_API_VERSION;
 
   OrtEpFactory::GetName = Forward::GetFactoryName;
@@ -29,6 +31,7 @@ EpFactoryInternal::EpFactoryInternal(const std::string& ep_name, const std::stri
   OrtEpFactory::GetSupportedDevices = Forward::GetSupportedDevices;
   OrtEpFactory::CreateEp = Forward::CreateEp;
   OrtEpFactory::ReleaseEp = Forward::ReleaseEp;
+  OrtEpFactory::ValidateCompiledModelCompatibilityInfoString = Forward::ValidateCompiledModelCompatibilityInfoString;
 }
 
 const char* EpFactoryInternal::GetVersion() const noexcept {
@@ -71,6 +74,16 @@ OrtStatus* EpFactoryInternal::CreateIExecutionProvider(const OrtHardwareDevice* 
 void EpFactoryInternal::ReleaseEp(OrtEp* /*ep*/) {
   // we never create an OrtEp so we should never be trying to release one
   ORT_THROW("Internal error. No ReleaseEp call is required for EpFactoryInternal.");
+}
+
+OrtStatus* EpFactoryInternal::ValidateCompiledModelCompatibilityInfoString(_In_ const char* compatibility_info,
+                                                                           _Out_ OrtCompiledModelCompatibility* model_compatibility) {
+  ORT_UNUSED_PARAMETER(compatibility_info);
+  
+  // Set model compatibility to unknown by default
+  *model_compatibility = OrtCompiledModelCompatibility_SUPPORT_UNKNOWN;
+
+  return OrtApis::CreateStatus(ORT_OK, "Not yet implemented");
 }
 
 InternalExecutionProviderFactory::InternalExecutionProviderFactory(EpFactoryInternal& ep_factory,

@@ -60,8 +60,17 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCpuEp() {
     return nullptr;
   };
 
+  const auto validate_compatibility_info = [](OrtEpFactory* /*factory*/,
+                                       const char* /*compatibility_info*/,
+                                       OrtCompiledModelCompatibility* model_compatibility) -> OrtStatus* {
+    // CPU EP does not support compiled models. Set the compatibility to OrtCompiledModelCompatibility_SUPPORT_UNKNOWN
+    // so that the caller can handle it appropriately
+    *model_compatibility = OrtCompiledModelCompatibility_UNSUPPORTED;
+    return OrtApis::CreateStatus(ORT_OK, "CPU EP does not support compiled models.");
+  };
+
   std::string ep_name = kCpuExecutionProvider;
-  auto cpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", get_supported, create_cpu_ep);
+  auto cpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", get_supported, create_cpu_ep, validate_compatibility_info);
   return std::make_unique<EpLibraryInternal>(std::move(cpu_factory));
 }
 

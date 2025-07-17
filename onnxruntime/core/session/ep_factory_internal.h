@@ -33,9 +33,14 @@ class EpFactoryInternal : public OrtEpFactory {
                                               const OrtSessionOptions* session_options,
                                               const OrtLogger* logger, std::unique_ptr<IExecutionProvider>* ep)>;
 
+  using ValidateCompatibilityInfoFunc = std::function<OrtStatus*(OrtEpFactory* factory,
+                                                                 const char* compatibility_info,
+                                                                 OrtCompiledModelCompatibility* model_compatibility)>;
+
   EpFactoryInternal(const std::string& ep_name, const std::string& vendor,
                     GetSupportedFunc&& get_supported_func,
-                    CreateFunc&& create_func);
+                    CreateFunc&& create_func,
+                    ValidateCompatibilityInfoFunc&& validate_compatibility_info_func);
 
   const char* GetName() const noexcept { return ep_name_.c_str(); }
   const char* GetVendor() const noexcept { return vendor_.c_str(); }
@@ -64,11 +69,16 @@ class EpFactoryInternal : public OrtEpFactory {
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* ep);
 
+  // Function for validating the compiled model compatibility information
+  OrtStatus* ValidateCompiledModelCompatibilityInfoString(_In_ const char* compatibility_info,
+                                                          _Out_ OrtCompiledModelCompatibility* model_compatibility);
+
  private:
   const std::string ep_name_;                  // EP name library was registered with
   const std::string vendor_;                   // EP vendor name
   const GetSupportedFunc get_supported_func_;  // function to return supported devices
   const CreateFunc create_func_;               // function to create the EP instance
+  const ValidateCompatibilityInfoFunc validate_compatibility_info_func_;  // function to validate a supplied compatibility info string
 
   std::vector<std::unique_ptr<EpFactoryInternal>> eps_;  // EP instances created by this factory
 };
