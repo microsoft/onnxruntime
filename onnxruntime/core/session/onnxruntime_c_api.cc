@@ -2579,8 +2579,15 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetName, _In_ const OrtGraph* graph, _Outptr_
   API_IMPL_END
 }
 
-ORT_API(const ORTCHAR_T*, OrtApis::Graph_GetModelPath, _In_ const OrtGraph* graph) {
-  return graph->GetModelPath();
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetModelPath, _In_ const OrtGraph* graph, _Outptr_ const ORTCHAR_T** model_path) {
+  API_IMPL_BEGIN
+  if (model_path == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'model_path' argument is NULL");
+  }
+
+  *model_path = graph->GetModelPath();
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph, _Out_ int64_t* ir_version) {

@@ -537,7 +537,8 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
 
   // Check the path to model.
   const std::filesystem::path& model_path = graph_viewer.ModelPath();
-  const ORTCHAR_T* api_model_path = ort_api.Graph_GetModelPath(&api_graph);
+  const ORTCHAR_T* api_model_path = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetModelPath(&api_graph, &api_model_path));
   ASSERT_EQ(PathString(api_model_path), PathString(model_path.c_str()));
 
   // Check graph inputs.
