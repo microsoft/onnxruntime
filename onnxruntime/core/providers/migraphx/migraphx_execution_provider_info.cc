@@ -62,7 +62,6 @@ MIGraphXExecutionProviderInfo MIGraphXExecutionProviderInfo::FromProviderOptions
               })
           .AddAssignmentToReference(migraphx_provider_option::kFp16Enable, info.fp16_enable)
           .AddAssignmentToReference(migraphx_provider_option::kFp8Enable, info.fp8_enable)
-          .AddAssignmentToReference(migraphx_provider_option::kFp8Enable, info.fp8_enable)
           .AddAssignmentToReference(migraphx_provider_option::kInt8Enable, info.int8_enable)
           .AddAssignmentToReference(migraphx_provider_option::kModelCacheDir, info.model_cache_dir)
           .AddAssignmentToReference(migraphx_provider_option::kExhaustiveTune, info.exhaustive_tune)
