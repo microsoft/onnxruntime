@@ -48,7 +48,7 @@ void MatMulNBitsBuilder::AddInitializersToSkip(ModelBuilder& model_builder, cons
 // DequantizeLinear + Transpose + MatMul. Given that the CPU EP currently only supports
 // 4-bit quantization, we only handle 4-bit quantization here.
 //
-// To align with WebNN's dequantizeLinear op contraints, the following transformations are
+// To align with WebNN's dequantizeLinear op constraints, the following transformations are
 // required for MatMulNBits inputs:
 // 1. B: must be a constant initializer and registered as a 'uint4' WebNN constant with shape
 //       [N, n_blocks_per_col, blob_size * 2].
@@ -159,10 +159,6 @@ bool MatMulNBitsBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                            const logging::Logger& logger) const {
   const auto& name = node.Name();
   const auto& input_defs = node.InputDefs();
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger)) {
-    return false;
-  }
 
   // Inputs B and zero_points (if present) must be initializers
   if (!graph_viewer.GetConstantInitializer(input_defs[1]->Name())) {  // B
@@ -193,6 +189,10 @@ bool MatMulNBitsBuilder::HasSupportedInputsImpl(const GraphViewer&,
                                                 const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const std::string_view op_type = node.OpType();
+  std::vector<int64_t> input_shape;
+  if (!GetShape(*input_defs[0], input_shape, logger)) {
+    return false;
+  }
 
   int32_t A_type = 0;
   int32_t B_type = 0;
@@ -227,10 +227,13 @@ bool MatMulNBitsBuilder::HasSupportedInputsImpl(const GraphViewer&,
     return false;
   }
 
-  // We only support 4-bit quantization, which is represented as the uint4 data type in WebNN.
-  // Ensure that uint4 is supported.
+  // Data type:  Currently, only 4-bit quantization is supported, represented as the uint4 data type in WebNN.
+  //             Ensure that the uint4 data type is supported by WebNN's dequantizeLinear op.
+  // Input rank: Only the rank of the first input (A) is flexible. Verify that its rank is supported by
+  //             WebNN's matmul op.
   return IsDataTypeSupportedByOp("DequantizeLinear", ONNX_NAMESPACE::TensorProto_DataType_UINT4,
-                                 wnn_limits, "input", "x", logger);
+                                 wnn_limits, "input", "x", logger) &&
+         IsInputRankSupported(wnn_limits, "matmul", "a", input_shape.size(), node.Name(), logger);
 }
 
 bool MatMulNBitsBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
