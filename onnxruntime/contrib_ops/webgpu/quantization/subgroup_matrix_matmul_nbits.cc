@@ -514,8 +514,8 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
     a_layout = context.CreateGPUTensor(a->DataType(), a_layout_shape);
     layout_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddOutputs({{&a_layout, ProgramTensorMetadataDependency::Rank, a_layout.Shape(), 1}})
-        .AddUniformVariables({{static_cast<uint32_t>(M)},
-                              {static_cast<uint32_t>(K)}});
+        .AddUniformVariables({{M}, {K}})
+        .CacheHint(m, k);
     ORT_RETURN_IF_ERROR(context.RunProgram(layout_program));
     a = &a_layout;
   }
@@ -537,10 +537,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
                          {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kU32Components : 2 * kU32Components)},
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-      .AddUniformVariables({{static_cast<uint32_t>(M)},
-                            {static_cast<uint32_t>(N)},
-                            {static_cast<uint32_t>(K)},
-                            {zero_blocks_per_col}})
+      .AddUniformVariables({{M}, {N}, {K}, {zero_blocks_per_col}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, 1})
       .CacheHint(nbits, has_zero_points);
   if (has_zero_points) {
