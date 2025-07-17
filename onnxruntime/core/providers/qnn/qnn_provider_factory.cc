@@ -209,7 +209,6 @@ struct QnnEpFactory : OrtEpFactory {
 
   static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
                                                      const OrtMemoryInfo* /*memory_info*/,
-                                                     const OrtEp* /*ep*/,
                                                      const OrtKeyValuePairs* /*allocator_options*/,
                                                      OrtAllocator** allocator) noexcept {
     auto& factory = *static_cast<QnnEpFactory*>(this_ptr);
@@ -235,7 +234,6 @@ struct QnnEpFactory : OrtEpFactory {
 
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
                                                                const OrtMemoryDevice* memory_device,
-                                                               const OrtEp* /*ep*/,
                                                                const OrtKeyValuePairs* /*stream_options*/,
                                                                OrtSyncStreamImpl** ort_stream) noexcept {
     auto& factory = *static_cast<QnnEpFactory*>(this_ptr);
