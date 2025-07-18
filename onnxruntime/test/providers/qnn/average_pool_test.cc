@@ -24,9 +24,9 @@ static void RunAveragePoolOpTest(const std::string& op_type,
                                  const std::vector<TestInputDef<float>>& input_defs,
                                  const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                  ExpectedEPNodeAssignment expected_ep_assignment,
-                                 int opset = 18) {
+                                 const std::string& backend_name = "cpu", int opset = 18) {
   ProviderOptions provider_options;
-  provider_options["backend_type"] = "cpu";
+  provider_options["backend_type"] = backend_name;
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<float>(op_type, input_defs, {}, attrs),
@@ -216,6 +216,59 @@ TEST_F(QnnHTPBackendTests, AveragePool_3D_AutoPad_SAME_LOWER_u8) {
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
+#if defined(_M_ARM64)
+//
+// GPU tests:
+//
+
+// AveragePool with kernel size equal to the spatial dimension of input tensor.
+TEST_F(QnnGPUBackendTests, AveragePool_AsGlobal) {
+  RunAveragePoolOpTest("AveragePool",
+                       {TestInputDef<float>({1, 2, 3, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 18))},
+                       {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                        utils::MakeAttribute("strides", std::vector<int64_t>{3, 3})},
+                       ExpectedEPNodeAssignment::All, "gpu");
+}
+
+// Test GlobalAveragePool on QNN GPU backend.
+TEST_F(QnnGPUBackendTests, GlobalAveragePool) {
+  RunAveragePoolOpTest("GlobalAveragePool",
+                       {TestInputDef<float>({1, 2, 3, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 18))},
+                       {},
+                       ExpectedEPNodeAssignment::All, "gpu");
+}
+
+// AveragePool that counts padding.
+TEST_F(QnnGPUBackendTests, AveragePool_CountIncludePad) {
+  RunAveragePoolOpTest("AveragePool",
+                       {TestInputDef<float>({1, 3, 4, 5}, false, GetFloatDataInRange(-10.0f, 10.0f, 3 * 4 * 5))},
+                       {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                        utils::MakeAttribute("count_include_pad", static_cast<int64_t>(1))},
+                       ExpectedEPNodeAssignment::All, "gpu");
+}
+
+// AveragePool that use auto_pad 'SAME_UPPER'.
+TEST_F(QnnGPUBackendTests, AveragePool_AutopadSameUpper) {
+  RunAveragePoolOpTest("AveragePool",
+                       {TestInputDef<float>({1, 3, 4, 5}, false, GetFloatDataInRange(-10.0f, 10.0f, 3 * 4 * 5))},
+                       {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                        utils::MakeAttribute("count_include_pad", static_cast<int64_t>(1)),
+                        utils::MakeAttribute("auto_pad", "SAME_UPPER")},
+                       ExpectedEPNodeAssignment::All, "gpu");
+}
+
+// AveragePool that use auto_pad 'SAME_LOWER'.
+TEST_F(QnnGPUBackendTests, AveragePool_AutopadSameLower) {
+  RunAveragePoolOpTest("AveragePool",
+                       {TestInputDef<float>({1, 3, 4, 5}, false, GetFloatDataInRange(-10.0f, 10.0f, 3 * 4 * 5))},
+                       {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                        utils::MakeAttribute("count_include_pad", static_cast<int64_t>(1)),
+                        utils::MakeAttribute("auto_pad", "SAME_LOWER")},
+                       ExpectedEPNodeAssignment::All, "gpu");
+}
+
+#endif  // defined(_M_ARM64) GPU tests
 
 }  // namespace test
 }  // namespace onnxruntime
