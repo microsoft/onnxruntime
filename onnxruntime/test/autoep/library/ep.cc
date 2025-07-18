@@ -462,7 +462,12 @@ OrtStatus* ORT_API_CALL ExampleEp::CreateSyncStreamForDeviceImpl(_In_ OrtEp* thi
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
   // we only create streams for the default device memory.
-  assert(ep->factory_.ep_api.MemoryDevice_GetMemoryType(memory_device) == OrtDeviceMemoryType_DEFAULT);
+  if (auto mem_type = ep->factory_.ep_api.MemoryDevice_GetMemoryType(memory_device);
+      mem_type != OrtDeviceMemoryType_DEFAULT) {
+    std::string error = "Invalid OrtMemoryDevice. Expected OrtDeviceMemoryType_DEFAULT(0). Got ";
+    error += std::to_string(mem_type);
+    return ep->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, error.c_str());
+  }
 
   auto sync_stream = std::make_unique<StreamImpl>(ep->factory_, ep, nullptr);
   *stream = sync_stream.release();
