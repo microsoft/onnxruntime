@@ -734,5 +734,3 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
 }
 
 }  // namespace onnxruntime
-
-// TODO: rotary embedding in place
