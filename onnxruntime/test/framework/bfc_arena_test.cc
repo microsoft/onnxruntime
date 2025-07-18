@@ -378,7 +378,7 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
 
   // stream 2 wait on stream 1
   auto stream1_notification_a = stream1.CreateNotification(1);
-  stream1_notification_a->ActivateAndUpdate();      // stream 1 sync id 0 -> 1
+  stream1_notification_a->ActivateAndUpdate();                     // stream 1 sync id 0 -> 1
   stream2.UpdateWithAwaitedNotification(*stream1_notification_a);  // stream2 now has sync id info of stream1:1
 
   // stream 2 can now take stream 1 buffers with sync id of 0
