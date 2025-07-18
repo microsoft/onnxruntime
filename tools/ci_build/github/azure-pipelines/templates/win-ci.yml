@@ -286,8 +286,8 @@ stages:
             tree /f
             $drive = (Get-Location).Drive.Name
             $file = 'CTestTestfile.cmake'
-            (Get-Content $file ) -replace 'C:\\a', -join($drive, ':\\a') | Set-Content $file
-            (Get-Content $file ) -replace 'C:/a', -join($drive, ':/a') | Set-Content $file
+            (Get-Content $file ) -replace 'D:\\a', -join($drive, ':\\a') | Set-Content $file
+            (Get-Content $file ) -replace 'D:/a', -join($drive, ':/a') | Set-Content $file
           displayName: 'List built files and update CTestTestfile.cmake drive letter'
           workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/'
 
