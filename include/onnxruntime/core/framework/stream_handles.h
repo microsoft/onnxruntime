@@ -21,9 +21,9 @@ namespace synchronize {
 class Notification;
 }
 
-// a stream abstraction which hold an opaque handle, and a reference to which OrtDevice instance this stream belong to.
-// it need to be OrtDevice instance as we might have different stream on different OrtDevice with same type.
-// i.e. different cuda stream on different GPU.
+/// <summary>
+/// Class to represent a stream on the OrtDevice.
+/// </summary>
 class Stream {
  public:
   Stream(StreamHandle h, const OrtDevice& d)
@@ -31,123 +31,118 @@ class Stream {
   }
 
   virtual ~Stream() = default;
+
   virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) {
     return {};
   };
+
   // block the host thread until all the tasks in the stream finished.
   virtual void Flush() {};
+
   // The framework may reuse the stream instance for multiple iterations.
   // This is the API that provide a chance to let the device stream cleanup
   // resource at the end of a iteration.
   virtual Status CleanUpOnRunEnd() { return Status::OK(); };
 
+  // Get the native stream handle. nullptr if the OrtDevice doesn't support streams.
   StreamHandle GetHandle() const { return handle_; }
 
   const OrtDevice& GetDevice() const { return device_; }
 
-  // We use the timestamp based vector clocks to optimize the resource sharing
-  // between different streams.
-  // Each stream maintain following data structure:
-  // 1. Current timestamp
-  // 2. A lookup table that for a given stream, what is its timestamp when the
-  //    last synchronization happened with current stream.
-  // 3. When a notification is activated, it take a snapshot of current stream's
-  //    lookup table.
-  // 4. When synchronization happened (current stream wait on a notification),
-  //    update its lookup table with the table snapshot in notification.
-  // The memory reusing strategy is:
-  // A kernel in current stream is safe to reuse another stream's memory chunk
-  // as long as the reused chunk's timestamp is less than the last synchronized
-  // timestamp recorded in the lookup table.
+  // Get the current synchronization ID.
+  // The value is 0 until this stream records an event.
+  // The sync id is incremented before each new event is recorded in the our stream via Notification::Activate.
+  uint64_t GetCurrentSyncId() const { return sync_id_; }
 
-  // Get the current timestamp
-  uint64_t GetCurrentTimestamp() const { return timestamp_; }
+  // Return the sync id from when the last synchronization happened between producer_stream and this stream.
+  // i.e. the sync id for the event that the producer stream recorded and we waited on
+  //
+  // Returns 0 if the streams have not previously been synchronized.
+  uint64_t GetSyncIdForLastWaitOnStream(Stream* producer_stream) const {
+    // TEMPORARY sanity check
+    ORT_ENFORCE(producer_stream);
 
-  // return the timestamp when the last synchronization happened between target stream and current stream.
-  // return 0 if no synchronization happened.
-  // if target_stream is nullptr, it means it is a sequence running on device doesn't support Stream (i.e. CPU)
-  // we can safely return 0 in that case to save a lookup.
-  uint64_t GetLastSyncTimestampWithTargetStream(Stream* target_stream) const {
-    if (!target_stream)
-      return 0;
-    auto it = other_stream_clock_.find(target_stream);
-    return it == other_stream_clock_.end() ? 0 : it->second;
+    auto it = producer_stream_sync_info_.find(producer_stream);
+    return it == producer_stream_sync_info_.end() ? 0 : it->second;
   }
 
-  // make a copy of the current stream lookup table.
-  // this is used to create a snapshot of the stream lookup table in notification.
-  void CloneCurrentStreamSyncTable(std::unordered_map<Stream*, uint64_t>& output) const {
-    output.reserve(other_stream_clock_.size());
-    output.insert(other_stream_clock_.begin(), other_stream_clock_.end());
+  // Get the sync information for streams we have waited on.
+  std::unordered_map<Stream*, uint64_t> RecordNotificationActivated() {
+    // copy our sync info so the notification can pass it on
+    auto sync_info = producer_stream_sync_info_;
+    // and add ourself as this is passed to the waiting streams
+    sync_info[this] = ++sync_id_;
+
+    return sync_info;
   }
 
-  // bump the current timestamp
-  // When a notification get activated, bump the snapshot in its owner.
-  // Stream is not shared across threads, BumpTimeStampAndReturn will only be invoked on the current thread
-  // where the stream is executed on, so there is no race condition.
-  uint64_t BumpTimeStampAndReturn() {
-    return ++timestamp_;
-  }
+  // Record information from a Notification we waited on.
+  //   - copies the producer stream info from the notification.
+  void UpdateWithAwaitedNotification(const synchronize::Notification& notification);
 
-  // update the stream lookup table with the snapshot saved in notification.
-  void UpdateStreamClock(const std::unordered_map<Stream*, uint64_t>& clock) {
-    for (const auto& kv : clock) {
-      auto ret = other_stream_clock_.insert(kv);
-      if (!ret.second) {
-        ret.first->second = std::max(ret.first->second, kv.second);
-      }
-    }
-  }
-
+  // used in custom ops. doesn't really belong here.
   virtual void* GetResource(int /*version*/, int /*id*/) const {
     return nullptr;
   }
 
+  // used in custom ops.
   virtual WaitNotificationFn GetWaitNotificationFn() const { return nullptr; }
 
  private:
   StreamHandle handle_;
   const OrtDevice& device_;
-  uint64_t timestamp_{0};
+
+  // current sync id. equivalent to a counter for the number of events we have recorded in the underlying stream.
+  std::atomic<uint64_t> sync_id_{0};
+
+  // This is a map to track synchronization points between streams. When we wait on another stream (the producer)
+  // we add an entry to the map for that stream.
+  // The entry has the sync id (really the event number) from the producer stream for the event we waited on.
+  //
   // TODO: use inline container.
   // currently this class is header only, but abseil doesn't compile with nvcc
   // we need to add new symbol to provider_bridge and hide abseil from the header.
-  std::unordered_map<Stream*, uint64_t> other_stream_clock_{};
+  std::unordered_map<Stream*, uint64_t> producer_stream_sync_info_{};
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Stream);
 };
 
 namespace synchronize {
-// An abstraction used for synchronization between streams. See its concrete subclass (CudaNotification, etc.) how the activate
-// and wait works for a specific stream
+// An abstraction used for synchronization between streams.
+// See derived classes (CudaNotification, etc.) for implementation examples.
 class Notification {
  public:
   explicit Notification(Stream& s) : stream_(s) {}
   virtual ~Notification() = default;
 
-  // this api will perform three operations:
-  // 1. activate the notification on device, for example, record an event on GPU.
-  // 2. take a snapshot of the timestamp lookup table in current stream.
-  // 3. bump the timestamp for current stream.
+  // Activate the notification. This records an event in the Notification's stream that other streams can wait on.
+  // It increments the current sync id for the Notification's stream, and captures that as well as
+  // information about previous synchronizations that the Notification's stream has done.
   void ActivateAndUpdate() {
     Activate();
-    stream_.CloneCurrentStreamSyncTable(stream_clock_);
-    stream_clock_[&stream_] = stream_.BumpTimeStampAndReturn();
+
+    // copy the upstream sync info
+    stream_sync_info_ = stream_.RecordNotificationActivated();
   }
 
-  // return the timestamp lookup table saved in the notification.
-  const std::unordered_map<Stream*, uint64_t>& GetStreamSyncTable() {
-    return stream_clock_;
+  // Get the sync history for the producer stream that created this Notification.
+  // The notification must be activated previously.
+  const std::unordered_map<Stream*, uint64_t>& GetStreamSyncInfo() const {
+    return stream_sync_info_;
   }
 
  protected:
   virtual void Activate() = 0;
-  // which stream create this notification.
+
+  // Stream that created the notification (producer stream).
   Stream& stream_;
+
+  // This is a snapshot of the sync history for the stream that created the Notification.
+  //
   // TODO: use inline container.
   // currently this class is header only, but abseil doesn't compile with nvcc
   // we need to add new symbol to provider_bridge and hide abseil from the header.
-  std::unordered_map<Stream*, uint64_t> stream_clock_{};
+  std::unordered_map<Stream*, uint64_t> stream_sync_info_{};
 };
 }  // namespace synchronize
 

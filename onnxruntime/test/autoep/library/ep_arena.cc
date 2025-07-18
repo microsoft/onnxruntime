@@ -456,7 +456,7 @@ ArenaImpl::Chunk* ArenaImpl::FindChunkPtr(BinNum bin_num, size_t rounded_bytes, 
 
       if (chunk->size >= rounded_bytes) {
         // We found an existing chunk that fits us that wasn't in use, now check the stream
-        // FIXME: OrtSyncStream doesn't support GetLastSyncTimestampWithTargetStream currently
+        // FIXME: OrtSyncStream doesn't support GetLastSyncIdForProducerStream currently
         bool safe_to_use = chunk->stream == stream || !chunk->stream
             /* ||
             We lose this optimization, but not sure it's significant. It would require the stream to be
@@ -465,7 +465,7 @@ ArenaImpl::Chunk* ArenaImpl::FindChunkPtr(BinNum bin_num, size_t rounded_bytes, 
             every step. Given that I don't think there's a scenario where the last sync timestamp of `stream` would
             have been updated to be > chunk->stream_timestamp.
             (stream && chunk->stream &&
-             chunk->stream_timestamp < stream->GetLastSyncTimestampWithTargetStream(chunk->stream)) */
+             chunk->stream_timestamp < stream->GetLastSyncIdForProducerStream(chunk->stream)) */
             ;
 
         if (safe_to_use) {
@@ -930,4 +930,4 @@ void ArenaImpl::ResetChunksUsingStream(const OrtSyncStream* stream) {
 }  // namespace ep_utils
 }  // namespace onnxruntime
 
-// Need to figure out: Call to UpdateStreamClock and GetCurrentTimestamp.
+// Need to figure out: Call to UpdateProducerStreamSyncInfo and GetCurrentSyncId.

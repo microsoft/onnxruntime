@@ -230,11 +230,11 @@ class ArenaImpl {
   size_t AllocatedSize(const void* ptr);
 
   // This should be called from OrtSyncStreamImpl::OnSessionRunEnd.
+  // A stream is used in one session at a time. When called from OnSessionRunEnd we know that the stream is done and
+  // will not be performing any more operations on the data.
   //
-  // for any chunk that associated with target stream, reset it to default (nullptr in stream, timestamp 0)
-  // perform coalesce if coalesce_flag is true
+  // for any chunk that associated with target stream, reset it to default (nullptr in stream, sync id 0)
   void ResetChunksUsingStream(const OrtSyncStream* stream);
-  // was: void ResetChunkOnTargetStream(OrtSyncStream* target_stream, bool coalesce_flag);
 
  private:
   void* AllocateRawInternal(size_t num_bytes, OrtSyncStream* stream,
@@ -285,9 +285,10 @@ class ArenaImpl {
     BinNum bin_num = kInvalidBinNum;
 
     OrtSyncStream* stream = nullptr;
-
-    // ??? Do we need this?
-    // uint64_t stream_timestamp = 0;
+    // Current sync id of `stream` when it was assigned the Chunk.
+    // If the chunk is free, and another Stream wants to use it, that Stream must have synchronized with `stream`
+    // at a sync id > to stream_sync_id.
+    uint64_t stream_sync_id = 0;
 
     bool in_use() const { return allocation_id != -1; }
 

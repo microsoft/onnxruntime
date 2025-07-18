@@ -1463,8 +1463,7 @@ AllocatorPtr CANNExecutionProvider::CreateCannAllocator(OrtDevice::DeviceId devi
                                               -1,
                                               -1,
                                               -1L)},
-      true,
-      false);
+      true);
 
   return CreateAllocator(default_memory_info);
 }

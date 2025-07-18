@@ -19,14 +19,16 @@ struct AllocatorCreationInfo {
                         OrtDevice::DeviceId device_id = 0,
                         bool use_arena = true,
                         OrtArenaCfg arena_cfg = {0, -1, -1, -1, -1, -1L},
-                        bool stream_aware_arena = false,
-                        bool cross_stream_reusing = false)
+                        bool stream_aware_arena = false /*,
+                         bool cross_stream_reusing = false*/
+                        )
       : device_alloc_factory(device_alloc_factory),
         device_id(device_id),
         use_arena(use_arena),
         arena_cfg(arena_cfg),
-        use_stream_aware_arena(stream_aware_arena),
-        enable_cross_stream_reusing(cross_stream_reusing) {
+        use_stream_aware_arena(stream_aware_arena) /*,
+         enable_cross_stream_reusing(cross_stream_reusing)*/
+  {
   }
 
   AllocatorFactory device_alloc_factory;
@@ -34,7 +36,7 @@ struct AllocatorCreationInfo {
   bool use_arena;
   OrtArenaCfg arena_cfg;
   bool use_stream_aware_arena;
-  bool enable_cross_stream_reusing;
+  // bool enable_cross_stream_reusing;
 };
 
 // Returns an allocator (an instance of IAllocator) based on the creation info provided.

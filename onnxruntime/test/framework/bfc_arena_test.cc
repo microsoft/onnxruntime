@@ -339,80 +339,81 @@ struct StreamMock : public Stream {
 
 #ifdef ORT_ENABLE_STREAM
 TEST(StreamAwareArenaTest, TwoStreamAllocation) {
-  StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, false);
+  StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
   CheckStats(&a, 0, 0, 0, 0);
 
   OrtDevice tmp;
 
   StreamMock stream1(tmp), stream2(tmp);
 
-  auto* stream1_chunk_a = a.AllocOnStream(4096, &stream1, nullptr);
-  auto* stream2_chunk_a = a.AllocOnStream(4096, &stream2, nullptr);
-  a.Free(stream1_chunk_a);
-  auto* stream2_chunk_b = a.AllocOnStream(4096, &stream2, nullptr);
+  auto* stream1_chunk_a = a.AllocOnStream(4096, &stream1, nullptr);  // 4K chunk on stream 1
+  auto* stream2_chunk_a = a.AllocOnStream(4096, &stream2, nullptr);  // 4K chunk on stream 2
+  a.Free(stream1_chunk_a);                                           // free but assigned to stream1
+
   // stream2 can't reuse stream1's chunk
+  auto* stream2_chunk_b = a.AllocOnStream(4096, &stream2, nullptr);  // 4K chunk on stream 2
   EXPECT_NE(stream2_chunk_b, stream1_chunk_a);
-  a.Free(stream2_chunk_a);
+
+  a.Free(stream2_chunk_a);  // free but assigned to stream2
+
+  // it should pick the first chunk.
   auto* stream1_chunk_c = a.AllocOnStream(4096, &stream1, nullptr);
-  // it should pick the first chunk
   EXPECT_EQ(stream1_chunk_c, stream1_chunk_a);
 
+  // it shouldn't stream2_chunk_a due to stream mismatch
   auto* stream1_chunk_d = a.AllocOnStream(4096, &stream1, nullptr);
-  // it shouldn't pick stream2_chunk_a's buffer
   EXPECT_NE(stream1_chunk_d, stream2_chunk_a);
-  a.Free(stream2_chunk_b);
+
+  a.Free(stream2_chunk_b);  // still assigned to stream2. but should coalesce with stream1_chunk_a to create 8K buffer
+
   // test clean stream2
-  a.ReleaseStreamBuffers(&stream2);
+  a.ReleaseStreamBuffers(&stream2);  // all stream2 buffers are now available
+
+  // now it should pick stream2_chunk_a as it is no longer assigned to stream 2
   auto stream1_chunk_e = a.AllocOnStream(8192, &stream1, nullptr);
-  // now it should pick the stream2_chunk_a's buffer
-  EXPECT_EQ(stream1_chunk_e, stream2_chunk_a);
+  EXPECT_EQ(stream1_chunk_e, stream2_chunk_a);  // stream1_chunk_e and stream2_chunk_a are assigned to stream1
+
   a.Free(stream1_chunk_c);
   a.Free(stream1_chunk_d);
-  // add stream2 to stream 1 depenency
+
+  // stream 2 wait on stream 1
   auto stream1_notification_a = stream1.CreateNotification(1);
-  stream1_notification_a->ActivateAndUpdate();
-  stream2.UpdateStreamClock(stream1_notification_a->GetStreamSyncTable());
+  stream1_notification_a->ActivateAndUpdate();      // stream 1 sync id 0 -> 1
+  stream2.UpdateWithAwaitedNotification(*stream1_notification_a);  // stream2 now has sync id info of stream1:1
+
+  // stream 2 can now take stream 1 buffers with sync id of 0
   auto* stream2_chunk_c = a.AllocOnStream(4096, &stream2, nullptr);
-  // it should pick the first chunk
-  EXPECT_EQ(stream2_chunk_c, stream1_chunk_c);
+  EXPECT_EQ(stream2_chunk_c, stream1_chunk_c);  // stream2 took a buffer from stream1 with sync id 0
+
+  // stream 2 can take the remaining free buffer from stream 1 with sync id of 0
   auto* stream2_chunk_d = a.AllocOnStream(4096, &stream2, nullptr);
-  // it should pick the third slot
-  EXPECT_EQ(stream2_chunk_d, stream1_chunk_d);
-  // continue allocate on stream1
-  auto* stream1_chunk_f = a.AllocOnStream(4096, &stream1, nullptr);
+  EXPECT_EQ(stream2_chunk_d, stream1_chunk_d);  // stream2 took the other buffer from stream1
+
+  // new buffer required
+  auto* stream1_chunk_f = a.AllocOnStream(4096, &stream1, nullptr);  // new buffer on stream1. sync id = 1
   a.Free(stream1_chunk_f);
-  auto* stream2_chunk_e = a.AllocOnStream(4096, &stream2, nullptr);
+
+  // new buffer required
+  auto* stream2_chunk_e = a.AllocOnStream(4096, &stream2, nullptr);  // new buffer on stream2
   EXPECT_NE(stream2_chunk_e, stream1_chunk_f);
+
+  // free 8K buffer on stream 1
   a.Free(stream1_chunk_e);
-  // test clean stream1
-  a.ReleaseStreamBuffers(&stream1);
+
+  // can use 8K stream1_chunk_e as it has sync id = 0 and stream 2 has sync id of 1 for stream 1
   auto* stream2_chunk_f = a.AllocOnStream(8192, &stream2, nullptr);
-  // now it should pick stream1_chunk_e
   EXPECT_EQ(stream2_chunk_f, stream1_chunk_e);
+
+  // remove assignment to stream 1 for free buffers. stream1_chunk_f will become available to stream 2
+  a.ReleaseStreamBuffers(&stream1);  // stream1 buffers are new available
+
+  auto* stream2_chunk_g = a.AllocOnStream(4096, &stream2, nullptr);
+  EXPECT_EQ(stream2_chunk_g, stream1_chunk_f);
 
   // cleanup
   a.Free(stream2_chunk_d);
   a.Free(stream2_chunk_e);
   a.Free(stream2_chunk_f);
-}
-
-TEST(StreamAwareArenaTest, TestSecureTheChunk) {
-  StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, true);
-  OrtDevice tmp;
-  StreamMock stream1(tmp), stream2(tmp);
-
-  void* p1 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream1, nullptr);
-  a.Free(p1);
-
-  bool waitFunctionInvoked = false;
-  void* p2 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream2,
-                             [&waitFunctionInvoked](Stream*, synchronize::Notification&) { waitFunctionInvoked = true; });
-
-  std::unordered_map<Stream*, uint64_t> syncTable;
-  stream2.CloneCurrentStreamSyncTable(syncTable);
-  EXPECT_EQ(syncTable.size(), 1u) << "stream2 has been updated with stream1's nofitication on the clock";
-  EXPECT_TRUE(waitFunctionInvoked) << "wait function should be invoked";
-  a.Free(p2);
 }
 #endif
 

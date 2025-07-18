@@ -447,46 +447,22 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
                 Stream* mem_pattern_stream = device_streams_->GetRootStream();
 
                 if (stream_aware_arena) {
-                  // this will increase the timestamp in the mem_pattern_stream every time WaitOnChunk is called
-                  // as well as updating the last sync time in all the other streams. that will mean that the
-                  // stream->timestamp would always be < the last sync time for all streams, and FindChunkPtr
-                  // would let any stream use the buffer in the future due to this check:
-                  //   chunk->stream_timestamp < stream->GetLastSyncTimestampWithTargetStream(chunk->stream)
-                  //
-                  // we're not passing a wait function in to AllocOnStream, so there's no actual wait in the device
-                  // streams to synchronize anything.
-                  //
-                  // this buffer is allocated at the start of inferencing, so if we use the same stream for the first
-                  // step is any of this required?
-                  //
-                  // when using the mem_pattern_buffer we're not calling the allocator, so that's another aspect where
-                  // it's not clear why we need to do this. we would release the buffer at the end of the graph exec
-                  // which would reset the stream to nullptr and mark it as free. I don't think there's any point where
-                  // another stream would be attempting to use the buffer within an inference.
-                  //
-                  // the graph exec it per graph/subgraph so possibly you can have re-use for different subgraphs,
-                  // however we call device_stream_collection->CleanUp (which releases all the chunks the stream
-                  // was associated with) at the end of each exec so the chunk would not be associated with a stream
-                  // at the start of the next subgraph's execution.
                   buffer = stream_aware_arena->AllocOnStream(peak_size, mem_pattern_stream, nullptr);
-                  for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
-                    stream_aware_arena->WaitOnChunk(mem_pattern_stream, device_streams_->GetStream(j), nullptr);
-                  }
+
+                  // this seems unnecessary. any memory pattern buffer would be in use for the entire inference, so
+                  // there's no point at which another stream (as streams are per-inference) would be able to use it.
+                  // given that, it's unclear why we need to update the sync id in all other streams to allow them
+                  // to take this buffer if it was free.
+                  //
+                  // Commenting out to verify.
+                  // for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
+                  //  stream_aware_arena->WaitOnChunk(mem_pattern_stream, device_streams_->GetStream(j), nullptr);
+                  //}
                 } else {
                   buffer = alloc->AsyncAlloc(peak_size, mem_pattern_stream);
-                  const auto wait_on_chunk = [&mem_pattern_stream, this]() {
-                    for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
-                      auto* device_stream = device_streams_->GetStream(j);
-                      if (device_stream && device_stream != mem_pattern_stream) {
-                        auto notification = device_stream->CreateNotification(1);
-                        notification->ActivateAndUpdate();
-                        // ??? we don't pass in a wait function in the above call to WaitOnChunk, so there's
-                        // no actual wait on the event in the notification. What is it achieving in that case? We
-                        // add an event to the mem_pattern_stream, but the notification then is freed, so how does that
-                        // prevent another stream prematurely using the buffer?
-                      }
-                    }
-                  };
+
+                  // pending the above verification, we shouldn't need to do anything else here. if we do that has
+                  // implications to the API required for an EP to implement its own stream aware arena.
                 }
               } else {
                 buffer = alloc->Alloc(peak_size);
