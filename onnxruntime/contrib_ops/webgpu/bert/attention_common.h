@@ -124,7 +124,7 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
 Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
                       WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context,
-                      const Tensor* head_sink = nullptr, const Tensor* seqlen_k = nullptr);
+                      const Tensor* head_sink = nullptr, const Tensor* seqlen_k = nullptr, int local_window_size = -1);
 
 }  // namespace webgpu
 }  // namespace contrib
