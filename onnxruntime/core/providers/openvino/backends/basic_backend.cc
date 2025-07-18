@@ -36,10 +36,6 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   if (ValidateSubgraph(const_outputs_map_))
     return;
 
-  // Pre-requisite is provider_option "context" must be set
-  auto auto_unified_compile = ((hw_target.find("AUTO") == std::string::npos) ||
-                               (session_context_.OpenVINO_Version.at(0) >= 2024 &&
-                                session_context_.OpenVINO_Version.at(1) > 2));
   ov::AnyMap device_config;
   SetOVDeviceConfiguration(device_config);
   if (subgraph_context_.is_ep_ctx_graph) {
@@ -81,42 +77,46 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       ORT_THROW(msg);
     }  // Delete stream after it is no longer needed
   } else {
+    std::shared_ptr<const onnxruntime::openvino_ep::OVNetwork> ov_model;
     std::string model = model_proto->SerializeAsString();
     if (!subgraph_context.has_dynamic_input_shape) {
       model_proto.reset();
     }
-    try {
-      // SetOVDeviceConfiguration(device_config);
-      if (!session_context_.has_external_weights &&
-          !subgraph_context_.has_dynamic_input_shape &&
-          !session_context_.so_context_enable &&
-          session_context_.reshape.empty() &&
-          !enable_causallm &&
-          auto_unified_compile) {
-        // Unified OV compile_model is efficient when ov model caching is enabled
-        // Unified OV compile_model API is supported with AUTO from version 2024.3 and above
-        // Inputs with static dimensions
-        // Not enabled for models with external weights and when ep context is set.
+    bool eligible_for_cpu_fallback = session_context_.device_type.find("NPU") != std::string::npos &&
+                                     !session_context_.so_disable_cpu_ep_fallback &&
+                                     !subgraph_context_.is_ep_ctx_graph;
+#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
+    eligible_for_cpu_fallback = false;
+#endif
+    auto auto_unified_compile = (hw_target.find("AUTO") == std::string::npos);
 
+    // Unified compile is efficient with cahce_dir cached model loading that bypass Read Model
+    // Does not support model with exteral weights, dynamic input shape, Epctx onnx cached model,
+    // reshape, enable_causallm, and for NPU CPU fallback
+
+    auto is_unified_compile = (!session_context_.has_external_weights &&
+                               !subgraph_context_.has_dynamic_input_shape &&
+                               !session_context_.so_context_enable &&
+                               session_context_.reshape.empty() &&
+                               !enable_causallm &&
+                               !eligible_for_cpu_fallback &&
+                               auto_unified_compile);
+    try {
+      if (is_unified_compile) {
         exe_network_ = OVCore::Get()->CompileModel(model,
                                                    hw_target,
                                                    device_config,
                                                    subgraph_context_.subgraph_name);
       } else {  // For all other types use ov::ov_core read_model() to generate OV IR
                 // followed by ov::ov_core compile_model()
-        auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
+        ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
         exe_network_ = OVCore::Get()->CompileModel(
             ov_model, hw_target, device_config, enable_causallm, subgraph_context_.subgraph_name);
       }
       LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
     } catch (const OnnxRuntimeException& ex) {
       std::string exception_str = ex.what();
-      bool eligible_for_cpu_fallback = session_context_.device_type.find("NPU") != std::string::npos &&
-                                       !session_context_.so_disable_cpu_ep_fallback &&
-                                       !subgraph_context_.is_ep_ctx_graph;
-#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
-      eligible_for_cpu_fallback = false;
-#endif
+
       if (eligible_for_cpu_fallback) {
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
@@ -125,8 +125,6 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
         device_config.clear();
         SetOVDeviceConfiguration(device_config);
         try {
-          // Recreate the model with CPU device type
-          auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
           exe_network_ = OVCore::Get()->CompileModel(
               ov_model, hw_target, device_config, enable_causallm, subgraph_context_.subgraph_name);
         } catch (std::string const& msg) {
