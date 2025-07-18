@@ -282,15 +282,6 @@ stages:
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
-        - powershell: |
-            tree /f
-            $drive = (Get-Location).Drive.Name
-            $file = 'CTestTestfile.cmake'
-            (Get-Content $file ) -replace 'E:\\_work', -join($drive, ':\\a') | Set-Content $file
-            (Get-Content $file ) -replace 'E:/_work', -join($drive, ':/a') | Set-Content $file
-          displayName: 'List built files and update CTestTestfile.cmake drive letter'
-          workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/'
-
         - template: telemetry-steps.yml
 
         - template: set-version-number-variables-step.yml
@@ -313,6 +304,15 @@ stages:
           inputs:
             artifactFeeds: 'Lotus'
 
+        - task: PythonScript@0
+          displayName: 'Update CTest Path References'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\python\update_ctest_path.py'
+          arguments: >
+            "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake"
+            "$(Build.SourcesDirectory)"
+            "$(Build.BinariesDirectory)/RelWithDebInfo"
+
         - task: NodeTool@0
           condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
           inputs:
@@ -328,11 +328,6 @@ stages:
                 DownloadCUDA: true
                 DownloadTRT: true
 
-        - powershell: |
-            Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
-          displayName: 'Append dotnet x86  Directory to PATH'
-          condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
-
         - task: PythonScript@0
           displayName: 'test'
           condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
@@ -340,7 +335,7 @@ stages:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
             arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
             workingDirectory: '$(Build.BinariesDirectory)'
-# Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
+        # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
         - ${{ if eq(parameters.buildJava, 'true') }}:
           - template: make_java_win_binaries.yml
             parameters:
