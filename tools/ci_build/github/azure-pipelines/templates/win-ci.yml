@@ -308,10 +308,10 @@ stages:
           displayName: 'Update CTest Path References'
           inputs:
             scriptPath: '$(Build.SourcesDirectory)\tools\python\update_ctest_path.py'
-          arguments: >
-            "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake"
-            "$(Build.SourcesDirectory)"
-            "$(Build.BinariesDirectory)/RelWithDebInfo"
+            arguments: >
+              "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake"
+              "$(Build.SourcesDirectory)"
+              "$(Build.BinariesDirectory)/RelWithDebInfo"
 
         - task: NodeTool@0
           condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
