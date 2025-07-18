@@ -103,20 +103,26 @@ struct VitisAI_Provider : Provider {
 struct VitisAIEpFactory : OrtEpFactory {
   VitisAIEpFactory(const OrtApi& ort_api_in)
       : ort_api{ort_api_in} {
+    ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVendorId = GetVendorIdImpl;
     GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
   }
 
-  static const char* GetNameImpl(const OrtEpFactory*) noexcept {
+  static const char* GetNameImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
     return ep_name;
   }
 
-  static const char* GetVendorImpl(const OrtEpFactory*) noexcept {
+  static const char* GetVendorImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
     return vendor;
+  }
+
+  static uint32_t GetVendorIdImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return hardware_vendor_id;
   }
 
   static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
