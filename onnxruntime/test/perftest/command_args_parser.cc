@@ -4,6 +4,7 @@
 // Licensed under the MIT License.
 
 #include "command_args_parser.h"
+#include "utils.h"
 
 #include <string.h>
 #include <iostream>
@@ -18,6 +19,8 @@
 #else
 #include <unistd.h>
 #endif
+
+#include <cxxopts.hpp>
 
 #include <core/graph/constants.h>
 #include <core/platform/path_lib.h>
@@ -173,7 +176,7 @@ static const ORTCHAR_T* overrideDelimiter = L":";
 #else
 static const ORTCHAR_T* overrideDelimiter = ":";
 #endif
-static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier, int64_t& override_val) {
+static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier, int64_t& override_val, const ORTCHAR_T* optarg) {
   std::basic_string<ORTCHAR_T> free_dim_str(optarg);
   size_t delimiter_location = free_dim_str.find(overrideDelimiter);
   if (delimiter_location >= free_dim_str.size() - 1) {
@@ -200,7 +203,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
         int64_t override_val;
-        if (!ParseDimensionOverride(dim_name, override_val)) {
+        if (!ParseDimensionOverride(dim_name, override_val, optarg)) {
           return false;
         }
         test_config.run_config.free_dim_name_overrides[dim_name] = override_val;
@@ -209,7 +212,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
       case 'F': {
         std::basic_string<ORTCHAR_T> dim_denotation;
         int64_t override_val;
-        if (!ParseDimensionOverride(dim_denotation, override_val)) {
+        if (!ParseDimensionOverride(dim_denotation, override_val, optarg)) {
           return false;
         }
         test_config.run_config.free_dim_denotation_overrides[dim_denotation] = override_val;
@@ -405,9 +408,6 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
       case 'X':
         test_config.run_config.use_extensions = true;
         break;
-      case 'L':
-        test_config.plugin_ep_names_and_libs = optarg;
-        break;
       case '?':
       case 'h':
       default:
@@ -431,6 +431,151 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
   }
 
   test_config.model_info.model_file_path = argv[0];
+
+  return true;
+}
+
+bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
+  try {
+    cxxopts::Options options("onnxruntime_perf", "ONNX Runtime Performance Test Config");
+
+    options.add_options()("f", "Free dimension override by name", cxxopts::value<std::vector<std::string>>())("F", "Free dimension override by denotation", cxxopts::value<std::vector<std::string>>())("m", "Test mode: duration or times", cxxopts::value<std::string>())("e", "Execution provider", cxxopts::value<std::string>())("r", "Repeat times", cxxopts::value<int>())("t", "Duration in seconds", cxxopts::value<int>())("p", "Profile output file", cxxopts::value<std::string>())("x", "Intra-op threads", cxxopts::value<int>())("y", "Inter-op threads", cxxopts::value<int>())("c", "Concurrent session runs", cxxopts::value<int>())("d", "cuDNN conv algo", cxxopts::value<int>())("o", "Graph optimization level", cxxopts::value<int>())("u", "Optimized model path", cxxopts::value<std::string>())("i", "EP runtime config string", cxxopts::value<std::string>())("S", "Random seed", cxxopts::value<int>())("T", "Intra-op thread affinities", cxxopts::value<std::string>())("C", "Session config entries", cxxopts::value<std::string>())("R", "Custom op library path", cxxopts::value<std::string>())("A", "Disable CPU mem arena", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("M", "Disable memory pattern", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("s", "Dump statistics", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("v", "Verbose", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("I", "Generate model input binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("P", "Use ORT_PARALLEL mode", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("q", "CUDA copy in separate stream", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("z", "Set denormal as zero", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("D", "Disable spinning", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("Z", "Disable spinning between runs", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("n", "Exit after session creation", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("l", "Load model via path", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("g", "Enable CUDA IO binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("X", "Use extensions", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("plugin_ep_libs", "Plugin EP names and libs", cxxopts::value<std::string>())("list_devices", "List all the avaiable devices with info")("select_devices", "Take a list of device index (semicolon separated)", cxxopts::value<std::string>())("h,help", "Print usage");
+
+#ifdef _WIN32
+    auto utf8_strings = utils::ConvertArgvToUtf8Strings(argc, argv);
+    auto utf8_argv = utils::ConvertArgvToUtf8CharPtrs(utf8_strings);
+#else
+    auto utf8_argv = argv;
+#endif
+
+    auto result = options.parse(utf8_argv.size(), utf8_argv.data());
+    if (result.count("help")) {
+      std::cout << options.help() << std::endl;
+      return false;
+    }
+
+    if (result.count("f")) {
+      std::basic_string<ORTCHAR_T> dim_name;
+      int64_t override_val;
+      auto opt_str = utils::Utf8ToWide(result["f"].as<std::string>());
+      if (!ParseDimensionOverride(dim_name, override_val, opt_str.c_str())) {
+        return false;
+      }
+      test_config.run_config.free_dim_name_overrides[dim_name] = override_val;
+    }
+
+    if (result.count("F")) {
+      std::basic_string<ORTCHAR_T> dim_denotation;
+      int64_t override_val;
+      auto opt_str = utils::Utf8ToWide(result["F"].as<std::string>());
+      if (!ParseDimensionOverride(dim_denotation, override_val, opt_str.c_str())) {
+        return false;
+      }
+      test_config.run_config.free_dim_denotation_overrides[dim_denotation] = override_val;
+    }
+
+    if (result.count("m")) {
+      auto opt_str = utils::Utf8ToWide(result["m"].as<std::string>());
+      if (!CompareCString(opt_str.c_str(), ORT_TSTR("duration"))) {
+        test_config.run_config.test_mode = TestMode::kFixDurationMode;
+      } else if (!CompareCString(optarg, ORT_TSTR("times"))) {
+        test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
+      } else {
+        return false;
+      }
+    }
+
+    if (result.count("p")) test_config.run_config.profile_file = utils::Utf8ToWide(result["p"].as<std::string>());
+    if (result["M"].as<bool>()) test_config.run_config.enable_memory_pattern = false;
+    if (result["A"].as<bool>()) test_config.run_config.enable_cpu_mem_arena = false;
+
+    if (result.count("e")) {
+      auto optarg = result["e"].as<std::string>().c_str();
+      if (!CompareCString(optarg, "cpu")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kCpuExecutionProvider;
+      } else if (!CompareCString(optarg, "cuda")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kCudaExecutionProvider;
+      } else if (!CompareCString(optarg, "dnnl")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
+      } else if (!CompareCString(optarg, "openvino")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
+      } else if (!CompareCString(optarg, "tensorrt")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
+      } else if (!CompareCString(optarg, "qnn")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kQnnExecutionProvider;
+      } else if (!CompareCString(optarg, "snpe")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kSnpeExecutionProvider;
+      } else if (!CompareCString(optarg, "nnapi")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
+      } else if (!CompareCString(optarg, "vsinpu")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kVSINPUExecutionProvider;
+      } else if (!CompareCString(optarg, "coreml")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kCoreMLExecutionProvider;
+      } else if (!CompareCString(optarg, "dml")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
+      } else if (!CompareCString(optarg, "acl")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
+      } else if (!CompareCString(optarg, "armnn")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
+      } else if (!CompareCString(optarg, "rocm")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kRocmExecutionProvider;
+      } else if (!CompareCString(optarg, "migraphx")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
+      } else if (!CompareCString(optarg, "xnnpack")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kXnnpackExecutionProvider;
+      } else if (!CompareCString(optarg, "vitisai")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
+      } else if (!CompareCString(optarg, "webgpu")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kWebGpuExecutionProvider;
+      } else if (!CompareCString(optarg, "nvtensorrtrtx")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kNvTensorRTRTXExecutionProvider;
+      } else {
+        // Could be plugin EP, save it first and handle later.
+        test_config.machine_config.provider_type_name = optarg;
+      }
+    }
+
+    if (result.count("r")) {
+      auto val = result["r"].as<int>();
+      if (val <= 0) return false;
+      test_config.run_config.repeated_times = static_cast<size_t>(val);
+      test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
+    }
+    if (result.count("t")) {
+      auto val = result["t"].as<int>();
+      if (val <= 0) return false;
+      test_config.run_config.duration_in_seconds = static_cast<size_t>(val);
+      test_config.run_config.test_mode = TestMode::kFixDurationMode;
+    }
+
+    if (result["s"].as<bool>()) test_config.run_config.f_dump_statistics = true;
+
+    if (result.count("S")) {
+      auto val = result["S"].as<int>();
+      if (val <= 0) return false;
+      test_config.run_config.random_seed_for_input_data = val;
+    }
+
+    if (result.count("plugin_ep_libs")) test_config.plugin_ep_names_and_libs = utils::Utf8ToWide(result["plugin_ep_libs"].as<std::string>());
+    if (result.count("list_devices")) test_config.list_available_devices = true;
+    if (result.count("select_devices")) test_config.selected_devices = result["select_devices"].as<std::string>();
+
+    // Positional arguments
+    std::vector<std::string> positional = result.unmatched();
+    if (positional.size() == 1) {
+      test_config.model_info.model_file_path = utils::Utf8ToWide(positional[0]);
+      test_config.run_config.f_dump_statistics = true;
+    } else if (positional.size() == 2) {
+      test_config.model_info.model_file_path = utils::Utf8ToWide(positional[0]);
+      test_config.model_info.result_file_path = utils::Utf8ToWide(positional[1]);
+    } else {
+      return false;
+    }
+
+  } catch (const std::exception& ex) {
+    std::cerr << "Error parsing options: " << ex.what() << std::endl;
+    return false;
+  }
 
   return true;
 }

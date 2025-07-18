@@ -1212,6 +1212,14 @@ endif()
 
 if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   if(NOT IOS)
+    onnxruntime_fetchcontent_declare(
+      cxxopts
+      URL ${DEP_URL_cxxopts}
+      URL_HASH SHA1=${DEP_SHA1_cxxopts}
+      EXCLUDE_FROM_ALL
+    )
+    onnxruntime_fetchcontent_makeavailable(cxxopts)
+
     #perf test runner
     set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
     set(onnxruntime_perf_test_src_patterns
@@ -1238,7 +1246,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
     target_include_directories(onnxruntime_perf_test PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
           ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
-          ${CMAKE_CURRENT_BINARY_DIR})
+          ${CMAKE_CURRENT_BINARY_DIR} ${cxxopts_SOURCE_DIR}/include)
 
     if (WIN32)
       target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})

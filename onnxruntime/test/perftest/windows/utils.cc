@@ -2,11 +2,14 @@
 // Licensed under the MIT License.
 
 #include "test/perftest/utils.h"
+#include "test/perftest/strings_helper.h"
+#include <core/platform/path_lib.h>
 
 #include <cstdint>
 
 #include <Windows.h>
 #include <psapi.h>
+#include <filesystem>
 
 namespace onnxruntime {
 namespace perftest {
@@ -73,6 +76,90 @@ class CPUUsage : public ICPUUsage {
 
 std::unique_ptr<ICPUUsage> CreateICPUUsage() {
   return std::make_unique<CPUUsage>();
+}
+
+#ifdef _WIN32
+std::vector<std::string> ConvertArgvToUtf8Strings(int argc, wchar_t* argv[]) {
+  std::vector<std::string> utf8_args;
+  utf8_args.reserve(argc);
+  for (int i = 0; i < argc; ++i) {
+    utf8_args.push_back(ToUTF8String(argv[i]));
+  }
+  return utf8_args;
+}
+
+std::vector<const char*> ConvertArgvToUtf8CharPtrs(std::vector<std::string>& utf8_args) {
+  std::vector<const char*> utf8_argv;
+  utf8_argv.reserve(utf8_args.size());
+  for (auto& str : utf8_args) {
+    utf8_argv.push_back(&str[0]);  // safe since std::string is mutable
+  }
+  return utf8_argv;
+}
+#endif
+
+std::basic_string<ORTCHAR_T> Utf8ToWide(const std::string& utf8_str) {
+  // ORTCHAR_T == char -> just convert to std::basic_string<char>
+  if constexpr (std::is_same_v<ORTCHAR_T, char>) {
+    return std::basic_string<ORTCHAR_T>(utf8_str.begin(), utf8_str.end());
+  }
+
+  if (utf8_str.empty()) return std::basic_string<ORTCHAR_T>();
+
+  int size_needed = MultiByteToWideChar(CP_UTF8, 0, utf8_str.c_str(), -1, nullptr, 0);
+  if (size_needed <= 0) return std::basic_string<ORTCHAR_T>();
+
+  std::basic_string<ORTCHAR_T> wide_str(size_needed, 0);
+  MultiByteToWideChar(CP_UTF8, 0, utf8_str.c_str(), -1, &wide_str[0], size_needed);
+  wide_str.pop_back();  // Remove null terminator added by API
+
+  return wide_str;
+}
+
+void list_devices(Ort::Env& env) {
+  std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
+
+  for (size_t i = 0; i < ep_devices.size(); ++i) {
+    auto device = ep_devices[i];
+    std::string device_info_msg = "===== device id " + std::to_string(i) + " ======\n";
+    device_info_msg += "name: " + std::string(device.EpName()) + "\n";
+    device_info_msg += "vendor: " + std::string(device.EpVendor()) + "\n";
+
+    auto metadata = device.EpMetadata();
+    std::unordered_map<std::string, std::string> metadata_entries = metadata.GetKeyValuePairs();
+    if (!metadata_entries.empty()) {
+      device_info_msg += "metadata:\n";
+    }
+
+    for (auto& entry : metadata_entries) {
+      device_info_msg += "  " + entry.first + ": " + entry.second + "\n";
+    }
+    device_info_msg += "\n";
+    fprintf(stdout, device_info_msg.c_str());
+  }
+}
+
+bool RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config) {
+  if (!test_config.plugin_ep_names_and_libs.empty()) {
+    std::unordered_map<std::string, std::string> ep_names_to_libs;
+    ParseSessionConfigs(ToUTF8String(test_config.plugin_ep_names_and_libs), ep_names_to_libs);
+    if (ep_names_to_libs.size() > 0) {
+      for (auto& pair : ep_names_to_libs) {
+        const std::filesystem::path library_path = pair.second;
+        const std::string registration_name = pair.first;
+        env.RegisterExecutionProviderLibrary(registration_name.c_str(), Utf8ToWide(library_path.string()));
+        test_config.registered_plugin_eps.push_back(registration_name);
+      }
+    }
+  }
+  return true;
+}
+
+bool UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config) {
+  for (auto& registration_name : test_config.registered_plugin_eps) {
+    env.UnregisterExecutionProviderLibrary(registration_name.c_str());
+  }
+  return true;
 }
 
 }  // namespace utils

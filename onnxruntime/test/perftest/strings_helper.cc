@@ -53,5 +53,16 @@ void ParseSessionConfigs(const std::string& configs_string,
     session_configs.insert(std::make_pair(std::move(key), std::move(value)));
   }
 }
+
+void ParseDeviceList(const std::string& input, std::vector<int>& result) {
+  std::stringstream ss(input);
+  std::string item;
+
+  while (std::getline(ss, item, ';')) {
+    if (!item.empty()) {
+      result.push_back(std::stoi(item));
+    }
+  }
+}
 }  // namespace perftest
 }  // namespace onnxruntime
