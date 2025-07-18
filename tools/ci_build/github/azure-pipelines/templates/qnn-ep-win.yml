@@ -18,7 +18,7 @@ stages:
     pool:
       name: ${{ parameters.qnn_ep_build_pool_name }}
       os: windows
-   templateContext:
+    templateContext:
       sdl:
         codeSignValidation:
           enabled: true
