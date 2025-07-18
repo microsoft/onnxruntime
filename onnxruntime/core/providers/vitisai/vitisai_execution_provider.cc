@@ -29,7 +29,7 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(
     : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider,
                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE,
                                    DEFAULT_CPU_ALLOCATOR_DEVICE_ID)},
-      info_(info) { // Removed 4k alignment for now, need better fix
+      info_(info) {  // Removed 4k alignment for now, need better fix
   auto it = info_.find("ep_context_enable");
   ep_ctx_enabled_ = it != info_.end() && it->second == "1";
   it = info_.find("ep_context_embed_mode");
@@ -155,7 +155,7 @@ std::vector<AllocatorPtr> VitisAIExecutionProvider::CreatePreferredAllocators() 
             OrtMemoryInfo(
                 onnxruntime::CPU_ALIGNED_4K, OrtAllocatorType::OrtDeviceAllocator,
                 OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE,
-                          device_id))); // Removed 4k alignment for now, need better fix
+                          device_id)));  // Removed 4k alignment for now, need better fix
       },
       DEFAULT_CPU_ALLOCATOR_DEVICE_ID, use_arena_false};
 
