@@ -15,9 +15,20 @@ stages:
   jobs:
   - job: ${{ parameters.StageName }}
     timeoutInMinutes: 300
-
     pool:
       name: ${{ parameters.qnn_ep_build_pool_name }}
+      os: windows
+   templateContext:
+      sdl:
+        codeSignValidation:
+          enabled: true
+          break: true
+        psscriptanalyzer:
+          enabled: true
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+          analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.dll;-:file|DirectML.dll'
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       commonBuildArgs: '--compile_no_warning_as_error --skip_submodule_sync --build_shared_lib --client_package_build --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags '
@@ -60,7 +71,7 @@ stages:
         Pattern: 'onnxruntime*.dll'
 
     - ${{ if eq(parameters.PublishArchive, true) }}:
-      - template: c-api-artifacts-package-and-publish-steps-windows.yml
+      - template: c-api-artifacts-package-and-publish-steps-windows-qnn.yml
         parameters:
           buildConfig: ${{ parameters.build_config }}
           artifactName: 'onnxruntime-win-arm64x-qnn'

@@ -96,17 +96,35 @@ stages:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
       clean: all
+    templateContext:
+      sdl:
+        codeSignValidation:
+          enabled: true
+          break: false
+        psscriptanalyzer:
+          enabled: true
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+          analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.pyd;+:file|$(BUILD.STAGINGDIRECTORY)\**\*.dll;-:file|DirectML.dll'
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
     ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
-      pool: onnxruntime-Win-CPU-2022
+      pool: 
+        name: onnxruntime-Win-CPU-2022
+        os: windows
     ${{ else }}:
-      pool: ${{ parameters.ort_build_pool_name }}
+      pool: 
+        name: ${{ parameters.ort_build_pool_name }}
+        os: windows
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
       timeoutInMinutes: 1200
     ${{ else }}:
       timeoutInMinutes: 360
 
     steps:
-
       - checkout: self
         clean: true
         submodules: none
@@ -119,12 +137,10 @@ stages:
 
       - template: telemetry-steps.yml
 
-      # The private ADO project
-      - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
-        - task: PipAuthenticate@1
-          displayName: 'Pip Authenticate'
-          inputs:
-            artifactFeeds: 'Lotus'
+      - task: PipAuthenticate@1
+        displayName: 'Pip Authenticate'
+        inputs:
+          artifactFeeds: 'Lotus'
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
@@ -242,6 +258,8 @@ stages:
           SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
           Contents: 'custom_op_library.dll'
           TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
+
+# Run GPU tests.
 - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
   - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
     dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
@@ -252,7 +270,6 @@ stages:
       pool: ${{ parameters.ort_build_pool_name }}
       timeoutInMinutes: 180
       steps:
-
         - checkout: self
           clean: true
           submodules: none
@@ -291,12 +308,10 @@ stages:
             addToPath: true
             architecture: ${{ parameters.buildArch }}
 
-        # The private ADO project
-        - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
-          - task: PipAuthenticate@1
-            displayName: 'Pip Authenticate'
-            inputs:
-              artifactFeeds: 'Lotus'
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
 
         - task: NodeTool@0
           condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
