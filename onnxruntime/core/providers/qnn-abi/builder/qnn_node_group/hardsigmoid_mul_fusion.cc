@@ -39,17 +39,10 @@ std::unique_ptr<IQnnNodeGroup> HardSigmoidMulFusion::TryFusion(
   }
 
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
-  const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api.Node_GetAttributeByName(&(hardsigmoid_node_unit.GetNode()), "alpha", &api_node_attr);
-  float alpha = rt ? 0.2f : api_node_attr->attr_proto.f();
-
-  api_node_attr = nullptr;
-  rt = ort_api.Node_GetAttributeByName(&(hardsigmoid_node_unit.GetNode()), "beta", &api_node_attr);
-  float beta = rt ? 0.5f : api_node_attr->attr_proto.f();
 
   OrtNodeAttrHelper hs_attr_helper(ort_api, hardsigmoid_node_unit);
-  // float alpha = hs_attr_helper.Get("alpha", 0.2f);
-  // float beta = hs_attr_helper.Get("beta", 0.5f);
+  float alpha = hs_attr_helper.Get("alpha", 0.2f);
+  float beta = hs_attr_helper.Get("beta", 0.5f);
   constexpr float req_alpha = 1.0f / 6.0f;
   constexpr float req_beta = 0.5f;
   constexpr float alpha_eps = std::numeric_limits<float>::epsilon() * req_alpha;
@@ -60,10 +53,9 @@ std::unique_ptr<IQnnNodeGroup> HardSigmoidMulFusion::TryFusion(
     return nullptr;
   }
 
-//   // HardSigmoid must have a single Mul child (1 output edge) and must not produce a graph output.
-  const OrtGraph& graph = qnn_model_wrapper.GetOrtGraph();
+  // HardSigmoid must have a single Mul child (1 output edge) and must not produce a graph output.
   const std::array<std::string_view, 1> child_types = {"Mul"};
-  const OrtNodeUnit* mul_node_unit = GetOnlyChildOfType(graph, hardsigmoid_node_unit, child_types,
+  const OrtNodeUnit* mul_node_unit = GetOnlyChildOfType(qnn_model_wrapper, hardsigmoid_node_unit, child_types,
                                                         node_to_node_unit, node_unit_to_qnn_node_group);
 
   if (mul_node_unit == nullptr) {
@@ -123,32 +115,28 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   QnnTensorWrapper input_tensor;
   QnnTensorWrapper output_tensor;
 
-  qnn_model_wrapper;hardsigmoid_node_unit;mul_node_unit;validate;
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input_def, input_tensor));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(output_def, output_tensor));
 
-  input_tensor; output_tensor; input_def; output_def; node_name;
-
-  // ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input_def, input_tensor));
-  // ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(output_def, output_tensor));
-
-//   if (validate) {
-//     ORT_RETURN_IF_ERROR(qnn_model_wrapper.ValidateQnnNode(node_name,
-//                                                           QNN_OP_PACKAGE_NAME_QTI_AISW,
-//                                                           QNN_OP_HARD_SWISH,
-//                                                           {input_tensor.GetQnnTensor()},
-//                                                           {output_tensor.GetQnnTensor()},
-//                                                           {}));
-//   } else {
-//     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor)), "Failed to add input");
-//     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)), "Failed to add output");
-//     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(node_name,
-//                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
-//                                                       QNN_OP_HARD_SWISH,
-//                                                       {input_def.node_arg.Name()},
-//                                                       {output_def.node_arg.Name()},
-//                                                       {},
-//                                                       validate),
-//                       "Failed to add fused HardSwish node.");
-//   }
+  if (validate) {
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.ValidateQnnNode(node_name,
+                                                          QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                          QNN_OP_HARD_SWISH,
+                                                          {input_tensor.GetQnnTensor()},
+                                                          {output_tensor.GetQnnTensor()},
+                                                          {}));
+  } else {
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor)), "Failed to add input");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)), "Failed to add output");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(node_name,
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                      QNN_OP_HARD_SWISH,
+                                                      {input_def.name},
+                                                      {output_def.name},
+                                                      {},
+                                                      validate),
+                      "Failed to add fused HardSwish node.");
+  }
 
   return Status::OK();
 }

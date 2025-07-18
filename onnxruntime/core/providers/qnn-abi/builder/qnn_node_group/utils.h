@@ -22,14 +22,14 @@ constexpr size_t QDQ_ZERO_POINT_INPUT_IDX = 2;
 /// Utility function to get a child NodeUnit. The returned NodeUnit must be the parent's only child, must be
 /// of the expected type, and must not be a part of another IQnnNodeGroup.
 /// </summary>
-/// <param name="graph_viewer">GraphViewer containing all Nodes</param>
+/// <param name="qnn_model_wrapper">QnnModelWrapper containing the OrtGraph and OrtApi</param>
 /// <param name="parent_node_unit">Parent NodeUnit</param>
 /// <param name="child_op_types">Valid child types</param>
 /// <param name="node_unit_map">Maps a Node to its NodeUnit</param>
 /// <param name="node_unit_to_qnn_node_group">Maps a NodeUnit to its IQnnNodeGroup.
 /// Used to check that the child has not already been added to another IQnnNodeGroup.</param>
 /// <returns></returns>
-const OrtNodeUnit* GetOnlyChildOfType(const OrtGraph& graph,
+const OrtNodeUnit* GetOnlyChildOfType(const QnnModelWrapper& qnn_model_wrapper,
                                    const OrtNodeUnit& parent_node_unit,
                                    gsl::span<const std::string_view> child_op_types,
                                    const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,

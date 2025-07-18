@@ -686,5 +686,129 @@ Status QnnModelWrapper::UnpackInitializerData(OrtValueInfo& initializer,
   return Status::OK();
 }
 
+// Implementation of TransposeTensor method for 2D matrix transpose
+Status QnnModelWrapper::TransposeTensor(std::vector<uint32_t>& data_shape,
+                                        const OrtValueInfo& initializer,
+                                        std::vector<uint8_t>& transposed_data) const {
+  ORT_RETURN_IF_NOT(data_shape.size() == 2, "Expected shape of rank 2 for 2D matrix transpose");
+
+  // Get the type info from the initializer
+  const OrtTypeInfo* type_info = nullptr;
+  OrtStatusPtr status = api_ptrs_.ort_api.GetValueInfoTypeInfo(&initializer, &type_info);
+  if (status != nullptr) {
+    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
+    api_ptrs_.ort_api.ReleaseStatus(status);
+    return Status(common::ONNXRUNTIME, common::FAIL, error_message);
+  }
+
+  // Cast to tensor type info
+  const OrtTensorTypeAndShapeInfo* tensor_info = nullptr;
+  status = api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_info);
+  if (status != nullptr) {
+    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
+    api_ptrs_.ort_api.ReleaseStatus(status);
+    return Status(common::ONNXRUNTIME, common::FAIL, error_message);
+  }
+
+  // Get the tensor element type
+  ONNXTensorElementDataType data_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  status = api_ptrs_.ort_api.GetTensorElementType(tensor_info, &data_type);
+  if (status != nullptr) {
+    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
+    api_ptrs_.ort_api.ReleaseStatus(status);
+    return Status(common::ONNXRUNTIME, common::FAIL, error_message);
+  }
+
+  // Get the initializer value
+  const OrtValue* initializer_value = nullptr;
+  status = api_ptrs_.ort_api.ValueInfo_GetInitializerValue(&initializer, &initializer_value);
+  if (status != nullptr) {
+    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
+    api_ptrs_.ort_api.ReleaseStatus(status);
+    return Status(common::ONNXRUNTIME, common::FAIL, error_message);
+  }
+
+  // Get the raw data from the initializer value
+  const void* raw_data = nullptr;
+  status = api_ptrs_.ort_api.GetTensorData(initializer_value, &raw_data);
+  if (status != nullptr) {
+    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
+    api_ptrs_.ort_api.ReleaseStatus(status);
+    return Status(common::ONNXRUNTIME, common::FAIL, error_message);
+  }
+
+  // Get the tensor size in bytes
+  size_t raw_data_size = 0;
+  status = api_ptrs_.ort_api.GetTensorSizeInBytes(initializer_value, &raw_data_size);
+  if (status != nullptr) {
+    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
+    api_ptrs_.ort_api.ReleaseStatus(status);
+    return Status(common::ONNXRUNTIME, common::FAIL, error_message);
+  }
+
+  // Release the type info
+  api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+
+  // Calculate element size based on data type
+  size_t elem_size = 0;
+  switch (data_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      elem_size = sizeof(float);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+      elem_size = sizeof(uint8_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      elem_size = sizeof(int8_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+      elem_size = sizeof(uint16_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+      elem_size = sizeof(int16_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+      elem_size = sizeof(int32_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      elem_size = sizeof(int64_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+      elem_size = 2;  // 16 bits = 2 bytes
+      break;
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported data type for tensor transpose");
+  }
+
+  // Prepare output buffer
+  transposed_data.resize(raw_data_size);
+
+  // Perform 2D transpose
+  const uint32_t rows = data_shape[0];
+  const uint32_t cols = data_shape[1];
+
+  for (uint32_t row = 0; row < rows; row++) {
+    for (uint32_t col = 0; col < cols; col++) {
+      const size_t src_idx = (row * cols + col) * elem_size;
+      const size_t dst_idx = (col * rows + row) * elem_size;
+
+      // Copy element byte by byte
+      std::memcpy(&transposed_data[dst_idx],
+                  static_cast<const uint8_t*>(raw_data) + src_idx,
+                  elem_size);
+    }
+  }
+
+  // Update shape to reflect the transpose
+  std::swap(data_shape[0], data_shape[1]);
+
+  return Status::OK();
+}
+
 }  // namespace qnn
 }  // namespace onnxruntime

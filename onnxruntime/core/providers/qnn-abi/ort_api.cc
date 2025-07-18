@@ -106,13 +106,11 @@ float OrtNodeAttrHelper::Get(const std::string& key, float def_val) const {
 //   return def_val;
 // }
 
-// int64_t OrtNodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     return NODE_ATTR_ITER_VAL(entry).i();
-//   }
-
-//   return def_val;
-// }
+int64_t OrtNodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  return rt ? def_val : api_node_attr->attr_proto.i();
+}
 
 // const std::string& OrtNodeAttrHelper::Get(const std::string& key, const std::string& def_val) const {
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
@@ -164,16 +162,21 @@ float OrtNodeAttrHelper::Get(const std::string& key, float def_val) const {
 //   return def_val;
 // }
 
-// std::vector<int64_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int64_t>& def_val) const {
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     const auto& values = NODE_ATTR_ITER_VAL(entry).ints();
-//     const int64_t* cbegin = values.data();
-//     const int64_t* cend = values.data() + values.size();
-//     return std::vector<int64_t>{cbegin, cend};
-//   }
+std::vector<int64_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int64_t>& def_val) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (rt) {
+    return def_val;
+  }
 
-//   return def_val;
-// }
+  const auto& ints_proto = api_node_attr->attr_proto.ints();
+  std::vector<int64_t> result;
+  result.reserve(ints_proto.size());
+  for (int i = 0; i < ints_proto.size(); ++i) {
+    result.push_back(ints_proto.Get(i));
+  }
+  return result;
+}
 
 // std::vector<float> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<float>& def_val) const {
 //   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {

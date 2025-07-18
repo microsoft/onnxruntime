@@ -26,14 +26,16 @@ GetAllOrtNodeUnits(OrtApi ort_api, const OrtGraph* graph, const logging::Logger&
   const void* const* node_data = nullptr;
   ort_api.ArrayOfConstObjects_GetData(nodes, &node_data);
 
-  // const auto add_node_unit_to_map = [&](const std::vector<int>& node_indices) {
-  //   for (auto node_idx : node_indices) {
-  //   const OrtNode* node = static_cast<const OrtNode*>(node_data[node_idx]);
-  //   node_unit_map.insert({node, node});
-  //   }
-  // };
+  const auto add_node_unit_to_map = [&](const std::vector<int>& node_indices) {
+    for (auto node_idx : node_indices) {
+    const OrtNode* node = static_cast<const OrtNode*>(node_data[node_idx]);
+    auto node_unit = std::make_unique<OrtNodeUnit>(*node, ort_api);
+    node_unit_map[node] = node_unit.get();
+    node_unit_holder.push_back(std::move(node_unit));
+    }
+  };
 
-  // Get QDQ NodeUnits first
+  // // Get QDQ NodeUnits first
   // QDQ::SelectorManager selector_mgr;
 
   // const auto qdq_selections = GetQDQSelections(graph, logger);

@@ -314,6 +314,11 @@ class QnnModelWrapper {
   Status UnpackInitializerData(OrtValueInfo& initializer,
                                std::vector<uint8_t>& unpacked_tensor) const;
 
+  // Perform a 2D matrix transpose on a tensor
+  Status TransposeTensor(std::vector<uint32_t>& data_shape,
+                         const OrtValueInfo& initializer,
+                         std::vector<uint8_t>& transposed_data) const;
+
   QnnBackendType GetQnnBackendType() const { return qnn_backend_type_; }
 
   const OrtGraph& GetOrtGraph() const { return ort_graph_; }
