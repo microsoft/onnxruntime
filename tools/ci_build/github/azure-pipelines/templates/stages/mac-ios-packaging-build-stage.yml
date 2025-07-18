@@ -96,7 +96,6 @@ stages:
           --staging-dir "$(Build.BinariesDirectory)/staging" \
           --pod-version "$(ortPodVersion)" \
           --test \
-          --variant Full \
           --build-settings-file "${{ variables.buildSettingsFile }}"
       displayName: "Build macOS/iOS framework and assemble pod package files"
       env:
@@ -107,7 +106,6 @@ stages:
           --fail_if_cocoapods_missing \
           --framework_info_file "$(Build.BinariesDirectory)/apple_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/apple_framework/framework_out" \
-          --variant Full \
           --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test" \
           --prepare_test_project_only
       displayName: "Assemble test project for App Center"

@@ -123,8 +123,6 @@ def main():
             str(framework_info_file),
             "--c_framework_dir",
             str(build_dir / "framework_out"),
-            "--variant",
-            "Full",
             "--test_project_stage_dir",  # use a specific directory so it's easier to debug
             str(build_dir / "test_apple_packages_staging"),
         ]
