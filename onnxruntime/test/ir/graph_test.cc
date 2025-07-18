@@ -2566,5 +2566,73 @@ TEST_F(GraphTest, GraphConstruction_MemoryEfficientTopologicalSort_SubgraphGener
 
 #endif
 
+// Test fixture for InitializedTensorSetProxy tests
+class InitializedTensorSetProxyTest : public ::testing::Test {
+ protected:
+  using container_type = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
+  container_type empty_set_;
+  container_type non_empty_set_;
+  TensorProto tp1_, tp2_;
+
+  void SetUp() override {
+    tp1_.set_name("tensor1");
+    tp2_.set_name("tensor2");
+    non_empty_set_["tensor1"] = &tp1_;
+    non_empty_set_["tensor2"] = &tp2_;
+  }
+};
+
+TEST_F(InitializedTensorSetProxyTest, EmptySet) {
+  InitializedTensorSetProxy proxy(empty_set_);
+
+  EXPECT_TRUE(proxy.empty());
+  EXPECT_EQ(proxy.size(), 0u);
+  EXPECT_EQ(proxy.count("any_tensor"), 0u);
+  EXPECT_EQ(proxy.begin(), proxy.end());
+  EXPECT_EQ(std::distance(proxy.begin(), proxy.end()), 0);
+}
+
+TEST_F(InitializedTensorSetProxyTest, NonEmptySet) {
+  InitializedTensorSetProxy proxy(non_empty_set_);
+
+  EXPECT_FALSE(proxy.empty());
+  EXPECT_EQ(proxy.size(), 2u);
+  EXPECT_EQ(proxy.count("tensor1"), 1u);
+  EXPECT_EQ(proxy.count("tensor2"), 1u);
+  EXPECT_EQ(proxy.count("non_existent_tensor"), 0u);
+}
+
+TEST_F(InitializedTensorSetProxyTest, Iterator) {
+  InitializedTensorSetProxy proxy(non_empty_set_);
+
+  EXPECT_NE(proxy.begin(), proxy.end());
+  EXPECT_EQ(std::distance(proxy.begin(), proxy.end()), 2);
+
+  std::unordered_set<const TensorProto*> found_tensors;
+  for (const auto* tensor_proto : proxy) {
+    found_tensors.insert(tensor_proto);
+  }
+
+  EXPECT_EQ(found_tensors.size(), 2u);
+  EXPECT_NE(found_tensors.find(&tp1_), found_tensors.end());
+  EXPECT_NE(found_tensors.find(&tp2_), found_tensors.end());
+}
+
+TEST_F(InitializedTensorSetProxyTest, ConstCorrectness) {
+  const container_type const_set = {{"tensor1", &tp1_}};
+  const InitializedTensorSetProxy proxy(const_set);
+
+  EXPECT_FALSE(proxy.empty());
+  EXPECT_EQ(proxy.size(), 1u);
+  EXPECT_EQ(proxy.count("tensor1"), 1u);
+
+  int count = 0;
+  for (const auto* tensor_proto : proxy) {
+    EXPECT_EQ(tensor_proto, &tp1_);
+    count++;
+  }
+  EXPECT_EQ(count, 1);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
