@@ -209,12 +209,21 @@ void GemmEx<MLFloat16, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE Trans
   // MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
   // Threadpool is not used.
   auto C_mat = EigenMatrixMapWithStrides<Eigen::half>(reinterpret_cast<Eigen::half*>(C), N, M, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldc, 1));
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
   if (beta == MLFloat16(0.f)) {
     C_mat.setZero();
   } else {
     C_mat *= *reinterpret_cast<Eigen::half*>(&beta);
   }
   Eigen::half alpha_half = *reinterpret_cast<const Eigen::half*>(&alpha);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
   switch (TransA) {
     case CblasNoTrans: {
       switch (TransB) {
