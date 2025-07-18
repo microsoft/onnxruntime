@@ -41,9 +41,31 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     sdl:
+      binskim:
+        enabled: true
+        analyzeTargetGlob: $(Build.ArtifactStagingDirectory)/**.dll
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
-        os: windows
+        os: windows      componentgovernance:
+        ignoreDirectories: $(Build.SourcesDirectory)/onnxruntime-inference-examples
+      sourceRepositoriesToScan:
+        exclude:
+        - repository: onnxruntime-inference-examples
+      spotBugs:
+        enabled: false
+        justificationForDisabling: "Getting ##[error]1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
+      codeql:
+        compiled:
+          enabled: false
+          justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
+      tsa:
+        enabled: true
+      codeSignValidation:
+        enabled: true
+        break: true
+      policheck:
+        enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
 
     stages:
       - template: templates/win-ci.yml

@@ -37,7 +37,6 @@ stages:
       clean: all
     pool:
       name: onnxruntime-Win-CPU-2022
-      demands: ${{ parameters.AgentDemands }}
     variables:
       buildDirectory: '$(Build.BinariesDirectory)'
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
@@ -54,18 +53,7 @@ stages:
         clean: true
         submodules: none
 
-      - powershell: |
-          if($env:TELEMETRYGUID)
-          {
-            $length = $env:TELEMETRYGUID.length
-            $fileContent = "#define TraceLoggingOptionMicrosoftTelemetry() \
-              TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
-            New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
-            Write-Output "Enabling TELEMETRY"
-          }
-        displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
-        env:
-          TELEMETRYGUID: $(TELEMETRYGUID)
+      - template: ../templates/telemetry-steps.yml
 
       - task: NodeTool@0
         inputs:

@@ -94,8 +94,9 @@ extends:
       binskim:
         enabled: true
         analyzeTargetGlob: $(Build.ArtifactStagingDirectory)/**.dll
-      sourceAnalysisPool: "Onnxruntime-Win-CPU-2022"
-      componentgovernance:
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows      componentgovernance:
         ignoreDirectories: $(Build.SourcesDirectory)/onnxruntime-inference-examples
       sourceRepositoriesToScan:
         exclude:
@@ -107,6 +108,15 @@ extends:
         compiled:
           enabled: false
           justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
+      tsa:
+        enabled: true
+      codeSignValidation:
+        enabled: true
+        break: true
+      policheck:
+        enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
+
     stages:
     - template: stages/set_packaging_variables_stage.yml
       parameters:
