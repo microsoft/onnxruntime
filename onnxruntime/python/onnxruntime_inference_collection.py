@@ -506,7 +506,7 @@ class InferenceSession(Session):
                 self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
             else:
                 self._fallback_providers = ["CPUExecutionProvider"]
-        if "NvTensorRTRTXExecutionProvider" in available_providers:
+        elif "NvTensorRTRTXExecutionProvider" in available_providers:
             if (
                 providers
                 and any(
@@ -516,7 +516,7 @@ class InferenceSession(Session):
                 )
                 and any(
                     provider == "NvTensorRTRTXExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "NvExecutionProvider")
+                    or (isinstance(provider, tuple) and provider[0] == "NvTensorRTRTXExecutionProvider")
                     for provider in providers
                 )
             ):
