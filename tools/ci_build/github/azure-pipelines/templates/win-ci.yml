@@ -310,7 +310,7 @@ stages:
             scriptPath: '$(Build.SourcesDirectory)\tools\python\update_ctest_path.py'
             arguments: >
               "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake"
-              "$(Build.SourcesDirectory)"
+              "$(Build.SourcesDirectory)/cmake"
               "$(Build.BinariesDirectory)/RelWithDebInfo"
 
         - task: NodeTool@0
