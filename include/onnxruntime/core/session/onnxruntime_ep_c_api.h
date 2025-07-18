@@ -260,7 +260,8 @@ struct OrtEpApi {
    *
    * \param[in] value The OrtValue instance to get the memory device from.
    * \param[out] device The OrtMemoryDevice associated with the OrtValue instance.
-   * \return Status Success if OrtValue contains a Tensor. Otherwise, an error status is returned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
@@ -319,10 +320,20 @@ struct OrtEpApi {
    */
   ORT_API_T(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
 
-  // create arena or read-only memory info from the base OrtMemoryInfo
-  ORT_API2_STATUS(CreateMemoryInfoWithNewAllocatorType, _In_ const OrtMemoryInfo* memory_info,
-                  _In_ OrtAllocatorType allocator_type,
-                  _Out_ OrtMemoryInfo** arena_memory_info);
+  /** \brief Get the sync ID for the last time the consumer_stream waited on the producer_stream.
+   *
+   * When two streams are synchronized, the sync id represents the event used in that synchronization.
+   *
+   * \param[in] producer_stream The OrtSyncStream that produced the data.
+   * \param[in] consumer_stream The OrtSyncStream that waited on the producer_stream.
+   * \param[out] sync_id The sync ID that was used for the last wait operation on the consumer_stream.
+   *
+   * \return uint64_t ID for last sync. 0 if no sync has occurred between the two streams.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(uint64_t, GetSyncIdForLastWaitOnStream,
+            _In_ const OrtSyncStream* producer_stream, _In_ const OrtSyncStream* consumer_stream);
 };
 
 /**

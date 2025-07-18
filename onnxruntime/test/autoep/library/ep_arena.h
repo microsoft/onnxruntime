@@ -29,11 +29,6 @@ limitations under the License.
 
 // TEMPORARY: this is in #25254
 struct OrtSyncNotification {};
-// TEMPORARY: this is in #25254 but possibly we don't want/need that if we use WaitOnStreamFn.
-//   using WaitNotificationFn = std::function<void(OrtSyncStream*, OrtSyncNotification&)>;
-// as we can get the WaitOnDeviceImpl from ep_stream_support.h I'm not sure there's any reason why it would need
-// to be passed in to the alloc function. i.e. AsyncAlloc with a stream is all we need.
-using WaitOnStreamFn = std::function<void(OrtSyncStream*, OrtSyncStream*)>;
 
 namespace onnxruntime {
 namespace ep_utils {
@@ -51,15 +46,13 @@ struct ArenaConfig {
               int initial_chunk_size_bytes = -1,
               int max_dead_bytes_per_chunk = -1,
               int initial_growth_chunk_size_bytes = -1,
-              int64_t max_power_of_two_extend_bytes = -1,
-              bool enable_stream_sharing = false)  // default this to false until fully validated
+              int64_t max_power_of_two_extend_bytes = -1)
       : max_mem(max_mem),
         arena_extend_strategy(arena_extend_strategy),
         initial_chunk_size_bytes(initial_chunk_size_bytes),
         max_dead_bytes_per_chunk(max_dead_bytes_per_chunk),
         initial_growth_chunk_size_bytes(initial_growth_chunk_size_bytes),
-        max_power_of_two_extend_bytes(max_power_of_two_extend_bytes),
-        enable_stream_sharing(enable_stream_sharing) {
+        max_power_of_two_extend_bytes(max_power_of_two_extend_bytes) {
   }
 
   size_t max_mem;  // use 0 for default
@@ -68,9 +61,6 @@ struct ArenaConfig {
   int max_dead_bytes_per_chunk;           // use -1 for default
   int initial_growth_chunk_size_bytes;    // use -1 for default
   int64_t max_power_of_two_extend_bytes;  // use -1 for default
-
-  // NEW
-  bool enable_stream_sharing;
 
   bool IsValid() {
     return initial_chunk_size_bytes >= -1 &&
@@ -87,9 +77,6 @@ struct ArenaConfig {
     static constexpr const char* InitialGrowthChunkSizeBytes = "arena.initial_growth_chunk_size_bytes";
     static constexpr const char* MaxPowerOfTwoExtendBytes = "arena.max_power_of_two_extend_bytes";
     static constexpr const char* MaxMem = "arena.max_mem";
-
-    // enable usage of a chunk from another Stream. adds an event+wait to connect the streams.
-    static constexpr const char* EnableStreamSharing = "arena.enable_stream_sharing";
   };
 
   static ArenaConfig FromKeyValuePairs(const OrtApi& api, const OrtKeyValuePairs* kvps) {
@@ -118,10 +105,6 @@ struct ArenaConfig {
 
     if (value = api.GetKeyValue(kvps, ConfigKeyNames::MaxMem); value) {
       config.max_mem = static_cast<size_t>(std::stoull(std::string(value)));
-    }
-
-    if (value = api.GetKeyValue(kvps, ConfigKeyNames::EnableStreamSharing); value) {
-      config.enable_stream_sharing = std::string(value) == "1" ? true : false;
     }
   }
 };
@@ -181,8 +164,6 @@ struct AllocatorStats {
     }                                                    \
   } while (false)
 
-// implementation to provide virtual methods that derived classes can override
-
 // A memory allocator that implements a 'best-fit with coalescing' algorithm.
 // This is essentially a very simple version of Doug Lea's malloc (dlmalloc).
 //
@@ -208,19 +189,12 @@ class ArenaImpl {
   // passed to free(). Whatever, do not dereference that pointer
   void* Alloc(size_t size);
 
-  void* AsyncAlloc(size_t size, OrtSyncStream* stream);
+  void* AllocOnStream(size_t size, OrtSyncStream* stream);
 
   // If p is NULL, no operation is performed.
   void Free(void* p);
 
-  // Frees all allocation regions in which no chunk is in use.
-  // Does not free any reserved chunks.
-  // Resets the size that the arena will grow by in the next allocation to
-  // `initial_growth_chunk_size_bytes_` but ultimately all
-  // future allocation sizes are determined by the arena growth strategy
-  // and the allocation request.
-  OrtStatus* Shrink();
-
+  // allocate memory directly. this is used for initializers so they don't affect the arena growth patterns
   void* Reserve(size_t size);
 
   OrtStatus* GetStats(OrtKeyValuePairs** stats);
@@ -229,16 +203,15 @@ class ArenaImpl {
 
   size_t AllocatedSize(const void* ptr);
 
+  // Unassign chunks that are currently assigned to the stream.
+  //
   // This should be called from OrtSyncStreamImpl::OnSessionRunEnd.
   // A stream is used in one session at a time. When called from OnSessionRunEnd we know that the stream is done and
   // will not be performing any more operations on the data.
-  //
-  // for any chunk that associated with target stream, reset it to default (nullptr in stream, sync id 0)
   void ResetChunksUsingStream(const OrtSyncStream* stream);
 
  private:
-  void* AllocateRawInternal(size_t num_bytes, OrtSyncStream* stream,
-                            bool dump_log_on_failure);
+  void* AllocateRawInternal(size_t num_bytes, OrtSyncStream* stream, bool dump_log_on_failure);
   void DeallocateRawInternal(void* ptr);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
@@ -286,8 +259,10 @@ class ArenaImpl {
 
     OrtSyncStream* stream = nullptr;
     // Current sync id of `stream` when it was assigned the Chunk.
-    // If the chunk is free, and another Stream wants to use it, that Stream must have synchronized with `stream`
-    // at a sync id > to stream_sync_id.
+    // If the chunk is assigned to a stream and is free, and another Stream wants to use it, that Stream must have
+    // synchronized with `stream` at a sync id > to stream_sync_id.
+    // stream_sync_id is set when the chunk is first assigned to `stream`.
+    // The sync id is incremented at the start of sync, so any chunk with a previous sync id is safe to re-assign.
     uint64_t stream_sync_id = 0;
 
     bool in_use() const { return allocation_id != -1; }
@@ -624,6 +599,7 @@ class ArenaImpl {
   AllocatorStats stats_;
 
   const OrtApi& api_;
+  const OrtEpApi& ep_api_;
   const OrtLogger& logger_;
 
   ArenaImpl(const ArenaImpl&) = delete;
@@ -634,37 +610,17 @@ class ArenaImpl {
 
 struct ArenaAllocator : OrtAllocator {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
-
-  static OrtStatus* CreateMemoryInfo(const OrtApi& api, const OrtMemoryInfo* base_memory_info,
-                                     MemoryInfoUniquePtr& allocator_info) {
-    OrtMemoryInfo* arena_info = nullptr;
-    auto* status = api.GetEpApi()->CreateMemoryInfoWithNewAllocatorType(base_memory_info, OrtArenaAllocator,
-                                                                        &arena_info);
-    if (status != nullptr) {
-      return status;
-    }
-
-    allocator_info = MemoryInfoUniquePtr(arena_info, [api](OrtMemoryInfo* info) { api.ReleaseMemoryInfo(info); });
-    return nullptr;
-  }
-
-  static OrtStatus* CreateOrtArenaAllocator(const OrtApi& api, const OrtMemoryInfo* base_memory_info,
+  static OrtStatus* CreateOrtArenaAllocator(const OrtApi& api, const OrtMemoryInfo& memory_info,
                                             std::unique_ptr<ArenaImpl> implementation,
                                             std::unique_ptr<ArenaAllocator>& arena_allocator) {
-    MemoryInfoUniquePtr arena_memory_info;
-    auto* status = CreateMemoryInfo(api, base_memory_info, arena_memory_info);
-    if (status != nullptr) {
-      return status;
-    }
-
-    arena_allocator = std::make_unique<ArenaAllocator>(std::move(implementation), std::move(arena_memory_info), api);
+    arena_allocator = std::make_unique<ArenaAllocator>(std::move(implementation), memory_info, api);
     return nullptr;
   }
 
-  ArenaAllocator(std::unique_ptr<ArenaImpl> implementation, MemoryInfoUniquePtr arena_memory_info,
+  ArenaAllocator(std::unique_ptr<ArenaImpl> implementation, const OrtMemoryInfo& memory_info,
                  const OrtApi& api)
       : impl_{std::move(implementation)},
-        memory_info_{std::move(arena_memory_info)},
+        memory_info_{memory_info},
         api_{api},
         ep_api_{*api.GetEpApi()} {
     version = ORT_API_VERSION;
@@ -674,7 +630,7 @@ struct ArenaAllocator : OrtAllocator {
     Info = InfoImpl;
     GetStats = GetStatsImpl;
 
-    AsyncAlloc = AsyncAllocImpl;
+    AllocOnStream = AllocOnStreamImpl;
   }
 
   static void* ORT_API_CALL AllocImpl(struct OrtAllocator* this_, size_t size) {
@@ -682,9 +638,9 @@ struct ArenaAllocator : OrtAllocator {
     return arena.impl_->Alloc(size);
   }
 
-  static void* ORT_API_CALL AsyncAllocImpl(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream) {
+  static void* ORT_API_CALL AllocOnStreamImpl(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream) {
     auto& arena = *static_cast<ArenaAllocator*>(this_);
-    return arena.impl_->AsyncAlloc(size, stream);
+    return arena.impl_->AllocOnStream(size, stream);
   }
 
   static void* ORT_API_CALL ReserveImpl(struct OrtAllocator* this_, size_t size) {
@@ -697,9 +653,9 @@ struct ArenaAllocator : OrtAllocator {
     arena.impl_->Free(p);
   }
 
-  static const struct OrtMemoryInfo* ORT_API_CALL InfoImpl(const struct OrtAllocator* this_) {
+  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const struct OrtAllocator* this_) {
     const auto& arena = *static_cast<const ArenaAllocator*>(this_);
-    return arena.memory_info_.get();
+    return &arena.memory_info_;
   }
 
   static OrtStatus* ORT_API_CALL GetStatsImpl(const struct OrtAllocator* this_, OrtKeyValuePairs** out) noexcept {
@@ -709,7 +665,7 @@ struct ArenaAllocator : OrtAllocator {
 
  private:
   std::unique_ptr<ArenaImpl> impl_;
-  MemoryInfoUniquePtr memory_info_;
+  const OrtMemoryInfo& memory_info_;
 
   const OrtApi& api_;
   const OrtEpApi& ep_api_;

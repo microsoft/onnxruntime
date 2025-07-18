@@ -38,13 +38,6 @@ namespace ep_utils {
   throw new std::runtime_error(ss.str().c_str())
 
 namespace {
-static WaitOnStreamFn stream_wait_fn =
-    [](_In_ OrtSyncStream* /*chunk_stream*/, _In_ OrtSyncStream* /*consumer_stream*/) {
-      // ORT does this via a Notification + a wait function.
-      // The EP can be more direct as both OrtSyncStream should be its internal stream class.
-      // It needs to create an event, record it in the chunk_stream, and wait on it in the consumer stream.
-    };
-
 std::string GetAllocatorName(const OrtApi& api, OrtAllocator& allocator) {
   const OrtMemoryInfo* mem_info = allocator.Info(&allocator);
   const char* allocator_name;
@@ -60,6 +53,7 @@ ArenaImpl::ArenaImpl(std::unique_ptr<OrtAllocator> base_allocator, const ArenaCo
       allocator_name_{GetAllocatorName(api, *device_allocator_)},
       config_{config},
       api_{api},
+      ep_api_{*api_.GetEpApi()},
       logger_{logger} {
   LOG(INFO, "Creating ArenaImpl for "
                 << allocator_name_
@@ -152,15 +146,9 @@ OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
       // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
       // so swallow the exception
     }
-    //} catch (const OnnxRuntimeException& ort_exception) {
-    //  // swallow if exception is our throw from a failed cudaMalloc call.
-    //  // re-throw otherwise.
-    //  ORT_HANDLE_EXCEPTION([&ort_exception]() {
-    //    if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos &&
-    //        std::string(ort_exception.what()).find("hipMalloc") == std::string::npos) {
-    //      ORT_RETHROW;
-    //    }
-    //  });
+    // catch (const MyException& exception) {
+    //   if your implementation threw, consider swallowing the exception to enable attempting a smaller allocation
+    //   if possible
     //}
     return new_mem;
   };
@@ -296,7 +284,7 @@ void ArenaImpl::DeallocateChunk(ChunkHandle h) {
     }
 
     c->stream = nullptr;
-    // c->stream_timestamp = 0;
+    c->stream_sync_id = 0;
   }
 
   c->next = free_chunks_list_;
@@ -312,7 +300,7 @@ void* ArenaImpl::Alloc(size_t size) {
   return AllocateRawInternal(size, nullptr, false);
 }
 
-void* ArenaImpl::AsyncAlloc(size_t size, OrtSyncStream* stream) {
+void* ArenaImpl::AllocOnStream(size_t size, OrtSyncStream* stream) {
   if (stream_to_chunks_.find(stream) == stream_to_chunks_.end()) {
     stream_to_chunks_.insert({stream, std::set<size_t>{}});
   }
@@ -375,9 +363,9 @@ void* ArenaImpl::AllocateRawInternal(size_t num_bytes, OrtSyncStream* stream, bo
     return chunk->ptr;
   }
 
-  LOG(INFO, "Extending ArenaImpl for " << allocator_name_
-                                       << ". bin_num:" << bin_num << " (requested) num_bytes: " << num_bytes
-                                       << " (actual) rounded_bytes:" << rounded_bytes);
+  LOG(INFO, "Extending arena for " << allocator_name_
+                                   << ". bin_num:" << bin_num << " (requested) num_bytes: " << num_bytes
+                                   << " (actual) rounded_bytes:" << rounded_bytes);
 
   // Try to extend
   auto status = Extend(rounded_bytes);
@@ -442,9 +430,6 @@ ArenaImpl::Chunk* ArenaImpl::SplitFreeChunkFromBin(ArenaImpl::Bin::FreeChunkSet*
 
 ArenaImpl::Chunk* ArenaImpl::FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes,
                                           OrtSyncStream* stream) {
-  ArenaImpl::Chunk* other_stream_candidate = nullptr;
-  ChunkHandle other_stream_candidate_handle;
-
   // First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {
     // Start searching from the first bin for the smallest chunk that fits rounded_bytes.
@@ -456,59 +441,27 @@ ArenaImpl::Chunk* ArenaImpl::FindChunkPtr(BinNum bin_num, size_t rounded_bytes, 
 
       if (chunk->size >= rounded_bytes) {
         // We found an existing chunk that fits us that wasn't in use, now check the stream
-        // FIXME: OrtSyncStream doesn't support GetLastSyncIdForProducerStream currently
-        bool safe_to_use = chunk->stream == stream || !chunk->stream
-            /* ||
-            We lose this optimization, but not sure it's significant. It would require the stream to be
-            used in multiple execution steps (as the WaitOnEPStep is what updates the timestamp in a stream with new
-            values in before next LaunchKernelStep), but currently BindToDeviceStream creates a separate stream for
-            every step. Given that I don't think there's a scenario where the last sync timestamp of `stream` would
-            have been updated to be > chunk->stream_timestamp.
-            (stream && chunk->stream &&
-             chunk->stream_timestamp < stream->GetLastSyncIdForProducerStream(chunk->stream)) */
-            ;
+        bool safe_to_use = chunk->stream == stream ||
+                           !chunk->stream ||
+                           (stream && chunk->stream &&
+                            chunk->stream_sync_id < ep_api_.GetSyncIdForLastWaitOnStream(chunk->stream, stream);
 
         if (safe_to_use) {
-          auto* new_chunk = SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
+          chunk = SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
 
           if (stream) {
-            new_chunk->stream = stream;
+            chunk->stream = stream;
+            chunk->stream_sync_id = stream->GetCurrentSyncId();
             stream_to_chunks_[stream].insert(h);
           }
 
-          return new_chunk;
-        }
-
-        if (config_.enable_stream_sharing && !other_stream_candidate) {
-          other_stream_candidate = chunk;
-          other_stream_candidate_handle = h;
+          return chunk;
         }
       }
     }
   }
 
-  // if trying to use an unsafe chunk from other streams, secure it.
-  if (other_stream_candidate) {
-    // create event, record in other_stream_candidate->stream, wait on it in `stream`
-    stream_wait_fn(other_stream_candidate->stream, stream);
-
-    // if find some available chunk, make sure mark it as "being used" before return
-    other_stream_candidate->allocation_id = next_allocation_id_++;
-    other_stream_candidate->bin_num = kInvalidBinNum;
-
-    // TODO: Validate this approach of changing the stream associated with the chunk.
-    // We have added an event to other_stream_candidate and `stream` has a wait on that.
-    // If we don't change the stream value it seems wrong as it would be assigned to an incorrect stream if we try
-    // and re-use it again.
-    // e.g. chunk is being used by streamA. say we move it to streamB here. if it's still assigned to streamA and it
-    //      becomes free and streamC wanted to use it, we'd be adding an event to streamA and waiting on that
-    //      in streamC which seems incorrect given streamB is the one currently using the chunk.
-    stream_to_chunks_[other_stream_candidate->stream].erase(other_stream_candidate_handle);
-    stream_to_chunks_[stream].insert(other_stream_candidate_handle);
-    other_stream_candidate->stream = stream;
-  }
-
-  return other_stream_candidate;
+  return nullptr;
 }
 
 void ArenaImpl::SplitChunk(ArenaImpl::ChunkHandle h, size_t num_bytes) {
@@ -521,7 +474,7 @@ void ArenaImpl::SplitChunk(ArenaImpl::ChunkHandle h, size_t num_bytes) {
   // Create a new chunk starting num_bytes after c
   ArenaImpl::Chunk* new_chunk = ChunkFromHandle(h_new_chunk);
   new_chunk->stream = c->stream;
-  // new_chunk->stream_timestamp = c->stream_timestamp;
+  new_chunk->stream_sync_id = c->stream_sync_id;
 
   new_chunk->ptr = static_cast<void*>(static_cast<char*>(c->ptr) + num_bytes);
   region_manager_.set_handle(new_chunk->ptr, h_new_chunk);
@@ -566,71 +519,6 @@ void ArenaImpl::Free(void* p) {
   }
 }
 
-OrtStatus* ArenaImpl::Shrink() {
-  std::lock_guard<std::mutex> lock(lock_);
-  auto num_regions = region_manager_.regions().size();
-  std::vector<void*> region_ptrs;
-  std::vector<size_t> region_sizes;
-  region_ptrs.reserve(num_regions);
-  region_sizes.reserve(num_regions);
-
-  for (const auto& region : region_manager_.regions()) {
-    if (consider_first_allocation_region_for_shrinkage_ || region.id() != 0) {
-      region_ptrs.push_back(region.ptr());
-      region_sizes.push_back(region.memory_size());
-    }
-  }
-
-  size_t i = 0;
-  for (void* region_ptr : region_ptrs) {
-    bool deallocate_region = true;
-    ChunkHandle region_begin_chunk = region_manager_.get_handle(region_ptr);
-    ChunkHandle h = region_begin_chunk;
-    while (h != kInvalidChunkHandle) {
-      const Chunk* c = ChunkFromHandle(h);
-      if (c->in_use()) {
-        // at-least one used chunk found in the allocation region -
-        // so we cannot deallocate it
-        deallocate_region = false;
-        break;
-      }
-      h = c->next;
-    }
-
-    if (deallocate_region) {
-      auto shrink_size = region_sizes[i];
-      stats_.num_arena_shrinkages += 1;
-      stats_.total_allocated_bytes -= shrink_size;
-
-      LOG(VERBOSE, allocator_name_ << " BFC Arena shrunk by "
-                                   << shrink_size << " bytes. "
-                                   << " The total allocated bytes is now " << stats_.total_allocated_bytes);
-
-      h = region_begin_chunk;
-      ChunkHandle temp = region_begin_chunk;
-      while (h != kInvalidChunkHandle) {
-        const Chunk* c = ChunkFromHandle(h);
-        temp = c->next;
-        RemoveFreeChunkFromBin(h);
-        DeleteChunk(h);
-        h = temp;
-      }
-
-      device_allocator_->Free(device_allocator_.get(), region_ptr);
-      region_manager_.RemoveAllocationRegion(region_ptr);
-      stats_.num_arena_extensions--;
-    }
-
-    ++i;
-  }
-
-  // Will affect how the arena grows if the arena extend strategy is kNextPowerOfTwo
-  // In case the extend strategy is kSameAsRequested, the arena growth is exactly the size of the memory request itself
-  curr_region_allocation_bytes_ = config_.initial_growth_chunk_size_bytes;
-
-  return nullptr;
-}
-
 void ArenaImpl::DeallocateRawInternal(void* ptr) {
   // Find the chunk from the ptr.
   ArenaImpl::ChunkHandle h = region_manager_.get_handle(ptr);
@@ -669,7 +557,7 @@ void ArenaImpl::Merge(ArenaImpl::ChunkHandle h1,
 
   // we only merge chunks that have the same stream
   assert(c1->stream == c2->stream);
-  // c1->stream_timestamp = std::max(c1->stream_timestamp, c2->stream_timestamp);
+  c1->stream_sync_id = std::max(c1->stream_sync_id, c2->stream_sync_id);
 
   DeleteChunk(h2);
 }
@@ -750,7 +638,7 @@ ArenaImpl::ChunkHandle ArenaImpl::Coalesce(ChunkHandle h) {
     if (!cprev->in_use() && cprev->stream == c->stream) {
       chunk_to_reassign = c->prev;
 
-      RemoveFreeChunkFromBin(c->prev);  // Deletes c
+      RemoveFreeChunkFromBin(c->prev);  // this deletes c
       Merge(ChunkFromHandle(h)->prev, h);
     }
   }
@@ -852,9 +740,6 @@ void ArenaImpl::DumpMemoryLog(size_t num_bytes) {
                 << stats_.DebugString());
 }
 
-// iterating every single chunk to find ones using the stream seems inefficient.
-// would it be better to keep std::set<ChunkHandle> for each stream to track the chunks it is using, and use that
-// to do the reset?
 void ArenaImpl::ResetChunksUsingStream(const OrtSyncStream* stream) {
   std::lock_guard<std::mutex> lock(lock_);
 
@@ -863,14 +748,22 @@ void ArenaImpl::ResetChunksUsingStream(const OrtSyncStream* stream) {
     const auto& chunk_handles = it->second;
     for (size_t handle : chunk_handles) {
       Chunk* c = ChunkFromHandle(handle);
-      assert(c->stream == stream);     // something is out of sync if this is not the case
-      assert(c->allocation_id == -1);  // should only be called on free chunks
+      assert(c->stream == stream);  // something is out of sync if this is not the case
+      // NOTE: The buffer may still be in-use, but the inference session that the stream was associated with is
+      // done and will no longer be utilizing the buffer.
+      // e.g. pre-allocated inference session output provided by the user was allocated using this arena.
       c->stream = nullptr;
     }
 
     stream_to_chunks_.erase(it);
   }
 
+  // It's also possible to find the chunks this way, but that requires iterating every single in-use allocation.
+  // We also repeat this for every single stream used in a session.
+  // OTOH there's a cost to create/update keep streams_to_chunks_.
+  // Using streams_to_chunks_ for now. It also simplifies debugging to have that info. If you're unsure about this
+  // choice feel free to perf test the two approaches.
+  //
   // for (const auto& region : region_manager_.regions()) {
   //   ChunkHandle region_begin_chunk = region_manager_.get_handle(region.ptr());
   //   ChunkHandle h = region_begin_chunk;
@@ -878,7 +771,7 @@ void ArenaImpl::ResetChunksUsingStream(const OrtSyncStream* stream) {
   //     Chunk* c = ChunkFromHandle(h);
   //     if (c->stream == target_stream) {
   //       c->stream = nullptr;
-  //       // c->stream_timestamp = 0;
+  //       c->stream_sync_id = 0;
   //     }
   //     h = c->next;
   //   }

@@ -350,9 +350,14 @@ typedef struct OrtAllocator {
   /**
    * @brief Optional allocation function to use for memory allocations made during session initialization.
    * Use this function if you want to separate allocations made by ORT during Run() calls from
-   * those made during session initialization. This allows for separate memory management strategies for these allocations.
+   * those made during session initialization. This allows for separate memory management strategies for these
+   * allocations.
+   *
+   * \return void* pointer to an allocated block of `size` bytes
+   *
+   * \since 1.18
    */
-  void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);  ///< Returns a pointer to an allocated block of `size` bytes
+  void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);
 
   /**
    * @brief Function used to get the statistics of the allocator.
@@ -371,26 +376,26 @@ typedef struct OrtAllocator {
    * - MaxAllocSize: The max single allocation seen.
    *
    * NOTE: If the allocator does not implement this function, the OrtKeyValuePairs instance will be empty.
+   *
+   * \since 1.23
    */
   ORT_API2_STATUS(GetStats, _In_ const struct OrtAllocator* this_, _Outptr_ OrtKeyValuePairs** out);
 
-  // TODO: We need to figure out what this should support. The ORT 'StreamAwareArena' isn't overly sophisticated and
-  //       there's no actual usage of things like cudaMallocAsync. It's more about assigning a chunk to a stream and
-  //       adding a wait if a different stream wants to use it. But even that is a little suspicious as it doesn't
-  //       change the assigned stream after the wait. Because there's no async allocation we're potentially over
-  //       allocating. e.g. if there are multiple allocations to do, a release from an allocation may happen prior to
-  //       having to do the async allocation vs. synchronously doing all allocations upfront (IIRC the context was
-  //       pipelining parts of a diffusion model but need to double check the scenarios where that would matter).
-  //
-  //       We could try to enable support for async alloc/free without an arena but not sure if that is meaningful
-  //       as we have always used the arena for GPU allocations for performance reasons. Would async alloc/free
-  //       provide the same performance as having the arena? Perf testing would be needed to determine that.
-  //
-  //       If the EP implements their own arena directly none of this is our concern, provided the API enables
-  //       everything. Possibly the biggest issue is that our arena is tracking the allocation:stream pairing. Do we
-  //       need to have an AsyncFree where the stream is passed in by ORT? If so we'd need to add the stream to the
-  //       OrtValue.
-  void*(ORT_API_CALL* AsyncAlloc)(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream);
+  /** \brief Allocate using a stream.
+   *
+   * If the allocator is stream aware this enables allocation on a stream.
+   *
+   * Set to nullptr if not supported, and Alloc will be used in that case.
+   *
+   * \param[in] this_ OrtAllocator instance
+   * \param[in] size Size of the allocation in bytes
+   * \param[in] stream The stream to allocate on.
+   *
+   * \return void* pointer to an allocated block of `size` bytes
+   *
+   * \since 1.23
+   */
+  void*(ORT_API_CALL* AllocOnStream)(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -6104,7 +6109,6 @@ struct OrtApi {
    * \param[in] env The OrtEnv instance to create the shared allocator in.
    * \param[in] ep_device The OrtEpDevice instance to create the shared allocator for.
    * \param[in] mem_type The memory type to use for the shared allocator.
-   * \param[in] allocator_type The type of allocator to create (e.g. OrtAllocatorType::OrtArenaAllocator).
    * \param[in] allocator_options Optional key-value pairs to configure the allocator. If arena based, see
    *                              include/onnxruntime/core/framework/allocator.h for the keys and values that can be
    *                              used.
@@ -6115,8 +6119,7 @@ struct OrtApi {
    * \since Version 1.23
    */
   ORT_API2_STATUS(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
-                  _In_ OrtDeviceMemoryType mem_type, _In_ OrtAllocatorType allocator_type,
-                  _In_opt_ const OrtKeyValuePairs* allocator_options,
+                  _In_ OrtDeviceMemoryType mem_type, _In_opt_ const OrtKeyValuePairs* allocator_options,
                   _Outptr_opt_ OrtAllocator** allocator);
 
   /** \brief Get a shared allocator from the OrtEnv.

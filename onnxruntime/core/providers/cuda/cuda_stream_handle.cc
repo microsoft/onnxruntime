@@ -154,6 +154,9 @@ Status CudaStream::CleanUpOnRunEnd() {
     return Status::OK();
   // Release the ownership of cpu_buffers_info so that the underlying
   // object will keep alive until the end of ReleaseCpuBufferCallback.
+  // TODO: Need to extract the stream logic into the OrtStreamSyncImpl to separate from this usage as the arena
+  //       will be provided by the EP and cannot be detected by checking OrtArenaAllocator as that is reserved for the
+  //       ORT arena.
   if (release_cpu_buffer_on_cuda_stream_ && cpu_allocator_->Info().alloc_type == OrtArenaAllocator) {
     std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
     cpu_buffers_info->allocator = cpu_allocator_;

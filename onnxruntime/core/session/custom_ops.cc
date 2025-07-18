@@ -760,7 +760,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetScratchBuffer, _In_ const OrtKerne
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
   }
   onnxruntime::Stream* stream = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
-  *out = AllocateBufferWithOptions(*allocator, count_or_bytes, false, stream, stream->GetWaitNotificationFn());
+  *out = AllocateBufferWithOptions(*allocator, count_or_bytes, false, stream);
   return nullptr;
 };
 

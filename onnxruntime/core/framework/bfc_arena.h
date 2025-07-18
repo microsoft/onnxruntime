@@ -517,14 +517,16 @@ class BFCArena : public IAllocator {
   // is to be considered for shrinkage or not.
   bool consider_first_allocation_region_for_shrinkage_;
 
+  std::unordered_map<const Stream*, std::set<ChunkHandle>> stream_to_chunks_;
+
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };
+
 #ifdef ORT_ENABLE_STREAM
 class StreamAwareArena : public BFCArena {
  public:
   StreamAwareArena(std::unique_ptr<IAllocator> resource_allocator,
                    size_t total_memory,
-                   // bool enable_dynamic_cross_stream_sharing,
                    ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
                    int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
                    int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
@@ -532,18 +534,13 @@ class StreamAwareArena : public BFCArena {
                    int64_t max_power_of_two_extend_bytes = DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES);
 
   // Standard alloc behavior. Returns valid pointer if size > 0 and memory was available. Otherwise returns nullptr.
-  void* AllocOnStream(size_t size, Stream* current_stream_id, WaitNotificationFn wait_fn);
+  void* AllocOnStream(size_t size, Stream* current_stream_id);
 
   void ReleaseStreamBuffers(Stream* stream);
 
   static StreamAwareArena* FromBFCArena(BFCArena& arena) {
     return arena.GetArenaType() == ArenaType::StreamAwareArena ? reinterpret_cast<StreamAwareArena*>(&arena) : nullptr;
   }
-
-  // virtual void WaitOnChunk(Stream* chunk_stream, Stream* target_stream, WaitNotificationFn wait_fn) const override;
-
- private:
-  // bool enable_cross_stream_reusing_;
 };
 #endif
 #ifdef __GNUC__

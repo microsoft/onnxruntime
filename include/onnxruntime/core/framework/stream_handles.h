@@ -51,11 +51,11 @@ class Stream {
 
   // Get the current synchronization ID.
   // The value is 0 until this stream records an event.
-  // The sync id is incremented before each new event is recorded in the our stream via Notification::Activate.
+  // The sync id is incremented before each new event that is recorded in our stream via Notification::Activate.
   uint64_t GetCurrentSyncId() const { return sync_id_; }
 
   // Return the sync id from when the last synchronization happened between producer_stream and this stream.
-  // i.e. the sync id for the event that the producer stream recorded and we waited on
+  // i.e. the id for the event that the producer stream recorded and we waited on
   //
   // Returns 0 if the streams have not previously been synchronized.
   uint64_t GetSyncIdForLastWaitOnStream(Stream* producer_stream) const {
@@ -68,9 +68,9 @@ class Stream {
 
   // Get the sync information for streams we have waited on.
   std::unordered_map<Stream*, uint64_t> RecordNotificationActivated() {
-    // copy our sync info so the notification can pass it on
+    // copy our sync info so the notification can pass it on to any waiting streams
     auto sync_info = producer_stream_sync_info_;
-    // and add ourself as this is passed to the waiting streams
+    // and add our info to the copy, incrementing the sync_id
     sync_info[this] = ++sync_id_;
 
     return sync_info;
@@ -85,19 +85,17 @@ class Stream {
     return nullptr;
   }
 
-  // used in custom ops.
-  virtual WaitNotificationFn GetWaitNotificationFn() const { return nullptr; }
-
  private:
   StreamHandle handle_;
   const OrtDevice& device_;
 
   // current sync id. equivalent to a counter for the number of events we have recorded in the underlying stream.
+  // 0 == no events recorded. sync_id_ is updated prior to recording a new event.
   std::atomic<uint64_t> sync_id_{0};
 
   // This is a map to track synchronization points between streams. When we wait on another stream (the producer)
   // we add an entry to the map for that stream.
-  // The entry has the sync id (really the event number) from the producer stream for the event we waited on.
+  // The entry has the sync id from the producer stream for the event we waited on.
   //
   // TODO: use inline container.
   // currently this class is header only, but abseil doesn't compile with nvcc
@@ -115,18 +113,16 @@ class Notification {
   explicit Notification(Stream& s) : stream_(s) {}
   virtual ~Notification() = default;
 
-  // Activate the notification. This records an event in the Notification's stream that other streams can wait on.
-  // It increments the current sync id for the Notification's stream, and captures that as well as
-  // information about previous synchronizations that the Notification's stream has done.
+  // Activate the notification. This records an event in the Stream that created the Notification that other streams can wait on.
   void ActivateAndUpdate() {
     Activate();
 
-    // copy the upstream sync info
+    // copy the sync info. this includes an entry for stream_ with the next sync id.
     stream_sync_info_ = stream_.RecordNotificationActivated();
   }
 
   // Get the sync history for the producer stream that created this Notification.
-  // The notification must be activated previously.
+  // The notification must have be activated previously.
   const std::unordered_map<Stream*, uint64_t>& GetStreamSyncInfo() const {
     return stream_sync_info_;
   }

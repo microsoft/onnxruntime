@@ -36,7 +36,9 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
                                              /*vendor*/ 0xBE57, /* device_id */ 0,
                                              OrtDeviceMemoryType_DEFAULT,
                                              /*alignment*/ 1024,
-                                             OrtAllocatorType::OrtDeviceAllocator,  // no arena
+                                             // it is invalid to use OrtArenaAllocator as that is reserved for the
+                                             // internal ORT Arena implementation
+                                             OrtAllocatorType::OrtDeviceAllocator,
                                              &mem_info);
   assert(status == nullptr);  // should never fail.
 
@@ -49,6 +51,8 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
                                        /*vendor*/ 0xBE57, /* device_id */ 0,
                                        OrtDeviceMemoryType_DEFAULT,
                                        /*alignment*/ 0,
+                                       // it is invalid to use OrtArenaAllocator as that is reserved for the
+                                       // internal ORT Arena implementation
                                        OrtAllocatorType::OrtDeviceAllocator,
                                        &mem_info);
   assert(status == nullptr);  // should never fail.
@@ -60,6 +64,9 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
                                        /*vendor*/ 0xBE57, /* device_id */ 0,
                                        OrtDeviceMemoryType_HOST_ACCESSIBLE,
                                        /*alignment*/ 0,
+                                       // it is invalid to use OrtArenaAllocator as that is reserved for the
+                                       // internal ORT Arena implementation
+
                                        OrtAllocatorType::OrtDeviceAllocator,
                                        &mem_info);
   assert(status == nullptr);  // should never fail.
@@ -212,11 +219,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   *allocator = nullptr;
 
   // NOTE: The factory implementation can return a shared OrtAllocator* instead of creating a new instance on each call.
-  //       To do this just make ReleaseAllocatorImpl a no-op.
+  //       To do this make ReleaseAllocatorImpl a no-op.
 
-  // NOTE: If OrtMemoryInfo has allocator type (call MemoryInfoGetType) of OrtArenaAllocator, an ORT BFCArena
-  //       will be added to wrap the returned OrtAllocator. The EP is free to implement its own arena, and if it
-  //       wants to do this the OrtMemoryInfo MUST be created with an allocator type of OrtDeviceAllocator.
+  // NOTE: EP should implement it's own arena logic. ep_arena.cc/h is provided as a reference. `allocator_options`
+  //       can be used for arena configuration.
 
   // NOTE: The OrtMemoryInfo pointer should only ever be coming straight from an OrtEpDevice, and pointer based
   // matching should work.

@@ -447,7 +447,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
                 Stream* mem_pattern_stream = device_streams_->GetRootStream();
 
                 if (stream_aware_arena) {
-                  buffer = stream_aware_arena->AllocOnStream(peak_size, mem_pattern_stream, nullptr);
+                  buffer = stream_aware_arena->AllocOnStream(peak_size, mem_pattern_stream);
 
                   // this seems unnecessary. any memory pattern buffer would be in use for the entire inference, so
                   // there's no point at which another stream (as streams are per-inference) would be able to use it.
@@ -456,10 +456,10 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
                   //
                   // Commenting out to verify.
                   // for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
-                  //  stream_aware_arena->WaitOnChunk(mem_pattern_stream, device_streams_->GetStream(j), nullptr);
+                  //  stream_aware_arena->WaitOnChunk(mem_pattern_stream, device_streams_->GetStream(j));
                   //}
                 } else {
-                  buffer = alloc->AsyncAlloc(peak_size, mem_pattern_stream);
+                  buffer = alloc->AllocOnStream(peak_size, mem_pattern_stream);
 
                   // pending the above verification, we shouldn't need to do anything else here. if we do that has
                   // implications to the API required for an EP to implement its own stream aware arena.
@@ -603,13 +603,11 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     if (stream_aware_arena || stream_aware_allocator) {
       size_t buffer_size = Tensor::CalculateTensorStorageSize(element_type, shape);
       // the reused memory must from same EP
-      auto wait_handle = session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(current_stream->GetDevice(),
-                                                                                        current_stream->GetDevice());
       void* p_data = nullptr;
       if (stream_aware_arena) {
-        p_data = stream_aware_arena->AllocOnStream(buffer_size, current_stream, wait_handle);
+        p_data = stream_aware_arena->AllocOnStream(buffer_size, current_stream);
       } else {
-        p_data = alloc->AsyncAlloc(buffer_size, current_stream);
+        p_data = alloc->AllocOnStream(buffer_size, current_stream);
       }
       Tensor::InitOrtValue(element_type, shape, p_data, std::move(alloc), ort_value);
     } else {

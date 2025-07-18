@@ -86,8 +86,11 @@ class Stream;
 namespace synchronize {
 class Notification;
 }
+
 using WaitNotificationFn = std::function<void(Stream*, synchronize::Notification&)>;
-void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
+void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream,
+                                // wait fn is for backwards compat with provider bridge
+                                WaitNotificationFn ignored = nullptr);
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
@@ -106,7 +109,7 @@ class IAllocator {
   virtual void* Alloc(size_t size) = 0;
 
   virtual bool IsStreamAware() const { return false; }
-  virtual void* AsyncAlloc(size_t size, Stream* /*stream*/) { return Alloc(size); }
+  virtual void* AllocOnStream(size_t size, Stream* /*stream*/) { return Alloc(size); }
 
   /**
    * Free memory at p.
@@ -195,7 +198,7 @@ class IAllocator {
   template <typename T>
   static IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<IAllocator> allocator, size_t count_or_bytes,
                                               bool use_reserve = false,
-                                              Stream* stream = nullptr, WaitNotificationFn wait_fn = nullptr) {
+                                              Stream* stream = nullptr) {
     ValidateAllocator(allocator);
 
     // for now limit to fundamental types. we could support others, but to do so either we or the caller
@@ -213,7 +216,7 @@ class IAllocator {
     }
 
     // allocate
-    T* p = static_cast<T*>(AllocateBufferWithOptions(*allocator, alloc_size, use_reserve, stream, std::move(wait_fn)));
+    T* p = static_cast<T*>(AllocateBufferWithOptions(*allocator, alloc_size, use_reserve, stream, nullptr));
     ValidateAllocation(p, alloc_size);
 
     return IAllocatorUniquePtr<T>{p,

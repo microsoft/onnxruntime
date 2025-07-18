@@ -35,6 +35,8 @@ class DeviceStreamCollectionImpl {
     for (auto it : allocators_) {
       if (it.second->Info().device == stream->GetDevice() &&
           it.second->Info().alloc_type == OrtArenaAllocator) {
+        // we only do this for the ORT arena allocator.
+        // an EP arena allocator cleanup will be run via the call to Stream::OnSessionRunEnd
         auto* arena_alloc = static_cast<BFCArena*>(it.second.get());
         auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
         if (stream_aware_alloc) {

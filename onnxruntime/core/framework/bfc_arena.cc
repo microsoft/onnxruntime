@@ -252,8 +252,16 @@ BFCArena::ChunkHandle BFCArena::AllocateChunk() {
 
 void BFCArena::DeallocateChunk(ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
-  c->stream = nullptr;
-  c->stream_sync_id = 0;
+  if (c->stream) {
+    if (auto it = stream_to_chunks_.find(c->stream); it != stream_to_chunks_.end()) {
+      size_t result = it->second.erase(h);
+      static_cast<void>(result);  // doesn't matter if it wasn't found
+    }
+
+    c->stream = nullptr;
+    c->stream_sync_id = 0;
+  }
+
   c->next = free_chunks_list_;
   free_chunks_list_ = h;
 }
@@ -314,9 +322,13 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
                                     WaitNotificationFn wait_fn*/
 ) {
   if (num_bytes == 0) {
-    LOGS_DEFAULT(VERBOSE) << "tried to allocate 0 bytes";
     return nullptr;
   }
+
+  if (stream && stream_to_chunks_.find(stream) == stream_to_chunks_.end()) {
+    stream_to_chunks_.insert({stream, std::set<ChunkHandle>{}});
+  }
+
   // First, always allocate memory of at least kMinAllocationSize
   // bytes, and always allocate multiples of kMinAllocationSize bytes
   // so all memory addresses are nicely byte aligned.
@@ -881,8 +893,8 @@ StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocato
   arena_type_ = ArenaType::StreamAwareArena;
 }
 
-void* StreamAwareArena::AllocOnStream(size_t size, Stream* current_stream, WaitNotificationFn /*wait_fn*/) {
-  return AllocateRawInternal(size, false, current_stream /*, enable_cross_stream_reusing_, wait_fn*/);
+void* StreamAwareArena::AllocOnStream(size_t size, Stream* current_stream) {
+  return AllocateRawInternal(size, false, current_stream);
 }
 
 void StreamAwareArena::ReleaseStreamBuffers(Stream* stream) {
@@ -890,21 +902,5 @@ void StreamAwareArena::ReleaseStreamBuffers(Stream* stream) {
   ResetChunkOnTargetStream(stream, true);
 }
 
-// void StreamAwareArena::WaitOnChunk(Stream* chunk_stream, Stream* consumer_stream, WaitNotificationFn wait_fn) const {
-//   if (chunk_stream && consumer_stream && chunk_stream != consumer_stream) {
-//     auto notification = chunk_stream->CreateNotification(1);
-//     // add event to the stream allocating the chunk
-//
-//     // this also adds an entry to the sync table in the notifaction for the producer stream with the new timestamp
-//     notification->ActivateAndUpdate();
-//     if (wait_fn) {
-//       // add a wait event to the consumer stream
-//       wait_fn(consumer_stream, *notification);
-//     }
-//
-//     // consumer stream now has copy of the stream sync table from the producer stream + the new entry for the producer stream
-//     consumer_stream->RecordSyncInfo(*notification);
-//   }
-// }
 #endif
 }  // namespace onnxruntime

@@ -189,6 +189,21 @@ ORT_API_STATUS_IMPL(CreateMemoryInfoWithNewAllocatorType, _In_ const OrtMemoryIn
   API_IMPL_END
 }
 
+ORT_API(uint64_t, GetSyncIdForLastWaitOnStream,
+        _In_ const OrtSyncStream* producer_stream, _In_ const OrtSyncStream* consumer_stream) {
+  uint64_t id{0};
+  if (producer_stream && consumer_stream) {
+    const auto& producer = *static_cast<Stream*>(producer_stream);
+    const auto& consumer = *static_cast<Stream*>(consumer_stream);
+
+    // If both streams are valid, we can return the sync id for the last wait on the consumer stream.
+    // This is useful for synchronizing operations between different streams.
+    id = consumer.GetSyncIdForLastWaitOnStream(producer);
+  }
+
+  return id;
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -210,7 +225,8 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::MemoryDevice_GetMemoryType,
     &OrtExecutionProviderApi::MemoryDevice_GetVendorId,
     &OrtExecutionProviderApi::MemoryDevice_GetDeviceId,
-    &OrtExecutionProviderApi::CreateMemoryInfoWithNewAllocatorType,
+
+    &OrtExecutionProviderApi::GetSyncIdForLastWaitOnStream,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
