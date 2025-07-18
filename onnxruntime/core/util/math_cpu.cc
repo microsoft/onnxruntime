@@ -201,6 +201,66 @@ void GemmEx<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, p
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
 }
 
+template <>
+void GemmEx<MLFloat16, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                                   MLFloat16 alpha, const MLFloat16* A, int lda, const MLFloat16* B, int ldb, MLFloat16 beta,
+                                   MLFloat16* C, int ldc, ThreadPool*) {
+  // The following function is not implemented for MLFloat16 in Mlas.
+  // MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
+  // Threadpool is not used.
+  auto C_mat = EigenMatrixMapWithStrides<Eigen::half>(reinterpret_cast<Eigen::half*>(C), N, M, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldc, 1));
+  if (beta == MLFloat16(0.f)) {
+    C_mat.setZero();
+  } else {
+    C_mat *= *reinterpret_cast<Eigen::half*>(&beta);
+  }
+  Eigen::half alpha_half = *reinterpret_cast<const Eigen::half*>(&alpha);
+  switch (TransA) {
+    case CblasNoTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() += alpha_half * (ConstEigenMatrixMapWithStrides<Eigen::half>(
+                                               reinterpret_cast<const Eigen::half*>(B), N, K, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldb, 1)) *
+                                           ConstEigenMatrixMapWithStrides<Eigen::half>(
+                                               reinterpret_cast<const Eigen::half*>(A), K, M, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(lda, 1)));
+          return;
+        case CblasTrans:
+          C_mat.noalias() += alpha_half * (ConstEigenMatrixMapWithStrides<Eigen::half>(
+                                               reinterpret_cast<const Eigen::half*>(B), K, N, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldb, 1))
+                                               .transpose() *
+                                           ConstEigenMatrixMapWithStrides<Eigen::half>(
+                                               reinterpret_cast<const Eigen::half*>(A), K, M, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(lda, 1)));
+          return;
+        default:
+          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    case CblasTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() += alpha_half * (ConstEigenMatrixMapWithStrides<Eigen::half>(
+                                               reinterpret_cast<const Eigen::half*>(B), N, K, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldb, 1)) *
+                                           ConstEigenMatrixMapWithStrides<Eigen::half>(
+                                               reinterpret_cast<const Eigen::half*>(A), M, K, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(lda, 1))
+                                               .transpose());
+          return;
+        case CblasTrans:
+          C_mat.noalias() += alpha_half * (ConstEigenMatrixMapWithStrides<Eigen::half>(
+                                               reinterpret_cast<const Eigen::half*>(B), K, N, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldb, 1))
+                                               .transpose() *
+                                           ConstEigenMatrixMapWithStrides<Eigen::half>(
+                                               reinterpret_cast<const Eigen::half*>(A), M, K, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(lda, 1))
+                                               .transpose());
+          return;
+        default:
+          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    default:
+      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
+  }
+}
+
 template <typename T, class Provider>
 void Gemv(CBLAS_TRANSPOSE TransA,
           int M,

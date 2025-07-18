@@ -80,6 +80,17 @@ inline void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, T sof
   MlasComputeSoftcap(scores, scores, sequence_length, softcap);
 }
 
+template <>
+inline void ComputeAttentionSoftcapInplace(MLFloat16* scores, int sequence_length, MLFloat16 softcap) {
+  // Mlas Lacks kernels for fp16 softcap. The code is similar to the softcap implementation in mlas.
+  float x;
+  float cap = softcap.ToFloat();
+  for (size_t i = 0; i < sequence_length; i++) {
+    x = std::tanh(scores[i].ToFloat() / cap) * cap;
+    scores[i] = MLFloat16(x);
+  }
+}
+
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
   is_causal_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("is_causal", 0)) == 1;
@@ -378,21 +389,36 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                    static_cast<int>(parameters.past_sequence_length + parameters.kv_sequence_length),  // ldc
                    MLFloat16(alpha).val, MLFloat16(beta).val, nullptr);
         } else {
-          ORT_ENFORCE(!parameters.transpose_output, "Transposed Q and K are not yet supported float16 in Attention.");
-          // There is no implementation of Gemm for float16 supporting lda, ldb, ldc.
-          TensorShape c_shape({parameters.q_sequence_length, parameters.total_sequence_length});
-          Gemm_MLFloat16(CblasNoTrans, CblasTrans,
-                         static_cast<ptrdiff_t>(parameters.q_sequence_length),      // M
-                         static_cast<ptrdiff_t>(parameters.total_sequence_length),  // N
-                         static_cast<ptrdiff_t>(parameters.head_size),              // K
-                         MLFloat16(alpha),
-                         Q + q_input_chunk_length * i,
-                         k,
-                         MLFloat16(beta),
-                         output,
-                         &c_shape,
-                         output,
-                         nullptr);
+          if (parameters.transpose_output) {
+            math::GemmEx<T, ThreadPool>(CblasNoTrans,
+                                        CblasTrans,
+                                        parameters.q_sequence_length,      // M
+                                        parameters.total_sequence_length,  // N
+                                        parameters.head_size,              // K
+                                        MLFloat16(alpha),
+                                        Q + q_input_chunk_length * parameters.q_num_heads * batch_i + head_i * parameters.head_size,
+                                        parameters.head_size * parameters.q_num_heads,  // lda
+                                        transposed_k ? K + k_input_chunk_length * parameters.kv_num_heads * batch_i + head_i * parameters.head_size : k,
+                                        transposed_k ? parameters.head_size * parameters.kv_num_heads : parameters.head_size,  // ldb
+                                        MLFloat16(beta),
+                                        output,
+                                        parameters.total_sequence_length,  // ldc
+                                        nullptr);
+          } else {
+            TensorShape c_shape({parameters.q_sequence_length, parameters.total_sequence_length});
+            Gemm_MLFloat16(CblasNoTrans, CblasTrans,
+                           static_cast<ptrdiff_t>(parameters.q_sequence_length),      // M
+                           static_cast<ptrdiff_t>(parameters.total_sequence_length),  // N
+                           static_cast<ptrdiff_t>(parameters.head_size),              // K
+                           MLFloat16(alpha),
+                           Q + q_input_chunk_length * i,
+                           k,
+                           MLFloat16(beta),
+                           output,
+                           &c_shape,
+                           output,
+                           nullptr);
+          }
         }
       } else {
         ORT_THROW("Unsupported data type for attention Q*K multiplication: ", DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
@@ -566,6 +592,7 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
                                           v_head_size * num_heads,  // ldc
                                           nullptr);
             } else if constexpr (std::is_same<T, MLFloat16>::value) {
+              // This switch should probably be moved to math_cpu.h.
               if (MlasHGemmSupported(CblasNoTrans, CblasNoTrans)) {
                 MlasGemm(CblasNoTrans,
                          CblasNoTrans,
@@ -580,8 +607,20 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
                          v_head_size * num_heads,  // ldc
                          MLFloat16(1.f).val, MLFloat16(0.f).val, nullptr);
               } else {
-                // There is no implementation of Gemm for float16 supporting lda, ldb, ldc.
-                ORT_THROW("float16 Gemm is not available for attention QK*V multiplication");
+                math::GemmEx<T, ThreadPool>(CblasNoTrans,
+                                            CblasNoTrans,
+                                            sequence_length,                                                                              // M
+                                            v_head_size,                                                                                  // N
+                                            total_sequence_length,                                                                        // K
+                                            MLFloat16(1.f),                                                                               // alpha
+                                            attention_probs + attention_probs_offset,                                                     // QK
+                                            total_sequence_length,                                                                        // lda
+                                            transposed_v ? V + head_i * v_head_size + v_input_chunk_length * kv_num_heads * batch_i : v,  // V
+                                            transposed_v ? v_head_size * kv_num_heads : v_head_size,                                      // ldb
+                                            MLFloat16(0.f),                                                                               // beta
+                                            output + ((batch_i * sequence_length * num_heads + head_i) * v_head_size),
+                                            v_head_size * num_heads,  // ldc
+                                            nullptr);
               }
             } else {
               ORT_THROW("Unsupported data type for attention QK*V multiplication: ",
