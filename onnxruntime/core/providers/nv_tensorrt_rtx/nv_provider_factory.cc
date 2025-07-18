@@ -159,6 +159,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
                          const char* ep_name,
                          OrtHardwareDeviceType hw_type)
       : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
+    ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
     GetVersion = GetVersionImpl;
@@ -184,7 +185,6 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     const auto* factory = static_cast<const NvTensorRtRtxEpFactory*>(this_ptr);
     return factory->vendor_id;
   }
-
 
   static const char* GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
     return ORT_VERSION;
@@ -235,7 +235,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
   }
 
   const OrtApi& ort_api;
-  const std::string ep_name;
+  const std::string ep_name{kNvTensorRTRTXExecutionProvider};
   const std::string vendor{"NVIDIA"};
 
   // NVIDIA vendor ID. Refer to the ACPI ID registry (search NVIDIA): https://uefi.org/ACPI_ID_List
