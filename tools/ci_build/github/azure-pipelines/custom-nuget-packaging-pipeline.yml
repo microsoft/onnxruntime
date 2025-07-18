@@ -43,7 +43,6 @@ extends:
     sdl:
       binskim:
         enabled: true
-        analyzeTargetGlob: $(Build.ArtifactStagingDirectory)/**.dll
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
         os: windows
@@ -61,6 +60,7 @@ extends:
       codeSignValidation:
         enabled: true
         break: true
+        additionalTargetsGlobPattern: -|**\QnnCpu.dll;-|**\QnnGpu.dll;-|**\QnnHtp*.dll;-|**\QnnSystem.dll
       policheck:
         enabled: true
         exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
