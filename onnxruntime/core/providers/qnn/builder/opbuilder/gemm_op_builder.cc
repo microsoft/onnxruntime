@@ -214,37 +214,39 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   if (split_gemm) {
     // If split_gemm, input and output of Gemm must at least 2d.
     const std::string& org_output_name = node_unit.Outputs()[0].node_arg.Name();
-    TensorInfo output_info{};
+    TensorInfo input_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_info));  
+    TensorInfo output_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
-    std::vector<uint32_t> op_output_shape = output_info.shape;
+    std::vector<uint32_t> output_shape = output_info.shape;
     QnnQuantParamsWrapper op_output_quant_param = output_info.quant_param.Copy();
 
     const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(org_output_name);
-    Qnn_TensorType_t op_output_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
 
     // Create FullyConnected Node
-    std::string split_matmul_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_FullyConnected";
-    std::string split_matmul_output_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_FullyConnected_output";
-    std::vector<std::string> input_0_1;
-    input_0_1.push_back(input_names[0]);
-    input_0_1.push_back(input_names[1]);
-
-    QnnTensorWrapper matmul_output_wrapper(split_matmul_output_name, QNN_TENSOR_TYPE_NATIVE, output_info.qnn_data_type,
-                                           op_output_quant_param.Copy(), std::vector<uint32_t>(op_output_shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(matmul_output_wrapper)),
+    std::vector<std::string> gemm_input_0_1;
+    gemm_input_0_1.push_back(input_names[0]);
+    gemm_input_0_1.push_back(input_names[1]);
+    std::string split_fully_connected_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_FullyConnected";
+    std::string split_fully_connected_output_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_FullyConnected_output";
+    QnnTensorWrapper fully_connected_output(split_fully_connected_output_name, QNN_TENSOR_TYPE_NATIVE, input_info.qnn_data_type,
+                                                    QnnQuantParamsWrapper(), std::vector<uint32_t>(output_shape));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(fully_connected_output)),
                       "Failed to add FullyConnected output tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(split_matmul_name, QNN_OP_PACKAGE_NAME_QTI_AISW,
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(split_fully_connected_name,
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       QNN_OP_FULLY_CONNECTED,
-                                                      std::move(input_0_1),
-                                                      {split_matmul_output_name},
+                                                      std::move(gemm_input_0_1),
+                                                      {split_fully_connected_output_name},
                                                       {},
                                                       do_op_validation),
                       "Failed to add FullyConnected node.");
 
     // Create Add Node
+    Qnn_TensorType_t op_output_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
     std::string split_Add_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_Add";
     QnnTensorWrapper op_output_tensor_wrapper(org_output_name, op_output_tensor_type, output_info.qnn_data_type,
-                                              op_output_quant_param.Copy(), std::vector<uint32_t>(op_output_shape));
+                                              op_output_quant_param.Copy(), std::vector<uint32_t>(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(op_output_tensor_wrapper)),
                       "Failed to add ElementWiseAdd output tensor.");
     std::string bias_name = input_names[2];
@@ -252,8 +254,8 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(split_Add_name,
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       QNN_OP_ELEMENT_WISE_ADD,
-                                                      {split_matmul_output_name, bias_name},  // Matmul output as input
-                                                      {org_output_name},                      // Original output as output
+                                                      {split_fully_connected_output_name, bias_name},  // FullyConnected output as input
+                                                      {org_output_name}, // Original output as output
                                                       {},
                                                       do_op_validation),
                       "Failed to add ElementWiseAdd node.");

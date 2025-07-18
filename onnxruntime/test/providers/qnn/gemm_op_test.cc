@@ -54,18 +54,17 @@ TEST_F(QnnCPUBackendTests, Gemm_NonDefaultAlphaBeta_Unsupported) {
                      ExpectedEPNodeAssignment::None);  // Should not be assigned to QNN EP.
 }
 
-// Test that Gemm with general 2D bias (M, N) is NOT supported (unless M == 1).
-// QNN's FullyConnected operator only supports `outputVector = ( inputAsVector * weightsMatrix ) + biasesVector`
-TEST_F(QnnCPUBackendTests, Gemm_2D_Bias_Unsupported) {
+// Test Gemm with 2D bias is supported.
+TEST_F(QnnCPUBackendTests, Gemm_2D_Bias) {
   std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
   std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 12);
 
-  // 2D matrix mul with bias not supported.
-  RunGemmTest<float>({TestInputDef<float>({2, 3}, false, input_a_data),
-                      TestInputDef<float>({3, 4}, false, input_b_data),
-                      TestInputDef<float>({2, 4}, false, -1.0f, 1.0f)},
-                     {},
-                     ExpectedEPNodeAssignment::None);  // Should not be assigned to QNN EP.
+  // 2D matrix mul with bias is supported.
+  RunGemmTestOnCPU<float>({TestInputDef<float>({2, 3}, false, input_a_data),
+                          TestInputDef<float>({3, 4}, false, input_b_data),
+                          TestInputDef<float>({2, 4}, false, -1.0f, 1.0f)},
+                          {},
+                          ExpectedEPNodeAssignment::All);  // Assigned to QNN EP.
 
   // However, 2D matrix mul without a bias is supported. Input A's 0th dimension is interpreted as `batch_size`.
   RunGemmTest<float>({TestInputDef<float>({2, 3}, false, input_a_data),
@@ -486,6 +485,18 @@ TEST_F(QnnHTPBackendTests, Gemm_TransAB_Dynamic_B_And_Bias) {
                                          TestInputDef<float>({1, 4}, false, input_c_data)},
                                         {utils::MakeAttribute("transA", static_cast<int64_t>(1)),
                                          utils::MakeAttribute("transB", static_cast<int64_t>(1))},
+                                        ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Gemm with general 2D bias (M, N) is supported.
+TEST_F(QnnHTPBackendTests, Gemm_Dynamic_A_B_2D_Bias) {
+  std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
+  std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
+  std::vector<float> input_c_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
+  RunQDQGemmTestOnHTP<uint8_t, uint8_t>({TestInputDef<float>({2, 6}, false, input_a_data),
+                                         TestInputDef<float>({6, 4}, false, input_b_data),
+                                         TestInputDef<float>({2, 4}, false, input_c_data)},
+                                        {},
                                         ExpectedEPNodeAssignment::All);
 }
 
