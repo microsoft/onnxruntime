@@ -361,6 +361,10 @@ const ModelMetaData& Model::MetaData() const noexcept {
   return model_metadata_;
 }
 
+ModelMetaData& Model::MetaData() noexcept {
+  return model_metadata_;
+}
+
 Graph& Model::MainGraph() noexcept {
   return *graph_;
 }
