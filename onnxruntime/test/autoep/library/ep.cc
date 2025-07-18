@@ -440,9 +440,9 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
 }
 
 /*static*/
-OrtStatus* ExampleEp::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
-                                          _In_ const OrtMemoryInfo* memory_info,
-                                          _Outptr_result_maybenull_ OrtAllocator** allocator) noexcept {
+OrtStatus* ORT_API_CALL ExampleEp::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
+                                                       _In_ const OrtMemoryInfo* memory_info,
+                                                       _Outptr_result_maybenull_ OrtAllocator** allocator) noexcept {
   // A per-session allocator could be created here.
   // Logging of any issues should use ep->logger_ which is the session logger.
 
@@ -453,20 +453,19 @@ OrtStatus* ExampleEp::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
 }
 
 /*static*/
-OrtStatus* ExampleEp::CreateSyncStreamForDeviceImpl(_In_ OrtEp* this_ptr,
-                                                    _In_ const OrtMemoryDevice* memory_device,
-                                                    _Outptr_ OrtSyncStreamImpl** stream) noexcept {
+OrtStatus* ORT_API_CALL ExampleEp::CreateSyncStreamForDeviceImpl(_In_ OrtEp* this_ptr,
+                                                                 _In_ const OrtMemoryDevice* memory_device,
+                                                                 _Outptr_ OrtSyncStreamImpl** stream) noexcept {
   // A per-session OrtSyncStreamImpl can be created here if the session options affect the implementation.
   // Logging of any issues should use logger_ which is the session logger.
 
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
-  *stream = nullptr;
+  // we only create streams for the default device memory.
+  assert(ep->factory_.ep_api.MemoryDevice_GetMemoryType(memory_device) == OrtDeviceMemoryType_DEFAULT);
 
-  if (ep->factory_.ep_api.MemoryDevice_GetMemoryType(memory_device) == OrtDeviceMemoryType_DEFAULT) {
-    auto sync_stream = std::make_unique<StreamImpl>(ep->factory_, ep, nullptr);
-    *stream = sync_stream.release();
-  }
+  auto sync_stream = std::make_unique<StreamImpl>(ep->factory_, ep, nullptr);
+  *stream = sync_stream.release();
 
   return nullptr;
 }
