@@ -444,11 +444,11 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
 #ifdef _WIN32
     auto utf8_strings = utils::ConvertArgvToUtf8Strings(argc, argv);
     auto utf8_argv = utils::ConvertArgvToUtf8CharPtrs(utf8_strings);
+    auto result = options.parse(utf8_argv.size(), utf8_argv.data());
 #else
-    auto utf8_argv = argv;
+    auto result = options.parse(argc, argv);
 #endif
 
-    auto result = options.parse(utf8_argv.size(), utf8_argv.data());
     if (result.count("help")) {
       std::cout << options.help() << std::endl;
       return false;
@@ -457,7 +457,7 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
     if (result.count("f")) {
       std::basic_string<ORTCHAR_T> dim_name;
       int64_t override_val;
-      auto opt_str = utils::Utf8ToWide(result["f"].as<std::string>());
+      std::basic_string<ORTCHAR_T> opt_str = utils::Utf8ToWide(result["f"].as<std::string>());
       if (!ParseDimensionOverride(dim_name, override_val, opt_str.c_str())) {
         return false;
       }
@@ -467,7 +467,7 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
     if (result.count("F")) {
       std::basic_string<ORTCHAR_T> dim_denotation;
       int64_t override_val;
-      auto opt_str = utils::Utf8ToWide(result["F"].as<std::string>());
+      std::basic_string<ORTCHAR_T> opt_str = utils::Utf8ToWide(result["F"].as<std::string>());
       if (!ParseDimensionOverride(dim_denotation, override_val, opt_str.c_str())) {
         return false;
       }
@@ -475,7 +475,7 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
     }
 
     if (result.count("m")) {
-      auto opt_str = utils::Utf8ToWide(result["m"].as<std::string>());
+      std::basic_string<ORTCHAR_T> opt_str = utils::Utf8ToWide(result["m"].as<std::string>());
       if (!CompareCString(opt_str.c_str(), ORT_TSTR("duration"))) {
         test_config.run_config.test_mode = TestMode::kFixDurationMode;
       } else if (!CompareCString(optarg, ORT_TSTR("times"))) {

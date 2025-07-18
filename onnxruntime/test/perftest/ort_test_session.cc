@@ -88,7 +88,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       device_list.reserve(performance_test_config.selected_devices.size());
       ParseDeviceList(performance_test_config.selected_devices, device_list);
       for (auto index : device_list) {
-        if (index > (ep_devices.size() - 1)) {
+        if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
           fprintf(stderr, "The device index provided is not correct. Will skip this device id.");
         }
 

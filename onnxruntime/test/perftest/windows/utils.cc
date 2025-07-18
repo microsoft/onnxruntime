@@ -98,7 +98,7 @@ std::vector<const char*> ConvertArgvToUtf8CharPtrs(std::vector<std::string>& utf
 }
 #endif
 
-std::basic_string<ORTCHAR_T> Utf8ToWide(const std::string& utf8_str) {
+std::basic_string<ORTCHAR_T> Utf8ToOrtString(const std::string& utf8_str) {
   // ORTCHAR_T == char -> just convert to std::basic_string<char>
   if constexpr (std::is_same_v<ORTCHAR_T, char>) {
     return std::basic_string<ORTCHAR_T>(utf8_str.begin(), utf8_str.end());

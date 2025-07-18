@@ -58,6 +58,11 @@ std::unique_ptr<ICPUUsage> CreateICPUUsage() {
   return std::make_unique<CPUUsage>();
 }
 
+std::basic_string<ORTCHAR_T> Utf8ToOrtString(const std::string& utf8_str) {
+  // ORTCHAR_T == char -> just convert to std::basic_string<char>
+  return std::basic_string<ORTCHAR_T>(utf8_str.begin(), utf8_str.end());
+}
+
 }  // namespace utils
 }  // namespace perftest
 }  // namespace onnxruntime
