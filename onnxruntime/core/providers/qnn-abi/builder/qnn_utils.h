@@ -88,12 +88,15 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Param_t& qnn_param);
 std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor);
 std::ostream& operator<<(std::ostream& out, const QnnOpConfigWrapper& op_conf_wrapper);
 
-// Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::TypeProto* type_proto,
-//                       Qnn_DataType_t& tensor_data_type);
+Status GetQnnDataType(const bool is_quantized_tensor,
+                      const ONNXTensorElementDataType onnx_data_type,
+                      Qnn_DataType_t& tensor_data_type);
 
-// const std::string& GetNodeName(const NodeUnit& node_unit);
+const std::string& GetNodeName(const OrtNodeUnit& node_unit);
 
-bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false);
+bool OnnxDataTypeToQnnDataType(const ONNXTensorElementDataType onnx_data_type,
+                               Qnn_DataType_t& qnn_data_type,
+                               bool is_quantized = false);
 
 inline Status GetOnnxTensorElemDataType(const NodeArg& node_arg, /*out*/ int32_t& onnx_data_type) {
   auto type_proto = node_arg.TypeAsProto();

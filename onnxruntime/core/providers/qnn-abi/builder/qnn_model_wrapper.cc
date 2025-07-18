@@ -57,26 +57,30 @@ bool QnnModelWrapper::QnnParamExists(const std::string& param_tensor_name) const
   return model_params_map_.find(param_tensor_name) != model_params_map_.end();
 }
 
-// Status QnnModelWrapper::MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const {
-//   const std::string& tensor_name = tensor.node_arg.Name();
+Status QnnModelWrapper::MakeTensorWrapper(const OrtNodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const {
+  const std::string& tensor_name = tensor.name;
 
-//   TensorInfo tensor_info = {};
-//   ORT_RETURN_IF_ERROR(GetTensorInfo(tensor, tensor_info));
+  TensorInfo tensor_info = {};
+  ORT_RETURN_IF_ERROR(GetTensorInfo(tensor, tensor_info));
 
-//   std::vector<uint8_t> unpacked_tensor;
-//   if (tensor_info.is_initializer) {
-//     ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
-//   }
+  std::vector<uint8_t> unpacked_tensor;
+  if (tensor_info.is_initializer) {
+    // ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
+  }
 
-//   Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
-//   if (true == model_settings_.htp_shared_memory && (IsGraphInput(tensor_name) || IsGraphOutput(tensor_name))) {
-//     mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
-//   }
-//   tensor_wrapper = QnnTensorWrapper(tensor_name, GetTensorType(tensor_name), tensor_info.qnn_data_type,
-//                                     std::move(tensor_info.quant_param), std::move(tensor_info.shape),
-//                                     std::move(unpacked_tensor), mem_type);
-//   return Status::OK();
-// }
+  Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
+  if (true == model_settings_.htp_shared_memory && (IsGraphInput(tensor_name) || IsGraphOutput(tensor_name))) {
+    mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
+  }
+  tensor_wrapper = QnnTensorWrapper(tensor_name,
+                                    GetTensorType(tensor_name),
+                                    tensor_info.qnn_data_type,
+                                    std::move(tensor_info.quant_param),
+                                    std::move(tensor_info.shape),
+                                    std::move(unpacked_tensor),
+                                    mem_type);
+  return Status::OK();
+}
 
 // Status QnnModelWrapper::MakeTensorWrapper(const TensorInfo& tensor_info,
 //                                           const std::string& tensor_name,
@@ -341,6 +345,23 @@ bool QnnModelWrapper::ComposeQnnGraph(bool build_json_qnn_graph) {
 //   return true;
 // }
 
+bool QnnModelWrapper::GetOnnxShape(const std::vector<int64_t>& onnx_shape, std::vector<uint32_t>& shape) {
+  // TODO: Check what OrtApi.GetDimensions returns if no shape presents and how we should handle.
+
+  // Set shape to 1 for scalar.
+  if (onnx_shape.size() < 1) {
+    shape.push_back(1);
+    return true;
+  }
+
+  for (const int64_t& dim : onnx_shape) {
+    // TODO: Check what OrtApi.GetDimensions returns for dynamic shape.
+    shape.push_back(SafeInt<uint32_t>(dim));
+  }
+
+  return true;
+}
+
 // Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
 //                                          /*out*/ std::vector<int32_t>& zero_points,
 //                                          /*out*/ int32_t& onnx_data_type) const {
@@ -495,28 +516,29 @@ bool QnnModelWrapper::ComposeQnnGraph(bool build_json_qnn_graph) {
 //   return Status::OK();
 // }
 
-// Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& tensor_info) const {
-//   const std::string& name = input.node_arg.Name();
+Status QnnModelWrapper::GetTensorInfo(const OrtNodeUnitIODef& tensor, TensorInfo& tensor_info) const {
+  const std::string& name = tensor.name;
 
-//   // Fill in quantization param info.
-//   ORT_RETURN_IF_ERROR(tensor_info.quant_param.Init(*this, input));
+  // Fill in quantization param info.
+  // ORT_RETURN_IF_ERROR(tensor_info.quant_param.Init(*this, tensor));
 
-//   // Fill in QNN data type.
-//   tensor_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
-//   ORT_RETURN_IF_ERROR(utils::GetQnnDataType(input.quant_param.has_value(), input.node_arg.TypeAsProto(),
-//                                             tensor_info.qnn_data_type));
+  // Fill in QNN data type.
+  tensor_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(tensor.quant_param.has_value(),
+                                            tensor.type,
+                                            tensor_info.qnn_data_type));
 
-//   // Fill in shape.
-//   ORT_RETURN_IF_NOT(GetOnnxShape(input.node_arg, tensor_info.shape), "Cannot get shape");
+  // Fill in shape.
+  ORT_RETURN_IF_NOT(GetOnnxShape(tensor.shape, tensor_info.shape), "Cannot get shape");
 
-//   // Fill in initializer info.
-//   tensor_info.is_initializer = IsConstantInput(name);
-//   if (tensor_info.is_initializer) {
-//     // tensor_info.initializer_tensor = GetConstantTensor(name);
-//   }
+  // Fill in initializer info.
+  tensor_info.is_initializer = IsConstantInput(name);
+  if (tensor_info.is_initializer) {
+    // tensor_info.initializer_tensor = GetConstantTensor(name);
+  }
 
-//   return Status::OK();
-// }
+  return Status::OK();
+}
 
 Status QnnModelWrapper::AddReshapeNode(const std::string& input_name, const std::string& output_name,
                                        const std::vector<uint32_t>& input_shape,

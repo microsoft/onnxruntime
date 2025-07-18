@@ -39,11 +39,10 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
       ort_api.GetValueInfoName(io, &name);
 
       // Get type and shape.
-      OrtTypeInfo* type_info = nullptr;
-      ort_api.GetValueInfoTypeInfo(io, &(static_cast<const OrtTypeInfo*>(type_info)));
-
-      OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-      ort_api.CastTypeInfoToTensorInfo(type_info, &(static_cast<const OrtTensorTypeAndShapeInfo*>(type_shape)));
+      const OrtTypeInfo* type_info = nullptr;
+      ort_api.GetValueInfoTypeInfo(io, &type_info);
+      const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
+      ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
 
       ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
       ort_api.GetTensorElementType(type_shape, &elem_type);
@@ -57,19 +56,21 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 
       io_defs.push_back(OrtNodeUnitIODef{name, elem_type, shape});
 
-      // ort_api.ReleaseTensorTypeAndShapeInfo(type_shape);
-      // ort_api.ReleaseTypeInfo(type_info);
+      // TODO: SegFault if enabled release.
+      // ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(type_shape));
+      // ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
     }
   };
 
-  inputs_.resize(num_inputs);
+  inputs_.reserve(num_inputs);
   add_io_def(inputs_, inputs_data, num_inputs);
 
-  outputs_.resize(num_outputs);
+  outputs_.reserve(num_outputs);
   add_io_def(outputs_, outputs_data, num_outputs);
 
   ort_api.ReleaseArrayOfConstObjects(inputs_array);
   ort_api.ReleaseArrayOfConstObjects(outputs_array);
+
 }
 
 // std::vector<const Node*> Graph__Nodes(const Graph& graph) {

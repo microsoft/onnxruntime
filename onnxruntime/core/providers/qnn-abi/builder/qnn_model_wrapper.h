@@ -67,7 +67,7 @@ class QnnModelWrapper {
                       const QnnGraph_Config_t** graph_configs = nullptr);
 
   // Make a QnnTensorWrapper from an onnx input or output.
-  // Status MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const;
+  Status MakeTensorWrapper(const OrtNodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const;
   Status MakeTensorWrapper(const TensorInfo& tensor_info,
                            const std::string& tensor_name,
                            QnnTensorWrapper& tensor_wrapper) const;
@@ -180,6 +180,7 @@ class QnnModelWrapper {
   }
 
   // static bool GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t>& shape);
+  static bool GetOnnxShape(const std::vector<int64_t>& onnx_shape, std::vector<uint32_t>& shape);
 
   bool IsQnnTensorWrapperExist(const std::string& tensor_name) const;
 
@@ -207,7 +208,7 @@ class QnnModelWrapper {
     }
   }
 
-  // Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info) const;
+  Status GetTensorInfo(const OrtNodeUnitIODef& tensor, TensorInfo& tensor_info) const;
 
   Status AddReshapeNode(const std::string& input_name,
                         const std::string& output_name,

@@ -103,9 +103,17 @@ namespace onnxruntime {
 // Forward declaration for OrtNode which is used in OrtNodeUnit
 
 struct OrtNodeUnitIODef {
+  // TODO: Update this.
+  struct QuantParam {
+    const void* scale;
+    const void* zero_point{nullptr};
+    std::optional<int64_t> axis{std::nullopt};
+  };
+
   std::string name;
   ONNXTensorElementDataType type;
   std::vector<int64_t> shape;
+  std::optional<QuantParam> quant_param;
 };
 
 class OrtNodeUnit {
