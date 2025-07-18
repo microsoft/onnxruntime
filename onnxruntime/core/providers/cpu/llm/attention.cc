@@ -85,7 +85,7 @@ inline void ComputeAttentionSoftcapInplace(MLFloat16* scores, int sequence_lengt
   // Mlas Lacks kernels for fp16 softcap. The code is similar to the softcap implementation in mlas.
   float x;
   float cap = softcap.ToFloat();
-  for (size_t i = 0; i < sequence_length; i++) {
+  for (size_t i = 0; i < static_cast<size_t>(sequence_length); i++) {
     x = std::tanh(scores[i].ToFloat() / cap) * cap;
     scores[i] = MLFloat16(x);
   }
