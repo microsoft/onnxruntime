@@ -365,7 +365,6 @@ TEST(AttentionTest, Attention3DDefault) {
   );
 }
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 TEST(AttentionTest, Attention3DDefaultFloat16) {
   int batch_size = 2;            // Q.shape[0]
   int q_num_heads = 3;           // Q.shape[1]
@@ -392,7 +391,6 @@ TEST(AttentionTest, Attention3DDefaultFloat16) {
             false, true, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
-#endif
 
 TEST(AttentionTest, Attention4DDefaultBasic) {
   int batch_size = 2;            // Q.shape[0]
@@ -503,7 +501,6 @@ TEST(AttentionTest, Attention4DSoftCap) {
   );
 }
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 TEST(AttentionTest, Attention4DSoftCapFloat16) {
   int batch_size = 2;            // Q.shape[0]
   int q_num_heads = 3;           // Q.shape[1]
@@ -531,7 +528,6 @@ TEST(AttentionTest, Attention4DSoftCapFloat16) {
             false, true, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
-#endif
 
 TEST(AttentionTest, Attention4DAttnMask) {
   int batch_size = 2;            // Q.shape[0]
