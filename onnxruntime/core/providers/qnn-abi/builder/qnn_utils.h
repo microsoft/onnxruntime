@@ -264,12 +264,20 @@ Status UnpackInt4ToInt8(size_t num_int4_elems, std::vector<uint8_t>& data_bytes)
   return Status::OK();
 }
 
-template <typename T>
-std::vector<T> GetInitializerShape(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  const auto& dims = tensor_proto.dims();
-  std::vector<T> tensor_shape_vec(static_cast<size_t>(dims.size()));
+inline std::vector<int64_t> GetInitializerShape(const OrtValueInfo& initializer, const OrtApi& ort_api) {
+  const OrtTypeInfo* type_info = nullptr;
+  ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
+  ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
+  size_t num_dims;
+  ort_api.GetDimensionsCount(tensor_type_and_shape_info, &num_dims);
+  std::vector<int64_t> dims;
+  dims.resize(num_dims, 0);
+  ort_api.GetDimensions(tensor_type_and_shape_info, dims.data(), dims.size());
+
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
   for (int i = 0; i < dims.size(); ++i) {
-    tensor_shape_vec[i] = static_cast<T>(dims[i]);
+    tensor_shape_vec[i] = static_cast<int64_t>(dims[i]);
   }
 
   return tensor_shape_vec;
@@ -398,6 +406,60 @@ Status CnhwShapeToHwcn(gsl::span<const T> cnhw_shape, gsl::span<T> hwcn_shape) {
  * @return execution status of this function
  */
 Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm);
+
+inline Status UnpackInitializerData(const OrtApi& ort_api,
+                                    OrtValueInfo& initializer,
+                                    const std::filesystem::path& model_path,
+                                    std::vector<uint8_t>& unpacked_tensor) {
+  std::cout << "DEBUG: model_path: " << model_path << std::endl;
+  // // TODO, if std::vector does not use a custom allocator, the default std::allocator will
+  // // allocation the memory aligned to std::max_align_t, need look into allocating
+  // // forced aligned memory (align as 16 or larger)for unpacked_tensor
+  // if (HasExternalData(initializer)) {
+  //   ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(
+  //       initializer,
+  //       model_path.parent_path(),
+  //       unpacked_tensor));
+  //   return Status::OK();
+  // }
+
+  const OrtTypeInfo* type_info = nullptr;
+  ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
+  ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
+  ONNXTensorElementDataType onnx_data_type;
+  ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
+
+  // TODO: remove this when we support CASE_UNPACK
+  unpacked_tensor = {};
+
+  //   switch (onnx_data_type) {
+  //     CASE_UNPACK(FLOAT, float, float_data_size);
+  //     CASE_UNPACK(DOUBLE, double, double_data_size);
+  //     CASE_UNPACK(BOOL, bool, int32_data_size);
+  //     CASE_UNPACK(INT8, int8_t, int32_data_size);
+  //     CASE_UNPACK(INT16, int16_t, int32_data_size);
+  //     CASE_UNPACK(INT32, int32_t, int32_data_size);
+  //     CASE_UNPACK(INT64, int64_t, int64_data_size);
+  //     CASE_UNPACK(UINT8, uint8_t, int32_data_size);
+  //     CASE_UNPACK(UINT16, uint16_t, int32_data_size);
+  //     CASE_UNPACK(UINT32, uint32_t, uint64_data_size);
+  //     CASE_UNPACK(UINT64, uint64_t, uint64_data_size);
+  //     CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
+  //     CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
+  // #if !defined(DISABLE_FLOAT8_TYPES)
+  //     CASE_UNPACK(FLOAT8E4M3FN, onnxruntime::Float8E4M3FN, int32_data_size);
+  //     CASE_UNPACK(FLOAT8E4M3FNUZ, onnxruntime::Float8E4M3FNUZ, int32_data_size);
+  //     CASE_UNPACK(FLOAT8E5M2, onnxruntime::Float8E5M2, int32_data_size);
+  //     CASE_UNPACK(FLOAT8E5M2FNUZ, onnxruntime::Float8E5M2FNUZ, int32_data_size);
+  // #endif
+  //     CASE_UNPACK_INT4(INT4, Int4x2, int32_data_size);
+  //     CASE_UNPACK_INT4(UINT4, UInt4x2, int32_data_size);
+  //     default:
+  //       break;
+  //   }
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type: ", onnx_data_type);
+}
 
 }  // namespace utils
 }  // namespace qnn

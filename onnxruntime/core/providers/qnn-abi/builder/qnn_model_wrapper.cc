@@ -65,7 +65,7 @@ Status QnnModelWrapper::MakeTensorWrapper(const OrtNodeUnitIODef& tensor, QnnTen
 
   std::vector<uint8_t> unpacked_tensor;
   if (tensor_info.is_initializer) {
-    // ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
+    ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
   }
 
   Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
@@ -82,19 +82,19 @@ Status QnnModelWrapper::MakeTensorWrapper(const OrtNodeUnitIODef& tensor, QnnTen
   return Status::OK();
 }
 
-// Status QnnModelWrapper::MakeTensorWrapper(const TensorInfo& tensor_info,
-//                                           const std::string& tensor_name,
-//                                           QnnTensorWrapper& tensor_wrapper) const {
-//   std::vector<uint8_t> unpacked_tensor;
-//   if (tensor_info.is_initializer) {
-//     ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
-//   }
+Status QnnModelWrapper::MakeTensorWrapper(const TensorInfo& tensor_info,
+                                          const std::string& tensor_name,
+                                          QnnTensorWrapper& tensor_wrapper) const {
+  std::vector<uint8_t> unpacked_tensor;
+  if (tensor_info.is_initializer) {
+    ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
+  }
 
-//   tensor_wrapper = QnnTensorWrapper(tensor_name, GetTensorType(tensor_name), tensor_info.qnn_data_type,
-//                                     tensor_info.quant_param.Copy(), std::vector<uint32_t>(tensor_info.shape),
-//                                     std::move(unpacked_tensor));
-//   return Status::OK();
-// }
+  tensor_wrapper = QnnTensorWrapper(tensor_name, GetTensorType(tensor_name), tensor_info.qnn_data_type,
+                                    tensor_info.quant_param.Copy(), std::vector<uint32_t>(tensor_info.shape),
+                                    std::move(unpacked_tensor));
+  return Status::OK();
+}
 
 bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
   // Keep a copy of tensor name sine it will be moved with the wrapper into model_tensors_map_
@@ -475,7 +475,7 @@ bool QnnModelWrapper::GetOnnxShape(const std::vector<int64_t>& onnx_shape, std::
 // }
 
 // // Checks if a tensor in the ONNX graph is per-channel quantized.
-// Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def,
+// Status QnnModelWrapper::IsPerChannelQuantized(const OrtNodeUnitIODef& io_def,
 //                                               /*out*/ bool& is_per_channel,
 //                                               /*out*/ int64_t& axis) const {
 //   if (!io_def.quant_param) {
@@ -534,7 +534,7 @@ Status QnnModelWrapper::GetTensorInfo(const OrtNodeUnitIODef& tensor, TensorInfo
   // Fill in initializer info.
   tensor_info.is_initializer = IsConstantInput(name);
   if (tensor_info.is_initializer) {
-    // tensor_info.initializer_tensor = GetConstantTensor(name);
+    tensor_info.initializer_tensor = const_cast<OrtValueInfo*>(GetConstantTensor(name));
   }
 
   return Status::OK();
@@ -653,30 +653,38 @@ void QnnModelWrapper::GetGraphInputOutputTensorWrapper(const std::vector<std::st
   return;
 }
 
-// Status QnnModelWrapper::UnpackInitializerData(OrtValueInfo& initializer,
-//                                               std::vector<uint8_t>& unpacked_tensor) const {
-//   if (initializer.data_location() == onnx::TensorProto_DataLocation_EXTERNAL) {
-//     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, ort_graph_.ModelPath(),
-//                                                                   unpacked_tensor));
-//   } else {
-//     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor));
-//   }
+Status QnnModelWrapper::UnpackInitializerData(OrtValueInfo& initializer,
+                                              std::vector<uint8_t>& unpacked_tensor) const {
+  //  TODO: Enable this when OrtValueInfo supports external data
+  //   if (initializer.data_location() == onnx::TensorProto_DataLocation_EXTERNAL) {
+  //     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, ort_graph_.ModelPath(),
+  //                                                                   unpacked_tensor));
+  //   } else {
+  //     utils::UnpackInitializerData(api_ptrs_.ort_api, initializer, std::filesystem::path(), unpacked_tensor)
+  //   }
+  ORT_RETURN_IF_ERROR(
+      utils::UnpackInitializerData(api_ptrs_.ort_api, initializer, std::filesystem::path(), unpacked_tensor));
 
-//   int32_t onnx_data_type = initializer.data_type();
+  const OrtTypeInfo* type_info = nullptr;
+  api_ptrs_.ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
+  api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
+  ONNXTensorElementDataType onnx_data_type;
+  api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
 
-//   // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
-//   if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
-//     TensorShape shape(qnn::utils::GetInitializerShape<int64_t>(initializer));
-//     const size_t num_int4_elems = shape.Size();
-//     ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<true>(num_int4_elems, unpacked_tensor));
-//   } else if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
-//     TensorShape shape(qnn::utils::GetInitializerShape<int64_t>(initializer));
-//     const size_t num_uint4_elems = shape.Size();
-//     ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<false>(num_uint4_elems, unpacked_tensor));
-//   }
+  // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
+  if (onnx_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4) {
+    std::vector<int64_t> shape = utils::GetInitializerShape(initializer, api_ptrs_.ort_api);
+    const size_t num_int4_elems = shape.size();
+    ORT_RETURN_IF_ERROR(utils::UnpackInt4ToInt8<true>(num_int4_elems, unpacked_tensor));
+  } else if (onnx_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4) {
+    std::vector<int64_t> shape = utils::GetInitializerShape(initializer, api_ptrs_.ort_api);
+    const size_t num_uint4_elems = shape.size();
+    ORT_RETURN_IF_ERROR(utils::UnpackInt4ToInt8<false>(num_uint4_elems, unpacked_tensor));
+  }
 
-//   return Status::OK();
-// }
+  return Status::OK();
+}
 
 }  // namespace qnn
 }  // namespace onnxruntime
