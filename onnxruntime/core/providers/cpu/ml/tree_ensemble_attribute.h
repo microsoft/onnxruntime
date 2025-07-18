@@ -308,9 +308,10 @@ struct TreeEnsembleAttributesV5 {
     int64_t curr_treeid = 0;
     for (const int64_t& tree_root : tree_roots) {
       size_t tree_root_size_t = onnxruntime::narrow<size_t>(tree_root);
+      bool is_leaf = (nodes_falsenodeids[tree_root_size_t] == nodes_truenodeids[tree_root_size_t] &&
+                      nodes_falseleafs[tree_root_size_t] && nodes_trueleafs[tree_root_size_t]);
       transformInputOneTree(tree_root_size_t, curr_treeid, 0, 0U,
-                            nodes_falsenodeids[tree_root_size_t] == nodes_truenodeids[tree_root_size_t],
-                            membership_values_by_id, output);
+                            is_leaf, membership_values_by_id, output);
       curr_treeid++;
     }
   }
