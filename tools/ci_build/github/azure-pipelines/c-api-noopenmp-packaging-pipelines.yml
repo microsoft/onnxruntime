@@ -96,7 +96,8 @@ extends:
         analyzeTargetGlob: $(Build.ArtifactStagingDirectory)/**.dll
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
-        os: windows      componentgovernance:
+        os: windows
+      componentgovernance:
         ignoreDirectories: $(Build.SourcesDirectory)/onnxruntime-inference-examples
       sourceRepositoriesToScan:
         exclude:

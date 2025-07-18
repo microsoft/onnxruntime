@@ -46,11 +46,9 @@ extends:
         analyzeTargetGlob: $(Build.ArtifactStagingDirectory)/**.dll
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
-        os: windows      componentgovernance:
+        os: windows
+      componentgovernance:
         ignoreDirectories: $(Build.SourcesDirectory)/onnxruntime-inference-examples
-      sourceRepositoriesToScan:
-        exclude:
-        - repository: onnxruntime-inference-examples
       spotBugs:
         enabled: false
         justificationForDisabling: "Getting ##[error]1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
