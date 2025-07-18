@@ -24,11 +24,15 @@
 
 #include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/qnn_allocator.h"
-#include "core/providers/qnn-abi/qnn_telemetry.h"
 #include "core/providers/qnn-abi/shared_context.h"
 // #include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_configs_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_utils.h"
+
+#ifdef _WIN32
+#include <winmeta.h>
+#include "core/platform/tracing.h"
+#endif
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -1536,16 +1540,15 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   }
 
   bool tracelogging_provider_ep_enabled = false;
-#ifdef _WIN32
-  auto& provider = QnnTelemetry::Instance();
+  const Env& env = Env::Default();
+  auto& provider = env.GetTelemetryProvider();
+  auto level = provider.Level();
   if (provider.IsEnabled()) {
-    auto level = provider.Level();
     auto keyword = provider.Keyword();
     if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0 && level >= 5) {
       tracelogging_provider_ep_enabled = true;
     }
   }
-#endif  // defined(_WIN32)
 
   // ETW disabled previously, but enabled now
   if (ProfilingLevel::INVALID == profiling_level_etw_ && tracelogging_provider_ep_enabled) {
@@ -1760,8 +1763,18 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
     const std::string& timingSource,
     const std::string& eventLevel,
     const char* eventIdentifier) {
-  QnnTelemetry& qnn_telemetry = QnnTelemetry::Instance();
-  qnn_telemetry.LogQnnProfileEvent(timestamp, message, qnnScalarValue, unit, timingSource, eventLevel, eventIdentifier);
+  TraceLoggingWrite(
+      telemetry_provider_handle,
+      "QNNProfilingEvent",
+      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)),
+      TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
+      TraceLoggingValue(timestamp, "Timestamp"),
+      TraceLoggingString(message.c_str(), "Message"),
+      TraceLoggingString(qnnScalarValue.c_str(), "Value"),
+      TraceLoggingString(unit.c_str(), "Unit of Measurement"),
+      TraceLoggingString(timingSource.c_str(), "Timing Source"),
+      TraceLoggingString(eventLevel.c_str(), "Event Level"),
+      TraceLoggingString(eventIdentifier, "Event Identifier"));
 }
 #endif
 

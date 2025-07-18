@@ -62,6 +62,14 @@
 
 namespace onnxruntime {
 
+#define RETURN_IF_NOT_OK(fn, ort_api)                                   \
+  do {                                                                  \
+    Status status = (fn);                                               \
+    if (!status.IsOK()) {                                               \
+      ort_api.CreateStatus(ORT_EP_FAIL, status.ErrorMessage().c_str()); \
+    }                                                                   \
+  } while (0)
+
 // inline void InitOrtCppApi() {
 //   // Call util function in provider bridge that initializes the global api_ object.
 //   InitProviderOrtApi();

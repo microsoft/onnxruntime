@@ -74,28 +74,26 @@ Status QnnModel::ParseGraphInputOrOutput(const OrtGraph& ort_graph,
     // Validate input/output shape
     LOGS(logger, VERBOSE) << (is_input ? "input " : "output ") << i << " " << name;
     input_output_index_map.emplace(name, index++);
-    const OrtValue* input_output_def_ort_value = static_cast<const OrtValue*>(input_output_defs_data[i]);
-    OrtTensorTypeAndShapeInfo* tensor_type_and_shape = nullptr;
-    api_ptrs_.ort_api.GetTensorTypeAndShape(input_output_def_ort_value, &tensor_type_and_shape);
-    const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_const = const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape);
-    size_t num_dims;
-    api_ptrs_.ort_api.GetDimensionsCount(tensor_type_and_shape_const, &num_dims);
-    std::vector<int64_t> dims;
-    dims.resize(num_dims, 0);
-    api_ptrs_.ort_api.GetDimensions(tensor_type_and_shape_const, dims.data(), dims.size());
-    ORT_RETURN_IF(dims.empty(), "dims cannot be null for output: ", name);
+
+    const OrtTypeInfo* type_info = nullptr;
+    api_ptrs_.ort_api.GetValueInfoTypeInfo(input_output_def_data, &type_info);
+    const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
+    api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
+
+    ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    api_ptrs_.ort_api.GetTensorElementType(type_shape, &elem_type);
+
+    size_t num_dims = 0;
+    api_ptrs_.ort_api.GetDimensionsCount(type_shape, &num_dims);
 
     std::vector<int64_t> shape;
-    shape.reserve(dims.size());
-    for (const auto& dim : dims) {
-      ORT_RETURN_IF_NOT(dim > 0, "Dynamic shape is not supported yet, for output: ", name);
-      shape.push_back(dim);
-    }
-    ONNXTensorElementDataType element_type;
-    api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_const, &element_type);
-    int32_t data_type = static_cast<int32_t>(element_type);
+    shape.resize(num_dims, 0);
+    api_ptrs_.ort_api.GetDimensions(type_shape, shape.data(), shape.size());
+
     // use index i so that for graph input, it has initializers included
-    input_output_info_table.emplace(std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple(i, data_type, std::move(shape)));
+    input_output_info_table.emplace(std::piecewise_construct,
+                                    std::forward_as_tuple(name),
+                                    std::forward_as_tuple(i, static_cast<int32_t>(elem_type), std::move(shape)));
     input_output_names.push_back(name);
   }
 

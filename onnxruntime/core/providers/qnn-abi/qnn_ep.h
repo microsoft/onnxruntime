@@ -10,11 +10,14 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "HTP/QnnHtpGraph.h"
+
 #include "core/providers/qnn-abi/ort_api.h"
+#include "core/providers/qnn-abi/builder/qnn_configs_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_def.h"
 #include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
+#include "core/providers/qnn-abi/builder/qnn_model.h"
 #include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
-#include "qnn_ep_utils.h"
 #include "test/autoep/library/example_plugin_ep_utils.h"
 
 namespace onnxruntime {
@@ -43,13 +46,19 @@ class QnnEp : public OrtEp, public ApiPtrs {
   static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr,
                                                   const OrtGraph* graph,
                                                   OrtEpGraphSupportInfo* graph_support_info);
+  static OrtStatus* ORT_API_CALL CompileImpl(_In_ OrtEp* this_ptr,
+                                             _In_ const OrtGraph** graphs,
+                                             _In_ const OrtNode** fused_nodes,
+                                             _In_ size_t count,
+                                             _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
+                                             _Out_writes_(count) OrtNode** ep_context_nodes);
 
   OrtStatus* GetSupportedNodes(OrtEp* this_ptr,
                                const OrtGraph* graph,
                                const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
                                const size_t node_unit_size,
                                const logging::Logger& logger,
-                               std::unordered_set<const OrtNode*>& supported_nodes) const;
+                               std::vector<const OrtNode*>& supported_nodes) const;
 
   // // Helper functions
   // int GenerateMetadefId(const OrtGraph* graph, uint64_t& model_hash);
@@ -65,6 +74,9 @@ class QnnEp : public OrtEp, public ApiPtrs {
   // // Run start/end methods
   // OrtStatus* OnRunStart(const OrtGraph* graph, const OrtRunOptions* run_options);
   // OrtStatus* OnRunEnd(const OrtGraph* graph, const OrtRunOptions* run_options, bool sync_stream);
+
+  void InitQnnHtpGraphConfigs(
+      qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
 
   // Per-thread context management
   class PerThreadContext final {
@@ -133,14 +145,21 @@ class QnnEp : public OrtEp, public ApiPtrs {
   mutable std::unordered_map<uint64_t, uint64_t> main_graph_hash_;
   mutable std::unordered_map<uint64_t, int> model_metadef_id_;
 
-  // Backend manager for QNN operations
+  // QNN-related.
   std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
+  std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
 
-  // Configuration for HTP backend
+  // Configurations for HTP backend.
   uint32_t device_id_{0};
   qnn::HtpPerformanceMode default_htp_performance_mode_{qnn::HtpPerformanceMode::kHtpDefault};
   uint32_t default_rpc_control_latency_{0};
   qnn::ModelSettings model_settings_ = {};
+  qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
+  int32_t vtcm_size_in_mb_ = 0;
+  bool enable_HTP_FP16_precision_ = true;
+
+  bool dump_json_qnn_graph_ = false;
+  std::string json_qnn_graph_dir_ = "";
 };
 
 }

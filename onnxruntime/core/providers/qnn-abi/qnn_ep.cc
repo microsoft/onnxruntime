@@ -13,11 +13,14 @@
 #include <filesystem>
 #include <optional>
 
+#include "HTP/QnnHtpGraph.h"
+
 #include "core/providers/qnn-abi/qnn_ep_factory.h"
 // #include "core/providers/qnn-abi/shared_context.h"
 #include "core/providers/qnn-abi/builder/qnn_backend_manager.h"
+#include "core/providers/qnn-abi/builder/qnn_configs_helper.h"
+#include "core/providers/qnn-abi/builder/qnn_model.h"
 #include "core/providers/qnn-abi/builder/qnn_node_group/qnn_node_group.h"
-// #include "core/providers/qnn-abi/builder/qnn_utils.h"
 #include "core/providers/qnn-abi/qnn_ep_utils.h"
 
 // Forward declarations for NodeUnit-related classes
@@ -91,6 +94,7 @@ QnnEp::QnnEp(QnnEpFactory& factory, const std::string& name,
   std::cout << "DEBUG: QnnEp constructor called with name: " << name << std::endl;
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
+  Compile = CompileImpl;
 
   // Initialize the backend manager
   qnn::QnnBackendManagerConfig backend_config;
@@ -148,7 +152,7 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
                                     const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
                                     const size_t node_unit_size,
                                     const logging::Logger& logger,
-                                    std::unordered_set<const OrtNode*>& supported_nodes) const {
+                                    std::vector<const OrtNode*>& supported_nodes) const {
   const QnnEp* ep = static_cast<const QnnEp*>(this_ptr);
 
   OrtArrayOfConstObjects* graph_inputs = nullptr;
@@ -208,7 +212,7 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
     if (supported) {
       for (const OrtNodeUnit* node_unit : qnn_node_group->GetNodeUnits()) {
         for (const OrtNode* node : node_unit->GetAllNodesInGroup()) {
-          supported_nodes.insert(node);
+          supported_nodes.push_back(node);
         }
       }
     }
@@ -217,6 +221,42 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
   ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
   ep->ort_api.ReleaseArrayOfConstObjects(graph_outputs);
   return nullptr;
+}
+
+void QnnEp::InitQnnHtpGraphConfigs(
+    qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const {
+  if (qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::HTP) {
+    if (htp_graph_finalization_opt_mode_ != qnn::HtpGraphFinalizationOptimizationMode::kDefault) {
+      gsl::not_null<QnnHtpGraph_CustomConfig_t*> htp_graph_opt_config = configs_builder.PushCustomConfig();
+      htp_graph_opt_config->option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;
+      htp_graph_opt_config->optimizationOption.type = QNN_HTP_GRAPH_OPTIMIZATION_TYPE_FINALIZE_OPTIMIZATION_FLAG;
+      htp_graph_opt_config->optimizationOption.floatValue = static_cast<float>(htp_graph_finalization_opt_mode_);
+
+      gsl::not_null<QnnGraph_Config_t*> graph_opt_config = configs_builder.PushConfig();
+      graph_opt_config->option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+      graph_opt_config->customConfig = htp_graph_opt_config;
+    }
+
+    if (vtcm_size_in_mb_ > 0) {
+      gsl::not_null<QnnHtpGraph_CustomConfig_t*> htp_graph_opt_config_vtcm = configs_builder.PushCustomConfig();
+      htp_graph_opt_config_vtcm->option = QNN_HTP_GRAPH_CONFIG_OPTION_VTCM_SIZE;
+      htp_graph_opt_config_vtcm->vtcmSizeInMB = static_cast<uint32_t>(vtcm_size_in_mb_);
+
+      gsl::not_null<QnnGraph_Config_t*> graph_opt_config_vtcm = configs_builder.PushConfig();
+      graph_opt_config_vtcm->option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+      graph_opt_config_vtcm->customConfig = htp_graph_opt_config_vtcm;
+    }
+
+    if (enable_HTP_FP16_precision_) {
+      gsl::not_null<QnnHtpGraph_CustomConfig_t*> htp_graph_precision_config = configs_builder.PushCustomConfig();
+      htp_graph_precision_config->option = QNN_HTP_GRAPH_CONFIG_OPTION_PRECISION;
+      htp_graph_precision_config->precision = QNN_PRECISION_FLOAT16;
+
+      gsl::not_null<QnnGraph_Config_t*> graph_precision_config = configs_builder.PushConfig();
+      graph_precision_config->option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+      graph_precision_config->customConfig = htp_graph_precision_config;
+    }
+  }
 }
 
 // bool QnnEp::EpSharedContextsHasAllGraphs(const OrtGraph* graph) {
@@ -595,7 +635,7 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   std::cout << "DEBUG: #nodes: " << node_unit_holder.size() << std::endl;
 
   // Analyze nodes for QNN support
-  std::unordered_set<const OrtNode*> supported_nodes;
+  std::vector<const OrtNode*> supported_nodes;
   ep->GetSupportedNodes(this_ptr, graph, node_unit_map, node_unit_holder.size(), logger, supported_nodes);
 
   // Clean up intermediate resources
@@ -632,6 +672,14 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   size_t num_of_supported_nodes = supported_nodes.size();
   std::cout << "DEBUG: #supported nodes " << num_of_supported_nodes << std::endl;
 
+  OrtNodeFusionOptions node_fusion_options = {};
+  node_fusion_options.ort_version_supported = ORT_API_VERSION;
+  node_fusion_options.drop_constant_initializers = true;
+  RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+                                                               supported_nodes.data(),
+                                                               supported_nodes.size(),
+                                                               &node_fusion_options));
+
   //     if (!supported_nodes.empty()) {
   //         // Mock: Validate partitions (filter out single QuantizeLinear/DequantizeLinear nodes)
   //         std::vector<const OrtNode*> valid_supported_nodes;
@@ -667,6 +715,89 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   // Clean up
   ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
 
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
+                                           _In_ const OrtGraph** graphs,
+                                           _In_ const OrtNode** fused_nodes,
+                                           _In_ size_t count,
+                                           _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
+                                           _Out_writes_(count) OrtNode** ep_context_nodes) {
+  QnnEp* ep = static_cast<QnnEp*>(this_ptr);
+  auto logger = *(ep->logger_.ToInternal());
+
+  node_compute_infos;
+  ep_context_nodes;
+
+  for (size_t graph_idx = 0; graph_idx < count; ++graph_idx) {
+    const OrtGraph* graph = graphs[graph_idx];
+    const OrtNode* fused_node = fused_nodes[graph_idx];
+
+    const char* name = nullptr;
+    ep->ort_api.Node_GetName(fused_node, &name);
+    const std::string fused_node_name{name};
+
+    std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(
+        ep->qnn_backend_manager_.get(), ApiPtrs{ep->ort_api, ep->ep_api, ep->model_editor_api});
+
+    qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t> htp_graph_configs_builder(
+        QNN_GRAPH_CONFIG_INIT, QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT);
+    ep->InitQnnHtpGraphConfigs(htp_graph_configs_builder);
+
+    std::vector<const QnnGraph_Config_t*> all_graph_configs;
+    const QnnGraph_Config_t** htp_configs = htp_graph_configs_builder.GetQnnConfigs();
+    if (htp_configs) {
+      // Reserve enough for configs + nullptr
+      all_graph_configs.reserve(htp_graph_configs_builder.GetSize() + 1);
+      for (const QnnGraph_Config_t** config = htp_configs; *config; ++config) {
+        all_graph_configs.push_back(*config);
+      }
+    }
+
+    qnn::QnnSerializerConfig* qnn_serializer_config = ep->qnn_backend_manager_->GetQnnSerializerConfig();
+    if (qnn_serializer_config) {
+      // We don't bother reserving here to keep the API simpler. Also note that if we're here,
+      // we're likely debugging and not waiting for inference.
+      qnn_serializer_config->SetGraphName(fused_node_name);
+      const QnnGraph_Config_t** serializer_configs = qnn_serializer_config->Configure();
+      if (serializer_configs) {
+        for (const QnnGraph_Config_t** config = serializer_configs; *config; ++config) {
+          all_graph_configs.push_back(*config);
+        }
+      }
+    }
+
+    const QnnGraph_Config_t** all_graph_configs_ptr = nullptr;
+    if (!all_graph_configs.empty()) {
+      all_graph_configs.push_back(nullptr);
+      all_graph_configs_ptr = all_graph_configs.data();
+    }
+
+    std::string json_graph_filepath;
+
+    if (ep->dump_json_qnn_graph_) {
+      namespace fs = std::filesystem;
+      fs::path path = fs::path(ep->json_qnn_graph_dir_) / fs::path(fused_node_name + ".json");
+      json_graph_filepath = path.string();
+    }
+
+    RETURN_IF_NOT_OK(qnn_model->ComposeGraph(*graph,
+                                             *fused_node,
+                                             ep->model_settings_,
+                                             logger,
+                                             all_graph_configs_ptr,
+                                             json_graph_filepath),
+                     ep->ort_api);
+    RETURN_IF_NOT_OK(qnn_model->FinalizeGraphs(logger), ep->ort_api);
+    RETURN_IF_NOT_OK(qnn_model->SetupQnnInputOutput(logger), ep->ort_api);
+
+    ep->qnn_models_.emplace(fused_node_name, std::move(qnn_model));
+
+    // RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+  }
+
+  return ep->ort_api.CreateStatus(ORT_EP_FAIL, "ERROR");
   return nullptr;
 }
 
