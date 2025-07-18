@@ -113,6 +113,7 @@ struct TreeEnsembleAttributesV3 {
   std::vector<std::string> classlabels_strings;
   std::vector<int64_t> classlabels_int64s;
   std::vector<int64_t> class_labels;
+  std::vector<std::vector<ThresholdType>> bigsets;  // For categorical features, bigset for rule BRANCH_MEMBER_BIGSET
 };
 
 template <typename ThresholdType>
@@ -297,31 +298,38 @@ struct TreeEnsembleAttributesV5 {
         // If it is a leaf node, then next one is a false branch.
       } else {
         int64_t before = -1;
+        bool big_set = false;
         if (nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER) {
-          // node is a mode `BRANCH_MEMBER`, we need to unroll it to a chain of `BRANCH_EQ` nodes
-          before = output.nodes_truenodeids.size();
-          for (size_t i_member = 0; i_member < membership_values_by_id[curr_id].size() - 1; ++i_member) {
-            auto member = membership_values_by_id[curr_id][i_member];
-            output.nodes_nodeids.push_back(curr_nodeid);
-            output.nodes_treeids.push_back(curr_treeid);
-            output.nodes_featureids.push_back(nodes_featureids[curr_id]);
-            if (!nodes_hitrates.empty()) {
-              output.nodes_hitrates_as_tensor.push_back(nodes_hitrates[curr_id]);
-            }
-            if (!nodes_missing_value_tracks_true.empty()) {
-              output.nodes_missing_value_tracks_true.push_back(nodes_missing_value_tracks_true[curr_id]);
-            }
+          if (membership_values_by_id[curr_id].size() < 31 &&
+              *std::max_element(membership_values_by_id[curr_id].begin(), membership_values_by_id[curr_id].end()) <= static_cast<ThresholdType>(30) &&
+              *std::min_element(membership_values_by_id[curr_id].begin(), membership_values_by_id[curr_id].end()) >= static_cast<ThresholdType>(0)) {
+            // node is a mode `BRANCH_MEMBER`, we need to unroll it to a chain of `BRANCH_EQ` nodes
+            before = output.nodes_truenodeids.size();
+            for (size_t i_member = 0; i_member < membership_values_by_id[curr_id].size() - 1; ++i_member) {
+              auto member = membership_values_by_id[curr_id][i_member];
+              output.nodes_nodeids.push_back(curr_nodeid);
+              output.nodes_treeids.push_back(curr_treeid);
+              output.nodes_featureids.push_back(nodes_featureids[curr_id]);
+              if (!nodes_hitrates.empty()) {
+                output.nodes_hitrates_as_tensor.push_back(nodes_hitrates[curr_id]);
+              }
+              if (!nodes_missing_value_tracks_true.empty()) {
+                output.nodes_missing_value_tracks_true.push_back(nodes_missing_value_tracks_true[curr_id]);
+              }
 
-            output.nodes_modes.push_back(NODE_MODE_ONNX::BRANCH_EQ);
-            output.nodes_values_as_tensor.push_back(member);
+              output.nodes_modes.push_back(NODE_MODE_ONNX::BRANCH_EQ);
+              output.nodes_values_as_tensor.push_back(member);
 
-            output.nodes_falsenodeids.push_back(curr_nodeid + 1);  // false node is placed first
-            output.nodes_truenodeids.push_back(-1);                // placeholder, we do not know yet the true node id but it should be the same
-            ++curr_nodeid;
+              output.nodes_falsenodeids.push_back(curr_nodeid + 1);  // false node is placed first
+              output.nodes_truenodeids.push_back(-1);                // placeholder, we do not know yet the true node id but it should be the same
+              ++curr_nodeid;
+            }
+          } else {
+            big_set = true;
           }
         }
 
-        // node a leaf node, not a mode `BRANCH_MEMBER` or the last value of the set
+        // not a leaf node, not a mode `BRANCH_MEMBER` or the last value of the set
         output.nodes_nodeids.push_back(curr_nodeid);
         output.nodes_treeids.push_back(curr_treeid);
         output.nodes_featureids.push_back(nodes_featureids[curr_id]);
@@ -333,11 +341,15 @@ struct TreeEnsembleAttributesV5 {
         }
 
         output.nodes_modes.push_back(nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER
-                                         ? NODE_MODE_ONNX::BRANCH_EQ
+                                         ? (big_set ? NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET : NODE_MODE_ONNX::BRANCH_EQ)
                                          : nodes_modes[curr_id]);
         output.nodes_values_as_tensor.push_back(nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER
-                                                    ? membership_values_by_id[curr_id][membership_values_by_id[curr_id].size() - 1]
-                                                    : nodes_splits[curr_id]);
+                                                    ? (big_set
+                                                           ? output.bigsets.size()
+                                                           : membership_values_by_id[curr_id][membership_values_by_id[curr_id].size() - 1])
+                                                    : (nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET
+                                                           ? output.bigsets.size()
+                                                           : nodes_splits[curr_id]));
 
         output.nodes_falsenodeids.push_back(-1);              // false node is placed first
         output.nodes_truenodeids.push_back(curr_nodeid + 1);  // placeholder, we do not know yet the true node id
@@ -347,6 +359,11 @@ struct TreeEnsembleAttributesV5 {
           for (size_t i = before; i < output.nodes_truenodeids.size() - 1; ++i) {
             output.nodes_truenodeids[i] = curr_nodeid + 1;
           }
+        }
+
+        if (big_set || nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET) {
+          // If it is a big set, we need to store the membership values in a separate vector.
+          output.bigsets.push_back(membership_values_by_id[curr_id]);
         }
 
         stack.push({onnxruntime::narrow<size_t>(nodes_falsenodeids[curr_id]), -1, nodes_falseleafs[curr_id] != 0, static_cast<int64_t>(output.nodes_falsenodeids.size()) - 1});

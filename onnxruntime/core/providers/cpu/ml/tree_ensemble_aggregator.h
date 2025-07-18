@@ -69,7 +69,7 @@ struct ScoreValue {
 };
 
 enum MissingTrack : uint8_t {
-  kTrue = 16,
+  kTrue = 32,
   kFalse = 0
 };
 
@@ -85,6 +85,7 @@ union PtrOrWeight {
   } weight_data;
 };
 
+// The value must be less or equal than 31 or it will collide with the MissingTrack bits.
 enum NODE_MODE_ORT : uint8_t {
   LEAF = 1,
   BRANCH_LEQ = 2,
@@ -94,6 +95,7 @@ enum NODE_MODE_ORT : uint8_t {
   BRANCH_EQ = 10,
   BRANCH_NEQ = 12,
   BRANCH_MEMBER = 14,
+  BRANCH_MEMBER_BIGSET = 16,  // This is not used in ONNX, but it allows to have different implementation for the same rule.
 };
 
 inline NODE_MODE_ORT Convert_NODE_MODE_ONNX_to_ORT(NODE_MODE_ONNX node_mode) {
@@ -114,6 +116,8 @@ inline NODE_MODE_ORT Convert_NODE_MODE_ONNX_to_ORT(NODE_MODE_ONNX node_mode) {
       return NODE_MODE_ORT::BRANCH_NEQ;
     case NODE_MODE_ONNX::BRANCH_MEMBER:
       return NODE_MODE_ORT::BRANCH_MEMBER;
+    case NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET:
+      return NODE_MODE_ORT::BRANCH_MEMBER_BIGSET;
     default:
       ORT_THROW("Unexpected value for node_mode");
   };
@@ -138,6 +142,8 @@ inline const char* Convert_NODE_MODE_ONNX_to_string(NODE_MODE_ORT node_mode) {
       return "NEQ";
     case NODE_MODE_ORT::BRANCH_MEMBER:
       return "MEMBER";
+    case NODE_MODE_ORT::BRANCH_MEMBER_BIGSET:
+      return "MEMBER_BIGSET";
     default:
       ORT_THROW("Unexpected value for node_mode");
   };
@@ -166,7 +172,7 @@ struct TreeNodeElement {
   PtrOrWeight<T> truenode_or_weight;
   NODE_MODE_ORT flags;
 
-  inline NODE_MODE_ORT mode() const { return NODE_MODE_ORT(flags & 0xF); }
+  inline NODE_MODE_ORT mode() const { return NODE_MODE_ORT(flags & 0x1F); }
   inline bool is_not_leaf() const { return !(flags & NODE_MODE_ORT::LEAF); }
   inline bool is_missing_track_true() const { return flags & MissingTrack::kTrue; }
 

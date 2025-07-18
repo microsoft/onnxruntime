@@ -29,6 +29,7 @@ enum NODE_MODE_ONNX : uint8_t {
   BRANCH_NEQ = 5,
   BRANCH_MEMBER = 6,
   LEAF = 7,
+  BRANCH_MEMBER_BIGSET = 8,
 };
 
 static inline NODE_MODE_ONNX MakeTreeNodeMode(const std::string& input) {
@@ -52,6 +53,9 @@ static inline NODE_MODE_ONNX MakeTreeNodeMode(const std::string& input) {
   }
   if (input == "BRANCH_MEMBER") {
     return NODE_MODE_ONNX::BRANCH_MEMBER;
+  }
+  if (input == "BRANCH_MEMBER_BIGSET") {
+    return NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET;
   }
   return NODE_MODE_ONNX::BRANCH_NEQ;
 }
