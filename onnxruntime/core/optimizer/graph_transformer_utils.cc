@@ -254,7 +254,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq,
                                                                   session_options.config_options));
+#ifdef USE_QNN
+      // For EPs that does not implement AttentionFusion(s), set `preserve_attention_pattern` to false in order
+      // to cleanup the remaining MatMul-Add that were part of the attention pattern but not detected or fused.
+      transformers.emplace_back(std::make_unique<MatMulAddFusion>(no_limit_empty_ep_list, /*preserve_attention_pattern=*/false));
+#else
       transformers.emplace_back(std::make_unique<MatMulAddFusion>());
+#endif  // USE_QNN
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
           session_options.free_dimension_overrides));
@@ -372,9 +378,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<GroupQueryAttentionFusion>(cuda_eps));
-      // Run MatMulAddFusion again after *AttentionFusion transforms with `preserve_attention_pattern = false`,
-      // to cleanup the remaining MatMul-Add that were part of the attention pattern but not detected or fused.
-      transformers.emplace_back(std::make_unique<MatMulAddFusion>(no_limit_empty_ep_list, false));
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_rocm_eps));
