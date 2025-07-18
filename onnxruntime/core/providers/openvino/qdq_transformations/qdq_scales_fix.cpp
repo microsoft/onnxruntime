@@ -605,8 +605,7 @@ float get_initializer_value(const Graph& graph, const std::string& initializer_n
     auto size = get_initializer_size(graph, initializer_name);
     ORT_ENFORCE(size == 1, "Expected an initializer to be of size 1");
     return raw_data[0];
-  }
-  else
+  } else
     return get_float_initializer_data(p_initializer);
 }
 
@@ -775,7 +774,6 @@ bool scale_graph(CustomGraph& gen_graph,
   return needs_second_run;
 }
 
-
 Status copy_model(const GraphViewer& src_graph_viewer,
                   const logging::Logger& logger, std::unique_ptr<onnxruntime::Model>& model) {
   model = src_graph_viewer.CreateModel(logger);
@@ -938,7 +936,7 @@ Status Transform(const GraphViewer& src_graph_viewer,
   bool scale_output{false};
   auto needs_second_run = scale_graph(g, threshold, ratio, scale_output);
   if (needs_second_run)
-      scale_graph(g, threshold * 100, ratio, scale_output);
+    scale_graph(g, threshold * 100, ratio, scale_output);
   return status;
 }
 }  // namespace qdq_scales_fix
