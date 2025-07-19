@@ -79,6 +79,16 @@ struct IsStandardIntegerType {
       std::is_same_v<T, uint64_t>;
 };
 
+template <typename T>
+struct IsOrtInt4NonStringConversionType {
+  static constexpr bool value =
+      std::is_same_v<T, bool> ||
+      IsStandardIntegerType<T>::value ||
+      std::is_floating_point_v<T> ||
+      IsOrtFloat16Type<T>::value ||
+      IsOrtFloat8Type<T>::value;
+};
+
 // string cast helpers
 // Note: when C++17 is available, use <charconv> functions
 
@@ -208,63 +218,81 @@ struct FromInt4Converter {
   }
 };
 
-template <typename OtherType>
+template <typename SrcType, typename DstType,
+          typename Enable = std::enable_if_t<IsOrtInt4Type<DstType>::value>>
 struct ToInt4Converter {
+  static typename DstType::UnpackedType Convert(const SrcType& val);
+};
+
+template <typename SrcType>
+struct ToInt4Converter<SrcType, Int4x2> {
   // See https://onnx.ai/onnx/operators/onnx__Cast.html#summary
   // Casting from fixed point to fixed point: when OOR, discard higher bits and
   // reinterpret (with respect to two's complement representation for signed types).
   // For example, 200 (int16) -> -56 (int8).
-  static int8_t ConvertToInt4(const OtherType& val) {
+  static int8_t Convert(const SrcType& val) {
     // Truncate to 4 bits and sign-extend properly
     uint8_t truncated = static_cast<uint8_t>(val) & 0x0F;
     // Sign-extend: if bit 3 is set, it's negative in 4-bit two's complement
     return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
   }
+};
 
-  static uint8_t ConvertToUInt4(const OtherType& val) {
+template <typename SrcType>
+struct ToInt4Converter<SrcType, UInt4x2> {
+  static uint8_t Convert(const SrcType& val) {
     // Truncate to 4 bits
     return static_cast<uint8_t>(val) & 0x0F;
   }
 };
 
 template <>
-struct ToInt4Converter<float> {
-  static int8_t ConvertToInt4(const float& val) {
+struct ToInt4Converter<float, Int4x2> {
+  static int8_t Convert(const float& val) {
     int result = static_cast<int>(std::roundf(val));
     uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
     return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
   }
+};
 
-  static uint8_t ConvertToUInt4(const float& val) {
+template <>
+struct ToInt4Converter<float, UInt4x2> {
+  static uint8_t Convert(const float& val) {
     int result = static_cast<int>(std::roundf(val));
     return static_cast<uint8_t>(result) & 0x0F;
   }
 };
 
 template <>
-struct ToInt4Converter<double> {
-  static int8_t ConvertToInt4(const double& val) {
+struct ToInt4Converter<double, Int4x2> {
+  static int8_t Convert(const double& val) {
     int result = static_cast<int>(std::round(val));
     uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
     return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
   }
+};
 
-  static uint8_t ConvertToUInt4(const double& val) {
+template <>
+struct ToInt4Converter<double, UInt4x2> {
+  static uint8_t Convert(const double& val) {
     int result = static_cast<int>(std::round(val));
     return static_cast<uint8_t>(result) & 0x0F;
   }
 };
 
 template <>
-struct ToInt4Converter<MLFloat16> {
-  static int8_t ConvertToInt4(const MLFloat16& val) {
+struct ToInt4Converter<MLFloat16, Int4x2> {
+  static int8_t Convert(const MLFloat16& val) {
     float f_val = static_cast<float>(val);
     int result = static_cast<int>(std::roundf(f_val));
     uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
     return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
   }
+};
 
-  static uint8_t ConvertToUInt4(const MLFloat16& val) {
+template <>
+struct ToInt4Converter<MLFloat16, UInt4x2> {
+  static uint8_t Convert(const MLFloat16& val) {
     float f_val = static_cast<float>(val);
     int result = static_cast<int>(std::roundf(f_val));
     return static_cast<uint8_t>(result) & 0x0F;
@@ -272,15 +300,18 @@ struct ToInt4Converter<MLFloat16> {
 };
 
 template <>
-struct ToInt4Converter<BFloat16> {
-  static int8_t ConvertToInt4(const BFloat16& val) {
+struct ToInt4Converter<BFloat16, Int4x2> {
+  static int8_t Convert(const BFloat16& val) {
     float f_val = static_cast<float>(val);
     int result = static_cast<int>(std::roundf(f_val));
     uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
     return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
   }
+};
 
-  static uint8_t ConvertToUInt4(const BFloat16& val) {
+template <>
+struct ToInt4Converter<BFloat16, UInt4x2> {
+  static uint8_t Convert(const BFloat16& val) {
     float f_val = static_cast<float>(val);
     int result = static_cast<int>(std::roundf(f_val));
     return static_cast<uint8_t>(result) & 0x0F;
@@ -288,12 +319,15 @@ struct ToInt4Converter<BFloat16> {
 };
 
 template <>
-struct ToInt4Converter<bool> {
-  static int8_t ConvertToInt4(const bool& val) {
+struct ToInt4Converter<bool, Int4x2> {
+  static int8_t Convert(const bool& val) {
     return static_cast<int8_t>(val ? 1 : 0);
   }
+};
 
-  static uint8_t ConvertToUInt4(const bool& val) {
+template <>
+struct ToInt4Converter<bool, UInt4x2> {
+  static uint8_t Convert(const bool& val) {
     return static_cast<uint8_t>(val ? 1 : 0);
   }
 };
@@ -449,8 +483,7 @@ struct TensorCaster<float, MLFloat16> {
 // (U)Int4x2 -> integral/floating point types
 template <typename SrcType, typename DstType>
 struct TensorCaster<SrcType, DstType,
-                    std::enable_if_t<IsOrtInt4Type<SrcType>::value &&
-                                     (std::is_same_v<bool, DstType> || IsStandardIntegerType<DstType>::value || std::is_floating_point_v<DstType> || IsOrtFloat16Type<DstType>::value || IsOrtFloat8Type<DstType>::value)>> {
+                    std::enable_if_t<IsOrtInt4Type<SrcType>::value && IsOrtInt4NonStringConversionType<DstType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
@@ -464,6 +497,7 @@ struct TensorCaster<SrcType, DstType,
   }
 };
 
+// Int4x2 -> UInt4x2
 template <>
 struct TensorCaster<Int4x2, UInt4x2> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
@@ -483,6 +517,7 @@ struct TensorCaster<Int4x2, UInt4x2> {
   }
 };
 
+// UInt4x2 -> Int4x2
 template <>
 struct TensorCaster<UInt4x2, Int4x2> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
@@ -502,46 +537,25 @@ struct TensorCaster<UInt4x2, Int4x2> {
   }
 };
 
-template <typename SrcType>
-struct TensorCaster<SrcType, Int4x2,
-                    std::enable_if_t<std::is_same_v<SrcType, bool> || IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value>> {
+// integral/floating point types -> (U)Int4x2
+template <typename SrcType, typename DstType>
+struct TensorCaster<SrcType, DstType,
+                    std::enable_if_t<IsOrtInt4NonStringConversionType<SrcType>::value && IsOrtInt4Type<DstType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
-    auto* out_data = out.MutableData<Int4x2>();
+    auto* out_data = out.MutableData<DstType>();
 
     ptrdiff_t i = 0;
     for (; i < shape_size - 1; i += 2) {
-      int8_t low_val = ToInt4Converter<SrcType>::ConvertToInt4(in_data[i]);
-      int8_t high_val = ToInt4Converter<SrcType>::ConvertToInt4(in_data[i + 1]);
-      out_data[i >> 1] = Int4x2(low_val, high_val);
+      auto low_val = ToInt4Converter<SrcType, DstType>::Convert(in_data[i]);
+      auto high_val = ToInt4Converter<SrcType, DstType>::Convert(in_data[i + 1]);
+      out_data[i >> 1] = DstType(low_val, high_val);
     }
 
     if (i < shape_size) {
-      int8_t low_val = ToInt4Converter<SrcType>::ConvertToInt4(in_data[i]);
-      out_data[i >> 1] = Int4x2(low_val, 0);
-    }
-  }
-};
-
-template <typename SrcType>
-struct TensorCaster<SrcType, UInt4x2,
-                    std::enable_if_t<std::is_same_v<SrcType, bool> || IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value>> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
-    const auto* in_data = in.Data<SrcType>();
-    auto* out_data = out.MutableData<UInt4x2>();
-
-    ptrdiff_t i = 0;
-    for (; i < shape_size - 1; i += 2) {
-      uint8_t low_val = ToInt4Converter<SrcType>::ConvertToUInt4(in_data[i]);
-      uint8_t high_val = ToInt4Converter<SrcType>::ConvertToUInt4(in_data[i + 1]);
-      out_data[i >> 1] = UInt4x2(low_val, high_val);
-    }
-
-    if (i < shape_size) {
-      uint8_t low_val = ToInt4Converter<SrcType>::ConvertToUInt4(in_data[i]);
-      out_data[i >> 1] = UInt4x2(low_val, 0);
+      auto low_val = ToInt4Converter<SrcType, DstType>::Convert(in_data[i]);
+      out_data[i >> 1] = DstType(low_val, 0);
     }
   }
 };
