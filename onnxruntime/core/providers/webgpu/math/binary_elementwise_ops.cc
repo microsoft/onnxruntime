@@ -343,5 +343,10 @@ WEBGPU_BINARY_IMPL(LessOrEqual, "vec4<u32>(vec4<input_a_element_t>(a) <= vec4<in
 WEBGPU_BINARY_VERSIONED_KERNEL(LessOrEqual, 12, 15, LessOrEqual, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(LessOrEqual, 16, LessOrEqual, WebGpuSupportedNumberTypes())
 
+// And operator only supports tensor(bool), webgpu wraps 4 bool elements of input into an uint32,
+// does not need to wrap into vec4 here.
+WEBGPU_BINARY_IMPL(And, "a & b")
+WEBGPU_BINARY_KERNEL(And, 7, And, DataTypeImpl::GetTensorType<bool>())
+
 }  // namespace webgpu
 }  // namespace onnxruntime
