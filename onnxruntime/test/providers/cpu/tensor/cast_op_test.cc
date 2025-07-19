@@ -1292,7 +1292,11 @@ TEST(CastOpTest, Int4x2ToFloat8E4M3FN) {
   }
 
   // WHEN, THEN
+  // Test with Saturate::None, which means the 'saturate_' bool inside the 'Cast' class defaults to 1
   TestCastOp<Int4x2, Float8E4M3FN>(gsl::make_span(int4x2_input), gsl::make_span(expected_float8_output), shape);
+  // Test with Saturate::False, which means the 'saturate_' bool inside the 'Cast' class will be 0
+  TestCastOp<Int4x2, Float8E4M3FN>(gsl::make_span(int4x2_input), gsl::make_span(expected_float8_output), shape,
+                                   OpTester::ExpectResult::kExpectSuccess, "", 21, Saturate::False);
 }
 
 TEST(CastOpTest, UInt4x2ToFloat8E4M3FN) {
@@ -1312,7 +1316,11 @@ TEST(CastOpTest, UInt4x2ToFloat8E4M3FN) {
   }
 
   // WHEN, THEN
+  // Test with Saturate::None, which means the 'saturate_' bool inside the 'Cast' class defaults to 1
   TestCastOp<UInt4x2, Float8E4M3FN>(gsl::make_span(uint4x2_input), gsl::make_span(expected_uint_float8_output), shape);
+  // Test with Saturate::False, which means the 'saturate_' bool inside the 'Cast' class will be 0
+  TestCastOp<UInt4x2, Float8E4M3FN>(gsl::make_span(uint4x2_input), gsl::make_span(expected_uint_float8_output), shape,
+                                    OpTester::ExpectResult::kExpectSuccess, "", 21, Saturate::False);
 }
 
 TEST(CastOpTest, Int4x2ToFloat8E5M2) {
@@ -1332,7 +1340,11 @@ TEST(CastOpTest, Int4x2ToFloat8E5M2) {
   }
 
   // WHEN, THEN
+  // Test with Saturate::None, which means the 'saturate_' bool inside the 'Cast' class defaults to 1
   TestCastOp<Int4x2, Float8E5M2>(gsl::make_span(int4x2_input), gsl::make_span(expected_float8e5m2_output), shape);
+  // Test with Saturate::False, which means the 'saturate_' bool inside the 'Cast' class will be 0
+  TestCastOp<Int4x2, Float8E5M2>(gsl::make_span(int4x2_input), gsl::make_span(expected_float8e5m2_output), shape,
+                                 OpTester::ExpectResult::kExpectSuccess, "", 21, Saturate::False);
 }
 
 TEST(CastOpTest, UInt4x2ToFloat8E5M2) {
@@ -1352,7 +1364,11 @@ TEST(CastOpTest, UInt4x2ToFloat8E5M2) {
   }
 
   // WHEN, THEN
+  // Test with Saturate::None, which means the 'saturate_' bool inside the 'Cast' class defaults to 1
   TestCastOp<UInt4x2, Float8E5M2>(gsl::make_span(uint4x2_input), gsl::make_span(expected_uint_float8e5m2_output), shape);
+  // Test with Saturate::False, which means the 'saturate_' bool inside the 'Cast' class will be 0
+  TestCastOp<UInt4x2, Float8E5M2>(gsl::make_span(uint4x2_input), gsl::make_span(expected_uint_float8e5m2_output), shape,
+                                  OpTester::ExpectResult::kExpectSuccess, "", 21, Saturate::False);
 }
 
 #endif

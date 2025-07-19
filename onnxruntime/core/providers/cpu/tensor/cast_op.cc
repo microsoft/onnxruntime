@@ -690,6 +690,11 @@ struct TensorCaster<MLFloat16, std::string> {
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
+// TensorCasterNoSat is only called when all the below conditions are met (see Cast::Compute implementation):
+// - defined(DISABLE_FLOAT8_TYPES) == false
+// - saturate_ == false
+// - IsOrtFloat8Type<DstType>::value == true
+
 // tensor X -> float 8
 template <typename SrcType, typename DstType, typename Enable = void>
 struct TensorCasterNoSat {
@@ -704,17 +709,12 @@ struct TensorCasterNoSat {
 };
 
 // TensorCasterNoSat should never be instantiated for Int4x2/UInt4x2
-template <typename DstType>
-struct TensorCasterNoSat<Int4x2, DstType, void> {
-  void Cast(const OpKernelContext&, const TensorShape&, const Tensor&, Tensor&) const {
-    ORT_THROW("Int4x2 should never use TensorCasterNoSat");
-  }
-};
-
-template <typename DstType>
-struct TensorCasterNoSat<UInt4x2, DstType, void> {
-  void Cast(const OpKernelContext&, const TensorShape&, const Tensor&, Tensor&) const {
-    ORT_THROW("UInt4x2 should never use TensorCasterNoSat");
+template <typename SrcType, typename DstType>
+struct TensorCasterNoSat<SrcType, DstType,
+                         std::enable_if_t<std::is_same_v<SrcType, Int4x2> || std::is_same_v<SrcType, UInt4x2>>> {
+  void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) const {
+    // Int4x2/UInt4x2 always fit inside any Float8 type, so we can reuse the saturate = true implementation.
+    TensorCaster<SrcType, DstType>{}.Cast(context, shape, src, dst);
   }
 };
 
