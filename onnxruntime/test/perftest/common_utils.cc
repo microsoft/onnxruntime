@@ -32,7 +32,7 @@ void list_devices(Ort::Env& env) {
       device_info_msg += "  " + entry.first + ": " + entry.second + "\n";
     }
     device_info_msg += "\n";
-    fprintf(stdout, device_info_msg.c_str());
+    fprintf(stdout, "%s", device_info_msg.c_str());
   }
 }
 

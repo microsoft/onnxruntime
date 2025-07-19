@@ -89,7 +89,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       ParseDeviceList(performance_test_config.selected_devices, device_list);
       for (auto index : device_list) {
         if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
-          fprintf(stderr, "The device index provided is not correct. Will skip this device id.");
+          fprintf(stderr, "%s", "The device index provided is not correct. Will skip this device id.");
         }
 
         Ort::ConstEpDevice& device = ep_devices[index];
@@ -102,7 +102,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           std::string err_msg = "[WARNING]: The device index and its corresponding OrtEpDevice is not created from " +
                                 performance_test_config.machine_config.provider_type_name + ". Will skip adding this device.\n";
-          fprintf(stderr, err_msg.c_str());
+          fprintf(stderr, "%s", err_msg.c_str());
         }
       }
     } else {
