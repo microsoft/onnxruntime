@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 #include "strings_helper.h"
 #include "core/common/common.h"

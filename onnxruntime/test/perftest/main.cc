@@ -79,7 +79,7 @@ int real_main(int argc, char* argv[]) {
     } else {
       perf_runner.SerializeResult();
     }
-  } catch (const std::exception& ex) {
+  } catch (const std::exception&) {
     if (!test_config.registered_plugin_eps.empty()) {
       perftest::utils::UnregisterExecutionProviderLibrary(env, test_config);
       return -1;

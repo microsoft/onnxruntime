@@ -12,14 +12,6 @@
 #include <string_view>
 #include <unordered_map>
 
-// Windows Specific
-#ifdef _WIN32
-#include "getopt.h"
-#include "windows.h"
-#else
-#include <unistd.h>
-#endif
-
 #include <cxxopts.hpp>
 
 #include <core/graph/constants.h>
@@ -196,245 +188,6 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
   return true;
 }
 
-/*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
-  int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlgR:XL:"))) != -1) {
-    switch (ch) {
-      case 'f': {
-        std::basic_string<ORTCHAR_T> dim_name;
-        int64_t override_val;
-        if (!ParseDimensionOverride(dim_name, override_val, optarg)) {
-          return false;
-        }
-        test_config.run_config.free_dim_name_overrides[dim_name] = override_val;
-        break;
-      }
-      case 'F': {
-        std::basic_string<ORTCHAR_T> dim_denotation;
-        int64_t override_val;
-        if (!ParseDimensionOverride(dim_denotation, override_val, optarg)) {
-          return false;
-        }
-        test_config.run_config.free_dim_denotation_overrides[dim_denotation] = override_val;
-        break;
-      }
-      case 'm':
-        if (!CompareCString(optarg, ORT_TSTR("duration"))) {
-          test_config.run_config.test_mode = TestMode::kFixDurationMode;
-        } else if (!CompareCString(optarg, ORT_TSTR("times"))) {
-          test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
-        } else {
-          return false;
-        }
-        break;
-      case 'p':
-        test_config.run_config.profile_file = optarg;
-        break;
-      case 'M':
-        test_config.run_config.enable_memory_pattern = false;
-        break;
-      case 'A':
-        test_config.run_config.enable_cpu_mem_arena = false;
-        break;
-      case 'e':
-        if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kCpuExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kCudaExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kQnnExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("snpe"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kSnpeExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("vsinpu"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kVSINPUExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kCoreMLExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("rocm"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kRocmExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("xnnpack"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kXnnpackExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("vitisai"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("webgpu"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kWebGpuExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("nvtensorrtrtx"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kNvTensorRTRTXExecutionProvider;
-        } else {
-          // Could be plugin EP, save it first and handle later.
-          test_config.machine_config.provider_type_name = ToUTF8String(optarg);
-        }
-        break;
-      case 'r':
-        test_config.run_config.repeated_times = static_cast<size_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.repeated_times <= 0) {
-          return false;
-        }
-        test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
-        break;
-      case 't':
-        test_config.run_config.duration_in_seconds = static_cast<size_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.repeated_times <= 0) {
-          return false;
-        }
-        test_config.run_config.test_mode = TestMode::kFixDurationMode;
-        break;
-      case 's':
-        test_config.run_config.f_dump_statistics = true;
-        break;
-      case 'S':
-        test_config.run_config.random_seed_for_input_data = static_cast<int32_t>(
-            OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        break;
-      case 'v':
-        test_config.run_config.f_verbose = true;
-        break;
-      case 'x':
-        test_config.run_config.intra_op_num_threads = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.intra_op_num_threads < 0) {
-          return false;
-        }
-        break;
-      case 'y':
-        test_config.run_config.inter_op_num_threads = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.inter_op_num_threads < 0) {
-          return false;
-        }
-        break;
-      case 'P':
-        test_config.run_config.execution_mode = ExecutionMode::ORT_PARALLEL;
-        break;
-      case 'c':
-        test_config.run_config.concurrent_session_runs =
-            static_cast<size_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.concurrent_session_runs <= 0) {
-          return false;
-        }
-        break;
-      case 'o': {
-        int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        switch (tmp) {
-          case ORT_DISABLE_ALL:
-            test_config.run_config.optimization_level = ORT_DISABLE_ALL;
-            break;
-          case ORT_ENABLE_BASIC:
-            test_config.run_config.optimization_level = ORT_ENABLE_BASIC;
-            break;
-          case ORT_ENABLE_EXTENDED:
-            test_config.run_config.optimization_level = ORT_ENABLE_EXTENDED;
-            break;
-          case ORT_ENABLE_LAYOUT:
-            test_config.run_config.optimization_level = ORT_ENABLE_LAYOUT;
-            break;
-          case ORT_ENABLE_ALL:
-            test_config.run_config.optimization_level = ORT_ENABLE_ALL;
-            break;
-          default: {
-            if (tmp > ORT_ENABLE_ALL) {  // relax constraint
-              test_config.run_config.optimization_level = ORT_ENABLE_ALL;
-            } else {
-              return false;
-            }
-          }
-        }
-        break;
-      }
-      case 'u':
-        test_config.run_config.optimized_model_path = optarg;
-        break;
-      case 'I':
-        test_config.run_config.generate_model_input_binding = true;
-        break;
-      case 'd':
-        test_config.run_config.cudnn_conv_algo = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        break;
-      case 'q':
-        test_config.run_config.do_cuda_copy_in_separate_stream = true;
-        break;
-      case 'z':
-        test_config.run_config.set_denormal_as_zero = true;
-        break;
-      case 'i':
-        test_config.run_config.ep_runtime_config_string = optarg;
-        break;
-      case 'T':
-        test_config.run_config.intra_op_thread_affinities = ToUTF8String(optarg);
-        break;
-      case 'C': {
-        ORT_TRY {
-          ParseSessionConfigs(ToUTF8String(optarg), test_config.run_config.session_config_entries);
-        }
-        ORT_CATCH(const std::exception& ex) {
-          ORT_HANDLE_EXCEPTION([&]() {
-            fprintf(stderr, "Error parsing session configuration entries: %s\n", ex.what());
-          });
-          return false;
-        }
-        break;
-      }
-      case 'D':
-        test_config.run_config.disable_spinning = true;
-        break;
-      case 'Z':
-        test_config.run_config.disable_spinning_between_run = true;
-        break;
-      case 'n':
-        test_config.run_config.exit_after_session_creation = true;
-        break;
-      case 'l':
-        test_config.model_info.load_via_path = true;
-        break;
-      case 'R':
-        test_config.run_config.register_custom_op_path = optarg;
-        break;
-      case 'g':
-        test_config.run_config.enable_cuda_io_binding = true;
-        break;
-      case 'X':
-        test_config.run_config.use_extensions = true;
-        break;
-      case '?':
-      case 'h':
-      default:
-        return false;
-    }
-  }
-
-  // parse model_path and result_file_path
-  argc -= optind;
-  argv += optind;
-
-  switch (argc) {
-    case 2:
-      test_config.model_info.result_file_path = argv[1];
-      break;
-    case 1:
-      test_config.run_config.f_dump_statistics = true;
-      break;
-    default:
-      return false;
-  }
-
-  test_config.model_info.model_file_path = argv[0];
-
-  return true;
-}
-
 bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   try {
     cxxopts::Options options("onnxruntime_perf", "ONNX Runtime Performance Test Config");
@@ -444,7 +197,7 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
 #ifdef _WIN32
     auto utf8_strings = utils::ConvertArgvToUtf8Strings(argc, argv);
     auto utf8_argv = utils::ConvertArgvToUtf8CharPtrs(utf8_strings);
-    auto result = options.parse(utf8_argv.size(), utf8_argv.data());
+    auto result = options.parse(static_cast<int>(utf8_argv.size()), utf8_argv.data());
 #else
     auto result = options.parse(argc, argv);
 #endif
@@ -457,7 +210,7 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
     if (result.count("f")) {
       std::basic_string<ORTCHAR_T> dim_name;
       int64_t override_val;
-      std::basic_string<ORTCHAR_T> opt_str = utils::Utf8ToWide(result["f"].as<std::string>());
+      std::basic_string<ORTCHAR_T> opt_str = utils::Utf8ToOrtString(result["f"].as<std::string>());
       if (!ParseDimensionOverride(dim_name, override_val, opt_str.c_str())) {
         return false;
       }
@@ -467,7 +220,7 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
     if (result.count("F")) {
       std::basic_string<ORTCHAR_T> dim_denotation;
       int64_t override_val;
-      std::basic_string<ORTCHAR_T> opt_str = utils::Utf8ToWide(result["F"].as<std::string>());
+      std::basic_string<ORTCHAR_T> opt_str = utils::Utf8ToOrtString(result["F"].as<std::string>());
       if (!ParseDimensionOverride(dim_denotation, override_val, opt_str.c_str())) {
         return false;
       }
@@ -475,17 +228,17 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
     }
 
     if (result.count("m")) {
-      std::basic_string<ORTCHAR_T> opt_str = utils::Utf8ToWide(result["m"].as<std::string>());
+      std::basic_string<ORTCHAR_T> opt_str = utils::Utf8ToOrtString(result["m"].as<std::string>());
       if (!CompareCString(opt_str.c_str(), ORT_TSTR("duration"))) {
         test_config.run_config.test_mode = TestMode::kFixDurationMode;
-      } else if (!CompareCString(optarg, ORT_TSTR("times"))) {
+      } else if (!CompareCString(opt_str.c_str(), ORT_TSTR("times"))) {
         test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
       } else {
         return false;
       }
     }
 
-    if (result.count("p")) test_config.run_config.profile_file = utils::Utf8ToWide(result["p"].as<std::string>());
+    if (result.count("p")) test_config.run_config.profile_file = utils::Utf8ToOrtString(result["p"].as<std::string>());
     if (result["M"].as<bool>()) test_config.run_config.enable_memory_pattern = false;
     if (result["A"].as<bool>()) test_config.run_config.enable_cpu_mem_arena = false;
 
@@ -556,18 +309,18 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
       test_config.run_config.random_seed_for_input_data = val;
     }
 
-    if (result.count("plugin_ep_libs")) test_config.plugin_ep_names_and_libs = utils::Utf8ToWide(result["plugin_ep_libs"].as<std::string>());
+    if (result.count("plugin_ep_libs")) test_config.plugin_ep_names_and_libs = utils::Utf8ToOrtString(result["plugin_ep_libs"].as<std::string>());
     if (result.count("list_devices")) test_config.list_available_devices = true;
     if (result.count("select_devices")) test_config.selected_devices = result["select_devices"].as<std::string>();
 
     // Positional arguments
     std::vector<std::string> positional = result.unmatched();
     if (positional.size() == 1) {
-      test_config.model_info.model_file_path = utils::Utf8ToWide(positional[0]);
+      test_config.model_info.model_file_path = utils::Utf8ToOrtString(positional[0]);
       test_config.run_config.f_dump_statistics = true;
     } else if (positional.size() == 2) {
-      test_config.model_info.model_file_path = utils::Utf8ToWide(positional[0]);
-      test_config.model_info.result_file_path = utils::Utf8ToWide(positional[1]);
+      test_config.model_info.model_file_path = utils::Utf8ToOrtString(positional[0]);
+      test_config.model_info.result_file_path = utils::Utf8ToOrtString(positional[1]);
     } else {
       return false;
     }

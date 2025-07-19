@@ -23,11 +23,13 @@ class ICPUUsage {
 
 std::unique_ptr<ICPUUsage> CreateICPUUsage();
 
+#ifdef _WIN32
 std::vector<std::string> ConvertArgvToUtf8Strings(int argc, wchar_t* argv[]);
 
 std::vector<const char*> ConvertArgvToUtf8CharPtrs(std::vector<std::string>& utf8_args);
+#endif
 
-std::wstring Utf8ToWide(const std::string& utf8_str);
+std::basic_string<ORTCHAR_T> Utf8ToOrtString(const std::string& utf8_str);
 
 bool RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
 

@@ -44,7 +44,7 @@ bool RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test
       for (auto& pair : ep_names_to_libs) {
         const std::filesystem::path library_path = pair.second;
         const std::string registration_name = pair.first;
-        env.RegisterExecutionProviderLibrary(registration_name.c_str(), Utf8ToWide(library_path.string()));
+        env.RegisterExecutionProviderLibrary(registration_name.c_str(), Utf8ToOrtString(library_path.string()));
         test_config.registered_plugin_eps.push_back(registration_name);
       }
     }
