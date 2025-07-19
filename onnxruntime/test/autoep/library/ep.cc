@@ -422,12 +422,16 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
     std::array<OrtOpAttr*, 6> attributes = {};
     DeferOrtRelease<OrtOpAttr> defer_release_attrs(attributes.data(), attributes.size(), ort_api.ReleaseOpAttr);
 
-    RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", "binary_data", 1, ORT_OP_ATTR_STRING, &attributes[0]));
+    std::string ep_ctx = "binary_data";
+    RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", ep_ctx.c_str(), static_cast<int>(ep_ctx.length()),
+                                         ORT_OP_ATTR_STRING, &attributes[0]));
     RETURN_IF_ERROR(ort_api.CreateOpAttr("main_context", &is_main_context, 1, ORT_OP_ATTR_INT, &attributes[1]));
     RETURN_IF_ERROR(ort_api.CreateOpAttr("embed_mode", &embed_mode, 1, ORT_OP_ATTR_INT, &attributes[2]));
     RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_sdk_version", "1", 1, ORT_OP_ATTR_STRING, &attributes[3]));
-    RETURN_IF_ERROR(ort_api.CreateOpAttr("partition_name", fused_node_name, 1, ORT_OP_ATTR_STRING, &attributes[4]));
-    RETURN_IF_ERROR(ort_api.CreateOpAttr("source", this->name_.c_str(), 1, ORT_OP_ATTR_STRING, &attributes[5]));
+    RETURN_IF_ERROR(ort_api.CreateOpAttr("partition_name", fused_node_name, static_cast<int>(strlen(fused_node_name)),
+                                         ORT_OP_ATTR_STRING, &attributes[4]));
+    RETURN_IF_ERROR(ort_api.CreateOpAttr("source", this->name_.c_str(), static_cast<int>(this->name_.length()),
+                                         ORT_OP_ATTR_STRING, &attributes[5]));
 
     RETURN_IF_ERROR(model_editor_api.CreateNode("EPContext", "com.microsoft", fused_node_name,
                                                 input_names.data(), input_names.size(),

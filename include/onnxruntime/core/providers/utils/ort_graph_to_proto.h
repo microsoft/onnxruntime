@@ -665,11 +665,11 @@ static Ort::Status OrtOpAttrToProto(const OrtOpAttr& ort_attr, onnx::AttributePr
       Ort::Status status{ort_api.ReadOpAttr(&ort_attr, attr_type, nullptr, 0, &total_attr_bytes)};
       std::string* str = attr_proto.mutable_s();
 
-      str->resize(total_attr_bytes, '\0');
+      str->resize(total_attr_bytes);
       ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ReadOpAttr(&ort_attr, attr_type, str->data(), total_attr_bytes,
                                                         &total_attr_bytes));
 
-      str->resize(total_attr_bytes - 1);  // remove extra ending terminating '\0' character.
+      str->resize(total_attr_bytes);
       break;
     }
     case OrtOpAttrType::ORT_OP_ATTR_STRINGS: {

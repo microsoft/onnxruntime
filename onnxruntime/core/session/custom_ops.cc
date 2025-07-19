@@ -436,17 +436,14 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ Ort
       }
       case OrtOpAttrType::ORT_OP_ATTR_STRING: {
         const auto& s = attr->s();
-        if (len < s.size() + 1) {
+        if (len < s.size()) {
           ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
                                       "Size of data not large enough to hold the string.");
         } else {
           char* output_c = reinterpret_cast<char*>(data);
-          for (char c : s) {
-            *output_c++ = c;
-          }
-          *output_c = '\0';
+          memcpy(output_c, s.data(), s.size());
         }
-        *out = s.size() + 1;
+        *out = s.size();
         break;
       }
       case OrtOpAttrType::ORT_OP_ATTR_STRINGS: {
