@@ -542,23 +542,6 @@ typedef OrtStatus*(ORT_API_CALL* OrtHandleInitializerDataFunc)(_In_ void* state,
                                                                _Out_ bool* is_external,
                                                                _Out_ const ORTCHAR_T** location, _Out_ int64_t* offset);
 
-/** \brief Function called by ORT to write a EPContext binary data to a custom destination (e.g., file, stream, etc.).
- *
- * \param state Opaque pointer holding the user's state.
- * \param buffer The buffer to write.
- * \param buffer_num_bytes The size of the buffer in bytes.
- * \param[out] location Output parameter set to the location (i.e., file path) into which the data is stored
- *                      by the function implementer.
- *
- * \return OrtStatus* Write status. Return nullptr on success.
- *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
- *                    ORT will release the OrtStatus* if not null.
- */
-typedef OrtStatus*(ORT_API_CALL* OrtWriteEpContextDataFunc)(_In_ void* state,
-                                                            _In_ const void* buffer,
-                                                            _In_ size_t buffer_num_bytes,
-                                                            _Out_ const ORTCHAR_T** location);
-
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
 typedef enum OrtCudnnConvAlgoSearch {
@@ -6971,6 +6954,7 @@ struct OrtCompileApi {
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const ORTCHAR_T* output_directory,
                   _In_ const ORTCHAR_T* model_name);
+
   /** \brief Sets a OrtWriteBufferFunc function that is called by ORT to write out the output model's serialized
    * ONNX bytes.
    *
@@ -7006,23 +6990,6 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelHandleInitializerFunc,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ OrtHandleInitializerDataFunc handle_initializer_func, _In_ void* state);
-
-  /** \brief Sets a OrtWriteEpContextDataFunc function that is called by an execution provider to write out an
-   * an EPContext node's binary data, which is usually stored in the attribute named `ep_cache_context`.
-   *
-   * \note Not compatible with embed mode set to true via ModelCompilationOptions_SetEpContextEmbedMode.
-   *
-   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
-   * \param[in] write_func The OrtWriteEpContextDataFunc function called by an EP to write out an EPContext node's data.
-   * \param[in] state Opaque state passed as the first argument to OrtWriteEpContextDataFunc. Can be NULL.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23.
-   */
-  ORT_API2_STATUS(ModelCompilationOptions_SetEpContextDataWriteFunc,
-                  _In_ OrtModelCompilationOptions* model_compile_options,
-                  _In_ OrtWriteEpContextDataFunc write_func, _In_ void* state);
 };
 
 /*

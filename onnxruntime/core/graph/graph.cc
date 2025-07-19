@@ -4514,45 +4514,74 @@ Status Graph::ToGraphProtoWithInitializerHandlerImpl(OrtHandleInitializerDataFun
     }
   }
 
+  // Create a sorted std::vector of initializers so that we always process them in a deterministic order.
+  std::vector<const ONNX_NAMESPACE::TensorProto*> initializers;
+  initializers.reserve(GetAllInitializedTensors().size());
+
+  for (const auto& [name, initializer_tp] : GetAllInitializedTensors()) {
+    initializers.push_back(initializer_tp);
+  }
+
+  std::sort(initializers.begin(), initializers.end(),
+            [](const ONNX_NAMESPACE::TensorProto* a, const ONNX_NAMESPACE::TensorProto* b) {
+              return a->name() < b->name();
+            });
+
   // Call user's handler function for each initializer. We store the initializer externally
   // or within the model depending on the result returned by the handler function.
-  for (const auto& initializer : graph_proto_->initializer()) {
+  for (gsl::not_null<const ONNX_NAMESPACE::TensorProto*> initializer : initializers) {
 #if !defined(DISABLE_SPARSE_TENSORS)
-    if (IsSparseInitializer(initializer.name())) {
+    if (IsSparseInitializer(initializer->name())) {
       // Sparse tensors are added to the ONNX file directly.
       auto& sparse_initializer = *output_graph_proto.add_sparse_initializer();
-      auto status = utils::DenseTensorToSparseTensorProto(initializer, ModelPath(), sparse_initializer);
+      auto status = utils::DenseTensorToSparseTensorProto(*initializer, ModelPath(), sparse_initializer);
       ORT_RETURN_IF_NOT(status.IsOK(), "Failed to convert dense initializer to sparse");
     } else {
 #endif
       TensorProto* output_proto = output_graph_proto.add_initializer();
 
-      output_proto->set_name(initializer.name());
-      output_proto->set_data_type(initializer.data_type());
-      for (int i = 0; i != initializer.dims_size(); ++i) {
-        output_proto->add_dims(initializer.dims(i));
+      output_proto->set_name(initializer->name());
+      output_proto->set_data_type(initializer->data_type());
+      for (int i = 0; i != initializer->dims_size(); ++i) {
+        output_proto->add_dims(initializer->dims(i));
       }
-      output_proto->set_doc_string(initializer.doc_string());
+      output_proto->set_doc_string(initializer->doc_string());
 
-      const ORTCHAR_T* ext_location = nullptr;
-      int64_t ext_offset = 0;
-      bool is_external = false;
-      std::vector<uint8_t> raw_data;
-      ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(initializer, ModelPath(), raw_data));
+      // Get an OrtValue with the initializer data. If this Graph has already loaded the initializer into an
+      // OrtValue, we use that. Otherwise, if the initializer points to external data, we load it
+      // (potentially via memory mapping). Lastly, we resort to copying the initializer into an OrtValue.
+      OrtValue ort_value;
+      bool has_ort_value = GetOrtValueInitializer(initializer->name(), ort_value, /*check_outer_scope*/ false);
 
-      auto type_proto = utils::TypeProtoFromTensorProto(initializer);
+      if (!has_ort_value) {
+        if (utils::HasExternalData(*initializer)) {
+          ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), ModelPath(), *initializer, ort_value));
+        } else {
+          ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), ModelPath(), *initializer,
+                                                           CPUAllocator::DefaultInstance(), ort_value));
+        }
+      }
+
+      const Tensor& tensor = ort_value.Get<Tensor>();
+      auto type_proto = utils::TypeProtoFromTensorProto(*initializer);
       std::unique_ptr<OrtTypeInfo> type_info = OrtTypeInfo::FromTypeProto(type_proto);
 
-      ORT_RETURN_IF_ERROR(ToStatusAndRelease(handle_initializer_func(state, initializer.name().c_str(), raw_data.data(),
-                                                                     raw_data.size(), type_info.get(), &is_external,
+      // The following variables are set by the call to handle_initializer_func.
+      bool is_external = false;
+      const ORTCHAR_T* ext_location = nullptr;
+      int64_t ext_offset = 0;
+
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(handle_initializer_func(state, initializer->name().c_str(),
+                                                                     tensor.DataRaw(), tensor.SizeInBytes(),
+                                                                     type_info.get(), &is_external,
                                                                      &ext_location, &ext_offset)));
 
       if (is_external) {
         ExternalDataInfo::SetExternalLocationToProto(ext_location, ext_offset,
-                                                     raw_data.size(), *output_proto);
+                                                     tensor.SizeInBytes(), *output_proto);
       } else {
         output_proto->clear_data_location();
-        output_proto->set_raw_data(raw_data.data(), raw_data.size());
+        output_proto->set_raw_data(tensor.DataRaw(), tensor.SizeInBytes());
       }
 #if !defined(DISABLE_SPARSE_TENSORS)
     }
