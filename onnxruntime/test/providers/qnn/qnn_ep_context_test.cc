@@ -594,6 +594,173 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
   allocator.Free(output_model_buffer);
 }
 
+// Implementation of OrtOutStreamWriteFunc that writes the compiled model to a file.
+static OrtStatus* ORT_API_CALL TestWriteToStream(void* stream_state, const void* buffer, size_t buffer_num_bytes) {
+  std::ofstream* outfile = reinterpret_cast<std::ofstream*>(stream_state);
+  outfile->write(reinterpret_cast<const char*>(buffer), buffer_num_bytes);
+  return nullptr;  // No error
+}
+
+// Implementation of OrtOutStreamWriteFunc that directly returns an OrtStatus indicating an error.
+static OrtStatus* ORT_API_CALL ReturnStatusFromStream(void* stream_state, const void* buffer, size_t buffer_num_bytes) {
+  ORT_UNUSED_PARAMETER(stream_state);
+  ORT_UNUSED_PARAMETER(buffer);
+  ORT_UNUSED_PARAMETER(buffer_num_bytes);
+  return Ort::GetApi().CreateStatus(ORT_FAIL, "Error from OrtOutStreamWriteFunc callback");
+}
+
+// Test using the CompileModel() API with settings:
+//   - input model comes from a file
+//   - write output model to custom write stream
+TEST_F(QnnHTPBackendTests, CompileApi_InputFile_WriteOutputModelBytes) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_inputfile_writeoutputmodelbytes.onnx");
+  std::filesystem::remove(input_model_file);
+
+  // Create a test model and save it to a file.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  const ORTCHAR_T* output_model_file = ORT_TSTR("compileapi_inputfile_writeoutputmodelbytes_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+
+  // Open an output file. Test will incrementally write the output model to file
+  // via calls to our OrtOutStreamWriteFunc callback.
+  ASSERT_FALSE(std::filesystem::exists(output_model_file));
+  std::ofstream outfile(output_model_file, std::ios::binary);
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelWriteFunc(TestWriteToStream, reinterpret_cast<void*>(&outfile));
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  outfile.flush();
+  outfile.close();
+
+  // Check that the compiled model has the expected number of EPContext nodes.
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  CheckEpContextNodeCounts(output_model_file, 2, 2);
+}
+
+// Tests using an OrtOutStreamFunc function that returns an error.
+TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
+  // Create a test model (in memory).
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  std::string model_data = test_model.Serialize();
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
+  compile_options.SetOutputModelWriteFunc(ReturnStatusFromStream, nullptr);  // Set output stream that returns error
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model. Expect a specific error status.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
+  EXPECT_EQ(status.GetErrorMessage(), "Error from OrtOutStreamWriteFunc callback");
+}
+
+struct CustomInitializerHandlerState {
+  const ORTCHAR_T* external_file_path = nullptr;
+  std::ofstream* outfile = nullptr;
+};
+
+static OrtStatus* ORT_API_CALL TestHandleInitializerDataFunc(void* state,
+                                                             const char* initializer_name,
+                                                             const void* initializer_data,
+                                                             size_t initializer_num_bytes,
+                                                             const OrtTypeInfo* initializer_type,
+                                                             bool* is_external,
+                                                             const ORTCHAR_T** location, int64_t* offset) {
+  CustomInitializerHandlerState* custom_state = reinterpret_cast<CustomInitializerHandlerState*>(state);
+  (void)initializer_type;
+
+  if (std::string("constant") == initializer_name) {
+    // Keep a specific initializer in the model just to test both scenarios.
+    // A real implementation may check the byte size and keep small initializers in the model.
+    is_external = false;
+    return nullptr;
+  }
+
+  // Other initializers are stored in an external file.
+  *is_external = true;
+  *offset = custom_state->outfile->tellp();
+  *location = custom_state->external_file_path;
+
+  custom_state->outfile->write(static_cast<const char*>(initializer_data), initializer_num_bytes);
+  custom_state->outfile->flush();
+
+  return nullptr;
+}
+
+// Test using the CompileModel() API with settings:
+//   - input model comes from a file
+//   - write output model to a file
+//   - Use callback to specify where each initializer is stored (i.e., external file or within model).
+TEST_F(QnnHTPBackendTests, CompileApi_InputFile_OutputFile_InitializerHandler) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_inputfile_outputfile_initializerhandler.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("./compileapi_inputfile_outputfile_initializerhandler_ctx.onnx");
+  const ORTCHAR_T* initializer_file = ORT_TSTR("./compileapi_inputfile_outputfile_initializerhandler.bin");
+  std::filesystem::remove(input_model_file);
+  std::filesystem::remove(output_model_file);
+  std::filesystem::remove(initializer_file);
+
+  // Create a test model and save it to a file.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  // Open a file to store external initializers. ORT will call our handler function for every initializer.
+  ASSERT_FALSE(std::filesystem::exists(initializer_file));
+  std::ofstream outfile(initializer_file, std::ios::binary);
+  CustomInitializerHandlerState custom_state = {initializer_file, &outfile};
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetOutputModelHandleInitializerFunc(TestHandleInitializerDataFunc,
+                                                      reinterpret_cast<void*>(&custom_state));
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  outfile.flush();
+  outfile.close();
+
+  ASSERT_TRUE(std::filesystem::exists(initializer_file));
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  CheckEpContextNodeCounts(output_model_file, 2, 2);
+}
+
 // Test that the explicit compile API can be configured to return an error if the output model does not
 // have EPContext nodes.
 TEST_F(QnnHTPBackendTests, CompileApi_SetFlags_ErrorIfNoCompiledNodes) {

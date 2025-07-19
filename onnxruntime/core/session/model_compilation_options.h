@@ -73,6 +73,20 @@ class ModelCompilationOptions {
                               size_t* output_model_buffer_size_ptr);
 
   /// <summary>
+  /// Sets an output stream (write function + state) used to write out the compiled model bytes.
+  /// </summary>
+  /// <param name="write_func">Write function</param>
+  /// <param name="state">The user's state</param>
+  void SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
+
+  /// <summary>
+  /// Sets a user-provided function to handle serialization of ONNX initializers.
+  /// </summary>
+  /// <param name="handle_initializer_func">The user-provided function called for every initializer</param>
+  /// <param name="state">The user's state.</param>
+  void SetOutputModelHandleInitializerFunc(OrtHandleInitializerDataFunc handle_initializer_func, void* state);
+
+  /// <summary>
   /// Sets information relate to EP context binary file.
   /// EP use this information to decide the location and context binary file name.
   /// Used while compiling model with input and output in memory buffer
@@ -137,7 +151,6 @@ class ModelCompilationOptions {
 
  private:
   void ResetInputModelSettings();
-  Status ResetOutputModelSettings();
   Status CheckInputModelSettings() const;
   Status CheckOutputModelSettings() const;
 

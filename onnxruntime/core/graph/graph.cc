@@ -17,6 +17,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
+#include "core/framework/error_code_helper.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensor_external_data_info.h"
@@ -4474,6 +4475,99 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(
   }
 
   return result;
+}
+
+Status Graph::ToGraphProtoWithInitializerHandlerImpl(OrtHandleInitializerDataFunc handle_initializer_func,
+                                                     void* state,
+                                                     /*out*/ ONNX_NAMESPACE::GraphProto& output_graph_proto) const {
+  // This loop processes subgraphs bottom up.
+  for (const auto& node : Nodes()) {
+    if (node.ContainsSubgraph()) {
+      // Let find this node in the output_graph_proto
+      auto hit = std::find_if(output_graph_proto.mutable_node()->begin(),
+                              output_graph_proto.mutable_node()->end(),
+                              [&node](const ONNX_NAMESPACE::NodeProto& proto) {
+                                // ONNX allows empty node names. However, Graph::Resolve() ensures node names are
+                                // unique. Therefore, we can match on node name since there will be at most one node
+                                // with an empty name.
+                                return proto.name() == node.Name();
+                              });
+      ORT_RETURN_IF_NOT(hit != output_graph_proto.mutable_node()->end(), "Node ", node.Name(),
+                        " not found in output_graph_proto");
+      auto& result_node = *hit;
+      for (const auto& e : node.GetAttributeNameToSubgraphMap()) {
+        const auto& name = e.first;
+        const auto& subgraph = e.second;
+        // Lets find this subgraph in the result_node
+        auto sub_hit = std::find_if(result_node.mutable_attribute()->begin(),
+                                    result_node.mutable_attribute()->end(),
+                                    [&name](const ONNX_NAMESPACE::AttributeProto& proto) {
+                                      return proto.name() == name;
+                                    });
+        ORT_RETURN_IF_NOT(sub_hit != result_node.mutable_attribute()->end() && utils::HasGraph(*sub_hit),
+                          "Subgraph ", name, " is referred to in GetAttributeNameToSubgraphMap, but not found in node ",
+                          node.Name(), " while attempting to recurse into it.");
+        auto& result_subgraph = *sub_hit->mutable_g();
+        ORT_RETURN_IF_ERROR(subgraph->ToGraphProtoWithInitializerHandlerImpl(handle_initializer_func,
+                                                                             state, result_subgraph));
+      }
+    }
+  }
+
+  // Call user's handler function for each initializer. We store the initializer externally
+  // or within the model depending on the result returned by the handler function.
+  for (const auto& initializer : graph_proto_->initializer()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+    if (IsSparseInitializer(initializer.name())) {
+      // Sparse tensors are added to the ONNX file directly.
+      auto& sparse_initializer = *output_graph_proto.add_sparse_initializer();
+      auto status = utils::DenseTensorToSparseTensorProto(initializer, ModelPath(), sparse_initializer);
+      ORT_RETURN_IF_NOT(status.IsOK(), "Failed to convert dense initializer to sparse");
+    } else {
+#endif
+      TensorProto* output_proto = output_graph_proto.add_initializer();
+
+      output_proto->set_name(initializer.name());
+      output_proto->set_data_type(initializer.data_type());
+      for (int i = 0; i != initializer.dims_size(); ++i) {
+        output_proto->add_dims(initializer.dims(i));
+      }
+      output_proto->set_doc_string(initializer.doc_string());
+
+      const ORTCHAR_T* ext_location = nullptr;
+      int64_t ext_offset = 0;
+      bool is_external = false;
+      std::vector<uint8_t> raw_data;
+      ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(initializer, ModelPath(), raw_data));
+
+      auto type_proto = utils::TypeProtoFromTensorProto(initializer);
+      std::unique_ptr<OrtTypeInfo> type_info = OrtTypeInfo::FromTypeProto(type_proto);
+
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(handle_initializer_func(state, initializer.name().c_str(), raw_data.data(),
+                                                                     raw_data.size(), type_info.get(), &is_external,
+                                                                     &ext_location, &ext_offset)));
+
+      if (is_external) {
+        ExternalDataInfo::SetExternalLocationToProto(ext_location, ext_offset,
+                                                     raw_data.size(), *output_proto);
+      } else {
+        output_proto->clear_data_location();
+        output_proto->set_raw_data(raw_data.data(), raw_data.size());
+      }
+#if !defined(DISABLE_SPARSE_TENSORS)
+    }
+#endif
+  }
+
+  return Status::OK();
+}
+
+Status Graph::ToGraphProtoWithInitializerHandler(OrtHandleInitializerDataFunc handle_initializer_func,
+                                                 void* state,
+                                                 /*out*/ ONNX_NAMESPACE::GraphProto& graph_proto) const {
+  ToGraphProtoInternal(graph_proto);
+  ORT_RETURN_IF_ERROR(ToGraphProtoWithInitializerHandlerImpl(handle_initializer_func, state, graph_proto));
+  return Status::OK();
 }
 
 void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const {

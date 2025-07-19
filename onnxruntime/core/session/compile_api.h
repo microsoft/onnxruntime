@@ -32,5 +32,11 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOp
                     size_t flags);
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetEpContextBinaryInformation, _In_ OrtModelCompilationOptions* model_compile_options,
                     _In_ const ORTCHAR_T* output_dir, _In_ const ORTCHAR_T* model_name);
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelWriteFunc,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_ OrtWriteBufferFunc write_func, _In_ void* state);
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelHandleInitializerFunc,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_ OrtHandleInitializerDataFunc handle_initializer_func, _In_ void* state);
 
 }  // namespace OrtCompileAPI

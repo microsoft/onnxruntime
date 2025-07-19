@@ -5,10 +5,12 @@
 
 #include <cassert>
 #include <functional>
+#include <string>
 
 #include "core/common/inlined_containers.h"
 #include "core/common/string_utils.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/ep_context_options.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/func_kernel.h"
 #include "core/framework/kernel_lookup.h"
@@ -22,6 +24,7 @@
 #include "core/graph/model.h"
 #include "core/graph/model_saving_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/util/protobuf_parsing_utils.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 // #define COUNT_NON_CUDA_OPS
@@ -793,9 +796,51 @@ static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_
   return Status::OK();
 }
 
+// Serialize an EPContext model into a onnx::ModelProto.
+static Status EpContextModelToProto(const onnxruntime::Model& ep_context_model,
+                                    const std::filesystem::path& validated_model_path,
+                                    const epctx::ModelGenOptions& ep_context_gen_options,
+                                    /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
+  // Handle case where initializers are stored inline within the ONNX model.
+  if (ep_context_gen_options.AreCpuInitializersEmbedded()) {
+    // if no external ini file specified, set force_embed_external_ini to true to avoid intermediate file creation
+    // and force all initializers embed into the ONNX file.
+    ModelSavingOptions model_saving_options{/*size_threshold*/ SIZE_MAX};
+    model_saving_options.force_embed_external_ini = true;
+
+    model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(std::filesystem::path{},
+                                                                        validated_model_path,
+                                                                        model_saving_options);
+    return Status::OK();
+  }
+
+  // Handle case where initializers (with size > threshold) are stored in an external file.
+  if (const epctx::ExternalInitializerFileInfo* ext_info = ep_context_gen_options.TryGetExternalInitializerFileInfo();
+      ext_info != nullptr) {
+    ModelSavingOptions model_saving_options{ext_info->size_threshold};
+
+    model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(ext_info->file_path,
+                                                                        validated_model_path,
+                                                                        model_saving_options);
+    return Status::OK();
+  }
+
+  // Handle case where user specified a custom handler function that determines how each initializer is saved.
+  if (const epctx::InitializerHandler* custom_handler = ep_context_gen_options.TryGetInitializerHandler();
+      custom_handler != nullptr) {
+    ORT_RETURN_IF_ERROR(ep_context_model.ToGraphProtoWithInitializerHandler(custom_handler->handle_initializer_func,
+                                                                            custom_handler->state,
+                                                                            model_proto));
+    return Status::OK();
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected location for initializers while generating ",
+                         validated_model_path);
+}
+
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
-                                   const EpContextModelGenerationOptions& ep_context_gen_options,
+                                   const epctx::ModelGenOptions& ep_context_gen_options,
                                    const logging::Logger& logger) {
   InlinedVector<const Node*> all_ep_context_nodes;
   for (const auto& ep : execution_providers) {
@@ -806,11 +851,11 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   if (all_ep_context_nodes.size() < 1) {
     auto action_if_no_compiled_nodes = ep_context_gen_options.action_if_no_compiled_nodes;
 
-    ORT_RETURN_IF(action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kReturnError,
+    ORT_RETURN_IF(action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kReturnError,
                   "Unable to compile any nodes. Check that the session EPs support compilation and can execute "
                   "at least one subgraph in the model.");
 
-    if (action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kDontGenerateModel) {
+    if (action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kDontGenerateModel) {
       LOGS(logger, WARNING) << "Unable to compile any nodes. ONNX Runtime will not generate a compiled model. "
                                "Either the session EPs do not support compilation or the model is already compiled.";
       // Note: this path is only taken if a model is compiled with the original compilation approach that uses
@@ -820,7 +865,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
 
     // Assert so that this is caught in a test in DEBUG builds (in case a new enum value is added)
-    assert(action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kGenerateModel);
+    assert(action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kGenerateModel);
     LOGS(logger, INFO) << "Unable to compile any nodes but will still generate an output model. "
                           "Either the session EPs do not support compilation or the model is already compiled.";
   }
@@ -834,15 +879,16 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     return std::make_pair(false, static_cast<const Node*>(nullptr));
   };
 
-  bool saving_to_buffer = ep_context_gen_options.output_model_buffer_ptr != nullptr &&
-                          ep_context_gen_options.output_model_buffer_size_ptr != nullptr &&
-                          ep_context_gen_options.output_model_buffer_allocator != nullptr;
+  const epctx::BufferHolder* output_buffer_holder = ep_context_gen_options.TryGetOutputModelBuffer();
+  const epctx::OutStreamHolder* output_stream_holder = ep_context_gen_options.TryGetOutputModelOutStream();
+  const std::string* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
 
-  std::filesystem::path context_cache_path;
-  if (!saving_to_buffer || !graph.ModelPath().empty()) {
-    ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path,
+  std::filesystem::path valid_output_model_path;
+  if (output_model_path_ptr != nullptr || !graph.ModelPath().empty()) {
+    std::string output_model_path = (output_model_path_ptr != nullptr) ? *output_model_path_ptr : "";
+    ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(output_model_path,
                                                   graph.ModelPath(),
-                                                  context_cache_path,
+                                                  valid_output_model_path,
                                                   ep_context_gen_options.error_if_output_file_exists));
   }
 
@@ -909,39 +955,60 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
   }
 
-  size_t ini_size_threshold = ep_context_gen_options.output_external_initializer_size_threshold;
-  std::filesystem::path external_ini_path = ep_context_gen_options.output_external_initializers_file_path;
-  bool force_embed_external_ini = false;
-  if (external_ini_path.empty()) {
-    // if no external ini file specified, set force_embed_external_ini to true to avoid intermedia file creation
-    // and force all initializers embed into the Onnx file
-    ini_size_threshold = SIZE_MAX;
-    force_embed_external_ini = true;
-  }
+  ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
+  ONNX_NAMESPACE::ModelProto model_proto;
+  ORT_RETURN_IF_ERROR(EpContextModelToProto(ep_context_model, valid_output_model_path, ep_context_gen_options,
+                                            /*out*/ model_proto));
 
-  ModelSavingOptions model_saving_options{ini_size_threshold};
-  model_saving_options.force_embed_external_ini = force_embed_external_ini;
-
-  if (saving_to_buffer) {
-    ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
-    // TODO(adrianlizarraga): Investigate if we can make this more memory efficient.
-    // May be able to use allocator to directly allocate the ModelProto to avoid a copy.
-    ONNX_NAMESPACE::ModelProto model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(external_ini_path,
-                                                                                                   context_cache_path,
-                                                                                                   model_saving_options);
+  if (output_buffer_holder != nullptr) {
+    // Write output model into a buffer ORT allocates for the user.
     size_t buffer_size = model_proto.ByteSizeLong();
     ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
                   "Cannot serialize ONNX ModelProto larger than 2GB");
 
-    AllocatorPtr allocator = ep_context_gen_options.output_model_buffer_allocator;
+    AllocatorPtr allocator = output_buffer_holder->buffer_allocator;
     IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_size);
     model_proto.SerializeToArray(buffer.get(), static_cast<int>(buffer_size));
 
-    *ep_context_gen_options.output_model_buffer_size_ptr = buffer_size;
-    *ep_context_gen_options.output_model_buffer_ptr = buffer.release();
+    *output_buffer_holder->buffer_size_ptr = buffer_size;
+    *output_buffer_holder->buffer_ptr = buffer.release();
+  } else if (output_stream_holder != nullptr) {
+    // Write output model to user's output stream.
+    size_t buffer_size = model_proto.ByteSizeLong();
+    ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
+                  "Cannot serialize ONNX ModelProto larger than 2GB");
+
+    auto out_stream_buf = std::make_unique<epctx::OutStreamBuf>(*output_stream_holder);
+    std::ostream out_stream(out_stream_buf.get());
+
+    model_proto.SerializeToOstream(&out_stream);
+    out_stream.flush();
+    ORT_RETURN_IF_ERROR(out_stream_buf->GetStatus());
   } else {
-    ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
-                                                            external_ini_path, model_saving_options));
+    int fd = 0;
+    Status status = Env::Default().FileOpenWr(valid_output_model_path, fd);
+    ORT_RETURN_IF_ERROR(status);
+
+    ORT_TRY {
+      google::protobuf::io::FileOutputStream output(fd);
+      bool serialize_result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
+      if (!serialize_result) {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_PROTOBUF,
+                                 "Protobuf serialization failed when generating EPContext model ",
+                                 valid_output_model_path);
+      }
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+      });
+    }
+    if (!status.IsOK()) {
+      GSL_SUPPRESS(es .84)
+      ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+      return status;
+    }
+    ORT_RETURN_IF_ERROR(Env::Default().FileClose(fd));
   }
 
   return Status::OK();
@@ -1192,7 +1259,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    const ConfigOptions& config_options,
                                    const logging::Logger& logger,
                                    Mode mode,
-                                   const EpContextModelGenerationOptions& ep_context_gen_options,
+                                   const epctx::ModelGenOptions& ep_context_gen_options,
                                    const layout_transformation::DebugGraphFn& debug_graph_fn) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
@@ -1239,12 +1306,15 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
-    if (ep_context_gen_options.enable && ep_context_gen_options.output_model_buffer_ptr == nullptr) {
-      // Check before EP compile graphs
-      std::filesystem::path context_cache_path;
-      ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path, graph.ModelPath(),
-                                                    context_cache_path,
-                                                    ep_context_gen_options.error_if_output_file_exists));
+    if (ep_context_gen_options.enable) {
+      if (const std::string* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
+          output_model_path_ptr != nullptr) {
+        // Check before EP compile graphs
+        std::filesystem::path context_cache_path;
+        ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(*output_model_path_ptr, graph.ModelPath(),
+                                                      context_cache_path,
+                                                      ep_context_gen_options.error_if_output_file_exists));
+      }
     }
 
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs

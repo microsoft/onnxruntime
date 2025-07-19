@@ -837,11 +837,26 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalI
   return *this;
 }
 
+inline ModelCompilationOptions&
+ModelCompilationOptions::SetOutputModelHandleInitializerFunc(OrtHandleInitializerDataFunc handle_initializer_func,
+                                                             void* state) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelHandleInitializerFunc(this->p_,
+                                                                                                handle_initializer_func,
+                                                                                                state));
+  return *this;
+}
+
 inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelBuffer(
     OrtAllocator* allocator, void** output_model_buffer_ptr, size_t* output_model_buffer_size_ptr) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelBuffer(this->p_, allocator,
                                                                                  output_model_buffer_ptr,
                                                                                  output_model_buffer_size_ptr));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelWriteFunc(OrtWriteBufferFunc write_func,
+                                                                                 void* state) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelWriteFunc(this->p_, write_func, state));
   return *this;
 }
 
