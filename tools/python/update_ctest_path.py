@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 # We have some Azure DevOps pipelines that each has two parts: the first part
 # builds source code into binary then uploads it, then the second part downloads
@@ -13,6 +12,7 @@ import os
 import re
 import sys
 from pathlib import Path
+
 
 def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path):
     """
@@ -33,7 +33,7 @@ def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path)
     old_src_dir = None
     old_build_dir = None
 
-    with file_path.open('r', encoding='utf-8') as f:
+    with file_path.open("r", encoding="utf-8") as f:
         # The paths are usually in the first few lines
         for line in f:
             if not old_src_dir and (src_match := header_src_pattern.match(line)):
@@ -67,23 +67,22 @@ def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path)
     # escaped backslash (e.g., C:\\path) variants of the old paths.
     # We use re.escape to ensure path characters are treated literally.
     build_fwd_re = re.compile(re.escape(old_build_dir))
-    build_bwd_re = re.compile(re.escape(old_build_dir.replace('/', '\\\\')))
+    build_bwd_re = re.compile(re.escape(old_build_dir.replace("/", "\\\\")))
     src_fwd_re = re.compile(re.escape(old_src_dir))
-    src_bwd_re = re.compile(re.escape(old_src_dir.replace('/', '\\\\')))
+    src_bwd_re = re.compile(re.escape(old_src_dir.replace("/", "\\\\")))
 
     # --- Step 3: Process file line-by-line and write to a temp file ---
     temp_file_path = file_path.with_suffix(f"{file_path.suffix}.tmp")
     try:
-        with file_path.open('r', encoding='utf-8') as infile, \
-             temp_file_path.open('w', encoding='utf-8') as outfile:
-            for line in infile:
+        with file_path.open("r", encoding="utf-8") as infile, temp_file_path.open("w", encoding="utf-8") as outfile:
+            for input_line in infile:
                 # It's safer to replace the longer, more specific build path first.
-                line = build_fwd_re.sub(new_build_posix, line)
+                line = build_fwd_re.sub(new_build_posix, input_line)
                 line = build_bwd_re.sub(new_build_posix, line)
                 line = src_fwd_re.sub(new_src_posix, line)
                 line = src_bwd_re.sub(new_src_posix, line)
                 outfile.write(line)
-    except IOError as e:
+    except OSError as e:
         print(f"Error during file processing: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -100,25 +99,20 @@ def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path)
     print(f"Successfully updated paths in {file_path}")
 
 
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+
 def main():
     """Parses command-line arguments and runs the update logic."""
-    # Determine the repository root based on the script's location
-    SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-    REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
     parser = argparse.ArgumentParser(
         description="Update hardcoded paths in a CTestTestfile.cmake file for relocatable test execution.",
-        formatter_class=argparse.RawTextHelpFormatter
+        formatter_class=argparse.RawTextHelpFormatter,
     )
+    parser.add_argument("ctest_file", type=Path, help="Path to the CTestTestfile.cmake file to be updated.")
     parser.add_argument(
-        "ctest_file",
-        type=Path,
-        help="Path to the CTestTestfile.cmake file to be updated."
-    )
-    parser.add_argument(
-        "new_build_dir",
-        type=Path,
-        help="The new build directory path (e.g., $(Pipeline.Workspace)/b)."
+        "new_build_dir", type=Path, help="The new build directory path (e.g., $(Pipeline.Workspace)/b)."
     )
 
     args = parser.parse_args()
