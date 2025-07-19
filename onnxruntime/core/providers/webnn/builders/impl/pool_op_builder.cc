@@ -77,7 +77,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   }
 
   // Add Padding.
-  // Usually using autopadding is more efficient than using explicit padding.
+  // Usually using auto padding is more efficient than using explicit padding.
   // Try to see if we can map explicit padding to auto padding.
   const auto onnx_strides = helper.Get("strides", std::vector<int64_t>{1, 1});
   const auto onnx_pads = helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0});
@@ -94,7 +94,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                       auto_pad_type,
                                       pads_out,
                                       !is_nhwc));
-    pads = GetNarrowedIntfromInt64<uint32_t>(pads_out);
+    pads = GetNarrowedIntFromInt64<uint32_t>(pads_out);
   }
   // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
   // while WebNN's padding is [beginning_height, ending_height, beginning_width, ending_width].

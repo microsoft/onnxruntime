@@ -55,14 +55,14 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   // If the input A is 1-D, it is promoted to a matrix by prepending a 1 to its dimensions.
   if (a_shape.size() == 1) {
     a_shape.insert(a_shape.begin(), 1);
-    emscripten::val a_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(a_shape));
+    emscripten::val a_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(a_shape));
     common_options.set("label", node.Name() + "_reshape_a");
     a = model_builder.GetBuilder().call<emscripten::val>("reshape", a, a_shape_arr, common_options);
   }
   // If the input B is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
   if (b_shape.size() == 1) {
     b_shape.push_back(1);
-    emscripten::val b_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(b_shape));
+    emscripten::val b_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(b_shape));
     common_options.set("label", node.Name() + "_reshape_b");
     b = model_builder.GetBuilder().call<emscripten::val>("reshape", b, b_shape_arr, common_options);
   }
@@ -74,7 +74,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     // If A or B input is 1-D, we need to reshape the output back to its original shape.
     if (a_shape.size() == 1 || b_shape.size() == 1) {
       common_options.set("label", node.Name() + "_reshape_output");
-      emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(output_shape));
+      emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_shape));
       output = model_builder.GetBuilder().call<emscripten::val>("reshape",
                                                                 output,
                                                                 output_shape_arr,
@@ -95,7 +95,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       // The scale input should have the same shape as the zero point input.
       a_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                                          1.0f,
-                                                         GetNarrowedIntfromInt64<uint32_t>(a_zero_point_shape));
+                                                         GetNarrowedIntFromInt64<uint32_t>(a_zero_point_shape));
     } else {
       // If a_zero_point is not provided, create default scalar for zero_point and scale inputs.
       a_zero_point = model_builder.CreateOrGetConstant<uint8_t>(a_type, 0);
@@ -115,7 +115,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       ORT_RETURN_IF_NOT(GetShape(*input_defs[3], b_zero_point_shape, logger), "Cannot get shape of b_zero_point");
       b_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                                          1.0f,
-                                                         GetNarrowedIntfromInt64<uint32_t>(b_zero_point_shape));
+                                                         GetNarrowedIntFromInt64<uint32_t>(b_zero_point_shape));
     } else {
       b_zero_point = model_builder.CreateOrGetConstant<uint8_t>(a_type, 0);
       b_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f);
@@ -143,7 +143,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     // If A or B input is 1-D, we need to reshape the output back to its original shape.
     if (a_shape.size() == 1 || b_shape.size() == 1) {
       common_options.set("label", node.Name() + "_reshape_output");
-      emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(output_shape));
+      emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_shape));
       output = model_builder.GetBuilder().call<emscripten::val>("reshape",
                                                                 output,
                                                                 output_shape_arr,
