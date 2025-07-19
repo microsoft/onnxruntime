@@ -98,9 +98,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           if (added_ep_device_index_set.find(index) == added_ep_device_index_set.end()) {
             added_ep_devices.push_back(device);
             added_ep_device_index_set.insert(index);
+            fprintf(stdout, "Device [Index: %d, Name: %s] has been added to session.", index, device.EpName());
           }
         } else {
-          std::string err_msg = "[WARNING]: The device index and its corresponding OrtEpDevice is not created from " +
+          std::string err_msg = "[WARNING] [plugin EP]: The device index and its corresponding OrtEpDevice is not created from " +
                                 performance_test_config.machine_config.provider_type_name + ". Will skip adding this device.\n";
           fprintf(stderr, "%s", err_msg.c_str());
         }
@@ -108,9 +109,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     } else {
       // All OrtEpDevice instances must be from the same execution provider.
       // Find and select the OrtEpDevice associated with the execution provider provided via "-e" argument.
-      for (Ort::ConstEpDevice& device : ep_devices) {
+      for (int index = 0; static_cast<size_t>(index) < ep_devices.size(); ++index) {
+        Ort::ConstEpDevice& device = ep_devices[index];
         if (std::string(device.EpName()) == performance_test_config.machine_config.provider_type_name) {
           added_ep_devices.push_back(device);
+          fprintf(stdout, "Device [Index: %d, Name: %s] has been added to session.", index, device.EpName());
         }
       }
     }
@@ -120,7 +123,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         env.UnregisterExecutionProviderLibrary(ep_name.c_str());
       }
       ORT_THROW(
-          "[ERROR] [plugin EP] No matching execution provider name found in EP library's factory.");
+          "[ERROR] [plugin EP]: No matching devices found.");
     }
 
     std::string provider_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);

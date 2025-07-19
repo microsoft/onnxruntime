@@ -34,7 +34,7 @@ namespace perftest {
       "\t-A: Disable memory arena\n"
       "\t-I: Generate tensor input binding. Free dimensions are treated as 1 unless overridden using -f.\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai|webgpu|plugin_ep]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
+      "\t-e,--ep [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai|webgpu|plugin_ep]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
       "'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai', 'webgpu' or plugin execution provider that provided via ep library. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
@@ -161,6 +161,10 @@ namespace perftest {
       "\t-X [Enable onnxruntime-extensions custom ops]: Registers custom ops from onnxruntime-extensions. "
       "onnxruntime-extensions must have been built in to onnxruntime. This can be done with the build.py "
       "'--use_extensions' option.\n"
+      "\t--plugin_ep_libs [registration names and libraries] Specifies a list of plugin execution provider(EP) registration names and their corresponding shared libraries to register.\n"
+      "\t    [Usage]: --plugin_ep_libs 'plugin_ep_1|plugin_ep_2.dll plugin_ep_2|plugin_ep_2.dll'\n"
+      "\t--list_devices Prints all available device indices and their properties (including metadata).\n"
+      "\t--select_devices [list of device indices] A semicolon-separated list of device indices to add to the session and run with.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -190,13 +194,13 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
 
 bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   try {
-    cxxopts::Options options("onnxruntime_perf", "ONNX Runtime Performance Test Config");
+    cxxopts::Options options("onnxruntime_perf_test", "perf_test [options...] model_path [result_file]");
 
     options.add_options()
       ("f", "Free dimension override by name", cxxopts::value<std::vector<std::string>>())
       ("F", "Free dimension override by denotation", cxxopts::value<std::vector<std::string>>())
       ("m", "Test mode: duration or times", cxxopts::value<std::string>())
-      ("e", "Execution provider", cxxopts::value<std::string>())
+      ("e,ep", "Execution provider", cxxopts::value<std::string>())
       ("r", "Repeat times", cxxopts::value<size_t>())
       ("t", "Duration in seconds", cxxopts::value<size_t>())
       ("p", "Profile output file", cxxopts::value<std::string>())
@@ -226,8 +230,8 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
       ("g", "Enable CUDA IO binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
       ("X", "Use extensions", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
       ("plugin_ep_libs", "Plugin EP names and libs", cxxopts::value<std::string>())
-      ("list_devices", "List all the avaiable devices with info")
-      ("select_devices", "Take a list of device index (semicolon separated)", cxxopts::value<std::string>())
+      ("list_devices", "Prints all available device indices and their properties (including metadata)")
+      ("select_devices", "A semicolon-separated list of device indices to add to the session and run with", cxxopts::value<std::string>())
       ("h,help", "Print usage");
 
 #ifdef _WIN32
@@ -238,10 +242,12 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
     auto result = options.parse(argc, argv);
 #endif
 
+    /*
     if (result.count("help")) {
       std::cout << options.help() << std::endl;
       return false;
     }
+    */
 
     if (result.count("f")) {
       std::basic_string<ORTCHAR_T> dim_name;
@@ -447,6 +453,7 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
 
     if (result.count("h")) {
       perftest::CommandLineParser::ShowUsage();
+      return false;
     }
 
     // Positional arguments
