@@ -259,12 +259,6 @@ stages:
           Contents: 'custom_op_library.dll'
           TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
 
-      # Unzip the package so that we can use binskim to check the DLLs
-      - script: |
-          7z x *.zip
-        workingDirectory: '$(Build.ArtifactStagingDirectory)'
-        displayName: 'Unzip package'
-
 # Run GPU tests.
 - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
   - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
