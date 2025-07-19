@@ -11,7 +11,7 @@
 /// </summary>
 class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
  public:
-  ExampleEpFactory(const char* ep_name, ApiPtrs apis);
+  ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger);
 
   OrtDataTransferImpl* GetDataTransfer() const {
     return data_transfer_impl_.get();
@@ -64,6 +64,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
                                                                const OrtKeyValuePairs* stream_options,
                                                                OrtSyncStreamImpl** stream) noexcept;
 
+  const OrtLogger& default_logger_;        // default logger for the EP factory
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name
   const uint32_t vendor_id_{0xB357};       // EP vendor ID
