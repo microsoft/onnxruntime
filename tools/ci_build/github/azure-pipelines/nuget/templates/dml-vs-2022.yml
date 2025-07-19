@@ -53,6 +53,7 @@ stages:
         clean: true
         submodules: none
 
+      - template: ../../templates/telemetry-steps.yml
 
       - task: NodeTool@0
         inputs:
