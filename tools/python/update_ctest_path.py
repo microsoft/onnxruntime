@@ -40,7 +40,7 @@ def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path)
                 # The path in the file points to a subdirectory (e.g., .../s/cmake)
                 # The actual source root is its parent.
                 cmake_subdir = Path(src_match.group(1).strip())
-                old_src_dir = str(cmake_subdir.parent)
+                old_src_dir = str(cmake_subdir.parent.as_posix())
                 print(f"Found CMake source sub-directory: '{cmake_subdir}'")
             elif not old_build_dir and (build_match := header_build_pattern.match(line)):
                 old_build_dir = build_match.group(1).strip()
