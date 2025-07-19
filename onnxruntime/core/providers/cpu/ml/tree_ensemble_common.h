@@ -13,6 +13,23 @@ namespace onnxruntime {
 namespace ml {
 namespace detail {
 
+// This class checks if a value is in a set of categories. It is used to handle categorical features.
+// This implementation could be optimized for different kind of sets of integers.
+template <typename TCAT, typename TINPUT>
+class TreeCategorySet {
+  typedef typename TCAT cat_type;
+  typedef typename TINPUT input_type;
+
+ public:
+  TreeCategorySet(const std::vector<TCAT>& values) : set_(values.begin(), values.end()) {}
+  inline bool isIn(const TINPUT& val) const {
+    return set_.find(static_cast<TCAT>(val)) != set_.end();
+  }
+
+ private:
+  std::unordered_set<TCAT> set_;
+};
+
 /**
  * These attributes are the kernel attributes. They are different from the onnx operator attributes
  * to improve the computation efficiency. The initialization consists in moving the onnx attributes
@@ -53,6 +70,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   // `ThresholdType` is used as well for output type (double as well for lightgbm) and not `OutputType`.
   std::vector<SparseValue<ThresholdType>> weights_;
   std::vector<TreeNodeElement<ThresholdType>*> roots_;
+  std::vector<TreeCategorySet<int32_t, InputType>> category_sets_;
 
  public:
   TreeEnsembleCommon() {}
@@ -71,6 +89,10 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
 
   template <typename AGG>
   void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Y, Tensor* label, const AGG& agg) const;
+
+  inline const TreeCategorySet<int32_t, InputType>& GetCategorySet(const ThresholdType& set_id) const {
+    return category_sets_[static_cast<size_t>(set_id)];
+  }
 
  private:
   bool CheckIfSubtreesAreEqual(const size_t left_id, const size_t right_id, const int64_t tree_id, const InlinedVector<NODE_MODE_ONNX>& cmodes,
@@ -305,6 +327,28 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
           break;
         }
       }
+    }
+  }
+
+  // Handling bigsets
+  if (!attributes.bigsets.empty()) {
+    category_sets_.reserve(attributes.bigsets.size());
+    for (auto bigset : attributes.bigsets) {
+      // We check every value in the bigset is a valid value (an integer).
+      std::vector<ThresholdType> wrong_values;
+      std::vector<int32_t> bigset_int32;
+      bigset_int32.reserve(bigset.size());
+      for (auto value : bigset) {
+        if (static_cast<ThresholdType>(static_cast<int32_t>(value)) != value) {
+          wrong_values.push_back(value);
+        }
+        bigset_int32.push_back(static_cast<int32_t>(value));
+      }
+      ORT_ENFORCE(
+          wrong_values.empty(),
+          "MemberShip values is only implemented for integers, ", wrong_values.size(), "values cannot be cast into int32_t.");
+      TreeCategorySet<int32_t, InputType> catset(bigset_int32);
+      category_sets_.emplace_back(std::move(catset));
     }
   }
 
@@ -794,8 +838,26 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
             root = SetMembershipCheck(val, root->value_or_unique_weight) ? root->truenode_or_weight.ptr : root + 1;
           }
         }
+        break;
+      case NODE_MODE_ORT::BRANCH_MEMBER_BIGSET:
+        if (has_missing_tracks_) {
+          while (root->is_not_leaf()) {
+            val = x_data[root->feature_id];
+            root = (GetCategorySet(root->value_or_unique_weight).isIn(val) || (root->is_missing_track_true() && _isnan_(val)))
+                       ? root->truenode_or_weight.ptr
+                       : root + 1;
+          }
+        } else {
+          while (root->is_not_leaf()) {
+            val = x_data[root->feature_id];
+            root = GetCategorySet(root->value_or_unique_weight).isIn(val) ? root->truenode_or_weight.ptr : root + 1;
+          }
+        }
+        break;
       case NODE_MODE_ORT::LEAF:
         break;
+      default:
+        ORT_THROW("Unknown node mode in TreeEnsembleCommon::ProcessTreeNodeLeave: ", static_cast<int>(root->mode()));
     }
   } else {  // Different rules to compare to node thresholds.
     ThresholdType threshold;
@@ -832,8 +894,15 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
                      ? root->truenode_or_weight.ptr
                      : root + 1;
           break;
+        case NODE_MODE_ORT::BRANCH_MEMBER_BIGSET:
+          root = (GetCategorySet(root->value_or_unique_weight).isIn(val) || (root->is_missing_track_true() && _isnan_(val)))
+                     ? root->truenode_or_weight.ptr
+                     : root + 1;
+          break;
         case NODE_MODE_ORT::LEAF:
           return root;
+        default:
+          ORT_THROW("Unknown node mode in TreeEnsembleCommon::ProcessTreeNodeLeave: ", static_cast<int>(root->mode()));
       }
     }
   }
