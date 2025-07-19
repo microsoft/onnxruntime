@@ -1,13 +1,26 @@
 # This script is designed to trigger specific Azure DevOps pipelines based on a set of criteria.
 #
-# The filtering criteria are as follows:
-# 1. Repository Association: The pipeline must be associated with the 'https://github.com/microsoft/onnxruntime' repository.
-# 2. Recent Activity: The pipeline must have had a run within the last 30 days.
-# 3. Pipeline Type: The pipeline must be YAML-based.
-# 4. Trigger Type: The pipeline's source YAML must not contain a resource trigger for another pipeline (i.e., it's not a downstream pipeline).
-# 5. Template Requirement: The pipeline's source YAML must extend from the specific 'v1/1ES.Official.PipelineTemplate.yml@1esPipelines' template.
+# It supports two modes:
 #
-# The script also includes a feature to cancel any currently running builds for a matching pipeline on the target branch before queuing a new one.
+# 1. CI Build Mode (Default):
+#    - Triggers pipelines in the 'Lotus' project.
+#    - Filters pipelines based on the following criteria:
+#      - Repository Association: Must be 'https://github.com/microsoft/onnxruntime'.
+#      - Recent Activity: Must have run in the last 30 days.
+#      - Pipeline Type: Must be YAML-based.
+#      - Trigger Type: Must NOT be triggered by another pipeline resource.
+#      - Template Requirement: Must extend from 'v1/1ES.Official.PipelineTemplate.yml@1esPipelines'.
+#
+# 2. Pull Request (PR) Mode:
+#    - Activated by using the '--pr <ID>' argument.
+#    - Triggers pipelines in the 'PublicPackages' project.
+#    - Filters pipelines based on a simplified criteria:
+#      - Repository Association: Must be 'https://github.com/microsoft/onnxruntime'.
+#      - Recent Activity: Must have run in the last 30 days.
+#      - Pipeline Type: Must be YAML-based.
+#
+# The script also includes a feature to cancel any currently running builds for a matching
+# pipeline on the target branch/PR before queuing a new one.
 
 import subprocess
 import sys
@@ -48,7 +61,6 @@ class PipelineDetails(TypedDict):
 
 # --- Configuration ---
 ADO_ORGANIZATION = "aiinfra"
-ADO_PROJECT = "Lotus"
 TARGET_REPO_URL = "https://github.com/microsoft/onnxruntime"
 DAYS_SINCE_LAST_RUN = 30
 
@@ -74,11 +86,11 @@ def get_azure_cli_token() -> str:
         print(f"\nERROR during token acquisition: {e}")
         sys.exit(1)
 
-def get_pipelines(token: str) -> List[Dict]:
-    """Gets a summary list of all pipelines in the project."""
-    print("\n--- Fetching Pipelines ---")
+def get_pipelines(token: str, project: str) -> List[Dict]:
+    """Gets a summary list of all pipelines in the specified project."""
+    print(f"\n--- Fetching Pipelines from project: {project} ---")
     headers = {"Authorization": f"Bearer {token}"}
-    url = f"https://dev.azure.com/{ADO_ORGANIZATION}/{ADO_PROJECT}/_apis/pipelines?api-version=7.1-preview.1"
+    url = f"https://dev.azure.com/{ADO_ORGANIZATION}/{project}/_apis/pipelines?api-version=7.1-preview.1"
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -89,7 +101,7 @@ def get_pipelines(token: str) -> List[Dict]:
         print(f"ERROR fetching pipelines: {e}")
         return []
 
-def filter_pipelines(pipelines: List[Dict], token: str) -> List[PipelineDetails]:
+def filter_pipelines(pipelines: List[Dict], token: str, branch: str, is_pr_build: bool) -> List[PipelineDetails]:
     """Filters pipelines based on specified criteria."""
     print("\n--- Filtering Pipelines ---")
     filtered_pipelines: List[PipelineDetails] = []
@@ -124,7 +136,7 @@ def filter_pipelines(pipelines: List[Dict], token: str) -> List[PipelineDetails]
                 continue
 
             base_detail_url = detail_url.split('?')[0]
-            runs_url = f"{base_detail_url}/runs?$top=1&api-version=7.1-preview.1"
+            runs_url = f"{base_detail_url}/runs?$top=10&api-version=7.1-preview.1"
             runs_response = requests.get(runs_url, headers=headers)
             runs_response.raise_for_status()
             runs = runs_response.json().get('value', [])
@@ -133,9 +145,14 @@ def filter_pipelines(pipelines: List[Dict], token: str) -> List[PipelineDetails]
                 print(f"  - SKIPPING: Pipeline has no previous runs.")
                 continue
             
-            last_run_time_str = runs[0].get('finishedDate')
+            last_run_time_str = None
+            for run in runs:
+                if run.get('finishedDate'):
+                    last_run_time_str = run.get('finishedDate')
+                    break 
+
             if not last_run_time_str:
-                print(f"  - SKIPPING: Last run has no finish time (likely still in progress or failed early).")
+                print(f"  - SKIPPING: No completed runs found in the last 10 attempts.")
                 continue
 
             if '.' in last_run_time_str:
@@ -151,51 +168,53 @@ def filter_pipelines(pipelines: List[Dict], token: str) -> List[PipelineDetails]
                 print(f"  - SKIPPING: Last run was on {last_run_time.date()}, which is older than {DAYS_SINCE_LAST_RUN} days.")
                 continue
 
-            print("  - Checking YAML for template and resource triggers...")
-            yaml_path = configuration['path']
-            yaml_url = f"https://raw.githubusercontent.com/{repo_info['fullName']}/main/{yaml_path}"
-            
-            try:
-                yaml_response = requests.get(yaml_url)
-                yaml_response.raise_for_status()
-                yaml_content = yaml_response.text
-
+            # For CI builds, perform additional checks on the YAML content.
+            if not is_pr_build:
+                print(f"  - Checking YAML on branch '{branch}' for template and resource triggers...")
+                yaml_path = configuration['path']
+                yaml_url = f"https://raw.githubusercontent.com/{repo_info['fullName']}/{branch}/{yaml_path}"
+                
                 try:
-                    data = yaml.safe_load(yaml_content)
-                    if not isinstance(data, dict):
-                        print("  - WARNING: YAML content is not a dictionary. Skipping checks.")
+                    yaml_response = requests.get(yaml_url)
+                    yaml_response.raise_for_status()
+                    yaml_content = yaml_response.text
+
+                    try:
+                        data = yaml.safe_load(yaml_content)
+                        if not isinstance(data, dict):
+                            print("  - WARNING: YAML content is not a dictionary. Skipping checks.")
+                            continue
+
+                        extends_block = data.get('extends', {})
+                        template_path = extends_block.get('template')
+                        expected_template = 'v1/1ES.Official.PipelineTemplate.yml@1esPipelines'
+                        
+                        if template_path != expected_template:
+                            print(f"  - SKIPPING: YAML does not extend from the required template. Found: '{template_path}'.")
+                            continue
+                        print("  - OK: YAML extends from the correct template.")
+
+                        is_triggered_by_pipeline = False
+                        if 'resources' in data and isinstance(data.get('resources'), dict) and 'pipelines' in data.get('resources', {}):
+                            pipeline_list = data['resources'].get('pipelines', [])
+                            if isinstance(pipeline_list, list):
+                                for p_resource in pipeline_list:
+                                    if isinstance(p_resource, dict) and 'trigger' in p_resource:
+                                        print(f"  - SKIPPING: YAML contains a pipeline resource with a 'trigger' key.")
+                                        is_triggered_by_pipeline = True
+                                        break
+                        
+                        if is_triggered_by_pipeline:
+                            continue
+                        print("  - OK: No active pipeline resource trigger found in YAML.")
+
+                    except yaml.YAMLError as e:
+                        print(f"  - WARNING: Could not parse YAML file: {e}. Skipping checks.")
                         continue
 
-                    extends_block = data.get('extends', {})
-                    template_path = extends_block.get('template')
-                    expected_template = 'v1/1ES.Official.PipelineTemplate.yml@1esPipelines'
-                    
-                    if template_path != expected_template:
-                        print(f"  - SKIPPING: YAML does not extend from the required template. Found: '{template_path}'.")
-                        continue
-                    print("  - OK: YAML extends from the correct template.")
-
-                    is_triggered_by_pipeline = False
-                    if 'resources' in data and isinstance(data.get('resources'), dict) and 'pipelines' in data.get('resources', {}):
-                        pipeline_list = data['resources'].get('pipelines', [])
-                        if isinstance(pipeline_list, list):
-                            for p_resource in pipeline_list:
-                                if isinstance(p_resource, dict) and 'trigger' in p_resource:
-                                    print(f"  - SKIPPING: YAML contains a pipeline resource with a 'trigger' key.")
-                                    is_triggered_by_pipeline = True
-                                    break
-                    
-                    if is_triggered_by_pipeline:
-                        continue
-                    print("  - OK: No active pipeline resource trigger found in YAML.")
-
-                except yaml.YAMLError as e:
-                    print(f"  - WARNING: Could not parse YAML file: {e}. Skipping checks.")
+                except requests.exceptions.RequestException as e:
+                    print(f"  - WARNING: Could not fetch YAML file from {yaml_url}. Error: {e}. Skipping checks.")
                     continue
-
-            except requests.exceptions.RequestException as e:
-                print(f"  - WARNING: Could not fetch YAML file from {yaml_url}. Error: {e}. Skipping checks.")
-                continue
             
             print(f"  - MATCH: '{pipeline_name}' matches all criteria.")
             filtered_pipelines.append(pipeline_details)
@@ -213,14 +232,14 @@ def filter_pipelines(pipelines: List[Dict], token: str) -> List[PipelineDetails]
     print(f"\nFound {len(filtered_pipelines)} pipelines to trigger.")
     return filtered_pipelines
 
-def cancel_running_builds(pipeline_id: int, branch: str, token: str):
+def cancel_running_builds(pipeline_id: int, branch: str, token: str, project: str):
     """Finds and cancels any running builds for a given pipeline and branch."""
-    print(f"\n--- Checking for running builds for Pipeline ID: {pipeline_id} on branch '{branch}' ---")
+    print(f"\n--- Checking for running builds for Pipeline ID: {pipeline_id} on branch '{branch}' in project '{project}' ---")
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     
-    # Note: The 'builds' API uses 'branchName' which expects the short name (e.g., 'main')
-    # while the 'pipelines' run API expects the full ref name ('refs/heads/main').
-    builds_url = f"https://dev.azure.com/{ADO_ORGANIZATION}/{ADO_PROJECT}/_apis/build/builds?definitions={pipeline_id}&branchName={branch}&statusFilter=inProgress,notStarted&api-version=7.1"
+    # The 'builds' API uses 'branchName' which expects the short name (e.g., 'main' or 'pull/12345/head')
+    short_branch_name = branch.replace('refs/heads/', '').replace('refs/', '')
+    builds_url = f"https://dev.azure.com/{ADO_ORGANIZATION}/{project}/_apis/build/builds?definitions={pipeline_id}&branchName={short_branch_name}&statusFilter=inProgress,notStarted&api-version=7.1"
     
     try:
         response = requests.get(builds_url, headers=headers)
@@ -234,7 +253,7 @@ def cancel_running_builds(pipeline_id: int, branch: str, token: str):
         for build in running_builds:
             build_id = build['id']
             print(f"Cancelling running build ID: {build_id}...")
-            cancel_url = f"https://dev.azure.com/{ADO_ORGANIZATION}/{ADO_PROJECT}/_apis/build/builds/{build_id}?api-version=7.1"
+            cancel_url = f"https://dev.azure.com/{ADO_ORGANIZATION}/{project}/_apis/build/builds/{build_id}?api-version=7.1"
             payload = {"status": "cancelling"}
             
             patch_response = requests.patch(cancel_url, headers=headers, data=json.dumps(payload))
@@ -244,12 +263,12 @@ def cancel_running_builds(pipeline_id: int, branch: str, token: str):
     except requests.exceptions.RequestException as e:
         print(f"ERROR checking or cancelling running builds: {e}")
 
-def trigger_pipeline(pipeline_id: int, token: str, branch: str) -> Optional[int]:
+def trigger_pipeline(pipeline_id: int, token: str, branch: str, project: str) -> Optional[int]:
     """Triggers a pipeline and returns the new build ID."""
-    print(f"\n--- Triggering Pipeline ID: {pipeline_id} on branch '{branch}' ---")
+    print(f"\n--- Triggering Pipeline ID: {pipeline_id} on branch '{branch}' in project '{project}' ---")
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    run_url = f"https://dev.azure.com/{ADO_ORGANIZATION}/{ADO_PROJECT}/_apis/pipelines/{pipeline_id}/runs?api-version=7.1-preview.1"
-    payload = {"resources": {"repositories": {"self": {"refName": f"refs/heads/{branch}"}}}}
+    run_url = f"https://dev.azure.com/{ADO_ORGANIZATION}/{project}/_apis/pipelines/{pipeline_id}/runs?api-version=7.1-preview.1"
+    payload = {"resources": {"repositories": {"self": {"refName": branch}}}}
 
     try:
         response = requests.post(run_url, headers=headers, data=json.dumps(payload))
@@ -269,32 +288,46 @@ def main():
     """Main function to orchestrate the pipeline triggering process."""
     parser = argparse.ArgumentParser(description="Trigger Azure DevOps pipelines based on specific criteria.")
     parser.add_argument("--dry-run", action="store_true", help="Print pipelines that would be triggered, but don't actually trigger them.")
-    parser.add_argument("--branch", default="main", help="The target branch to trigger the pipelines on. Defaults to 'main'.")
+    parser.add_argument("--branch", default="main", help="The target branch for CI builds. Defaults to 'main'.")
+    parser.add_argument("--pr", type=int, help="The pull request ID to trigger PR builds for. This overrides --branch.")
     args = parser.parse_args()
+
+    project = "Lotus"
+    branch = f"refs/heads/{args.branch}"
+    is_pr_build = False
+
+    if args.pr:
+        print(f"--- Pull Request Mode Activated for PR #{args.pr} ---")
+        project = "PublicPackages"
+        branch = f"refs/pull/{args.pr}/head"
+        is_pr_build = True
+    else:
+        print(f"--- CI Build Mode Activated for branch '{args.branch}' ---")
+
 
     if args.dry_run:
         print("DRY RUN MODE ENABLED: No pipelines will be triggered.")
 
     token = get_azure_cli_token()
-    all_pipelines = get_pipelines(token)
+    all_pipelines = get_pipelines(token, project)
     if not all_pipelines:
         return
 
-    pipelines_to_trigger = filter_pipelines(all_pipelines, token)
+    pipelines_to_trigger = filter_pipelines(all_pipelines, token, args.branch, is_pr_build)
 
     if not pipelines_to_trigger:
         print("\nNo pipelines matching the criteria were found.")
         return
 
     if args.dry_run:
-        print(f"\n--- The following pipelines would be triggered on branch '{args.branch}' ---")
+        print(f"\n--- The following pipelines would be triggered on branch '{branch}' ---")
         for pipeline in pipelines_to_trigger:
             print(f"  - {pipeline['name']} (ID: {pipeline['id']})")
     else:
-        print(f"\n--- Triggering {len(pipelines_to_trigger)} Pipelines on branch '{args.branch}' ---")
+        print(f"\n--- Triggering {len(pipelines_to_trigger)} Pipelines on branch '{branch}' ---")
         for pipeline in pipelines_to_trigger:
-            cancel_running_builds(pipeline['id'], args.branch, token)
-            trigger_pipeline(pipeline['id'], token, branch=args.branch)
+            cancel_running_builds(pipeline['id'], branch, token, project)
+            trigger_pipeline(pipeline['id'], token, branch, project)
 
 if __name__ == "__main__":
     main()

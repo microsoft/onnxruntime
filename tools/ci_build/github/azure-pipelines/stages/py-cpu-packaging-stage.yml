@@ -107,6 +107,10 @@ stages:
           versionSpec: $(PythonVersion)
           addToPath: true
           architecture: $(buildArch)
+      - task: PipAuthenticate@1
+        displayName: 'Pip Authenticate'
+        inputs:
+          artifactFeeds: 'Lotus'
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
@@ -238,6 +242,11 @@ stages:
         displayName: 'Use Python'
         inputs:
           versionSpec: $(PythonVersion)
+
+      - task: PipAuthenticate@1
+        displayName: 'Pip Authenticate'
+        inputs:
+          artifactFeeds: 'Lotus'
 
       - template: ../templates/use-xcode-version.yml
 
