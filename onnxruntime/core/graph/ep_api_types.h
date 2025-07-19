@@ -290,6 +290,9 @@ struct EpGraph : public OrtGraph {
   // Returns the graph's name.
   const std::string& GetName() const override;
 
+  // Returns the model path.
+  const ORTCHAR_T* GetModelPath() const override;
+
   // Returns the model's ONNX IR version.
   int64_t GetOnnxIRVersion() const override;
 

@@ -173,6 +173,8 @@ struct ModelEditorGraph : public OrtGraph {
 
   const std::string& GetName() const override { return name; }
 
+  const ORTCHAR_T* GetModelPath() const override { return model_path.c_str(); }
+
   int64_t GetOnnxIRVersion() const override {
     return ONNX_NAMESPACE::Version::IR_VERSION;
   }
@@ -227,6 +229,7 @@ struct ModelEditorGraph : public OrtGraph {
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
   std::vector<std::unique_ptr<onnxruntime::ModelEditorNode>> nodes;
   std::string name = "ModelEditorGraph";
+  std::filesystem::path model_path;
 };
 
 }  // namespace onnxruntime
