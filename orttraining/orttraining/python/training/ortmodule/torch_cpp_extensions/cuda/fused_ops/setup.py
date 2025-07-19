@@ -10,12 +10,15 @@ import sys  # noqa: F401
 from setuptools import setup
 from torch.utils import cpp_extension
 
+# Resolve symlink in path to fix discrepancy between platforms
+fused_ops_dir = os.path.realpath(os.path.dirname(__file__))
+
 filenames = [
-    os.path.join(os.path.dirname(__file__), "fused_ops_frontend.cpp"),
-    os.path.join(os.path.dirname(__file__), "multi_tensor_adam.cu"),
-    os.path.join(os.path.dirname(__file__), "multi_tensor_scale_kernel.cu"),
-    os.path.join(os.path.dirname(__file__), "multi_tensor_axpby_kernel.cu"),
-    os.path.join(os.path.dirname(__file__), "multi_tensor_l2norm_kernel.cu"),
+    os.path.join(fused_ops_dir, "fused_ops_frontend.cpp"),
+    os.path.join(fused_ops_dir, "multi_tensor_adam.cu"),
+    os.path.join(fused_ops_dir, "multi_tensor_scale_kernel.cu"),
+    os.path.join(fused_ops_dir, "multi_tensor_axpby_kernel.cu"),
+    os.path.join(fused_ops_dir, "multi_tensor_l2norm_kernel.cu"),
 ]
 
 use_rocm = bool(os.environ["ONNXRUNTIME_ROCM_VERSION"])

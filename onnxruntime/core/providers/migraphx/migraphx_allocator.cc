@@ -23,11 +23,11 @@ void MIGraphXAllocator::CheckDevice() const {
 #endif
 }
 
-void* MIGraphXAllocator::Alloc(size_t size) {
+void* MIGraphXAllocator::Alloc(const size_t size) {
   CheckDevice();
   void* p = nullptr;
   if (size > 0) {
-    HIP_CALL_THROW(hipMalloc((void**)&p, size));
+    HIP_CALL_THROW(hipMalloc(&p, size));
   }
   return p;
 }
@@ -37,7 +37,7 @@ void MIGraphXAllocator::Free(void* p) {
   (void)hipFree(p);  // do not throw error since it's OK for hipFree to fail during shutdown
 }
 
-void* MIGraphXExternalAllocator::Alloc(size_t size) {
+void* MIGraphXExternalAllocator::Alloc(const size_t size) {
   void* p = nullptr;
   if (size > 0) {
     p = alloc_(size);
@@ -51,27 +51,27 @@ void* MIGraphXExternalAllocator::Alloc(size_t size) {
 
 void MIGraphXExternalAllocator::Free(void* p) {
   free_(p);
-  std::lock_guard<std::mutex> lock(lock_);
-  auto it = reserved_.find(p);
-  if (it != reserved_.end()) {
+  std::lock_guard lock(lock_);
+  if (const auto it = reserved_.find(p); it != reserved_.end()) {
     reserved_.erase(it);
     if (empty_cache_) empty_cache_();
   }
 }
 
-void* MIGraphXExternalAllocator::Reserve(size_t size) {
+void* MIGraphXExternalAllocator::Reserve(const size_t size) {
   void* p = Alloc(size);
-  if (!p) return nullptr;
-  std::lock_guard<std::mutex> lock(lock_);
-  ORT_ENFORCE(reserved_.find(p) == reserved_.end());
-  reserved_.insert(p);
+  if (p != nullptr) {
+    std::lock_guard lock(lock_);
+    ORT_ENFORCE(reserved_.find(p) == reserved_.end());
+    reserved_.insert(p);
+  }
   return p;
 }
 
-void* MIGraphXPinnedAllocator::Alloc(size_t size) {
+void* MIGraphXPinnedAllocator::Alloc(const size_t size) {
   void* p = nullptr;
   if (size > 0) {
-    HIP_CALL_THROW(hipHostMalloc((void**)&p, size));
+    HIP_CALL_THROW(hipHostMalloc(&p, size));
   }
   return p;
 }
