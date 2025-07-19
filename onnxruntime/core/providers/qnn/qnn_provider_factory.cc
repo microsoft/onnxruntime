@@ -125,12 +125,20 @@ struct QnnEpFactory : OrtEpFactory {
                OrtHardwareDeviceType hw_type,
                const char* qnn_backend_type)
       : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type}, qnn_backend_type{qnn_backend_type} {
+    ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVendorId = GetVendorIdImpl;
     GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
+
+    CreateAllocator = CreateAllocatorImpl;
+    ReleaseAllocator = ReleaseAllocatorImpl;
+    CreateDataTransfer = CreateDataTransferImpl;
+    IsStreamAware = IsStreamAwareImpl;
+    CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   }
 
   // Returns the name for the EP. Each unique factory configuration must have a unique name.
@@ -142,7 +150,12 @@ struct QnnEpFactory : OrtEpFactory {
 
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const QnnEpFactory*>(this_ptr);
-    return factory->vendor.c_str();
+    return factory->ep_vendor.c_str();
+  }
+
+  static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const QnnEpFactory*>(this_ptr);
+    return factory->ep_vendor_id;
   }
 
   static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
@@ -194,9 +207,47 @@ struct QnnEpFactory : OrtEpFactory {
     // no-op as we never create an EP here.
   }
 
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
+                                                     const OrtMemoryInfo* /*memory_info*/,
+                                                     const OrtKeyValuePairs* /*allocator_options*/,
+                                                     OrtAllocator** allocator) noexcept {
+    auto& factory = *static_cast<QnnEpFactory*>(this_ptr);
+    *allocator = nullptr;
+
+    // we don't add allocator info to the OrtEpDevice we return so this should never be called.
+    return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED, "QNN EP factory does not support CreateAllocator.");
+  }
+
+  static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* /*this*/, OrtAllocator* /*allocator*/) noexcept {
+    // we don't support CreateAllocator so this should never be called.
+  }
+
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* /*this_ptr*/,
+                                                        OrtDataTransferImpl** data_transfer) noexcept {
+    *data_transfer = nullptr;  // return nullptr to indicate that this EP does not support data transfer.
+    return nullptr;
+  }
+
+  static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return false;
+  }
+
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+                                                               const OrtMemoryDevice* memory_device,
+                                                               const OrtKeyValuePairs* /*stream_options*/,
+                                                               OrtSyncStreamImpl** ort_stream) noexcept {
+    auto& factory = *static_cast<QnnEpFactory*>(this_ptr);
+    *ort_stream = nullptr;
+
+    // should never be called as IsStreamAware returns false
+    return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                                        "QNN EP factory does not support CreateSyncStreamForDevice.");
+  }
+
   const OrtApi& ort_api;
-  const std::string ep_name;              // EP name
-  const std::string vendor{"Microsoft"};  // EP vendor name
+  const std::string ep_name;                 // EP name
+  const std::string ep_vendor{"Microsoft"};  // EP vendor name
+  uint32_t ep_vendor_id{0x1414};             // Microsoft vendor ID
 
   // Qualcomm vendor ID. Refer to the ACPI ID registry (search Qualcomm): https://uefi.org/ACPI_ID_List
   const uint32_t vendor_id{'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24)};

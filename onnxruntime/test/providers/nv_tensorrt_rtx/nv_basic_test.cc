@@ -389,5 +389,47 @@ TYPED_TEST(NvExecutionProviderTest, IOTypeTests) {
   }
 }
 
+static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
+  // Access the underlying InferenceSession.
+  const OrtSession* ort_session = session;
+  const InferenceSession* s = reinterpret_cast<const InferenceSession*>(ort_session);
+  bool has_ep = false;
+
+  for (const auto& provider : s->GetRegisteredProviderTypes()) {
+    if (provider == ep_name) {
+      has_ep = true;
+      break;
+    }
+  }
+  return has_ep;
+}
+
+#if defined(WIN32)
+// Tests autoEP feature to automatically select an EP that supports the GPU.
+// Currently only works on Windows.
+TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
+  PathString model_name = ORT_TSTR("nv_execution_provider_data_dyn_test.onnx");
+  std::string graph_name = "test";
+  std::vector<int> dims = {1, -1, -1};
+
+  CreateBaseModel(model_name, graph_name, dims, true);
+
+  auto env = Ort::Env();
+  auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
+  env.UpdateEnvWithCustomLogLevel(logging_level);
+
+  {
+    env.RegisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider, ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx.dll"));
+
+    Ort::SessionOptions so;
+    so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
+    Ort::Session session_object(env, model_name.c_str(), so);
+    EXPECT_TRUE(SessionHasEp(session_object, kNvTensorRTRTXExecutionProvider));
+  }
+
+  env.UnregisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider);
+}
+#endif  // defined(WIN32)
+
 }  // namespace test
 }  // namespace onnxruntime
