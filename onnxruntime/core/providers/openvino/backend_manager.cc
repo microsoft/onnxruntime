@@ -120,7 +120,7 @@ BackendManager::BackendManager(SessionContext& session_context,
          (session_context_.device_type.find("CPU") != std::string::npos ||
           session_context_.device_type.find("GPU") != std::string::npos ||
           (session_context_.device_type.find("NPU") != std::string::npos &&
-           session_context_.enable_causallm) )) ||
+           session_context_.enable_causallm))) ||
         (subgraph_context_.is_ep_ctx_graph)) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
                          << "Creating backend Dynamic Shapes";
@@ -443,7 +443,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
   } else if ((session_context_.device_type.find("GPU") != std::string::npos) &&
-      enable_ovep_qdq_optimizer) {
+             enable_ovep_qdq_optimizer) {
     // Create a copy of the model
     std::unique_ptr<onnxruntime::Model> model;
     Status status = qdq_scales_fix::Transform(subgraph, logger, model);

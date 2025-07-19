@@ -85,7 +85,7 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
   emscripten::val output = emscripten::val::undefined();
   // Use WebNN's reshape to implement Squeeze/Unsqueeze.
-  std::vector<uint32_t> new_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
+  std::vector<uint32_t> new_shape = GetNarrowedIntFromInt64<uint32_t>(input_shape);
   // Sort axes_data in ascending order.
   std::sort(axes_data.begin(), axes_data.end());
   if (op_type == "Squeeze") {
