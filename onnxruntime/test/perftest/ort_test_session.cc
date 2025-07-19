@@ -51,18 +51,6 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
                output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
 
-  for (size_t i = 0; i < outputs_.size(); i++) {
-    Ort::Value& ort_output = outputs_[i];
-    const float* output_data = ort_output.GetTensorData<float>();
-    gsl::span<const float> output_span(output_data, 6);
-    std::cout << output_span[0] << std::endl;
-    std::cout << output_span[1] << std::endl;
-    std::cout << output_span[2] << std::endl;
-    std::cout << output_span[3] << std::endl;
-    std::cout << output_span[4] << std::endl;
-    std::cout << output_span[5] << std::endl;
-  }
-
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - start;
   return duration_seconds;
