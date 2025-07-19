@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-
-#We have some Azure DevOps pipelines that each has two parts: the first part build source code into binary then upload it, then second part download the binary and run tests. Because the second part may need GPUs. We use CMake and CTest to run tests. However, in the first part cmake generates a file called CTestTestfile.cmake. And it has hardcoded file paths. This script is to update the abs paths.
+# We have some Azure DevOps pipelines that each has two parts: the first part
+# builds source code into binary then uploads it, then the second part downloads
+# the binary and runs tests. Because the second part may need GPUs. We use
+# CMake and CTest to run tests. However, in the first part cmake generates a
+# file called CTestTestfile.cmake. And it has hardcoded file paths. This
+# script is to update the absolute paths.
 
 import argparse
 import os
@@ -12,8 +16,8 @@ from pathlib import Path
 
 def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path):
     """
-    Finds and replaces hardcoded source and build directory paths
-    in a CTestTestfile.cmake file.
+    Finds and replaces hardcoded source and build directory paths in a
+    CTestTestfile.cmake file by processing it line-by-line.
 
     Args:
         file_path: The path to the CTestTestfile.cmake file.
@@ -22,24 +26,23 @@ def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path)
     """
     print(f"Processing file: {file_path}")
 
-    # 1. Define regex to find the old paths from the header comments
-    src_dir_pattern = re.compile(r"# Source directory: (.*)")
-    build_dir_pattern = re.compile(r"# Build directory: (.*)")
+    # --- Step 1: Find old paths from the file header ---
+    header_src_pattern = re.compile(r"# Source directory: (.*)")
+    header_build_pattern = re.compile(r"# Build directory: (.*)")
 
     old_src_dir = None
     old_build_dir = None
 
-    # 2. Read the file to extract old paths
     with file_path.open('r', encoding='utf-8') as f:
         # The paths are usually in the first few lines
         for line in f:
-            if not old_src_dir and (src_match := src_dir_pattern.match(line)):
+            if not old_src_dir and (src_match := header_src_pattern.match(line)):
                 # The path in the file points to a subdirectory (e.g., .../s/cmake)
                 # The actual source root is its parent.
                 cmake_subdir = Path(src_match.group(1).strip())
                 old_src_dir = str(cmake_subdir.parent)
                 print(f"Found CMake source sub-directory: '{cmake_subdir}'")
-            elif not old_build_dir and (build_match := build_dir_pattern.match(line)):
+            elif not old_build_dir and (build_match := header_build_pattern.match(line)):
                 old_build_dir = build_match.group(1).strip()
 
             if old_src_dir and old_build_dir:
@@ -52,30 +55,48 @@ def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path)
     print(f"Deduced old source root: '{old_src_dir}'")
     print(f"Found old build directory: '{old_build_dir}'")
 
-    # 3. Read the entire file content for replacement
-    content = file_path.read_text(encoding='utf-8')
-
-    # 4. Normalize new paths to use forward slashes (CMake's preference)
+    # --- Step 2: Pre-compile regex for path replacement ---
+    # Normalize new paths to use forward slashes, which is CMake's preference.
     new_src_posix = new_repo_dir.as_posix()
     new_build_posix = new_build_dir.as_posix()
 
     print(f"Replacing with new source directory: '{new_src_posix}'")
     print(f"Replacing with new build directory: '{new_build_posix}'")
 
-    # 5. Perform replacements for both path styles (forward and escaped backslashes)
-    # It's safer to replace the longer, more specific build path first.
-    if old_build_dir in content:
-        content = content.replace(old_build_dir, new_build_posix)
-        # Handle the escaped backslash variant (e.g., "C:\\path\\to\\build")
-        content = content.replace(old_build_dir.replace('/', '\\\\'), new_build_posix.replace('/', '\\\\'))
+    # We need to handle both forward-slash (e.g., C:/path) and
+    # escaped backslash (e.g., C:\\path) variants of the old paths.
+    # We use re.escape to ensure path characters are treated literally.
+    build_fwd_re = re.compile(re.escape(old_build_dir))
+    build_bwd_re = re.compile(re.escape(old_build_dir.replace('/', '\\\\')))
+    src_fwd_re = re.compile(re.escape(old_src_dir))
+    src_bwd_re = re.compile(re.escape(old_src_dir.replace('/', '\\\\')))
 
-    if old_src_dir in content:
-        content = content.replace(old_src_dir, new_src_posix)
-        # Handle the escaped backslash variant
-        content = content.replace(old_src_dir.replace('/', '\\\\'), new_src_posix.replace('/', '\\\\'))
+    # --- Step 3: Process file line-by-line and write to a temp file ---
+    temp_file_path = file_path.with_suffix(f"{file_path.suffix}.tmp")
+    try:
+        with file_path.open('r', encoding='utf-8') as infile, \
+             temp_file_path.open('w', encoding='utf-8') as outfile:
+            for line in infile:
+                # It's safer to replace the longer, more specific build path first.
+                line = build_fwd_re.sub(new_build_posix, line)
+                line = build_bwd_re.sub(new_build_posix, line)
+                line = src_fwd_re.sub(new_src_posix, line)
+                line = src_bwd_re.sub(new_src_posix, line)
+                outfile.write(line)
+    except IOError as e:
+        print(f"Error during file processing: {e}", file=sys.stderr)
+        sys.exit(1)
 
-    # 6. Write the updated content back to the file
-    file_path.write_text(content, encoding='utf-8')
+    # --- Step 4: Atomically replace the original file with the temp file ---
+    try:
+        os.replace(temp_file_path, file_path)
+    except OSError as e:
+        print(f"Error replacing file: {e}", file=sys.stderr)
+        # Clean up the temp file if replacement fails
+        if temp_file_path.exists():
+            os.remove(temp_file_path)
+        sys.exit(1)
+
     print(f"Successfully updated paths in {file_path}")
 
 
