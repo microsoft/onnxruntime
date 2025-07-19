@@ -312,7 +312,9 @@ CUDA_Provider* GetProvider() {
 
 // OrtEpApi infrastructure to be able to use the CUDA EP as an OrtEpFactory for auto EP selection.
 struct CudaEpFactory : OrtEpFactory {
-  CudaEpFactory(const OrtApi& ort_api_in) : ort_api{ort_api_in} {
+  CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in)
+      : ort_api{ort_api_in},
+        default_logger{default_logger_in} {
     ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
@@ -379,6 +381,7 @@ struct CudaEpFactory : OrtEpFactory {
   }
 
   const OrtApi& ort_api;
+  const OrtLogger& default_logger;
   const std::string ep_name{kCudaExecutionProvider};  // EP name
   const std::string vendor{"Microsoft"};              // EP vendor name
   uint32_t vendor_id{0x1414};                         // Microsoft vendor ID
@@ -389,11 +392,12 @@ extern "C" {
 // Public symbols
 //
 OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
+                             const OrtLogger* default_logger,
                              OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
 
   // Factory could use registration_name or define its own EP name.
-  std::unique_ptr<OrtEpFactory> factory = std::make_unique<CudaEpFactory>(*ort_api);
+  std::unique_ptr<OrtEpFactory> factory = std::make_unique<CudaEpFactory>(*ort_api, *default_logger);
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,

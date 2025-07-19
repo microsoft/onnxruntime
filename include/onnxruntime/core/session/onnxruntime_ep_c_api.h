@@ -531,6 +531,7 @@ struct OrtEp {
  * \param[in] registered_name The name the execution library is registered with by RegisterExecutionProviderLibrary
  * \param[in] ort_api_base The OrtApiBase instance that is used by the factory to get the OrtApi instance for the
  *                         version of ORT that the library was compiled against.
+ * \param[in] default_logger The default ORT logger that can be used for logging outside of an inference session.
  * \param[in,out] factories The implementation should create and add OrtEpFactory instances to this
  *                          pre-allocated array.
  *                          i.e. usage is `factories[0] = new MyEpFactory();`
@@ -543,6 +544,7 @@ struct OrtEp {
  * \since Version 1.22.
  */
 typedef OrtStatus* (*CreateEpApiFactoriesFn)(_In_ const char* registered_name, _In_ const OrtApiBase* ort_api_base,
+                                             _In_ const OrtLogger* default_logger,
                                              _Inout_ OrtEpFactory** factories, _In_ size_t max_factories,
                                              _Out_ size_t* num_factories);
 

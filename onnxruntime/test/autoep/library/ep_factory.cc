@@ -9,8 +9,8 @@
 #include "ep_allocator.h"
 #include "ep_data_transfer.h"
 
-ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
-    : ApiPtrs(apis), ep_name_{ep_name} {
+ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger)
+    : ApiPtrs(apis), ep_name_{ep_name}, default_logger_{default_logger} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
