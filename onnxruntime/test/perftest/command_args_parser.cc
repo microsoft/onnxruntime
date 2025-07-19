@@ -192,7 +192,43 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
   try {
     cxxopts::Options options("onnxruntime_perf", "ONNX Runtime Performance Test Config");
 
-    options.add_options()("f", "Free dimension override by name", cxxopts::value<std::vector<std::string>>())("F", "Free dimension override by denotation", cxxopts::value<std::vector<std::string>>())("m", "Test mode: duration or times", cxxopts::value<std::string>())("e", "Execution provider", cxxopts::value<std::string>())("r", "Repeat times", cxxopts::value<int>())("t", "Duration in seconds", cxxopts::value<int>())("p", "Profile output file", cxxopts::value<std::string>())("x", "Intra-op threads", cxxopts::value<int>())("y", "Inter-op threads", cxxopts::value<int>())("c", "Concurrent session runs", cxxopts::value<int>())("d", "cuDNN conv algo", cxxopts::value<int>())("o", "Graph optimization level", cxxopts::value<int>())("u", "Optimized model path", cxxopts::value<std::string>())("i", "EP runtime config string", cxxopts::value<std::string>())("S", "Random seed", cxxopts::value<int>())("T", "Intra-op thread affinities", cxxopts::value<std::string>())("C", "Session config entries", cxxopts::value<std::string>())("R", "Custom op library path", cxxopts::value<std::string>())("A", "Disable CPU mem arena", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("M", "Disable memory pattern", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("s", "Dump statistics", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("v", "Verbose", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("I", "Generate model input binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("P", "Use ORT_PARALLEL mode", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("q", "CUDA copy in separate stream", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("z", "Set denormal as zero", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("D", "Disable spinning", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("Z", "Disable spinning between runs", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("n", "Exit after session creation", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("l", "Load model via path", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("g", "Enable CUDA IO binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("X", "Use extensions", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))("plugin_ep_libs", "Plugin EP names and libs", cxxopts::value<std::string>())("list_devices", "List all the avaiable devices with info")("select_devices", "Take a list of device index (semicolon separated)", cxxopts::value<std::string>())("h,help", "Print usage");
+    options.add_options()
+      ("f", "Free dimension override by name", cxxopts::value<std::vector<std::string>>())
+      ("F", "Free dimension override by denotation", cxxopts::value<std::vector<std::string>>())
+      ("m", "Test mode: duration or times", cxxopts::value<std::string>())
+      ("e", "Execution provider", cxxopts::value<std::string>())
+      ("r", "Repeat times", cxxopts::value<size_t>())
+      ("t", "Duration in seconds", cxxopts::value<size_t>())
+      ("p", "Profile output file", cxxopts::value<std::string>())
+      ("x", "Intra-op threads", cxxopts::value<int>())
+      ("y", "Inter-op threads", cxxopts::value<int>())
+      ("c", "Concurrent session runs", cxxopts::value<size_t>())
+      ("d", "cuDNN conv algo", cxxopts::value<int>())
+      ("o", "Graph optimization level", cxxopts::value<int>())
+      ("u", "Optimized model path", cxxopts::value<std::string>())
+      ("i", "EP runtime config string", cxxopts::value<std::string>())
+      ("S", "Random seed", cxxopts::value<int>())
+      ("T", "Intra-op thread affinities", cxxopts::value<std::string>())
+      ("C", "Session config entries", cxxopts::value<std::string>())
+      ("R", "Custom op library path", cxxopts::value<std::string>())
+      ("A", "Disable CPU mem arena", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("M", "Disable memory pattern", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("s", "Dump statistics", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("v", "Verbose", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("I", "Generate model input binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("P", "Use ORT_PARALLEL mode", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("q", "CUDA copy in separate stream", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("z", "Set denormal as zero", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("D", "Disable spinning", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("Z", "Disable spinning between runs", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("n", "Exit after session creation", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("l", "Load model via path", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("g", "Enable CUDA IO binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("X", "Use extensions", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("plugin_ep_libs", "Plugin EP names and libs", cxxopts::value<std::string>())
+      ("list_devices", "List all the avaiable devices with info")
+      ("select_devices", "Take a list of device index (semicolon separated)", cxxopts::value<std::string>())
+      ("h,help", "Print usage");
 
 #ifdef _WIN32
     auto utf8_strings = utils::ConvertArgvToUtf8Strings(argc, argv);
@@ -289,15 +325,16 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
     }
 
     if (result.count("r")) {
-      auto val = result["r"].as<int>();
+      auto val = result["r"].as<size_t>();
       if (val <= 0) return false;
-      test_config.run_config.repeated_times = static_cast<size_t>(val);
+      test_config.run_config.repeated_times = val;
       test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
     }
+
     if (result.count("t")) {
-      auto val = result["t"].as<int>();
+      auto val = result["t"].as<size_t>();
       if (val <= 0) return false;
-      test_config.run_config.duration_in_seconds = static_cast<size_t>(val);
+      test_config.run_config.duration_in_seconds = val;
       test_config.run_config.test_mode = TestMode::kFixDurationMode;
     }
 
@@ -305,13 +342,112 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
 
     if (result.count("S")) {
       auto val = result["S"].as<int>();
-      if (val <= 0) return false;
       test_config.run_config.random_seed_for_input_data = val;
     }
+
+    if (result["v"].as<bool>()) test_config.run_config.f_verbose = true;
+
+    if (result.count("x")) {
+      auto val = result["x"].as<int>();
+      if (val < 0) return false;
+      test_config.run_config.intra_op_num_threads = val;
+    }
+
+    if (result.count("y")) {
+      auto val = result["y"].as<int>();
+      if (val < 0) return false;
+      test_config.run_config.inter_op_num_threads = val;
+    }
+
+    if (result.count("P")) {
+      test_config.run_config.execution_mode = ExecutionMode::ORT_PARALLEL;
+    }
+
+    if (result.count("c")) {
+      auto val = result["c"].as<size_t>();
+      if (static_cast<int>(val) <= 0) return false;
+      test_config.run_config.concurrent_session_runs = val;
+    }
+
+    if (result.count("o")) {
+      auto val = result["o"].as<int>();
+      switch (val) {
+        case ORT_DISABLE_ALL:
+          test_config.run_config.optimization_level = ORT_DISABLE_ALL;
+          break;
+        case ORT_ENABLE_BASIC:
+          test_config.run_config.optimization_level = ORT_ENABLE_BASIC;
+          break;
+        case ORT_ENABLE_EXTENDED:
+          test_config.run_config.optimization_level = ORT_ENABLE_EXTENDED;
+          break;
+        case ORT_ENABLE_LAYOUT:
+          test_config.run_config.optimization_level = ORT_ENABLE_LAYOUT;
+          break;
+        case ORT_ENABLE_ALL:
+          test_config.run_config.optimization_level = ORT_ENABLE_ALL;
+          break;
+        default: {
+          if (val > ORT_ENABLE_ALL) {  // relax constraint
+            test_config.run_config.optimization_level = ORT_ENABLE_ALL;
+          } else {
+            return false;
+          }
+        }
+      }
+    }
+
+    if (result.count("u")) test_config.run_config.optimized_model_path = utils::Utf8ToOrtString(result["u"].as<std::string>());
+
+    if (result.count("I")) test_config.run_config.generate_model_input_binding = true;
+
+    if (result.count("d")) {
+      auto val = result["d"].as<int>();
+      if (val < 0) return false;
+      test_config.run_config.cudnn_conv_algo = val;
+    }
+
+    if (result.count("q")) test_config.run_config.do_cuda_copy_in_separate_stream = true;
+
+    if (result.count("z")) test_config.run_config.set_denormal_as_zero = true;
+
+    if (result.count("i")) test_config.run_config.ep_runtime_config_string = utils::Utf8ToOrtString(result["i"].as<std::string>());
+
+    if (result.count("T")) test_config.run_config.intra_op_thread_affinities = result["T"].as<std::string>();
+
+    if (result.count("C")) {
+      ORT_TRY {
+        ParseSessionConfigs(result["C"].as<std::string>(), test_config.run_config.session_config_entries);
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          fprintf(stderr, "Error parsing session configuration entries: %s\n", ex.what());
+        });
+        return false;
+      }
+    }
+
+    if (result.count("D")) test_config.run_config.disable_spinning = true;
+
+    if (result.count("Z")) test_config.run_config.disable_spinning_between_run = true;
+
+    if (result.count("n")) test_config.run_config.exit_after_session_creation = true;
+
+    if (result.count("l")) test_config.model_info.load_via_path = true;
+
+    if (result.count("R")) test_config.run_config.register_custom_op_path = utils::Utf8ToOrtString(result["R"].as<std::string>());
+
+    if (result.count("g")) test_config.run_config.enable_cuda_io_binding = true;
+
+    if (result.count("X")) test_config.run_config.use_extensions = true;
 
     if (result.count("plugin_ep_libs")) test_config.plugin_ep_names_and_libs = utils::Utf8ToOrtString(result["plugin_ep_libs"].as<std::string>());
     if (result.count("list_devices")) test_config.list_available_devices = true;
     if (result.count("select_devices")) test_config.selected_devices = result["select_devices"].as<std::string>();
+
+    if (result.count("h")) {
+      perftest::CommandLineParser::ShowUsage();
+    }
 
     // Positional arguments
     std::vector<std::string> positional = result.unmatched();

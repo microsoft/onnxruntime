@@ -77,11 +77,12 @@ int real_main(int argc, char* argv[]) {
     } else {
       perf_runner.SerializeResult();
     }
-  } catch (const std::exception&) {
+  } catch (const std::exception& ex) {
+    std::cerr << ex.what() << std::endl;
     if (!test_config.registered_plugin_eps.empty()) {
       perftest::utils::UnregisterExecutionProviderLibrary(env, test_config);
-      return -1;
     }
+    return -1;
   }
   // The try/catch block above ensures the following:
   // 1) Plugin EP libraries are unregistered if an exception occurs.
