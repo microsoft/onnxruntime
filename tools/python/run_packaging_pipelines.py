@@ -204,7 +204,10 @@ def evaluate_single_pipeline(pipeline_summary: Dict, token: str, branch: str, is
             # Check for packaging pipeline variables/parameters
             if 'packaging' in pipeline_name.lower() or 'nuget' in pipeline_name.lower():
                 print("  - Detected packaging pipeline. Checking for required variables/parameters...")
-                if 'NIGHTLY_BUILD' in configuration.get('variables', {}):
+                if pipeline_name == 'onnxruntime-ios-packaging-pipeline':
+                    print("  - OK: Allowing exception for 'onnxruntime-ios-packaging-pipeline' which has no build mode flags.")
+                    packaging_type = "none"
+                elif 'NIGHTLY_BUILD' in configuration.get('variables', {}):
                     packaging_type = "nightly"
                     print("  - OK: Found 'NIGHTLY_BUILD' pipeline variable.")
                 elif any(p.get('name') == 'IsReleaseBuild' for p in data.get('parameters', [])):
@@ -332,12 +335,13 @@ def main():
     token = get_azure_cli_token()
     all_pipelines = get_pipelines(token, project)
     if not all_pipelines:
+        print("\nERROR: Could not retrieve any pipelines. Exiting.")
         return
 
     pipelines_to_trigger = filter_pipelines(all_pipelines, token, branch_for_yaml_fetch, is_pr_build)
 
     if not pipelines_to_trigger:
-        print("\nNo pipelines matching the criteria were found.")
+        print("\nNo pipelines matched the specified criteria. No builds will be triggered.")
         return
 
     if args.dry_run:
