@@ -70,8 +70,6 @@ int real_main(int argc, char* argv[]) {
       return 0;
     }
 
-    throw std::runtime_error("Something went wrong");
-
     status = perf_runner.Run();
 
     if (!status.IsOK()) {
