@@ -174,15 +174,14 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                 thread_pool);
 }
 
-template <>
-void Gemm<MLFloat16>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
-                                  ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
-                                  MLFloat16 alpha,
-                                  const MLFloat16* a_data, const MLFloat16* b_data,
-                                  MLFloat16 beta,
-                                  const MLFloat16* c_data, const TensorShape* c_shape,
-                                  MLFloat16* y_data,
-                                  concurrency::ThreadPool* thread_pool) {
+void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
+                    ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                    MLFloat16 alpha,
+                    const MLFloat16* a_data, const MLFloat16* b_data,
+                    MLFloat16 beta,
+                    const MLFloat16* c_data, const TensorShape* c_shape,
+                    MLFloat16* y_data,
+                    concurrency::ThreadPool* thread_pool) {
   // if input is empty tensor, return directly as nothing need to be calculated.
   if (M == 0 || N == 0)
     return;
@@ -235,6 +234,18 @@ void Gemm<MLFloat16>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
+}
+
+template <>
+void Gemm<MLFloat16>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
+                                  ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                                  MLFloat16 alpha,
+                                  const MLFloat16* a_data, const MLFloat16* b_data,
+                                  MLFloat16 beta,
+                                  const MLFloat16* c_data, const TensorShape* c_shape,
+                                  MLFloat16* y_data,
+                                  concurrency::ThreadPool* thread_pool) {
+  Gemm_MLFloat16(trans_a, trans_b, M, N, K, alpha, a_data, b_data, beta, c_data, c_shape, y_data, thread_pool);
 }
 
 template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
