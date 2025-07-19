@@ -132,3 +132,8 @@ steps:
         archiveType: 'zip' # Options: zip, 7z, tar, wim
         archiveFile: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip'
         replaceExistingArchive: true
+
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifactName: '${{parameters.artifactNameNoVersionString}}'
