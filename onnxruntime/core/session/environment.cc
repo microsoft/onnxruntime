@@ -179,6 +179,11 @@ Status Environment::UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool 
     shared_ort_allocators_.erase(it2);
   }
 
+  // also remove an arena wrapped allocator from an EP if the user called CreateSharedAllocator to create one
+  if (auto it3 = arena_ort_allocators_.find(&mem_info); it3 != arena_ort_allocators_.end()) {
+    arena_ort_allocators_.erase(it3);
+  }
+
   if (found_shared_allocator) {
     shared_allocators_.erase(it);
   }
@@ -638,6 +643,11 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
   if (auto it = FindExistingAllocator(shared_ort_allocators_, memory_info, /*match_name*/ true);
       it != shared_ort_allocators_.end()) {
     shared_ort_allocators_.erase(it);
+  }
+
+  // if a previous call created an arena wrapped allocator for the EP's memory_info we also need to remove that
+  if (auto it = arena_ort_allocators_.find(&memory_info); it != arena_ort_allocators_.end()) {
+    arena_ort_allocators_.erase(it);
   }
 
   // we only want one shared allocator for an OrtDevice in the shared_allocators_ so that it's deterministic which

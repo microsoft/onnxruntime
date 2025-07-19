@@ -664,10 +664,12 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
 
 // OrtEpApi infrastructure to be able to use the CUDA EP as an OrtEpFactory for auto EP selection.
 struct CudaEpFactory : OrtEpFactory {
-  CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in)
-      : ort_api{ort_api_in},
-        default_logger{default_logger_in} {
-    ort_version_supported = ORT_API_VERSION;
+  using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
+
+  CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in) : ort_api{ort_api_in},
+                                                                                default_logger{default_logger_in},
+                                                                                ep_api{*ort_api_in.GetEpApi()},
+                                                                                data_transfer_impl{ort_api_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
     GetVendorId = GetVendorIdImpl;
