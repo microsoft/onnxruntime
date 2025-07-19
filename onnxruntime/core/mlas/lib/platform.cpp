@@ -17,6 +17,10 @@ Abstract:
 
 #include "mlasi.h"
 
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#include "kleidiai/mlasi_kleidiai.h"
+#endif
+
 #include <thread>
 #include <mutex>
 
@@ -579,6 +583,15 @@ Return Value:
     }
 
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions);
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+        this->MlasGemmBatch = ArmKleidiAI::MlasGemmBatch;
+        this->MlasGemmPackBSize = ArmKleidiAI::MlasGemmPackBSize;
+        this->MlasGemmPackB = ArmKleidiAI::MlasGemmPackB;
+        this->MlasConvPrepare = ArmKleidiAI::MlasConvPrepare;
+        this->MlasConv = ArmKleidiAI::MlasConv;
+    }
+#endif
 
 #if defined(__linux__)
     //
