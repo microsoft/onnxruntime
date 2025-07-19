@@ -163,11 +163,18 @@ CMake creates a target to this project
              Targets ="CreateNativePackage" />
   </Target>
 
+  <!--
   <Target Name="CreateAllMIGraphXPackages" AfterTargets="CreatePackage" Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.MIGraphX'">
     <MSBuild Projects ="$(MSBuildProjectFullPath)"
              Properties="NuSpecName=NativeMIGraphXWinNuget.nuspec;OrtPackageId=Microsoft.ML.OnnxRuntime.MIGraphX.Windows"
-             Targets ="CreateNativePackage" />
-  </Target>
+	     Targets ="CreateNativePackage"
+	     Condition ="$([MSBuild]::IsOSPlatform('Windows'))"/>
+    <MSBuild Projects ="$(MSBuildProjectFullPath)"
+             Properties="NuSpecName=NativeMIGraphXLinuxNuget.nuspec;OrtPackageId=Microsoft.ML.OnnxRuntime.MIGraphX.Linux"
+	     Targets ="CreateNativePackage"
+	     Condition ="$([MSBuild]::IsOSPlatform('Linux'))"/>
+	  </Target>
+  -->
   <ItemGroup>
     <LicenseFile Include="$(OnnxRuntimeSourceDirectory)\LICENSE"/>
   </ItemGroup>

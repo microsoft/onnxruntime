@@ -434,6 +434,7 @@ def generate_files(line_list, args):
             "openvino_ep_shared_lib": "libonnxruntime_providers_openvino.so",
             "cuda_ep_shared_lib": "libonnxruntime_providers_cuda.so",
             "rocm_ep_shared_lib": "libonnxruntime_providers_rocm.so",
+            "migraphx_ep_shared_lib": "libonnxruntime_providers_migraphx.so",
             "onnxruntime_perf_test": "onnxruntime_perf_test",
             "onnx_test_runner": "onnx_test_runner",
         }
@@ -1207,6 +1208,7 @@ def validate_execution_provider(execution_provider):
             or execution_provider == "tensorrt"
             or execution_provider == "openvino"
             or execution_provider == "rocm"
+            or execution_provider == "migraphx"
         ):
             raise Exception(
                 "On Linux platform nuget generation is supported only "
