@@ -99,7 +99,7 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (!has_zero_point) {
     if (zero_point_shape.empty()) {
       // zero_point has the same shape as the scale tensor.
-      zero_point_shape = GetNarrowedIntfromInt64<uint32_t>(scale_shape);
+      zero_point_shape = GetNarrowedIntFromInt64<uint32_t>(scale_shape);
     }
     // Create a zero constant with the same shape as the scale tensor.
     // The zero value has been pre-processed in the CreateOrGetConstant function,
