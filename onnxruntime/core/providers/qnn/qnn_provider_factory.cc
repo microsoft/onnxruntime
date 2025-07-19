@@ -178,9 +178,11 @@ struct QnnEpFactory : OrtEpFactory {
         OrtKeyValuePairs* ep_options = nullptr;
         factory->ort_api.CreateKeyValuePairs(&ep_options);
         factory->ort_api.AddKeyValuePair(ep_options, "backend_type", factory->qnn_backend_type.c_str());
-        ORT_API_RETURN_IF_ERROR(
-            factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, nullptr, ep_options,
-                                                        &ep_devices[num_ep_devices++]));
+
+        OrtStatus* status = factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, nullptr, ep_options,
+                                                                        &ep_devices[num_ep_devices++]);
+        factory->ort_api.ReleaseKeyValuePairs(ep_options);
+        ORT_API_RETURN_IF_ERROR(status);
       }
     }
 

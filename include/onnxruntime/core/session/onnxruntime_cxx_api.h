@@ -1159,8 +1159,11 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ModelCompilationOptions& SetOutputModelPath(const ORTCHAR_T* output_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
   ModelCompilationOptions& SetOutputModelExternalInitializersFile(const ORTCHAR_T* file_path,
                                                                   size_t initializer_size_threshold);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelExternalInitializersFile
+  ModelCompilationOptions& SetOutputModelHandleInitializerFunc(OrtHandleInitializerDataFunc handle_initializer_func,
+                                                               void* state);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelHandleInitializerFunc
   ModelCompilationOptions& SetOutputModelBuffer(OrtAllocator* allocator, void** output_model_buffer_ptr,
-                                                size_t* output_model_buffer_size_ptr);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelBuffer
+                                                size_t* output_model_buffer_size_ptr);           ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelBuffer
+  ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelWriteFunc
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation
   ModelCompilationOptions& SetFlags(size_t flags);                                      ///< Wraps OrtApi::ModelCompilationOptions_SetFlags

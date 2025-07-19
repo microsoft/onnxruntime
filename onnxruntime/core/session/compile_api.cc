@@ -214,6 +214,50 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelBuffer,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelWriteFunc,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    _In_ OrtWriteBufferFunc write_func, _In_ void* state) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+
+  if (write_func == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtWriteBufferFunc function for output model is null");
+  }
+
+  model_compile_options->SetOutputModelWriteFunc(write_func, state);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(write_func);
+  ORT_UNUSED_PARAMETER(state);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelHandleInitializerFunc,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    _In_ OrtHandleInitializerDataFunc handle_initializer_func, _In_ void* state) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+
+  if (handle_initializer_func == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtHandleInitializerDataFunc function for output model is null");
+  }
+
+  model_compile_options->SetOutputModelHandleInitializerFunc(handle_initializer_func, state);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(handle_initializer_func);
+  ORT_UNUSED_PARAMETER(state);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextEmbedMode,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
                     bool embed_ep_context_in_model) {
@@ -278,6 +322,8 @@ static constexpr OrtCompileApi ort_compile_api = {
 
     &OrtCompileAPI::ModelCompilationOptions_SetFlags,
     &OrtCompileAPI::ModelCompilationOptions_SetEpContextBinaryInformation,
+    &OrtCompileAPI::ModelCompilationOptions_SetOutputModelWriteFunc,
+    &OrtCompileAPI::ModelCompilationOptions_SetOutputModelHandleInitializerFunc,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

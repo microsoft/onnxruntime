@@ -393,6 +393,16 @@ ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::pa
   return result;
 }
 
+common::Status Model::ToGraphProtoWithInitializerHandler(OrtHandleInitializerDataFunc handle_initializer_func,
+                                                         void* state,
+                                                         /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) const {
+  model_proto = model_proto_;
+  const auto& graph = *graph_;
+  ORT_RETURN_IF_ERROR(graph.ToGraphProtoWithInitializerHandler(handle_initializer_func,
+                                                               state, *model_proto.mutable_graph()));
+  return Status::OK();
+}
+
 Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   if (!model_istream.good()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid istream object.");

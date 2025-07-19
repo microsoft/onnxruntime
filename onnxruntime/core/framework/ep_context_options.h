@@ -25,23 +25,49 @@ struct BufferHolder {
 /// Holds the opaque stream state and the write function that ORT calls to write out the output model.
 /// </summary>
 struct OutStreamHolder {
-  OrtOutStreamWriteFunc write_func = nullptr;
+  OrtWriteBufferFunc write_func = nullptr;
   void* stream_state = nullptr;  // Opaque pointer to user's stream state. Passed as first argument to write_func.
+};
+
+struct ExternalInitializerFileInfo {
+  std::string file_path;
+  size_t size_threshold = 0;
+};
+
+struct InitializerHandler {
+  OrtHandleInitializerDataFunc handle_initializer_func = nullptr;
+  void* state = nullptr;
 };
 
 /// <summary>
 /// Stores EPContext model generation options. Used in SessionOptions.
 /// </summary>
 struct ModelGenOptions {
+  // Action to take if the output model does not have compiled (EPContext) nodes.
+  enum class ActionIfNoCompiledNodes {
+    // Return OK() but don't generate an output model. Compiling via SessionOptions defaults to this behavior
+    // to maintain compatibility. The explicit compile API does *not* use this action.
+    kDontGenerateModel = 0,
+
+    // Generate an output model even if it doesn't have compiled nodes.
+    // The explicit Compile API defaults to this value.
+    kGenerateModel,
+
+    // Return an error if the model does not have compiled nodes.
+    // The explicit Compile API can be configured to this value.
+    kReturnError,
+  };
+
   ModelGenOptions() = default;
 
   // Initializes from string key/value pairs in session config options.
   explicit ModelGenOptions(const ConfigOptions& config_options);
 
   bool enable = false;
-  bool overwrite_existing_output_file = false;
+  bool error_if_output_file_exists = true;
   bool error_if_no_compiled_nodes = false;
   bool embed_ep_context_in_model = false;
+  ActionIfNoCompiledNodes action_if_no_compiled_nodes = ActionIfNoCompiledNodes::kDontGenerateModel;
 
   std::variant<std::monostate,   // Initial state (no output model location)
                std::string,      // output model path
@@ -49,13 +75,19 @@ struct ModelGenOptions {
                OutStreamHolder>  // Function to write the output model to a user's stream.
       output_model_location{};
 
-  std::string output_external_initializers_file_path;
-  size_t output_external_initializer_size_threshold = 0;
-
   bool HasOutputModelLocation() const;
   const std::string* TryGetOutputModelPath() const;
   const BufferHolder* TryGetOutputModelBuffer() const;
   const OutStreamHolder* TryGetOutputModelOutStream() const;
+
+  std::variant<std::monostate,               // Initial state (initializers embedded in ONNX model).
+               ExternalInitializerFileInfo,  // Initializers saved in an external file
+               InitializerHandler>           // Custom function called for every initializer to determine location.
+      initializers_location{};
+
+  bool AreCpuInitializersEmbedded() const;
+  const ExternalInitializerFileInfo* TryGetExternalInitializerFileInfo() const;
+  const InitializerHandler* TryGetInitializerHandler() const;
 };
 
 // Class that wraps the user's OrtOutStreamWriteFunc function to enable use with

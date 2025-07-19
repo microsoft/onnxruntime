@@ -7,8 +7,10 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "core/framework/allocator.h"
+#include "core/framework/ep_context_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/environment.h"
 
@@ -22,7 +24,7 @@ ModelCompilationOptions::ModelCompilationOptions(const onnxruntime::Environment&
 
   // defaulting to kGenerateModel to support wider usage.
   session_options_.value.ep_context_gen_options.action_if_no_compiled_nodes =
-      EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kGenerateModel;
+      epctx::ModelGenOptions::ActionIfNoCompiledNodes::kGenerateModel;
 
   // Shouldn't fail because the key/value strings are below the maximum string length limits in ConfigOptions.
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1").IsOK());
@@ -41,16 +43,13 @@ void ModelCompilationOptions::SetInputModelFromBuffer(const void* input_model_da
 }
 
 Status ModelCompilationOptions::SetOutputModelPath(const std::string& output_model_path) {
-  ORT_RETURN_IF_ERROR(ResetOutputModelSettings());
-
   ConfigOptions& config_options = session_options_.value.config_options;
-  EpContextModelGenerationOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
+  epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
 
-  ep_context_gen_options.output_model_file_path = output_model_path;
+  ep_context_gen_options.output_model_location = output_model_path;
 
-  if (ep_context_gen_options.output_model_file_path.size() <= ConfigOptions::kMaxValueLength) {
-    Status status = config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath,
-                                                  ep_context_gen_options.output_model_file_path.c_str());
+  if (output_model_path.size() <= ConfigOptions::kMaxValueLength) {
+    Status status = config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_path.c_str());
     ORT_ENFORCE(status.IsOK());  // Should not fail because both key/value strings are below the min string lengths
                                  // required by ConfigOptions::AddConfigEntry().
   } else {
@@ -71,7 +70,7 @@ Status ModelCompilationOptions::SetOutputModelPath(const std::string& output_mod
     logging::LoggingManager* log_manager = env_.GetLoggingManager();
     if (log_manager != nullptr && log_manager->HasDefaultLogger()) {
       const logging::Logger& logger = log_manager->DefaultLogger();
-      LOGS(logger, WARNING) << "Output model path length (" << ep_context_gen_options.output_model_file_path.size()
+      LOGS(logger, WARNING) << "Output model path length (" << output_model_path.size()
                             << ") exceeds limit of " << ConfigOptions::kMaxValueLength << " characters."
                             << "ORT will still generate the expected output file, but EPs will see an empty "
                             << "output model path in SessionOption's ConfigOptions.";
@@ -82,20 +81,37 @@ Status ModelCompilationOptions::SetOutputModelPath(const std::string& output_mod
 
 void ModelCompilationOptions::SetOutputModelExternalInitializersFile(const std::string& external_initializers_path,
                                                                      size_t external_initializer_size_threshold) {
-  session_options_.value.ep_context_gen_options.output_external_initializers_file_path = external_initializers_path;
-  session_options_.value.ep_context_gen_options.output_external_initializer_size_threshold =
-      external_initializer_size_threshold;
+  session_options_.value.ep_context_gen_options.initializers_location = epctx::ExternalInitializerFileInfo{
+      external_initializers_path,
+      external_initializer_size_threshold,
+  };
 }
 
 Status ModelCompilationOptions::SetOutputModelBuffer(onnxruntime::AllocatorPtr allocator,
                                                      void** output_model_buffer_ptr,
                                                      size_t* output_model_buffer_size_ptr) {
-  ORT_RETURN_IF_ERROR(ResetOutputModelSettings());
+  session_options_.value.ep_context_gen_options.output_model_location = epctx::BufferHolder{
+      output_model_buffer_ptr,
+      output_model_buffer_size_ptr,
+      std::move(allocator),
+  };
 
-  session_options_.value.ep_context_gen_options.output_model_buffer_ptr = output_model_buffer_ptr;
-  session_options_.value.ep_context_gen_options.output_model_buffer_size_ptr = output_model_buffer_size_ptr;
-  session_options_.value.ep_context_gen_options.output_model_buffer_allocator = std::move(allocator);
   return Status::OK();
+}
+
+void ModelCompilationOptions::SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state) {
+  session_options_.value.ep_context_gen_options.output_model_location = epctx::OutStreamHolder{
+      write_func,
+      state,
+  };
+}
+
+void ModelCompilationOptions::SetOutputModelHandleInitializerFunc(OrtHandleInitializerDataFunc handle_initializer_func,
+                                                                  void* state) {
+  session_options_.value.ep_context_gen_options.initializers_location = epctx::InitializerHandler{
+      handle_initializer_func,
+      state,
+  };
 }
 
 Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::string& output_directory,
@@ -136,11 +152,11 @@ Status ModelCompilationOptions::SetEpContextEmbedMode(bool embed_ep_context_in_m
 }
 
 Status ModelCompilationOptions::SetFlags(size_t flags) {
-  EpContextModelGenerationOptions& options = session_options_.value.ep_context_gen_options;
+  epctx::ModelGenOptions& options = session_options_.value.ep_context_gen_options;
   options.error_if_output_file_exists = flags & OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS;
   options.action_if_no_compiled_nodes =
-      (flags & OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED) ? EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kReturnError
-                                                              : EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kGenerateModel;
+      (flags & OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED) ? epctx::ModelGenOptions::ActionIfNoCompiledNodes::kReturnError
+                                                              : epctx::ModelGenOptions::ActionIfNoCompiledNodes::kGenerateModel;
   return Status::OK();
 }
 
@@ -170,77 +186,78 @@ void ModelCompilationOptions::ResetInputModelSettings() {
   input_model_data_size_ = 0;
 }
 
-Status ModelCompilationOptions::ResetOutputModelSettings() {
-  EpContextModelGenerationOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
-  ep_context_gen_options.output_model_file_path.clear();
-  ep_context_gen_options.output_model_buffer_ptr = nullptr;
-  ep_context_gen_options.output_model_buffer_size_ptr = nullptr;
-  ep_context_gen_options.output_model_buffer_allocator = nullptr;
-  return Status::OK();
-}
+Status ModelCompilationOptions::Check() const {
+  const ConfigOptions& config_options = session_options_.value.config_options;
 
-Status ModelCompilationOptions::CheckInputModelSettings() const {
-  const bool comes_from_file = !input_model_path_.empty();
-  const bool comes_from_memory = input_model_data_ != nullptr;
+  ORT_ENFORCE(session_options_.value.ep_context_gen_options.enable);
+  ORT_ENFORCE(config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "0");
 
-  if (!comes_from_file && !comes_from_memory) {
+  // Check input model settings.
+  const bool input_from_file = !input_model_path_.empty();
+  const bool input_from_memory = input_model_data_ != nullptr;
+
+  if (!input_from_file && !input_from_memory) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input model to compile must be loaded from either a file or a memory buffer");
   }
 
-  if (comes_from_file && comes_from_memory) {
+  if (input_from_file && input_from_memory) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input model to compile must be loaded from either a file or a memory buffer, ",
                            "but not both.");
   }
 
-  if (comes_from_file && !std::filesystem::exists(input_model_path_)) {
+  if (input_from_file && !std::filesystem::exists(input_model_path_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input model path does not exist: ", input_model_path_);
   }
 
-  if (comes_from_memory && input_model_data_size_ == 0) {
+  if (input_from_memory && input_model_data_size_ == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer for input model data has size 0");
   }
 
-  return Status::OK();
-}
+  // Check output model settings.
+  const epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
+  bool has_no_output_model_location = std::holds_alternative<std::monostate>(
+      ep_context_gen_options.output_model_location);
 
-Status ModelCompilationOptions::CheckOutputModelSettings() const {
-  const EpContextModelGenerationOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
-
-  const bool explicit_writes_to_file = !ep_context_gen_options.output_model_file_path.empty();
-  const bool writes_to_buffer = ep_context_gen_options.output_model_buffer_ptr != nullptr;
-
-  if (!explicit_writes_to_file && !writes_to_buffer) {
-    // User did not specify an output file or an output buffer. We default to generating an output file
-    // with a name based on the input file name, so do not return an error.
+  if (has_no_output_model_location && input_from_file) {
+    // User did not specify an output file, an output buffer, or an output write function. We default to generating an
+    // output file with a name based on the input file name, so do not return an error.
     return Status::OK();
   }
 
-  if (explicit_writes_to_file && writes_to_buffer) {
+  if (has_no_output_model_location) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Output model to compile must be saved either to a file or to a buffer, but not both.");
+                           "Unable to generate an output model path: require an input model path if the location "
+                           "of the output model (e.g., file, buffer, or stream) is not specified.");
   }
 
-  if (writes_to_buffer && ep_context_gen_options.output_model_buffer_size_ptr == nullptr) {
+  const epctx::BufferHolder* output_buffer_ptr = ep_context_gen_options.TryGetOutputModelBuffer();
+
+  if (output_buffer_ptr != nullptr && output_buffer_ptr->buffer_ptr == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid buffer configuration for output model: buffer pointer is null");
+  }
+
+  if (output_buffer_ptr != nullptr && output_buffer_ptr->buffer_size_ptr == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid buffer configuration for output model: size pointer is null");
   }
 
-  if (writes_to_buffer && ep_context_gen_options.output_model_buffer_allocator == nullptr) {
+  if (output_buffer_ptr != nullptr && output_buffer_ptr->buffer_allocator == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid buffer configuration for output model: allocator is null");
+  }
+
+  const epctx::OutStreamHolder* output_stream_ptr = ep_context_gen_options.TryGetOutputModelOutStream();
+
+  if (output_stream_ptr != nullptr && output_stream_ptr->write_func == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid write-to-stream function for output model: function pointer is null");
   }
 
   return Status::OK();
 }
 
-Status ModelCompilationOptions::Check() const {
-  ORT_ENFORCE(session_options_.value.ep_context_gen_options.enable);
-  ORT_ENFORCE(session_options_.value.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "0");
-  ORT_RETURN_IF_ERROR(CheckInputModelSettings());
-  ORT_RETURN_IF_ERROR(CheckOutputModelSettings());
-  return Status::OK();
-}
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

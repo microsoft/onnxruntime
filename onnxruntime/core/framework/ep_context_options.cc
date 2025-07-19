@@ -24,9 +24,15 @@ ModelGenOptions::ModelGenOptions(const ConfigOptions& config_options) {
     output_model_location = std::monostate{};
   }
 
-  output_external_initializers_file_path = config_options.GetConfigOrDefault(
+  std::string external_initializers_file_path = config_options.GetConfigOrDefault(
       kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
-  output_external_initializer_size_threshold = 0;
+  if (!external_initializers_file_path.empty()) {
+    ExternalInitializerFileInfo ext_info = {};
+    ext_info.file_path = external_initializers_file_path;
+    ext_info.size_threshold = 0;
+    initializers_location = std::move(ext_info);
+  }
+
   embed_ep_context_in_model = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0") == "1";
 }
 
@@ -44,6 +50,18 @@ const BufferHolder* ModelGenOptions::TryGetOutputModelBuffer() const {
 
 const OutStreamHolder* ModelGenOptions::TryGetOutputModelOutStream() const {
   return std::get_if<OutStreamHolder>(&output_model_location);
+}
+
+bool ModelGenOptions::AreCpuInitializersEmbedded() const {
+  return std::holds_alternative<std::monostate>(initializers_location);
+}
+
+const ExternalInitializerFileInfo* ModelGenOptions::TryGetExternalInitializerFileInfo() const {
+  return std::get_if<ExternalInitializerFileInfo>(&initializers_location);
+}
+
+const InitializerHandler* ModelGenOptions::TryGetInitializerHandler() const {
+  return std::get_if<InitializerHandler>(&initializers_location);
 }
 
 // class OutStreamBuf
@@ -91,8 +109,8 @@ int OutStreamBuf::sync() {
   Status status = Status::OK();
 
   ORT_TRY {
-    status = ToStatus(out_stream_holder_.write_func(out_stream_holder_.stream_state,
-                                                    ptr, num_bytes));
+    status = ToStatusAndRelease(out_stream_holder_.write_func(out_stream_holder_.stream_state,
+                                                              ptr, num_bytes));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
