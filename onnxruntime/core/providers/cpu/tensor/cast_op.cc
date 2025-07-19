@@ -218,6 +218,7 @@ struct FromInt4Converter {
   }
 };
 
+// Helper for converting any source type to (U)Int4x2::UnpackedType values (int8_t and uint8_t).
 template <typename SrcType, typename DstType,
           typename Enable = std::enable_if_t<IsOrtInt4Type<DstType>::value>>
 struct ToInt4Converter {
@@ -560,6 +561,7 @@ struct TensorCaster<SrcType, DstType,
   }
 };
 
+
 #if defined(_M_AMD64) && !defined(_M_ARM64EC)
 // specializations to use optimized and Windows x64-specific
 
@@ -598,15 +600,16 @@ struct TensorCaster<MLFloat16, std::string> {
 };
 #endif
 
-#if !defined(DISABLE_FLOAT8_TYPES)
 
-// TensorCasterNoSat is only called when all the below conditions are met (see Cast::Compute implementation):
+#if !defined(DISABLE_FLOAT8_TYPES)
+// TensorCasterNoSat is only called when all the below conditions are met (see Cast::Compute):
 // - defined(DISABLE_FLOAT8_TYPES) == false
 // - saturate_ == false
 // - IsOrtFloat8Type<DstType>::value == true
 
 // tensor X -> float 8
-template <typename SrcType, typename DstType, typename Enable = void>
+template <typename SrcType, typename DstType,
+          typename Enable = std::enable_if_t<IsOrtFloat8Type<DstType>::value>>
 struct TensorCasterNoSat {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
@@ -618,10 +621,10 @@ struct TensorCasterNoSat {
   }
 };
 
-// tensor (U)Int4 -> float 8
+// tensor (U)Int4x2 -> float 8
 template <typename SrcType, typename DstType>
 struct TensorCasterNoSat<SrcType, DstType,
-                         std::enable_if_t<IsOrtInt4Type<SrcType>::value>> {
+                         std::enable_if_t<IsOrtInt4Type<SrcType>::value && IsOrtFloat8Type<DstType>::value>> {
   void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) const {
     // Int4x2/UInt4x2 always fit inside any Float8 type, so we can reuse the saturate = true implementation.
     TensorCaster<SrcType, DstType>{}.Cast(context, shape, src, dst);
@@ -630,7 +633,8 @@ struct TensorCasterNoSat<SrcType, DstType,
 
 // tensor string -> float 8
 template <typename DstType>
-struct TensorCasterNoSat<std::string, DstType> {
+struct TensorCasterNoSat<std::string, DstType,
+                         std::enable_if_t<IsOrtFloat8Type<DstType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<std::string>();
@@ -644,6 +648,7 @@ struct TensorCasterNoSat<std::string, DstType> {
 };
 
 #endif
+
 
 class Cast final : public OpKernel {
  public:
