@@ -176,3 +176,14 @@ pipelines:
           lastModifiedDate: 2025-04-25
         spotbugs:
           lastModifiedDate: 2025-04-25
+  1311:
+    retail:
+      source:
+        credscan:
+          lastModifiedDate: 2025-07-18
+        eslint:
+          lastModifiedDate: 2025-07-18
+        psscriptanalyzer:
+          lastModifiedDate: 2025-07-18
+        armory:
+          lastModifiedDate: 2025-07-18
