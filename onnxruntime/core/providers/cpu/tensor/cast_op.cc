@@ -186,9 +186,22 @@ struct EigenCastType<BFloat16> {
   using type = Eigen::bfloat16;
 };
 
+template <typename DstType>
+struct FromInt4Converter {
+  static DstType Convert(int8_t val) {
+    if constexpr (IsOrtFloat16Type<DstType>::value) {
+      return DstType(static_cast<float>(val));
+    } else if constexpr (IsOrtFloat8Type<DstType>::value) {
+      return DstType(static_cast<float>(val), true);
+    } else {
+      return static_cast<DstType>(val);
+    }
+  }
+};
+
 // Helper struct for converting from Int4x2/UInt4x2 elements to any destination type
 template <typename OtherType>
-struct Int4ElementConverter {
+struct ToInt4Converter {
   // See https://onnx.ai/onnx/operators/onnx__Cast.html#summary
   // Casting from fixed point to fixed point: when OOR, discard higher bits and
   // reinterpret (with respect to two's complement representation for signed types).
@@ -204,20 +217,10 @@ struct Int4ElementConverter {
     // Truncate to 4 bits
     return static_cast<uint8_t>(val) & 0x0F;
   }
-
-  static OtherType Convert(int8_t val) {
-    if constexpr (IsOrtFloat16Type<OtherType>::value) {
-      return OtherType(static_cast<float>(val));
-    } else if constexpr (IsOrtFloat8Type<OtherType>::value) {
-      return OtherType(static_cast<float>(val), true);
-    } else {
-      return static_cast<OtherType>(val);
-    }
-  }
 };
 
 template <>
-struct Int4ElementConverter<float> {
+struct ToInt4Converter<float> {
   static int8_t ConvertToInt4(const float& val) {
     int result = static_cast<int>(std::roundf(val));
     uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
@@ -228,14 +231,10 @@ struct Int4ElementConverter<float> {
     int result = static_cast<int>(std::roundf(val));
     return static_cast<uint8_t>(result) & 0x0F;
   }
-
-  static float Convert(int8_t val) {
-    return static_cast<float>(val);
-  }
 };
 
 template <>
-struct Int4ElementConverter<double> {
+struct ToInt4Converter<double> {
   static int8_t ConvertToInt4(const double& val) {
     int result = static_cast<int>(std::round(val));
     uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
@@ -246,14 +245,10 @@ struct Int4ElementConverter<double> {
     int result = static_cast<int>(std::round(val));
     return static_cast<uint8_t>(result) & 0x0F;
   }
-
-  static double Convert(int8_t val) {
-    return static_cast<double>(val);
-  }
 };
 
 template <>
-struct Int4ElementConverter<MLFloat16> {
+struct ToInt4Converter<MLFloat16> {
   static int8_t ConvertToInt4(const MLFloat16& val) {
     float f_val = static_cast<float>(val);
     int result = static_cast<int>(std::roundf(f_val));
@@ -266,14 +261,10 @@ struct Int4ElementConverter<MLFloat16> {
     int result = static_cast<int>(std::roundf(f_val));
     return static_cast<uint8_t>(result) & 0x0F;
   }
-
-  static MLFloat16 Convert(int8_t val) {
-    return MLFloat16(static_cast<float>(val));
-  }
 };
 
 template <>
-struct Int4ElementConverter<BFloat16> {
+struct ToInt4Converter<BFloat16> {
   static int8_t ConvertToInt4(const BFloat16& val) {
     float f_val = static_cast<float>(val);
     int result = static_cast<int>(std::roundf(f_val));
@@ -285,10 +276,6 @@ struct Int4ElementConverter<BFloat16> {
     float f_val = static_cast<float>(val);
     int result = static_cast<int>(std::roundf(f_val));
     return static_cast<uint8_t>(result) & 0x0F;
-  }
-
-  static BFloat16 Convert(int8_t val) {
-    return BFloat16(static_cast<float>(val));
   }
 };
 
@@ -462,12 +449,7 @@ struct TensorCaster<Int4x2, DstType,
     for (ptrdiff_t i = 0; i < shape_size; ++i) {
       // elem 0 is the low nibble, 1 the high nibble
       auto val = in_data[i >> 1].GetElem(i & 0x1);
-
-      if constexpr (std::is_floating_point_v<DstType>) {
-        out_data[i] = static_cast<DstType>(val);
-      } else {
-        out_data[i] = Int4ElementConverter<DstType>::Convert(val);
-      }
+      out_data[i] = FromInt4Converter<DstType>::Convert(val);
     }
   }
 };
@@ -518,12 +500,7 @@ struct TensorCaster<UInt4x2, DstType,
     for (ptrdiff_t i = 0; i < shape_size; ++i) {
       // elem 0 is the low nibble, 1 the high nibble
       auto val = in_data[i >> 1].GetElem(i & 0x1);
-
-      if constexpr (std::is_floating_point_v<DstType>) {
-        out_data[i] = static_cast<DstType>(val);
-      } else {
-        out_data[i] = Int4ElementConverter<DstType>::Convert(val);
-      }
+      out_data[i] = FromInt4Converter<DstType>::Convert(val);
     }
   }
 };
@@ -573,14 +550,14 @@ struct TensorCaster<SrcType, Int4x2,
 
     ptrdiff_t i = 0;
     for (; i < shape_size - 1; i += 2) {
-      int8_t low_val = Int4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
-      int8_t high_val = Int4ElementConverter<SrcType>::ConvertToInt4(in_data[i + 1]);
+      int8_t low_val = ToInt4Converter<SrcType>::ConvertToInt4(in_data[i]);
+      int8_t high_val = ToInt4Converter<SrcType>::ConvertToInt4(in_data[i + 1]);
 
       out_data[i >> 1] = Int4x2(low_val, high_val);
     }
 
     if (i < shape_size) {
-      int8_t low_val = Int4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
+      int8_t low_val = ToInt4Converter<SrcType>::ConvertToInt4(in_data[i]);
 
       out_data[i >> 1] = Int4x2(low_val, 0);
     }
@@ -620,14 +597,14 @@ struct TensorCaster<SrcType, UInt4x2,
 
     ptrdiff_t i = 0;
     for (; i < shape_size - 1; i += 2) {
-      uint8_t low_val = Int4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
-      uint8_t high_val = Int4ElementConverter<SrcType>::ConvertToUInt4(in_data[i + 1]);
+      uint8_t low_val = ToInt4Converter<SrcType>::ConvertToUInt4(in_data[i]);
+      uint8_t high_val = ToInt4Converter<SrcType>::ConvertToUInt4(in_data[i + 1]);
 
       out_data[i >> 1] = UInt4x2(low_val, high_val);
     }
 
     if (i < shape_size) {
-      uint8_t low_val = Int4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
+      uint8_t low_val = ToInt4Converter<SrcType>::ConvertToUInt4(in_data[i]);
 
       out_data[i >> 1] = UInt4x2(low_val, 0);
     }
