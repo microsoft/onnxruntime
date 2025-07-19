@@ -153,7 +153,6 @@ stages:
           --fail_if_cocoapods_missing \
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
-          --variant Full \
           --skip_macos_test \
           --mac_catalyst_enabled
       displayName: "Test Apple framework"
