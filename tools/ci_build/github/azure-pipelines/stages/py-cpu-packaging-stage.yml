@@ -70,6 +70,23 @@ stages:
       pool:
         name: 'onnxruntime-Win-CPU-2022'
         os: windows
+      templateContext:
+        sdl:
+          codeSignValidation:
+            enabled: true
+            # TODO: check why pyd file was not signed
+            break: false
+            additionalTargetsGlobPattern: f|**\*.pyd
+          psscriptanalyzer:
+            enabled: true
+          binskim:
+            enabled: true
+            scanOutputDirectoryOnly: true
+            analyzeTargetGlob: '+:file|**\*.pyd;+:file|**\*.dll;-:file|DirectML.dll'
+        outputs:
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)
+          artifactName: onnxruntime-win-$(PythonVersion)
       strategy:
         matrix:
           Python310_x64:
@@ -173,12 +190,6 @@ stages:
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-      - task: 1ES.PublishPipelineArtifact@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          artifactName: onnxruntime-win-$(PythonVersion)
-          targetPath: '$(Build.ArtifactStagingDirectory)'
-
       - script: |
           7z x *.whl
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
@@ -188,12 +199,6 @@ stages:
         displayName: 'Run CredScan'
         inputs:
           debugMode: false
-        continueOnError: true
-
-      - task: BinSkim@4
-        displayName: 'Run BinSkim'
-        inputs:
-          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
         continueOnError: true
 
       - powershell: |
