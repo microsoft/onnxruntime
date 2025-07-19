@@ -442,14 +442,14 @@ BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         bool safe_to_use = chunk->stream == stream ||
                            !chunk->stream ||
                            (stream && chunk->stream &&
-                            chunk->stream_sync_id < stream->GetSyncIdForLastWaitOnStream(chunk->stream));
+                            chunk->stream_sync_id < stream->GetSyncIdForLastWaitOnStream(*chunk->stream));
         if (safe_to_use) {
           // the chunk with same stream has higher priority.
           chunk = SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
 
           if (stream) {
             chunk->stream = stream;
-            chunk->stream_sync_id = stream->GetCurrentSyncId();
+            chunk->stream_sync_id = stream->GetSyncId();
           }
 
           return chunk;

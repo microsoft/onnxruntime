@@ -427,19 +427,26 @@ struct OrtEpApi {
    */
   ORT_API_T(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
 
+  /** \brief Get the current sync ID for a stream.
+   *
+   * \param[in] stream The OrtSyncStream to get the sync ID for.
+   * \return uint64_t Current sync ID.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(uint64_t, SyncStream_GetSyncId, _In_ const OrtSyncStream* stream);
+
   /** \brief Get the sync ID for the last time the consumer_stream waited on the producer_stream.
    *
    * When two streams are synchronized, the sync id represents the event used in that synchronization.
    *
    * \param[in] producer_stream The OrtSyncStream that produced the data.
    * \param[in] consumer_stream The OrtSyncStream that waited on the producer_stream.
-   * \param[out] sync_id The sync ID that was used for the last wait operation on the consumer_stream.
-   *
    * \return uint64_t ID for last sync. 0 if no sync has occurred between the two streams.
    *
    * \since Version 1.23.
    */
-  ORT_API_T(uint64_t, GetSyncIdForLastWaitOnStream,
+  ORT_API_T(uint64_t, GetSyncIdForLastWaitOnSyncStream,
             _In_ const OrtSyncStream* producer_stream, _In_ const OrtSyncStream* consumer_stream);
 };
 
@@ -693,6 +700,7 @@ struct OrtEp {
  * \param[in] registered_name The name the execution library is registered with by RegisterExecutionProviderLibrary
  * \param[in] ort_api_base The OrtApiBase instance that is used by the factory to get the OrtApi instance for the
  *                         version of ORT that the library was compiled against.
+ * \param[in] default_logger The default ORT logger that can be used for logging outside of an inference session.
  * \param[in,out] factories The implementation should create and add OrtEpFactory instances to this
  *                          pre-allocated array.
  *                          i.e. usage is `factories[0] = new MyEpFactory();`
@@ -705,6 +713,7 @@ struct OrtEp {
  * \since Version 1.22.
  */
 typedef OrtStatus* (*CreateEpApiFactoriesFn)(_In_ const char* registered_name, _In_ const OrtApiBase* ort_api_base,
+                                             _In_ const OrtLogger* default_logger,
                                              _Inout_ OrtEpFactory** factories, _In_ size_t max_factories,
                                              _Out_ size_t* num_factories);
 

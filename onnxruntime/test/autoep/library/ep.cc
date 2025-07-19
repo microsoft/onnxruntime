@@ -459,6 +459,10 @@ OrtStatus* ORT_API_CALL ExampleEp::CreateSyncStreamForDeviceImpl(_In_ OrtEp* thi
   // A per-session OrtSyncStreamImpl can be created here if the session options affect the implementation.
   // Logging of any issues should use logger_ which is the session logger.
 
+
+  // This creates an OrtSyncStreamImpl that is used is a specific session. 
+    // The 
+
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
   // we only create streams for the default device memory.

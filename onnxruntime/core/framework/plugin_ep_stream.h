@@ -87,10 +87,6 @@ class Stream : public onnxruntime::Stream {
     return ToStatusAndRelease(ort_status);
   }
 
-  WaitNotificationFn GetWaitNotificationFn() const override {
-    return Notification::WaitNotificationOnDevice;
-  }
-
   ~Stream() override {
     impl_.Release(&impl_);
   }

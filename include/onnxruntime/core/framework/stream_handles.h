@@ -26,8 +26,7 @@ class Notification;
 /// </summary>
 class Stream {
  public:
-  Stream(StreamHandle h, const OrtDevice& d)
-      : handle_(h), device_(d) {
+  Stream(StreamHandle h, const OrtDevice& d) : handle_(h), device_(d) {
   }
 
   virtual ~Stream() = default;
@@ -52,22 +51,19 @@ class Stream {
   // Get the current synchronization ID.
   // The value is 0 until this stream records an event.
   // The sync id is incremented before each new event that is recorded in our stream via Notification::Activate.
-  uint64_t GetCurrentSyncId() const { return sync_id_; }
+  uint64_t GetSyncId() const { return sync_id_; }
 
   // Return the sync id from when the last synchronization happened between producer_stream and this stream.
   // i.e. the id for the event that the producer stream recorded and we waited on
   //
   // Returns 0 if the streams have not previously been synchronized.
-  uint64_t GetSyncIdForLastWaitOnStream(Stream* producer_stream) const {
-    // TEMPORARY sanity check
-    ORT_ENFORCE(producer_stream);
-
-    auto it = producer_stream_sync_info_.find(producer_stream);
+  uint64_t GetSyncIdForLastWaitOnStream(const Stream& producer_stream) const {
+    auto it = producer_stream_sync_info_.find(&producer_stream);
     return it == producer_stream_sync_info_.end() ? 0 : it->second;
   }
 
   // Get the sync information for streams we have waited on.
-  std::unordered_map<Stream*, uint64_t> RecordNotificationActivated() {
+  std::unordered_map<const Stream*, uint64_t> RecordNotificationActivated() {  // modified to use const Stream* as key
     // copy our sync info so the notification can pass it on to any waiting streams
     auto sync_info = producer_stream_sync_info_;
     // and add our info to the copy, incrementing the sync_id
@@ -100,7 +96,7 @@ class Stream {
   // TODO: use inline container.
   // currently this class is header only, but abseil doesn't compile with nvcc
   // we need to add new symbol to provider_bridge and hide abseil from the header.
-  std::unordered_map<Stream*, uint64_t> producer_stream_sync_info_{};
+  std::unordered_map<const Stream*, uint64_t> producer_stream_sync_info_{};
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Stream);
 };
@@ -123,13 +119,14 @@ class Notification {
 
   // Get the sync history for the producer stream that created this Notification.
   // The notification must have be activated previously.
-  const std::unordered_map<Stream*, uint64_t>& GetStreamSyncInfo() const {
+  const std::unordered_map<const Stream*, uint64_t>& GetStreamSyncInfo() const {
     return stream_sync_info_;
   }
 
  protected:
   virtual void Activate() = 0;
 
+ private:
   // Stream that created the notification (producer stream).
   Stream& stream_;
 
@@ -138,7 +135,7 @@ class Notification {
   // TODO: use inline container.
   // currently this class is header only, but abseil doesn't compile with nvcc
   // we need to add new symbol to provider_bridge and hide abseil from the header.
-  std::unordered_map<Stream*, uint64_t> stream_sync_info_{};
+  std::unordered_map<const Stream*, uint64_t> stream_sync_info_{};
 };
 }  // namespace synchronize
 

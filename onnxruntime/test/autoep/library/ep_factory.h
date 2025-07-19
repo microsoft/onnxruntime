@@ -17,6 +17,11 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
     return data_transfer_impl_.get();
   }
 
+  // Get the shared arena allocator if created.
+  OrtAllocator* GetArenaAllocator() const {
+    return arena_allocator_.get();
+  }
+
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
 
@@ -67,6 +72,10 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
   MemoryInfoUniquePtr default_memory_info_;
+
+  using AllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
+  bool arena_allocator_using_default_settings_{true};
+  AllocatorUniquePtr arena_allocator_;  // shared device allocator that uses an arena
 
   std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 };

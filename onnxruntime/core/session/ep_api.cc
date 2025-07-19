@@ -179,23 +179,16 @@ ORT_API(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_d
   return memory_device->Id();
 }
 
-ORT_API_STATUS_IMPL(CreateMemoryInfoWithNewAllocatorType, _In_ const OrtMemoryInfo* memory_info,
-                    _In_ OrtAllocatorType allocator_type,
-                    _Out_ OrtMemoryInfo** arena_memory_info) {
-  API_IMPL_BEGIN
-  auto new_info = std::make_unique<OrtMemoryInfo>(memory_info->name, allocator_type, memory_info->device);
-  *arena_memory_info = new_info.release();
-
-  return nullptr;
-  API_IMPL_END
+ORT_API(uint64_t, SyncStream_GetSyncId, _In_ const OrtSyncStream* stream) {
+  return static_cast<const Stream*>(stream)->GetSyncId();
 }
 
-ORT_API(uint64_t, GetSyncIdForLastWaitOnStream,
-        _In_ const OrtSyncStream* producer_stream, _In_ const OrtSyncStream* consumer_stream) {
+ORT_API(uint64_t, GetSyncIdForLastWaitOnSyncStream, _In_ const OrtSyncStream* producer_stream,
+        _In_ const OrtSyncStream* consumer_stream) {
   uint64_t id{0};
   if (producer_stream && consumer_stream) {
-    const auto& producer = *static_cast<Stream*>(producer_stream);
-    const auto& consumer = *static_cast<Stream*>(consumer_stream);
+    const auto& producer = *static_cast<const Stream*>(producer_stream);
+    const auto& consumer = *static_cast<const Stream*>(consumer_stream);
 
     // If both streams are valid, we can return the sync id for the last wait on the consumer stream.
     // This is useful for synchronizing operations between different streams.
@@ -227,7 +220,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::MemoryDevice_GetVendorId,
     &OrtExecutionProviderApi::MemoryDevice_GetDeviceId,
 
-    &OrtExecutionProviderApi::GetSyncIdForLastWaitOnStream,
+    &OrtExecutionProviderApi::GetSyncIdForLastWaitOnSyncStream,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

@@ -27,12 +27,6 @@ limitations under the License.
 #include <intrin.h>
 #endif
 
-// TEMPORARY: this is in #25254
-struct OrtSyncNotification {};
-
-namespace onnxruntime {
-namespace ep_utils {
-
 enum ArenaExtendStrategy {
   kDefault = -1,
   kNextPowerOfTwo = 0,
@@ -79,31 +73,31 @@ struct ArenaConfig {
     static constexpr const char* MaxMem = "arena.max_mem";
   };
 
-  static ArenaConfig FromKeyValuePairs(const OrtApi& api, const OrtKeyValuePairs* kvps) {
+  static ArenaConfig FromKeyValuePairs(const OrtApi& api, const OrtKeyValuePairs& kvps) {
     ArenaConfig config{};
     const char* value = nullptr;
 
-    if (value = api.GetKeyValue(kvps, ConfigKeyNames::ArenaExtendStrategy); value) {
+    if (value = api.GetKeyValue(&kvps, ConfigKeyNames::ArenaExtendStrategy); value) {
       config.arena_extend_strategy = std::string(value) == "1" ? kSameAsRequested : kNextPowerOfTwo;
     }
 
-    if (value = api.GetKeyValue(kvps, ConfigKeyNames::InitialChunkSizeBytes); value) {
+    if (value = api.GetKeyValue(&kvps, ConfigKeyNames::InitialChunkSizeBytes); value) {
       config.initial_chunk_size_bytes = std::stoi(std::string(value));
     }
 
-    if (value = api.GetKeyValue(kvps, ConfigKeyNames::MaxDeadBytesPerChunk); value) {
+    if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxDeadBytesPerChunk); value) {
       config.max_dead_bytes_per_chunk = std::stoi(std::string(value));
     }
 
-    if (value = api.GetKeyValue(kvps, ConfigKeyNames::InitialGrowthChunkSizeBytes); value) {
+    if (value = api.GetKeyValue(&kvps, ConfigKeyNames::InitialGrowthChunkSizeBytes); value) {
       config.initial_growth_chunk_size_bytes = std::stoi(std::string(value));
     }
 
-    if (value = api.GetKeyValue(kvps, ConfigKeyNames::MaxPowerOfTwoExtendBytes); value) {
+    if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxPowerOfTwoExtendBytes); value) {
       config.max_power_of_two_extend_bytes = std::stoll(value);
     }
 
-    if (value = api.GetKeyValue(kvps, ConfigKeyNames::MaxMem); value) {
+    if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxMem); value) {
       config.max_mem = static_cast<size_t>(std::stoull(std::string(value)));
     }
   }
@@ -179,8 +173,8 @@ class ArenaImpl {
   static const int64_t DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES = 1024 * 1024 * 1024;  // 1GB
   static const size_t DEFAULT_MAX_MEM = std::numeric_limits<size_t>::max();
 
-  ArenaImpl(std::unique_ptr<OrtAllocator> base_allocator, const ArenaConfig& config,
-            const OrtApi& api, const OrtLogger& logger);
+  ArenaImpl(std::unique_ptr<OrtAllocator> allocator, const ArenaConfig& config, const OrtApi& api,
+            const OrtLogger& logger);
 
   ~ArenaImpl();
 
@@ -609,11 +603,16 @@ class ArenaImpl {
 };
 
 struct ArenaAllocator : OrtAllocator {
-  using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
-  static OrtStatus* CreateOrtArenaAllocator(const OrtApi& api, const OrtMemoryInfo& memory_info,
-                                            std::unique_ptr<ArenaImpl> implementation,
+  static OrtStatus* CreateOrtArenaAllocator(std::unique_ptr<OrtAllocator> allocator,
+                                            const OrtKeyValuePairs* options,
+                                            const OrtApi& api,
+                                            const OrtLogger& logger,
                                             std::unique_ptr<ArenaAllocator>& arena_allocator) {
-    arena_allocator = std::make_unique<ArenaAllocator>(std::move(implementation), memory_info, api);
+    ArenaConfig config = options ? ArenaConfig::FromKeyValuePairs(api, *options) : ArenaConfig{};
+    auto impl = std::make_unique<ArenaImpl>(std::move(allocator), config, api, logger);
+
+    arena_allocator = std::make_unique<ArenaAllocator>(std::move(impl), api);
+
     return nullptr;
   }
 
@@ -670,6 +669,3 @@ struct ArenaAllocator : OrtAllocator {
   const OrtApi& api_;
   const OrtEpApi& ep_api_;
 };
-
-}  // namespace ep_utils
-}  // namespace onnxruntime

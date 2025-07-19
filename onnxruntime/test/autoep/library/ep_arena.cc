@@ -47,9 +47,9 @@ std::string GetAllocatorName(const OrtApi& api, OrtAllocator& allocator) {
 }
 }  // namespace
 
-ArenaImpl::ArenaImpl(std::unique_ptr<OrtAllocator> base_allocator, const ArenaConfig& config,
-                     const OrtApi& api, const OrtLogger& logger)
-    : device_allocator_{std::move(base_allocator)},
+ArenaImpl::ArenaImpl(std::unique_ptr<OrtAllocator> allocator, const ArenaConfig& config, const OrtApi& api,
+                     const OrtLogger& logger)
+    : device_allocator_{std::move(allocator)},
       allocator_name_{GetAllocatorName(api, *device_allocator_)},
       config_{config},
       api_{api},
@@ -440,18 +440,20 @@ ArenaImpl::Chunk* ArenaImpl::FindChunkPtr(BinNum bin_num, size_t rounded_bytes, 
       EP_ENFORCE(!chunk->in_use(), __FUNCTION__);
 
       if (chunk->size >= rounded_bytes) {
-        // We found an existing chunk that fits us that wasn't in use, now check the stream
+        // We found an existing chunk that fits us that wasn't in use.
+        // If it's assigned to another stream, and we have synchronized with that stream more recently than it
+        // was assigned, we can take the chunk.
         bool safe_to_use = chunk->stream == stream ||
                            !chunk->stream ||
                            (stream && chunk->stream &&
-                            chunk->stream_sync_id < ep_api_.GetSyncIdForLastWaitOnStream(chunk->stream, stream);
+                            chunk->stream_sync_id < ep_api_.GetSyncIdForLastWaitOnSyncStream(chunk->stream, stream));
 
         if (safe_to_use) {
           chunk = SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
 
           if (stream) {
             chunk->stream = stream;
-            chunk->stream_sync_id = stream->GetCurrentSyncId();
+            chunk->stream_sync_id = ep_api_.SyncStream_GetSyncId(stream);
             stream_to_chunks_[stream].insert(h);
           }
 

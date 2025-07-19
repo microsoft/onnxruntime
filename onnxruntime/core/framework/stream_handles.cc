@@ -6,7 +6,7 @@
 namespace onnxruntime {
 
 void Stream::UpdateWithAwaitedNotification(const synchronize::Notification& notification) {
-  const std::unordered_map<Stream*, uint64_t>& stream_sync_info = notification.GetStreamSyncInfo();
+  const std::unordered_map<const Stream*, uint64_t>& stream_sync_info = notification.GetStreamSyncInfo();
   for (const auto& kv : stream_sync_info) {
     auto ret = producer_stream_sync_info_.insert(kv);
     if (!ret.second) {
