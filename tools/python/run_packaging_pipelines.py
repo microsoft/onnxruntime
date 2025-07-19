@@ -202,10 +202,11 @@ def evaluate_single_pipeline(pipeline_summary: Dict, token: str, branch: str, is
             print("  - OK: No active pipeline resource trigger found in YAML.")
             
             # Check for packaging pipeline variables/parameters
+            packaging_exceptions = ['onnxruntime-ios-packaging-pipeline', '1ES-onnxruntime-Nuget-WindowsAI-Pipeline-Official']
             if 'packaging' in pipeline_name.lower() or 'nuget' in pipeline_name.lower():
                 print("  - Detected packaging pipeline. Checking for required variables/parameters...")
-                if pipeline_name == 'onnxruntime-ios-packaging-pipeline':
-                    print("  - OK: Allowing exception for 'onnxruntime-ios-packaging-pipeline' which has no build mode flags.")
+                if pipeline_name in packaging_exceptions:
+                    print(f"  - OK: Allowing exception for '{pipeline_name}' which has no build mode flags.")
                     packaging_type = "none"
                 elif 'NIGHTLY_BUILD' in configuration.get('variables', {}):
                     packaging_type = "nightly"
@@ -214,8 +215,8 @@ def evaluate_single_pipeline(pipeline_summary: Dict, token: str, branch: str, is
                     packaging_type = "release"
                     print("  - OK: Found 'IsReleaseBuild' YAML parameter.")
                 else:
-                    print(f"\nERROR: Packaging pipeline '{pipeline_name}' has neither a 'NIGHTLY_BUILD' variable nor an 'IsReleaseBuild' parameter. Exiting.")
-                    sys.exit(1)
+                    print(f"  - SKIPPING: Packaging pipeline '{pipeline_name}' has neither a 'NIGHTLY_BUILD' variable nor an 'IsReleaseBuild' parameter.")
+                    return None
 
         print(f"  - MATCH: '{pipeline_name}' matches all criteria.")
         return {"pipeline": pipeline_details, "packaging_type": packaging_type}
