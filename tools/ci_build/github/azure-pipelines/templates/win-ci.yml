@@ -106,11 +106,15 @@ stages:
         binskim:
           enabled: true
           scanOutputDirectoryOnly: true
-          analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.pyd;+:file|$(BUILD.STAGINGDIRECTORY)\**\*.dll;-:file|DirectML.dll'
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
         artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
+      - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
+          - output: pipelineArtifact
+            targetPath: $(Agent.TempDirectory)/RelWithDebInfo
+            artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'   
+
     ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
       pool: 
         name: onnxruntime-Win-CPU-2022
@@ -224,12 +228,7 @@ stages:
               tree /f
             displayName: 'Copy java pad and folder for java test'
             workingDirectory: '$(Build.BinariesDirectory)'
-
-        - task: 1ES.PublishPipelineArtifact@1
-          inputs:
-            targetPath: '$(Agent.TempDirectory)/RelWithDebInfo'
-            artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'
-
+  
       - script: |
           dir *.dll
           mkdir $(Build.ArtifactStagingDirectory)\testdata          
