@@ -287,6 +287,17 @@ struct ToInt4Converter<BFloat16> {
   }
 };
 
+template <>
+struct ToInt4Converter<bool> {
+  static int8_t ConvertToInt4(const bool& val) {
+    return static_cast<int8_t>(val ? 1 : 0);
+  }
+
+  static uint8_t ConvertToUInt4(const bool& val) {
+    return static_cast<uint8_t>(val ? 1 : 0);
+  }
+};
+
 // generic tensor X -> Y
 template <typename SrcType, typename DstType, typename Enable = void>
 struct TensorCaster {
@@ -435,6 +446,7 @@ struct TensorCaster<float, MLFloat16> {
   }
 };
 
+// (U)Int4x2 -> integral/floating point types
 template <typename SrcType, typename DstType>
 struct TensorCaster<SrcType, DstType,
                     std::enable_if_t<IsOrtInt4Type<SrcType>::value &&
@@ -492,7 +504,7 @@ struct TensorCaster<UInt4x2, Int4x2> {
 
 template <typename SrcType>
 struct TensorCaster<SrcType, Int4x2,
-                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value>> {
+                    std::enable_if_t<std::is_same_v<SrcType, bool> || IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
@@ -502,36 +514,11 @@ struct TensorCaster<SrcType, Int4x2,
     for (; i < shape_size - 1; i += 2) {
       int8_t low_val = ToInt4Converter<SrcType>::ConvertToInt4(in_data[i]);
       int8_t high_val = ToInt4Converter<SrcType>::ConvertToInt4(in_data[i + 1]);
-
       out_data[i >> 1] = Int4x2(low_val, high_val);
     }
 
     if (i < shape_size) {
       int8_t low_val = ToInt4Converter<SrcType>::ConvertToInt4(in_data[i]);
-
-      out_data[i >> 1] = Int4x2(low_val, 0);
-    }
-  }
-};
-
-template <>
-struct TensorCaster<bool, Int4x2> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
-    const auto* in_data = in.Data<bool>();
-    auto* out_data = out.MutableData<Int4x2>();
-
-    ptrdiff_t i = 0;
-    for (; i < shape_size - 1; i += 2) {
-      int8_t low_val = in_data[i] ? 1 : 0;
-      int8_t high_val = in_data[i + 1] ? 1 : 0;
-
-      out_data[i >> 1] = Int4x2(low_val, high_val);
-    }
-
-    if (i < shape_size) {
-      int8_t low_val = in_data[i] ? 1 : 0;
-
       out_data[i >> 1] = Int4x2(low_val, 0);
     }
   }
@@ -539,7 +526,7 @@ struct TensorCaster<bool, Int4x2> {
 
 template <typename SrcType>
 struct TensorCaster<SrcType, UInt4x2,
-                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value>> {
+                    std::enable_if_t<std::is_same_v<SrcType, bool> || IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
@@ -549,36 +536,11 @@ struct TensorCaster<SrcType, UInt4x2,
     for (; i < shape_size - 1; i += 2) {
       uint8_t low_val = ToInt4Converter<SrcType>::ConvertToUInt4(in_data[i]);
       uint8_t high_val = ToInt4Converter<SrcType>::ConvertToUInt4(in_data[i + 1]);
-
       out_data[i >> 1] = UInt4x2(low_val, high_val);
     }
 
     if (i < shape_size) {
       uint8_t low_val = ToInt4Converter<SrcType>::ConvertToUInt4(in_data[i]);
-
-      out_data[i >> 1] = UInt4x2(low_val, 0);
-    }
-  }
-};
-
-template <>
-struct TensorCaster<bool, UInt4x2> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
-    const auto* in_data = in.Data<bool>();
-    auto* out_data = out.MutableData<UInt4x2>();
-
-    ptrdiff_t i = 0;
-    for (; i < shape_size - 1; i += 2) {
-      uint8_t low_val = in_data[i] ? 1 : 0;
-      uint8_t high_val = in_data[i + 1] ? 1 : 0;
-
-      out_data[i >> 1] = UInt4x2(low_val, high_val);
-    }
-
-    if (i < shape_size) {
-      uint8_t low_val = in_data[i] ? 1 : 0;
-
       out_data[i >> 1] = UInt4x2(low_val, 0);
     }
   }
