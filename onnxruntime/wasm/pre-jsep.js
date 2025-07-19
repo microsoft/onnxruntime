@@ -8,7 +8,7 @@
 // This file will only be used in build with flag `--use_jsep`.
 
 // This is a wrapper for OrtRun() and OrtRunWithBinding() to ensure that Promises are handled correctly.
-const jsepRunAsync = (runAsyncFunc) => {
+let jsepRunAsync = (runAsyncFunc) => {
   return async (...args) => {
     try {
       // Module.jsepSessionState should be null, unless we are in the middle of a session.
@@ -53,6 +53,13 @@ const jsepRunAsync = (runAsyncFunc) => {
  * initialize JSEP for WebGPU and WebNN.
  */
 Module["jsepInit"] = (name, params) => {
+  // call once to initialize the async wrapper for OrtRun() and OrtRunWithBinding()
+  if (jsepRunAsync) {
+    Module["_OrtRun"] = jsepRunAsync(Module["_OrtRun"]);
+    Module["_OrtRunWithBinding"] = jsepRunAsync(Module["_OrtRunWithBinding"]);
+    jsepRunAsync = null;
+  }
+
   if (name === "webgpu") {
     [
       Module.jsepBackend,
@@ -136,7 +143,7 @@ Module["jsepInit"] = (name, params) => {
       dataLength,
       builder,
       desc,
-      shouldConvertInt64ToInt32,
+      shouldConvertInt64ToInt32
     ) => {
       return backend["registerMLConstant"](
         externalFilePath,
@@ -145,7 +152,7 @@ Module["jsepInit"] = (name, params) => {
         builder,
         desc,
         Module.MountedFiles,
-        shouldConvertInt64ToInt32,
+        shouldConvertInt64ToInt32
       );
     };
     Module["webnnRegisterGraphInput"] =
@@ -157,6 +164,7 @@ Module["jsepInit"] = (name, params) => {
 
     Module["webnnCreateTemporaryTensor"] =
       backend["createTemporaryTensor"].bind(backend);
-    Module["webnnIsGraphInputOutputTypeSupported"] = backend["isGraphInputOutputTypeSupported"].bind(backend);
+    Module["webnnIsGraphInputOutputTypeSupported"] =
+      backend["isGraphInputOutputTypeSupported"].bind(backend);
   }
 };

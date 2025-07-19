@@ -175,9 +175,9 @@ else()
       "${ONNXRUNTIME_ROOT}/wasm/api.cc"
       "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
     )
-    set (WASM_API_EXCEPTION_CATCHING "-s DISABLE_EXCEPTION_CATCHING=0")
     message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
-    set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})
+    set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS "-sDISABLE_EXCEPTION_CATCHING=0")
+    target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_CATCHING=0")
   endif()
 
   target_link_libraries(onnxruntime_webassembly PRIVATE
@@ -241,11 +241,10 @@ else()
     "SHELL:-s FILESYSTEM=0"
     "SHELL:-s INCOMING_MODULE_JS_API=[locateFile,instantiateWasm,wasmBinary]"
     "SHELL:-s WASM_BIGINT=1"
-    ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
     "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre.js\""
   )
-  
+
   if (onnxruntime_USE_JSEP)
     # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
     #       This flag allows async functions to be called from sync functions, in the cost of binary size and
@@ -256,7 +255,7 @@ else()
       "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\""
     )
     list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js")
-    
+
   endif()
 
   if (onnxruntime_USE_WEBGPU)
@@ -280,9 +279,13 @@ else()
   if (onnxruntime_USE_JSEP OR onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
     # if any of the above is enabled, we need to use the asyncify library
     target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-async.js\""
+      # "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-async.js\""
       "SHELL:-s ASYNCIFY=1"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+      #
+      # The following exported C functions are used as async
+      #
+      "SHELL:-s ASYNCIFY_IMPORTS=[_OrtAppendExecutionProvider,_OrtCreateSession,_OrtRun,_OrtRunWithBinding,_OrtBindInput]"
     )
     list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-async.js")
   endif()

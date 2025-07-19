@@ -15,12 +15,13 @@ let initAsyncImpl = () => {
   // It removes some overhead in cwarp() and ccall() that we don't need.
   //
   // Currently in ASYNCIFY build, we only use this for the following functions:
+  // - OrtAppendExecutionProvider()
   // - OrtCreateSession()
   // - OrtRun()
   // - OrtRunWithBinding()
   // - OrtBindInput()
   //
-  // Note: about parameters "getFunc" and "setFunc":
+  //
   // - Emscripten has different behaviors for Debug and Release builds for generating exported function wrapper.
   //
   //   - In Debug build, it will generate a wrapper function for each exported function. For example, it generates a
@@ -109,13 +110,13 @@ let initAsyncImpl = () => {
     }
   };
 
-  wrapAsyncAPIs([
-    "_OrtAppendExecutionProvider",
-    "_OrtCreateSession",
-    "_OrtRun",
-    "_OrtRunWithBinding",
-    "_OrtBindInput",
-  ]);
+  // wrapAsyncAPIs([
+  //   "_OrtAppendExecutionProvider",
+  //   "_OrtCreateSession",
+  //   "_OrtRun",
+  //   "_OrtRunWithBinding",
+  //   "_OrtBindInput",
+  // ]);
 
   // If JSEP is enabled, wrap OrtRun() and OrtRunWithBinding() with asyncify.
   if (typeof jsepRunAsync !== "undefined") {
