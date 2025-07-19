@@ -42,9 +42,12 @@ MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type);
 
 MLDataType OnnxTypeToOnnxRuntimeTensorType(int onnx_element_type);
 
-using MemCpyFunc = void (*)(void*, const void*, size_t);
-
+using MemCpyFunc = std::function<void(void*, const void*, size_t)>;
 using DataTransferAlternative = std::variant<const DataTransferManager*, MemCpyFunc>;
+
+// helpers to get allocator and IDataTransfer from Environment for plugin EP
+AllocatorPtr GetSharedAllocator(const OrtDevice& device);
+MemCpyFunc CreateDataTransferMemCpy(const OrtDevice& src_device, const OrtDevice& dst_device);
 
 void CpuToCpuMemCpy(void*, const void*, size_t);
 
