@@ -110,7 +110,8 @@ stages:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
         artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
-      - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
+      # GPU build has two jobs. This is the first one.
+      - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
           - output: pipelineArtifact
             targetPath: $(Agent.TempDirectory)/RelWithDebInfo
             artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'   
@@ -157,7 +158,7 @@ stages:
       - task: NodeTool@0
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
         inputs:
-          versionSpec: '20.x'
+          versionSpec: '22.x'
 
       - ${{ if ne(parameters.CudaVersion, '') }}:
         - template: jobs/download_win_gpu_library.yml
@@ -314,7 +315,7 @@ stages:
         - task: NodeTool@0
           condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
           inputs:
-            versionSpec: '20.x'
+            versionSpec: '22.x'
 
         - ${{ if ne(parameters.CudaVersion, '') }}:
           - template: jobs/download_win_gpu_library.yml
