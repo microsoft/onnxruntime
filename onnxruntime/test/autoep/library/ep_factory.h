@@ -52,6 +52,13 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* this_ptr,
                                                         OrtDataTransferImpl** data_transfer) noexcept;
 
+  static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* this_ptr) noexcept;
+
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+                                                               const OrtMemoryDevice* memory_device,
+                                                               const OrtKeyValuePairs* stream_options,
+                                                               OrtSyncStreamImpl** stream) noexcept;
+
   const OrtLogger& default_logger_;        // default logger for the EP factory
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name
@@ -60,12 +67,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
-  MemoryInfoUniquePtr cpu_memory_info_;
-
-  // for example purposes. if the EP used GPU, and pinned/shared memory was required for data transfer, these are the
-  // OrtMemoryInfo instance required for that.
-  MemoryInfoUniquePtr default_gpu_memory_info_;
-  MemoryInfoUniquePtr host_accessible_gpu_memory_info_;
+  MemoryInfoUniquePtr default_memory_info_;
 
   std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 };
