@@ -90,6 +90,11 @@ struct IsOrtInt4NumericConversionType {
       IsOrtFloat8Type<T>::value;
 };
 
+template <typename T>
+struct IsOrtInt4ConversionType {
+  static constexpr bool value = IsOrtInt4NumericConversionType<T>::value || std::is_same_v<std::string, T>;
+};
+
 // string cast helpers
 // Note: when C++17 is available, use <charconv> functions
 
@@ -202,7 +207,7 @@ struct EigenCastType<BFloat16> {
 
 // Helper for converting (U)Int4x2 values to any destination type.
 template <typename SrcType, typename DstType,
-          typename Enable = std::enable_if_t<IsOrtInt4Type<SrcType>::value && IsOrtInt4NumericConversionType<DstType>::value>>
+          typename Enable = std::enable_if_t<IsOrtInt4Type<SrcType>::value && IsOrtInt4ConversionType<DstType>::value>>
 struct FromInt4Converter {
   // The input 'val' can be either an int8_t value coming from Int4x2.GetElem(pos),
   // or an uint8_t value coming from UInt4x2.GetElem(pos), where pos can be 0 or 1.
@@ -213,6 +218,10 @@ struct FromInt4Converter {
       return DstType(static_cast<float>(val), true);
     } else if constexpr (std::is_same_v<bool, DstType>) {
       return val != 0;
+    } else if constexpr (std::is_same_v<std::string, DstType>) {
+      // val has type (u)int8_t, so static_cast<int> is required in order for std::to_string
+      // to interpret val as a number (65 -> "65"), instead of a char (65 -> "A").
+      return std::to_string(static_cast<int>(val));
     } else {
       return static_cast<DstType>(val);
     }
@@ -351,28 +360,6 @@ struct TensorCaster<std::string, DstType> {
   }
 };
 
-// tensor (U)Int4x2 -> string
-template <typename SrcType>
-struct TensorCaster<SrcType, std::string,
-                    std::enable_if_t<IsOrtInt4Type<SrcType>::value>> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
-    const auto* in_data = in.Data<SrcType>();
-    auto* out_data = out.MutableData<std::string>();
-
-    // Unpack each Int4x2/UInt4x2 into two separate string elements
-    size_t out_idx = 0;
-    for (ptrdiff_t i = 0; i < shape_size; ++i) {
-      // elem 0 is the low nibble, 1 the high nibble
-      auto val = in_data[i >> 1].GetElem(i & 0x1);
-
-      // val has type (u)int8_t, so static_cast<int> is required in order for std::to_string
-      // to interpret val as a number (65 -> "65"), instead of a char (65 -> "A").
-      out_data[out_idx++] = std::to_string(static_cast<int>(val));
-    }
-  }
-};
-
 // tensor string -> Int4x2
 template <>
 struct TensorCaster<std::string, Int4x2> {
@@ -456,10 +443,10 @@ struct TensorCaster<float, MLFloat16> {
   }
 };
 
-// (U)Int4x2 -> numeric types
+// (U)Int4x2 -> string or numeric types
 template <typename SrcType, typename DstType>
 struct TensorCaster<SrcType, DstType,
-                    std::enable_if_t<IsOrtInt4Type<SrcType>::value && IsOrtInt4NumericConversionType<DstType>::value>> {
+                    std::enable_if_t<IsOrtInt4Type<SrcType>::value && IsOrtInt4ConversionType<DstType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
