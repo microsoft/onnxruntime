@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "ep_arena.h"
 #include "ep_data_transfer.h"
 #include "example_plugin_ep_utils.h"
 
@@ -76,7 +77,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   using AllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
   bool arena_allocator_using_default_settings_{true};
-  AllocatorUniquePtr arena_allocator_;  // shared device allocator that uses an arena
+  std::unique_ptr<ArenaAllocator> arena_allocator_;  // shared device allocator that uses an arena
 
   std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 };

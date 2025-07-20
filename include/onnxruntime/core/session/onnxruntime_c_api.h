@@ -354,7 +354,7 @@ typedef struct OrtAllocator {
    * those made during session initialization. This allows for separate memory management strategies for these
    * allocations.
    *
-   * \return void* pointer to an allocated block of `size` bytes
+   * \return void* pointer to an allocated block of `size` bytes. nullptr if size was 0 or allocation failed.
    *
    * \since 1.18
    */
@@ -389,7 +389,7 @@ typedef struct OrtAllocator {
    * Set to nullptr if not supported, and Alloc will be used in that case.
    *
    * \param[in] this_ OrtAllocator instance
-   * \param[in] size Size of the allocation in bytes
+   * \param[in] size Size of the allocation in bytes. nullptr if size was 0 or allocation failed.
    * \param[in] stream The stream to allocate on.
    *
    * \return void* pointer to an allocated block of `size` bytes

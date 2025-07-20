@@ -742,8 +742,14 @@ void ArenaImpl::DumpMemoryLog(size_t num_bytes) {
                 << stats_.DebugString());
 }
 
-void ArenaImpl::ResetChunksUsingStream(const OrtSyncStream* stream) {
+void ArenaImpl::ResetChunksUsingStream(const OrtSyncStreamImpl* stream) {
   std::lock_guard<std::mutex> lock(lock_);
+
+  auto it = impl_to_stream_.find(stream);
+  if (it == impl_to_stream_.end()) {
+      return ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                "ResetChunksUsingStream called with unknown stream");
+  }
 
   auto it = stream_to_chunks_.find(stream);
   if (it != stream_to_chunks_.end()) {

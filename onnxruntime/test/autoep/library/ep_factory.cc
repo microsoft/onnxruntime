@@ -230,9 +230,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
     // initial shared allocator in environment does not have allocator options.
     // if the user calls CreateSharedAllocator they can provide options to configure the arena differently.
     factory.arena_allocator_using_default_settings_ = allocator_options == nullptr;
-    auto allocator = std::make_unique<CustomAllocator>(memory_info, factory);
+    std::unique_ptr<OrtAllocator> allocator = std::make_unique<CustomAllocator>(memory_info, factory);
     RETURN_IF_ERROR(ArenaAllocator::CreateOrtArenaAllocator(std::move(allocator), allocator_options, factory.ort_api,
-                                                            factory.logger_, factory.arena_allocator_));
+                                                            factory.default_logger_, factory.arena_allocator_));
 
   } else {
     if (factory.arena_allocator_using_default_settings_ && allocator_options) {

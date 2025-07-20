@@ -202,7 +202,7 @@ class ArenaImpl {
   // This should be called from OrtSyncStreamImpl::OnSessionRunEnd.
   // A stream is used in one session at a time. When called from OnSessionRunEnd we know that the stream is done and
   // will not be performing any more operations on the data.
-  void ResetChunksUsingStream(const OrtSyncStream* stream);
+  OrtStatus* ResetChunksUsingStream(const OrtSyncStreamImpl* stream_impl);
 
  private:
   void* AllocateRawInternal(size_t num_bytes, OrtSyncStream* stream, bool dump_log_on_failure);
@@ -590,6 +590,12 @@ class ArenaImpl {
   // chunks being used by a stream
   std::unordered_map<const OrtSyncStream*, std::set<ChunkHandle>> stream_to_chunks_;
 
+  // map to connect the OrtSyncStreamImpl the EP library creates to the OrtSyncStream that ORT uses.
+  // we don't know that it's safe to re-use a chunk until the stream is done with, which is via the call to
+  // OrtSyncStreamImpl::OnSessionRunEnd. the allocations see OrtSyncStream, so we need to connect things up to
+  // un-assign chunks when StreamImpl::OnSessionRunEnd is called.
+  std::unordered_map<const OrtSyncStreamImpl*, const OrtSyncStream*> impl_to_stream_;
+
   AllocatorStats stats_;
 
   const OrtApi& api_;
@@ -630,6 +636,11 @@ struct ArenaAllocator : OrtAllocator {
     GetStats = GetStatsImpl;
 
     AllocOnStream = AllocOnStreamImpl;
+  }
+
+  OrtStatus* ResetChunksUsingStream(const OrtSyncStreamImpl* stream_impl) {
+    impl_->ResetChunksUsingStream(stream_impl);
+    return nullptr;
   }
 
   static void* ORT_API_CALL AllocImpl(struct OrtAllocator* this_, size_t size) {

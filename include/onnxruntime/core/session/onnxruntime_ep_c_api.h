@@ -427,6 +427,19 @@ struct OrtEpApi {
    */
   ORT_API_T(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
 
+  /** \brief Get the OrtSyncStreamImpl associated with an OrtSyncStream instance.
+   *
+   * This allows an the plugin library to connect its OrtSyncStreamImpl instance with an OrtSyncStream if needed.
+   *
+   * \param[in] impl The OrtSyncStream instance to find an OrtSyncStreamImpl for.
+   * \return The associated OrtSyncStreamImpl if found. nullptr otherwise.
+   *
+   * \since Version 1.23.
+   *
+   * \remarks There should always be an OrtSyncStreamImpl associated with an OrtSyncStream instance.
+   */
+  ORT_API_T(const OrtSyncStreamImpl*, SyncStream_GetImpl, _In_ const OrtSyncStream* impl);
+
   /** \brief Get the current sync ID for a stream.
    *
    * \param[in] stream The OrtSyncStream to get the sync ID for.
