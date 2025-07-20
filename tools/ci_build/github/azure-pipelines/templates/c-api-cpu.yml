@@ -3,10 +3,6 @@ parameters:
   displayName: Run Tests?
   type: boolean
   default: true
-- name: DoEsrp
-  displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
-  type: boolean
-  default: false
 
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
@@ -65,7 +61,7 @@ stages:
     BuildForAllArchs: true
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
-    DoEsrp: ${{ parameters.DoEsrp }}
+    DoEsrp: true
 
 - stage: Android_Java_API_AAR_Packaging_Full
   dependsOn: Setup # Setup stage defined in set_packaging_variables_stage.yml creates the ReleaseVersionSuffix variable
@@ -79,7 +75,7 @@ stages:
       artifactName: 'onnxruntime-android-full-aar'
       job_name_suffix: 'Full'
       publish_executables: '1'
-      enable_code_sign: ${{ parameters.DoEsrp }}
+      enable_code_sign: true
       packageName: 'onnxruntime-android'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
       is1ES: ${{ parameters.is1ES }}
@@ -98,7 +94,7 @@ stages:
       artifactName: 'onnxruntime-android-qnn-aar'
       job_name_suffix: 'QNN'
       publish_executables: '0'
-      enable_code_sign: ${{ parameters.DoEsrp }}
+      enable_code_sign: true
       packageName: 'onnxruntime-android-qnn'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
       QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
@@ -159,7 +155,7 @@ stages:
 
 - template: win-ci.yml
   parameters:
-    DoEsrp: ${{ parameters.DoEsrp }}
+    DoEsrp: true
     stage_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
     buildArch: x64
     msbuildPlatform: arm64
@@ -171,7 +167,7 @@ stages:
 
 - template: win-ci.yml
   parameters:
-    DoEsrp: ${{ parameters.DoEsrp }}
+    DoEsrp: true
     stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
     buildArch: x64
     msbuildPlatform: x64
@@ -282,7 +278,6 @@ stages:
 
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
-      breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
       BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
       BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
@@ -396,12 +391,11 @@ stages:
         msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:PackageVersion=$(OnnxRuntimeVersion)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - ${{ if eq(parameters.DoEsrp, true) }}:
-      - template: win-esrp-dll.yml
-        parameters:
-          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
-          DisplayName: 'ESRP - Sign C# dlls'
-          DoEsrp: ${{ parameters.DoEsrp }}
+    - template: win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+        DisplayName: 'ESRP - Sign C# dlls'
+        DoEsrp: ${{ parameters.DoEsrp }}
 
     - task: UsePythonVersion@0
       displayName: 'Use Python'
@@ -451,10 +445,6 @@ stages:
         DoEsrp: ${{ parameters.DoEsrp }}
 
 
-
-
-
-
 - stage: Nodejs_Packaging
   dependsOn:
   - Setup
@@ -468,13 +458,26 @@ stages:
   - job: Nodejs_Packaging
     workspace:
       clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool:
+      name: 'onnxruntime-Win-CPU-2022'
+      os: windows
+    templateContext:
+      sdl:
+        codeSignValidation:
+          enabled: true
+          break: false
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: 'NPM_packages'
     variables:
       ${{ if eq(parameters.IsReleaseBuild, true) }}:
         NpmPackagingMode: 'release'
       ${{ if not(eq(parameters.IsReleaseBuild, true)) }}:
         NpmPackagingMode: 'dev'
-      breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
       BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
@@ -742,75 +745,3 @@ stages:
         SourceFolder: '$(Build.SourcesDirectory)/js/node/'
         Contents: 'onnxruntime-node-*.tgz'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish NPM packages files'
-      inputs:
-        artifactName: 'NPM_packages'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-
-
-
-
-- template: ../nuget/templates/test_win.yml
-  parameters:
-    AgentPool: 'onnxruntime-Win-CPU-2022'
-    NugetPackageName: 'Microsoft.ML.OnnxRuntime'
-    ArtifactSuffix: 'CPU'
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: ../nuget/templates/test_android.yml
-  parameters:
-    AgentPool : 'onnxruntime-Win-CPU-2022'
-    ArtifactSuffix: 'CPU'
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: ../nuget/templates/test_linux.yml
-  parameters:
-    AgentPool: onnxruntime-Ubuntu2204-AMD-CPU
-    NugetPackageName: 'Microsoft.ML.OnnxRuntime'
-    ArtifactSuffix: 'CPU'
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: ../nuget/templates/test_macos.yml
-  parameters:
-    AgentPool: macOS-14
-    ArtifactSuffix: 'CPU'
-
-- template: ../nodejs/templates/test_win.yml
-  parameters:
-    AgentPool: 'onnxruntime-Win-CPU-2022'
-    StageSuffix: 'Win_CPU_x64'
-
-- template: ../nodejs/templates/test_linux.yml
-  parameters:
-    AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
-    StageSuffix: 'Linux_CPU_x64'
-
-- template: ../nodejs/templates/test_macos.yml
-  parameters:
-    StageSuffix: 'macOS_CPU_x64'
-
-- template: final-jar-testing.yml
-  parameters:
-    OS: Windows
-    BuildId: ${{ parameters.BuildId }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'onnxruntime-Win-CPU-2022'
-
-- template: final-jar-testing.yml
-  parameters:
-    OS: Linux
-    BuildId: ${{ parameters.BuildId }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-
-- template: final-jar-testing.yml
-  parameters:
-    OS: MacOS
-    BuildId: ${{ parameters.BuildId }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'macOS-14'
