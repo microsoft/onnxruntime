@@ -186,6 +186,12 @@ stages:
         clean: all
       pool:
         name: ${{parameters.MACHINE_POOL}}
+        os: windows
+      templateContext:
+        inputs:
+        - input: pipelineArtifact
+          artifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
+          targetPath: '$(Build.ArtifactStagingDirectory)'
       steps:
         - checkout: self
           clean: true
@@ -201,13 +207,6 @@ stages:
           displayName: 'Pip Authenticate'
           inputs:
             artifactFeeds: 'Lotus'
-
-
-        - template: ../templates/flex-downloadPipelineArtifact.yml
-          parameters:
-            ArtifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
-            StepName: 'Download Pipeline Artifact - Windows GPU Build'
-            TargetPath: '$(Build.ArtifactStagingDirectory)'
 
         - template: ../templates/jobs/download_win_gpu_library.yml
           parameters:
