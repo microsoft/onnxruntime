@@ -448,7 +448,7 @@ struct TensorCaster<float, MLFloat16> {
   }
 };
 
-// (U)Int4x2 -> integral/floating point types
+// (U)Int4x2 -> numeric types
 template <typename SrcType, typename DstType>
 struct TensorCaster<SrcType, DstType,
                     std::enable_if_t<IsOrtInt4Type<SrcType>::value && IsOrtInt4NumericConversionType<DstType>::value>> {
@@ -461,6 +461,29 @@ struct TensorCaster<SrcType, DstType,
       // elem 0 is the low nibble, 1 the high nibble
       auto val = in_data[i >> 1].GetElem(i & 0x1);
       out_data[i] = FromInt4Converter<SrcType, DstType>::Convert(val);
+    }
+  }
+};
+
+// numeric types -> (U)Int4x2
+template <typename SrcType, typename DstType>
+struct TensorCaster<SrcType, DstType,
+                    std::enable_if_t<IsOrtInt4NumericConversionType<SrcType>::value && IsOrtInt4Type<DstType>::value>> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<SrcType>();
+    auto* out_data = out.MutableData<DstType>();
+
+    ptrdiff_t i = 0;
+    for (; i < shape_size - 1; i += 2) {
+      auto low_val = ToInt4Converter<SrcType, DstType>::Convert(in_data[i]);
+      auto high_val = ToInt4Converter<SrcType, DstType>::Convert(in_data[i + 1]);
+      out_data[i >> 1] = DstType(low_val, high_val);
+    }
+
+    if (i < shape_size) {
+      auto low_val = ToInt4Converter<SrcType, DstType>::Convert(in_data[i]);
+      out_data[i >> 1] = DstType(low_val, 0);
     }
   }
 };
@@ -501,29 +524,6 @@ struct TensorCaster<UInt4x2, Int4x2> {
       int8_t high_signed = static_cast<int8_t>((high_nibble & 0x0F) << 4) >> 4;
 
       out_data[i] = Int4x2(low_signed, high_signed);
-    }
-  }
-};
-
-// integral/floating point types -> (U)Int4x2
-template <typename SrcType, typename DstType>
-struct TensorCaster<SrcType, DstType,
-                    std::enable_if_t<IsOrtInt4NumericConversionType<SrcType>::value && IsOrtInt4Type<DstType>::value>> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
-    const auto* in_data = in.Data<SrcType>();
-    auto* out_data = out.MutableData<DstType>();
-
-    ptrdiff_t i = 0;
-    for (; i < shape_size - 1; i += 2) {
-      auto low_val = ToInt4Converter<SrcType, DstType>::Convert(in_data[i]);
-      auto high_val = ToInt4Converter<SrcType, DstType>::Convert(in_data[i + 1]);
-      out_data[i >> 1] = DstType(low_val, high_val);
-    }
-
-    if (i < shape_size) {
-      auto low_val = ToInt4Converter<SrcType, DstType>::Convert(in_data[i]);
-      out_data[i >> 1] = DstType(low_val, 0);
     }
   }
 };
