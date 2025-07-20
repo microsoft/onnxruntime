@@ -141,7 +141,7 @@ stages:
           arguments: >
             --config ${{ parameters.cmake_build_type }}
             --enable_lto
-            --build_dir $(Build.BinariesDirectory)
+            --build_dir $(Build.SourcesDirectory)\build
             --skip_submodule_sync
             --cmake_generator "Visual Studio 17 2022"
             --enable_pybind
@@ -149,8 +149,6 @@ stages:
             ${{ parameters.build_py_parameters }}
             --parallel --use_binskim_compliant_compile_flags --update --build
             $(TelemetryOption)
-          workingDirectory: '$(Build.BinariesDirectory)'
-
 
       - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
         - template: ../templates/publish-symbolrequestprod-api.yml
@@ -163,14 +161,14 @@ stages:
             symbolProject: 'ONNX Runtime'
             subscription: 'OnnxrunTimeCodeSign_20240611'
             searchPattern: |
-              $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime.pdb
-              $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_shared.pdb
-              $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_pybind11_state.pdb
+              $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime.pdb
+              $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_shared.pdb
+              $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_pybind11_state.pdb
 
       # Esrp signing
       - template: ../templates/win-esrp-dll.yml
         parameters:
-          FolderPath: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
+          FolderPath: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: true
           Pattern: '*.pyd,*.dll'
@@ -180,12 +178,12 @@ stages:
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\setup.py'
           arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)'
-          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+          workingDirectory: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\dist'
+          SourceFolder: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\dist'
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
@@ -199,11 +197,11 @@ stages:
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
          Remove-Item -Recurse -Force onnxruntime
          if ("$(ExtraParam)" -contains "--use_azure") {
-           $env:path="$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x64-windows\bin;$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x86-windows\bin;$env:path"
+           $env:path="$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x64-windows\bin;$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x86-windows\bin;$env:path"
            python onnxruntime_test_python_azure.py
          }
          python onnx_backend_test_series.py
-        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+        workingDirectory: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
         displayName: 'Run Python Tests'
 
 - ${{ if eq(parameters.enable_mac_cpu, true) }}:
@@ -218,8 +216,13 @@ stages:
         name: "Azure Pipelines"
         image: "macOS-14"
         os: macOS
+      templateContext:
+        outputs:
+        - output: pipelineArtifact
+          targetPath: $(Build.SourcesDirectory)/build/Release/dist/fixed_wheels
+          artifactName: onnxruntime-macos-$(PythonVersion)
       variables:
-        MACOSX_DEPLOYMENT_TARGET: '13.3'
+        MACOSX_DEPLOYMENT_TARGET: '14.0'
       strategy:
         matrix:
           Python310:
@@ -230,7 +233,6 @@ stages:
             PythonVersion: '3.12'
           Python313:
             PythonVersion: '3.13'
-
       steps:
       - checkout: self
         clean: true
@@ -256,7 +258,7 @@ stages:
           # Disable KleidiAI as a workaround with --no_kleidiai.
           # TODO Re-enable KleidiAI once https://github.com/microsoft/onnxruntime/issues/24152 is fixed.
           python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-            --build_dir $(Build.BinariesDirectory) \
+            --build_dir $(Build.SourcesDirectory)/build \
             --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
             --use_binskim_compliant_compile_flags \
             --config Release \
@@ -271,7 +273,7 @@ stages:
       - script: |
           set -ex
           python -m pip install --upgrade delocate
-          cd '$(Build.BinariesDirectory)/Release/dist'
+          cd '$(Build.SourcesDirectory)/build/Release/dist'
           ls
           for file in *.whl
           do
@@ -280,18 +282,6 @@ stages:
           done
         displayName: 'delocate wheel'
 
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)/Release/dist/fixed_wheels'
-          Contents: '*.whl'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: 1ES.PublishPipelineArtifact@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          artifactName: onnxruntime-macos-$(PythonVersion)
-          targetPath: '$(Build.ArtifactStagingDirectory)'
 
 - ${{ if eq(parameters.enable_linux_arm, true) }}:
   - stage: Python_Packaging_Linux_ARM
