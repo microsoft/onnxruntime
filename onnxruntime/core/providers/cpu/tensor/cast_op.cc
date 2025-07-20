@@ -230,7 +230,7 @@ struct FromInt4Converter {
 
 // Helper for converting any source type to (U)Int4x2::UnpackedType values (int8_t and uint8_t).
 template <typename SrcType, typename DstType,
-          typename Enable = std::enable_if_t<IsOrtInt4NumericConversionType<SrcType>::value && IsOrtInt4Type<DstType>::value>>
+          typename Enable = std::enable_if_t<IsOrtInt4ConversionType<SrcType>::value && IsOrtInt4Type<DstType>::value>>
 struct ToInt4Converter {
   static typename DstType::UnpackedType Convert(const SrcType& val);
 };
@@ -271,14 +271,16 @@ struct ToInt4Converter<SrcType, UInt4x2,
   }
 };
 
+// bool -> (U)Int4x2
 template <typename DstType>
 struct ToInt4Converter<bool, DstType,
                        std::enable_if_t<IsOrtInt4Type<DstType>::value>> {
-  static typename DstType::UnpackedType Convert(const bool& val) {
+  static typename DstType::UnpackedType Convert(bool val) {
     return static_cast<typename DstType::UnpackedType>(val ? 1 : 0);
   }
 };
 
+// float -> (U)Int4x2
 // Per https://onnx.ai/onnx/operators/onnx__Cast.html#summary, casting from
 // floating point to fixed point is undefined if OOR.
 template <typename DstType>
@@ -290,6 +292,7 @@ struct ToInt4Converter<float, DstType,
   }
 };
 
+// double -> (U)Int4x2
 template <typename DstType>
 struct ToInt4Converter<double, DstType,
                        std::enable_if_t<IsOrtInt4Type<DstType>::value>> {
@@ -299,6 +302,7 @@ struct ToInt4Converter<double, DstType,
   }
 };
 
+// float 8 -> (U)Int4x2
 template <typename SrcType, typename DstType>
 struct ToInt4Converter<SrcType, DstType,
                        std::enable_if_t<IsOrtFloat8Type<SrcType>::value && IsOrtInt4Type<DstType>::value>> {
@@ -308,12 +312,23 @@ struct ToInt4Converter<SrcType, DstType,
   }
 };
 
+// float 16 -> (U)Int4x2
 template <typename SrcType, typename DstType>
 struct ToInt4Converter<SrcType, DstType,
                        std::enable_if_t<IsOrtFloat16Type<SrcType>::value && IsOrtInt4Type<DstType>::value>> {
   static typename DstType::UnpackedType Convert(const SrcType& val) {
     float f_val = static_cast<float>(val);
     return ToInt4Converter<float, Int4x2>::Convert(f_val);
+  }
+};
+
+// string -> (U)Int4x2
+template <typename DstType>
+struct ToInt4Converter<std::string, DstType,
+                       std::enable_if_t<IsOrtInt4Type<DstType>::value>> {
+  static typename DstType::UnpackedType Convert(const std::string& val) {
+    double result = std::stod(val);
+    return ToInt4Converter<double, DstType>::Convert(result);
   }
 };
 
@@ -361,37 +376,6 @@ struct TensorCaster<std::string, DstType,
   }
 };
 
-// tensor string -> (U)Int4x2
-template <typename DstType>
-struct TensorCaster<std::string, DstType,
-                    std::enable_if_t<IsOrtInt4Type<DstType>::value>> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
-    const auto* in_data = in.Data<std::string>();
-    auto* out_data = out.MutableData<DstType>();
-
-    // Every 2 strings combine into 1 (U)Int4x2
-    const ptrdiff_t out_size = (shape_size + 1) >> 1;
-    for (ptrdiff_t i = 0; i < out_size; ++i) {
-      const ptrdiff_t in_idx = i << 1;
-
-      // Parse first value and truncate to lower 4 bits.
-      // Sign extend if needed for Int4x2.
-      double v0 = std::stod(in_data[in_idx]);
-      typename DstType::UnpackedType val0 = ToInt4Converter<double, DstType>::Convert(v0);
-
-      // Parse second value (or use 0 if odd number of elements)
-      typename DstType::UnpackedType val1 = 0;
-      if (in_idx + 1 < shape_size) {
-        double v1 = std::stod(in_data[in_idx + 1]);
-        val1 = ToInt4Converter<double, DstType>::Convert(v1);
-      }
-
-      out_data[i] = DstType(val0, val1);
-    }
-  }
-};
-
 // tensor MLFloat16 -> float
 template <>
 struct TensorCaster<MLFloat16, float> {
@@ -431,10 +415,10 @@ struct TensorCaster<SrcType, DstType,
   }
 };
 
-// numeric types -> (U)Int4x2
+// string or numeric types -> (U)Int4x2
 template <typename SrcType, typename DstType>
 struct TensorCaster<SrcType, DstType,
-                    std::enable_if_t<IsOrtInt4NumericConversionType<SrcType>::value && IsOrtInt4Type<DstType>::value>> {
+                    std::enable_if_t<IsOrtInt4ConversionType<SrcType>::value && IsOrtInt4Type<DstType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
