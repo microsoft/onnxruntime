@@ -64,6 +64,10 @@ stages:
           versionSpec: '3.12'
           addToPath: true
           architecture: ${{ parameters.BuildArch }}
+      - task: PipAuthenticate@1
+        displayName: 'Pip Authenticate'
+        inputs:
+          artifactFeeds: 'Lotus'
 
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - task: UseDotNet@2

@@ -42,6 +42,10 @@ stages:
         versionSpec: '3.12'
         addToPath: true
         architecture: x64
+    - task: PipAuthenticate@1
+      displayName: 'Pip Authenticate'
+      inputs:
+        artifactFeeds: 'Lotus'
 
     - task: NuGetToolInstaller@0
       displayName: Use Nuget 6.10.x

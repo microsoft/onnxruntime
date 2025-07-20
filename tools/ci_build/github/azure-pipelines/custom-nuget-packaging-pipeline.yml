@@ -120,6 +120,10 @@ extends:
             inputs:
               versionSpec: '3.12'
               addToPath: true
+          - task: PipAuthenticate@1
+            displayName: 'Pip Authenticate'
+            inputs:
+              artifactFeeds: 'Lotus'
 
           - task: DownloadPipelineArtifact@0
             displayName: 'Download Pipeline Artifact - managed nuget'

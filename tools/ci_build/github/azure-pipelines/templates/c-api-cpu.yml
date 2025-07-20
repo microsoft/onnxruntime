@@ -420,6 +420,12 @@ stages:
       inputs:
         versionSpec: 3.12
 
+    - task: PipAuthenticate@1
+      displayName: 'Pip Authenticate'
+      inputs:
+        artifactFeeds: 'Lotus'
+
+
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'
       inputs:

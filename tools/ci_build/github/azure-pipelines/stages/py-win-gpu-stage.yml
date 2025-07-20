@@ -198,6 +198,12 @@ stages:
             addToPath: true
             architecture: 'x64'
 
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
+
+
         - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             ArtifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
