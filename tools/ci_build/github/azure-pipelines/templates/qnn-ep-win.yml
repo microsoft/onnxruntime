@@ -29,6 +29,17 @@ stages:
           enabled: true
           scanOutputDirectoryOnly: true
           analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.dll;-:file|DirectML.dll'
+      outputs:
+      - ${{if and(eq(parameters.IsReleaseBuild, false), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))}}:
+        - output: nuget
+          # condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main')) # Optional condition
+          useDotNetTask: false # The default is false to use the NuGetCommand task. Set to true to use the DotNetCoreCLI task to publish packages.
+          packagesToPush: '$(Build.BinariesDirectory)/packages/*.nupkg;!$(Build.BinariesDirectory)/packages/*.symbols.nupkg'
+          packageParentPath: $(Build.ArtifactStagingDirectory)
+          publishVstsFeed: PublicPackages/ORT-Nightly  # Required when pushing to internal feed.
+          nuGetFeedType: external
+          allowPackageConflicts: true # Optional. NuGetCommand task only.
+          publishPackageMetadata: true # Optional
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       commonBuildArgs: '--compile_no_warning_as_error --skip_submodule_sync --build_shared_lib --client_package_build --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags '
@@ -131,9 +142,3 @@ stages:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.ArtifactStagingDirectory)'
         DoEsrp: ${{ parameters.DoEsrp }}
-
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline Qnn NuGet Artifact'
-      inputs:
-        artifactName: 'drop-signed-nuget-qnn'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
