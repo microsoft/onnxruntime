@@ -9,11 +9,6 @@ parameters:
   type: boolean
   default: false
 
-- name: DoEsrp
-  displayName: Run code sign tasks? Must be true if you are doing an ONNX Runtime release
-  type: boolean
-  default: true
-
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an ONNX Runtime release.
   type: boolean
@@ -132,14 +127,13 @@ extends:
     - template: templates/c-api-cpu.yml
       parameters:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        DoEsrp: ${{ parameters.DoEsrp }}
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
           OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
         ${{ else }}:
           OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
         AdditionalBuildFlags: ''
-        AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
+        AdditionalWinBuildFlags: '--enable_onnx_tests ${{parameters.AdditionalBuildFlag}}'
         BuildVariant: 'default'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
@@ -159,7 +153,7 @@ extends:
         UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
         win_trt_home: ${{ variables.win_trt_home }}
         win_cuda_home: ${{ variables.win_cuda_home }}
-        DoEsrp: ${{ parameters.DoEsrp }}
+        DoEsrp: true
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         buildJava: true
         buildNodejs: true
@@ -175,7 +169,7 @@ extends:
         BuildArch: 'x64'
         EnvSetupScript: 'setup_env.bat'
         sln_platform: 'x64'
-        DoEsrp: ${{ parameters.DoEsrp }}
+        DoEsrp: true
         PublishWebGpuBuildTools: true
 
     - template: stages/nodejs-win-packaging-stage.yml
@@ -187,5 +181,5 @@ extends:
         BuildArch: 'x64'
         EnvSetupScript: 'setup_env.bat'
         sln_platform: 'arm64'
-        DoEsrp: ${{ parameters.DoEsrp }}
+        DoEsrp: true
         DependsOnStageName: Windows_Nodejs_Packaging_x64
