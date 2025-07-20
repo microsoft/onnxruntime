@@ -171,8 +171,6 @@ stages:
         workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
   - job: Final_Jar_Testing_Linux_GPU
-    dependsOn:
-      Jar_Packaging_GPU
     workspace:
       clean: all
     pool:
@@ -184,7 +182,6 @@ stages:
     - name: docker_base_image
       value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
     timeoutInMinutes: 60
-
     steps:
     - checkout: self
       submodules: false
@@ -250,3 +247,148 @@ stages:
     MoreSuffix: '_Linux'
     NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
     CudaVersion: 12.2
+
+
+
+# Run GPU tests.
+- stage: Windows_Packaging_cuda_Testing
+  dependsOn: Setup
+  jobs:
+    - job: Windows_Packaging_cuda_Testing
+      workspace:
+        clean: all
+      pool: onnxruntime-Win2022-GPU-A10
+      timeoutInMinutes: 180
+      steps:
+        - checkout: self
+          clean: true
+          submodules: none
+
+        - template: flex-downloadPipelineArtifact.yml
+          parameters:
+            ArtifactName: "Windows_Packaging_cuda_build_artifacts"
+            StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
+            TargetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/'
+
+        - template: telemetry-steps.yml
+
+        - template: set-version-number-variables-step.yml
+
+        - task: JavaToolInstaller@0
+          inputs:
+            versionSpec: "17"
+            jdkArchitectureOption: x64
+            jdkSourceOption: 'PreInstalled'
+
+        - task: UsePythonVersion@0
+          inputs:
+            versionSpec: '3.12'
+            addToPath: true
+            architecture: x64
+
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
+
+        - task: PythonScript@0
+          displayName: 'Update CTest Path References'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\python\update_ctest_path.py'
+            arguments: >
+              "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake"
+              "$(Build.BinariesDirectory)/RelWithDebInfo"
+
+        - task: NodeTool@0
+          inputs:
+            versionSpec: '22.x'
+
+        - template: jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: 12.2
+            DownloadCUDA: true
+            DownloadTRT: true
+
+        - task: PythonScript@0
+          displayName: 'test'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+            workingDirectory: '$(Build.BinariesDirectory)'
+        # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
+        - template: make_java_win_binaries.yml
+          parameters:
+            msbuildPlatform: x64
+            java_artifact_id: onnxruntime_gpu
+            buildOnly: false
+
+- stage: Windows_Packaging_Tensorrt_Testing
+  dependsOn: Setup
+  jobs:
+    - job: Windows_Packaging_tensorrt_Testing
+      workspace:
+        clean: all
+      pool: onnxruntime-Win2022-GPU-A10
+      timeoutInMinutes: 180
+      steps:
+        - checkout: self
+          clean: true
+          submodules: none
+
+        - template: flex-downloadPipelineArtifact.yml
+          parameters:
+            ArtifactName: "Windows_Packaging_tensorrt_build_artifacts"
+            StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
+            TargetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/'
+
+        - template: telemetry-steps.yml
+
+        - template: set-version-number-variables-step.yml
+
+        - task: JavaToolInstaller@0
+          inputs:
+            versionSpec: "17"
+            jdkArchitectureOption: x64
+            jdkSourceOption: 'PreInstalled'
+
+        - task: UsePythonVersion@0
+          inputs:
+            versionSpec: '3.12'
+            addToPath: true
+            architecture: x64
+
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
+
+        - task: PythonScript@0
+          displayName: 'Update CTest Path References'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\python\update_ctest_path.py'
+            arguments: >
+              "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake"
+              "$(Build.BinariesDirectory)/RelWithDebInfo"
+
+        - task: NodeTool@0
+          inputs:
+            versionSpec: '22.x'
+
+        - template: jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: 12.2
+            DownloadCUDA: true
+            DownloadTRT: true
+
+        - task: PythonScript@0
+          displayName: 'test'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+            workingDirectory: '$(Build.BinariesDirectory)'
+        # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
+        - template: make_java_win_binaries.yml
+          parameters:
+            msbuildPlatform: x64
+            java_artifact_id: onnxruntime_gpu
+            buildOnly: false
