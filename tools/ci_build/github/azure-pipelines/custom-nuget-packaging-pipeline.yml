@@ -98,6 +98,7 @@ extends:
           StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
           build_config: 'RelWithDebInfo'
           PublishArchive: true
+          PublishNugetToFeed: false
 
       - template: templates/mac-cpu-packaging-pipeline.yml
         parameters:

@@ -309,6 +309,10 @@ extends:
               nuGetFeedType: internal  # Change to external when publishing to external feed
               allowPackageConflicts: true # Optional. NuGetCommand task only.
               publishPackageMetadata: true # Optional
+          - ${{ else }}:
+            - output: pipelineArtifact
+              targetPath: $(Build.BinariesDirectory)/packages
+              artifactName: 'packages"
         steps:
         - powershell: |
            Rename-Item  -Path merged packages
