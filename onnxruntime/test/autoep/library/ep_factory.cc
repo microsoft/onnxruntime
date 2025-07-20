@@ -217,6 +217,8 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
     return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Unexpected OrtDeviceMemoryType.");
   }
 
+  std::unique_ptr<OrtAllocator> ep_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
+
   // NOTE: The factory implementation is free to return a shared OrtAllocator* instance instead of creating a new
   //       allocator on each call. To do this have an allocator instance as an OrtEpFactory class member and make
   //       ReleaseAllocatorImpl a no-op.
@@ -230,8 +232,8 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
     // initial shared allocator in environment does not have allocator options.
     // if the user calls CreateSharedAllocator they can provide options to configure the arena differently.
     factory.arena_allocator_using_default_settings_ = allocator_options == nullptr;
-    std::unique_ptr<OrtAllocator> allocator = std::make_unique<CustomAllocator>(memory_info, factory);
-    RETURN_IF_ERROR(ArenaAllocator::CreateOrtArenaAllocator(std::move(allocator), allocator_options, factory.ort_api,
+    RETURN_IF_ERROR(ArenaAllocator::CreateOrtArenaAllocator(std::move(ep_allocator), allocator_options,
+                                                            factory.ort_api,
                                                             factory.default_logger_, factory.arena_allocator_));
 
   } else {
@@ -242,8 +244,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
     }
 
     // to keep this example simple we create a non-arena based allocator
-    auto allocator = std::make_unique<CustomAllocator>(memory_info, factory);
-    *allocator = allocator.release();
+    *allocator = ep_allocator.release();
   }
 
   return nullptr;

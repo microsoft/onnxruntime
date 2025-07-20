@@ -6,36 +6,6 @@
 #include <cassert>
 #include <map>
 
-namespace onnxruntime {
-namespace ep_utils {
-
-#ifdef _WIN32
-#define EP_WSTR(x) L##x
-#define EP_FILE_INTERNAL(x) EP_WSTR(x)
-#define EP_FILE EP_FILE_INTERNAL(__FILE__)
-#else
-#define EP_FILE __FILE__
-#endif
-
-#define LOG(level, ...)                                                                                             \
-  do {                                                                                                              \
-    std::ostringstream ss;                                                                                          \
-    ss << __VA_ARGS__;                                                                                              \
-    api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), EP_FILE, __LINE__, __FUNCTION__); \
-  } while (false)
-
-#define RETURN_ERROR(code, ...)                       \
-  do {                                                \
-    std::ostringstream ss;                            \
-    ss << __VA_ARGS__;                                \
-    return api_.CreateStatus(code, ss.str().c_str()); \
-  } while (false)
-
-#define THROW(...)       \
-  std::ostringstream ss; \
-  ss << __VA_ARGS__;     \
-  throw new std::runtime_error(ss.str().c_str())
-
 namespace {
 std::string GetAllocatorName(const OrtApi& api, OrtAllocator& allocator) {
   const OrtMemoryInfo* mem_info = allocator.Info(&allocator);
@@ -63,10 +33,9 @@ ArenaImpl::ArenaImpl(AllocatorUniquePtr allocator, const ArenaConfig& config, co
                 << " memory limit: " << config_.max_mem
                 << " arena_extend_strategy: " << config_.arena_extend_strategy);
 
-  curr_region_allocation_bytes_ = RoundedBytes(std::min(config_.max_mem,
-                                                        static_cast<size_t>(config_.initial_chunk_size_bytes)));
-  // Allocate the requested amount of memory.
-  ;
+  curr_region_allocation_bytes_ = RoundedBytes(
+      std::min(config_.max_mem, static_cast<size_t>(config_.initial_chunk_size_bytes)));
+
   stats_.bytes_limit = static_cast<int64_t>(config.max_mem);
 
   // We never want to shrink the initial allocation if the arena extend strategy is kNextPowerOfTwo.
@@ -302,6 +271,9 @@ void* ArenaImpl::Alloc(size_t size) {
 void* ArenaImpl::AllocOnStream(size_t size, OrtSyncStream* stream) {
   if (stream_to_chunks_.find(stream) == stream_to_chunks_.end()) {
     stream_to_chunks_.insert({stream, std::set<size_t>{}});
+    const OrtSyncStreamImpl* stream_impl = ep_api_.SyncStream_GetImpl(stream);
+    assert(stream_impl);
+    impl_to_stream_.insert({stream_impl, stream});
   }
 
   return AllocateRawInternal(size, stream, false);
@@ -741,14 +713,16 @@ void ArenaImpl::DumpMemoryLog(size_t num_bytes) {
                 << stats_.DebugString());
 }
 
-void ArenaImpl::ResetChunksUsingStream(const OrtSyncStreamImpl* stream) {
+OrtStatus* ArenaImpl::ResetChunksUsingStream(const OrtSyncStreamImpl* stream_impl) {
   std::lock_guard<std::mutex> lock(lock_);
 
-  auto it = impl_to_stream_.find(stream);
-  if (it == impl_to_stream_.end()) {
-    return ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
-                                "ResetChunksUsingStream called with unknown stream");
+  auto impl_it = impl_to_stream_.find(stream_impl);
+  if (impl_it == impl_to_stream_.end()) {
+    return api_.CreateStatus(ORT_INVALID_ARGUMENT,
+                             "ResetChunksUsingStream called with unknown stream");
   }
+
+  const OrtSyncStream* stream = impl_it->second;
 
   auto it = stream_to_chunks_.find(stream);
   if (it != stream_to_chunks_.end()) {
@@ -763,6 +737,7 @@ void ArenaImpl::ResetChunksUsingStream(const OrtSyncStreamImpl* stream) {
     }
 
     stream_to_chunks_.erase(it);
+    impl_to_stream_.erase(stream_impl);
   }
 
   // It's also possible to find the chunks this way, but that requires iterating every single in-use allocation.
@@ -809,25 +784,6 @@ void ArenaImpl::ResetChunksUsingStream(const OrtSyncStreamImpl* stream) {
       h = c->next;
     }
   }
+
+  return nullptr;
 }
-
-// StreamAwareArena::StreamAwareArena(std::unique_ptr<OrtAllocator> allocator, const ArenaConfig& config,
-//                                    bool enable_cross_stream_sharing,
-//                                    const OrtApi& api, const OrtLogger& logger)
-//     : ArenaImpl{ArenaType::StreamAwareArena, std::move(allocator), config, api, logger},
-//       enable_cross_stream_usage_{enable_cross_stream_sharing} {
-// }
-//
-// void* StreamAwareArena::AllocOnStream(size_t size, OrtSyncStream* current_stream, WaitNotificationFn wait_fn) {
-//   return AllocateRawInternal(size, false, current_stream, enable_cross_stream_usage_, wait_fn);
-// }
-//
-// void StreamAwareArena::ReleaseStreamBuffers(OrtSyncStream* stream) {
-//   // since chunks on target stream will be reset to nullptr, trigger coalesce to see whether we can get bigger chunk.
-//   ResetChunkOnTargetStream(stream, true);
-// }
-
-}  // namespace ep_utils
-}  // namespace onnxruntime
-
-// Need to figure out: Call to UpdateProducerStreamSyncInfo and GetCurrentSyncId.

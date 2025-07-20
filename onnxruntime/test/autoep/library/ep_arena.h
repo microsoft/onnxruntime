@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 #include <mutex>
 #include <set>
-#include <sstream>
 
 #include "onnxruntime_cxx_api.h"
+#include "ep_allocator.h"
 #include "example_plugin_ep_utils.h"
 
 #if defined(PLATFORM_WINDOWS)
@@ -101,63 +101,10 @@ struct ArenaConfig {
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxMem); value) {
       config.max_mem = static_cast<size_t>(std::stoull(std::string(value)));
     }
+
+    return config;
   }
 };
-
-// copied from onnxruntime::AllocatorStats
-struct AllocatorStats {
-  int64_t num_allocs;             // Number of allocations.
-  int64_t num_reserves;           // Number of reserves. (Number of calls to Reserve() in arena-based allocators)
-  int64_t num_arena_extensions;   // Number of arena extensions (Relevant only for arena based allocators)
-  int64_t num_arena_shrinkages;   // Number of arena shrinkages (Relevant only for arena based allocators)
-  int64_t bytes_in_use;           // Number of bytes in use.
-  int64_t total_allocated_bytes;  // The total number of allocated bytes by the allocator.
-  int64_t max_bytes_in_use;       // The maximum bytes in use.
-  int64_t max_alloc_size;         // The max single allocation seen.
-                                  // The upper limit what the allocator can allocate, if such a limit
-                                  // is known. Certain allocator may return 0 to indicate the limit is unknown.
-  int64_t bytes_limit;
-
-  void ToKeyValuePairs(const OrtApi& api, OrtKeyValuePairs* kvps) const {
-    if (num_allocs > 0 || bytes_limit != 0) {
-      api.AddKeyValuePair(kvps, "Limit", std::to_string(bytes_limit).c_str());
-      api.AddKeyValuePair(kvps, "InUse", std::to_string(bytes_in_use).c_str());
-      api.AddKeyValuePair(kvps, "TotalAllocated", std::to_string(total_allocated_bytes).c_str());
-      api.AddKeyValuePair(kvps, "MaxInUse", std::to_string(max_bytes_in_use).c_str());
-      api.AddKeyValuePair(kvps, "NumAllocs", std::to_string(num_allocs).c_str());
-      api.AddKeyValuePair(kvps, "NumReserves", std::to_string(num_reserves).c_str());
-      api.AddKeyValuePair(kvps, "NumArenaExtensions", std::to_string(num_arena_extensions).c_str());
-      api.AddKeyValuePair(kvps, "NumArenaShrinkages", std::to_string(num_arena_shrinkages).c_str());
-      api.AddKeyValuePair(kvps, "MaxAllocSize", std::to_string(max_alloc_size).c_str());
-    }
-  }
-
-  std::string DebugString() const {
-    std::ostringstream ss;
-    ss << "Limit:                    " << this->bytes_limit << "\n"
-       << "InUse:                    " << this->bytes_in_use << "\n"
-       << "TotalAllocated:           " << this->total_allocated_bytes << "\n"
-       << "MaxInUse:                 " << this->max_bytes_in_use << "\n"
-       << "NumAllocs:                " << this->num_allocs << "\n"
-       << "NumReserves:              " << this->num_reserves << "\n"
-       << "NumArenaExtensions:       " << this->num_arena_extensions << "\n"
-       << "NumArenaShrinkages:       " << this->num_arena_shrinkages << "\n"
-       << "MaxAllocSize:             " << this->max_alloc_size << "\n";
-    return ss.str();
-  }
-};
-
-// see ORT_ENFORCE for implementations that also capture a stack trace and work in builds with exceptions disabled
-// NOTE: In this simplistic implementation you must provide an argument, even it if's an empty string
-#define EP_ENFORCE(condition, ...)                       \
-  do {                                                   \
-    if (!(condition)) {                                  \
-      std::ostringstream oss;                            \
-      oss << "EP_ENFORCE failed: " << #condition << " "; \
-      oss << __VA_ARGS__;                                \
-      throw std::runtime_error(oss.str());               \
-    }                                                    \
-  } while (false)
 
 // A memory allocator that implements a 'best-fit with coalescing' algorithm.
 // This is essentially a very simple version of Doug Lea's malloc (dlmalloc).
@@ -179,14 +126,8 @@ class ArenaImpl {
 
   ~ArenaImpl();
 
-  // If size is 0, then this function returns either NULL,
-  // or a unique pointer value that can later be successfully
-  // passed to free(). Whatever, do not dereference that pointer
   void* Alloc(size_t size);
-
   void* AllocOnStream(size_t size, OrtSyncStream* stream);
-
-  // If p is NULL, no operation is performed.
   void Free(void* p);
 
   // allocate memory directly. this is used for initializers so they don't affect the arena growth patterns
@@ -195,14 +136,16 @@ class ArenaImpl {
   OrtStatus* GetStats(OrtKeyValuePairs** stats);
 
   size_t RequestedSize(const void* ptr);
-
   size_t AllocatedSize(const void* ptr);
 
-  // Unassign chunks that are currently assigned to the stream.
+  // Un-assign chunks that are currently assigned to the stream.
   //
   // This should be called from OrtSyncStreamImpl::OnSessionRunEnd.
   // A stream is used in one session at a time. When called from OnSessionRunEnd we know that the stream is done and
   // will not be performing any more operations on the data.
+  //
+  // We don't have a better way to know when it's safe to re-use a chunk in another stream given the actual memory
+  // usage is asynchronous on the GPU side, and the code assigning memory is running on CPU prior to that.
   OrtStatus* ResetChunksUsingStream(const OrtSyncStreamImpl* stream_impl);
 
  private:
@@ -610,25 +553,23 @@ class ArenaImpl {
 };
 
 struct ArenaAllocator : OrtAllocator {
-  static OrtStatus* CreateOrtArenaAllocator(std::unique_ptr<OrtAllocator> allocator,
+  static OrtStatus* CreateOrtArenaAllocator(AllocatorUniquePtr allocator,
                                             const OrtKeyValuePairs* options,
                                             const OrtApi& api,
                                             const OrtLogger& logger,
                                             std::unique_ptr<ArenaAllocator>& arena_allocator) {
     ArenaConfig config = options ? ArenaConfig::FromKeyValuePairs(api, *options) : ArenaConfig{};
+    const OrtMemoryInfo* mem_info = allocator->Info(allocator.get());
     auto impl = std::make_unique<ArenaImpl>(std::move(allocator), config, api, logger);
 
-    arena_allocator = std::make_unique<ArenaAllocator>(std::move(impl), api);
+    arena_allocator = std::make_unique<ArenaAllocator>(std::move(impl), *mem_info);
 
     return nullptr;
   }
 
-  ArenaAllocator(std::unique_ptr<ArenaImpl> implementation, const OrtMemoryInfo& memory_info,
-                 const OrtApi& api)
+  ArenaAllocator(std::unique_ptr<ArenaImpl> implementation, const OrtMemoryInfo& memory_info)
       : impl_{std::move(implementation)},
-        memory_info_{memory_info},
-        api_{api},
-        ep_api_{*api.GetEpApi()} {
+        memory_info_{memory_info} {
     version = ORT_API_VERSION;
     Alloc = AllocImpl;
     Reserve = ReserveImpl;
@@ -677,7 +618,4 @@ struct ArenaAllocator : OrtAllocator {
  private:
   std::unique_ptr<ArenaImpl> impl_;
   const OrtMemoryInfo& memory_info_;
-
-  const OrtApi& api_;
-  const OrtEpApi& ep_api_;
 };
