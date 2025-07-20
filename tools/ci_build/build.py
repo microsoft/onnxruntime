@@ -188,9 +188,6 @@ def use_dev_mode(args):
         return False
     if is_macOS() and (args.ios or args.visionos or args.tvos):
         return False
-    SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
-    if SYSTEM_COLLECTIONURI and SYSTEM_COLLECTIONURI != "https://dev.azure.com/onnxruntime/":
-        return False
     return True
 
 

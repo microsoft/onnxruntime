@@ -140,7 +140,7 @@ jobs:
       command: 'restore'
       feedsToUse: 'config'
       restoreSolution: '$(Build.SourcesDirectory)\packages.config'
-      nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
+      nugetConfigPath: '$(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\nuget.config'
       restoreDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
  
   - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
