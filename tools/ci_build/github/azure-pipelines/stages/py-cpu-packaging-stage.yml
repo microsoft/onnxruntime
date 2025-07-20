@@ -222,7 +222,7 @@ stages:
           targetPath: $(Build.SourcesDirectory)/build/Release/dist/fixed_wheels
           artifactName: onnxruntime-macos-$(PythonVersion)
       variables:
-        MACOSX_DEPLOYMENT_TARGET: '14.0'
+        MACOSX_DEPLOYMENT_TARGET: '13.3'
       strategy:
         matrix:
           Python310:
