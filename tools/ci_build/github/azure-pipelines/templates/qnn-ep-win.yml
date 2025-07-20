@@ -4,7 +4,6 @@ parameters:
   IsReleaseBuild: false
   DoEsrp: false
   qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-  ArtifactName: 'drop-nuget-qnn'
   OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.QNN'
   StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
   PublishArchive: false
