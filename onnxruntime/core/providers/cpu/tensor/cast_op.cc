@@ -333,7 +333,7 @@ struct TensorCaster {
   }
 };
 
-// tensor X -> string
+// tensor X -> string, if X != (U)Int4x2
 template <typename SrcType>
 struct TensorCaster<SrcType, std::string,
                     std::enable_if_t<!IsOrtInt4Type<SrcType>::value>> {
@@ -347,9 +347,10 @@ struct TensorCaster<SrcType, std::string,
   }
 };
 
-// tensor string -> X
+// tensor string -> X, if X != (U)Int4x2
 template <typename DstType>
-struct TensorCaster<std::string, DstType> {
+struct TensorCaster<std::string, DstType,
+                    std::enable_if_t<!IsOrtInt4Type<DstType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<std::string>();
@@ -360,59 +361,33 @@ struct TensorCaster<std::string, DstType> {
   }
 };
 
-// tensor string -> Int4x2
-template <>
-struct TensorCaster<std::string, Int4x2> {
+// tensor string -> (U)Int4x2
+template <typename DstType>
+struct TensorCaster<std::string, DstType,
+                    std::enable_if_t<IsOrtInt4Type<DstType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<std::string>();
-    auto* out_data = out.MutableData<Int4x2>();
+    auto* out_data = out.MutableData<DstType>();
 
-    // Every 2 strings combine into 1 Int4x2
+    // Every 2 strings combine into 1 (U)Int4x2
     const ptrdiff_t out_size = (shape_size + 1) >> 1;
     for (ptrdiff_t i = 0; i < out_size; ++i) {
       const ptrdiff_t in_idx = i << 1;
 
+      // Parse first value and truncate to lower 4 bits.
+      // Sign extend if needed for Int4x2.
       int v0 = std::stoi(in_data[in_idx]);
-      int8_t val0 = ToInt4Converter<int, Int4x2>::Convert(v0);
+      typename DstType::UnpackedType val0 = ToInt4Converter<int, DstType>::Convert(v0);
 
       // Parse second value (or use 0 if odd number of elements)
-      int8_t val1 = 0;
+      typename DstType::UnpackedType val1 = 0;
       if (in_idx + 1 < shape_size) {
         int v1 = std::stoi(in_data[in_idx + 1]);
-        val1 = ToInt4Converter<int, Int4x2>::Convert(v1);
+        val1 = ToInt4Converter<int, DstType>::Convert(v1);
       }
 
-      out_data[i] = Int4x2(val0, val1);
-    }
-  }
-};
-
-// tensor string -> UInt4x2
-template <>
-struct TensorCaster<std::string, UInt4x2> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
-    const auto* in_data = in.Data<std::string>();
-    auto* out_data = out.MutableData<UInt4x2>();
-
-    // Every 2 strings combine into 1 UInt4x2
-    const ptrdiff_t out_size = (shape_size + 1) >> 1;
-    for (ptrdiff_t i = 0; i < out_size; ++i) {
-      const ptrdiff_t in_idx = i << 1;
-
-      // Parse first value and truncate to lower 4 bits
-      int v0 = std::stoi(in_data[in_idx]);
-      uint8_t val0 = ToInt4Converter<int, UInt4x2>::Convert(v0);
-
-      // Parse second value (or use 0 if odd number of elements)
-      uint8_t val1 = 0;
-      if (in_idx + 1 < shape_size) {
-        int v1 = std::stoi(in_data[in_idx + 1]);
-        val1 = ToInt4Converter<int, UInt4x2>::Convert(v1);
-      }
-
-      out_data[i] = UInt4x2(val0, val1);
+      out_data[i] = DstType(val0, val1);
     }
   }
 };
