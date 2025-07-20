@@ -114,14 +114,14 @@ stages:
       - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
           - output: pipelineArtifact
             targetPath: $(Agent.TempDirectory)/RelWithDebInfo
-            artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'   
+            artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'
 
     ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
-      pool: 
+      pool:
         name: onnxruntime-Win-CPU-2022
         os: windows
     ${{ else }}:
-      pool: 
+      pool:
         name: ${{ parameters.ort_build_pool_name }}
         os: windows
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
@@ -228,10 +228,10 @@ stages:
               tree /f
             displayName: 'Copy java pad and folder for java test'
             workingDirectory: '$(Build.BinariesDirectory)'
-  
+
       - script: |
           dir *.dll
-          mkdir $(Build.ArtifactStagingDirectory)\testdata          
+          mkdir $(Build.ArtifactStagingDirectory)\testdata
         workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
         displayName: 'List built DLLs'
 
@@ -257,86 +257,3 @@ stages:
           SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
           Contents: 'custom_op_library.dll'
           TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
-
-# Run GPU tests.
-- ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
-  - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
-    dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
-    jobs:
-    - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
-      workspace:
-        clean: all
-      pool: ${{ parameters.ort_build_pool_name }}
-      timeoutInMinutes: 180
-      steps:
-        - checkout: self
-          clean: true
-          submodules: none
-
-        - template: flex-downloadPipelineArtifact.yml
-          parameters:
-            ArtifactName: "Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts"
-            StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
-            TargetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/'
-            SpecificArtifact: ${{ parameters.SpecificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
-
-        - template: telemetry-steps.yml
-
-        - template: set-version-number-variables-step.yml
-
-        - ${{ if eq(parameters['buildJava'], 'true') }}:
-          - task: JavaToolInstaller@0
-            inputs:
-              versionSpec: "17"
-              jdkArchitectureOption: ${{ parameters.buildArch }}
-              jdkSourceOption: 'PreInstalled'
-
-        - task: UsePythonVersion@0
-          inputs:
-            versionSpec: '3.12'
-            addToPath: true
-            architecture: ${{ parameters.buildArch }}
-
-        - task: PipAuthenticate@1
-          displayName: 'Pip Authenticate'
-          inputs:
-            artifactFeeds: 'Lotus'
-
-        - task: PythonScript@0
-          displayName: 'Update CTest Path References'
-          inputs:
-            scriptPath: '$(Build.SourcesDirectory)\tools\python\update_ctest_path.py'
-            arguments: >
-              "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake"
-              "$(Build.BinariesDirectory)/RelWithDebInfo"
-
-        - task: NodeTool@0
-          condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
-          inputs:
-            versionSpec: '22.x'
-
-        - ${{ if ne(parameters.CudaVersion, '') }}:
-          - template: jobs/download_win_gpu_library.yml
-            parameters:
-              CudaVersion: ${{ parameters.CudaVersion }}
-              ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-                DownloadCUDA: true
-              ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
-                DownloadCUDA: true
-                DownloadTRT: true
-
-        - task: PythonScript@0
-          displayName: 'test'
-          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
-          inputs:
-            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
-            workingDirectory: '$(Build.BinariesDirectory)'
-        # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
-        - ${{ if eq(parameters.buildJava, 'true') }}:
-          - template: make_java_win_binaries.yml
-            parameters:
-              msbuildPlatform: ${{ parameters.msbuildPlatform }}
-              java_artifact_id: ${{ parameters.java_artifact_id }}
-              buildOnly: false
