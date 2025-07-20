@@ -6,6 +6,8 @@ parameters:
 
 stages:
 - stage: NuGet_Test_Android
+  dependsOn:
+  - Setup
   jobs:
   - job:  NuGet_Test_Android
     workspace:

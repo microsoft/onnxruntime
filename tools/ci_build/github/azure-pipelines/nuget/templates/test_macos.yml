@@ -4,7 +4,7 @@ parameters:
 stages:
 - stage: NuGet_Test_MacOS
   dependsOn:
-  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
+  - Setup
   condition: succeeded()
   jobs:
   - job: NuGet_Test_MacOS

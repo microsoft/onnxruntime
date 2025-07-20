@@ -1,0 +1,127 @@
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'Python packaging pipeline'
+    trigger: true
+    branch: main
+
+stages:
+- stage: Setup
+  jobs:
+  - job: Restore_And_Use_Variables
+    displayName: 'Restore and Use Build Parameters'
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    steps:
+    - download: build # This refers to the 'build' pipeline alias defined in resources.
+      artifact: 'parameters_artifact' # This must match the ArtifactName from the source pipeline.
+      displayName: 'Download Parameters Artifact'
+
+    # Read the downloaded file and set the key-value pairs as pipeline variables.
+    - bash: |
+        echo "Loading parameters from downloaded artifact..."
+        # The download task places the artifact in a directory named after the pipeline resource alias.
+        FILE_PATH="$(Pipeline.Workspace)/build/parameters_artifact/parameters.txt"
+
+        if [ -f "$FILE_PATH" ]; then
+          echo "Found parameters file at: $FILE_PATH"
+          echo "--- File Content ---"
+          cat "$FILE_PATH"
+          echo "--------------------"
+
+          # Read each line, splitting it into a key and value at the '=' character.
+          while IFS='=' read -r key value || [[ -n "$key" ]]; do
+            if [ -n "$key" ]; then
+              echo "Setting pipeline variable: '$key' to '$value'"
+              # The 'task.setvariable' logging command creates a variable available to subsequent steps in the job.
+              echo "##vso[task.setvariable variable=$key]$value"
+            fi
+          done < "$FILE_PATH"
+
+          echo "Variables have been restored."
+        else
+          echo "ERROR: Parameters file not found at '$FILE_PATH'"
+          exit 1
+        fi
+      displayName: 'Restore Parameters as Pipeline Variables'
+
+    - script: |
+        echo "Verifying the restored variables:"
+        echo "IsReleaseBuild is: $(IsReleaseBuild)"
+        echo "PreReleaseVersionSuffixString is: $(PreReleaseVersionSuffixString)"
+        echo "PreReleaseVersionSuffixNumber is: $(PreReleaseVersionSuffixNumber)"
+      displayName: 'Verify Restored Variables'
+
+    # Almost the same as the step in set_packaging_variables_stage.yml except the following one use vars instead of parameters as input
+    - bash: |
+        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+        set +x
+        if [[ "$(IsReleaseBuild)" = True && "$(PreReleaseVersionSuffixString)" != "none"  ]]; then
+          if [[ "$(PreReleaseVersionSuffixNumber)" -eq 0 ]]; then
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-$(PreReleaseVersionSuffixString)"
+          else
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-$(PreReleaseVersionSuffixString).$(PreReleaseVersionSuffixNumber)"
+          fi
+        else
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
+        fi
+      name: Set_Release_Version_Suffix
+
+- stage: Android_Java_API_AAR_Testing_Full
+  dependsOn: Setup
+  jobs:
+  - template: templates/android-java-api-aar-test.yml
+    parameters:
+      artifactName: 'onnxruntime-android-full-aar'
+      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+
+- template: nuget/templates/test_win.yml
+  parameters:
+    AgentPool: 'onnxruntime-Win-CPU-2022'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+
+- template: nuget/templates/test_android.yml
+  parameters:
+    AgentPool : 'onnxruntime-Win-CPU-2022'
+    ArtifactSuffix: 'CPU'
+
+- template: nuget/templates/test_linux.yml
+  parameters:
+    AgentPool: onnxruntime-Ubuntu2204-AMD-CPU
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+
+- template: nuget/templates/test_macos.yml
+  parameters:
+    AgentPool: macOS-14
+    ArtifactSuffix: 'CPU'
+
+- template: nodejs/templates/test_win.yml
+  parameters:
+    AgentPool: 'onnxruntime-Win-CPU-2022'
+    StageSuffix: 'Win_CPU_x64'
+
+- template: nodejs/templates/test_linux.yml
+  parameters:
+    AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    StageSuffix: 'Linux_CPU_x64'
+
+- template: nodejs/templates/test_macos.yml
+  parameters:
+    StageSuffix: 'macOS_CPU_x64'
+
+- template: templates/final-jar-testing.yml
+  parameters:
+    OS: Windows
+    PoolName: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/final-jar-testing.yml
+  parameters:
+    OS: Linux
+    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+
+- template: templates/final-jar-testing.yml
+  parameters:
+    OS: MacOS
+    PoolName: 'macOS-14'

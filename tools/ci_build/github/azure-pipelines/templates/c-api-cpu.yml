@@ -84,13 +84,7 @@ stages:
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
       is1ES: ${{ parameters.is1ES }}
 
-- stage: Android_Java_API_AAR_Testing_Full
-  dependsOn: Android_Java_API_AAR_Packaging_Full
-  jobs:
-  - template: android-java-api-aar-test.yml
-    parameters:
-      artifactName: 'onnxruntime-android-full-aar'
-      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+
 
 - stage: Android_Java_API_AAR_Packaging_QNN
   dependsOn: Setup # Setup stage defined in set_packaging_variables_stage.yml creates the ReleaseVersionSuffix variable
@@ -198,7 +192,7 @@ stages:
   - job: Jar_Packaging
     workspace:
       clean: all
-    pool: 
+    pool:
       name: 'onnxruntime-Win-CPU-2022'
       os: windows
     templateContext:
@@ -270,7 +264,22 @@ stages:
   - job: NuGet_Packaging_CPU
     workspace:
       clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool:
+      name: 'onnxruntime-Win-CPU-2022'
+      os: windows
+    templateContext:
+      sdl:
+        codeSignValidation:
+          enabled: true
+          break: false
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: 'drop-signed-nuget-CPU'
+
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
@@ -441,29 +450,7 @@ stages:
         FolderPath: '$(Build.ArtifactStagingDirectory)'
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    - template: validate-package.yml
-      parameters:
-        PackageType: 'nuget'
-        PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
-        PlatformsSupported: 'win-x64,linux-x64,linux-arm64,osx-x64'
-        VerifyNugetSigning: false
 
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline NuGet Artifact'
-      inputs:
-        artifactName: 'drop-signed-nuget-CPU'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-
-
-    - task: MSBuild@1
-      displayName: 'Clean C#'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'Any CPU'
-        configuration: RelWithDebInfo
-        msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
 
 

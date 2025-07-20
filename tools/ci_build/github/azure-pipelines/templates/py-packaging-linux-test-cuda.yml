@@ -69,12 +69,12 @@ jobs:
         cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
         find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
 
-    - template: get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
-        DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
+  - template: get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
+      Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
+      DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
   - task: Bash@3
     displayName: 'Bash Script'
@@ -82,4 +82,3 @@ jobs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockertest.sh
       arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
-

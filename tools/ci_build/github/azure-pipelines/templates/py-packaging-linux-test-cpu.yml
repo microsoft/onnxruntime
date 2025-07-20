@@ -57,7 +57,7 @@ jobs:
         mv "$(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}" "$(Build.BinariesDirectory)/whl"
         cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
         find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
-      displayName: 'Move the artifacts to the binaries directory'
+    displayName: 'Move the artifacts to the binaries directory'
 
   - template: get-docker-image-steps.yml
     parameters:
@@ -72,4 +72,3 @@ jobs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockertest.sh
       arguments: -d CPU -c ${{parameters.cmake_build_type}} -i onnxruntimecpubuildpython${{ parameters.arch }}
-
