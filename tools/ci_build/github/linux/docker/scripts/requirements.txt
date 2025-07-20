@@ -7,7 +7,7 @@ setuptools==78.1.1
 wheel==0.42.0
 onnx==1.17.0 ; python_version < '3.13'
 argparse
-sympy==1.12
+sympy==1.14
 flatbuffers
 protobuf==4.21.12
 packaging

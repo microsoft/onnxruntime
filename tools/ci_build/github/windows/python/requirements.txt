@@ -5,7 +5,7 @@ setuptools>=68.2.2
 wheel
 onnx==1.17.0
 protobuf==4.21.12
-sympy==1.12
+sympy==1.14
 flatbuffers
 psutil
 onnxscript==0.2.3
