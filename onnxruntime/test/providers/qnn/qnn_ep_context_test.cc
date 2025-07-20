@@ -698,7 +698,7 @@ static OrtStatus* ORT_API_CALL TestHandleInitializerDataFunc(void* state,
   if (std::string("constant") == initializer_name) {
     // Keep a specific initializer in the model just to test both scenarios.
     // A real implementation may check the byte size and keep small initializers in the model.
-    is_external = false;
+    *is_external = false;
     return nullptr;
   }
 
