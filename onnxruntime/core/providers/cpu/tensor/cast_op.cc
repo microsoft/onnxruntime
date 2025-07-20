@@ -235,9 +235,17 @@ template <typename SrcType>
 struct ToInt4Converter<SrcType, Int4x2,
                        std::enable_if_t<IsStandardIntegerType<SrcType>::value>> {
   static int8_t Convert(const SrcType& val) {
-    // Truncate to 4 bits and sign-extend properly
+    // Example: int8_t(14) converts to int4 (-2)
+    //   int8_t(14) is 0000_1110
+    //   truncate: 0000_1110 & 0000_1111 = 0000_1110
+    //   in 4-bit two's complement, 1110 = 1 * -8 + 1 * 4 + 1 * 2 + 1 * 0 = -2
+    //   sign-extend: -2 in int8_t is 1111_0000 | 0000_1110 = 1111_1110
+
+    // Truncate to 4 least significant bits
     uint8_t truncated = static_cast<uint8_t>(val) & 0x0F;
-    // Sign-extend: if bit 3 is set, it's negative in 4-bit two's complement
+
+    // Sign-extend: if bit 3 is set, it's negative in 4-bit two's complement,
+    // so set the 4 most significant bits to 1.
     return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
   }
 };
@@ -249,7 +257,7 @@ template <typename SrcType>
 struct ToInt4Converter<SrcType, UInt4x2,
                        std::enable_if_t<IsStandardIntegerType<SrcType>::value>> {
   static uint8_t Convert(const SrcType& val) {
-    // Truncate to 4 bits
+    // Truncate to 4 least significant bits
     return static_cast<uint8_t>(val) & 0x0F;
   }
 };
