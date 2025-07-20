@@ -1376,6 +1376,48 @@ TEST(CastOpTest, UInt4x2ToFloat8E5M2) {
                                   OpTester::ExpectResult::kExpectSuccess, "", 21, Saturate::False);
 }
 
+TEST(CastOpTest, Float8E4M3FNToInt4x2) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  std::vector<Float8E4M3FN> float8_input;
+  const std::vector<float> input_values = {-8.0f, 7.0f, 0.0f, -1.0f, 3.0f, -5.0f, 6.0f, 2.0f};
+  for (float val : input_values) {
+    float8_input.emplace_back(Float8E4M3FN(val, true));
+  }
+
+  const std::vector<Int4x2> expected_int4x2_output = {
+      Int4x2(-8, 7),
+      Int4x2(0, -1),
+      Int4x2(3, -5),
+      Int4x2(6, 2)};
+
+  // WHEN, THEN
+  // The 'saturate_' bool inside the 'Cast' class can only be false if the conversion is to a float 8 type,
+  // so it's sufficient to test with the default saturate = 1 here, since we are not converting to float 8.
+  TestCastOp<Float8E4M3FN, Int4x2>(gsl::make_span(float8_input), gsl::make_span(expected_int4x2_output), shape);
+}
+
+TEST(CastOpTest, Float8E4M3FNToUInt4x2) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  std::vector<Float8E4M3FN> uint_float8_input;
+  const std::vector<float> uint_input_values = {0.0f, 15.0f, 1.0f, 14.0f, 7.0f, 8.0f, 3.0f, 12.0f};
+  for (float val : uint_input_values) {
+    uint_float8_input.emplace_back(Float8E4M3FN(val, true));
+  }
+
+  const std::vector<UInt4x2> expected_uint4x2_output = {
+      UInt4x2(0, 15),
+      UInt4x2(1, 14),
+      UInt4x2(7, 8),
+      UInt4x2(3, 12)};
+
+  // WHEN, THEN
+  // The 'saturate_' bool inside the 'Cast' class can only be false if the conversion is to a float 8 type,
+  // so it's sufficient to test with the default saturate = 1 here, since we are not converting to float 8.
+  TestCastOp<Float8E4M3FN, UInt4x2>(gsl::make_span(uint_float8_input), gsl::make_span(expected_uint4x2_output), shape);
+}
+
 #endif
 
 }  // namespace test
