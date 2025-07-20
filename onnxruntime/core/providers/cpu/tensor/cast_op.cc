@@ -79,8 +79,9 @@ struct IsStandardIntegerType {
       std::is_same_v<T, uint64_t>;
 };
 
+// Types that Int4x2 and UInt4x2 convert to and from, apart from string.
 template <typename T>
-struct IsOrtInt4NonStringConversionType {
+struct IsOrtInt4NumericConversionType {
   static constexpr bool value =
       std::is_same_v<T, bool> ||
       IsStandardIntegerType<T>::value ||
@@ -201,7 +202,7 @@ struct EigenCastType<BFloat16> {
 
 // Helper for converting (U)Int4x2 values to any destination type.
 template <typename SrcType, typename DstType,
-          typename Enable = std::enable_if_t<IsOrtInt4Type<SrcType>::value && IsOrtInt4NonStringConversionType<DstType>::value>>
+          typename Enable = std::enable_if_t<IsOrtInt4Type<SrcType>::value && IsOrtInt4NumericConversionType<DstType>::value>>
 struct FromInt4Converter {
   // The input 'val' can be either an int8_t value coming from Int4x2.GetElem(pos),
   // or an uint8_t value coming from UInt4x2.GetElem(pos), where pos can be 0 or 1.
@@ -220,19 +221,19 @@ struct FromInt4Converter {
 
 // Helper for converting any source type to (U)Int4x2::UnpackedType values (int8_t and uint8_t).
 template <typename SrcType, typename DstType,
-          typename Enable = std::enable_if_t<IsOrtInt4NonStringConversionType<SrcType>::value && IsOrtInt4Type<DstType>::value>>
+          typename Enable = std::enable_if_t<IsOrtInt4NumericConversionType<SrcType>::value && IsOrtInt4Type<DstType>::value>>
 struct ToInt4Converter {
   static typename DstType::UnpackedType Convert(const SrcType& val);
 };
 
+// See https://onnx.ai/onnx/operators/onnx__Cast.html#summary for casting from
+// fixed point to fixed point: when OOR, discard higher bits and reinterpret
+// (with respect to two's complement representation for signed types).
+// The following example is listed: 200 (int16) converts to -56 (int8).
+// For our int4 conversion, 200 (int16) would convert to -8 (int4).
 template <typename SrcType>
 struct ToInt4Converter<SrcType, Int4x2,
                        std::enable_if_t<IsStandardIntegerType<SrcType>::value>> {
-  // See https://onnx.ai/onnx/operators/onnx__Cast.html#summary for casting from
-  // fixed point to fixed point: when OOR, discard higher bits and reinterpret
-  // (with respect to two's complement representation for signed types).
-  // The following example is listed: 200 (int16) converts to -56 (int8).
-  // For our int4 conversion, 200 (int16) would convert to -8 (int4).
   static int8_t Convert(const SrcType& val) {
     // Truncate to 4 bits and sign-extend properly
     uint8_t truncated = static_cast<uint8_t>(val) & 0x0F;
@@ -241,12 +242,12 @@ struct ToInt4Converter<SrcType, Int4x2,
   }
 };
 
+// See https://onnx.ai/onnx/operators/onnx__Cast.html#summary for casting from
+// fixed point to fixed point: when OOR, discard higher bits and reinterpret
+// (with respect to two's complement representation for signed types).
 template <typename SrcType>
 struct ToInt4Converter<SrcType, UInt4x2,
                        std::enable_if_t<IsStandardIntegerType<SrcType>::value>> {
-  // See https://onnx.ai/onnx/operators/onnx__Cast.html#summary for casting from
-  // fixed point to fixed point: when OOR, discard higher bits and reinterpret
-  // (with respect to two's complement representation for signed types).
   static uint8_t Convert(const SrcType& val) {
     // Truncate to 4 bits
     return static_cast<uint8_t>(val) & 0x0F;
@@ -261,6 +262,8 @@ struct ToInt4Converter<bool, DstType,
   }
 };
 
+// Per https://onnx.ai/onnx/operators/onnx__Cast.html#summary, casting from
+// floating point to fixed point is undefined if OOR.
 template <typename DstType>
 struct ToInt4Converter<float, DstType,
                        std::enable_if_t<IsOrtInt4Type<DstType>::value>> {
@@ -448,7 +451,7 @@ struct TensorCaster<float, MLFloat16> {
 // (U)Int4x2 -> integral/floating point types
 template <typename SrcType, typename DstType>
 struct TensorCaster<SrcType, DstType,
-                    std::enable_if_t<IsOrtInt4Type<SrcType>::value && IsOrtInt4NonStringConversionType<DstType>::value>> {
+                    std::enable_if_t<IsOrtInt4Type<SrcType>::value && IsOrtInt4NumericConversionType<DstType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
@@ -505,7 +508,7 @@ struct TensorCaster<UInt4x2, Int4x2> {
 // integral/floating point types -> (U)Int4x2
 template <typename SrcType, typename DstType>
 struct TensorCaster<SrcType, DstType,
-                    std::enable_if_t<IsOrtInt4NonStringConversionType<SrcType>::value && IsOrtInt4Type<DstType>::value>> {
+                    std::enable_if_t<IsOrtInt4NumericConversionType<SrcType>::value && IsOrtInt4Type<DstType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
