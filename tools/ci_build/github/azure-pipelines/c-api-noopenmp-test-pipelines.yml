@@ -216,3 +216,37 @@ stages:
           onnxruntimeubi8packagestest \
           /bin/bash /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -r /build -v $(OnnxRuntimeVersion)
       displayName: 'Test'
+
+- template: nuget/templates/test_win.yml
+  parameters:
+    AgentPool: 'onnxruntime-Win2022-GPU-A10'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+    ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
+    CudaVersion: 12.2
+
+- template: nuget/templates/test_win.yml
+  parameters:
+    AgentPool: 'onnxruntime-Win2022-GPU-A10'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
+    ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
+    MoreSuffix: '_Windows'
+    CudaVersion: 12.2
+
+- template: nuget/templates/test_linux.yml
+  parameters:
+    AgentPool: Onnxruntime-Linux-GPU-A10
+    ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+    CudaVersion: 12.2
+
+- template: nuget/templates/test_linux.yml
+  parameters:
+    AgentPool: Onnxruntime-Linux-GPU-A10
+    ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
+    MoreSuffix: '_Linux'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
+    CudaVersion: 12.2
