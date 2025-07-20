@@ -63,13 +63,7 @@ jobs:
     inputs:
       artifactFeeds: 'Lotus'
 
-  - task: onebranch.pipeline.tsaoptions@1
-    displayName: 'OneBranch TSAOptions'
-    inputs:
-      tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
-      appendSourceBranchName: fals
-
-  - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\python\requirements.txt
+  - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
 
 
   - template: set-nightly-build-option-variable-step.yml

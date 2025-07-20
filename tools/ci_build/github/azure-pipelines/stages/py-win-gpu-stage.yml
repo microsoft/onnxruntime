@@ -60,7 +60,6 @@ stages:
           binskim:
             enabled: true
             scanOutputDirectoryOnly: true
-            analyzeTargetGlob: '+:file|**\*.pyd;+:file|**\*.dll;-:file|DirectML.dll'
         outputs:
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)

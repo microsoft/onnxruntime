@@ -87,7 +87,6 @@ extends:
     sdl:
       binskim:
         enabled: true
-        analyzeTargetGlob: +:file|**\*.dll;+:file|**\*.zip;;+:file|**\*.nuget
         scanOutputDirectoryOnly: true
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022

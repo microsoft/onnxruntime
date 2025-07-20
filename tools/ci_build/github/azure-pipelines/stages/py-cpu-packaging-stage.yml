@@ -82,7 +82,6 @@ stages:
           binskim:
             enabled: true
             scanOutputDirectoryOnly: true
-            analyzeTargetGlob: '+:file|**\*.pyd;+:file|**\*.dll;-:file|DirectML.dll'
         outputs:
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)
@@ -194,12 +193,6 @@ stages:
           7z x *.whl
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
         displayName: 'unzip the package'
-
-      - task: CredScan@3
-        displayName: 'Run CredScan'
-        inputs:
-          debugMode: false
-        continueOnError: true
 
       - powershell: |
          python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq

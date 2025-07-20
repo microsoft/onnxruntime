@@ -27,7 +27,6 @@ stages:
         binskim:
           enabled: true
           scanOutputDirectoryOnly: true
-          analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.dll;-:file|DirectML.dll'
       outputs:
       - ${{if and(eq(parameters.IsReleaseBuild, false), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))}}:
         - output: nuget

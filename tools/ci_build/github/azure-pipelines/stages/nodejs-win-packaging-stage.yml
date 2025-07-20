@@ -45,7 +45,6 @@ stages:
         binskim:
           enabled: true
           scanOutputDirectoryOnly: true
-          analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.pyd;+:file|$(BUILD.STAGINGDIRECTORY)\**\*.dll;-:file|DirectML.dll'
       outputs:
       - ${{ if and(eq(parameters.PublishWebGpuBuildTools, true), eq(parameters.sln_platform, 'x64')) }}:
         - output: pipelineArtifact
