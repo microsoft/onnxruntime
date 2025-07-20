@@ -395,7 +395,7 @@ stages:
       parameters:
         FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
         DisplayName: 'ESRP - Sign C# dlls'
-        DoEsrp: ${{ parameters.DoEsrp }}
+        DoEsrp: true
 
     - task: UsePythonVersion@0
       displayName: 'Use Python'
@@ -442,7 +442,7 @@ stages:
       parameters:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.ArtifactStagingDirectory)'
-        DoEsrp: ${{ parameters.DoEsrp }}
+        DoEsrp: true
 
 
 - stage: Nodejs_Packaging
