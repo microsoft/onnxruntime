@@ -844,8 +844,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 #endif
 
     // Step.2 - Create wgpu::Instance
+    wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
     wgpu::InstanceDescriptor instance_desc{};
-    instance_desc.capabilities.timedWaitAnyEnable = true;
+    instance_desc.requiredFeatures = required_instance_features;
+    instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
     default_instance_ = wgpu::CreateInstance(&instance_desc);
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
