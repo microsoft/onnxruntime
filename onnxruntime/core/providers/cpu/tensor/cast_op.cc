@@ -368,23 +368,19 @@ struct TensorCaster<std::string, Int4x2> {
     const auto* in_data = in.Data<std::string>();
     auto* out_data = out.MutableData<Int4x2>();
 
-    auto truncateToLower4BitsAndSignExtend = [](auto val) {
-      return (val & 0xF) | (-(val & 0x8) & 0xF0);
-    };
-
     // Every 2 strings combine into 1 Int4x2
     const ptrdiff_t out_size = (shape_size + 1) >> 1;
     for (ptrdiff_t i = 0; i < out_size; ++i) {
       const ptrdiff_t in_idx = i << 1;
 
       int v0 = std::stoi(in_data[in_idx]);
-      int8_t val0 = static_cast<int8_t>(truncateToLower4BitsAndSignExtend(v0));
+      int8_t val0 = ToInt4Converter<int, Int4x2>::Convert(v0);
 
       // Parse second value (or use 0 if odd number of elements)
       int8_t val1 = 0;
       if (in_idx + 1 < shape_size) {
         int v1 = std::stoi(in_data[in_idx + 1]);
-        val1 = static_cast<int8_t>(truncateToLower4BitsAndSignExtend(v1));
+        val1 = ToInt4Converter<int, Int4x2>::Convert(v1);
       }
 
       out_data[i] = Int4x2(val0, val1);
@@ -407,13 +403,13 @@ struct TensorCaster<std::string, UInt4x2> {
 
       // Parse first value and truncate to lower 4 bits
       int v0 = std::stoi(in_data[in_idx]);
-      uint8_t val0 = static_cast<uint8_t>(v0 & 0xF);
+      uint8_t val0 = ToInt4Converter<int, UInt4x2>::Convert(v0);
 
       // Parse second value (or use 0 if odd number of elements)
       uint8_t val1 = 0;
       if (in_idx + 1 < shape_size) {
         int v1 = std::stoi(in_data[in_idx + 1]);
-        val1 = static_cast<uint8_t>(v1 & 0xF);
+        val1 = ToInt4Converter<int, UInt4x2>::Convert(v1);
       }
 
       out_data[i] = UInt4x2(val0, val1);
