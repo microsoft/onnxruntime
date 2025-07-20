@@ -78,14 +78,3 @@ extends:
         ArtifactName: 'drop-nuget-qnn-arm64x'
         StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64x'
         build_config: ${{ parameters.build_config }}
-
-    - template: templates/publish-nuget-steps.yml
-      parameters:
-        download_artifacts_steps:
-        - template: templates/flex-downloadPipelineArtifact.yml
-          parameters:
-            StepName: 'Download Pipeline Artifact - Signed NuGet Qnn Package'
-            ArtifactName: 'drop-signed-nuget-qnn'
-            targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-            SpecificArtifact: ${{ parameters.specificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
