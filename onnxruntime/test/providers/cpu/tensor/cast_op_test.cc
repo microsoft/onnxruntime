@@ -1218,6 +1218,27 @@ TEST(CastOpTest, StringToUInt4x2BoundaryValues) {
   TestCastOp(gsl::span<const std::string>(string_input), gsl::span<const UInt4x2>(expected_output), shape);
 }
 
+TEST(CastOpTest, FloatStringToInt4x2) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<std::string> string_input = {
+      "-10.7", "255.3",
+      "0.4", "2",
+      "6.8", "240.2",
+      "15.0", "-8"
+  };
+
+  const std::vector<Int4x2> expected_int4x2_output = {
+      Int4x2(5, -1), // -11 -> 5, 255 -> -1
+      Int4x2(0, 2),
+      Int4x2(7, 0),
+      Int4x2(-1, -8)
+  };
+
+  // WHEN, THEN
+  TestCastOp(gsl::span<const std::string>(string_input), gsl::span<const Int4x2>(expected_int4x2_output), shape);
+}
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 template <typename F8>

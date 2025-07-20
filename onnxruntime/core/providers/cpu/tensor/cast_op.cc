@@ -377,14 +377,14 @@ struct TensorCaster<std::string, DstType,
 
       // Parse first value and truncate to lower 4 bits.
       // Sign extend if needed for Int4x2.
-      int v0 = std::stoi(in_data[in_idx]);
-      typename DstType::UnpackedType val0 = ToInt4Converter<int, DstType>::Convert(v0);
+      double v0 = std::stod(in_data[in_idx]);
+      typename DstType::UnpackedType val0 = ToInt4Converter<double, DstType>::Convert(v0);
 
       // Parse second value (or use 0 if odd number of elements)
       typename DstType::UnpackedType val1 = 0;
       if (in_idx + 1 < shape_size) {
-        int v1 = std::stoi(in_data[in_idx + 1]);
-        val1 = ToInt4Converter<int, DstType>::Convert(v1);
+        double v1 = std::stod(in_data[in_idx + 1]);
+        val1 = ToInt4Converter<double, DstType>::Convert(v1);
       }
 
       out_data[i] = DstType(val0, val1);
