@@ -75,7 +75,6 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
   MemoryInfoUniquePtr default_memory_info_;
 
-  using AllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
   bool arena_allocator_using_default_settings_{true};
   std::unique_ptr<ArenaAllocator> arena_allocator_;  // shared device allocator that uses an arena
 

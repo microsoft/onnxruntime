@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <atomic>
 #include <functional>
 #include <optional>
 #include <unordered_map>

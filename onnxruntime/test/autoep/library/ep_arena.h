@@ -22,6 +22,7 @@ limitations under the License.
 #include <sstream>
 
 #include "onnxruntime_cxx_api.h"
+#include "example_plugin_ep_utils.h"
 
 #if defined(PLATFORM_WINDOWS)
 #include <intrin.h>
@@ -173,7 +174,7 @@ class ArenaImpl {
   static const int64_t DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES = 1024 * 1024 * 1024;  // 1GB
   static const size_t DEFAULT_MAX_MEM = std::numeric_limits<size_t>::max();
 
-  ArenaImpl(std::unique_ptr<OrtAllocator> allocator, const ArenaConfig& config, const OrtApi& api,
+  ArenaImpl(AllocatorUniquePtr allocator, const ArenaConfig& config, const OrtApi& api,
             const OrtLogger& logger);
 
   ~ArenaImpl();
@@ -570,7 +571,7 @@ class ArenaImpl {
 
   mutable std::mutex lock_;
 
-  std::unique_ptr<OrtAllocator> device_allocator_;
+  AllocatorUniquePtr device_allocator_;
   const std::string allocator_name_;
   const ArenaConfig config_;
 

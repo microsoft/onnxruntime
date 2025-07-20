@@ -346,22 +346,22 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
 
   StreamMock stream1(tmp), stream2(tmp);
 
-  auto* stream1_chunk_a = a.AllocOnStream(4096, &stream1, nullptr);  // 4K chunk on stream 1
-  auto* stream2_chunk_a = a.AllocOnStream(4096, &stream2, nullptr);  // 4K chunk on stream 2
-  a.Free(stream1_chunk_a);                                           // free but assigned to stream1
+  auto* stream1_chunk_a = a.AllocOnStream(4096, &stream1);  // 4K chunk on stream 1
+  auto* stream2_chunk_a = a.AllocOnStream(4096, &stream2);  // 4K chunk on stream 2
+  a.Free(stream1_chunk_a);                                  // free but assigned to stream1
 
   // stream2 can't reuse stream1's chunk
-  auto* stream2_chunk_b = a.AllocOnStream(4096, &stream2, nullptr);  // 4K chunk on stream 2
+  auto* stream2_chunk_b = a.AllocOnStream(4096, &stream2);  // 4K chunk on stream 2
   EXPECT_NE(stream2_chunk_b, stream1_chunk_a);
 
   a.Free(stream2_chunk_a);  // free but assigned to stream2
 
   // it should pick the first chunk.
-  auto* stream1_chunk_c = a.AllocOnStream(4096, &stream1, nullptr);
+  auto* stream1_chunk_c = a.AllocOnStream(4096, &stream1);
   EXPECT_EQ(stream1_chunk_c, stream1_chunk_a);
 
   // it shouldn't stream2_chunk_a due to stream mismatch
-  auto* stream1_chunk_d = a.AllocOnStream(4096, &stream1, nullptr);
+  auto* stream1_chunk_d = a.AllocOnStream(4096, &stream1);
   EXPECT_NE(stream1_chunk_d, stream2_chunk_a);
 
   a.Free(stream2_chunk_b);  // still assigned to stream2. but should coalesce with stream1_chunk_a to create 8K buffer
@@ -370,7 +370,7 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   a.ReleaseStreamBuffers(&stream2);  // all stream2 buffers are now available
 
   // now it should pick stream2_chunk_a as it is no longer assigned to stream 2
-  auto stream1_chunk_e = a.AllocOnStream(8192, &stream1, nullptr);
+  auto stream1_chunk_e = a.AllocOnStream(8192, &stream1);
   EXPECT_EQ(stream1_chunk_e, stream2_chunk_a);  // stream1_chunk_e and stream2_chunk_a are assigned to stream1
 
   a.Free(stream1_chunk_c);
@@ -382,32 +382,32 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   stream2.UpdateWithAwaitedNotification(*stream1_notification_a);  // stream2 now has sync id info of stream1:1
 
   // stream 2 can now take stream 1 buffers with sync id of 0
-  auto* stream2_chunk_c = a.AllocOnStream(4096, &stream2, nullptr);
+  auto* stream2_chunk_c = a.AllocOnStream(4096, &stream2);
   EXPECT_EQ(stream2_chunk_c, stream1_chunk_c);  // stream2 took a buffer from stream1 with sync id 0
 
   // stream 2 can take the remaining free buffer from stream 1 with sync id of 0
-  auto* stream2_chunk_d = a.AllocOnStream(4096, &stream2, nullptr);
+  auto* stream2_chunk_d = a.AllocOnStream(4096, &stream2);
   EXPECT_EQ(stream2_chunk_d, stream1_chunk_d);  // stream2 took the other buffer from stream1
 
   // new buffer required
-  auto* stream1_chunk_f = a.AllocOnStream(4096, &stream1, nullptr);  // new buffer on stream1. sync id = 1
+  auto* stream1_chunk_f = a.AllocOnStream(4096, &stream1);  // new buffer on stream1. sync id = 1
   a.Free(stream1_chunk_f);
 
   // new buffer required
-  auto* stream2_chunk_e = a.AllocOnStream(4096, &stream2, nullptr);  // new buffer on stream2
+  auto* stream2_chunk_e = a.AllocOnStream(4096, &stream2);  // new buffer on stream2
   EXPECT_NE(stream2_chunk_e, stream1_chunk_f);
 
   // free 8K buffer on stream 1
   a.Free(stream1_chunk_e);
 
   // can use 8K stream1_chunk_e as it has sync id = 0 and stream 2 has sync id of 1 for stream 1
-  auto* stream2_chunk_f = a.AllocOnStream(8192, &stream2, nullptr);
+  auto* stream2_chunk_f = a.AllocOnStream(8192, &stream2);
   EXPECT_EQ(stream2_chunk_f, stream1_chunk_e);
 
   // remove assignment to stream 1 for free buffers. stream1_chunk_f will become available to stream 2
   a.ReleaseStreamBuffers(&stream1);  // stream1 buffers are new available
 
-  auto* stream2_chunk_g = a.AllocOnStream(4096, &stream2, nullptr);
+  auto* stream2_chunk_g = a.AllocOnStream(4096, &stream2);
   EXPECT_EQ(stream2_chunk_g, stream1_chunk_f);
 
   // cleanup

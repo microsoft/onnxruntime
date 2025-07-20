@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "ep_arena.h"
-#include "example_plugin_ep_utils.h"
 
 #include <cassert>
 #include <map>
@@ -47,7 +46,7 @@ std::string GetAllocatorName(const OrtApi& api, OrtAllocator& allocator) {
 }
 }  // namespace
 
-ArenaImpl::ArenaImpl(std::unique_ptr<OrtAllocator> allocator, const ArenaConfig& config, const OrtApi& api,
+ArenaImpl::ArenaImpl(AllocatorUniquePtr allocator, const ArenaConfig& config, const OrtApi& api,
                      const OrtLogger& logger)
     : device_allocator_{std::move(allocator)},
       allocator_name_{GetAllocatorName(api, *device_allocator_)},
@@ -747,7 +746,7 @@ void ArenaImpl::ResetChunksUsingStream(const OrtSyncStreamImpl* stream) {
 
   auto it = impl_to_stream_.find(stream);
   if (it == impl_to_stream_.end()) {
-      return ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+    return ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
                                 "ResetChunksUsingStream called with unknown stream");
   }
 
