@@ -10,7 +10,7 @@
 #endif
 
 #if !defined(__wasm__)
-#if !defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#if !defined(BUILD_DAWN_SHARED_LIBRARY)
 #include "dawn/dawn_proc.h"
 #endif
 #if !defined(USE_EXTERNAL_DAWN)
@@ -829,7 +829,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 
 #if !defined(__wasm__)
     const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
-#if defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
     ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
 #else
 #if !defined(USE_EXTERNAL_DAWN)

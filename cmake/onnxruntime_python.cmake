@@ -1102,7 +1102,7 @@ if (onnxruntime_USE_WEBGPU)
       )
     endif()
   endif()
-  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+  if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
