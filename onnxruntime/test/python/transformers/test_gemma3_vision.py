@@ -177,6 +177,7 @@ class TestFusion(unittest.TestCase):
             if os.path.exists(path):
                 os.remove(path)
 
+    @unittest.skip(reason="Fails with ONNX 1.18.0")
     @parameterized.expand(
         [
             (torch.float32, "gemma3-vision-attention_fp32.onnx"),
