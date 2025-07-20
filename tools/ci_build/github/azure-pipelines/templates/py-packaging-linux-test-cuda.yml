@@ -69,20 +69,6 @@ jobs:
         cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
         find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
 
-  # The BinSkim task uses a dotnet program which doesn't support ARM CPUs yet
-  - ${{ if eq(parameters.arch, 'x86_64') }}:
-    - task: BinSkim@4
-      displayName: 'Run BinSkim'
-      inputs:
-        AnalyzeTargetGlob: '$(Build.BinariesDirectory)/tmp/**/*.so'
-        continueOnError: true
-
-    #- task: PostAnalysis@2
-    #  inputs:
-    #    GdnBreakAllTools: true
-    #    GdnBreakPolicy: M365
-    #    GdnBreakPolicyMinSev: Error
-
     - template: get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile

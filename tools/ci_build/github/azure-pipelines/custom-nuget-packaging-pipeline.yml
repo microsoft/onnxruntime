@@ -45,6 +45,7 @@ extends:
     sdl:
       binskim:
         enabled: true
+        scanOutputDirectoryOnly: true
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
         os: windows

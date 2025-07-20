@@ -123,38 +123,10 @@ jobs:
       Contents: '*.whl'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-  - ${{ if eq(parameters.is1ES, true) }}:
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Artifact: ONNXRuntime python wheel'
-      inputs:
-        artifactName: onnxruntime_qnn_arm64ec_$(PythonVersion)
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-  - ${{ if eq(parameters.is1ES, false) }}:
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Artifact: ONNXRuntime python wheel'
-      inputs:
-        artifactName: onnxruntime_qnn_arm64ec_$(PythonVersion)
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-  - script: |
-      7z x *.whl
-    workingDirectory: '$(Build.ArtifactStagingDirectory)'
-    displayName: 'unzip the package'
-
-  - task: CredScan@3
-    displayName: 'Run CredScan'
+  - task: 1ES.PublishPipelineArtifact@1
+    displayName: 'Publish Artifact: ONNXRuntime python wheel'
     inputs:
-      debugMode: false
-    continueOnError: true
+      artifactName: onnxruntime_qnn_arm64ec_$(PythonVersion)
+      targetPath: '$(Build.ArtifactStagingDirectory)'
 
-  - task: BinSkim@4
-    displayName: 'Run BinSkim'
-    inputs:
-      AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll'
-
-  - task: TSAUpload@2
-    displayName: 'TSA upload'
-    condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-    inputs:
-      GdnPublishTsaOnboard: false
-      GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
 

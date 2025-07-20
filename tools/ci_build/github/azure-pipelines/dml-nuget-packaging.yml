@@ -38,6 +38,8 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     sdl:
+      featureFlags:
+        binskimScanAllExtensions: true
       binskim:
         enabled: true
         scanOutputDirectoryOnly: true
