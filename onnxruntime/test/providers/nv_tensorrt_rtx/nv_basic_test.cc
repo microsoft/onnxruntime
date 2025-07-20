@@ -322,7 +322,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
   std::string graph_name = "test";
   std::vector<int> dims = {1, -1, -1};
 
-  CreateBaseModel(model_name, graph_name, dims, true);
+  CreateBaseModel(model_name, graph_name, dims);
 
   auto env = Ort::Env();
   auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
@@ -371,7 +371,7 @@ TYPED_TEST(NvExecutionProviderTest, IOTypeTests) {
   std::string graph_name = "test" + dtype_name;
   std::vector<int> dims = {1, -1, -1};
 
-  CreateBaseModel(model_name, graph_name, dims, true);
+  CreateBaseModel(model_name, graph_name, dims);
 
   auto env = Ort::Env();
   auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
