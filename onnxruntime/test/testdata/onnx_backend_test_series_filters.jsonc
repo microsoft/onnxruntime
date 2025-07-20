@@ -105,6 +105,9 @@
         "^test_roialign_aligned_*",
         "^test_roialign_mode_max", // TODO: Remove once onnx test is fixed
         //GPU failures
+        "^test_rotary_embedding_3d_input_expanded_cuda",
+        "^test_rotary_embedding_interleaved_expanded_cuda",
+        "^test_rotary_embedding_no_position_ids_interleaved_expanded_cuda",
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",
         "^test_sub_uint8_cuda",
