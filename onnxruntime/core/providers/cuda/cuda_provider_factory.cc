@@ -436,8 +436,8 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
       OrtValue* dst_tensor = dst_tensors[idx];
       OrtSyncStream* stream = streams ? streams[idx] : nullptr;
 
-      const OrtMemoryDevice *src_device = impl.ep_api.Value_GetMemoryDevice(src_tensor);
-      const OrtMemoryDevice *dst_device = impl.ep_api.Value_GetMemoryDevice(dst_tensor);
+      const OrtMemoryDevice* src_device = impl.ep_api.Value_GetMemoryDevice(src_tensor);
+      const OrtMemoryDevice* dst_device = impl.ep_api.Value_GetMemoryDevice(dst_tensor);
 
       size_t bytes;
       RETURN_IF_ERROR(impl.ort_api.GetTensorSizeInBytes(src_tensor, &bytes));
