@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <filesystem>
 #include <streambuf>
 #include <string>
 #include <variant>
@@ -33,7 +34,7 @@ struct OutStreamHolder {
 /// Holds path and size threshold used to write out initializers to an external file.
 /// </summary>
 struct ExternalInitializerFileInfo {
-  std::string file_path;
+  std::filesystem::path file_path;
   size_t size_threshold = 0;
 };
 
@@ -75,21 +76,21 @@ struct ModelGenOptions {
   bool embed_ep_context_in_model = false;
   ActionIfNoCompiledNodes action_if_no_compiled_nodes = ActionIfNoCompiledNodes::kDontGenerateModel;
 
-  std::variant<std::monostate,   // Initial state (no output model location)
-               std::string,      // output model path
-               BufferHolder,     // buffer to save output model
-               OutStreamHolder>  // Function to write the output model to a user's stream.
+  std::variant<std::monostate,         // Initial state (no output model location)
+               std::filesystem::path,  // output model path
+               BufferHolder,           // buffer to save output model
+               OutStreamHolder>        // Function to write the output model to a user's stream.
       output_model_location{};
-
-  bool HasOutputModelLocation() const;
-  const std::string* TryGetOutputModelPath() const;
-  const BufferHolder* TryGetOutputModelBuffer() const;
-  const OutStreamHolder* TryGetOutputModelOutStream() const;
 
   std::variant<std::monostate,               // Initial state (initializers embedded in ONNX model).
                ExternalInitializerFileInfo,  // Initializers saved in an external file
                InitializerHandler>           // Custom function called for every initializer to determine location.
       initializers_location{};
+
+  bool HasOutputModelLocation() const;
+  const std::filesystem::path* TryGetOutputModelPath() const;
+  const BufferHolder* TryGetOutputModelBuffer() const;
+  const OutStreamHolder* TryGetOutputModelOutStream() const;
 
   bool AreInitializersEmbeddedInOutputModel() const;
   const ExternalInitializerFileInfo* TryGetExternalInitializerFileInfo() const;
