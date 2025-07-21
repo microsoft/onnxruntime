@@ -12,8 +12,7 @@ struct PerformanceTestConfig;
 class CommandLineParser {
  public:
   static void ShowUsage();
-  //static bool ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]);
-  static bool ParseArgumentsV2(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]);
+  static bool ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]);
 };
 
 }  // namespace perftest

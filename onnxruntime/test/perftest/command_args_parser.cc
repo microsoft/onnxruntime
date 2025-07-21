@@ -192,47 +192,46 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
   return true;
 }
 
-bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
+bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   try {
     cxxopts::Options options("onnxruntime_perf_test", "perf_test [options...] model_path [result_file]");
 
-    options.add_options()
-      ("f", "Free dimension override by name", cxxopts::value<std::vector<std::string>>())
-      ("F", "Free dimension override by denotation", cxxopts::value<std::vector<std::string>>())
-      ("m", "Test mode: duration or times", cxxopts::value<std::string>())
-      ("e,ep", "Execution provider", cxxopts::value<std::string>())
-      ("r", "Repeat times", cxxopts::value<size_t>())
-      ("t", "Duration in seconds", cxxopts::value<size_t>())
-      ("p", "Profile output file", cxxopts::value<std::string>())
-      ("x", "Intra-op threads", cxxopts::value<int>())
-      ("y", "Inter-op threads", cxxopts::value<int>())
-      ("c", "Concurrent session runs", cxxopts::value<size_t>())
-      ("d", "cuDNN conv algo", cxxopts::value<int>())
-      ("o", "Graph optimization level", cxxopts::value<int>())
-      ("u", "Optimized model path", cxxopts::value<std::string>())
-      ("i", "EP runtime config string", cxxopts::value<std::string>())
-      ("S", "Random seed", cxxopts::value<int>())
-      ("T", "Intra-op thread affinities", cxxopts::value<std::string>())
-      ("C", "Session config entries", cxxopts::value<std::string>())
-      ("R", "Custom op library path", cxxopts::value<std::string>())
-      ("A", "Disable CPU mem arena", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("M", "Disable memory pattern", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("s", "Dump statistics", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("v", "Verbose", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("I", "Generate model input binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("P", "Use ORT_PARALLEL mode", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("q", "CUDA copy in separate stream", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("z", "Set denormal as zero", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("D", "Disable spinning", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("Z", "Disable spinning between runs", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("n", "Exit after session creation", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("l", "Load model via path", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("g", "Enable CUDA IO binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("X", "Use extensions", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("plugin_ep_libs", "Plugin EP names and libs", cxxopts::value<std::string>())
-      ("list_devices", "Prints all available device indices and their properties (including metadata)")
-      ("select_devices", "A semicolon-separated list of device indices to add to the session and run with", cxxopts::value<std::string>())
-      ("h,help", "Print usage");
+    options.add_options()("f", "Free dimension override by name", cxxopts::value<std::vector<std::string>>());
+    options.add_options()("F", "Free dimension override by denotation", cxxopts::value<std::vector<std::string>>());
+    options.add_options()("m", "Test mode: duration or times", cxxopts::value<std::string>());
+    options.add_options()("e,ep", "Execution provider", cxxopts::value<std::string>());
+    options.add_options()("r", "Repeat times", cxxopts::value<size_t>());
+    options.add_options()("t", "Duration in seconds", cxxopts::value<size_t>());
+    options.add_options()("p", "Profile output file", cxxopts::value<std::string>());
+    options.add_options()("x", "Intra-op threads", cxxopts::value<int>());
+    options.add_options()("y", "Inter-op threads", cxxopts::value<int>());
+    options.add_options()("c", "Concurrent session runs", cxxopts::value<size_t>());
+    options.add_options()("d", "cuDNN conv algo", cxxopts::value<int>());
+    options.add_options()("o", "Graph optimization level", cxxopts::value<int>());
+    options.add_options()("u", "Optimized model path", cxxopts::value<std::string>());
+    options.add_options()("i", "EP runtime config string", cxxopts::value<std::string>());
+    options.add_options()("S", "Random seed", cxxopts::value<int>());
+    options.add_options()("T", "Intra-op thread affinities", cxxopts::value<std::string>());
+    options.add_options()("C", "Session config entries", cxxopts::value<std::string>());
+    options.add_options()("R", "Custom op library path", cxxopts::value<std::string>());
+    options.add_options()("A", "Disable CPU mem arena", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("M", "Disable memory pattern", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("s", "Dump statistics", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("v", "Verbose", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("I", "Generate model input binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("P", "Use ORT_PARALLEL mode", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("q", "CUDA copy in separate stream", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("z", "Set denormal as zero", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("D", "Disable spinning", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("Z", "Disable spinning between runs", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("n", "Exit after session creation", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("l", "Load model via path", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("g", "Enable CUDA IO binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("X", "Use extensions", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("plugin_ep_libs", "Plugin EP names and libs", cxxopts::value<std::string>());
+    options.add_options()("list_devices", "Prints all available device indices and their properties (including metadata)");
+    options.add_options()("select_devices", "A semicolon-separated list of device indices to add to the session and run with", cxxopts::value<std::string>());
+    options.add_options()("h,help", "Print usage");
 
 #ifdef _WIN32
     auto utf8_strings = utils::ConvertArgvToUtf8Strings(argc, argv);
@@ -448,12 +447,17 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
     if (result.count("X")) test_config.run_config.use_extensions = true;
 
     if (result.count("plugin_ep_libs")) test_config.plugin_ep_names_and_libs = utils::Utf8ToOrtString(result["plugin_ep_libs"].as<std::string>());
-    if (result.count("list_devices")) test_config.list_available_devices = true;
+
     if (result.count("select_devices")) test_config.selected_devices = result["select_devices"].as<std::string>();
 
     if (result.count("h")) {
       perftest::CommandLineParser::ShowUsage();
       return false;
+    }
+
+    if (result.count("list_devices")) {
+      test_config.list_available_devices = true;
+      return true;
     }
 
     // Positional arguments
