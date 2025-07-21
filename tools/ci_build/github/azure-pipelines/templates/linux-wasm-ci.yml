@@ -83,6 +83,20 @@ jobs:
       versionSpec: '3.12'
       addToPath: true
       architecture: $(buildArch)
+  - task: NodeTool@0
+    inputs:
+      # requires Node.js v22 for float16 testing (the V8 flag "--js-float16array")
+      versionSpec: '22.x'
+  # The image used in this workflow has an old version of Node.js installed at /bin/node and npm at /bin/npm.
+  # We need to remove the system Node.js and npm, otherwise CMake will not be able to find the correct Node.js and npm executables.
+  - script: |
+      if [ -f /bin/node ]; then
+        rm /bin/node
+      fi
+      if [ -f /bin/npm ]; then
+        rm /bin/npm
+      fi
+    displayName: Remove the system Node.js
 
   - ${{if eq(parameters.WithCache, true)}}:
     - script: |
