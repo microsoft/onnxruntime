@@ -25,6 +25,7 @@
 #include "core/common/inlined_containers.h"
 #endif
 #include "core/common/span_utils.h"
+#include "core/common/safeint.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/ort_value.h"
@@ -688,6 +689,15 @@ class Node {
   bool can_be_saved_;
 };
 
+// Stores information on an initializer (TensorProto) that is stored in an external file.
+// Graph tracks this information because most initializers are now TensorProtos that refer to an
+// OrtValue Tensor, which looks like an external initializer, but isn't.
+struct ExternalInitializerInfo {
+  std::basic_string<ORTCHAR_T> file_path;
+  int64_t file_offset = 0;
+  SafeInt<size_t> tensor_byte_size = 0;
+};
+
 /**
 @class Graph
 The Graph representation containing the graph inputs and outputs, the Node instances,
@@ -787,6 +797,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /** Populate `value` if an externally allocated OrtValue exists for an initializer with the given name.
    */
   bool GetOrtValueInitializer(const std::string& name, OrtValue& value, bool check_outer_scope = false) const;
+
+  Status LoadInitializerAsOrtValue(const std::string& name, OrtValue& value);
+
+  bool GetExternalInitializerInfo(const std::string& name, ExternalInitializerInfo& ext_info,
+                                  bool check_outer_scope = false) const;
 
   /** Gets all the initializer tensors in this Graph. */
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return name_to_initial_tensor_; }
@@ -1800,6 +1815,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // As we need to convert to TensorProto for the optimizers to work and keep the deleter information we store them
   // in the Graph instance and retrieve during session state finalization.
   std::unordered_map<std::string, OrtValue> ortvalue_initializers_;
+
+  std::unordered_map<std::string, ExternalInitializerInfo> ext_initializers_;
 
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>

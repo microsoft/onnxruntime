@@ -1355,6 +1355,15 @@ Graph::Graph(const Model& owning_model,
       if (is_sparse) {
         sparse_tensor_names_.emplace(tensor.name());
       }
+    } else {
+      std::basic_string<ORTCHAR_T> tensor_proto_dir;
+      ORT_THROW_IF_ERROR(GetDirNameFromFilePath(model_path.c_str(), tensor_proto_dir));
+
+      ExternalInitializerInfo ext_info = {};
+      ORT_THROW_IF_ERROR(utils::GetExternalDataInfo(tensor, tensor_proto_dir, ext_info.file_path, ext_info.file_offset,
+                                                    ext_info.tensor_byte_size));
+
+      ext_initializers_.emplace(tensor.name(), std::move(ext_info));
     }
 
     auto p = name_to_initial_tensor_.emplace(tensor.name(), &tensor);
@@ -3808,6 +3817,69 @@ bool Graph::GetOrtValueInitializer(const std::string& name, OrtValue& value, boo
     if (IsOuterScopeValue(name)) {
       // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
       return parent_graph_->GetOrtValueInitializer(name, value, check_outer_scope);
+    }
+  }
+  return false;
+}
+
+Status Graph::LoadInitializerAsOrtValue(const std::string& name, OrtValue& value) {
+  auto tensor_proto_iter = name_to_initial_tensor_.find(name);
+  ORT_RETURN_IF(tensor_proto_iter == name_to_initial_tensor_.end(), "Cannot load unknown initializer named '",
+                name, ",.");
+  const ONNX_NAMESPACE::TensorProto& tensor_proto = *tensor_proto_iter->second;
+
+  auto ort_value_iter = ortvalue_initializers_.find(name);
+  if (ort_value_iter != ortvalue_initializers_.end()) {
+    // Already loaded to OrtValue, so just return it.
+    value = ort_value_iter->second;
+    return Status::OK();
+  }
+
+  auto ext_info_iter = ext_initializers_.find(name);
+  if (ext_info_iter != ext_initializers_.end()) {
+    // mmap external initializer from file.
+    ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), ModelPath(), tensor_proto, value));
+
+    constexpr const bool use_tensor_buffer_true = true;
+    auto tensor_proto_to_add = utils::TensorToTensorProto(value.Get<Tensor>(), tensor_proto.name(),
+                                                          use_tensor_buffer_true);
+    assert(value.IsAllocated());
+    ORT_RETURN_IF_ERROR(ReplaceInitializedTensor(tensor_proto_to_add, value));
+  } else {
+    // load initializer data that is embedded in TensorProto.
+    size_t size_in_bytes = 0;
+    ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &size_in_bytes));
+
+    if (size_in_bytes > utils::kSmallTensorExternalDataThreshold) {
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), ModelPath(), tensor_proto,
+                                                       CPUAllocator::DefaultInstance(), value));
+      constexpr const bool use_tensor_buffer_true = true;
+      auto tensor_proto_to_add = utils::TensorToTensorProto(value.Get<Tensor>(), tensor_proto.name(),
+                                                            use_tensor_buffer_true);
+      assert(value.IsAllocated());
+      ORT_RETURN_IF_ERROR(ReplaceInitializedTensor(tensor_proto_to_add, value));
+    }
+  }
+
+  return Status::OK();
+}
+
+bool Graph::GetExternalInitializerInfo(const std::string& name, ExternalInitializerInfo& ext_info,
+                                       bool check_outer_scope) const {
+  // We want to make sure that the ort_value is found on the same level as its tensor_proto
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (GetInitializedTensor(name, initializer)) {
+    auto it = ext_initializers_.find(name);
+    if (it != ext_initializers_.end()) {
+      ext_info = it->second;
+      return true;
+    }
+  }
+
+  if (check_outer_scope && IsSubgraph()) {
+    if (IsOuterScopeValue(name)) {
+      // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
+      return parent_graph_->GetExternalInitializerInfo(name, ext_info, check_outer_scope);
     }
   }
   return false;

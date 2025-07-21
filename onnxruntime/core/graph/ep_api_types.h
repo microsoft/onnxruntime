@@ -348,7 +348,7 @@ struct EpGraph : public OrtGraph {
   // Considers both constant and non-constant initializers.
   // Supports initializers defined in an outer scope as long as that initializer is used
   // within this graph.
-  const OrtValue* GetInitializerValue(std::string_view name) const;
+  Status GetInitializerValue(std::string_view name, const OrtValue*& value) const;
 
  private:
   /// <summary>

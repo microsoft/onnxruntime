@@ -452,7 +452,7 @@ Status EpValueInfo::GetInitializerValue(const OrtValue*& result) const {
 
   // This gets an initializer value defined in this graph or in a parent graph (as long as the value
   // is used in this graph).
-  result = graph_->GetInitializerValue(name_);
+  ORT_RETURN_IF_ERROR(graph_->GetInitializerValue(name_, result));
   ORT_RETURN_IF(result == nullptr, "Unable to find initializer value named '", name_, "'.");
   return Status::OK();
 }
@@ -598,10 +598,16 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
                                                                              /*check_outer_scope*/ false);
 
     if (!graph_has_ortvalue) {
-      // onnxruntime::Graph does not have an OrtValue for this initializer, so create one from the TensorProto.
-      // This should only happen for small initializers that are needed for ONNX shape inferencing.
-      ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
-                                                       initializer_allocator, *initializer_value));
+      ExternalInitializerInfo ext_info = {};
+
+      if (graph_viewer.GetGraph().GetExternalInitializerInfo(initializer_name, ext_info, /*check_outer_scope*/ false)) {
+        // Do nothing for external initializers. Will load/mmap into an OrtValue on demand.
+        assert(!initializer_value->IsAllocated());
+      } else {
+        // Copy to OrtValue. This should only happen for small initializers.
+        ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
+                                                         initializer_allocator, *initializer_value));
+      }
     }
 
     initializer_values.emplace(value_info->GetName(), std::move(initializer_value));
@@ -665,11 +671,16 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
       // Add the OrtValue if this is an initializer.
       if (outer_initializer != nullptr) {
         if (!outer_initializer_value->IsAllocated()) {
-          // onnxruntime::Graph does not have an OrtValue for this initializer, so create one from the TensorProto.
-          // This should only happen for small initializers that are needed for ONNX shape inferencing.
-          ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
-                                                           *outer_initializer, initializer_allocator,
-                                                           *outer_initializer_value));
+          ExternalInitializerInfo ext_info = {};
+
+          if (parent_graph->GetExternalInitializerInfo(implicit_name, ext_info, /*check_outer_scope*/ true)) {
+            // Do nothing for external initializers. Will load/mmap into an OrtValue on demand.
+          } else {
+            // Copy to OrtValue. This should only happen for small initializers.
+            ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
+                                                             *outer_initializer, initializer_allocator,
+                                                             *outer_initializer_value));
+          }
         }
         outer_scope_initializer_values.emplace(outer_value_info->GetName(), std::move(outer_initializer_value));
       }
@@ -804,20 +815,39 @@ const EpNode* EpGraph::GetNode(NodeIndex node_index) const {
   return index_to_ep_node_.GetEpNode(node_index);
 }
 
-const OrtValue* EpGraph::GetInitializerValue(std::string_view name) const {
+Status EpGraph::GetInitializerValue(std::string_view name, const OrtValue*& result) const {
+  auto ensure_ort_value_loaded = [&](const std::unique_ptr<OrtValue>& ort_value) -> Status {
+    if (!ort_value->IsAllocated()) {
+      // Lazy load the OrtValue. This happens for external initializers.
+      Graph& graph = const_cast<Graph&>(graph_viewer_.GetGraph());
+      ORT_RETURN_IF_ERROR(graph.LoadInitializerAsOrtValue(std::string(name), const_cast<OrtValue&>(*ort_value)));
+    }
+
+    return Status::OK();
+  };
+
   // Check for initializer value in the graph's scope.
   if (auto iter = initializer_values_.find(name);
       iter != initializer_values_.end()) {
-    return iter->second.get();
+    const std::unique_ptr<OrtValue>& ort_value = iter->second;
+    ORT_RETURN_IF_ERROR(ensure_ort_value_loaded(ort_value));
+
+    result = ort_value.get();
+    return Status::OK();
   }
 
   // Check for the initializer value in an outer scope.
   // Only finds a value if the outer initializer value is used within this graph.
   if (auto iter = outer_scope_initializer_values_.find(name);
       iter != outer_scope_initializer_values_.end()) {
-    return iter->second.get();
+    const std::unique_ptr<OrtValue>& ort_value = iter->second;
+    ORT_RETURN_IF_ERROR(ensure_ort_value_loaded(ort_value));
+
+    result = ort_value.get();
+    return Status::OK();
   }
 
-  return nullptr;
+  result = nullptr;
+  return Status::OK();
 }
 }  // namespace onnxruntime
