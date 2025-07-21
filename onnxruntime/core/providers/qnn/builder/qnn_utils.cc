@@ -1043,13 +1043,13 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
  *
  * @param data float data of Gemm weight
  * @param data_shape shape of Gemm weight
- * @param pc_f_scales per-channel float scales
- * @param pb_i_scales per-block int scales
- * @param pc_offsets per-channel offsets
- * @param quantize data (int4 data) stored in uint8
+ * @param channel_scales per-channel float scales
+ * @param block_scales per-block int scales
+ * @param offsets per-channel offsets
+ * @param quant_bytes data (int4 data) stored in uint8
  * @param data_type data_type of quantized tensor (int4)
- * @param axis channel dimension (default: 0)
- * @param block_size size of block in a channel
+ * @param data_axis channel dimension (default: 0)
+ * @param block_scales_axis size of block in a channel
  * @param block_scales_shape shape of block scales
  */
 Status LowPowerBlockQuantizeData(gsl::span<const float> data,

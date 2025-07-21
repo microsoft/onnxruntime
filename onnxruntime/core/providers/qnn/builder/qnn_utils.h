@@ -271,8 +271,8 @@ inline Status QuantizeData<Int4QuantTraits>(gsl::span<const float> data, float s
   const size_t expected_output_bytes = sizeof(int8_t) * num_elems;
   ORT_RETURN_IF_NOT(expected_output_bytes == quant_bytes.size(),
                     "Output buffer is not large enough to hold quantized bytes.");
-  const double clip_min = static_cast<double>(-8.0f);
-  const double clip_max = static_cast<double>(7.0f);
+  const double clip_min = static_cast<double>(Int4QuantTraits::clip_min);
+  const double clip_max = static_cast<double>(Int4QuantTraits::clip_max);
 
   int8_t* output = reinterpret_cast<int8_t*>(quant_bytes.data());
   for (size_t i = 0; i < num_elems; ++i) {

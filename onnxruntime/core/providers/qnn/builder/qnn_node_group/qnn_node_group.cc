@@ -94,7 +94,7 @@ void registerUDO(const std::string& node_type, const std::string& op_package) {
                                 /*node_to_node_unit=*/std::placeholders::_3,
                                 /*node_unit_to_qnn_node_group=*/std::placeholders::_4,
                                 /*logger=*/std::placeholders::_5);
-  fusions[node_type] = boundFunction;
+  fusions[node_type] = {boundFunction};
 }
 /// <summary>
 /// Given a starting NodeUnit, this function tries all possible fusions that start with that NodeUnit.

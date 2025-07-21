@@ -343,7 +343,7 @@ Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
     std::vector<std::string> input_names = {input_tensor_name, weight_tensor_name};
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(node_name,
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      QNN_OP_MAT_MUL,
+                                                      QNN_OP_FULLY_CONNECTED,
                                                       std::move(input_names),
                                                       {output_def.node_arg.Name()},
                                                       {},
