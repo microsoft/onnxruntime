@@ -78,10 +78,6 @@ ninja_windows_x86_64:
   version: 1.12.1
   url: https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-win.zip
   sha256: f550fec705b6d6ff58f2db3c374c2277a37691678d6aba463adcbb129108467a
-nuget_win:
-  version: 6.13.2
-  url: https://dist.nuget.org/win-x86-commandline/v{version}/nuget.exe
-  sha256: 506085572a662f03bec1a5ffe43f81a240ff99b3765b8dbc0e22c33532775227
 qairt:
   version: 2.36.1.250708
   url: https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/{version}/v{version}.zip

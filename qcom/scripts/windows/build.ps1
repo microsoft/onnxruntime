@@ -44,7 +44,6 @@ if ($TargetPlatform -eq "android") {
     $CMakeGenerator = "Visual Studio 17 2022"
 }
 $BuildDir = (Join-Path $BuildRoot "$TargetPlatformArch")
-$ProtocPath = (Join-Path (Join-Path $BuildDir $Config) "Google.Protobuf.Tools.3.21.12\tools\windows_x64\protoc.exe")
 $ValidArchs = "arm64", "arm64ec", "x86_64"
 
 if ($PyVEnv -ne "") {
@@ -137,7 +136,6 @@ $CommonArgs = `
     "--cmake_generator", $CmakeGenerator, `
     "--config", $Config, `
     "--parallel", `
-    "--path_to_protoc", $ProtocPath, `
     "--wheel_name_suffix", "qcom-internal", `
     "--compile_no_warning_as_error"
 
@@ -234,15 +232,6 @@ if ($MakeTestArchive) {
         "--target-platform=$TargetPlatformArch"
 }
 else {
-    if (!(Test-Path $ProtocPath)) {
-        Write-Host "$ProtocPath does not exist"
-        $Nuget = (Join-Path (Get-PackageBinDir nuget_win) "nuget.exe")
-        & $Nuget `
-            restore "$RepoRoot\packages.config" `
-            -PackagesDirectory "$BuildDir\$Config" `
-            -ConfigFile "$RepoRoot\NuGet.config"
-    }
-
     if ($CMakeGenerator -eq "Ninja") {
         $env:Path = "$(Get-PackageBinDir ninja_windows_x86_64);" + $env:Path
     }
@@ -250,6 +239,7 @@ else {
     # This platform supports running tests on the host. Prep the build directory
     # to run with our ctest wrapper
     if ($TestRunner) {
+        New-Item -ItemType Directory "$BuildDir\$Config" -Force | Out-Null
         Copy-Item -Path $TestRunner -Destination "$BuildDir\$Config"
         Copy-Item "$CMakeBinDir\ctest.exe" -Destination "$BuildDir\$Config"
     }
