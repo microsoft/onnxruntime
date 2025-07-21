@@ -1255,6 +1255,10 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       endif()
     endif()
 
+    if(onnxruntime_MINIMAL_BUILD)
+      add_definitions(-DCXXOPTS_NO_RTTI)
+    endif()
+
     if (onnxruntime_BUILD_SHARED_LIB)
       #It will dynamically link to onnxruntime. So please don't add onxruntime_graph/onxruntime_framework/... here.
       #onnxruntime_common is kind of ok because it is thin, tiny and totally stateless.
