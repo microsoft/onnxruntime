@@ -96,6 +96,7 @@ TEST(SharedAllocators, AddArenaToSharedAllocator) {
 
   // optional. ORT owns the allocator but we want to test the release implementation
   ASSERT_ORTSTATUS_OK(c_api.ReleaseSharedAllocator(*ort_env, example_ep.get(), OrtDeviceMemoryType_DEFAULT));
+  c_api.ReleaseKeyValuePairs(allocator_stats);
 }
 
 TEST(SharedAllocators, GetSharedAllocator) {

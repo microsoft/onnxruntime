@@ -189,9 +189,11 @@ struct QnnEpFactory : OrtEpFactory {
         OrtKeyValuePairs* ep_options = nullptr;
         factory->ort_api.CreateKeyValuePairs(&ep_options);
         factory->ort_api.AddKeyValuePair(ep_options, "backend_type", factory->qnn_backend_type.c_str());
-        ORT_API_RETURN_IF_ERROR(
-            factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, nullptr, ep_options,
-                                                        &ep_devices[num_ep_devices++]));
+
+        OrtStatus* status = factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, nullptr, ep_options,
+                                                                        &ep_devices[num_ep_devices++]);
+        factory->ort_api.ReleaseKeyValuePairs(ep_options);
+        ORT_API_RETURN_IF_ERROR(status);
       }
     }
 
@@ -238,7 +240,7 @@ struct QnnEpFactory : OrtEpFactory {
   }
 
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
-                                                               const OrtMemoryDevice* memory_device,
+                                                               const OrtMemoryDevice* /*memory_device*/,
                                                                const OrtKeyValuePairs* /*stream_options*/,
                                                                OrtSyncStreamImpl** ort_stream) noexcept {
     auto& factory = *static_cast<QnnEpFactory*>(this_ptr);
