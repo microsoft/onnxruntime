@@ -21,7 +21,7 @@ if typing.TYPE_CHECKING:
     import onnxruntime
 
 
-def get_ort_device_type(device_type: str, device_index) -> int:
+def get_ort_device_type(device_type: str) -> int:
     if device_type == "cuda":
         return C.OrtDevice.cuda()
     elif device_type == "cann":
@@ -767,7 +767,7 @@ class IOBinding:
         self._iobinding.bind_input(
             name,
             C.OrtDevice(
-                get_ort_device_type(device_type, device_id),
+                get_ort_device_type(device_type),
                 C.OrtDevice.default_memory(),
                 device_id,
             ),
@@ -814,7 +814,7 @@ class IOBinding:
             self._iobinding.bind_output(
                 name,
                 C.OrtDevice(
-                    get_ort_device_type(device_type, device_id),
+                    get_ort_device_type(device_type),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -825,7 +825,7 @@ class IOBinding:
             self._iobinding.bind_output(
                 name,
                 C.OrtDevice(
-                    get_ort_device_type(device_type, device_id),
+                    get_ort_device_type(device_type),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -1085,7 +1085,7 @@ class OrtDevice:
             # backwards compatibility with predefined OrtDevice names
             return OrtDevice(
                 C.OrtDevice(
-                    get_ort_device_type(ort_device_name, device_id),
+                    get_ort_device_type(ort_device_name),
                     C.OrtDevice.default_memory(),
                     device_id,
                 )
@@ -1095,7 +1095,7 @@ class OrtDevice:
             # vendor id of 0 is valid in some cases (e.g. webgpu is generic and does not have a vendor id)
             return OrtDevice(
                 C.OrtDevice(
-                    get_ort_device_type(ort_device_name, device_id),
+                    get_ort_device_type(ort_device_name),
                     C.OrtDevice.default_memory(),
                     vendor_id,
                     device_id,
