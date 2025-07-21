@@ -51,13 +51,10 @@ jobs:
     artifact: 'onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}'
 
   - bash: |
-        set -e -x
-        ls $(Pipeline.Workspace)/build
-        mv "$(Pipeline.Workspace)/build/drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
-        mv "$(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}" "$(Build.BinariesDirectory)/whl"
-        cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
-        find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
-    displayName: 'Move the artifacts to the binaries directory'
+      set -e -x
+      ls $(Pipeline.Workspace)/build
+      mv "$(Pipeline.Workspace)/build/drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
+      mv "$(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}" "$(Build.BinariesDirectory)/whl"
 
   - template: get-docker-image-steps.yml
     parameters:

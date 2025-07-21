@@ -62,12 +62,10 @@ jobs:
     artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}'
 
   - bash: |
-        set -e -x
-        ls $(Pipeline.Workspace)/build
-        mv "$(Pipeline.Workspace)/build/linux_gpu_wheel_${{ parameters.arch }}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
-        mv "$(Pipeline.Workspace)/build/onnxruntime${{ parameters.python_wheel_suffix }}" "$(Build.BinariesDirectory)/whl"
-        cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
-        find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
+      set -e -x
+      ls $(Pipeline.Workspace)/build
+      mv "$(Pipeline.Workspace)/build/linux_gpu_wheel_${{ parameters.arch }}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
+      mv "$(Pipeline.Workspace)/build/onnxruntime${{ parameters.python_wheel_suffix }}" "$(Build.BinariesDirectory)/whl"
 
   - template: get-docker-image-steps.yml
     parameters:
