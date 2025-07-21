@@ -62,7 +62,7 @@
 #define THROW(...)       \
   std::ostringstream ss; \
   ss << __VA_ARGS__;     \
-  throw new std::runtime_error(ss.str().c_str())
+  throw std::runtime_error(ss.str())
 
 struct ApiPtrs {
   const OrtApi& ort_api;

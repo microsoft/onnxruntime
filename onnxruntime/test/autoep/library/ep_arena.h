@@ -278,7 +278,7 @@ class ArenaImpl {
           memory_size_(memory_size),
           end_ptr_(static_cast<void*>(static_cast<char*>(ptr_) + memory_size_)),
           id_(id) {
-      EP_ENFORCE(0 == memory_size % kMinAllocationSize, "AllocationRegion ctor");
+      EP_ENFORCE(0 == memory_size % kMinAllocationSize, __FUNCTION__);
 
       const size_t n_handles = (memory_size + kMinAllocationSize - 1) / kMinAllocationSize;
       handles_ = std::make_unique<ChunkHandle[]>(n_handles);

@@ -360,7 +360,7 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   auto* stream1_chunk_c = a.AllocOnStream(4096, &stream1);
   EXPECT_EQ(stream1_chunk_c, stream1_chunk_a);
 
-  // it shouldn't stream2_chunk_a due to stream mismatch
+  // it shouldn't pick stream2_chunk_a due to stream mismatch
   auto* stream1_chunk_d = a.AllocOnStream(4096, &stream1);
   EXPECT_NE(stream1_chunk_d, stream2_chunk_a);
 
