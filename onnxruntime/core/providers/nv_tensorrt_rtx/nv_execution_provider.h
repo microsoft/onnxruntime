@@ -271,6 +271,8 @@ class NvExecutionProvider : public IExecutionProvider {
 
   // CUDA Graph support
   bool IsGraphCaptureEnabled() const override;
+  bool IsGraphCaptured(int graph_annotation_id) const override;
+  Status ReplayGraph(int graph_annotation_id) override;
 
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,

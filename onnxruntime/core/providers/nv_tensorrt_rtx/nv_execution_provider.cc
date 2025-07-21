@@ -18,6 +18,7 @@
 #include "nv_data_transfer.h"
 #include "onnx_ctx_model_helper.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/cuda_graph.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "cuda_runtime_api.h"
@@ -1140,6 +1141,18 @@ NvExecutionProvider::~NvExecutionProvider() {
 
 bool NvExecutionProvider::IsGraphCaptureEnabled() const {
   return cuda_graph_enable_;
+}
+
+bool NvExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
+  // This is hardcoded to always return false because we are not allowing the ORT framework to have the CUDA graph control.
+  (void)graph_annotation_id;
+  return false;
+}
+
+Status NvExecutionProvider::ReplayGraph(int graph_annotation_id) {
+  // This is hardcoded to always return OK because we are not allowing the ORT framework to have the CUDA graph control.
+  (void)graph_annotation_id;
+  return Status::OK();
 }
 
 Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
