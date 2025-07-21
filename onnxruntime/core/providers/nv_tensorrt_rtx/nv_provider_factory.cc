@@ -156,9 +156,10 @@ ORT_API(onnxruntime::Provider*, GetProvider) {
 // OrtEpApi infrastructure to be able to use the NvTensorRTRTX EP as an OrtEpFactory for auto EP selection.
 struct NvTensorRtRtxEpFactory : OrtEpFactory {
   NvTensorRtRtxEpFactory(const OrtApi& ort_api_in,
+                         const OrtLogger& default_logger_in,
                          const char* ep_name,
                          OrtHardwareDeviceType hw_type)
-      : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
+      : ort_api{ort_api_in}, default_logger{default_logger_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
     GetVersion = GetVersionImpl;
@@ -228,6 +229,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
   }
 
   const OrtApi& ort_api;
+  const OrtLogger& default_logger;
   const std::string ep_name;
   const std::string vendor{"NVIDIA"};
 
@@ -241,11 +243,12 @@ extern "C" {
 // Public symbols
 //
 OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
+                             const OrtLogger* default_logger,
                              OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
 
   // Factory could use registration_name or define its own EP name.
-  auto factory_gpu = std::make_unique<NvTensorRtRtxEpFactory>(*ort_api,
+  auto factory_gpu = std::make_unique<NvTensorRtRtxEpFactory>(*ort_api, *default_logger,
                                                               onnxruntime::kNvTensorRTRTXExecutionProvider,
                                                               OrtHardwareDeviceType_GPU);
 
