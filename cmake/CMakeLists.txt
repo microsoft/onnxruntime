@@ -49,7 +49,6 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Enable CTest
 enable_testing()
-include(CTest)
 if (NOT CMAKE_BUILD_TYPE)
   message(STATUS "Build type not set - using RelWithDebInfo")
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
