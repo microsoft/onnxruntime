@@ -8,35 +8,6 @@
 #include "core/providers/qnn/qnn_execution_provider.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 
-/// @brief Gets the path of directory containing the dynamic library that contains the address.
-/// @param address An address of a function or variable in the dynamic library.
-/// @return The path of the directory containing the dynamic library, or an empty string if the path cannot be determined.
-static onnxruntime::PathString GetDynamicLibraryLocationByAddress(const void* address) {
-#ifdef _WIN32
-  HMODULE moduleHandle;
-  if (!::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                            reinterpret_cast<LPCWSTR>(address), &moduleHandle)) {
-    return {};
-  }
-  std::wstring buffer;
-  for (std::uint32_t size{70}; size < 4096; size *= 2) {
-    buffer.resize(size, L'\0');
-    const std::uint32_t requiredSize = ::GetModuleFileNameW(moduleHandle, buffer.data(), size);
-    if (requiredSize == 0) {
-      break;
-    }
-    if (requiredSize == size) {
-      continue;
-    }
-    buffer.resize(requiredSize);
-    return {std::move(buffer)};
-  }
-#else
-  std::ignore = address;
-#endif
-  return {};
-}
-
 namespace onnxruntime {
 struct QNNProviderFactory : IExecutionProviderFactory {
   QNNProviderFactory(const ProviderOptions& provider_options_map, const ConfigOptions* config_options)
@@ -147,6 +118,35 @@ ORT_API(onnxruntime::Provider*, GetProvider) {
 
 #include "core/framework/error_code_helper.h"
 #include "onnxruntime_config.h"  // for ORT_VERSION
+
+/// @brief Gets the path of directory containing the dynamic library that contains the address.
+/// @param address An address of a function or variable in the dynamic library.
+/// @return The path of the directory containing the dynamic library, or an empty string if the path cannot be determined.
+static onnxruntime::PathString GetDynamicLibraryLocationByAddress(const void* address) {
+#ifdef _WIN32
+  HMODULE moduleHandle;
+  if (!::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(address), &moduleHandle)) {
+    return {};
+  }
+  std::wstring buffer;
+  for (std::uint32_t size{70}; size < 4096; size *= 2) {
+    buffer.resize(size, L'\0');
+    const std::uint32_t requiredSize = ::GetModuleFileNameW(moduleHandle, buffer.data(), size);
+    if (requiredSize == 0) {
+      break;
+    }
+    if (requiredSize == size) {
+      continue;
+    }
+    buffer.resize(requiredSize);
+    return {std::move(buffer)};
+  }
+#else
+  std::ignore = address;
+#endif
+  return {};
+}
 
 // OrtEpApi infrastructure to be able to use the QNN EP as an OrtEpFactory for auto EP selection.
 struct QnnEpFactory : OrtEpFactory {
