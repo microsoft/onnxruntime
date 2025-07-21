@@ -316,7 +316,7 @@ stages:
             arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
             workingDirectory: '$(Build.BinariesDirectory)'
         # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
-        - template: make_java_win_binaries.yml
+        - template: templates/make_java_win_binaries.yml
           parameters:
             msbuildPlatform: x64
             java_artifact_id: onnxruntime_gpu
