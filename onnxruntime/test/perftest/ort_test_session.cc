@@ -62,7 +62,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
 
-  bool is_plugin_ep_avaiable = false;
+  bool is_plugin_ep_available = false;
 
   // Add devices created from plugin EP
   if (!performance_test_config.registered_plugin_eps.empty()) {
@@ -86,10 +86,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           if (added_ep_device_index_set.find(index) == added_ep_device_index_set.end()) {
             added_ep_devices.push_back(device);
             added_ep_device_index_set.insert(index);
-            fprintf(stdout, "Device [Index: %d, Name: %s] has been added to session.", index, device.EpName());
+            fprintf(stdout, "[Plugin EP] Device [Index: %d, Name: %s] has been added to session.", index, device.EpName());
           }
         } else {
-          std::string err_msg = "[WARNING] [plugin EP]: The device index and its corresponding OrtEpDevice is not created from " +
+          std::string err_msg = "[Plugin EP] [WARNING] : The device index and its corresponding OrtEpDevice is not created from " +
                                 performance_test_config.machine_config.provider_type_name + ". Will skip adding this device.\n";
           fprintf(stderr, "%s", err_msg.c_str());
         }
@@ -118,7 +118,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::unordered_map<std::string, std::string> provider_options;
     ParseSessionConfigs(provider_option_string, provider_options);
     session_options.AppendExecutionProvider_V2(env, added_ep_devices, provider_options);
-    is_plugin_ep_avaiable = true;
+    is_plugin_ep_available = true;
   }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
@@ -634,7 +634,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   } else if (!provider_name_.empty() &&
              provider_name_ != onnxruntime::kCpuExecutionProvider &&
              provider_name_ != onnxruntime::kOpenVINOExecutionProvider &&
-             !is_plugin_ep_avaiable) {
+             !is_plugin_ep_available) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
 
