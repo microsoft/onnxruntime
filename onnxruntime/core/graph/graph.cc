@@ -4292,7 +4292,9 @@ Status Graph::ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_gr
       ORT_RETURN_IF_NOT(hit != output_graph_proto.mutable_node()->end(), "Node ", node.Name(),
                         " not found in output_graph_proto");
       auto& result_node = *hit;
-      for (const auto& [name, subgraph] : node.GetAttributeNameToSubgraphMap()) {
+      for (const auto& e : node.GetAttributeNameToSubgraphMap()) {
+        const auto& name = e.first;
+        const auto& subgraph = e.second;
         // Lets find this subgraph in the result_node
         auto sub_hit = std::find_if(result_node.mutable_attribute()->begin(),
                                     result_node.mutable_attribute()->end(),
@@ -5929,7 +5931,9 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
                                << ". Please, fix your model.";
         p.first->second = initializer;
       }
-      //// Create an OrtValue on top of the flatbuffer
+      /// Create an OrtValue on top of the flatbuffer for consistency
+      /// This is created for a special case when we deserialize TensorProtos on top of the
+      /// user supplied buffer, and they are responsible for keeping this alive.
       if (load_options.can_use_flatbuffer_for_initializers && utils::HasExternalDataInMemory(*initializer)) {
         std::unique_ptr<ExternalDataInfo> external_data_info;
         ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(initializer->external_data(), external_data_info));
