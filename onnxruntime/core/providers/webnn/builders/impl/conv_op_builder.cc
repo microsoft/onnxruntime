@@ -78,7 +78,7 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
     if (output_padding.size() == 1 && is_conv1d) {
       output_padding.push_back(0);
     }
-    options.set("outputPadding", emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(output_padding)));
+    options.set("outputPadding", emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_padding)));
 
     // If output shape is explicitly provided, compute the pads.
     // Otherwise compute the output shape, as well as the pads if the auto_pad attribute is SAME_UPPER/SAME_LOWER.
@@ -87,7 +87,7 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
                                                                auto_pad_type, pads_out, output_shape, !is_nhwc));
 
     if (output_shape[0] != -1 && output_shape[1] != -1) {
-      options.set("outputSizes", emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(output_shape)));
+      options.set("outputSizes", emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_shape)));
     }
     pads = pads_out;
   } else {
@@ -97,13 +97,13 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
 
   const auto group = helper.Get("group", static_cast<uint32_t>(1));
   options.set("groups", group);
-  options.set("strides", emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(strides)));
-  options.set("dilations", emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(dilations)));
+  options.set("strides", emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(strides)));
+  options.set("dilations", emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(dilations)));
 
   // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
   // while WebNN's padding is [beginning_height, ending_height, beginning_width, ending_width].
   const std::vector<int64_t> padding{pads[0], pads[2], pads[1], pads[3]};
-  options.set("padding", emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(padding)));
+  options.set("padding", emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(padding)));
 
   // Add bias if present.
   if (input_defs.size() > 2 && op_type != "ConvInteger") {
@@ -123,7 +123,7 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 
   const auto& shape = tensor.dims();
   std::vector<uint32_t> dims =
-      GetNarrowedIntfromInt64<uint32_t>(std::vector<int64_t>(std::begin(shape), std::end(shape)));
+      GetNarrowedIntFromInt64<uint32_t>(std::vector<int64_t>(std::begin(shape), std::end(shape)));
 
   if (is_conv1d) {
     // Support conv1d by prepending a 1 size dimension.
@@ -172,21 +172,21 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                           h * w_t +
                           w;
 
-          uint32_t nnapi_idx;
+          uint32_t wnn_idx;
           if (is_conv == 1) {  // L_0231
-            nnapi_idx = out * h_t * w_t * in_t +
-                        h * w_t * in_t +
-                        w * in_t +
-                        in;
+            wnn_idx = out * h_t * w_t * in_t +
+                      h * w_t * in_t +
+                      w * in_t +
+                      in;
           } else {  // L_1230 for depthwise conv weight
-            nnapi_idx = in * h_t * w_t * out_t +
-                        h * w_t * out_t +
-                        w * out_t +
-                        out;
+            wnn_idx = in * h_t * w_t * out_t +
+                      h * w_t * out_t +
+                      w * out_t +
+                      out;
           }
 
           for (size_t i = 0; i < element_size; i++) {
-            buffer[element_size * nnapi_idx + i] = src[element_size * onnx_idx + i];
+            buffer[element_size * wnn_idx + i] = src[element_size * onnx_idx + i];
           }
         }
       }
@@ -234,7 +234,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     } else {
       input_shape.push_back(1);
     }
-    std::vector<uint32_t> new_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
+    std::vector<uint32_t> new_shape = GetNarrowedIntFromInt64<uint32_t>(input_shape);
     common_options.set("label", node.Name() + "_reshape_input");
     input = model_builder.GetBuilder().call<emscripten::val>("reshape", input,
                                                              emscripten::val::array(new_shape), common_options);
@@ -283,7 +283,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     // Reshape weight to 4D for conv1d.
     if (!is_nhwc || !is_constant_weight) {
       // The weight_shape has been appended 1's, reshape weight operand.
-      std::vector<uint32_t> new_shape = GetNarrowedIntfromInt64<uint32_t>(weight_shape);
+      std::vector<uint32_t> new_shape = GetNarrowedIntFromInt64<uint32_t>(weight_shape);
       common_options.set("label", node.Name() + "_reshape_filter");
       filter = model_builder.GetBuilder().call<emscripten::val>("reshape",
                                                                 filter,
@@ -338,7 +338,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       std::vector<int64_t> w_zero_point_shape;
       ORT_RETURN_IF_NOT(GetShape(*input_defs[3], w_zero_point_shape, logger), "Cannot get shape of w_zero_point");
       w_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f,
-                                                         GetNarrowedIntfromInt64<uint32_t>(w_zero_point_shape));
+                                                         GetNarrowedIntFromInt64<uint32_t>(w_zero_point_shape));
     } else {
       w_zero_point = model_builder.CreateOrGetConstant<uint8_t>(x_type, 0);
       w_scale = x_scale;
@@ -363,7 +363,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     const auto& output_defs = node.OutputDefs();
     std::vector<int64_t> output_shape;
     ORT_RETURN_IF_NOT(GetShape(*output_defs[0], output_shape, logger), "Cannot get output shape");
-    std::vector<uint32_t> new_shape = GetNarrowedIntfromInt64<uint32_t>(output_shape);
+    std::vector<uint32_t> new_shape = GetNarrowedIntFromInt64<uint32_t>(output_shape);
     common_options.set("label", node.Name() + "_reshape_output");
     output = model_builder.GetBuilder().call<emscripten::val>("reshape",
                                                               output,

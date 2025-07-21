@@ -2642,7 +2642,7 @@ inline std::string ShapeInferContext::GetAttrString(const char* attr_name) {
   if (status) {
     std::vector<char> chars(out, '\0');
     Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRING, chars.data(), out, &out));
-    return {chars.data()};
+    return std::string{chars.data(), out};
   } else {
     return {c};
   }
