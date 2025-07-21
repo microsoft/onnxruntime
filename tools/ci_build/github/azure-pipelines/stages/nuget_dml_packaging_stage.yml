@@ -41,7 +41,6 @@ stages:
               artifactName: 'packages"
     steps:
     - script: |
-        pushd $(Build.BinariesDirectory)\nuget-artifact-dml
         dir
         powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
         powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
@@ -73,6 +72,7 @@ stages:
         popd
         copy $(Build.BinariesDirectory)\nuget-artifact-dml\Microsoft.ML.OnnxRuntime.DirectML*nupkg $(Build.ArtifactStagingDirectory)
       displayName: 'Bundle DML NuGet and other binaries'
+      workingDirectory: '$(Build.BinariesDirectory)\nuget-artifact-dml'
 
     - template: ../templates/esrp_nuget.yml
       parameters:
