@@ -130,6 +130,15 @@ jobs:
         with:
           name: build-artifacts
           path: ${{ runner.temp }}\build
+    env:
+      OrtPackageId: Microsoft.ML.OnnxRuntime.Gpu
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+      DocUpdateNeeded: false
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
+      AZCOPY_AUTO_LOGIN_TYPE: MSI
+      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
 
   test:
     name: Windows GPU CUDA CI Pipeline Test Job
