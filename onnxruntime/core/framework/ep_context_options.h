@@ -29,11 +29,17 @@ struct OutStreamHolder {
   void* stream_state = nullptr;  // Opaque pointer to user's stream state. Passed as first argument to write_func.
 };
 
+/// <summary>
+/// Holds path and size threshold used to write out initializers to an external file.
+/// </summary>
 struct ExternalInitializerFileInfo {
   std::string file_path;
   size_t size_threshold = 0;
 };
 
+/// <summary>
+/// Holds function and state provided by user to handle initializer data (i.e., write to stream or embed in model).
+/// </summary>
 struct InitializerHandler {
   OrtHandleInitializerDataFunc handle_initializer_func = nullptr;
   void* state = nullptr;
@@ -85,7 +91,7 @@ struct ModelGenOptions {
                InitializerHandler>           // Custom function called for every initializer to determine location.
       initializers_location{};
 
-  bool AreCpuInitializersEmbedded() const;
+  bool AreInitializersEmbeddedInOutputModel() const;
   const ExternalInitializerFileInfo* TryGetExternalInitializerFileInfo() const;
   const InitializerHandler* TryGetInitializerHandler() const;
 };

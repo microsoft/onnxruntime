@@ -52,7 +52,7 @@ const OutStreamHolder* ModelGenOptions::TryGetOutputModelOutStream() const {
   return std::get_if<OutStreamHolder>(&output_model_location);
 }
 
-bool ModelGenOptions::AreCpuInitializersEmbedded() const {
+bool ModelGenOptions::AreInitializersEmbeddedInOutputModel() const {
   return std::holds_alternative<std::monostate>(initializers_location);
 }
 

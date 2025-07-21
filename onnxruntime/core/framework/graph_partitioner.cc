@@ -802,7 +802,7 @@ static Status EpContextModelToProto(const onnxruntime::Model& ep_context_model,
                                     const epctx::ModelGenOptions& ep_context_gen_options,
                                     /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
   // Handle case where initializers are stored inline within the ONNX model.
-  if (ep_context_gen_options.AreCpuInitializersEmbedded()) {
+  if (ep_context_gen_options.AreInitializersEmbeddedInOutputModel()) {
     // if no external ini file specified, set force_embed_external_ini to true to avoid intermediate file creation
     // and force all initializers embed into the ONNX file.
     ModelSavingOptions model_saving_options{/*size_threshold*/ SIZE_MAX};
