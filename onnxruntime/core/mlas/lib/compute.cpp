@@ -626,7 +626,6 @@ Return Value:
         Input += 1;
         N -= 1;
     }
-    // std::cout << "sum: " << Accumulator << std::endl;
     return Accumulator;
 }
 
@@ -640,7 +639,9 @@ MlasSveComputeSumExpF32Kernel(
     const float* NegativeMaximum
 )
 /**
- * TODO: Some loop unrolling might help with ILP here
+ * Potential optimization: Consider applying loop unrolling to improve instruction-level
+ * parallelism (ILP) in this kernel. Evaluate the performance impact using benchmarks
+ * before and after implementing the optimization.
  */
 {
     if (N == 1) {
