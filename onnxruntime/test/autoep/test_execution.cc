@@ -204,6 +204,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_OutStream) {
 
     for (const auto& bin_path : ep_ctx_write_state.bin_locations) {
       EXPECT_TRUE(std::filesystem::exists(*bin_path));
+      std::filesystem::remove(*bin_path);
     }
   }
 }
