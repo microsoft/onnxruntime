@@ -101,9 +101,7 @@ def get_pod_config_file():
     return _script_dir / "onnxruntime-objc.config.json"
 
 
-def assemble_objc_pod_package(
-    staging_dir: pathlib.Path, pod_version: str, framework_info_file: pathlib.Path
-):
+def assemble_objc_pod_package(staging_dir: pathlib.Path, pod_version: str, framework_info_file: pathlib.Path):
     """
     Assembles the files for the Objective-C pod package in a staging directory.
 
