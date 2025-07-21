@@ -150,6 +150,7 @@ extern "C" {
 // Public symbols
 //
 OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
+                             const OrtLogger* /*default_logger*/,
                              OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   InitCxxApi(*ort_api_base);
   const ApiPtrs api_ptrs{Ort::GetApi(), Ort::GetEpApi(), Ort::GetModelEditorApi()};
