@@ -868,6 +868,12 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextDataWriteFunc(OrtWriteEpContextDataFunc write_func,
+                                                                                   void* state) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextDataWriteFunc(this->p_, write_func, state));
+  return *this;
+}
+
 inline ModelCompilationOptions& ModelCompilationOptions::SetFlags(size_t flags) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetFlags(this->p_, flags));
   return *this;

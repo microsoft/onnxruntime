@@ -107,6 +107,13 @@ class ModelCompilationOptions {
   Status SetEpContextEmbedMode(bool embed_ep_context_in_model);
 
   /// <summary>
+  /// Sets an output stream (write function + state) used to write out EPContext node binary data.
+  /// </summary>
+  /// <param name="write_func">Write function</param>
+  /// <param name="state">The user's state</param>
+  void SetEpContextDataWriteFunc(OrtWriteEpContextDataFunc write_func, void* state);
+
+  /// <summary>
   /// Sets flags representing enabled boolean options defined in OrtCompileApiFlags.
   /// </summary>
   /// <param name="flags">unsigned integer set to the bitwise OR of enabled flags.</param>

@@ -17,6 +17,7 @@
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
 
@@ -179,6 +180,77 @@ ORT_API(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_d
   return memory_device->Id();
 }
 
+ORT_API_STATUS_IMPL(SessionOptions_GetEpContextModelOptions, _In_ const OrtSessionOptions* session_options,
+                    _Outptr_ OrtEpContextModelOptions** ep_context_model_options) {
+  API_IMPL_BEGIN
+  if (session_options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid OrtSessionOptions instance");
+  }
+
+  if (ep_context_model_options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'ep_context_model_options' argument is NULL");
+  }
+
+  auto result = std::make_unique<epctx::ModelGenOptions>(session_options->value.GetEpContextGenerationOptions());
+  *ep_context_model_options = result.release()->ToExternal();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, ReleaseEpContextModelOptions, _Frees_ptr_opt_ OrtEpContextModelOptions* ep_context_model_options) {
+  delete epctx::ModelGenOptions::ToInternal(ep_context_model_options);
+}
+
+ORT_API(bool, EpContextModelOptions_IsGenerationEnabled,
+        _In_ const OrtEpContextModelOptions* ep_context_model_options) {
+  const auto* options = epctx::ModelGenOptions::ToInternal(ep_context_model_options);
+
+  return options->enable;
+}
+
+ORT_API(bool, EpContextModelOptions_IsEpContextDataEmbedded,
+        _In_ const OrtEpContextModelOptions* ep_context_model_options) {
+  const auto* options = epctx::ModelGenOptions::ToInternal(ep_context_model_options);
+
+  return options->embed_ep_context_in_model;
+}
+
+ORT_API(void, EpContextModelOptions_GetEpContextDataWriteFunc,
+        _In_ const OrtEpContextModelOptions* ep_context_model_options,
+        _Outptr_result_maybenull_ OrtWriteEpContextDataFunc* write_func,
+        _Outptr_result_maybenull_ void** state) {
+  const auto* options = epctx::ModelGenOptions::ToInternal(ep_context_model_options);
+
+  *write_func = options->write_ep_context_data_func;
+  *state = options->write_ep_context_data_state;
+}
+
+ORT_API_STATUS_IMPL(EpContextModelOptions_GetOutputModelPath,
+                    _In_ const OrtEpContextModelOptions* ep_context_model_options,
+                    _Outptr_result_maybenull_ const ORTCHAR_T** output_model_path) {
+  API_IMPL_BEGIN
+  if (ep_context_model_options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'ep_context_model_options' argument is NULL");
+  }
+
+  if (output_model_path == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'output_model_path' argument is NULL");
+  }
+
+  const auto* options = epctx::ModelGenOptions::ToInternal(ep_context_model_options);
+
+  if (const std::filesystem::path* model_path = options->TryGetOutputModelPath(); model_path != nullptr) {
+    *output_model_path = model_path->c_str();
+  } else if (options->output_model_path_hint.has_value()) {
+    *output_model_path = options->output_model_path_hint->c_str();
+  } else {
+    *output_model_path = nullptr;
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -200,6 +272,13 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::MemoryDevice_GetMemoryType,
     &OrtExecutionProviderApi::MemoryDevice_GetVendorId,
     &OrtExecutionProviderApi::MemoryDevice_GetDeviceId,
+
+    &OrtExecutionProviderApi::SessionOptions_GetEpContextModelOptions,
+    &OrtExecutionProviderApi::ReleaseEpContextModelOptions,
+    &OrtExecutionProviderApi::EpContextModelOptions_IsGenerationEnabled,
+    &OrtExecutionProviderApi::EpContextModelOptions_IsEpContextDataEmbedded,
+    &OrtExecutionProviderApi::EpContextModelOptions_GetEpContextDataWriteFunc,
+    &OrtExecutionProviderApi::EpContextModelOptions_GetOutputModelPath,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

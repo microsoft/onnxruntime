@@ -12,6 +12,7 @@ ORT_RUNTIME_CLASS(EpFactory);
 ORT_RUNTIME_CLASS(EpGraphSupportInfo);
 ORT_RUNTIME_CLASS(MemoryDevice);  // opaque class to wrap onnxruntime::OrtDevice
 ORT_RUNTIME_CLASS(NodeComputeContext);
+ORT_RUNTIME_CLASS(EpContextModelOptions);
 
 ORT_RUNTIME_CLASS(DataTransferImpl);
 ORT_RUNTIME_CLASS(SyncNotificationImpl);
@@ -425,6 +426,72 @@ struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API_T(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
+
+  /** \brief Get the OrtEpContextModelOptions for generating EPContext nodes.
+   *
+   * \param[in] session_options The OrtSessionOptions from which to get the OrtEpContextModelOptions.
+   * \param[out] ep_context_model_options The OrtEpContextModelOptions to retrieve. Must be released
+   *                                      with ReleaseEpContextModelOptions.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(SessionOptions_GetEpContextModelOptions, _In_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtEpContextModelOptions** ep_context_model_options);
+
+  ORT_CLASS_RELEASE(EpContextModelOptions);
+
+  /** \brief Get whether the EP should generate EPContext nodes.
+   *
+   * \param[in] ep_context_model_options The OrtEpContextModelOptions instance.
+   * \return True if EPContext model/node generation is enabled in the session.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(bool, EpContextModelOptions_IsGenerationEnabled,
+            _In_ const OrtEpContextModelOptions* ep_context_model_options);
+
+  /** \brief Return a boolean indicating if the binary data in EPContext nodes should be embedded
+   * within the 'ep_cache_context' node attribute.
+   *
+   * \param[in] ep_context_model_options The OrtEpContextModelOptions instance.
+   * \return True if EPContext node binary data should be embedded.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(bool, EpContextModelOptions_IsEpContextDataEmbedded,
+            _In_ const OrtEpContextModelOptions* ep_context_model_options);
+
+  /** \brief Return the OrtWriteEpContextDataFunc function (and state) set by the application/user to write out
+   * EPContext node binary data to a custom destination.
+   *
+   * \param[in] ep_context_model_options The OrtEpContextModelOptions instance.
+   * \param[out] write_func Output parameter set to the OrtWriteEpContextDataFunc that should be called to write out
+   *                        EPContext node binary data. Set to NULL if not set.
+   * \param[out] state Output parameter set to the opaque state that should be passed to the OrtWriteEpContextDataFunc.
+   *                   Set to NULL if not set or if user/application set a NULL state.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(void, EpContextModelOptions_GetEpContextDataWriteFunc,
+            _In_ const OrtEpContextModelOptions* ep_context_model_options,
+            _Outptr_result_maybenull_ OrtWriteEpContextDataFunc* write_func,
+            _Outptr_result_maybenull_ void** state);
+
+  /** \brief Get the output EPContext model path, if any.
+   *
+   * \note Can be used by the EP to generated the binary file that stores non-embedded EPContext node binary data.
+   *
+   * \param[in] ep_context_model_options The OrtEpContextModelOptions instance.
+   * \param[out] output_model_path Output parameter set to the output model's path. Set to NULL if the path is unknown.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(EpContextModelOptions_GetOutputModelPath,
+                  _In_ const OrtEpContextModelOptions* ep_context_model_options,
+                  _Outptr_result_maybenull_ const ORTCHAR_T** output_model_path);
 };
 
 /**

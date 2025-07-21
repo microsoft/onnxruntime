@@ -173,12 +173,21 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
 
   // Create EP configuration from session options, if needed.
   // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
-  std::string ep_context_enable;
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(factory->ort_api, *session_options,
-                                                 "ep.context_enable", "0", ep_context_enable));
+  OrtEpContextModelOptions* ep_ctx_model_options = nullptr;
+  RETURN_IF_ERROR(factory->ep_api.SessionOptions_GetEpContextModelOptions(session_options, &ep_ctx_model_options));
+  DeferOrtRelease<OrtEpContextModelOptions> defer_release_ep_ctx_options(&ep_ctx_model_options,
+                                                                         factory->ep_api.ReleaseEpContextModelOptions);
 
   ExampleEp::Config config = {};
-  config.enable_ep_context = ep_context_enable == "1";
+  config.generate_ep_ctx_model = factory->ep_api.EpContextModelOptions_IsGenerationEnabled(ep_ctx_model_options);
+  config.embed_ep_ctx_data = factory->ep_api.EpContextModelOptions_IsEpContextDataEmbedded(ep_ctx_model_options);
+  factory->ep_api.EpContextModelOptions_GetEpContextDataWriteFunc(ep_ctx_model_options, &config.write_ep_ctx_data_func,
+                                                                  &config.write_ep_ctx_data_state);
+
+  const ORTCHAR_T* ep_ctx_model_path = nullptr;
+  RETURN_IF_ERROR(factory->ep_api.EpContextModelOptions_GetOutputModelPath(ep_ctx_model_options,
+                                                                           &ep_ctx_model_path));
+  config.ep_ctx_model_path = ep_ctx_model_path != nullptr ? ep_ctx_model_path : ORT_TSTR("");
 
   auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger);
 

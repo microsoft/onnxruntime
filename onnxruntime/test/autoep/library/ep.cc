@@ -6,9 +6,12 @@
 #include <array>
 #include <cassert>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -351,7 +354,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
   node_compute_infos[0] = node_compute_info.release();
 
   // Create EpContext nodes for the fused nodes we compiled.
-  if (ep->config_.enable_ep_context) {
+  if (ep->config_.generate_ep_ctx_model) {
     assert(ep_context_nodes != nullptr);
     RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count),
                                              gsl::span<OrtNode*>(ep_context_nodes, count)));
@@ -416,15 +419,60 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
     RETURN_IF_ERROR(collect_input_output_names(fused_node_outputs, /*out*/ output_names));
 
     int64_t is_main_context = (i == 0);
-    int64_t embed_mode = 1;
+    int64_t embed_mode = config_.embed_ep_ctx_data ? 1 : 0;
 
     // Create node attributes. The CreateNode() function copies the attributes, so we have to release them.
     std::array<OrtOpAttr*, 6> attributes = {};
     DeferOrtRelease<OrtOpAttr> defer_release_attrs(attributes.data(), attributes.size(), ort_api.ReleaseOpAttr);
 
-    std::string ep_ctx = "binary_data";
-    RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", ep_ctx.c_str(), static_cast<int>(ep_ctx.length()),
-                                         ORT_OP_ATTR_STRING, &attributes[0]));
+    std::array<char, 7> binary_data = {'b', 'i', 'n', 'd', 'a', 't', 'a'};
+
+    if (config_.embed_ep_ctx_data) {
+      // EPContext binary data is embedded in the node attribute.
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", binary_data.data(), static_cast<int>(binary_data.size()),
+                                           ORT_OP_ATTR_STRING, &attributes[0]));
+    } else if (config_.write_ep_ctx_data_func != nullptr) {
+      // EPContext binary data is written to file by user's function. The user's function returns the path to the file.
+      const ORTCHAR_T* binary_data_location = nullptr;
+      RETURN_IF_ERROR(config_.write_ep_ctx_data_func(config_.write_ep_ctx_data_state,
+                                                     fused_node_name,
+                                                     name_.c_str(),
+                                                     binary_data.data(),
+                                                     binary_data.size(),
+                                                     &binary_data_location));
+
+      std::string bin_location_utf8 = PathToUTF8String(binary_data_location);
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", bin_location_utf8.data(),
+                                           static_cast<int>(bin_location_utf8.size()),
+                                           ORT_OP_ATTR_STRING, &attributes[0]));
+    } else {
+      // EPContext binary data is written to a file determined by EP.
+      // Construct bin file path as '[model_dir]/[model_name]_[ep_name].bin'.
+      std::filesystem::path context_bin_path;
+
+      if (!config_.ep_ctx_model_path.empty()) {
+        std::filesystem::path base_file_name = config_.ep_ctx_model_path.filename().replace_extension();
+        base_file_name += "_";
+        base_file_name += name_;
+        base_file_name += ".bin";
+
+        context_bin_path = config_.ep_ctx_model_path.parent_path() / base_file_name;
+      } else {
+        context_bin_path = name_ + ".bin";  // Output model path unknown, so just use the ep name
+      }
+
+      // Write binary data to file.
+      std::ofstream bin_stream(context_bin_path, std::ios::binary);
+      bin_stream.write(binary_data.data(), binary_data.size());
+      bin_stream.flush();
+
+      // Set attribute pointing to binary file (relative path)
+      std::string bin_file_name_utf8 = PathToUTF8String(context_bin_path.filename().native());
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", bin_file_name_utf8.data(),
+                                           static_cast<int>(bin_file_name_utf8.size()),
+                                           ORT_OP_ATTR_STRING, &attributes[0]));
+    }
+
     RETURN_IF_ERROR(ort_api.CreateOpAttr("main_context", &is_main_context, 1, ORT_OP_ATTR_INT, &attributes[1]));
     RETURN_IF_ERROR(ort_api.CreateOpAttr("embed_mode", &embed_mode, 1, ORT_OP_ATTR_INT, &attributes[2]));
     RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_sdk_version", "1", 1, ORT_OP_ATTR_STRING, &attributes[3]));

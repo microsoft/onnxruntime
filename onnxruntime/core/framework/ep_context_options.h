@@ -5,6 +5,7 @@
 
 #include <array>
 #include <filesystem>
+#include <optional>
 #include <streambuf>
 #include <string>
 #include <variant>
@@ -87,6 +88,14 @@ struct ModelGenOptions {
                InitializerHandler>           // Custom function called for every initializer to determine location.
       initializers_location{};
 
+  OrtWriteEpContextDataFunc write_ep_context_data_func = nullptr;
+  void* write_ep_context_data_state = nullptr;
+
+  // Used when output model is saved to a buffer, but application still wants EP to know the output model
+  // path so that it can create the EPContext binary file (embed == false) from the output model path:
+  // [output_model_directory]/[output_model_name]_[ep].bin
+  std::optional<std::filesystem::path> output_model_path_hint = std::nullopt;
+
   bool HasOutputModelLocation() const;
   const std::filesystem::path* TryGetOutputModelPath() const;
   const BufferHolder* TryGetOutputModelBuffer() const;
@@ -95,6 +104,9 @@ struct ModelGenOptions {
   bool AreInitializersEmbeddedInOutputModel() const;
   const ExternalInitializerFileInfo* TryGetExternalInitializerFileInfo() const;
   const InitializerHandler* TryGetInitializerHandler() const;
+
+  OrtEpContextModelOptions* ToExternal();
+  static const ModelGenOptions* ToInternal(const OrtEpContextModelOptions* options);
 };
 
 // Class that wraps the user's OrtOutStreamWriteFunc function to enable use with

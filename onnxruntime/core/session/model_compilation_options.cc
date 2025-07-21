@@ -145,6 +145,8 @@ Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::filesys
     }
   }
 
+  session_options_.value.ep_context_gen_options.output_model_path_hint = ctx_model_path;
+
   return Status::OK();
 }
 
@@ -153,6 +155,11 @@ Status ModelCompilationOptions::SetEpContextEmbedMode(bool embed_ep_context_in_m
       kOrtSessionOptionEpContextEmbedMode, embed_ep_context_in_model ? "1" : "0"));
   session_options_.value.ep_context_gen_options.embed_ep_context_in_model = embed_ep_context_in_model;
   return Status::OK();
+}
+
+void ModelCompilationOptions::SetEpContextDataWriteFunc(OrtWriteEpContextDataFunc write_func, void* state) {
+  session_options_.value.ep_context_gen_options.write_ep_context_data_func = write_func;
+  session_options_.value.ep_context_gen_options.write_ep_context_data_state = state;
 }
 
 Status ModelCompilationOptions::SetFlags(size_t flags) {
@@ -258,6 +265,13 @@ Status ModelCompilationOptions::Check() const {
   if (output_stream_ptr != nullptr && output_stream_ptr->write_func == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid write-to-stream function for output model: function pointer is null");
+  }
+
+  if (ep_context_gen_options.write_ep_context_data_func != nullptr &&
+      ep_context_gen_options.embed_ep_context_in_model) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "EpContextEmbedMode must be false to use a function that writes out EPContext ",
+                           "node binary data (i.e., OrtEpContextDataWriteFunc).");
   }
 
   return Status::OK();

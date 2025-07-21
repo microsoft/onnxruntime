@@ -3,6 +3,11 @@
 
 #include "example_plugin_ep_utils.h"
 
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
+#include <cassert>
 #include <string>
 
 OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api, const OrtSessionOptions& session_options,
@@ -49,4 +54,20 @@ OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value_info, 
 
   result = true;
   return nullptr;
+}
+
+std::string PathToUTF8String(const std::basic_string<ORTCHAR_T>& path_str) {
+#if defined(_WIN32)
+  const int src_len = static_cast<int>(path_str.size() + 1);
+  const int len = WideCharToMultiByte(CP_UTF8, 0, path_str.data(), src_len, nullptr, 0, nullptr, nullptr);
+  assert(len > 0);
+  std::string ret(static_cast<size_t>(len) - 1, '\0');
+#pragma warning(disable : 4189)
+  const int r = WideCharToMultiByte(CP_UTF8, 0, path_str.data(), src_len, (char*)ret.data(), len, nullptr, nullptr);
+  assert(len == r);
+#pragma warning(default : 4189)
+  return ret;
+#else
+  return path_str;
+#endif  // defined(_WIN32)
 }
