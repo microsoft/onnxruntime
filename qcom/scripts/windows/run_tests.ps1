@@ -23,11 +23,12 @@ $NewBuildDirectoryBackslashes = ($NewBuildDirectory -replace "/", "\\")
     -replace $OldBuildDirectoryBackslashesRegex, $NewBuildDirectoryBackslashes |
     Out-File -Encoding ascii $CTestTestFile
 
+$Failed = $false
+
 # Run CTest
 Push-Location $RootDir
 & $CTestExe --build-config $Config --verbose --timeout $TimeoutSec
 
-$Failed = $false
 if (-not $?) {
     $Failed = $true
 }
