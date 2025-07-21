@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "ep_factory.h"
+#include "ep_stream_support.h"
 
 /// <summary>
 /// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
@@ -164,6 +165,8 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   GetCapability = GetCapabilityImpl;
   Compile = CompileImpl;
   ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
+  CreateAllocator = CreateAllocatorImpl;                      // optional. can be nullptr
+  CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;  // optional. can be nullptr
 
   auto status = ort_api.Logger_LogMessage(&logger_,
                                           OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -451,8 +454,10 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
     RETURN_IF_ERROR(ort_api.CreateOpAttr("main_context", &is_main_context, 1, ORT_OP_ATTR_INT, &attributes[1]));
     RETURN_IF_ERROR(ort_api.CreateOpAttr("embed_mode", &embed_mode, 1, ORT_OP_ATTR_INT, &attributes[2]));
     RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_sdk_version", "1", 1, ORT_OP_ATTR_STRING, &attributes[3]));
-    RETURN_IF_ERROR(ort_api.CreateOpAttr("partition_name", fused_node_name, 1, ORT_OP_ATTR_STRING, &attributes[4]));
-    RETURN_IF_ERROR(ort_api.CreateOpAttr("source", this->name_.c_str(), 1, ORT_OP_ATTR_STRING, &attributes[5]));
+    RETURN_IF_ERROR(ort_api.CreateOpAttr("partition_name", fused_node_name, static_cast<int>(strlen(fused_node_name)),
+                                         ORT_OP_ATTR_STRING, &attributes[4]));
+    RETURN_IF_ERROR(ort_api.CreateOpAttr("source", this->name_.c_str(), static_cast<int>(this->name_.length()),
+                                         ORT_OP_ATTR_STRING, &attributes[5]));
 
     RETURN_IF_ERROR(model_editor_api.CreateNode("EPContext", "com.microsoft", fused_node_name,
                                                 input_names.data(), input_names.size(),
@@ -463,6 +468,43 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
 
   return nullptr;
 }
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEp::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
+                                                       _In_ const OrtMemoryInfo* memory_info,
+                                                       _Outptr_result_maybenull_ OrtAllocator** allocator) noexcept {
+  // A per-session allocator could be created here.
+  // Logging of any issues should use ep->logger_ which is the session logger.
+
+  ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
+
+  // for simplicity in this example we use the factory implementation.
+  return ep->factory_.CreateAllocator(&ep->factory_, memory_info, nullptr, allocator);
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEp::CreateSyncStreamForDeviceImpl(_In_ OrtEp* this_ptr,
+                                                                 _In_ const OrtMemoryDevice* memory_device,
+                                                                 _Outptr_ OrtSyncStreamImpl** stream) noexcept {
+  // A per-session OrtSyncStreamImpl can be created here if the session options affect the implementation.
+  // Logging of any issues should use logger_ which is the session logger.
+
+  ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
+
+  // we only create streams for the default device memory.
+  if (auto mem_type = ep->factory_.ep_api.MemoryDevice_GetMemoryType(memory_device);
+      mem_type != OrtDeviceMemoryType_DEFAULT) {
+    std::string error = "Invalid OrtMemoryDevice. Expected OrtDeviceMemoryType_DEFAULT(0). Got ";
+    error += std::to_string(mem_type);
+    return ep->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, error.c_str());
+  }
+
+  auto sync_stream = std::make_unique<StreamImpl>(ep->factory_, ep, nullptr);
+  *stream = sync_stream.release();
+
+  return nullptr;
+}
+
 //
 // Implementation of ExampleNodeComputeInfo
 //
