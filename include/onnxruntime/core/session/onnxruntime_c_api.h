@@ -6900,6 +6900,9 @@ struct OrtCompileApi {
    * ReleaseOrtModelCompilationsOptions must be called to free the OrtModelCompilationOptions after calling
    * CompileModel.
    *
+   * \note By default, the GraphOptimizationLevel is set to ORT_DISABLE_ALL. Use
+   * ModelCompilationOptions_SetGraphOptimizationLevel to enable graph optimizations.
+   *
    * \param[in] env OrtEnv object.
    * \param[in] session_options The OrtSessionOptions instance from which to create the OrtModelCompilationOptions.
    * \param[out] out The created OrtModelCompilationOptions instance.
@@ -7075,6 +7078,19 @@ struct OrtCompileApi {
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const ORTCHAR_T* output_directory,
                   _In_ const ORTCHAR_T* model_name);
+
+  /** Set the graph optimization level.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] graph_optimization_level The graph optimization level.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetGraphOptimizationLevel,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ GraphOptimizationLevel graph_optimization_level);
 };
 
 /*

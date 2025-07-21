@@ -858,6 +858,13 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetFlags(size_t flags) 
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetGraphOptimizationLevel(
+    GraphOptimizationLevel graph_optimization_level) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetGraphOptimizationLevel(this->p_,
+                                                                                      graph_optimization_level));
+  return *this;
+}
+
 namespace detail {
 
 template <typename T>
