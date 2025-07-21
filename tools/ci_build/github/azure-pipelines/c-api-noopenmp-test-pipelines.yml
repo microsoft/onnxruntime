@@ -1,7 +1,7 @@
 resources:
   pipelines:
   - pipeline: build
-    source: 'Python packaging pipeline'
+    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
     trigger: true
     branch: main
 
