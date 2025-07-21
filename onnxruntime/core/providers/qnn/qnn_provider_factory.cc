@@ -268,7 +268,7 @@ struct QnnEpFactory : OrtEpFactory {
   }
 
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
-                                                               const OrtMemoryDevice* memory_device,
+                                                               const OrtMemoryDevice* /*memory_device*/,
                                                                const OrtKeyValuePairs* /*stream_options*/,
                                                                OrtSyncStreamImpl** ort_stream) noexcept {
     auto& factory = *static_cast<QnnEpFactory*>(this_ptr);
