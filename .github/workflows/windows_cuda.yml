@@ -196,7 +196,7 @@ jobs:
       - name: Run Tests
         working-directory: ${{ runner.temp }}
         run: |
-          python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py   "${{ runner.temp }}\build\CTestTestfile.cmake" "${{ runner.temp }}\build"
+          python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py   "${{ runner.temp }}\build\RelWithDebInfo\CTestTestfile.cmake" "${{ runner.temp }}\build\RelWithDebInfo"
           python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --test --skip_submodule_sync --parallel --cmake_generator "Visual Studio 17 2022" --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.2" --enable_onnx_tests --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
