@@ -88,6 +88,7 @@ Status QnnModel::ParseGraphInputOrOutput(const OrtGraph& ort_graph,
 
     std::vector<int64_t> shape;
     shape.resize(num_dims, 0);
+    // TODO: Check what OrtApi.GetDimensions returns for dynamic shape.
     api_ptrs_.ort_api.GetDimensions(type_shape, shape.data(), shape.size());
 
     // use index i so that for graph input, it has initializers included

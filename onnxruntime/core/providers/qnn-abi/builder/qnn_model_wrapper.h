@@ -334,9 +334,9 @@ class QnnModelWrapper {
                           /*out*/ int32_t& onnx_data_type) const;
 
   // // Checks if a tensor in the ONNX graph is per-channel quantized.
-  // Status IsPerChannelQuantized(const OrtNodeUnitIODef& io_def,
-  //                              /*out*/ bool& is_per_channel,
-  //                              /*out*/ int64_t& axis) const;
+  Status IsPerChannelQuantized(const OrtNodeUnitIODef& io_def,
+                               /*out*/ bool& is_per_channel,
+                               /*out*/ int64_t& axis) const;
 
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,

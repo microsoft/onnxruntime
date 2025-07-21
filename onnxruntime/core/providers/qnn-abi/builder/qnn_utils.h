@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <functional>
 #include <numeric>
 #include <string>
@@ -407,11 +408,82 @@ Status CnhwShapeToHwcn(gsl::span<const T> cnhw_shape, gsl::span<T> hwcn_shape) {
  */
 Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm);
 
+#define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                                                             \
+  case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_##TYPE: {                                      \
+    const OrtTypeInfo* type_info_##TYPE = nullptr;                                                             \
+    ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info_##TYPE);           \
+    const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info_##TYPE = nullptr;                              \
+    ort_api.CastTypeInfoToTensorInfo(type_info_##TYPE, &tensor_type_and_shape_info_##TYPE);                    \
+    size_t num_dims_##TYPE = 0;                                                                                \
+    ort_api.GetDimensionsCount(tensor_type_and_shape_info_##TYPE, &num_dims_##TYPE);                           \
+    std::vector<int64_t> dims_##TYPE(num_dims_##TYPE);                                                         \
+    ort_api.GetDimensions(tensor_type_and_shape_info_##TYPE, dims_##TYPE.data(), dims_##TYPE.size());          \
+                                                                                                               \
+    /* Calculate element count from shape */                                                                   \
+    size_t element_count = 1;                                                                                  \
+    for (size_t i = 0; i < num_dims_##TYPE; ++i) {                                                             \
+      element_count *= static_cast<size_t>(dims_##TYPE[i]);                                                    \
+    }                                                                                                          \
+                                                                                                               \
+    /* Calculate tensor byte size */                                                                           \
+    size_t tensor_byte_size = element_count * sizeof(ELEMENT_TYPE);                                            \
+                                                                                                               \
+    /* Get tensor data */                                                                                      \
+    const OrtValue* initializer_value = nullptr;                                                               \
+    ort_api.ValueInfo_GetInitializerValue(static_cast<const OrtValueInfo*>(&initializer), &initializer_value); \
+    const void* data = nullptr;                                                                                \
+    ort_api.GetTensorData(initializer_value, &data);                                                           \
+                                                                                                               \
+    /* Resize output buffer and copy data */                                                                   \
+    unpacked_tensor.resize(tensor_byte_size);                                                                  \
+    if (data != nullptr && tensor_byte_size > 0) {                                                             \
+      std::memcpy(unpacked_tensor.data(), data, tensor_byte_size);                                             \
+    }                                                                                                          \
+    return Status::OK();                                                                                       \
+  }
+
+#define CASE_UNPACK_INT4(TYPE, ELEMENT_TYPE, DATA_SIZE)                                                        \
+  case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_##TYPE: {                                      \
+    /* Get tensor shape to calculate element count */                                                          \
+    const OrtTypeInfo* type_info_##TYPE = nullptr;                                                             \
+    ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info_##TYPE);           \
+    const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info_##TYPE = nullptr;                              \
+    ort_api.CastTypeInfoToTensorInfo(type_info_##TYPE, &tensor_type_and_shape_info_##TYPE);                    \
+    size_t num_dims_##TYPE = 0;                                                                                \
+    ort_api.GetDimensionsCount(tensor_type_and_shape_info_##TYPE, &num_dims_##TYPE);                           \
+    std::vector<int64_t> dims_##TYPE(num_dims_##TYPE);                                                         \
+    ort_api.GetDimensions(tensor_type_and_shape_info_##TYPE, dims_##TYPE.data(), dims_##TYPE.size());          \
+                                                                                                               \
+    /* Calculate element count from shape */                                                                   \
+    size_t element_count = 1;                                                                                  \
+    for (size_t i = 0; i < num_dims_##TYPE; ++i) {                                                             \
+      element_count *= static_cast<size_t>(dims_##TYPE[i]);                                                    \
+    }                                                                                                          \
+                                                                                                               \
+    /* Calculate packed element count and tensor byte size for INT4/UINT4 */                                   \
+    size_t packed_element_count = ELEMENT_TYPE::CalcNumInt4Pairs(element_count);                               \
+    size_t tensor_byte_size = packed_element_count * sizeof(ELEMENT_TYPE);                                     \
+                                                                                                               \
+    /* Get tensor data */                                                                                      \
+    const OrtValue* initializer_value = nullptr;                                                               \
+    ort_api.ValueInfo_GetInitializerValue(static_cast<const OrtValueInfo*>(&initializer), &initializer_value); \
+    const void* data = nullptr;                                                                                \
+    ort_api.GetTensorData(initializer_value, &data);                                                           \
+                                                                                                               \
+    /* Resize output buffer and copy data */                                                                   \
+    unpacked_tensor.resize(tensor_byte_size);                                                                  \
+    if (data != nullptr && tensor_byte_size > 0) {                                                             \
+      std::memcpy(unpacked_tensor.data(), data, tensor_byte_size);                                             \
+    }                                                                                                          \
+    return Status::OK();                                                                                       \
+  }
+
 inline Status UnpackInitializerData(const OrtApi& ort_api,
                                     OrtValueInfo& initializer,
                                     const std::filesystem::path& model_path,
                                     std::vector<uint8_t>& unpacked_tensor) {
   std::cout << "DEBUG: model_path: " << model_path << std::endl;
+  // TODO: Handle external data if needed
   // // TODO, if std::vector does not use a custom allocator, the default std::allocator will
   // // allocation the memory aligned to std::max_align_t, need look into allocating
   // // forced aligned memory (align as 16 or larger)for unpacked_tensor
@@ -430,35 +502,31 @@ inline Status UnpackInitializerData(const OrtApi& ort_api,
   ONNXTensorElementDataType onnx_data_type;
   ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
 
-  // TODO: remove this when we support CASE_UNPACK
-  unpacked_tensor = {};
-
-  //   switch (onnx_data_type) {
-  //     CASE_UNPACK(FLOAT, float, float_data_size);
-  //     CASE_UNPACK(DOUBLE, double, double_data_size);
-  //     CASE_UNPACK(BOOL, bool, int32_data_size);
-  //     CASE_UNPACK(INT8, int8_t, int32_data_size);
-  //     CASE_UNPACK(INT16, int16_t, int32_data_size);
-  //     CASE_UNPACK(INT32, int32_t, int32_data_size);
-  //     CASE_UNPACK(INT64, int64_t, int64_data_size);
-  //     CASE_UNPACK(UINT8, uint8_t, int32_data_size);
-  //     CASE_UNPACK(UINT16, uint16_t, int32_data_size);
-  //     CASE_UNPACK(UINT32, uint32_t, uint64_data_size);
-  //     CASE_UNPACK(UINT64, uint64_t, uint64_data_size);
-  //     CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
-  //     CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
-  // #if !defined(DISABLE_FLOAT8_TYPES)
-  //     CASE_UNPACK(FLOAT8E4M3FN, onnxruntime::Float8E4M3FN, int32_data_size);
-  //     CASE_UNPACK(FLOAT8E4M3FNUZ, onnxruntime::Float8E4M3FNUZ, int32_data_size);
-  //     CASE_UNPACK(FLOAT8E5M2, onnxruntime::Float8E5M2, int32_data_size);
-  //     CASE_UNPACK(FLOAT8E5M2FNUZ, onnxruntime::Float8E5M2FNUZ, int32_data_size);
-  // #endif
-  //     CASE_UNPACK_INT4(INT4, Int4x2, int32_data_size);
-  //     CASE_UNPACK_INT4(UINT4, UInt4x2, int32_data_size);
-  //     default:
-  //       break;
-  //   }
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type: ", onnx_data_type);
+  switch (onnx_data_type) {
+    CASE_UNPACK(FLOAT, float, float_data_size);
+    CASE_UNPACK(DOUBLE, double, double_data_size);
+    CASE_UNPACK(BOOL, bool, int32_data_size);
+    CASE_UNPACK(INT8, int8_t, int32_data_size);
+    CASE_UNPACK(INT16, int16_t, int32_data_size);
+    CASE_UNPACK(INT32, int32_t, int32_data_size);
+    CASE_UNPACK(INT64, int64_t, int64_data_size);
+    CASE_UNPACK(UINT8, uint8_t, int32_data_size);
+    CASE_UNPACK(UINT16, uint16_t, int32_data_size);
+    CASE_UNPACK(UINT32, uint32_t, uint64_data_size);
+    CASE_UNPACK(UINT64, uint64_t, uint64_data_size);
+    CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
+    CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
+#if !defined(DISABLE_FLOAT8_TYPES)
+    CASE_UNPACK(FLOAT8E4M3FN, onnxruntime::Float8E4M3FN, int32_data_size);
+    CASE_UNPACK(FLOAT8E4M3FNUZ, onnxruntime::Float8E4M3FNUZ, int32_data_size);
+    CASE_UNPACK(FLOAT8E5M2, onnxruntime::Float8E5M2, int32_data_size);
+    CASE_UNPACK(FLOAT8E5M2FNUZ, onnxruntime::Float8E5M2FNUZ, int32_data_size);
+#endif
+    CASE_UNPACK_INT4(INT4, Int4x2, int32_data_size);
+    CASE_UNPACK_INT4(UINT4, UInt4x2, int32_data_size);
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type: ", onnx_data_type);
+  }
 }
 
 }  // namespace utils
