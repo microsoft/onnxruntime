@@ -8,8 +8,6 @@ parameters:
 
 stages:
 - stage: Final_Jar_Testing_${{parameters.OS}}
-  dependsOn:
-    Jar_Packaging
   jobs:
   - job: Final_Jar_Testing_${{parameters.OS}}
     workspace:
