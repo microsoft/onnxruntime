@@ -882,11 +882,22 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    # Set onnxruntime_USE_KLEIDIAI based on the machine architecture (only if its not explicitly configured by the user)
-    if not any(arg.startswith("-Donnxruntime_USE_KLEIDIAI=") for arg in cmake_args):
-        target_arch = platform.machine().lower()
-        default_kleidiai = "ON" if target_arch in ("aarch64", "arm64") else "OFF"
-        cmake_args += [f"-Donnxruntime_USE_KLEIDIAI={default_kleidiai}"]
+    # Set onnxruntime_USE_KLEIDIAI based on:
+    # * Default value above is NO.
+    # * Leave disabled if "no_kleidiai" argument was specified.
+    # * Enable if the target is Android and args.android_abi contains arm64*
+    # * Enable for a Windows cross compile build if compile target is an Arm one.
+    # * Finally enable if platform.machine contains "arm64". This should cover the following cases:
+    #     *  Linux on Arm
+    #     *  MacOs (case must be ignored)
+    if not args.no_kleidiai:
+        if (
+           (args.android and "arm64" in args.android_abi.lower()) or
+           (is_windows() and (args.arm64 or args.arm64ec or args.arm) and platform.architecture()[0] != "AMD64") or
+           ("arm64" in platform.machine().lower())
+           ):
+               cmake_args += [f"-Donnxruntime_USE_KLEIDIAI=ON"]
+
 
     if is_macOS() and (args.macos or args.ios or args.visionos or args.tvos):
         # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.
