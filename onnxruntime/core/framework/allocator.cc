@@ -164,19 +164,16 @@ void CPUAllocator::Free(void* p) {
   AllocatorDefaultFreeAligned(p, alignment);
 }
 
-void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
-  if (use_reserve)
+void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream,
+                                WaitNotificationFn /*ignored*/) {
+  if (use_reserve) {
     return alloc.Reserve(size);
-  if (stream && alloc.Info().alloc_type == OrtArenaAllocator) {
-#ifdef ORT_ENABLE_STREAM
-    auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(static_cast<BFCArena&>(alloc));
-    if (stream_aware_alloc) {
-      return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
-    }
-#else
-    ORT_UNUSED_PARAMETER(wait_fn);
-#endif  // ORT_ENABLE_STREAM
   }
+
+  if (stream && alloc.IsStreamAware()) {
+    return alloc.AllocOnStream(size, stream);
+  }
+
   return alloc.Alloc(size);
 }
 }  // namespace onnxruntime

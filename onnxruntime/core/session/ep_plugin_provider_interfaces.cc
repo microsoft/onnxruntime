@@ -575,6 +575,13 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
       ORT_THROW("Error creating allocator: ", ToStatusAndRelease(ort_status).ToString());
     }
 
+    if (ort_allocator_ptr->Info(ort_allocator_ptr)->alloc_type == OrtAllocatorType::OrtArenaAllocator) {
+      ORT_THROW(
+          "OrtEpFactory returned an allocator with OrtAllocatorType of OrtArenaAllocator. "
+          "This type is reserved for ONNX Runtime internal usage only, as any arena usage by the "
+          "EP library should be opaque to ORT");
+    }
+
     auto ort_allocator = OrtAllocatorUniquePtr(
         ort_allocator_ptr,
         [this](OrtAllocator* allocator) {

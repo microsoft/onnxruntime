@@ -500,13 +500,13 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
       // we don't replace an existing allocator as we just need one to exist for the OrtMemoryInfo and we don't want
       // to blow away any custom allocators previously added by the user.
       if (ed->device_memory_info != nullptr) {
-        ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->device_memory_info, OrtDeviceAllocator, nullptr,
-                                                      nullptr, /*replace_existing*/ false));
+        ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->device_memory_info, nullptr, nullptr,
+                                                      /*replace_existing*/ false));
       }
 
       if (ed->host_accessible_memory_info != nullptr) {
-        ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->host_accessible_memory_info, OrtDeviceAllocator,
-                                                      nullptr, nullptr, /*replace_existing*/ false));
+        ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->host_accessible_memory_info, nullptr, nullptr,
+                                                      /*replace_existing*/ false));
       }
     }
 
@@ -617,7 +617,7 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
 }
 
 Status Environment::CreateSharedAllocator(const OrtEpDevice& ep_device,
-                                          OrtDeviceMemoryType mem_type, OrtAllocatorType allocator_type,
+                                          OrtDeviceMemoryType mem_type,
                                           const OrtKeyValuePairs* allocator_options,
                                           OrtAllocator** allocator_out) {
   auto* memory_info = mem_type == OrtDeviceMemoryType_DEFAULT ? ep_device.device_memory_info
@@ -627,13 +627,12 @@ Status Environment::CreateSharedAllocator(const OrtEpDevice& ep_device,
   }
 
   std::lock_guard<std::mutex> lock{mutex_};
-  return CreateSharedAllocatorImpl(ep_device, *memory_info, allocator_type, allocator_options, allocator_out,
+  return CreateSharedAllocatorImpl(ep_device, *memory_info, allocator_options, allocator_out,
                                    /*replace_existing*/ true);
 }
 
 Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
                                               const OrtMemoryInfo& memory_info,
-                                              OrtAllocatorType allocator_type,
                                               const OrtKeyValuePairs* allocator_options,
                                               OrtAllocator** allocator_out,
                                               bool replace_existing) {
@@ -669,48 +668,21 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
     return ToStatusAndRelease(ort_status);
   }
 
+  if (allocator->Info(allocator)->alloc_type == OrtAllocatorType::OrtArenaAllocator) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "OrtEpFactory returned an allocator with OrtAllocatorType of OrtArenaAllocator. "
+                           "This type is reserved for ONNX Runtime internal usage only, as any arena usage by the "
+                           "EP library should be opaque to ORT");
+  }
+
   auto ort_allocator = OrtAllocatorUniquePtr(allocator,
                                              [&ep_device](OrtAllocator* allocator) {
                                                ep_device.ep_factory->ReleaseAllocator(ep_device.ep_factory, allocator);
                                              });
 
-  AllocatorPtr shared_allocator;
+  shared_ort_allocators_.insert(allocator);
 
-  if (allocator_type == OrtArenaAllocator) {
-    // wrap with ORT arena
-    OrtArenaCfg arena_cfg;
-    if (allocator_options != nullptr) {
-      auto status = OrtArenaCfg::FromKeyValuePairs(*allocator_options, arena_cfg);
-    }
-
-    bool stream_aware_arena = ep_device.ep_factory->IsStreamAware(ep_device.ep_factory);
-
-    AllocatorCreationInfo alloc_creation_info{
-        [&ort_allocator](int) -> std::unique_ptr<IAllocator> {
-          return std::make_unique<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
-        },
-        /*unused*/ -1,  // arg to the lambda above that is ignored as the device id comes from the allocator
-        /*create_arena*/ true,
-        arena_cfg,
-        stream_aware_arena,
-    };
-
-    shared_allocator = CreateAllocator(alloc_creation_info);
-
-    // need an OrtAllocator to return to the user so we need yet another layer.
-    // we pass in a copy of the AllocatorPtr (which is a shared_ptr) in order to maintain the overall condition that
-    // shared_allocators_ is the main owner of the allocator and the last place we delete from when removing
-    // from shared_ort_allocators_, arena_ort_allocators_ and shared_allocators_.
-    auto arena_ort_allocator = std::make_unique<OrtAllocatorImplWrappingIAllocator>(AllocatorPtr(shared_allocator));
-    allocator = arena_ort_allocator.get();
-
-    // store the entry using the EPs memory info for easier lookup when removing
-    arena_ort_allocators_.insert({&memory_info, std::move(arena_ort_allocator)});
-  } else {
-    shared_ort_allocators_.insert(allocator);
-    shared_allocator = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
-  }
-
+  AllocatorPtr shared_allocator = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
   shared_allocators_.push_back(std::move(shared_allocator));
 
   if (allocator_out != nullptr) {

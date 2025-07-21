@@ -39,14 +39,8 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       }
 
       const auto peak_size = mem_patterns_.patterns[i].PeakSize();
-      void* buffer;
-      if (alloc->Info().alloc_type == OrtArenaAllocator) {
-        // Arena has a specific way to store static memory.
-        // Arena does not reuse static memory allocated by Reserve.
-        buffer = static_cast<BFCArena*>(alloc.get())->Reserve(peak_size);
-      } else {
-        buffer = alloc->Alloc(peak_size);
-      }
+      // use Reserve for initializers so they don't affect arena growth patterns if an arena is involved.
+      void* buffer = alloc->Reserve(peak_size);
 
       auto buffer_ptr = BufferUniquePtr(buffer, BufferDeleter(std::move(alloc)));
       auto kvp = buffers_.insert(std::make_pair(location, buffer));

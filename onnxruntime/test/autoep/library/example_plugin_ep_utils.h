@@ -25,11 +25,52 @@
     }                                                    \
   } while (0)
 
+// see ORT_ENFORCE for implementations that also capture a stack trace and work in builds with exceptions disabled
+// NOTE: In this simplistic implementation you must provide an argument, even it if's an empty string
+#define EP_ENFORCE(condition, ...)                       \
+  do {                                                   \
+    if (!(condition)) {                                  \
+      std::ostringstream oss;                            \
+      oss << "EP_ENFORCE failed: " << #condition << " "; \
+      oss << __VA_ARGS__;                                \
+      throw std::runtime_error(oss.str());               \
+    }                                                    \
+  } while (false)
+
+#ifdef _WIN32
+#define EP_WSTR(x) L##x
+#define EP_FILE_INTERNAL(x) EP_WSTR(x)
+#define EP_FILE EP_FILE_INTERNAL(__FILE__)
+#else
+#define EP_FILE __FILE__
+#endif
+
+#define LOG(level, ...)                                                                                             \
+  do {                                                                                                              \
+    std::ostringstream ss;                                                                                          \
+    ss << __VA_ARGS__;                                                                                              \
+    api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), EP_FILE, __LINE__, __FUNCTION__); \
+  } while (false)
+
+#define RETURN_ERROR(code, ...)                       \
+  do {                                                \
+    std::ostringstream ss;                            \
+    ss << __VA_ARGS__;                                \
+    return api_.CreateStatus(code, ss.str().c_str()); \
+  } while (false)
+
+#define THROW(...)       \
+  std::ostringstream ss; \
+  ss << __VA_ARGS__;     \
+  throw new std::runtime_error(ss.str().c_str())
+
 struct ApiPtrs {
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
   const OrtModelEditorApi& model_editor_api;
 };
+
+using AllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
 
 // Helper to release Ort one or more objects obtained from the public C API at the end of their scope.
 template <typename T>

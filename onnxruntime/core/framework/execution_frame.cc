@@ -26,17 +26,6 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
-#ifdef ORT_ENABLE_STREAM
-static StreamAwareArena* AsStreamBasedAllocator(AllocatorPtr allocator) {
-  ORT_ENFORCE(allocator.get() != nullptr, "allocator is nullptr");
-  if (allocator->Info().alloc_type == OrtArenaAllocator) {
-    BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
-    return StreamAwareArena::FromBFCArena(*arena_ptr);
-  }
-  return nullptr;
-}
-#endif
-
 IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                                  const NodeIndexInfo& node_index_info,
                                  gsl::span<const int> fetch_mlvalue_idxs)
@@ -441,13 +430,20 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
 #endif
               // the memory pattern buffer will leave in the whole execution.
 #ifdef ORT_ENABLE_STREAM
-              StreamAwareArena* stream_aware_alloc = AsStreamBasedAllocator(alloc);
-              if (stream_aware_alloc && device_streams_) {
+              if (alloc->IsStreamAware() && device_streams_) {
                 Stream* mem_pattern_stream = device_streams_->GetRootStream();
-                buffer = stream_aware_alloc->AllocOnStream(peak_size, mem_pattern_stream, nullptr);
-                for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
-                  stream_aware_alloc->SecureTheChunk(mem_pattern_stream, device_streams_->GetStream(j), nullptr);
-                }
+
+                buffer = alloc->AllocOnStream(peak_size, mem_pattern_stream);
+
+                // this seems unnecessary. any memory pattern buffer would be in use for the entire inference, so
+                // there's no point at which another stream (as streams are per-inference) would be able to use it.
+                // given that, it's unclear why we need to update the sync id in all other streams to allow them
+                // to take this buffer if it was free.
+                //
+                // Commenting out to verify.
+                // for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
+                //  stream_aware_arena->WaitOnChunk(mem_pattern_stream, device_streams_->GetStream(j));
+                //}
               } else {
                 buffer = alloc->Alloc(peak_size);
               }
@@ -581,13 +577,9 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   Stream* current_stream = GetValueStream(ort_value_index);
   if (current_stream) {
 #ifdef ORT_ENABLE_STREAM
-    auto stream_aware_alloc = AsStreamBasedAllocator(alloc);
-    if (stream_aware_alloc) {
+    if (alloc->IsStreamAware()) {
       size_t buffer_size = Tensor::CalculateTensorStorageSize(element_type, shape);
-      // the reused memory must from same EP
-      auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
-          current_stream->GetDevice(), current_stream->GetDevice());
-      void* p_data = stream_aware_alloc->AllocOnStream(buffer_size, current_stream, wait_handle);
+      void* p_data = alloc->AllocOnStream(buffer_size, current_stream);
       Tensor::InitOrtValue(element_type, shape, p_data, std::move(alloc), ort_value);
     } else {
       Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);

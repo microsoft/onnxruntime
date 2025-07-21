@@ -3,6 +3,7 @@
 
 #include "allocator_adapters.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/environment.h"
@@ -21,24 +22,33 @@ namespace {
 // `IAllocatorImplWrappingOrtAllocator` to ensure compatibility.
 constexpr uint32_t kOrtAllocatorReserveMinVersion = 18;
 constexpr uint32_t kOrtAllocatorStatsMinVersion = 23;
+constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
 }  // namespace
 
 OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxruntime::AllocatorPtr&& i_allocator)
     : i_allocator_(std::move(i_allocator)) {
   OrtAllocator::version = ORT_API_VERSION;
-  OrtAllocator::Alloc =
-      [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Alloc(size); };
-  OrtAllocator::Free =
-      [](OrtAllocator* this_, void* p) { static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Free(p); };
-  OrtAllocator::Info =
-      [](const OrtAllocator* this_) { return static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Info(); };
+
+  OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) {
+    return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Alloc(size);
+  };
+
+  OrtAllocator::Free = [](OrtAllocator* this_, void* p) {
+    static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Free(p);
+  };
+
+  OrtAllocator::Info = [](const OrtAllocator* this_) {
+    return static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Info();
+  };
+
   if (OrtAllocator::version >= kOrtAllocatorReserveMinVersion) {
-    OrtAllocator::Reserve =
-        [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Reserve(size); };
+    OrtAllocator::Reserve = [](OrtAllocator* this_, size_t size) {
+      return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Reserve(size);
+    };
   }
+
   if (OrtAllocator::version >= kOrtAllocatorStatsMinVersion) {
-    OrtAllocator::GetStats =
-        [](const OrtAllocator* this_, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
+    OrtAllocator::GetStats = [](const OrtAllocator* this_, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
       API_IMPL_BEGIN
       auto kvp = std::make_unique<OrtKeyValuePairs>();
       const auto& stats_map = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
@@ -48,10 +58,20 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
       API_IMPL_END
     };
   }
+
+  if (OrtAllocator::version >= kOrtAllocatorAllocOnStreamMinVersion) {
+    OrtAllocator::AllocOnStream = [](OrtAllocator* this_, size_t size, OrtSyncStream* stream) {
+      return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->AllocOnStream(size, stream);
+    };
+  }
 }
 
 void* OrtAllocatorImplWrappingIAllocator::Alloc(size_t size) {
   return i_allocator_->Alloc(size);
+}
+
+void* OrtAllocatorImplWrappingIAllocator::AllocOnStream(size_t size, OrtSyncStream* stream) {
+  return i_allocator_->AllocOnStream(size, static_cast<Stream*>(stream));
 }
 
 void* OrtAllocatorImplWrappingIAllocator::Reserve(size_t size) {
@@ -102,6 +122,18 @@ IAllocatorImplWrappingOrtAllocator::IAllocatorImplWrappingOrtAllocator(OrtAlloca
 }
 
 void* IAllocatorImplWrappingOrtAllocator::Alloc(size_t size) {
+  return ort_allocator_->Alloc(ort_allocator_.get(), size);
+}
+
+bool IAllocatorImplWrappingOrtAllocator::IsStreamAware() const {
+  return ort_allocator_->version >= kOrtAllocatorAllocOnStreamMinVersion && ort_allocator_->AllocOnStream != nullptr;
+}
+
+void* IAllocatorImplWrappingOrtAllocator::AllocOnStream(size_t size, Stream* stream) {
+  if (ort_allocator_->version >= kOrtAllocatorAllocOnStreamMinVersion && ort_allocator_->AllocOnStream) {
+    return ort_allocator_->AllocOnStream(ort_allocator_.get(), size, static_cast<OrtSyncStream*>(stream));
+  }
+
   return ort_allocator_->Alloc(ort_allocator_.get(), size);
 }
 
@@ -297,7 +329,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator,
                     [[maybe_unused]] _In_ OrtEnv* ort_env,
                     [[maybe_unused]] _In_ const OrtEpDevice* ep_device,
                     [[maybe_unused]] _In_ OrtDeviceMemoryType mem_type,
-                    [[maybe_unused]] _In_ OrtAllocatorType allocator_type,
                     [[maybe_unused]] _In_opt_ const OrtKeyValuePairs* allocator_options,
                     _Outptr_opt_ OrtAllocator** allocator) {
 #if !defined(ORT_MINIMAL_BUILD)
@@ -307,7 +338,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator,
   }
 
   auto& env = ort_env->GetEnvironment();
-  ORT_API_RETURN_IF_STATUS_NOT_OK(env.CreateSharedAllocator(*ep_device, mem_type, allocator_type, allocator_options,
+  ORT_API_RETURN_IF_STATUS_NOT_OK(env.CreateSharedAllocator(*ep_device, mem_type, allocator_options,
                                                             allocator));
 
   return nullptr;
