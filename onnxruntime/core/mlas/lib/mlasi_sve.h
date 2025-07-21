@@ -61,7 +61,7 @@ MlasSveReinterpretAsUInt32(MLAS_SVFLOAT32 Vector)
     return svreinterpret_u32_f32(Vector);
 }
 
-//ongoing
+// Reinterprets an unsigned 32-bit vector as a 32-bit floating-point vector.
 MLAS_SVE_TARGET
 MLAS_FORCEINLINE
 MLAS_SVFLOAT32
@@ -273,7 +273,7 @@ MLAS_FORCEINLINE
 void
 MlasSveStoreLaneFloat32(float* Buffer, MLAS_SVFLOAT32 Vector)
 {
-    svbool_t Pred = svwhilelt_b32(Lane, Lane+1);
+    svbool_t Pred = svwhilelt_b32(Lane, Lane + 1);
     svst1_f32(Pred, Buffer, Vector);
 }
 
@@ -474,7 +474,7 @@ MlasSveBlendFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT32 Vec
     return MlasSveOrFloat32(
         Pred, 
         MlasSveAndFloat32(Pred, Vector2, Selection),
-        MlasSveAndFloat32(Pred, Selection, Vector1)
+        MlasSveAndFloat32(Pred, Vector1, Selection)
     );
 }
 

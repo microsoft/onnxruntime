@@ -166,7 +166,7 @@ Return Value:
         r_big = MlasSveMultiplyAddFloat32(Pred, r_big, AbsValue, AbsValue);
 
         r_big = MlasSveXorFloat32(Pred, r_big, MlasSveBroadcastFloat32(MlasErfConstants.ErfNegZero));
-        r_big = MlasSveMaximumFloat32(Pred, MlasSveBroadcastFloat32(MlasErfConstants.Exp_LowerRange), r_big);\
+        r_big = MlasSveMaximumFloat32(Pred, MlasSveBroadcastFloat32(MlasErfConstants.Exp_LowerRange), r_big);
         MLAS_SVFLOAT32 exp_c = MlasSveBroadcastFloat32(MlasErfConstants.Exp_C);
         MLAS_SVFLOAT32 r = MlasSveMultiplyAddFloat32(Pred, MlasSveBroadcastFloat32(MlasErfConstants.Exp_Log2Reciprocal), r_big, exp_c);
         r = MlasSveSubtractFloat32(Pred, r, exp_c);
