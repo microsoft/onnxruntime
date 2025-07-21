@@ -2111,6 +2111,98 @@ TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadLower) {
                                      13);
 }
 
+// Tests Conv's auto_pad value "VALID" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, ConvU8U8S32_AutoPadValid) {
+  RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
+                                     TestInputDef<float>({1, 1, 5, 5}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 4, 4}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),               // Initializer bias
+                                     {1, 1},                                               // strides
+                                     {},                                                   // pads
+                                     {1, 1},                                               // dilations
+                                     1,                                                    // default group
+                                     "VALID",                                              // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13);
+
+  RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
+                                     TestInputDef<float>({1, 1, 5, 5, 5}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 4, 4, 4}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),                  // Initializer bias
+                                     {1, 1, 1},                                               // strides
+                                     {},                                                      // pads
+                                     {1, 1, 1},                                               // dilations
+                                     1,                                                       // default group
+                                     "VALID",                                                 // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13);
+}
+
+// Tests ConvTranspose's auto_pad value "VALID" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_AutoPadValid) {
+  RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
+                                     TestInputDef<float>({1, 1, 5, 5}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 4, 4}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),               // Initializer bias
+                                     {1, 1},                                               // strides
+                                     {},                                                   // pads
+                                     {1, 1},                                               // dilations
+                                     1,                                                    // default group
+                                     "VALID",                                              // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13);
+
+  RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
+                                     TestInputDef<float>({1, 1, 5, 5, 5}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 4, 4, 4}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),                  // Initializer bias
+                                     {1, 1, 1},                                               // strides
+                                     {},                                                      // pads
+                                     {1, 1, 1},                                               // dilations
+                                     1,                                                       // default group
+                                     "VALID",                                                 // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13);
+}
+
+// Tests Conv1d auto_pad value "VALID" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_AutoPadValid) {
+  std::vector<float> input_data = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
+  RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
+                                     TestInputDef<float>({1, 2, 4}, false, input_data),           // Dynamic input
+                                     TestInputDef<float>({1, 2, 2}, true, {1.f, 2.f, 3.f, 4.f}),  // Static weight
+                                     TestInputDef<float>({1}, true, {1.0f}),                      // Initializer bias
+                                     {1},                                                         // strides
+                                     {0},                                                         // pads
+                                     {1},                                                         // dilations
+                                     1,                                                           // default group
+                                     "VALID",                                                     // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13);
+}
+
+// Tests ConvTranspose 1d auto_pad value "VALID" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadValid) {
+  std::vector<float> input_data = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
+  RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
+                                     TestInputDef<float>({1, 2, 4}, false, input_data),           // Dynamic input
+                                     TestInputDef<float>({2, 1, 2}, true, {1.f, 2.f, 3.f, 4.f}),  // Static weight
+                                     TestInputDef<float>({1}, true, {1.0f}),                      // Initializer bias
+                                     {1},                                                         // strides
+                                     {0},                                                         // pads
+                                     {1},                                                         // dilations
+                                     1,                                                           // default group
+                                     "VALID",                                                     // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13);
+}
+
 // Fails with QNN SDK 2.35.0:
 // value pair (-4.54545403, -4.54687548) at index #3 don't match, which is -0.00142145 from -4.54545
 TEST_F(QnnHTPBackendTests, DISABLED_ConvU8U8S32_large_input1_padding_bias_initializer) {

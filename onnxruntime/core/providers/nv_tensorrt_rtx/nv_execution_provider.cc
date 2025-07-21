@@ -2281,11 +2281,16 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   if (max_shared_mem_size_ > 0) {
     trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kTACTIC_SHARED_MEMORY, max_shared_mem_size_);
   }
-  // Only set default compute capabilities if user hasn't explicitly configured them
-  constexpr int kDefaultNumComputeCapabilities = 1;  // Default number of compute capabilities for Turing support
-  if (trt_config->getNbComputeCapabilities() == 0) {
-    trt_config->setNbComputeCapabilities(kDefaultNumComputeCapabilities);
-    trt_config->setComputeCapability(nvinfer1::ComputeCapability::kCURRENT, 0);
+
+  // Only set compute capability for Turing
+  const std::string kTuringComputeCapability{"75"};
+
+  if (compute_capability_ == kTuringComputeCapability) {
+    constexpr int kDefaultNumComputeCapabilities = 1;
+    if (trt_config->getNbComputeCapabilities() == 0) {
+      trt_config->setNbComputeCapabilities(kDefaultNumComputeCapabilities);
+      trt_config->setComputeCapability(nvinfer1::ComputeCapability::kSM75, 0);
+    }
   }
 
   int num_inputs = trt_network->getNbInputs();
