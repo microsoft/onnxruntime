@@ -593,6 +593,7 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
     initializer_value_infos.push_back(value_info);
 
     // Initialize OrtValue for the initializer.
+    // Note: using std::unique_ptr<OrtValue> because we return a OrtValue* to the user and we want it to be stable.
     auto initializer_value = std::make_unique<OrtValue>();
     bool graph_has_ortvalue = graph_viewer.GetGraph().GetOrtValueInitializer(initializer_name, *initializer_value,
                                                                              /*check_outer_scope*/ false);
@@ -656,8 +657,10 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
       }
 
       EpValueInfo* outer_value_info = value_info_iter->second.get();
-      bool is_constant = false;
+
+      // Note: using std::unique_ptr<OrtValue> because we return a OrtValue* to the user and we want it to be stable.
       auto outer_initializer_value = std::make_unique<OrtValue>();
+      bool is_constant = false;
       const ONNX_NAMESPACE::TensorProto* outer_initializer = parent_graph->GetInitializer(implicit_name,
                                                                                           *outer_initializer_value,
                                                                                           is_constant,
