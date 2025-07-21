@@ -95,7 +95,11 @@ enum NODE_MODE_ORT : uint8_t {
   BRANCH_EQ = 10,
   BRANCH_NEQ = 12,
   BRANCH_MEMBER = 14,
-  BRANCH_MEMBER_BIGSET = 16,  // This is not used in ONNX, but it allows to have different implementation for the same rule.
+  // This rule is not part of ONNX standard. BRANCH_MEMBER has different implementations
+  // based on the set size. The first one is for small sets (< 31 categories),
+  // the second one is for big sets. All trees are defined with the first one.
+  // The kernel decides to switch to the second one if the set is too big.
+  BRANCH_MEMBER_BIGSET = 16,
 };
 
 inline NODE_MODE_ORT Convert_NODE_MODE_ONNX_to_ORT(NODE_MODE_ONNX node_mode) {

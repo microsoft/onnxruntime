@@ -14,20 +14,24 @@ namespace ml {
 namespace detail {
 
 // This class checks if a value is in a set of categories. It is used to handle categorical features.
-// This implementation could be optimized for different kind of sets of integers.
-template <typename TCAT, typename TINPUT>
+// It internally uses an unordered_set for O(1) average time complexity lookups.
+// TCat represents the type of values stored in the set (typically int32_t)
+// TInput represents the type of input values to test (can be converted to TCat)
+// This implementation could be optimized for different kinds of integer sets,
+// e.g., using a bitmap representation for small sets of consecutive integers.
+template <typename TCat, typename TInput>
 class TreeCategorySet {
-  typedef typename TCAT cat_type;
-  typedef typename TINPUT input_type;
+  typedef typename TCat cat_type;
+  typedef typename TInput input_type;
 
  public:
-  TreeCategorySet(const std::vector<TCAT>& values) : set_(values.begin(), values.end()) {}
-  inline bool isIn(const TINPUT& val) const {
-    return set_.find(static_cast<TCAT>(val)) != set_.end();
+  TreeCategorySet(const std::vector<TCat>& values) : set_(values.begin(), values.end()) {}
+  inline bool isIn(const TInput& val) const {
+    return set_.find(static_cast<TCat>(val)) != set_.end();
   }
 
  private:
-  std::unordered_set<TCAT> set_;
+  std::unordered_set<TCat> set_;
 };
 
 /**
@@ -840,6 +844,8 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
         }
         break;
       case NODE_MODE_ORT::BRANCH_MEMBER_BIGSET:
+        // The threshold or node value (stored in value_or_unique_weight) in an index of a set in `bigsets`.
+        // val is the feature value, method isIn checks whether the value is in the set.
         if (has_missing_tracks_) {
           while (root->is_not_leaf()) {
             val = x_data[root->feature_id];
@@ -895,6 +901,8 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
                      : root + 1;
           break;
         case NODE_MODE_ORT::BRANCH_MEMBER_BIGSET:
+          // The threshold or node value (stored in value_or_unique_weight) in an index of a set in `bigsets`.
+          // val is the feature value, method isIn checks whether the value is in the set.
           root = (GetCategorySet(root->value_or_unique_weight).isIn(val) || (root->is_missing_track_true() && _isnan_(val)))
                      ? root->truenode_or_weight.ptr
                      : root + 1;

@@ -29,6 +29,10 @@ enum NODE_MODE_ONNX : uint8_t {
   BRANCH_NEQ = 5,
   BRANCH_MEMBER = 6,
   LEAF = 7,
+  // This rule is not part of ONNX standard. BRANCH_MEMBER has different implementations
+  // based on the set size. The first one is for small sets (< 31 categories),
+  // the second one is for big sets. All trees are defined with the first one.
+  // The kernel decides to switch to the second one if the set is too big.
   BRANCH_MEMBER_BIGSET = 8,
 };
 

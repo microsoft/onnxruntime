@@ -113,7 +113,10 @@ struct TreeEnsembleAttributesV3 {
   std::vector<std::string> classlabels_strings;
   std::vector<int64_t> classlabels_int64s;
   std::vector<int64_t> class_labels;
-  std::vector<std::vector<ThresholdType>> bigsets;  // For categorical features, bigset for rule BRANCH_MEMBER_BIGSET
+  // For categorical features, this container stores set of members for every rule
+  // MEMBERSHIP_BIGSET. The threshold or node value (stored in value_or_unique_weight)
+  // is casted into an integer, an index, corresponding to the set in `bigsets`.
+  std::vector<std::vector<ThresholdType>> bigsets;  
 };
 
 template <typename ThresholdType>
