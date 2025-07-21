@@ -42,7 +42,7 @@ stages:
       - ${{ else }}:
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)
-          artifactName: 'packages"
+          artifactName: "packages"
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       commonBuildArgs: '--compile_no_warning_as_error --skip_submodule_sync --build_shared_lib --client_package_build --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags '

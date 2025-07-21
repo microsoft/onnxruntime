@@ -312,7 +312,7 @@ extends:
           - ${{ else }}:
             - output: pipelineArtifact
               targetPath: $(Build.BinariesDirectory)/packages
-              artifactName: 'packages"
+              artifactName: "packages"
         steps:
         - powershell: |
            Rename-Item  -Path merged packages
