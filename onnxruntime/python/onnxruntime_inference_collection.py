@@ -21,7 +21,7 @@ if typing.TYPE_CHECKING:
     import onnxruntime
 
 
-def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
+def get_ort_device_type(device_type: str, device_index) -> int:
     if device_type == "cuda":
         return C.OrtDevice.cuda()
     elif device_type == "cann":
@@ -32,8 +32,10 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
         return C.OrtDevice.dml()
     elif device_type == "webgpu":
         return C.OrtDevice.webgpu()
-    elif device_type == "ort":
-        return C.get_ort_device(device_index).device_type()
+    elif device_type == "gpu":
+        return C.OrtDevice.gpu()
+    elif device_type == "npu":
+        return C.OrtDevice.npu()
     else:
         raise Exception("Unsupported device type: " + device_type)
 
@@ -889,7 +891,7 @@ class OrtValue:
         return self._ortvalue
 
     @classmethod
-    def ortvalue_from_numpy(cls, numpy_obj: np.ndarray, /, device_type="cpu", device_id=0) -> OrtValue:
+    def ortvalue_from_numpy(cls, numpy_obj: np.ndarray, /, device_type="cpu", device_id=0, vendor_id=-1) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object
         A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu
@@ -897,6 +899,7 @@ class OrtValue:
         :param numpy_obj: The Numpy object to construct the OrtValue from
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
+        :param vendor_id: If provided the device type should be "gpu" or "npu".
         """
         # Hold a reference to the numpy object (if device_type is 'cpu') as the OrtValue
         # is backed directly by the data buffer of the numpy object and so the numpy object
@@ -904,11 +907,7 @@ class OrtValue:
         return cls(
             C.OrtValue.ortvalue_from_numpy(
                 numpy_obj,
-                C.OrtDevice(
-                    get_ort_device_type(device_type, device_id),
-                    C.OrtDevice.default_memory(),
-                    device_id,
-                ),
+                OrtDevice.make(device_type, device_id, vendor_id)._get_c_device(),
             ),
             numpy_obj if device_type.lower() == "cpu" else None,
         )
@@ -929,7 +928,7 @@ class OrtValue:
 
     @classmethod
     def ortvalue_from_shape_and_type(
-        cls, shape: Sequence[int], element_type, device_type: str = "cpu", device_id: int = 0
+        cls, shape: Sequence[int], element_type, device_type: str = "cpu", device_id: int = 0, vendor_id: int = -1
     ) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
@@ -938,7 +937,11 @@ class OrtValue:
         :param element_type: The data type of the elements. It can be either numpy type (like numpy.float32) or an integer for onnx type (like onnx.TensorProto.BFLOAT16).
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
+        :param vendor_id: If provided the device type should be "gpu" or "npu".
         """
+
+        device = OrtDevice.make(device_type, device_id, vendor_id)._get_c_device()
+
         # Integer for onnx element type (see https://onnx.ai/onnx/api/mapping.html).
         # This is helpful for some data type (like TensorProto.BFLOAT16) that is not available in numpy.
         if isinstance(element_type, int):
@@ -946,11 +949,7 @@ class OrtValue:
                 C.OrtValue.ortvalue_from_shape_and_onnx_type(
                     shape,
                     element_type,
-                    C.OrtDevice(
-                        get_ort_device_type(device_type, device_id),
-                        C.OrtDevice.default_memory(),
-                        device_id,
-                    ),
+                    device,
                 )
             )
 
@@ -958,11 +957,7 @@ class OrtValue:
             C.OrtValue.ortvalue_from_shape_and_type(
                 shape,
                 element_type,
-                C.OrtDevice(
-                    get_ort_device_type(device_type, device_id),
-                    C.OrtDevice.default_memory(),
-                    device_id,
-                ),
+                device,
             )
         )
 
@@ -1085,20 +1080,36 @@ class OrtDevice:
         return self._ort_device
 
     @staticmethod
-    def make(ort_device_name, device_id):
-        return OrtDevice(
-            C.OrtDevice(
-                get_ort_device_type(ort_device_name, device_id),
-                C.OrtDevice.default_memory(),
-                device_id,
+    def make(ort_device_name, device_id, vendor_id=-1):
+        if vendor_id < 0:
+            # backwards compatibility with predefined OrtDevice names
+            return OrtDevice(
+                C.OrtDevice(
+                    get_ort_device_type(ort_device_name, device_id),
+                    C.OrtDevice.default_memory(),
+                    device_id,
+                )
             )
-        )
+        else:
+            # generic. use GPU or NPU for ort_device_name and provide a vendor id.
+            # vendor id of 0 is valid in some cases (e.g. webgpu is generic and does not have a vendor id)
+            return OrtDevice(
+                C.OrtDevice(
+                    get_ort_device_type(ort_device_name, device_id),
+                    C.OrtDevice.default_memory(),
+                    vendor_id,
+                    device_id,
+                )
+            )
 
     def device_id(self):
         return self._ort_device.device_id()
 
     def device_type(self):
         return self._ort_device.device_type()
+
+    def device_vendor_id(self):
+        return self._ort_device.vendor_id()
 
 
 class SparseTensor:

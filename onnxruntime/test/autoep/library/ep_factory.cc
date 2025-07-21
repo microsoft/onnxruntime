@@ -209,8 +209,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   // NOTE: The factory implementation is free to return a shared OrtAllocator* instance instead of creating a new
   //       allocator on each call. To do this have an allocator instance as an OrtEpFactory class member and make
   //       ReleaseAllocatorImpl a no-op.
-  auto cpu_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
-  *allocator = cpu_allocator.release();
+  auto device_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
+  *allocator = device_allocator.release();
+
   return nullptr;
 }
 

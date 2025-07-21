@@ -270,7 +270,7 @@ py::object GetPyObjFromTensor(const OrtValue& ort_value,
 
   const auto& tensor = ort_value.Get<Tensor>();
   const auto& device = tensor.Location().device;
-  
+
   if (tensor.IsDataTypeString()) {
     ORT_ENFORCE(device.Type() == OrtDevice::CPU, "Strings can only be on CPU");
     // Create a numpy array of strings (python objects) by copy/converting them
@@ -285,27 +285,30 @@ py::object GetPyObjFromTensor(const OrtValue& ort_value,
     return py::cast<py::object>(result);
   }
 
-  std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> shared_copy_to_host_functions;
-  if (!data_transfer_manager && !mem_cpy_to_host_functions) {
-    auto device_to_cpu_copy_func = CreateDataTransferMemCpy(device, OrtDevice{});
-    if (device_to_cpu_copy_func) {
-      shared_copy_to_host_functions.insert({device.Type(), device_to_cpu_copy_func});
-      mem_cpy_to_host_functions = &shared_copy_to_host_functions;
-    } else {
-      throw std::runtime_error(
-          "GetPyObjFromTensor: Either data transfer manager or a "
-          "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
-    }
-  }
-
   py::array result;
   if (data_transfer_manager != nullptr) {
     result = PrimitiveTensorToNumpyFromDevice(ort_value, data_transfer_manager);
   } else {
-    auto mem_cpy_to_host = mem_cpy_to_host_functions->find(device_type);
-    ORT_ENFORCE(mem_cpy_to_host != mem_cpy_to_host_functions->end(),
-                "Unable to locate a function that can copy data to the host from the device");
-    result = PrimitiveTensorToNumpyFromDevice(ort_value, mem_cpy_to_host->second);
+    bool copied = false;
+    if (mem_cpy_to_host_functions) {
+      auto mem_cpy_to_host = mem_cpy_to_host_functions->find(device_type);
+      if (mem_cpy_to_host != mem_cpy_to_host_functions->end()) {
+        result = PrimitiveTensorToNumpyFromDevice(ort_value, mem_cpy_to_host->second);
+        copied = true;
+      }
+    }
+
+    if (!copied) {
+      // see if we have a shared data transfer function from a plugin EP
+      auto device_to_cpu_copy_func = CreateDataTransferMemCpy(device, OrtDevice{});
+      if (device_to_cpu_copy_func) {
+        result = PrimitiveTensorToNumpyFromDevice(ort_value, device_to_cpu_copy_func);
+      } else {
+        throw std::runtime_error(
+            "GetPyObjFromTensor: Either data transfer manager or a "
+            "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
+      }
+    }
   }
 
   return py::cast<py::object>(result);
@@ -1911,6 +1914,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_static("npu", []() { return OrtDevice::NPU; })
       .def_static("dml", []() { return OrtDevice::DML; })
       .def_static("webgpu", []() { return OrtDevice::GPU; })
+      .def_static("gpu", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::enum_<OrtExecutionProviderDevicePolicy>(m, "OrtExecutionProviderDevicePolicy")

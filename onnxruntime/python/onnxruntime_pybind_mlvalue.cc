@@ -113,10 +113,8 @@ MemCpyFunc CreateDataTransferMemCpy([[maybe_unused]] const OrtDevice& src_device
   return nullptr;
 #else
 
-  // TEMPORARY: Need changes from data transfer/stream support PR #25254 to call GetDataTransferManager.
-  const DataTransferManager data_transfer_manager;
-  // auto& env = GetOrtEnv()->GetEnvironment();
-  // const DataTransferManager& data_transfer_manager = env.GetDataTransferManager();
+  auto& env = GetOrtEnv()->GetEnvironment();
+  const DataTransferManager& data_transfer_manager = env.GetDataTransferManager();
   const IDataTransfer* data_transfer = data_transfer_manager.GetDataTransfer(src_device, dst_device);
   if (!data_transfer) {
     return nullptr;

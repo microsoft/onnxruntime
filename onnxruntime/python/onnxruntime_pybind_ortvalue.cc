@@ -149,8 +149,8 @@ void addOrtValueMethods(pybind11::module& m) {
                                    cpu_to_device_copy_fn);
             } else {
               throw std::runtime_error(
-                  "Can't allocate memory on the GPU device using this package of OnnxRuntime. "
-                  "Please use the GPU package of OnnxRuntime for your hardware to use this feature.");
+                  "Can't allocate memory on the device using this package of OnnxRuntime. "
+                  "Please use the appropriate package of OnnxRuntime for your hardware to use this feature.");
             }
           }
         } else if (device.Type() == OrtDevice::NPU && device.Vendor() == OrtDevice::VendorIds::HUAWEI) {

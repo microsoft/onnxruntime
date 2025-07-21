@@ -183,7 +183,7 @@ class TestAutoEP(AutoEpTestCase):
         Test registration of an example EP plugin and retrieval of its OrtEpDevice.
         """
         if sys.platform != "win32":
-            self.skipTest("Skipping test because it device discovery is only supported on Windows")
+            self.skipTest("Skipping test because device discovery is only supported on Windows")
 
         ep_lib_path = "example_plugin_ep.dll"
         try:
@@ -242,6 +242,41 @@ class TestAutoEP(AutoEpTestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
         del sess  # Delete session before unregistering library
+        self.unregister_execution_provider_library(ep_name)
+
+    def test_example_plugin_ep_data_transfer(self):
+        """
+        Test usage of shared data transfer and allocator from plugin EP.
+        """
+        if sys.platform != "win32":
+            self.skipTest("Skipping test because device discovery is only supported on Windows")
+
+        ep_lib_path = "example_plugin_ep.dll"
+        try:
+            ep_lib_path = get_name("example_plugin_ep.dll")
+        except FileNotFoundError:
+            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+
+        ep_name = "example_ep"
+        self.register_execution_provider_library(ep_name, os.path.realpath(ep_lib_path))
+
+        data = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        data2 = data + 1
+
+        # the example EP pretends to use GPU memory so we can test data transfer.
+        # by matching its OrtDevice info we will hit its allocator and data transfer implementations.
+        # copy data from CPU to the fake GPU memory
+        gpu_value = onnxrt.OrtValue.ortvalue_from_numpy(data, "gpu", 0, 0xBE57)
+        # copy back to CPU
+        cpu_data = gpu_value.numpy()
+        np.testing.assert_equal(data, cpu_data)
+
+        gpu_value.update_inplace(data2)  # update the fake GPU data
+        cpu_data_2 = gpu_value.numpy()  # copy back to CPU
+        np.testing.assert_equal(data2, cpu_data_2)
+
+        gpu_value = None  # Delete OrtValue before unregistering library as the allocator will be destroyed.
+
         self.unregister_execution_provider_library(ep_name)
 
 
