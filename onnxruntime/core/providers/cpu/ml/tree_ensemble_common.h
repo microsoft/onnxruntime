@@ -21,9 +21,6 @@ namespace detail {
 // e.g., using a bitmap representation for small sets of consecutive integers.
 template <typename TCat, typename TInput>
 class TreeCategorySet {
-  typedef typename TCat cat_type;
-  typedef typename TInput input_type;
-
  public:
   TreeCategorySet(const std::vector<TCat>& values) : set_(values.begin(), values.end()) {}
   inline bool isIn(const TInput& val) const {
