@@ -1,26 +1,4 @@
-# This script is designed to trigger specific Azure DevOps pipelines based on a set of criteria.
-#
-# It supports two modes:
-#
-# 1. CI Build Mode (Default):
-#    - Triggers pipelines in the 'Lotus' project.
-#    - Filters pipelines based on the following criteria:
-#      - Repository Association: Must be 'https://github.com/microsoft/onnxruntime'.
-#      - Recent Activity: Must have run in the last 30 days.
-#      - Pipeline Type: Must be YAML-based.
-#      - Trigger Type: Must NOT be triggered by another pipeline resource.
-#      - Template Requirement: Must extend from 'v1/1ES.Official.PipelineTemplate.yml@1esPipelines'.
-#
-# 2. Pull Request (PR) Mode:
-#    - Activated by using the '--pr <ID>' argument.
-#    - Triggers pipelines in the 'PublicPackages' project.
-#    - Filters pipelines based on a simplified criteria:
-#      - Repository Association: Must be 'https://github.com/microsoft/onnxruntime'.
-#      - Recent Activity: Must have run in the last 30 days.
-#      - Pipeline Type: Must be YAML-based.
-#
-# The script also includes a feature to cancel any currently running builds for a matching
-# pipeline on the target branch/PR before queuing a new one.
+# See PythonTools.md in this folder
 
 import argparse
 import json
@@ -235,8 +213,7 @@ def evaluate_single_pipeline(
 
             # Check for packaging pipeline variables/parameters
             packaging_exceptions = [
-                "onnxruntime-ios-packaging-pipeline",
-                "1ES-onnxruntime-Nuget-WindowsAI-Pipeline-Official",
+                "onnxruntime-ios-packaging-pipeline"
             ]
             if "packaging" in pipeline_name.lower() or "nuget" in pipeline_name.lower():
                 print("  - Detected packaging pipeline. Checking for required variables/parameters...")
