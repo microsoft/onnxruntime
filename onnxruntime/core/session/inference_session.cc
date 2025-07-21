@@ -2295,6 +2295,7 @@ common::Status InferenceSession::Initialize() {
       //
       std::vector<const char*> graph_support_ep_list = {
           onnxruntime::kTensorrtExecutionProvider,
+          onnxruntime::kNvTensorRTRTXExecutionProvider,
           onnxruntime::kCudaExecutionProvider,
           onnxruntime::kRocmExecutionProvider,
           onnxruntime::kJsExecutionProvider,
