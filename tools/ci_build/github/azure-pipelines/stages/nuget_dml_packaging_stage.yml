@@ -20,28 +20,28 @@ stages:
     pool:
       name: 'onnxruntime-Win2022-GPU-dml-A10'
       os: windows
-      templateContext:
-        inputs:
-        - input: pipelineArtifact
-          artifactName: drop-nuget-dml
-          targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
-        - input: pipelineArtifact
-          artifactName: drop-win-dml-arm64-zip
-          targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
-        outputs:
-          - ${{if and(eq(parameters.IsReleaseBuild, false), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/users/snnn/')))}}:
-            - output: nuget
-              useDotNetTask: false # The default is false to use the NuGetCommand task. Set to true to use the DotNetCoreCLI task to publish packages.
-              packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg'
-              packageParentPath: '$(Build.ArtifactStagingDirectory)/'
-              publishVstsFeed: PublicPackages/ORT-Nightly  # Required when pushing to internal feed.
-              nuGetFeedType: internal  # Change to external when publishing to external feed
-              allowPackageConflicts: true # Optional. NuGetCommand task only.
-              publishPackageMetadata: true # Optional
-          - ${{ else }}:
-            - output: pipelineArtifact
-              targetPath: $(Build.ArtifactStagingDirectory)
-              artifactName: "packages"
+    templateContext:
+      inputs:
+      - input: pipelineArtifact
+        artifactName: drop-nuget-dml
+        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
+      - input: pipelineArtifact
+        artifactName: drop-win-dml-arm64-zip
+        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
+      outputs:
+        - ${{if and(eq(parameters.IsReleaseBuild, false), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/users/snnn/')))}}:
+          - output: nuget
+            useDotNetTask: false # The default is false to use the NuGetCommand task. Set to true to use the DotNetCoreCLI task to publish packages.
+            packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg'
+            packageParentPath: '$(Build.ArtifactStagingDirectory)/'
+            publishVstsFeed: PublicPackages/ORT-Nightly  # Required when pushing to internal feed.
+            nuGetFeedType: internal  # Change to external when publishing to external feed
+            allowPackageConflicts: true # Optional. NuGetCommand task only.
+            publishPackageMetadata: true # Optional
+        - ${{ else }}:
+          - output: pipelineArtifact
+            targetPath: $(Build.ArtifactStagingDirectory)
+            artifactName: "packages"
     steps:
     - task: PowerShell@2
       inputs:
