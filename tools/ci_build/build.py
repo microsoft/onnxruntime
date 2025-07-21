@@ -892,12 +892,11 @@ def generate_build_tree(
     #     *  MacOs (case must be ignored)
     if not args.no_kleidiai:
         if (
-           (args.android and "arm64" in args.android_abi.lower()) or
-           (is_windows() and (args.arm64 or args.arm64ec or args.arm) and platform.architecture()[0] != "AMD64") or
-           ("arm64" in platform.machine().lower())
-           ):
-               cmake_args += [f"-Donnxruntime_USE_KLEIDIAI=ON"]
-
+            (args.android and "arm64" in args.android_abi.lower())
+            or (is_windows() and (args.arm64 or args.arm64ec or args.arm) and platform.architecture()[0] != "AMD64")
+            or ("arm64" in platform.machine().lower())
+        ):
+            cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
 
     if is_macOS() and (args.macos or args.ios or args.visionos or args.tvos):
         # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.

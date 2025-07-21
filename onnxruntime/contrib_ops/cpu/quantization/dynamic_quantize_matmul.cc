@@ -189,10 +189,10 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
       const OrtValue* b_scale;
       auto b_scale_available = Info().TryGetConstantInput(IN_B_SCALE, &b_scale);
 
-      CanUseDynamicQuantMLAS = (!b_zp_present && b_scale_available);
+      can_use_dynamic_quant_mlas_ = (!b_zp_present && b_scale_available);
 
       // Can we use the MLAS dynamic Q gemm interface supported with float output ?
-      if (!CanUseDynamicQuantMLAS) {
+      if (!can_use_dynamic_quant_mlas_) {
         // default to piece wise mlas interface with separate int matmul, quantize and float conversion
         return MatMulIntegerToFloatBase::PrePack(tensor, input_idx, alloc, is_packed, prepacked_weights);
 
@@ -209,7 +209,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
         const OrtValue* bias;
         if (Info().TryGetConstantInput(IN_BIAS, &bias)) {
           bias_tensor = &bias->Get<Tensor>();
-          DynamicQuantMLASPacked = true;
+          dynamic_quant_mlas_packed_ = true;
         }
 #endif
 
@@ -238,11 +238,11 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
         packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
         // Initialize memory to 0 as there could be some padding associated with pre-packed
-        // buffer memory and we don not want it uninitialized and generate different hashes
+        // buffer memory and we do not want it uninitialized and generate different hashes
         // if and when we try to cache this pre-packed buffer for sharing between sessions.
         memset(packed_b_.get(), 0, packed_b_size);
 
-        const auto scales = (size_t)b_scale_tensor->Shape().Size() == N ? std::vector<float>(&b_scale_tensor->Data<float>()[0],
+        const auto scales = static_cast(b_scale_tensor->Shape().Size()) == N ? std::vector<float>(&b_scale_tensor->Data<float>()[0],
                                                                                              &b_scale_tensor->Data<float>()[N])
                                                                         :
                                                                         // Broadcast matrix scale to all channels
@@ -282,8 +282,8 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
   int GetBIdx() const override { return IN_B; }
 
  private:
-  bool CanUseDynamicQuantMLAS{false};
-  bool DynamicQuantMLASPacked{false};
+  bool can_use_dynamic_quant_mlas_{false};
+  bool dynamic_quant_mlas_packed_{false};
 };
 
 class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
@@ -313,7 +313,7 @@ class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
 
 Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
   // Can this operation be offloaded to a MLAS specific dynamic quantization matmul ?
-  if (!CanUseDynamicQuantMLAS) {
+  if (!can_use_dynamic_quant_mlas_) {
     const Tensor* a = ctx->Input<Tensor>(IN_A);
     const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
 
@@ -389,7 +389,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
 
     MlasDynamicQGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool());
     // This evaluates to true if bias data was not provided as constant data for prepacking stage
-    if (!DynamicQuantMLASPacked) {
+    if (!dynamic_quant_mlas_packed_) {
       if (ctx->Input<Tensor>(IN_BIAS) != nullptr) {
         const auto biases = std::vector<float>(&ctx->Input<Tensor>(IN_BIAS)->Data<float>()[0],
                                                &ctx->Input<Tensor>(IN_BIAS)->Data<float>()[gemm_shape.N]);

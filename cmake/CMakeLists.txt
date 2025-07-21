@@ -87,7 +87,7 @@ option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 # iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so
 if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
-  message(STATUS "Disabling KleidiAI: iOS simulator (x86_64) is not supported")
+    message(WARNING "Disabling KleidiAI: not supported on Apple x86_64 platforms")
   set(onnxruntime_USE_KLEIDIAI OFF CACHE BOOL "" FORCE)
 endif()
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
