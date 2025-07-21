@@ -116,7 +116,7 @@ struct TreeEnsembleAttributesV3 {
   // For categorical features, this container stores set of members for every rule
   // MEMBERSHIP_BIGSET. The threshold or node value (stored in value_or_unique_weight)
   // is casted into an integer, an index, corresponding to the set in `bigsets`.
-  std::vector<std::vector<ThresholdType>> bigsets;  
+  std::vector<std::vector<ThresholdType>> bigsets;
 };
 
 template <typename ThresholdType>
@@ -306,7 +306,11 @@ struct TreeEnsembleAttributesV5 {
           if (membership_values_by_id[curr_id].size() < 31 &&
               *std::max_element(membership_values_by_id[curr_id].begin(), membership_values_by_id[curr_id].end()) <= static_cast<ThresholdType>(30) &&
               *std::min_element(membership_values_by_id[curr_id].begin(), membership_values_by_id[curr_id].end()) >= static_cast<ThresholdType>(0)) {
-            // node is a mode `BRANCH_MEMBER`, we need to unroll it to a chain of `BRANCH_EQ` nodes
+            // If the set of membership values is small enough, we can unroll it into a chain of `BRANCH_EQ` nodes.
+            // Then when the tree is built, the chain of `BRANCH_EQ` nodes will be merged into a single `BRANCH_MEMBER` node.
+            // This optimization was implemented before ai.onnx.ml<5 and is still valid.
+            // However, for very big sets, unrolling the nodes is not efficient at all.
+            // In that case, we change the `BRANCH_MEMBER` node into a `BRANCH_MEMBER_BIGSET` node.
             before = output.nodes_truenodeids.size();
             for (size_t i_member = 0; i_member < membership_values_by_id[curr_id].size() - 1; ++i_member) {
               auto member = membership_values_by_id[curr_id][i_member];
@@ -328,6 +332,7 @@ struct TreeEnsembleAttributesV5 {
               ++curr_nodeid;
             }
           } else {
+            // This a very big set, we change the `BRANCH_MEMBER` node into a `BRANCH_MEMBER_BIGSET` node.
             big_set = true;
           }
         }
