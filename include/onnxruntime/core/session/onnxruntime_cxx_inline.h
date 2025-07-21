@@ -819,6 +819,15 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelPath(
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextBinaryInformation(
+    const ORTCHAR_T* output_directory, const ORTCHAR_T* model_name) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextBinaryInformation(
+      this->p_,
+      output_directory,
+      model_name));
+  return *this;
+}
+
 inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalInitializersFile(
     const ORTCHAR_T* file_path, size_t initializer_size_threshold) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelExternalInitializersFile(
@@ -2618,7 +2627,7 @@ inline std::string ShapeInferContext::GetAttrString(const char* attr_name) {
   if (status) {
     std::vector<char> chars(out, '\0');
     Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRING, chars.data(), out, &out));
-    return {chars.data()};
+    return std::string{chars.data(), out};
   } else {
     return {c};
   }

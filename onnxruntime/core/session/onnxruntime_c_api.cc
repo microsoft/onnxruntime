@@ -22,6 +22,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/ort_value.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"
@@ -32,6 +33,7 @@
 #include "core/graph/model_editor_api_types.h"
 #include "core/graph/ep_api_types.h"
 #include "core/providers/get_execution_providers.h"
+#include "core/session/abi_devices.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
@@ -298,7 +300,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorAsOrtValue, _Inout_ OrtAllocator* alloc
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorAsOrtValue, _Inout_ OrtAllocator* allocator, _In_ const int64_t* dense_shape,
+ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
+                    _In_ const int64_t* dense_shape,
                     size_t dense_shape_len, ONNXTensorElementDataType type, _Outptr_ OrtValue** out) {
   API_IMPL_BEGIN
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -1312,9 +1315,17 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElement, _In_ const OrtValue* value,
 
 using DefListResult = std::pair<Status, const InputDefList*>;
 using GetDefListFn = DefListResult (*)(const ::onnxruntime::InferenceSession*);
-const auto get_inputs_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult { return session->GetModelInputs(); };
-const auto get_outputs_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult { return session->GetModelOutputs(); };
-const auto get_overridable_initializers_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult { return session->GetOverridableInitializers(); };
+const auto get_inputs_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult {
+  return session->GetModelInputs();
+};
+
+const auto get_outputs_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult {
+  return session->GetModelOutputs();
+};
+
+const auto get_overridable_initializers_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult {
+  return session->GetOverridableInitializers();
+};
 
 static ORT_STATUS_PTR GetNodeDefListCountHelper(const OrtSession* sess, GetDefListFn get_fn, size_t* out) {
   API_IMPL_BEGIN
@@ -2591,6 +2602,29 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetNumOperatorSets, _In_ const OrtGraph* graph, _Out_ size_t* num_operator_sets) {
+  API_IMPL_BEGIN
+  if (num_operator_sets == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_operator_sets' argument is NULL");
+  }
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetNumOperatorSets(*num_operator_sets));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetOperatorSets, _In_ const OrtGraph* graph,
+                    _Out_writes_(num_operator_sets) const char** domains,
+                    _Out_writes_(num_operator_sets) int64_t* opset_versions, _In_ size_t num_operator_sets) {
+  API_IMPL_BEGIN
+  gsl::span<const char*> domains_span(domains, num_operator_sets);
+  gsl::span<int64_t> versions_span(opset_versions, num_operator_sets);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetOperatorSets(domains_span, versions_span));
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetNumInputs, _In_ const OrtGraph* graph, _Out_ size_t* num_inputs) {
   API_IMPL_BEGIN
   if (num_inputs == nullptr) {
@@ -2687,6 +2721,91 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph, _O
   }
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetParentNode(*node));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
+                    _In_ const OrtNode** nodes,
+                    _In_ size_t num_nodes,
+                    _Outptr_ OrtGraph** dst_graph) {
+  API_IMPL_BEGIN
+
+  if (num_nodes == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_nodes' argument should be > 0");
+  }
+
+  const EpGraph* ep_graph = EpGraph::ToInternal(src_graph);
+  if (ep_graph == nullptr) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "src_graph is a ModelEditorGraph which doesn't support Graph_GetSubGraph.");
+  }
+  const Graph& graph = ep_graph->GetGraphViewer().GetGraph();
+
+  // Create a GraphViewer with filtered info
+  std::unique_ptr<IndexedSubGraph> indexed_sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph::MetaDef> metadef = std::make_unique<IndexedSubGraph::MetaDef>();
+  metadef->name = "sub_graph";
+  metadef->since_version = 1;
+  std::unordered_set<std::string> outputs;
+  std::unordered_set<const NodeArg*> initializers;
+
+  auto add_inputs = [&](ConstPointerContainer<std::vector<NodeArg*>> defs) {
+    for (const auto* def : defs) {
+      if (def->Exists()) {
+        // not the output of a previous node
+        if (outputs.count(def->Name()) == 0) {
+          metadef->inputs.push_back(def->Name());
+        } else {
+          // consumed by node so no longer subgraph output
+          // NOTE: Ignoring edge case where a node output is an overall graph output AND a node input
+          outputs.erase(def->Name());
+        }
+
+        if (graph.IsInitializedTensor(def->Name())) {
+          initializers.insert(def);
+        }
+      }
+    }
+  };
+
+  auto add_node = [&](const Node& node) {
+    indexed_sub_graph->nodes.push_back(node.Index());
+    add_inputs(node.InputDefs());
+    add_inputs(node.ImplicitInputDefs());
+
+    for (const auto* def : node.OutputDefs()) {
+      outputs.insert(def->Name());
+    }
+  };
+
+  // Add nodes
+  for (size_t node_idx = 0; node_idx < num_nodes; node_idx++) {
+    const OrtNode* ort_node = nodes[node_idx];
+    const EpNode* ep_node = EpNode::ToInternal(ort_node);
+    if (ep_node == nullptr) {
+      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Graph_GetSubGraph.");
+    }
+    add_node(ep_node->GetInternalNode());
+  }
+
+  // Add initializers
+  for (auto& initializer : initializers) {
+    metadef->constant_initializers.push_back(initializer->Name());
+  }
+
+  // Add outputs
+  for (auto& output : outputs) {
+    metadef->outputs.push_back(output);
+  }
+
+  indexed_sub_graph->SetMetaDef(std::move(metadef));
+  auto graph_viewer = std::make_unique<GraphViewer>(graph, *indexed_sub_graph.get());
+
+  std::unique_ptr<EpGraph> result;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(graph_viewer), std::move(indexed_sub_graph), result));
+
+  *dst_graph = result.release();
+
   return nullptr;
   API_IMPL_END
 }
@@ -2922,10 +3041,11 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetNumSubgraphs, _In_ const OrtNode* node, _Ou
 }
 
 ORT_API_STATUS_IMPL(OrtApis::Node_GetSubgraphs, _In_ const OrtNode* node,
-                    _Out_writes_(num_subgraphs) const OrtGraph** subgraphs, _In_ size_t num_subgraphs) {
+                    _Out_writes_(num_subgraphs) const OrtGraph** subgraphs, _In_ size_t num_subgraphs,
+                    _Out_writes_opt_(num_subgraphs) const char** attribute_names) {
   API_IMPL_BEGIN
   gsl::span<const OrtGraph*> graphs_span(subgraphs, num_subgraphs);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetSubgraphs(graphs_span));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetSubgraphs(graphs_span, attribute_names));
   return nullptr;
   API_IMPL_END
 }
@@ -2939,6 +3059,23 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetGraph, _In_ const OrtNode* node,
 
   *graph = nullptr;
   ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetGraph(*graph));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetEpName, _In_ const OrtNode* node,
+                    _Outptr_result_maybenull_ const char** out) {
+  API_IMPL_BEGIN
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'out' argument is NULL");
+  }
+
+  const EpNode* ep_node = EpNode::ToInternal(node);
+  if (ep_node == nullptr) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Node_GetEpName.");
+  }
+
+  *out = ep_node->GetEpName().c_str();
   return nullptr;
   API_IMPL_END
 }
@@ -3061,6 +3198,148 @@ ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
   return OrtExecutionProviderApi::GetEpApi();
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession* ort_session,
+                    _Out_writes_(num_values) const OrtEpDevice** inputs_ep_devices,
+                    _In_ size_t num_values) {
+  API_IMPL_BEGIN
+  if (ort_session == nullptr || inputs_ep_devices == nullptr || num_values == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument provided to SessionGetEpDeviceForInputs.");
+  }
+
+  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(ort_session);
+
+  InlinedVector<const OrtEpDevice*> ep_devices;
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->GetEpDeviceForInputs(ep_devices));
+
+  auto num_found = ep_devices.size();
+  if (num_found > num_values) {
+    auto msg = MakeString("Number of inputs ", num_found, " exceeds the provided size of ", num_values);
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, msg.c_str());
+  }
+
+  for (size_t i = 0; i < num_values; ++i) {
+    inputs_ep_devices[i] = (i < num_found) ? ep_devices[i] : nullptr;
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
+                    _In_opt_ const OrtKeyValuePairs* stream_options,
+                    _Outptr_ OrtSyncStream** ort_stream) {
+  API_IMPL_BEGIN
+  if (ep_device == nullptr || ort_stream == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device and stream must be provided.");
+  }
+
+  const OrtDevice* device = ep_device->device_memory_info ? &ep_device->device_memory_info->device : nullptr;
+
+  if (device == nullptr || device->MemType() != OrtDevice::MemType::DEFAULT) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device does not use DEFAULT memory of a non-CPU device.");
+  }
+
+  const auto* factory = ep_device->ep_factory;
+  if (!factory->IsStreamAware(factory)) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support streams.");
+  }
+
+  // get the stream implementation from the EP factory
+  OrtSyncStreamImpl* stream_impl = nullptr;
+  ORT_API_RETURN_IF_ERROR(factory->CreateSyncStreamForDevice(ep_device->GetMutableFactory(),
+                                                             static_cast<const OrtMemoryDevice*>(device),  // alias
+                                                             stream_options, &stream_impl));
+
+  if (stream_impl == nullptr) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Failed to get a stream implementation from the EP factory.");
+  }
+
+  // create the wrapper class that uses the EP implementation
+  auto stream = std::make_unique<plugin_ep::Stream>(ep_device->device_memory_info->device,
+                                                    *stream_impl, LoggingManager::DefaultLogger());
+
+  // cast to base type, and to API alias type
+  *ort_stream = static_cast<OrtSyncStream*>(static_cast<Stream*>(stream.release()));
+
+  return nullptr;
+
+  API_IMPL_END
+}
+
+ORT_API(void*, OrtApis::SyncStream_GetHandle, _In_ OrtSyncStream* stream) {
+  return stream->GetHandle();
+}
+
+ORT_API(void, OrtApis::ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* ort_stream) {
+  // convert from API alias to internal type
+  auto* stream = static_cast<Stream*>(ort_stream);
+
+  // the only way for the user to get a non-const OrtSyncStream is from CreateSyncStreamForEpDevice,
+  // so we can safely cast to the plugin_ep::Stream type.
+  std::unique_ptr<plugin_ep::Stream> ep_stream(reinterpret_cast<plugin_ep::Stream*>(stream));
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
+                    _In_reads_(num_tensors) const OrtValue* const* src_tensors,
+                    _In_reads_(num_tensors) OrtValue* const* dst_tensors,
+                    _In_opt_ OrtSyncStream* stream,
+                    _In_ size_t num_tensors) {
+  API_IMPL_BEGIN
+  if (env == nullptr || src_tensors == nullptr || dst_tensors == nullptr || num_tensors == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments provided to CopyTensors.");
+  }
+
+  const OrtMemoryInfo* src_memory_info = nullptr;
+  const OrtMemoryInfo* dst_memory_info = nullptr;
+
+  const auto validate_and_get_mem_info =
+      [](const OrtValue* const* values, size_t num_values, const OrtMemoryInfo*& mem_info) -> OrtStatus* {
+    for (size_t i = 0; i < num_values; ++i) {
+      const OrtValue* value = values[i];
+      if (value == nullptr || !value->IsTensor() || !value->IsAllocated()) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtValue must contain Tensor with data.");
+      }
+
+      if (i == 0) {
+        mem_info = &value->Get<Tensor>().Location();
+      } else if (*mem_info != value->Get<Tensor>().Location()) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "All OrtValue instances must have the same OrtMemoryInfo");
+      }
+    }
+
+    return nullptr;
+  };
+
+  ORT_API_RETURN_IF_ERROR(validate_and_get_mem_info(src_tensors, num_tensors, src_memory_info));
+  ORT_API_RETURN_IF_ERROR(validate_and_get_mem_info(const_cast<const OrtValue**>(dst_tensors), num_tensors,
+                                                    dst_memory_info));
+
+  auto& data_transfer_mgr = env->GetEnvironment().GetDataTransferManager();
+  const auto* data_transfer = data_transfer_mgr.GetDataTransfer(src_memory_info->device, dst_memory_info->device);
+
+  if (data_transfer == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "Data transfer implementation between source and destination device was not found.");
+  }
+
+  std::vector<IDataTransfer::SrcDstPair> pairs;
+  pairs.reserve(num_tensors);
+  for (size_t i = 0; i < num_tensors; ++i) {
+    pairs.push_back({
+        src_tensors[i]->Get<Tensor>(),
+        *dst_tensors[i]->GetMutable<Tensor>(),
+        stream,
+    });
+  }
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(data_transfer->CopyTensors(pairs));
+
+  return nullptr;
+
+  API_IMPL_END
+}
+
 #else  // defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, const char* /*registration_name*/,
                     const ORTCHAR_T* /*path*/) {
@@ -3092,13 +3371,47 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
                     size_t /*num_ep_options*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
-
   API_IMPL_END
 }
 
 ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
   fprintf(stderr, "The Execution Provider API is not supported in a minimal build.\n");
   return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession* /*ort_session*/,
+                    _Out_writes_(num_values) const OrtEpDevice** /*inputs_ep_devices*/,
+                    _In_ size_t /*num_values*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* /*ep_device*/,
+                    _In_opt_ const OrtKeyValuePairs* /*stream_options*/,
+                    _Outptr_ OrtSyncStream** /*ort_stream*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API(void*, OrtApis::SyncStream_GetHandle, _In_ OrtSyncStream* /*stream*/) {
+  fprintf(stderr, "OrtSyncStream is not supported in a minimal build.\n");
+  return nullptr;
+}
+
+ORT_API(void, OrtApis::ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* /*ort_stream*/) {
+  fprintf(stderr, "OrtSyncStream is not supported in a minimal build.\n");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* /*env*/,
+                    _In_reads_(num_tensors) const OrtValue* const* /*src_tensors*/,
+                    _In_reads_(num_tensors) OrtValue* const* /*dst_tensors*/,
+                    _In_opt_ OrtSyncStream* /*stream*/,
+                    _In_ size_t /*num_tensors*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -3144,8 +3457,61 @@ ORT_API(const OrtHardwareDevice*, OrtApis::EpDevice_Device, _In_ const OrtEpDevi
   return ep_device->device;
 }
 
-ORT_API(const OrtMemoryInfo*, OrtApis::EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device) {
-  return ep_device->device_memory_info;
+ORT_API(const OrtMemoryInfo*, OrtApis::EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device,
+        _In_ OrtDeviceMemoryType memory_type) {
+  switch (memory_type) {
+    case OrtDeviceMemoryType_DEFAULT:
+      return ep_device->device_memory_info;
+    case OrtDeviceMemoryType_HOST_ACCESSIBLE:
+      return ep_device->host_accessible_memory_info;
+    default:
+      return nullptr;
+  }
+}
+
+namespace {
+OrtStatus* GetInputOutputMemoryInfo(const OrtSession* ort_session,
+                                    InferenceSession::SessionInputOutputType type,
+                                    const OrtMemoryInfo** memory_info,
+                                    _In_ size_t num_values) {
+  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(ort_session);
+
+  InlinedVector<const OrtMemoryInfo*> mem_info;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      session->GetInputOutputMemoryInfo(InferenceSession::SessionInputOutputType::kInput, mem_info));
+
+  auto num_found = mem_info.size();
+  if (num_found > num_values) {
+    auto msg = MakeString("Number of ",
+                          type == InferenceSession::SessionInputOutputType::kOutput ? "outputs " : "inputs ",
+                          mem_info.size(), " exceeds the provided size of ", num_values);
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, msg.c_str());
+  }
+
+  for (size_t i = 0; i < num_values; ++i) {
+    memory_info[i] = (i < num_found) ? mem_info[i] : nullptr;
+  }
+
+  return nullptr;
+}
+}  // namespace
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForInputs, _In_ const OrtSession* ort_session,
+                    _Out_writes_(num_inputs) const OrtMemoryInfo** inputs_memory_info,
+                    _In_ size_t num_inputs) {
+  API_IMPL_BEGIN
+  return GetInputOutputMemoryInfo(ort_session, InferenceSession::SessionInputOutputType::kInput,
+                                  inputs_memory_info, num_inputs);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForOutputs, _In_ const OrtSession* session,
+                    _Out_writes_(num_outputs) const OrtMemoryInfo** outputs_memory_info,
+                    _In_ size_t num_outputs) {
+  API_IMPL_BEGIN
+  return GetInputOutputMemoryInfo(session, InferenceSession::SessionInputOutputType::kOutput,
+                                  outputs_memory_info, num_outputs);
+  API_IMPL_END
 }
 
 static constexpr OrtApiBase ort_api_base = {
@@ -3582,6 +3948,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::AllocatorGetStats,
 
     &OrtApis::CreateMemoryInfo_V2,
+    &OrtApis::MemoryInfoGetDeviceMemType,
+    &OrtApis::MemoryInfoGetVendorId,
 
     &OrtApis::ValueInfo_GetValueProducer,
     &OrtApis::ValueInfo_GetValueNumConsumers,
@@ -3594,6 +3962,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ValueInfo_IsFromOuterScope,
     &OrtApis::Graph_GetName,
     &OrtApis::Graph_GetOnnxIRVersion,
+    &OrtApis::Graph_GetNumOperatorSets,
+    &OrtApis::Graph_GetOperatorSets,
     &OrtApis::Graph_GetNumInputs,
     &OrtApis::Graph_GetInputs,
     &OrtApis::Graph_GetNumOutputs,
@@ -3603,6 +3973,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Graph_GetNumNodes,
     &OrtApis::Graph_GetNodes,
     &OrtApis::Graph_GetParentNode,
+    &OrtApis::Graph_GetGraphView,
     &OrtApis::Node_GetId,
     &OrtApis::Node_GetName,
     &OrtApis::Node_GetOperatorType,
@@ -3622,6 +3993,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetNumSubgraphs,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetGraph,
+    &OrtApis::Node_GetEpName,
 
     &OrtApis::GetRunConfigEntry,
 
@@ -3634,6 +4006,16 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::GetTensorData,
 
     &OrtApis::GetSessionOptionsConfigEntries,
+
+    &OrtApis::SessionGetMemoryInfoForInputs,
+    &OrtApis::SessionGetMemoryInfoForOutputs,
+    &OrtApis::SessionGetEpDeviceForInputs,
+
+    &OrtApis::CreateSyncStreamForEpDevice,
+    &OrtApis::SyncStream_GetHandle,
+    &OrtApis::ReleaseSyncStream,
+
+    &OrtApis::CopyTensors,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

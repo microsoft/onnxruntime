@@ -55,14 +55,14 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   // If the input A is 1-D, it is promoted to a matrix by prepending a 1 to its dimensions.
   if (a_shape.size() == 1) {
     a_shape.insert(a_shape.begin(), 1);
-    emscripten::val a_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(a_shape));
+    emscripten::val a_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(a_shape));
     common_options.set("label", node.Name() + "_reshape_a");
     a = model_builder.GetBuilder().call<emscripten::val>("reshape", a, a_shape_arr, common_options);
   }
   // If the input B is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
   if (b_shape.size() == 1) {
     b_shape.push_back(1);
-    emscripten::val b_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(b_shape));
+    emscripten::val b_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(b_shape));
     common_options.set("label", node.Name() + "_reshape_b");
     b = model_builder.GetBuilder().call<emscripten::val>("reshape", b, b_shape_arr, common_options);
   }
@@ -74,7 +74,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     // If A or B input is 1-D, we need to reshape the output back to its original shape.
     if (a_shape.size() == 1 || b_shape.size() == 1) {
       common_options.set("label", node.Name() + "_reshape_output");
-      emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(output_shape));
+      emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_shape));
       output = model_builder.GetBuilder().call<emscripten::val>("reshape",
                                                                 output,
                                                                 output_shape_arr,
@@ -91,11 +91,11 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       a_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
       std::vector<int64_t> a_zero_point_shape;
       ORT_RETURN_IF_NOT(GetShape(*input_defs[2], a_zero_point_shape, logger), "Cannot get shape of a_zero_point");
-      // Scale is not used by MatMulInteger but required by DequantizeLinear. So set it to deafult value 1.0f.
+      // Scale is not used by MatMulInteger but required by DequantizeLinear. So set it to default value 1.0f.
       // The scale input should have the same shape as the zero point input.
       a_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                                          1.0f,
-                                                         GetNarrowedIntfromInt64<uint32_t>(a_zero_point_shape));
+                                                         GetNarrowedIntFromInt64<uint32_t>(a_zero_point_shape));
     } else {
       // If a_zero_point is not provided, create default scalar for zero_point and scale inputs.
       a_zero_point = model_builder.CreateOrGetConstant<uint8_t>(a_type, 0);
@@ -115,7 +115,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       ORT_RETURN_IF_NOT(GetShape(*input_defs[3], b_zero_point_shape, logger), "Cannot get shape of b_zero_point");
       b_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                                          1.0f,
-                                                         GetNarrowedIntfromInt64<uint32_t>(b_zero_point_shape));
+                                                         GetNarrowedIntFromInt64<uint32_t>(b_zero_point_shape));
     } else {
       b_zero_point = model_builder.CreateOrGetConstant<uint8_t>(a_type, 0);
       b_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f);
@@ -143,7 +143,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     // If A or B input is 1-D, we need to reshape the output back to its original shape.
     if (a_shape.size() == 1 || b_shape.size() == 1) {
       common_options.set("label", node.Name() + "_reshape_output");
-      emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(output_shape));
+      emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_shape));
       output = model_builder.GetBuilder().call<emscripten::val>("reshape",
                                                                 output,
                                                                 output_shape_arr,
@@ -268,11 +268,45 @@ bool GemmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
     return false;
   }
 
-  if (op_type == "MatMulInteger") {
-    // The first decomposed op of MatMulInteger is DequantizeLinear, and so
-    // we only need to ensure it supports the input0_type.
+  if (op_type == "Gemm") {
+    return IsInputRankSupportedByOp(node, wnn_limits, logger) &&
+           IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "A", logger);
+  } else if (op_type == "MatMulInteger") {
+    // Check up to 4 inputs for MatMulInteger
+    for (size_t i = 0; i < input_defs.size(); ++i) {
+      std::vector<int64_t> shape;
+      if (!GetShape(*input_defs[i], shape, logger)) {
+        return false;
+      }
+
+      // We made workaround to support 1D for input A and B, skip further checks if they are 1D
+      if (i <= 1 && shape.size() == 1) {
+        continue;
+      }
+
+      // For DequantizeLinear, input indices: 0 (x), 1 (scale), 2 (zero_point)
+      if (!IsInputRankSupported(wnn_limits, "dequantizeLinear",
+                                (i < 2) ? "input" : "zeroPoint",
+                                shape.size(), node.Name(), logger)) {
+        return false;
+      }
+    }
     return IsDataTypeSupportedByOp("DequantizeLinear", input0_type, wnn_limits, "input", "x", logger);
-  } else {
+  } else {  // MatMul
+    for (int i = 0; i < 2; ++i) {
+      std::vector<int64_t> shape;
+      if (!GetShape(*input_defs[i], shape, logger)) {
+        return false;
+      }
+
+      if (shape.size() == 1) {
+        continue;
+      }
+
+      if (!IsInputRankSupported(wnn_limits, "matmul", (i == 0) ? "a" : "b", shape.size(), node.Name(), logger)) {
+        return false;
+      }
+    }
     return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "A", logger);
   }
 }

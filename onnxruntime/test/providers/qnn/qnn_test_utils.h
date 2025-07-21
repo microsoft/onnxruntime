@@ -547,6 +547,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   std::string f32_model_data;
   f32_model_fn(f32_helper);
   f32_helper.SetGraphOutputs();
+
   ASSERT_STATUS_OK(f32_model.MainGraph().Resolve());
   f32_model.ToProto().SerializeToString(&f32_model_data);
 
@@ -589,6 +590,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   std::string qdq_model_data;
   qdq_model_fn(qdq_helper, output_qparams);
   qdq_helper.SetGraphOutputs();
+
   ASSERT_STATUS_OK(qdq_model.MainGraph().Resolve());
   qdq_model.ToProto().SerializeToString(&qdq_model_data);
 
@@ -1105,6 +1107,15 @@ class QnnHTPBackendTests : public ::testing::Test {
 
   static BackendSupport cached_htp_support_;  // Set by the first test using this fixture.
   static BackendSupport cached_ir_support_;
+};
+
+// Testing fixture class for tests that require the QNN GPU backend. Checks if QNN GPU is available before the test
+// begins. The test is skipped if the GPU backend is unavailable (may occur on Windows ARM64).
+class QnnGPUBackendTests : public ::testing::Test {
+ protected:
+  void SetUp() override;
+
+  static BackendSupport cached_gpu_support_;  // Set by the first test using this fixture.
 };
 
 // Testing fixture class for tests that require the QNN CPU backend. Checks if QNN CPU is available before the test
