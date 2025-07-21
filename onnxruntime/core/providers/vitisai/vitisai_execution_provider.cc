@@ -150,7 +150,7 @@ std::vector<AllocatorPtr> VitisAIExecutionProvider::CreatePreferredAllocators() 
   // We do not want arena for 4k alignment, as it would not respect alignment.
   // For CPU, use arena
   // Removed 4k alignment for now, need better fix
-  constexpr const bool use_arena = true;
+  constexpr const bool use_arena_true = true;
   AllocatorCreationInfo device_info_cpu{
       [](OrtDevice::DeviceId device_id) {
         return std::make_unique<CPUAllocator>(
@@ -159,7 +159,7 @@ std::vector<AllocatorPtr> VitisAIExecutionProvider::CreatePreferredAllocators() 
                 OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE,
                           device_id)));
       },
-      DEFAULT_CPU_ALLOCATOR_DEVICE_ID, use_arena};
+      DEFAULT_CPU_ALLOCATOR_DEVICE_ID, use_arena_true};
 
   result.push_back(CreateAllocator(device_info_cpu));
   return result;
