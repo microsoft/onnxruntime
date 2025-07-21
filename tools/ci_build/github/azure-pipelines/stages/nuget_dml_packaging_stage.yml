@@ -39,10 +39,7 @@ stages:
               nuGetFeedType: internal  # Change to external when publishing to external feed
               allowPackageConflicts: true # Optional. NuGetCommand task only.
               publishPackageMetadata: true # Optional
-          - ${{ else }}:
-            - output: pipelineArtifact
-              targetPath: $(Build.ArtifactStagingDirectory)
-              artifactName: 'packages"
+
     steps:
     - task: PowerShell@2
       inputs:
