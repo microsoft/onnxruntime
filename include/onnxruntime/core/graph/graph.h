@@ -1570,14 +1570,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                        std::optional<std::string_view> new_name);
 
   /// <summary>
-  /// This is a helper function to ::ToGraphProto()
-  /// It examines the subgraph initializers and converts data in memory references to inline.
-  /// Subgraph initializers are already copied using Node::ToPtoro()
+  /// Subgraph initializers are already copied using Node::ToProto()
   /// </summary>
   /// <param name="output_graph_proto"></param>
   /// <param name="process_main">process main graph if true</param>
-  /// <returns></returns>
-  Status ProcessSubgraphsInmemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto, bool process_main) const;
+  /// <returns>Status</returns>
+  Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto, bool process_main) const;
 
   /// <summary>
   /// This function traverses the graph bottom up and externalizes

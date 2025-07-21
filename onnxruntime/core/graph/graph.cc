@@ -4273,22 +4273,26 @@ Status InlineOrCopyInitializerToGraphProto(const Graph& src_graph, const ONNX_NA
 
 }  // namespace
 
-Status Graph::ProcessSubgraphsInmemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto,
+Status Graph::ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto,
                                            bool process_main) const {
   for (const auto& node : Nodes()) {
     if (node.ContainsSubgraph()) {
       // Let's find this node in the output_graph_proto
+      // The node name is optional, so we may need to check by the output value name
+      // given that they can only assigned once.
       auto hit = std::find_if(output_graph_proto.mutable_node()->begin(),
                               output_graph_proto.mutable_node()->end(),
                               [&node](const ONNX_NAMESPACE::NodeProto& proto) {
-                                return proto.name() == node.Name();
+                                const auto& node_name = node.Name();
+                                if (!node_name.empty())
+                                  return proto.name() == node_name;
+                                return (proto.output_size() > 0 &&
+                                        proto.output(0) == node.OutputDefs()[0]->Name());
                               });
       ORT_RETURN_IF_NOT(hit != output_graph_proto.mutable_node()->end(), "Node ", node.Name(),
                         " not found in output_graph_proto");
       auto& result_node = *hit;
-      for (const auto& e : node.GetAttributeNameToSubgraphMap()) {
-        const auto& name = e.first;
-        const auto& subgraph = e.second;
+      for (const auto& [name, subgraph] : node.GetAttributeNameToSubgraphMap()) {
         // Lets find this subgraph in the result_node
         auto sub_hit = std::find_if(result_node.mutable_attribute()->begin(),
                                     result_node.mutable_attribute()->end(),
@@ -4299,7 +4303,7 @@ Status Graph::ProcessSubgraphsInmemoryData(ONNX_NAMESPACE::GraphProto& output_gr
                           "Subgraph ", name, " is referred to in GetAttributeNameToSubgraphMap, but not found in node ",
                           node.Name(), " while attempting to recurse into it.");
         auto& result_subgraph = *sub_hit->mutable_g();
-        ORT_RETURN_IF_ERROR(subgraph->ProcessSubgraphsInmemoryData(result_subgraph, process_main));
+        ORT_RETURN_IF_ERROR(subgraph->ProcessSubgraphsInMemoryData(result_subgraph, process_main));
       }
     }
   }
@@ -4358,11 +4362,11 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   GraphProto result;
   if (!GraphProtoSyncNeeded()) {
     result = *graph_proto_;
-    ORT_THROW_IF_ERROR(ProcessSubgraphsInmemoryData(result, /*process_main*/ true));
+    ORT_THROW_IF_ERROR(ProcessSubgraphsInMemoryData(result, /*process_main*/ true));
   } else {
     ToGraphProtoInternal(result);
 
-    ORT_THROW_IF_ERROR(ProcessSubgraphsInmemoryData(result, /*process_main*/ false));
+    ORT_THROW_IF_ERROR(ProcessSubgraphsInMemoryData(result, /*process_main*/ false));
 
     // Add initializers to parent graph by copy converting them from graph_proto_
     // ToGraphProtoInternal() does not copy initializers for the main graph
@@ -4417,10 +4421,16 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
   for (const auto& node : Nodes()) {
     if (node.ContainsSubgraph()) {
       // Let's find this node in the output_graph_proto
+      // The node name is optional, so we may need to check by the output value name
+      // given that they can only assigned once.
       auto hit = std::find_if(output_graph_proto.mutable_node()->begin(),
                               output_graph_proto.mutable_node()->end(),
                               [&node](const ONNX_NAMESPACE::NodeProto& proto) {
-                                return proto.name() == node.Name();
+                                const auto& node_name = node.Name();
+                                if (!node_name.empty())
+                                  return proto.name() == node_name;
+                                return (proto.output_size() > 0 &&
+                                        proto.output(0) == node.OutputDefs()[0]->Name());
                               });
       ORT_RETURN_IF_NOT(hit != output_graph_proto.mutable_node()->end(), "Node ", node.Name(),
                         " not found in output_graph_proto");
