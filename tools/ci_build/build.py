@@ -750,7 +750,7 @@ def generate_build_tree(
             if args.enable_msvc_static_runtime:
                 add_default_definition(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "ON")
                 add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "ON")
-                 # The following build option was added in ABSL 20240722.0 and it must be explicitly set
+                # The following build option was added in ABSL 20240722.0 and it must be explicitly set
                 add_default_definition(cmake_extra_defines, "ABSL_MSVC_STATIC_RUNTIME", "ON")
                 add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "OFF")
             else:

@@ -6,7 +6,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from typing import Dict, List, Literal, Optional, TypedDict
+from typing import Literal, TypedDict
 from urllib.parse import urlparse
 
 import requests
@@ -26,7 +26,7 @@ class ConfigurationRepository(TypedDict):
     """Represents the repository within the pipeline configuration."""
 
     fullName: str
-    connection: Dict[str, str]
+    connection: dict[str, str]
     type: str
 
 
@@ -34,7 +34,7 @@ class PipelineConfiguration(TypedDict, total=False):
     """Represents the configuration part of a pipeline's details."""
 
     type: Literal["unknown", "yaml", "designerJson", "justInTime", "designerHyphenJson"]
-    variables: Dict[str, Variable]
+    variables: dict[str, Variable]
     path: str
     repository: ConfigurationRepository
 
@@ -94,7 +94,7 @@ def get_azure_cli_token() -> str:
         sys.exit(1)
 
 
-def get_pipelines(token: str, project: str) -> List[Dict]:
+def get_pipelines(token: str, project: str) -> list[dict]:
     """Gets a summary list of all pipelines in the specified project."""
     print(f"\n--- Fetching Pipelines from project: {project} ---")
     headers = {"Authorization": f"Bearer {token}"}
@@ -111,8 +111,8 @@ def get_pipelines(token: str, project: str) -> List[Dict]:
 
 
 def evaluate_single_pipeline(
-    pipeline_summary: Dict, token: str, branch: str, is_pr_build: bool
-) -> Optional[EvaluationResult]:
+    pipeline_summary: dict, token: str, branch: str, is_pr_build: bool
+) -> EvaluationResult | None:
     """Fetches details for and evaluates a single pipeline against all criteria."""
     pipeline_name = pipeline_summary.get("name", "Unknown")
     pipeline_id = pipeline_summary.get("id")
@@ -212,9 +212,7 @@ def evaluate_single_pipeline(
             print("  - OK: No active pipeline resource trigger found in YAML.")
 
             # Check for packaging pipeline variables/parameters
-            packaging_exceptions = [
-                "onnxruntime-ios-packaging-pipeline"
-            ]
+            packaging_exceptions = ["onnxruntime-ios-packaging-pipeline"]
             if "packaging" in pipeline_name.lower() or "nuget" in pipeline_name.lower():
                 print("  - Detected packaging pipeline. Checking for required variables/parameters...")
                 if pipeline_name in packaging_exceptions:
@@ -247,10 +245,10 @@ def evaluate_single_pipeline(
     return None
 
 
-def filter_pipelines(pipelines: List[Dict], token: str, branch: str, is_pr_build: bool) -> List[EvaluationResult]:
+def filter_pipelines(pipelines: list[dict], token: str, branch: str, is_pr_build: bool) -> list[EvaluationResult]:
     """Filters pipelines based on specified criteria by processing them in parallel."""
     print("\n--- Filtering Pipelines in Parallel ---")
-    filtered_results: List[EvaluationResult] = []
+    filtered_results: list[EvaluationResult] = []
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         future_to_pipeline = {
@@ -305,16 +303,16 @@ def trigger_pipeline(
     token: str,
     branch: str,
     project: str,
-    nightly_override: Optional[str],
-    release_override: Optional[str],
+    nightly_override: str | None,
+    release_override: str | None,
     packaging_type: str,
-) -> Optional[int]:
+) -> int | None:
     """Triggers a pipeline and returns the new build ID."""
     print(f"\n--- Triggering Pipeline ID: {pipeline_id} on branch '{branch}' in project '{project}' ---")
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     run_url = f"https://dev.azure.com/{ADO_ORGANIZATION}/{project}/_apis/pipelines/{pipeline_id}/runs?api-version=7.1-preview.1"
 
-    payload: Dict[str, any] = {"resources": {"repositories": {"self": {"refName": branch}}}}
+    payload: dict[str, any] = {"resources": {"repositories": {"self": {"refName": branch}}}}
 
     if nightly_override is not None and packaging_type == "nightly":
         print(f"Overriding NIGHTLY_BUILD variable to '{nightly_override}'.")
