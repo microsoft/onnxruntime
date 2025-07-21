@@ -179,9 +179,9 @@ ORT_API(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_d
   return memory_device->Id();
 }
 
-ORT_API(const OrtSyncStreamImpl*, SyncStream_GetImpl, _In_ const OrtSyncStream* impl) {
+ORT_API(const OrtSyncStreamImpl*, SyncStream_GetImpl, _In_ const OrtSyncStream* ort_stream) {
   // the EP API should only ever see plugin_ep::Stream instances
-  const auto& stream = *reinterpret_cast<const plugin_ep::Stream*>(impl);
+  const auto& stream = *reinterpret_cast<const plugin_ep::Stream*>(ort_stream);
   return &stream.GetImpl();
 }
 

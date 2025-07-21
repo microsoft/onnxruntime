@@ -351,7 +351,7 @@ void* ArenaImpl::AllocateRawInternal(size_t num_bytes, OrtSyncStream* stream, bo
     DumpMemoryLog(rounded_bytes);
   }
 
-  throw new std::runtime_error(api_.GetErrorMessage(status));
+  throw std::runtime_error(api_.GetErrorMessage(status));
 }
 
 OrtStatus* ArenaImpl::GetStats(OrtKeyValuePairs** stats) {
