@@ -106,7 +106,7 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           # Execute the build process
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --build_nodejs --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.2" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --update --build --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --build_nodejs --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.2" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
