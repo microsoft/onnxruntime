@@ -225,11 +225,15 @@ Optimize-ToolsDir
 
 Push-Location $RepoRoot
 
+$failed = $false
 if ($MakeTestArchive) {
     python.exe "$RepoRoot\qcom\scripts\all\archive_tests.py" `
         "--config=$Config" `
         "--qairt-sdk-root=$QairtSdkRoot" `
         "--target-platform=$TargetPlatformArch"
+    if (-not $?) {
+        $failed = $true
+    }
 }
 else {
     if ($CMakeGenerator -eq "Ninja") {
@@ -245,21 +249,38 @@ else {
     }
 
     if ($Actions.Count -gt 0) {
-        .\build.bat `
-            $Actions `
-            $ArchArgs `
-            $CommonArgs `
-            $QnnArgs `
-            $PlatformArgs
+        try {
+            python.exe "$RepoRoot\qcom\scripts\all\fetch_cmake_deps.py"
+
+            .\build.bat `
+                $Actions `
+                $ArchArgs `
+                $CommonArgs `
+                $QnnArgs `
+                $PlatformArgs
+
+            if (-not $?) {
+                $failed = $true
+            }
+        }
+        finally {
+            # Whatever happens, blow away mirror to avoid it showing up in git; it's okay, it's
+            # very cheap to regenerate.
+            Remove-Item -Recurse -Force "$RepoRoot\mirror"
+        }
     }
 
     if ($RunTests) {
         Push-Location "$BuildDir\$Config"
         & .\run_tests.ps1
+
+        if (-not $?) {
+            $failed = $true
+        }
     }
 }
 
-if (-not $?) {
+if ($failed) {
     throw "Build failure"
 }
 

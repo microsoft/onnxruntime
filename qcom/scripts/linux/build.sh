@@ -157,6 +157,13 @@ esac
 
 clean_tools_dir
 
+# Whatever happens, blow away mirror to avoid it showing up in git; it's okay, it's
+# very cheap to regenerate.
+function scrub_mirror() {
+  rm -fr "${REPO_ROOT}/mirror"
+}
+trap scrub_mirror EXIT
+
 if [ -n "${make_test_archive}" ]; then
   python "${REPO_ROOT}/qcom/scripts/all/archive_tests.py" \
     "--config=${config}" \
@@ -173,6 +180,9 @@ else
   fi
 
   if [ "${#action_args[@]}" -gt 0 ]; then
+
+    python "${REPO_ROOT}/qcom/scripts/all/fetch_cmake_deps.py"
+
     ./build.sh \
       "${action_args[@]}" \
       "${common_args[@]}" \
