@@ -171,6 +171,7 @@ DEFINE_INT4_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(UInt4x2)
 Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  const std::filesystem::path& tensor_proto_dir,
                                  std::vector<uint8_t>& unpacked_tensor) {
+  ORT_RETURN_IF(utils::HasString(tensor_proto), "This function does not support string data");
   PathString external_file_path;
   onnxruntime::FileOffsetType file_offset;
   SafeInt<size_t> tensor_byte_size;
@@ -264,12 +265,32 @@ Status TensorProtoWithExternalDataToTensorProto(
   result.set_data_type(ten_proto.data_type());
   result.mutable_dims()->CopyFrom(ten_proto.dims());
 
-  // Load the external data into memory
-  std::vector<uint8_t> unpacked_data;
-  ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(ten_proto, model_path, unpacked_data));
+  // Strings can only be in memory
+  if (utils::HasString(ten_proto)) {
+    ORT_RETURN_IF_NOT(HasExternalDataInMemory(ten_proto),
+                      "TensorProto with string data can only be in memory");
 
-  // Set the raw data in the new tensor
-  result.set_raw_data(unpacked_data.data(), unpacked_data.size());
+    std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
+    ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(ten_proto.external_data(), external_data_info));
+
+    // file_offset is address
+    if (utils::HasString(ten_proto)) {
+      auto tensor_shape = utils::GetTensorShapeFromTensorProto(ten_proto);
+      std::string* data = reinterpret_cast<std::string*>(external_data_info->GetOffset());
+      for (size_t i = 0, lim = narrow<size_t>(tensor_shape.Size()); i < lim; ++i) {
+        // set in raw data
+        result.add_string_data(*data);
+        ++data;
+      }
+    }
+  } else {
+    // Load the external data into memory
+    std::vector<uint8_t> unpacked_data;
+    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(ten_proto, model_path, unpacked_data));
+
+    // Set the raw data in the new tensor
+    result.set_raw_data(unpacked_data.data(), unpacked_data.size());
+  }
 
   new_tensor_proto = std::move(result);
 
