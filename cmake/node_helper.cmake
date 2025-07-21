@@ -3,6 +3,21 @@
 
 cmake_minimum_required(VERSION 3.25)
 
+# Function to get NPM path from Node.js path
+function(get_npm_path_from_node result_var node_path)
+  get_filename_component(NODE_DIR ${node_path} DIRECTORY)
+  if(WIN32)
+    set(NPM_CLI_CANDIDATE "${NODE_DIR}/npm.cmd")
+    if(NOT EXISTS ${NPM_CLI_CANDIDATE})
+      set(NPM_CLI_CANDIDATE "${NODE_DIR}/npm")
+    endif()
+  else()
+    set(NPM_CLI_CANDIDATE "${NODE_DIR}/npm")
+  endif()
+
+  set(${result_var} ${NPM_CLI_CANDIDATE} PARENT_SCOPE)
+endfunction()
+
 # Validator function for Node.js installation (checks both Node.js and NPM versions)
 function(validate_nodejs_installation result_var node_path)
   # First validate Node.js version
@@ -39,14 +54,10 @@ function(validate_nodejs_installation result_var node_path)
   endif()
 
   # Now validate NPM from the same installation directory
-  get_filename_component(NODE_DIR ${node_path} DIRECTORY)
-  if(WIN32)
-    set(NPM_CLI_CANDIDATE "${NODE_DIR}/npm.cmd")
-  else()
-    set(NPM_CLI_CANDIDATE "${NODE_DIR}/npm")
-  endif()
+  get_npm_path_from_node(NPM_CLI_CANDIDATE ${node_path})
 
   if(NOT EXISTS ${NPM_CLI_CANDIDATE})
+    get_filename_component(NODE_DIR ${node_path} DIRECTORY)
     message(STATUS "Could not find NPM in the same directory as Node.js: ${NODE_DIR}")
     set(${result_var} FALSE PARENT_SCOPE)
     return()
@@ -73,8 +84,6 @@ function(validate_nodejs_installation result_var node_path)
       endif()
 
       message(STATUS "Found NPM at ${NPM_CLI_CANDIDATE} with version: ${NPM_VERSION_OUTPUT}")
-      # Store the NPM path for later use
-      set(VALIDATED_NPM_CLI ${NPM_CLI_CANDIDATE} PARENT_SCOPE)
       set(${result_var} TRUE PARENT_SCOPE)
     else()
       message(STATUS "Could not parse NPM version from ${NPM_CLI_CANDIDATE}: ${NPM_VERSION_OUTPUT}")
@@ -96,8 +105,9 @@ if((NOT NPM_CLI) OR (NOT NODE_EXECUTABLE))
     REQUIRED
   )
 
-  # Set NPM_CLI from the validated installation
-  set(NPM_CLI ${VALIDATED_NPM_CLI} CACHE FILEPATH "NPM command line client" FORCE)
+  # Set NPM_CLI from the validated Node.js installation
+  get_npm_path_from_node(NPM_CLI ${NODE_EXECUTABLE})
+  set(NPM_CLI ${NPM_CLI} CACHE FILEPATH "NPM command line client" FORCE)
   message(STATUS "Using Node.js and NPM from the same validated installation:")
   message(STATUS "  Node.js: ${NODE_EXECUTABLE}")
   message(STATUS "  NPM:     ${NPM_CLI}")
