@@ -20,7 +20,11 @@ int real_main(int argc, char* argv[]) {
 #endif
   g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   perftest::PerformanceTestConfig test_config;
+#ifdef DISABLE_EXCEPTIONS
   if (!perftest::CommandLineParser::ParseArguments(test_config, argc, argv)) {
+#else
+  if (!perftest::CommandLineParser::ParseArgumentsV2(test_config, argc, argv)) {
+#endif
     perftest::CommandLineParser::ShowUsage();
     return -1;
   }
@@ -60,7 +64,7 @@ int real_main(int argc, char* argv[]) {
 
   auto status = Status::OK();
 
-  try {
+  ORT_TRY {
     std::random_device rd;
     perftest::PerformanceRunner perf_runner(env, test_config, rd);
 
@@ -77,12 +81,11 @@ int real_main(int argc, char* argv[]) {
     } else {
       perf_runner.SerializeResult();
     }
-  } catch (const std::exception& ex) {
-    std::cerr << ex.what() << std::endl;
-    if (!test_config.registered_plugin_eps.empty()) {
-      perftest::utils::UnregisterExecutionProviderLibrary(env, test_config);
-    }
-    return -1;
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      fprintf(stderr, "%s\n", ex.what());
+    });
   }
   // The try/catch block above ensures the following:
   // 1) Plugin EP libraries are unregistered if an exception occurs.
