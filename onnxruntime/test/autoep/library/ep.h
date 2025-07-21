@@ -16,7 +16,10 @@ struct MulKernel;
 class ExampleEp : public OrtEp, public ApiPtrs {
  public:
   struct Config {
-    bool enable_ep_context = false;
+    bool generate_ep_ctx_model = false;
+    bool embed_ep_ctx_data = false;
+    OrtWriteEpContextDataFunc write_ep_ctx_data_func = nullptr;
+    void* write_ep_ctx_data_state = nullptr;
     // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
   };
 

@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #pragma once
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include "core/common/status.h"
@@ -94,7 +95,8 @@ class ModelCompilationOptions {
   /// <param name="output_directory">The folder path to the generated context binary file</param>
   /// <param name="model_name">Model name used to decide the context binary file name: [model_name]_[ep].bin</param>
   /// <returns>Status indicating potential error</returns>
-  Status SetEpContextBinaryInformation(const std::string& output_directory, const std::string& model_name);
+  Status SetEpContextBinaryInformation(const std::filesystem::path& output_directory,
+                                       const std::filesystem::path& model_name);
 
   /// <summary>
   /// Enables or disables the embedding of EPContext binary data into the `ep_cache_context` attribute of EPContext
@@ -103,6 +105,13 @@ class ModelCompilationOptions {
   /// <param name="embed_ep_context_in_model">True if should be embedded, false otherwise</param>
   /// <returns>Status indicating potential error</returns>
   Status SetEpContextEmbedMode(bool embed_ep_context_in_model);
+
+  /// <summary>
+  /// Sets an output stream (write function + state) used to write out EPContext node binary data.
+  /// </summary>
+  /// <param name="write_func">Write function</param>
+  /// <param name="state">The user's state</param>
+  void SetEpContextDataWriteFunc(OrtWriteEpContextDataFunc write_func, void* state);
 
   /// <summary>
   /// Sets flags representing enabled boolean options defined in OrtCompileApiFlags.

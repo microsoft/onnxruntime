@@ -36,6 +36,15 @@ ModelGenOptions::ModelGenOptions(const ConfigOptions& config_options) {
   embed_ep_context_in_model = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0") == "1";
 }
 
+OrtEpContextModelOptions* ModelGenOptions::ToExternal() {
+  return reinterpret_cast<OrtEpContextModelOptions*>(this);
+}
+
+/*static*/
+const ModelGenOptions* ModelGenOptions::ToInternal(const OrtEpContextModelOptions* options) {
+  return reinterpret_cast<const ModelGenOptions*>(options);
+}
+
 bool ModelGenOptions::HasOutputModelLocation() const {
   return !std::holds_alternative<std::monostate>(output_model_location);
 }

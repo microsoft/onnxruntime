@@ -12,6 +12,7 @@ ORT_RUNTIME_CLASS(EpFactory);
 ORT_RUNTIME_CLASS(EpGraphSupportInfo);
 ORT_RUNTIME_CLASS(MemoryDevice);  // opaque class to wrap onnxruntime::OrtDevice
 ORT_RUNTIME_CLASS(NodeComputeContext);
+ORT_RUNTIME_CLASS(EpContextModelOptions);
 
 // Opaque class to create an onnxruntime::Stream. Will be filled out in separate PR.
 // Adding here for OrtDataTransferImpl as the stream type is required by the IDataTransfer API.
@@ -318,6 +319,22 @@ struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API_T(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
+
+  ORT_API2_STATUS(SessionOptions_GetEpContextModelOptions, _In_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtEpContextModelOptions** ep_context_model_options);
+
+  ORT_CLASS_RELEASE(EpContextModelOptions);
+
+  ORT_API_T(bool, EpContextModelOptions_IsGenerationEnabled,
+            _In_ const OrtEpContextModelOptions* ep_context_model_options);
+
+  ORT_API_T(bool, EpContextModelOptions_IsEpContextDataEmbedded,
+            _In_ const OrtEpContextModelOptions* ep_context_model_options);
+
+  ORT_API_T(void, EpContextModelOptions_GetEpContextDataWriteFunc,
+            _In_ const OrtEpContextModelOptions* ep_context_model_options,
+            _Outptr_result_maybenull_ OrtWriteEpContextDataFunc* write_func,
+            _Outptr_result_maybenull_ void** state);
 };
 
 /**

@@ -114,18 +114,17 @@ void ModelCompilationOptions::SetOutputModelHandleInitializerFunc(OrtHandleIniti
   };
 }
 
-Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::string& output_directory,
-                                                              const std::string& model_name) {
+Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::filesystem::path& output_directory,
+                                                              const std::filesystem::path& model_name) {
   if (output_directory.empty() || model_name.empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output_dir or model_name is empty.");
   }
 
-  std::filesystem::path output_dir_path(output_directory);
-  if (output_dir_path.has_filename() && output_dir_path.extension() == "") {
+  if (output_directory.has_filename() && output_directory.extension() == "") {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output_dir is not a valid directory.");
   }
 
-  std::filesystem::path ctx_model_path = output_directory / std::filesystem::path(model_name);
+  std::filesystem::path ctx_model_path = output_directory / model_name;
 
   if (ctx_model_path.string().size() <= ConfigOptions::kMaxValueLength) {
     ORT_RETURN_IF_ERROR(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath,
@@ -149,6 +148,11 @@ Status ModelCompilationOptions::SetEpContextEmbedMode(bool embed_ep_context_in_m
       kOrtSessionOptionEpContextEmbedMode, embed_ep_context_in_model ? "1" : "0"));
   session_options_.value.ep_context_gen_options.embed_ep_context_in_model = embed_ep_context_in_model;
   return Status::OK();
+}
+
+void ModelCompilationOptions::SetEpContextDataWriteFunc(OrtWriteEpContextDataFunc write_func, void* state) {
+  session_options_.value.ep_context_gen_options.write_ep_context_data_func = write_func;
+  session_options_.value.ep_context_gen_options.write_ep_context_data_state = state;
 }
 
 Status ModelCompilationOptions::SetFlags(size_t flags) {

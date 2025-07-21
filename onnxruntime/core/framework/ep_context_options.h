@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <filesystem>
 #include <streambuf>
 #include <string>
 #include <variant>
@@ -81,19 +82,25 @@ struct ModelGenOptions {
                OutStreamHolder>  // Function to write the output model to a user's stream.
       output_model_location{};
 
-  bool HasOutputModelLocation() const;
-  const std::string* TryGetOutputModelPath() const;
-  const BufferHolder* TryGetOutputModelBuffer() const;
-  const OutStreamHolder* TryGetOutputModelOutStream() const;
-
   std::variant<std::monostate,               // Initial state (initializers embedded in ONNX model).
                ExternalInitializerFileInfo,  // Initializers saved in an external file
                InitializerHandler>           // Custom function called for every initializer to determine location.
       initializers_location{};
 
+  OrtWriteEpContextDataFunc write_ep_context_data_func = nullptr;
+  void* write_ep_context_data_state = nullptr;
+
+  bool HasOutputModelLocation() const;
+  const std::string* TryGetOutputModelPath() const;
+  const BufferHolder* TryGetOutputModelBuffer() const;
+  const OutStreamHolder* TryGetOutputModelOutStream() const;
+
   bool AreInitializersEmbeddedInOutputModel() const;
   const ExternalInitializerFileInfo* TryGetExternalInitializerFileInfo() const;
   const InitializerHandler* TryGetInitializerHandler() const;
+
+  OrtEpContextModelOptions* ToExternal();
+  static const ModelGenOptions* ToInternal(const OrtEpContextModelOptions* options);
 };
 
 // Class that wraps the user's OrtOutStreamWriteFunc function to enable use with

@@ -67,3 +67,5 @@ OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api, const OrtSessio
 
 // Returns true (via output parameter) if the given OrtValueInfo represents a float tensor.
 OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value_info, bool& result);
+
+std::string PathToUTF8String(const std::basic_string<ORTCHAR_T>& path_str);

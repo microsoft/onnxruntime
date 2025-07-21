@@ -38,5 +38,8 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelWriteFunc,
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelHandleInitializerFunc,
                     _In_ OrtModelCompilationOptions* model_compile_options,
                     _In_ OrtHandleInitializerDataFunc handle_initializer_func, _In_ void* state);
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetEpContextDataWriteFunc,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_ OrtWriteEpContextDataFunc write_func, _In_ void* state);
 
 }  // namespace OrtCompileAPI
