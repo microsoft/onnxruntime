@@ -13,7 +13,7 @@ stages:
   - job: NuGet_Packaging_DML
     workspace:
       clean: all
-    pool: 
+    pool:
       name: 'onnxruntime-Win2022-GPU-dml-A10'
       os: windows
       templateContext:
@@ -52,17 +52,17 @@ stages:
                 rename %%~ni.nupkg %%~ni.zip
                 unzip %%~ni.zip -d %%~ni
                 del /Q %%~ni.zip
-        
+
                 unzip win-dml-arm64.zip -d win-arm64
                 mkdir %%~ni\runtimes\win-arm64
                 mkdir %%~ni\runtimes\win-arm64\native
-        
+
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.dll %%~ni\runtimes\win-arm64\native\onnxruntime.dll
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.lib %%~ni\runtimes\win-arm64\native\onnxruntime.lib
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.pdb %%~ni\runtimes\win-arm64\native\onnxruntime.pdb
                 move win-arm64\runtimes\win-arm64\native\onnxruntime_providers_shared.dll %%~ni\runtimes\win-arm64\native\onnxruntime_providers_shared.dll
-        
-        
+
+
                 pushd %%~ni
                 zip -r ..\%%~ni.zip .
                 popd
