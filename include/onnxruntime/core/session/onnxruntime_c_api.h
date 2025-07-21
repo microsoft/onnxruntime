@@ -5485,9 +5485,12 @@ struct OrtApi {
    * Supports initializers defined in an outer scope (i.e., a parent graph).
    *
    * \param[in] value_info The OrtValueInfo instance.
-   * \param[out] initializer_value Output parameter set to the initializer value or NULL.
+   * \param[out] initializer_value Output parameter set to the initializer value or NULL. The OrtValue data pointer
+   *                               (obtained via GetTensorData) is stable during the lifetime of the OrtSession
+   *                               that owns the OrtGraph.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(ValueInfo_GetInitializerValue, _In_ const OrtValueInfo* value_info,
