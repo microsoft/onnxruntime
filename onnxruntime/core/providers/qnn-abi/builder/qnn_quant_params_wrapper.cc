@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/qnn-abi/builder/qnn_quant_params_wrapper.h"
 #include <algorithm>
 #include <cassert>
 #include <optional>
 #include <vector>
 #include "QnnTypes.h"
-// #include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn-abi/builder/qnn_quant_params_wrapper.h"
 
 #define ALIGN_PTR_UP(ptr, align, type) \
   reinterpret_cast<type>((reinterpret_cast<std::uintptr_t>(ptr) + (align) - 1) & ~((align) - 1))
@@ -223,151 +223,166 @@ Status QnnQuantParamsWrapper::Init(const Qnn_QuantizeParams_t& params) {
   return Status::OK();
 }
 
-// // Initialize this object from a (potentially) quantized ONNX tensor.
-// // QnnModelWrapper provides utilities for unpacking scale and zero-point ONNX initializers.
-// Status QnnQuantParamsWrapper::Init(const QnnModelWrapper& qnn_model_wrapper, const NodeUnitIODef& io_def) {
-//   const std::optional<NodeUnitIODef::QuantParam>& ort_quant_params = io_def.quant_param;
+// Initialize this object from a (potentially) quantized ONNX tensor.
+// QnnModelWrapper provides utilities for unpacking scale and zero-point ONNX initializers.
+Status QnnQuantParamsWrapper::Init(const OrtApi& ort_api,
+                                   const QnnModelWrapper& qnn_model_wrapper,
+                                   const OrtNodeUnitIODef& io_def) {
+  const std::optional<OrtNodeUnitIODef::QuantParam>& ort_quant_params = io_def.quant_param;
 
-//   if (per_channel_data_) {
-//     per_channel_data_.reset(nullptr);
-//     params_ = QNN_QUANTIZE_PARAMS_INIT;
-//   }
+  if (per_channel_data_) {
+    per_channel_data_.reset(nullptr);
+    params_ = QNN_QUANTIZE_PARAMS_INIT;
+  }
 
-//   if (!ort_quant_params.has_value()) {
-//     params_.encodingDefinition = QNN_DEFINITION_UNDEFINED;
-//     params_.quantizationEncoding = QNN_QUANTIZATION_ENCODING_UNDEFINED;
-//     return Status::OK();
-//   }
+  if (!ort_quant_params.has_value()) {
+    params_.encodingDefinition = QNN_DEFINITION_UNDEFINED;
+    params_.quantizationEncoding = QNN_QUANTIZATION_ENCODING_UNDEFINED;
+    return Status::OK();
+  }
 
-//   std::vector<float> scales;
-//   std::vector<int32_t> zero_points;
+  std::vector<float> scales;
+  std::vector<int32_t> zero_points;
 
-//   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackScales(ort_quant_params->scale.Name(), scales));
+  // TODO: Check the type of io_def.quant_param->scale
+  // According to the type definition, it may need to be revised.
+  const OrtValueInfo* qparam_scale = static_cast<const OrtValueInfo*>(ort_quant_params->scale);
+  const char* qparam_scale_name = nullptr;
+  ort_api.GetValueInfoName(qparam_scale, &qparam_scale_name);
+  const std::string& scale_name = std::string(qparam_scale_name);
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackScales(scale_name, scales));
 
-//   bool is_int4_type = false;
+  bool is_int4_type = false;
 
-//   if (ort_quant_params->zero_point != nullptr) {
-//     int32_t onnx_tp_type = 0;
-//     ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackZeroPoints(ort_quant_params->zero_point->Name(), zero_points,
-//                                                            onnx_tp_type));
+  if (ort_quant_params->zero_point != nullptr) {
+    // TODO: Check the type of io_def.quant_param->zero_point
+    // According to the type definition, it may need to be revised.
+    const OrtValueInfo* qparam_zero_point = static_cast<const OrtValueInfo*>(ort_quant_params->zero_point);
+    const char* qparam_zero_point_name = nullptr;
+    ort_api.GetValueInfoName(qparam_zero_point, &qparam_zero_point_name);
+    const std::string& zero_point_name = std::string(qparam_zero_point_name);
 
-//     is_int4_type = (onnx_tp_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) ||
-//                    (onnx_tp_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4);
-//   }
+    ONNXTensorElementDataType onnx_tp_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackZeroPoints(zero_point_name, zero_points,
+                                                           onnx_tp_type));
 
-//   const bool is_per_tensor = scales.size() == 1;
+    is_int4_type = (onnx_tp_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4) ||
+                   (onnx_tp_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
+  }
 
-//   // QNN uses different structs to represent quantization parameters depending on
-//   // - per-tensor vs per-channel
-//   // - int4 vs not int4
-//   if (is_per_tensor && !is_int4_type) {
-//     params_.encodingDefinition = QNN_DEFINITION_DEFINED;
-//     params_.quantizationEncoding = QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
-//     params_.scaleOffsetEncoding.scale = scales[0];
+  const bool is_per_tensor = scales.size() == 1;
 
-//     if (ort_quant_params->zero_point != nullptr) {
-//       ORT_RETURN_IF_NOT(zero_points.size() == 1, "Expected one zero-point value");
-//       params_.scaleOffsetEncoding.offset = zero_points[0];
-//     } else {
-//       params_.scaleOffsetEncoding.offset = 0;
-//     }
-//   } else if (is_per_tensor && is_int4_type) {
-//     params_.encodingDefinition = QNN_DEFINITION_DEFINED;
-//     params_.quantizationEncoding = QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET;
-//     params_.bwScaleOffsetEncoding.bitwidth = 4;
-//     params_.bwScaleOffsetEncoding.scale = scales[0];
+  // QNN uses different structs to represent quantization parameters depending on
+  // - per-tensor vs per-channel
+  // - int4 vs not int4
+  if (is_per_tensor && !is_int4_type) {
+    params_.encodingDefinition = QNN_DEFINITION_DEFINED;
+    params_.quantizationEncoding = QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
+    params_.scaleOffsetEncoding.scale = scales[0];
 
-//     if (ort_quant_params->zero_point != nullptr) {
-//       ORT_RETURN_IF_NOT(zero_points.size() == 1, "Expected one zero-point value");
-//       params_.bwScaleOffsetEncoding.offset = zero_points[0];
-//     } else {
-//       params_.bwScaleOffsetEncoding.offset = 0;
-//     }
-//   } else if (!is_per_tensor && is_int4_type) {
-//     const auto* io_shape = io_def.node_arg.Shape();
-//     ORT_RETURN_IF(io_shape == nullptr, "Input/output tensor proto must have a shape");
-//     const int32_t io_rank = io_shape->dim_size();
+    if (ort_quant_params->zero_point != nullptr) {
+      ORT_RETURN_IF_NOT(zero_points.size() == 1, "Expected one zero-point value");
+      params_.scaleOffsetEncoding.offset = zero_points[0];
+    } else {
+      params_.scaleOffsetEncoding.offset = 0;
+    }
+  } else if (is_per_tensor && is_int4_type) {
+    params_.encodingDefinition = QNN_DEFINITION_DEFINED;
+    params_.quantizationEncoding = QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET;
+    params_.bwScaleOffsetEncoding.bitwidth = 4;
+    params_.bwScaleOffsetEncoding.scale = scales[0];
 
-//     constexpr int64_t DEFAULT_QDQ_AXIS = 1;
-//     int64_t axis = ort_quant_params->axis.value_or(DEFAULT_QDQ_AXIS);
-//     if (axis < 0) {
-//       axis += io_rank;
-//     }
-//     ORT_RETURN_IF_NOT(axis >= 0 && axis < io_rank,
-//                       "Quantization axis must be within the range [0, rank - 1]");
+    if (ort_quant_params->zero_point != nullptr) {
+      ORT_RETURN_IF_NOT(zero_points.size() == 1, "Expected one zero-point value");
+      params_.bwScaleOffsetEncoding.offset = zero_points[0];
+    } else {
+      params_.bwScaleOffsetEncoding.offset = 0;
+    }
+  } else if (!is_per_tensor && is_int4_type) {
+    const std::vector<int64_t> io_shape = io_def.shape;
+    ORT_RETURN_IF(io_shape.empty(), "Input/output tensor proto must have a shape");
+    const int32_t io_rank = static_cast<int32_t>(io_shape.size());
 
-//     const size_t num_elems = scales.size();
-//     const bool no_zero_points = zero_points.empty();
-//     ORT_RETURN_IF_NOT(num_elems > 1, "Expected more than one scale value");
-//     ORT_RETURN_IF_NOT(no_zero_points || zero_points.size() == num_elems,
-//                       "Expected the same number of zero-points and scales for per-channel quantization");
+    constexpr int64_t DEFAULT_QDQ_AXIS = 1;
+    int64_t axis = ort_quant_params->axis.value_or(DEFAULT_QDQ_AXIS);
+    if (axis < 0) {
+      axis += io_rank;
+    }
+    ORT_RETURN_IF_NOT(axis >= 0 && axis < io_rank,
+                      "Quantization axis must be within the range [0, rank - 1]");
 
-//     params_.encodingDefinition = QNN_DEFINITION_DEFINED;
-//     params_.quantizationEncoding = QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET;
-//     params_.bwAxisScaleOffsetEncoding.axis = static_cast<int32_t>(axis);
-//     params_.bwAxisScaleOffsetEncoding.bitwidth = 4;
-//     params_.bwAxisScaleOffsetEncoding.numElements = static_cast<uint32_t>(num_elems);
+    const size_t num_elems = scales.size();
+    const bool no_zero_points = zero_points.empty();
+    ORT_RETURN_IF_NOT(num_elems > 1, "Expected more than one scale value");
+    ORT_RETURN_IF_NOT(no_zero_points || zero_points.size() == num_elems,
+                      "Expected the same number of zero-points and scales for per-channel quantization");
 
-//     const size_t num_scale_bytes = num_elems * sizeof(float);
-//     const size_t num_zp_bytes = num_elems * sizeof(int32_t);
-//     const size_t num_bytes = num_scale_bytes + num_zp_bytes;
-//     constexpr std::uintptr_t align = alignof(float);
-//     per_channel_data_ = std::make_unique<char[]>(num_bytes + align);
+    params_.encodingDefinition = QNN_DEFINITION_DEFINED;
+    params_.quantizationEncoding = QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET;
+    params_.bwAxisScaleOffsetEncoding.axis = static_cast<int32_t>(axis);
+    params_.bwAxisScaleOffsetEncoding.bitwidth = 4;
+    params_.bwAxisScaleOffsetEncoding.numElements = static_cast<uint32_t>(num_elems);
 
-//     char* scales_begin = ALIGN_PTR_UP(per_channel_data_.get(), align, char*);
-//     char* zps_begin = scales_begin + num_scale_bytes;
-//     gsl::span<float> scales_span(reinterpret_cast<float*>(scales_begin), num_elems);
-//     gsl::span<int32_t> zps_span(reinterpret_cast<int32_t*>(zps_begin), num_elems);
+    const size_t num_scale_bytes = num_elems * sizeof(float);
+    const size_t num_zp_bytes = num_elems * sizeof(int32_t);
+    const size_t num_bytes = num_scale_bytes + num_zp_bytes;
+    constexpr std::uintptr_t align = alignof(float);
+    per_channel_data_ = std::make_unique<char[]>(num_bytes + align);
 
-//     for (size_t i = 0; i < num_elems; i++) {
-//       scales_span[i] = scales[i];
-//       zps_span[i] = no_zero_points ? 0 : zero_points[i];
-//     }
+    char* scales_begin = ALIGN_PTR_UP(per_channel_data_.get(), align, char*);
+    char* zps_begin = scales_begin + num_scale_bytes;
+    gsl::span<float> scales_span(reinterpret_cast<float*>(scales_begin), num_elems);
+    gsl::span<int32_t> zps_span(reinterpret_cast<int32_t*>(zps_begin), num_elems);
 
-//     params_.bwAxisScaleOffsetEncoding.scales = scales_span.data();
-//     params_.bwAxisScaleOffsetEncoding.offsets = zps_span.data();
-//   } else if (!is_per_tensor && !is_int4_type) {
-//     const auto* io_shape = io_def.node_arg.Shape();
-//     ORT_RETURN_IF(io_shape == nullptr, "Input/output tensor proto must have a shape");
-//     const int32_t io_rank = io_shape->dim_size();
+    for (size_t i = 0; i < num_elems; i++) {
+      scales_span[i] = scales[i];
+      zps_span[i] = no_zero_points ? 0 : zero_points[i];
+    }
 
-//     constexpr int64_t DEFAULT_QDQ_AXIS = 1;
-//     int64_t axis = ort_quant_params->axis.value_or(DEFAULT_QDQ_AXIS);
-//     if (axis < 0) {
-//       axis += io_rank;
-//     }
-//     ORT_RETURN_IF_NOT(axis >= 0 && axis < io_rank,
-//                       "Quantization axis must be within the range [0, rank - 1]");
+    params_.bwAxisScaleOffsetEncoding.scales = scales_span.data();
+    params_.bwAxisScaleOffsetEncoding.offsets = zps_span.data();
+  } else if (!is_per_tensor && !is_int4_type) {
+    const std::vector<int64_t> io_shape = io_def.shape;
+    ORT_RETURN_IF(io_shape.empty(), "Input/output tensor proto must have a shape");
+    const int32_t io_rank = static_cast<int32_t>(io_shape.size());
 
-//     params_.encodingDefinition = QNN_DEFINITION_DEFINED;
-//     params_.quantizationEncoding = QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET;
+    constexpr int64_t DEFAULT_QDQ_AXIS = 1;
+    int64_t axis = ort_quant_params->axis.value_or(DEFAULT_QDQ_AXIS);
+    if (axis < 0) {
+      axis += io_rank;
+    }
+    ORT_RETURN_IF_NOT(axis >= 0 && axis < io_rank,
+                      "Quantization axis must be within the range [0, rank - 1]");
 
-//     const size_t num_elems = scales.size();
-//     const bool no_zero_points = zero_points.empty();
-//     ORT_RETURN_IF_NOT(num_elems > 1, "Expected more than one scale value");
-//     ORT_RETURN_IF_NOT(no_zero_points || zero_points.size() == num_elems,
-//                       "Expected the same number of zero-points and scales for per-channel quantization");
+    params_.encodingDefinition = QNN_DEFINITION_DEFINED;
+    params_.quantizationEncoding = QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET;
 
-//     const size_t num_bytes = num_elems * sizeof(Qnn_ScaleOffset_t);
-//     constexpr std::uintptr_t align = alignof(Qnn_ScaleOffset_t);
-//     per_channel_data_ = std::make_unique<char[]>(num_bytes + align);
-//     Qnn_ScaleOffset_t* aligned_dst = ALIGN_PTR_UP(per_channel_data_.get(), align, Qnn_ScaleOffset_t*);
-//     gsl::span<Qnn_ScaleOffset_t> data_span(aligned_dst, num_elems);
+    const size_t num_elems = scales.size();
+    const bool no_zero_points = zero_points.empty();
+    ORT_RETURN_IF_NOT(num_elems > 1, "Expected more than one scale value");
+    ORT_RETURN_IF_NOT(no_zero_points || zero_points.size() == num_elems,
+                      "Expected the same number of zero-points and scales for per-channel quantization");
 
-//     for (size_t i = 0; i < num_elems; i++) {
-//       data_span[i].scale = scales[i];
-//       data_span[i].offset = no_zero_points ? 0 : zero_points[i];
-//     }
+    const size_t num_bytes = num_elems * sizeof(Qnn_ScaleOffset_t);
+    constexpr std::uintptr_t align = alignof(Qnn_ScaleOffset_t);
+    per_channel_data_ = std::make_unique<char[]>(num_bytes + align);
+    Qnn_ScaleOffset_t* aligned_dst = ALIGN_PTR_UP(per_channel_data_.get(), align, Qnn_ScaleOffset_t*);
+    gsl::span<Qnn_ScaleOffset_t> data_span(aligned_dst, num_elems);
 
-//     params_.axisScaleOffsetEncoding.axis = static_cast<int32_t>(axis);
-//     params_.axisScaleOffsetEncoding.numScaleOffsets = static_cast<uint32_t>(num_elems);
-//     params_.axisScaleOffsetEncoding.scaleOffset = data_span.data();
-//   } else {
-//     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected tensor kind for QuantParamsWrapper::Init()");
-//   }
+    for (size_t i = 0; i < num_elems; i++) {
+      data_span[i].scale = scales[i];
+      data_span[i].offset = no_zero_points ? 0 : zero_points[i];
+    }
 
-//   return Status::OK();
-// }
+    params_.axisScaleOffsetEncoding.axis = static_cast<int32_t>(axis);
+    params_.axisScaleOffsetEncoding.numScaleOffsets = static_cast<uint32_t>(num_elems);
+    params_.axisScaleOffsetEncoding.scaleOffset = data_span.data();
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected tensor kind for QuantParamsWrapper::Init()");
+  }
+
+  return Status::OK();
+}
 
 }  // namespace qnn
 }  // namespace onnxruntime

@@ -25,7 +25,6 @@ class BaseOpBuilder : public IOpBuilder {
                        const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
  protected:
-
   Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
                            const OrtNodeUnit& node_unit,
                            const logging::Logger& logger,
@@ -52,23 +51,23 @@ class BaseOpBuilder : public IOpBuilder {
    * \param quant_param The quantization parameter object that is overridden.
    * \return An onnxruntime::Status object indicating failure or success.
    */
-  // virtual Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
-  //                                         const OrtNodeUnit& node_unit,
-  //                                         const logging::Logger& logger,
-  //                                         const std::vector<std::string>& input_names,
-  //                                         size_t output_index,
-  //                                         Qnn_DataType_t qnn_data_type,
-  //                                         QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT {
-  //   // Do nothing by default. Op builders like Split implement this function to override output quant params.
-  //   ORT_UNUSED_PARAMETER(qnn_model_wrapper);
-  //   ORT_UNUSED_PARAMETER(node_unit);
-  //   ORT_UNUSED_PARAMETER(logger);
-  //   ORT_UNUSED_PARAMETER(input_names);
-  //   ORT_UNUSED_PARAMETER(output_index);
-  //   ORT_UNUSED_PARAMETER(qnn_data_type);
-  //   ORT_UNUSED_PARAMETER(quant_param);
-  //   return Status::OK();
-  // }
+  virtual Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                          const OrtNodeUnit& node_unit,
+                                          const logging::Logger& logger,
+                                          const std::vector<std::string>& input_names,
+                                          size_t output_index,
+                                          Qnn_DataType_t qnn_data_type,
+                                          QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT {
+    // Do nothing by default. Op builders like Split implement this function to override output quant params.
+    ORT_UNUSED_PARAMETER(qnn_model_wrapper);
+    ORT_UNUSED_PARAMETER(node_unit);
+    ORT_UNUSED_PARAMETER(logger);
+    ORT_UNUSED_PARAMETER(input_names);
+    ORT_UNUSED_PARAMETER(output_index);
+    ORT_UNUSED_PARAMETER(qnn_data_type);
+    ORT_UNUSED_PARAMETER(quant_param);
+    return Status::OK();
+  }
 
   virtual Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                const OrtNodeUnit& node_unit,
@@ -76,9 +75,9 @@ class BaseOpBuilder : public IOpBuilder {
                                std::vector<std::string>& input_names,
                                bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
-  // Status ProcessInt64Tensors(QnnModelWrapper& qnn_model_wrapper,
-  //                            const OrtNodeUnit& node_unit,
-  //                            std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+  Status ProcessInt64Tensors(QnnModelWrapper& qnn_model_wrapper,
+                             const OrtNodeUnit& node_unit,
+                             std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
   virtual Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                              const OrtNodeUnit& node_unit,
@@ -99,69 +98,69 @@ class BaseOpBuilder : public IOpBuilder {
                       const logging::Logger& logger,
                       std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
-  // Status AddZeroBiasInput(QnnModelWrapper& qnn_model_wrapper,
-  //                         const QnnQuantParamsWrapper& input0_qparams,
-  //                         const QnnQuantParamsWrapper& input1_qparams,
-  //                         std::vector<uint32_t>&& bias_shape,
-  //                         const std::string& bias_name,
-  //                         const logging::Logger& logger,
-  //                         std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+  Status AddZeroBiasInput(QnnModelWrapper& qnn_model_wrapper,
+                          const QnnQuantParamsWrapper& input0_qparams,
+                          const QnnQuantParamsWrapper& input1_qparams,
+                          std::vector<uint32_t>&& bias_shape,
+                          const std::string& bias_name,
+                          const logging::Logger& logger,
+                          std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
-  // template <typename T>
-  // Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
-  //                     const NodeIndex& node_index,
-  //                     const std::string& node_name,
-  //                     const T& scalar,
-  //                     const std::string& qnn_scalar_param_name,
-  //                     std::vector<std::string>& param_names) const {
-  //   Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
-  //   if (std::is_same<T, float>::value) {
-  //     qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
-  //     qnn_scalar.floatValue = static_cast<float>(scalar);
-  //   } else if (std::is_same<T, uint32_t>::value) {
-  //     qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
-  //     qnn_scalar.uint32Value = static_cast<uint32_t>(scalar);
-  //   } else if (std::is_same<T, int32_t>::value) {
-  //     qnn_scalar.dataType = QNN_DATATYPE_INT_32;
-  //     qnn_scalar.int32Value = static_cast<int32_t>(scalar);
-  //   } else if (std::is_same<T, int64_t>::value) {
-  //     qnn_scalar.dataType = QNN_DATATYPE_INT_64;
-  //     qnn_scalar.int64Value = static_cast<int64_t>(scalar);
-  //   } else if (std::is_same<T, bool>::value) {
-  //     qnn_scalar.dataType = QNN_DATATYPE_BOOL_8;
-  //     qnn_scalar.bool8Value = static_cast<uint8_t>(scalar);
-  //   } else {
-  //     ORT_RETURN_IF(true, "QNN EP: Unsupported scalar dtype");
-  //   }
-  //   QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
-  //   param_names.push_back(qnn_param_wrapper.GetParamTensorName());
-  //   qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
-  //   return Status::OK();
-  // }
+  template <typename T>
+  Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
+                      const NodeIndex& node_index,
+                      const std::string& node_name,
+                      const T& scalar,
+                      const std::string& qnn_scalar_param_name,
+                      std::vector<std::string>& param_names) const {
+    Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
+    if (std::is_same<T, float>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
+      qnn_scalar.floatValue = static_cast<float>(scalar);
+    } else if (std::is_same<T, uint32_t>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
+      qnn_scalar.uint32Value = static_cast<uint32_t>(scalar);
+    } else if (std::is_same<T, int32_t>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_INT_32;
+      qnn_scalar.int32Value = static_cast<int32_t>(scalar);
+    } else if (std::is_same<T, int64_t>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_INT_64;
+      qnn_scalar.int64Value = static_cast<int64_t>(scalar);
+    } else if (std::is_same<T, bool>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_BOOL_8;
+      qnn_scalar.bool8Value = static_cast<uint8_t>(scalar);
+    } else {
+      ORT_RETURN_IF(true, "QNN EP: Unsupported scalar dtype");
+    }
+    QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
+    param_names.push_back(qnn_param_wrapper.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
+    return Status::OK();
+  }
 
-  // Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
-  //                     const NodeIndex& node_index,
-  //                     const std::string& node_name,
-  //                     const std::string& scalar,
-  //                     const std::string& qnn_scalar_param_name,
-  //                     std::vector<std::string>& param_names) const {
-  //   Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
-  //   qnn_scalar.dataType = QNN_DATATYPE_STRING;
-  //   qnn_scalar.stringValue = scalar.c_str();
-  //   QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
-  //   param_names.push_back(qnn_param_wrapper.GetParamTensorName());
-  //   qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
-  //   return Status::OK();
-  // }
+  Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
+                      const NodeIndex& node_index,
+                      const std::string& node_name,
+                      const std::string& scalar,
+                      const std::string& qnn_scalar_param_name,
+                      std::vector<std::string>& param_names) const {
+    Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
+    qnn_scalar.dataType = QNN_DATATYPE_STRING;
+    qnn_scalar.stringValue = scalar.c_str();
+    QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
+    param_names.push_back(qnn_param_wrapper.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
+    return Status::OK();
+  }
 
-  // Status SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
-  //                                                 const OrtNodeUnit& node_unit,
-  //                                                 const logging::Logger& logger,
-  //                                                 const std::vector<std::string>& input_names,
-  //                                                 size_t input_index,
-  //                                                 size_t output_index,
-  //                                                 Qnn_DataType_t qnn_data_type,
-  //                                                 QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT;
+  Status SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
+                                                  const OrtNodeUnit& node_unit,
+                                                  const logging::Logger& logger,
+                                                  const std::vector<std::string>& input_names,
+                                                  size_t input_index,
+                                                  size_t output_index,
+                                                  Qnn_DataType_t qnn_data_type,
+                                                  QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT;
 
   static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
     static const std::unordered_map<std::string, std::string> onnx_op_type_to_qnn_op_type = {

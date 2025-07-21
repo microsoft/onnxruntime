@@ -364,7 +364,7 @@ bool QnnModelWrapper::GetOnnxShape(const std::vector<int64_t>& onnx_shape, std::
 
 Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
                                          /*out*/ std::vector<int32_t>& zero_points,
-                                         /*out*/ int32_t& onnx_data_type) const {
+                                         /*out*/ ONNXTensorElementDataType& onnx_data_type) const {
   // Find the initializer by name
   const OrtValueInfo* zp_tensor = nullptr;
   Status status = FindInitializer(initializer_name, &zp_tensor);
@@ -377,11 +377,9 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
   api_ptrs_.ort_api.GetValueInfoTypeInfo(zp_tensor, &type_info);
   const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
   api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
-  ONNXTensorElementDataType temp_data_type;
-  api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &temp_data_type);
+  api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
   api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
 
-  onnx_data_type = static_cast<int32_t>(temp_data_type);
   std::vector<uint8_t> initializer_bytes;
 
   ORT_RETURN_IF_ERROR(UnpackInitializerData(*const_cast<OrtValueInfo*>(zp_tensor), initializer_bytes));
@@ -447,7 +445,7 @@ Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::v
   api_ptrs_.ort_api.GetValueInfoTypeInfo(scale_tensor, &type_info);
   const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
   api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
-  ONNXTensorElementDataType onnx_data_type;
+  ONNXTensorElementDataType onnx_data_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
   api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
   ORT_RETURN_IF_NOT(onnx_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
@@ -519,7 +517,7 @@ Status QnnModelWrapper::GetTensorInfo(const OrtNodeUnitIODef& tensor, TensorInfo
   const std::string& name = tensor.name;
 
   // Fill in quantization param info.
-  // ORT_RETURN_IF_ERROR(tensor_info.quant_param.Init(*this, tensor));
+  ORT_RETURN_IF_ERROR(tensor_info.quant_param.Init(GetOrtApi(), *this, tensor));
 
   // Fill in QNN data type.
   tensor_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
@@ -668,7 +666,7 @@ Status QnnModelWrapper::UnpackInitializerData(OrtValueInfo& initializer,
   api_ptrs_.ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
   const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
   api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
-  ONNXTensorElementDataType onnx_data_type;
+  ONNXTensorElementDataType onnx_data_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
 
   // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.

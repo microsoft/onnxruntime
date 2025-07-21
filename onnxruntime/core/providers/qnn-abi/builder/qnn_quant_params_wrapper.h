@@ -13,7 +13,7 @@
 namespace onnxruntime {
 namespace qnn {
 
-// class QnnModelWrapper;  // Forward-declare
+class QnnModelWrapper;  // Forward-declare
 
 class QnnQuantParamsWrapper {
  public:
@@ -37,9 +37,9 @@ class QnnQuantParamsWrapper {
   // Initialize this object from a raw Qnn_QuantizeParam_t object.
   Status Init(const Qnn_QuantizeParams_t& params);
 
-//   // Initialize this object from a (potentially) quantized ONNX tensor.
-//   // QnnModelWrapper provides utilities for unpacking scale and zero-point ONNX initializers.
-//   Status Init(const QnnModelWrapper& qnn_model_wrapper, const NodeUnitIODef& io_def);
+  // Initialize this object from a (potentially) quantized ONNX tensor.
+  // QnnModelWrapper provides utilities for unpacking scale and zero-point ONNX initializers.
+  Status Init(const OrtApi& ort_api, const QnnModelWrapper& qnn_model_wrapper, const OrtNodeUnitIODef& io_def);
 
   QnnQuantParamsWrapper Copy() const;
 

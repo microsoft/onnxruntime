@@ -166,6 +166,8 @@ class QnnModelWrapper {
     return value_info;
   }
 
+  // This function aims to check if the input to a node is an initializer.
+  // Note: the `input` here refers to the input of the node, not the input of the graph.
   bool IsConstantInput(const std::string& input_name) const {
     const OrtValueInfo* value_info = nullptr;
     Status status = FindInitializer(input_name, &value_info);
@@ -173,10 +175,10 @@ class QnnModelWrapper {
       return false;
     }
 
-    bool is_optional_graph_input = false;
-    api_ptrs_.ort_api.ValueInfo_IsOptionalGraphInput(value_info, &is_optional_graph_input);
+    bool is_constant_initializer = false;
+    api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
 
-    return is_optional_graph_input;
+    return is_constant_initializer;
   }
 
   // static bool GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t>& shape);
@@ -331,7 +333,7 @@ class QnnModelWrapper {
   // Unpack zero-points from initializer and convert to int32_t (1 zero-point for per-tensor, > 1 for per-channel).
   Status UnpackZeroPoints(const std::string& initializer_name,
                           /*out*/ std::vector<int32_t>& zero_points,
-                          /*out*/ int32_t& onnx_data_type) const;
+                          /*out*/ ONNXTensorElementDataType& onnx_data_type) const;
 
   // // Checks if a tensor in the ONNX graph is per-channel quantized.
   Status IsPerChannelQuantized(const OrtNodeUnitIODef& io_def,
