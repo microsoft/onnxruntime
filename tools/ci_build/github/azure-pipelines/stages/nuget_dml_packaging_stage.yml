@@ -69,11 +69,10 @@ stages:
                 move %%~ni.zip %%~ni.nupkg
             )
         )
-        popd
         copy $(Build.BinariesDirectory)\nuget-artifact-dml\Microsoft.ML.OnnxRuntime.DirectML*nupkg $(Build.ArtifactStagingDirectory)
 
       displayName: 'Bundle DML NuGet and other binaries'
-      workingDirectory: '$(Build.BinariesDirectory)\nuget-artifact-dml'
+      workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-dml
 
     - template: ../templates/esrp_nuget.yml
       parameters:
