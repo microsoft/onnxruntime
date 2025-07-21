@@ -1111,8 +1111,10 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
   broken_tests->insert({"attention_3d_diff_heads_sizes_causal", "wrong expected values (fixed in onnx==1.19.0)"});
   broken_tests->insert({"attention_3d_diff_heads_sizes_scaled", "wrong expected values (fixed in onnx==1.19.0)"});
   broken_tests->insert({"attention_3d_diff_heads_sizes_softcap", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_diff_heads_with_past_and_present", "wrong expected values (fixed in onnx==1.19.0)"});
   broken_tests->insert({"attention_3d_gqa", "wrong expected values (fixed in onnx==1.19.0)"});
   broken_tests->insert({"attention_3d_gqa_attn_mask", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_gqa_causal", "wrong expected values (fixed in onnx==1.19.0)"});
   broken_tests->insert({"attention_3d_gqa_scaled", "wrong expected values (fixed in onnx==1.19.0)"});
   broken_tests->insert({"attention_3d_gqa_softcap", "wrong expected values (fixed in onnx==1.19.0)"});
   broken_tests->insert({"attention_3d_gqa_with_past_and_present", "wrong expected values (fixed in onnx==1.19.0)"});
