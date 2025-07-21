@@ -300,7 +300,7 @@ struct TreeEnsembleAttributesV5 {
         }
         // If it is a leaf node, then next one is a false branch.
       } else {
-        size_t before = -1;
+        int64_t before = -1;
         bool big_set = false;
         if (nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER) {
           if (membership_values_by_id[curr_id].size() < 31 &&
@@ -364,7 +364,7 @@ struct TreeEnsembleAttributesV5 {
 
         if (before != -1) {
           // If we unrolled the `BRANCH_MEMBER` nodes, we need to update the true node ids of the previous nodes.
-          for (size_t i = before; i < output.nodes_truenodeids.size() - 1; ++i) {
+          for (size_t i = static_cast<size_t>(before); i < output.nodes_truenodeids.size() - 1; ++i) {
             output.nodes_truenodeids[i] = curr_nodeid + 1;
           }
         }
