@@ -27,7 +27,6 @@ limitations under the License.
 #include "core/common/logging/severity.h"
 #include "core/common/safeint.h"
 
-#include <mutex>
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/allocator.h"
 

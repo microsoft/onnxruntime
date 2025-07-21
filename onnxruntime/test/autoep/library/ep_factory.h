@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <atomic>
 #include <mutex>
 
 #include "ep_arena.h"
@@ -80,7 +79,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   bool arena_allocator_using_default_settings_{true};
   std::unique_ptr<ArenaAllocator> arena_allocator_;  // shared device allocator that uses an arena
-  std::atomic<uint32_t> num_arena_users_{0};
+  uint32_t num_arena_users_{0};
   std::mutex mutex_;  // mutex to protect arena_allocator_ and num_arena_users_
 
   std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
