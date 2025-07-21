@@ -147,19 +147,21 @@ std::unique_ptr<profiling::EpProfiler> VitisAIExecutionProvider::GetProfiler() {
 
 std::vector<AllocatorPtr> VitisAIExecutionProvider::CreatePreferredAllocators() {
   std::vector<AllocatorPtr> result;
-  // We do not want arena for this, as it would not respect alignment.
-  constexpr const bool use_arena_false = false;
-  AllocatorCreationInfo device_info_cpu_aligned_4k{
+  // We do not want arena for 4k alignment, as it would not respect alignment.
+  // For CPU, use arena
+  // Removed 4k alignment for now, need better fix
+  constexpr const bool use_arena = true;
+  AllocatorCreationInfo device_info_cpu{
       [](OrtDevice::DeviceId device_id) {
         return std::make_unique<CPUAllocator>(
             OrtMemoryInfo(
-                onnxruntime::CPU_ALIGNED_4K, OrtAllocatorType::OrtDeviceAllocator,
+                onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator,
                 OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE,
-                          device_id)));  // Removed 4k alignment for now, need better fix
+                          device_id)));
       },
-      DEFAULT_CPU_ALLOCATOR_DEVICE_ID, use_arena_false};
+      DEFAULT_CPU_ALLOCATOR_DEVICE_ID, use_arena};
 
-  result.push_back(CreateAllocator(device_info_cpu_aligned_4k));
+  result.push_back(CreateAllocator(device_info_cpu));
   return result;
 }
 
