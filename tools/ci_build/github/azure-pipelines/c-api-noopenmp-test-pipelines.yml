@@ -140,21 +140,21 @@ stages:
       value: false
 
     steps:
-    - template: ../templates/set-version-number-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
 
-    - template: ../templates/jobs/download_win_gpu_library.yml
+    - template: templates/jobs/download_win_gpu_library.yml
       parameters:
         CudaVersion: 12.2
         DownloadCUDA: true
         DownloadTRT: true
 
-    - template: ../templates/flex-downloadPipelineArtifact.yml
+    - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Final Jar'
         ArtifactName: onnxruntime-java-gpu
         TargetPath: '$(Build.BinariesDirectory)\final-jar'
 
-    - template: ../templates/flex-downloadPipelineArtifact.yml
+    - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Jar Tools'
         ArtifactName: onnxruntime-java-tools
@@ -185,15 +185,15 @@ stages:
     steps:
     - checkout: self
       submodules: false
-    - template: ../templates/set-version-number-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
 
-    - template: ../templates/flex-downloadPipelineArtifact.yml
+    - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Final Jar'
         ArtifactName: onnxruntime-java-gpu
         TargetPath: '$(Build.BinariesDirectory)/final-jar'
 
-    - template: ../templates/get-docker-image-steps.yml
+    - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0
         Context: tools/ci_build/github/linux/docker/
