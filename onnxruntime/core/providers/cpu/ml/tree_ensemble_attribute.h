@@ -272,10 +272,10 @@ struct TreeEnsembleAttributesV5 {
       last_curr_nodeid = curr_nodeid;
 
       if (placeholder_to_update != -1) {
-        ORT_ENFORCE(output.nodes_falsenodeids[placeholder_to_update] == -1,
+        ORT_ENFORCE(output.nodes_falsenodeids[static_cast<size_t>(placeholder_to_update)] == -1,
                     "Placeholder for a false branch was already updated, placeholder=", placeholder_to_update,
                     ", curr_nodeid=", curr_nodeid);
-        output.nodes_falsenodeids[placeholder_to_update] = curr_nodeid;
+        output.nodes_falsenodeids[static_cast<size_t>(placeholder_to_update)] = curr_nodeid;
       }
 
       if (is_leaf) {
@@ -300,7 +300,7 @@ struct TreeEnsembleAttributesV5 {
         }
         // If it is a leaf node, then next one is a false branch.
       } else {
-        int64_t before = -1;
+        size_t before = -1;
         bool big_set = false;
         if (nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER) {
           if (membership_values_by_id[curr_id].size() < 31 &&
