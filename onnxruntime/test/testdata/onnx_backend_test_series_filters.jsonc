@@ -104,6 +104,8 @@
         "^test_rotary_embedding_3d_input_expanded",
         "^test_rotary_embedding_interleaved_expanded",
         "^test_rotary_embedding_no_position_ids_interleaved_expanded",
+        "^test_rotary_embedding_expanded", //webgpu
+        "^test_rotary_embedding_no_position_ids_expanded", //webgpu
         // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
         "^test_roialign_mode_max", // TODO: Remove once onnx test is fixed
