@@ -26,7 +26,7 @@ struct TreeNodeElementId {
     return (node_id == xyz.node_id) && (tree_id == xyz.tree_id);
   }
   bool operator<(const TreeNodeElementId& xyz) const {
-    return ((tree_id < xyz.tree_id) || (node_id < xyz.node_id && tree_id == xyz.tree_id));
+    return (tree_id < xyz.tree_id) || (tree_id == xyz.tree_id && node_id < xyz.node_id);
   }
   struct hash_fn {
     std::size_t operator()(const TreeNodeElementId& key) const {
