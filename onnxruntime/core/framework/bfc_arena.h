@@ -523,7 +523,7 @@ class StreamAwareArena : public BFCArena {
   bool IsStreamAware() const override { return true; }
 
   // Standard alloc behavior. Returns valid pointer if size > 0 and memory was available. Otherwise returns nullptr.
-  void* AllocOnStream(size_t size, Stream* current_stream_id);
+  void* AllocOnStream(size_t size, Stream* current_stream_id) override;
 
   void ReleaseStreamBuffers(Stream* stream);
 
