@@ -159,12 +159,8 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
                          const OrtLogger& default_logger_in,
                          const char* ep_name,
                          OrtHardwareDeviceType hw_type)
-<<<<<<< HEAD
       : ort_api{ort_api_in}, default_logger{default_logger_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
-=======
-      : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
     ort_version_supported = ORT_API_VERSION;
->>>>>>> 81084a829 (!. added Ep name)
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
     GetVersion = GetVersionImpl;
