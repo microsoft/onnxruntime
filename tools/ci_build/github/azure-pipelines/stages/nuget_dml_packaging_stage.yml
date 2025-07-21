@@ -42,7 +42,7 @@ stages:
           ${{ else }}:
             - output: pipelineArtifact
               targetPath: $(Build.ArtifactStagingDirectory)
-              artifactName: 'packages"
+              artifactName: "packages"
     steps:
     - task: PowerShell@2
       inputs:
