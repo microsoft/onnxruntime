@@ -40,86 +40,13 @@ stages:
               targetPath: $(Build.ArtifactStagingDirectory)
               artifactName: 'packages"
     steps:
-    - powershell: |
-        # Define the working directory and the path to 7-Zip
-        $workingDir = "$(Build.BinariesDirectory)\nuget-artifact-dml"
-        $sevenZipPath = "C:\Program Files\7-Zip\7z.exe" # Standard installation path for 7-Zip
+    - task: PowerShell@2
+      inputs:
+        filePath: 'tools\ci_build\github\windows\bundle_dml_package.ps1'
+        arguments: '-ArtifactStagingDirectory "$(Build.ArtifactStagingDirectory)"'
+        workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact-dml'
+      displayName: 'Bundle DML NuGet and other binaries'
 
-        Write-Host "Setting location to $workingDir"
-        Set-Location -Path $workingDir
-
-        # Unzip the supplemental ARM64 binaries needed for the packages.
-        # This is done once to avoid unzipping it inside the loop.
-        $arm64ZipFile = "win-dml-arm64.zip"
-        $arm64ExtractPath = "win-dml-arm64-unzipped"
-        Write-Host "Extracting $arm64ZipFile to $arm64ExtractPath"
-        & $sevenZipPath x $arm64ZipFile -o"$arm64ExtractPath" -y
-
-        # Find all non-managed .nupkg files.
-        $nupkgFiles = Get-ChildItem -Path . -Recurse -Filter *.nupkg | Where-Object { $_.Name -notlike "*Managed*" }
-
-        # Verify that exactly one non-managed package was found. If not, fail the build.
-        if ($nupkgFiles.Count -ne 1) {
-            Write-Error "Error: Expected to find exactly one non-managed NuGet package, but found $($nupkgFiles.Count)."
-            exit 1
-        }
-
-        # Get the single package to process.
-        $nupkg = $nupkgFiles[0]
-
-        # Verify the package name matches the expected pattern. If not, fail the build.
-        if ($nupkg.Name -notlike "Microsoft.ML.OnnxRuntime.DirectML*.nupkg") {
-            Write-Error "Error: Package name '$($nupkg.Name)' does not match the expected pattern 'Microsoft.ML.OnnxRuntime.DirectML*.nupkg'."
-            exit 1
-        }
-
-        Write-Host "---"
-        Write-Host "Processing package: $($nupkg.FullName)"
-
-        # Create a temporary directory for package modification
-        $tempDir = Join-Path $nupkg.DirectoryName ($nupkg.BaseName + "_temp")
-        if (Test-Path $tempDir) {
-            Remove-Item -Recurse -Force $tempDir
-        }
-        New-Item -ItemType Directory -Path $tempDir | Out-Null
-
-        # 1. Extract the original nupkg to the temporary directory
-        Write-Host "Extracting $($nupkg.Name) to $tempDir"
-        & $sevenZipPath x $nupkg.FullName -o"$tempDir" -y
-
-        # 2. Define the new runtime path and create it
-        $newRuntimePath = Join-Path $tempDir "runtimes\win-arm64\native"
-        New-Item -ItemType Directory -Path $newRuntimePath -Force | Out-Null
-
-        # 3. Copy the required ARM64 binaries into the new structure
-        $arm64SourcePath = Join-Path $workingDir "$arm64ExtractPath\runtimes\win-arm64\native"
-        Write-Host "Copying ARM64 binaries to $newRuntimePath"
-        Copy-Item -Path "$arm64SourcePath\*" -Destination $newRuntimePath -Recurse -Force
-
-        # 4. Delete the original nupkg file before creating the new one
-        Remove-Item -Path $nupkg.FullName -Force
-
-        # 5. Re-compress the contents of the temp directory back into a new nupkg file.
-        # We use Push-Location to change into the temp directory so the zip paths are relative.
-        Write-Host "Creating new nupkg file at $($nupkg.FullName)"
-        Push-Location $tempDir
-        & $sevenZipPath a -tzip "$($nupkg.FullName)" ".\" -r
-        Pop-Location
-
-        # 6. Clean up the temporary directory
-        Write-Host "Cleaning up temporary directory $tempDir"
-        Remove-Item -Recurse -Force $tempDir
-        Write-Host "Finished processing $($nupkg.Name)"
-
-        # Clean up the unzipped ARM64 binaries directory
-        Write-Host "---"
-        Write-Host "Cleaning up temporary ARM64 directory."
-        Remove-Item -Recurse -Force $arm64ExtractPath
-
-        # Copy the final, modified NuGet packages to the artifact staging directory
-        Write-Host "Copying final artifacts to $(Build.ArtifactStagingDirectory)"
-        Copy-Item -Path (Join-Path $workingDir "Microsoft.ML.OnnxRuntime.DirectML*.nupkg") -Destination "$(Build.ArtifactStagingDirectory)" -Force
-      displayName: 'Bundle DML NuGet and other binaries (PowerShell)'
 
     - template: ../templates/esrp_nuget.yml
       parameters:
