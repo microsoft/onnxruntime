@@ -118,13 +118,14 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   struct PrivateConstructorTag {};
 
  public:
-  static std::shared_ptr<QnnBackendManager> Create(const QnnBackendManagerConfig& config) {
-    return std::make_shared<QnnBackendManager>(config, PrivateConstructorTag{});
+  static std::shared_ptr<QnnBackendManager> Create(const QnnBackendManagerConfig& config,
+                                                   const logging::Logger& logger) {
+    return std::make_shared<QnnBackendManager>(config, logger, PrivateConstructorTag{});
   }
 
   // Note: Creation should be done via Create(). This constructor is public so that it can be called from
   // std::make_shared().
-  QnnBackendManager(const QnnBackendManagerConfig& config, PrivateConstructorTag)
+  QnnBackendManager(const QnnBackendManagerConfig& config, const logging::Logger& logger, PrivateConstructorTag)
       : backend_path_(config.backend_path),
         profiling_level_etw_(config.profiling_level_etw),
         profiling_level_(config.profiling_level),
@@ -134,7 +135,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         device_id_(config.device_id),
         htp_arch_(config.htp_arch),
         soc_model_(config.soc_model),
-        op_packages_(config.op_packages) {
+        op_packages_(config.op_packages),
+        logger_(logger) {
   }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
@@ -150,8 +152,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   // Initializes handles to QNN resources (device, logger, etc.).
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
-  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
-                      bool need_load_system_lib, bool share_ep_contexts,
+  Status SetupBackend(bool load_from_cached_context,
+                      bool need_load_system_lib,
+                      bool share_ep_contexts,
                       bool enable_vtcm_backup_buffer_sharing,
                       std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
@@ -296,7 +299,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   std::string GetBackendBuildId() {
     char* backend_build_id{nullptr};
     if (QNN_SUCCESS != qnn_interface_.backendGetBuildId((const char**)&backend_build_id)) {
-      LOGS(*logger_, ERROR) << "Unable to get build Id from the backend.";
+      LOGS(logger_, ERROR) << "Unable to get build Id from the backend.";
     }
     return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
   }
@@ -353,43 +356,43 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   //     if (result != QNN_SUCCESS) {
   //       switch (result) {
   //         case QNN_BACKEND_ERROR_INVALID_ARGUMENT:
-  //           LOGS(*logger_, ERROR) << "Invalid argument, please check if op package path or interface provider is NULL.";
+  //           LOGS(logger_, ERROR) << "Invalid argument, please check if op package path or interface provider is NULL.";
   //           break;
   //         case QNN_BACKEND_ERROR_OP_PACKAGE_NOT_FOUND:
-  //           LOGS(*logger_, ERROR) << "Could not open op package path. op_pack_path: " << op_package.path;
+  //           LOGS(logger_, ERROR) << "Could not open op package path. op_pack_path: " << op_package.path;
   //           break;
   //         case QNN_BACKEND_ERROR_OP_PACKAGE_IF_PROVIDER_NOT_FOUND:
-  //           LOGS(*logger_, ERROR) << "Could not find interfaceProvider symbol in op package library.";
+  //           LOGS(logger_, ERROR) << "Could not find interfaceProvider symbol in op package library.";
   //           break;
   //         case QNN_BACKEND_ERROR_OP_PACKAGE_REGISTRATION_FAILED:
-  //           LOGS(*logger_, ERROR) << "Op package registration failed.";
+  //           LOGS(logger_, ERROR) << "Op package registration failed.";
   //           break;
   //         case QNN_BACKEND_ERROR_OP_PACKAGE_UNSUPPORTED_VERSION:
-  //           LOGS(*logger_, ERROR) << "Op package has interface version not supported by this backend.";
+  //           LOGS(logger_, ERROR) << "Op package has interface version not supported by this backend.";
   //           break;
   //         case QNN_BACKEND_ERROR_NOT_SUPPORTED:
-  //           LOGS(*logger_, ERROR) << "Op package registration is not supported.";
+  //           LOGS(logger_, ERROR) << "Op package registration is not supported.";
   //           break;
   //         case QNN_BACKEND_ERROR_INVALID_HANDLE:
-  //           LOGS(*logger_, ERROR) << "backend is not a valid handle.";
+  //           LOGS(logger_, ERROR) << "backend is not a valid handle.";
   //           break;
   //         case QNN_BACKEND_ERROR_OP_PACKAGE_DUPLICATE:
-  //           LOGS(*logger_, ERROR) << "OpPackageName+OpName must be unique. Op package content information can be be obtained with \
+  //           LOGS(logger_, ERROR) << "OpPackageName+OpName must be unique. Op package content information can be be obtained with \
   // QnnOpPackage interface. Indicates that an Op with the same package name and op name was already registered.";
   //           break;
   //         case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION:
-  //           LOGS(*logger_, ERROR) << "SSR occurrence (successful recovery).";
+  //           LOGS(logger_, ERROR) << "SSR occurrence (successful recovery).";
   //           break;
   //         case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION_FATAL:
-  //           LOGS(*logger_, ERROR) << "SSR occurrence (unsuccessful recovery).";
+  //           LOGS(logger_, ERROR) << "SSR occurrence (unsuccessful recovery).";
   //           break;
   //         default:
-  //           LOGS(*logger_, ERROR) << "Unknown error occurred while initializing logging in the QNN backend.";
+  //           LOGS(logger_, ERROR) << "Unknown error occurred while initializing logging in the QNN backend.";
   //           break;
   //       }
   //     }
   //     ORT_RETURN_IF(QNN_SUCCESS != result, "Failed to register op package to backend. Error: ", QnnErrorHandleToString(result));
-  //     LOGS(*logger_, VERBOSE) << "Successfully register the op package.";
+  //     LOGS(logger_, VERBOSE) << "Successfully register the op package.";
   //     std::string op_package_for_registration = std::filesystem::path(op_package.path).stem().string();
   //     // remove lib prefix in Linux
   //     std::string prefix = "lib";
@@ -405,7 +408,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
  private:
   const std::string backend_path_;
   std::recursive_mutex logger_recursive_mutex_;
-  const logging::Logger* logger_ = nullptr;
+  // const logging::Logger* logger_ = nullptr;
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
   QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
   void* backend_lib_handle_ = nullptr;
@@ -450,6 +453,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
   const std::vector<OpPackage> op_packages_;
+
+  const logging::Logger& logger_;
 };
 
 }  // namespace qnn

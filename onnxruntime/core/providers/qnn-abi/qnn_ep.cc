@@ -102,7 +102,7 @@ QnnEp::QnnEp(QnnEpFactory& factory, const std::string& name,
   backend_config.profiling_file_path = "";
   backend_config.device_id = 0;
   backend_config.soc_model = 0;
-  qnn_backend_manager_ = qnn::QnnBackendManager::Create(backend_config);
+  qnn_backend_manager_ = qnn::QnnBackendManager::Create(backend_config, *logger.ToInternal());
 }
 
 QnnEp::~QnnEp() = default;
@@ -575,8 +575,7 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   }
   auto logger = *(ep->logger_.ToInternal());
 
-  Status rt = ep->qnn_backend_manager_->SetupBackend(logger,
-                                                     is_qnn_ctx_model,
+  Status rt = ep->qnn_backend_manager_->SetupBackend(is_qnn_ctx_model,
                                                      ep->context_cache_enabled_ && false,  // enable_spill_fill_buffer_ (not implemented)
                                                      ep->share_ep_contexts_,
                                                      ep->enable_vtcm_backup_buffer_sharing_,
@@ -727,7 +726,6 @@ OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
   QnnEp* ep = static_cast<QnnEp*>(this_ptr);
   auto logger = *(ep->logger_.ToInternal());
 
-  node_compute_infos;
   ep_context_nodes;
 
   for (size_t graph_idx = 0; graph_idx < count; ++graph_idx) {
@@ -794,11 +792,21 @@ OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
 
     ep->qnn_models_.emplace(fused_node_name, std::move(qnn_model));
 
-    // RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+    auto node_compute_info = std::make_unique<QnnNodeComputeInfo>(*ep);
+    node_compute_infos[graph_idx] = node_compute_info.release();
   }
 
-  return ep->ort_api.CreateStatus(ORT_EP_FAIL, "ERROR");
+  std::cout << "DEBUG: QNN CompileImpl completed!" << std::endl;
   return nullptr;
+}
+
+void ORT_API_CALL QnnEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
+                                                         OrtNodeComputeInfo** node_compute_infos,
+                                                         size_t num_node_compute_infos) {
+  ORT_UNUSED_PARAMETER(this_ptr);
+  for (size_t idx = 0; idx < num_node_compute_infos; ++idx) {
+    delete node_compute_infos[idx];
+  }
 }
 
 QnnEp::PerThreadContext::PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
@@ -924,5 +932,47 @@ void QnnEp::ReleasePerThreadContext() {
 
 //     return nullptr;
 // }
+
+QnnEp::QnnNodeComputeInfo::QnnNodeComputeInfo(QnnEp& ep) : ep(ep) {
+  ort_version_supported = ORT_API_VERSION;
+  CreateState = CreateStateImpl;
+  Compute = ComputeImpl;
+  ReleaseState = ReleaseStateImpl;
+}
+
+OrtStatus* QnnEp::QnnNodeComputeInfo::CreateStateImpl(OrtNodeComputeInfo* this_ptr,
+                                                      OrtNodeComputeContext* compute_context,
+                                                      void** compute_state) {
+  auto* node_compute_info = static_cast<QnnNodeComputeInfo*>(this_ptr);
+  QnnEp& ep = node_compute_info->ep;
+
+  std::string fused_node_name = ep.ep_api.NodeComputeContext_NodeName(compute_context);
+  auto qnn_model_it = ep.qnn_models_.find(fused_node_name);
+  if (qnn_model_it == ep.qnn_models_.end()) {
+    std::string message = "Unable to get QnnModel with name " + fused_node_name;
+    return ep.ort_api.CreateStatus(ORT_EP_FAIL, message.c_str());
+  }
+
+  *compute_state = qnn_model_it->second.get();
+  return nullptr;
+}
+
+OrtStatus* QnnEp::QnnNodeComputeInfo::ComputeImpl(OrtNodeComputeInfo* this_ptr,
+                                                  void* compute_state,
+                                                  OrtKernelContext* kernel_context) {
+  auto* node_compute_info = static_cast<QnnNodeComputeInfo*>(this_ptr);
+  QnnEp& ep = node_compute_info->ep;
+
+  qnn::QnnModel* model = reinterpret_cast<qnn::QnnModel*>(compute_state);
+  RETURN_IF_NOT_OK(model->ExecuteGraph(*kernel_context, *ep.logger_.ToInternal()), ep.ort_api);
+
+  return nullptr;
+}
+
+void QnnEp::QnnNodeComputeInfo::ReleaseStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state) {
+  // The 'state' is a qnn::QnnModel managed by unique_ptr.
+  ORT_UNUSED_PARAMETER(this_ptr);
+  ORT_UNUSED_PARAMETER(compute_state);
+}
 
 }  // namespace onnxruntime

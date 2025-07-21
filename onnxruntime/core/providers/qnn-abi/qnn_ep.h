@@ -52,6 +52,9 @@ class QnnEp : public OrtEp, public ApiPtrs {
                                              _In_ size_t count,
                                              _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
                                              _Out_writes_(count) OrtNode** ep_context_nodes);
+  static void ORT_API_CALL ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
+                                                       OrtNodeComputeInfo** node_compute_infos,
+                                                       size_t num_node_compute_infos);
 
   OrtStatus* GetSupportedNodes(OrtEp* this_ptr,
                                const OrtGraph* graph,
@@ -77,6 +80,19 @@ class QnnEp : public OrtEp, public ApiPtrs {
 
   void InitQnnHtpGraphConfigs(
       qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
+
+  struct QnnNodeComputeInfo : OrtNodeComputeInfo {
+    explicit QnnNodeComputeInfo(QnnEp& ep);
+
+    static OrtStatus* ORT_API_CALL CreateStateImpl(OrtNodeComputeInfo* this_ptr,
+                                                  OrtNodeComputeContext* compute_context,
+                                                  void** compute_state);
+    static OrtStatus* ORT_API_CALL ComputeImpl(OrtNodeComputeInfo* this_ptr, void* compute_state,
+                                              OrtKernelContext* kernel_context);
+    static void ORT_API_CALL ReleaseStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state);
+
+    QnnEp& ep;
+  };
 
   // Per-thread context management
   class PerThreadContext final {

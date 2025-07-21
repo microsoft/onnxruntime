@@ -200,7 +200,6 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      bool do_op_validation,
                                      const std::string& qnn_op_type) const {
   ORT_UNUSED_PARAMETER(logger);
-  do_op_validation;
 
   struct CastNodeInfo {
     std::string node_name;
@@ -218,7 +217,6 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   const auto output_count = GetOutputCountQnnRequired(node_unit);
   for (size_t output_idx = 0; output_idx < output_count; ++output_idx) {
     const std::string& output_name = outputs[output_idx].name;
-    output_names.push_back(output_name);
 
     TensorInfo output_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[output_idx], output_info));

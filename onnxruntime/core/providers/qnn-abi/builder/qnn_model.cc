@@ -245,6 +245,7 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
 
 Status QnnModel::ExecuteGraph(const OrtKernelContext& context,
                               const logging::Logger& logger) {
+  std::cout << "DEBUG: ExecuteGraph" << std::endl;
   LOGS(logger, VERBOSE) << "QnnModel::ExecuteGraphs";
   size_t num_inputs;
   api_ptrs_.ort_api.KernelContext_GetInputCount(&context, &num_inputs);
