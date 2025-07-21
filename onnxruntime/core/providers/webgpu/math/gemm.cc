@@ -150,10 +150,12 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     return context.RunProgram(program);
   }
 
+#if !defined(__wasm__)
   // Apple - Experimental dawn support for subgroup matrix GEMM.
   if (CanApplySubgroupMatrixGemm(context, static_cast<uint32_t>(K), static_cast<uint32_t>(N))) {
     return ApplySubgroupMatrixGemm(A, B, C, transA_, transB_, alpha_, beta_, context);
   }
+#endif
 
   return ApplyGemmPacked(A, B, C, transA_, transB_, alpha_, beta_, context);
 }

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(__wasm__)
+
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -52,3 +54,5 @@ Status ApplySubgroupMatrixGemm(const Tensor* a,
 
 }  // namespace webgpu
 }  // namespace onnxruntime
+
+#endif

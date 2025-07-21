@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(__wasm__)
+
 #include "core/providers/webgpu/math/subgroup_matrix_gemm.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
@@ -339,3 +341,5 @@ Status ApplySubgroupMatrixGemm(const Tensor* a,
 
 }  // namespace webgpu
 }  // namespace onnxruntime
+
+#endif
