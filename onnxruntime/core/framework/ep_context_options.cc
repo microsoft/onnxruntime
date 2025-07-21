@@ -19,7 +19,8 @@ ModelGenOptions::ModelGenOptions(const ConfigOptions& config_options) {
 
   std::string output_model_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
   if (!output_model_path.empty()) {
-    output_model_location = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+    output_model_location = std::filesystem::path(config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath,
+                                                                                    ""));
   } else {
     output_model_location = std::monostate{};
   }
@@ -49,8 +50,8 @@ bool ModelGenOptions::HasOutputModelLocation() const {
   return !std::holds_alternative<std::monostate>(output_model_location);
 }
 
-const std::string* ModelGenOptions::TryGetOutputModelPath() const {
-  return std::get_if<std::string>(&output_model_location);
+const std::filesystem::path* ModelGenOptions::TryGetOutputModelPath() const {
+  return std::get_if<std::filesystem::path>(&output_model_location);
 }
 
 const BufferHolder* ModelGenOptions::TryGetOutputModelBuffer() const {

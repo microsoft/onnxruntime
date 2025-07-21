@@ -64,7 +64,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetInputModelPath,
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
-  std::string model_path = PathToUTF8String(input_model_path);
+  std::filesystem::path model_path = input_model_path;
 
   if (model_path.empty()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid input model: path string is empty");
@@ -113,7 +113,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelPath,
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
 
-  std::string model_path = PathToUTF8String(output_model_path);
+  std::filesystem::path model_path = output_model_path;
   if (model_path.empty()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid output model path: path is empty");
   }
@@ -164,7 +164,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelExterna
                     size_t external_initializer_size_threshold) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  std::string initializers_file_path = PathToUTF8String(external_initializers_file_path);
+  std::filesystem::path initializers_file_path = external_initializers_file_path;
   if (initializers_file_path.empty()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid external initializer file: path is empty");
   }

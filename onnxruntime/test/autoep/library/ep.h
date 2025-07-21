@@ -4,6 +4,7 @@
 #pragma once
 
 #include <gsl/span>
+#include <filesystem>
 
 #include "example_plugin_ep_utils.h"
 
@@ -20,6 +21,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
     bool embed_ep_ctx_data = false;
     OrtWriteEpContextDataFunc write_ep_ctx_data_func = nullptr;
     void* write_ep_ctx_data_state = nullptr;
+    std::filesystem::path ep_ctx_model_path;
     // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
   };
 

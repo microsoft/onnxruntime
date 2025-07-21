@@ -6,6 +6,8 @@
 #include <array>
 #include <cassert>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <string>
@@ -445,9 +447,29 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
                                            ORT_OP_ATTR_STRING, &attributes[0]));
     } else {
       // EPContext binary data is written to a file determined by EP.
-      std::string_view bin_file = "some_file.bin";
-      // NOTE: An actual EP implementation would write the binary data to the 'some_file.bin' file.
-      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", bin_file.data(), static_cast<int>(bin_file.size()),
+      // Construct bin file path as '[model_dir]/[model_name]_[ep_name].bin'.
+      std::filesystem::path context_bin_path;
+
+      if (!config_.ep_ctx_model_path.empty()) {
+        std::filesystem::path base_file_name = config_.ep_ctx_model_path.filename().replace_extension();
+        base_file_name += "_";
+        base_file_name += name_;
+        base_file_name += ".bin";
+
+        context_bin_path = config_.ep_ctx_model_path.parent_path() / base_file_name;
+      } else {
+        context_bin_path = name_ + ".bin";  // Output model path unknown, so just use the ep name
+      }
+
+      // Write binary data to file.
+      std::ofstream bin_stream(context_bin_path, std::ios::binary);
+      bin_stream.write(binary_data.data(), binary_data.size());
+      bin_stream.flush();
+
+      // Set attribute pointing to binary file (relative path)
+      std::string bin_file_name_utf8 = PathToUTF8String(context_bin_path.filename().native());
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", bin_file_name_utf8.data(),
+                                           static_cast<int>(bin_file_name_utf8.size()),
                                            ORT_OP_ATTR_STRING, &attributes[0]));
     }
 

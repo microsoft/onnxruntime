@@ -48,5 +48,8 @@ ORT_API(void, EpContextModelOptions_GetEpContextDataWriteFunc,
         _In_ const OrtEpContextModelOptions* ep_context_model_options,
         _Outptr_result_maybenull_ OrtWriteEpContextDataFunc* write_func,
         _Outptr_result_maybenull_ void** state);
+ORT_API_STATUS_IMPL(EpContextModelOptions_GetOutputModelPath,
+                    _In_ const OrtEpContextModelOptions* ep_context_model_options,
+                    _Outptr_result_maybenull_ const ORTCHAR_T** output_model_path);
 
 }  // namespace OrtExecutionProviderApi

@@ -881,11 +881,12 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
   const epctx::BufferHolder* output_buffer_holder = ep_context_gen_options.TryGetOutputModelBuffer();
   const epctx::OutStreamHolder* output_stream_holder = ep_context_gen_options.TryGetOutputModelOutStream();
-  const std::string* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
+  const std::filesystem::path* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
 
   std::filesystem::path valid_output_model_path;
   if (output_model_path_ptr != nullptr || !graph.ModelPath().empty()) {
-    std::string output_model_path = (output_model_path_ptr != nullptr) ? *output_model_path_ptr : "";
+    std::filesystem::path output_model_path = (output_model_path_ptr != nullptr) ? *output_model_path_ptr
+                                                                                 : std::filesystem::path("");
     ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(output_model_path,
                                                   graph.ModelPath(),
                                                   valid_output_model_path,
@@ -1307,7 +1308,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
     if (ep_context_gen_options.enable) {
-      if (const std::string* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
+      if (const std::filesystem::path* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
           output_model_path_ptr != nullptr) {
         // Check before EP compile graphs
         std::filesystem::path context_cache_path;

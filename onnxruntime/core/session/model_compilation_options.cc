@@ -9,6 +9,7 @@
 #include <utility>
 #include <variant>
 
+#include "core/common/path_string.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ep_context_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -31,7 +32,7 @@ ModelCompilationOptions::ModelCompilationOptions(const onnxruntime::Environment&
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionsDisableModelCompile, "0").IsOK());
 }
 
-void ModelCompilationOptions::SetInputModelPath(const std::string& input_model_path) {
+void ModelCompilationOptions::SetInputModelPath(const std::filesystem::path& input_model_path) {
   ResetInputModelSettings();
   input_model_path_ = input_model_path;
 }
@@ -42,14 +43,16 @@ void ModelCompilationOptions::SetInputModelFromBuffer(const void* input_model_da
   input_model_data_size_ = input_model_data_size;
 }
 
-Status ModelCompilationOptions::SetOutputModelPath(const std::string& output_model_path) {
+Status ModelCompilationOptions::SetOutputModelPath(const std::filesystem::path& output_model_path) {
   ConfigOptions& config_options = session_options_.value.config_options;
   epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
 
   ep_context_gen_options.output_model_location = output_model_path;
 
-  if (output_model_path.size() <= ConfigOptions::kMaxValueLength) {
-    Status status = config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_path.c_str());
+  std::string output_model_path_str = PathToUTF8String(output_model_path);
+
+  if (output_model_path_str.size() <= ConfigOptions::kMaxValueLength) {
+    Status status = config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_path_str.c_str());
     ORT_ENFORCE(status.IsOK());  // Should not fail because both key/value strings are below the min string lengths
                                  // required by ConfigOptions::AddConfigEntry().
   } else {
@@ -70,7 +73,7 @@ Status ModelCompilationOptions::SetOutputModelPath(const std::string& output_mod
     logging::LoggingManager* log_manager = env_.GetLoggingManager();
     if (log_manager != nullptr && log_manager->HasDefaultLogger()) {
       const logging::Logger& logger = log_manager->DefaultLogger();
-      LOGS(logger, WARNING) << "Output model path length (" << output_model_path.size()
+      LOGS(logger, WARNING) << "Output model path length (" << output_model_path_str.size()
                             << ") exceeds limit of " << ConfigOptions::kMaxValueLength << " characters."
                             << "ORT will still generate the expected output file, but EPs will see an empty "
                             << "output model path in SessionOption's ConfigOptions.";
@@ -79,8 +82,9 @@ Status ModelCompilationOptions::SetOutputModelPath(const std::string& output_mod
   return Status::OK();
 }
 
-void ModelCompilationOptions::SetOutputModelExternalInitializersFile(const std::string& external_initializers_path,
-                                                                     size_t external_initializer_size_threshold) {
+void ModelCompilationOptions::SetOutputModelExternalInitializersFile(
+    const std::filesystem::path& external_initializers_path,
+    size_t external_initializer_size_threshold) {
   session_options_.value.ep_context_gen_options.initializers_location = epctx::ExternalInitializerFileInfo{
       external_initializers_path,
       external_initializer_size_threshold,
@@ -125,10 +129,11 @@ Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::filesys
   }
 
   std::filesystem::path ctx_model_path = output_directory / model_name;
+  std::string ctx_model_path_str = PathToUTF8String(ctx_model_path);
 
-  if (ctx_model_path.string().size() <= ConfigOptions::kMaxValueLength) {
+  if (ctx_model_path_str.size() <= ConfigOptions::kMaxValueLength) {
     ORT_RETURN_IF_ERROR(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath,
-                                                                             ctx_model_path.string().c_str()));
+                                                                             ctx_model_path_str.c_str()));
   } else {
     logging::LoggingManager* log_manager = env_.GetLoggingManager();
     if (log_manager != nullptr && log_manager->HasDefaultLogger()) {
@@ -139,6 +144,8 @@ Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::filesys
                             << "output path in SessionOption's ConfigOptions.";
     }
   }
+
+  session_options_.value.ep_context_gen_options.output_model_path_hint = ctx_model_path;
 
   return Status::OK();
 }
@@ -172,7 +179,7 @@ bool ModelCompilationOptions::InputModelComesFromFile() const {
   return !input_model_path_.empty();
 }
 
-const std::string& ModelCompilationOptions::GetInputModelPath() const {
+const std::filesystem::path& ModelCompilationOptions::GetInputModelPath() const {
   return input_model_path_;
 }
 
@@ -258,6 +265,13 @@ Status ModelCompilationOptions::Check() const {
   if (output_stream_ptr != nullptr && output_stream_ptr->write_func == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid write-to-stream function for output model: function pointer is null");
+  }
+
+  if (ep_context_gen_options.write_ep_context_data_func != nullptr &&
+      ep_context_gen_options.embed_ep_context_in_model) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "EpContextEmbedMode must be false to use a function that writes out EPContext ",
+                           "node binary data (i.e., OrtEpContextDataWriteFunc).");
   }
 
   return Status::OK();

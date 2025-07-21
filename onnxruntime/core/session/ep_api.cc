@@ -225,6 +225,32 @@ ORT_API(void, EpContextModelOptions_GetEpContextDataWriteFunc,
   *state = options->write_ep_context_data_state;
 }
 
+ORT_API_STATUS_IMPL(EpContextModelOptions_GetOutputModelPath,
+                    _In_ const OrtEpContextModelOptions* ep_context_model_options,
+                    _Outptr_result_maybenull_ const ORTCHAR_T** output_model_path) {
+  API_IMPL_BEGIN
+  if (ep_context_model_options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'ep_context_model_options' argument is NULL");
+  }
+
+  if (output_model_path == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'output_model_path' argument is NULL");
+  }
+
+  const auto* options = epctx::ModelGenOptions::ToInternal(ep_context_model_options);
+
+  if (const std::filesystem::path* model_path = options->TryGetOutputModelPath(); model_path != nullptr) {
+    *output_model_path = model_path->c_str();
+  } else if (options->output_model_path_hint.has_value()) {
+    *output_model_path = options->output_model_path_hint->c_str();
+  } else {
+    *output_model_path = nullptr;
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -252,6 +278,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::EpContextModelOptions_IsGenerationEnabled,
     &OrtExecutionProviderApi::EpContextModelOptions_IsEpContextDataEmbedded,
     &OrtExecutionProviderApi::EpContextModelOptions_GetEpContextDataWriteFunc,
+    &OrtExecutionProviderApi::EpContextModelOptions_GetOutputModelPath,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

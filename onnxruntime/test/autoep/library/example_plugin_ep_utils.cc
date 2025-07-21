@@ -68,6 +68,6 @@ std::string PathToUTF8String(const std::basic_string<ORTCHAR_T>& path_str) {
 #pragma warning(default : 4189)
   return ret;
 #else
-
+  return path_str;
 #endif  // defined(_WIN32)
 }

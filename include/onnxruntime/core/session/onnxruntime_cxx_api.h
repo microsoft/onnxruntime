@@ -1154,9 +1154,10 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
 
   ModelCompilationOptions& SetInputModelPath(const ORTCHAR_T* input_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelPath
   ModelCompilationOptions& SetInputModelFromBuffer(const void* input_model_data,
-                                                   size_t input_model_data_size);   ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelFromBuffer
-  ModelCompilationOptions& SetEpContextEmbedMode(bool embed_ep_context_in_model);   ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextEmbedMode
-  ModelCompilationOptions& SetOutputModelPath(const ORTCHAR_T* output_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
+                                                   size_t input_model_data_size);                         ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelFromBuffer
+  ModelCompilationOptions& SetEpContextEmbedMode(bool embed_ep_context_in_model);                         ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextEmbedMode
+  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteEpContextDataFunc write_func, void* state);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextDataWriteFunc
+  ModelCompilationOptions& SetOutputModelPath(const ORTCHAR_T* output_model_path);                        ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
   ModelCompilationOptions& SetOutputModelExternalInitializersFile(const ORTCHAR_T* file_path,
                                                                   size_t initializer_size_threshold);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelExternalInitializersFile
   ModelCompilationOptions& SetOutputModelHandleInitializerFunc(OrtHandleInitializerDataFunc handle_initializer_func,

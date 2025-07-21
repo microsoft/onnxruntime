@@ -5,6 +5,7 @@
 
 #include <array>
 #include <filesystem>
+#include <optional>
 #include <streambuf>
 #include <string>
 #include <variant>
@@ -34,7 +35,7 @@ struct OutStreamHolder {
 /// Holds path and size threshold used to write out initializers to an external file.
 /// </summary>
 struct ExternalInitializerFileInfo {
-  std::string file_path;
+  std::filesystem::path file_path;
   size_t size_threshold = 0;
 };
 
@@ -76,10 +77,10 @@ struct ModelGenOptions {
   bool embed_ep_context_in_model = false;
   ActionIfNoCompiledNodes action_if_no_compiled_nodes = ActionIfNoCompiledNodes::kDontGenerateModel;
 
-  std::variant<std::monostate,   // Initial state (no output model location)
-               std::string,      // output model path
-               BufferHolder,     // buffer to save output model
-               OutStreamHolder>  // Function to write the output model to a user's stream.
+  std::variant<std::monostate,         // Initial state (no output model location)
+               std::filesystem::path,  // output model path
+               BufferHolder,           // buffer to save output model
+               OutStreamHolder>        // Function to write the output model to a user's stream.
       output_model_location{};
 
   std::variant<std::monostate,               // Initial state (initializers embedded in ONNX model).
@@ -90,8 +91,13 @@ struct ModelGenOptions {
   OrtWriteEpContextDataFunc write_ep_context_data_func = nullptr;
   void* write_ep_context_data_state = nullptr;
 
+  // Used when output model is saved to a buffer, but application still wants EP to know the output model
+  // path so that it can create the EPContext binary file (embed == false) from the output model path:
+  // [output_model_directory]/[output_model_name]_[ep].bin
+  std::optional<std::filesystem::path> output_model_path_hint = std::nullopt;
+
   bool HasOutputModelLocation() const;
-  const std::string* TryGetOutputModelPath() const;
+  const std::filesystem::path* TryGetOutputModelPath() const;
   const BufferHolder* TryGetOutputModelBuffer() const;
   const OutStreamHolder* TryGetOutputModelOutStream() const;
 

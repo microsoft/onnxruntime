@@ -263,7 +263,7 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
   const OrtSessionOptions* session_options = &model_compile_options.GetSessionOptions();
 
   if (model_compile_options.InputModelComesFromFile()) {
-    PathString input_model_path = ToPathString(model_compile_options.GetInputModelPath());
+    const std::filesystem::path& input_model_path = model_compile_options.GetInputModelPath();
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
                                                                          input_model_path.c_str(),
                                                                          nullptr, 0, session)));

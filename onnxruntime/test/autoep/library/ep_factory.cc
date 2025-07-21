@@ -184,6 +184,11 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   factory->ep_api.EpContextModelOptions_GetEpContextDataWriteFunc(ep_ctx_model_options, &config.write_ep_ctx_data_func,
                                                                   &config.write_ep_ctx_data_state);
 
+  const ORTCHAR_T* ep_ctx_model_path = nullptr;
+  RETURN_IF_ERROR(factory->ep_api.EpContextModelOptions_GetOutputModelPath(ep_ctx_model_options,
+                                                                           &ep_ctx_model_path));
+  config.ep_ctx_model_path = ep_ctx_model_path != nullptr ? ep_ctx_model_path : ORT_TSTR("");
+
   auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger);
 
   *ep = dummy_ep.release();
