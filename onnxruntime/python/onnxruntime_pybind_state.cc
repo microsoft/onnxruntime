@@ -1907,14 +1907,16 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
       .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
       .def("vendor_id", &OrtDevice::Vendor, R"pbdoc(Vendor Id.)pbdoc")
+      // generic device types that are typically used with a vendor id.
       .def_static("cpu", []() { return OrtDevice::CPU; })
+      .def_static("gpu", []() { return OrtDevice::GPU; })
+      .def_static("npu", []() { return OrtDevice::NPU; })
+      // EP specific device types for backward compatibility.
       .def_static("cuda", []() { return OrtDevice::GPU; })
       .def_static("cann", []() { return OrtDevice::NPU; })
-      .def_static("fpga", []() { return OrtDevice::FPGA; })
-      .def_static("npu", []() { return OrtDevice::NPU; })
       .def_static("dml", []() { return OrtDevice::DML; })
+      .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("webgpu", []() { return OrtDevice::GPU; })
-      .def_static("gpu", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::enum_<OrtExecutionProviderDevicePolicy>(m, "OrtExecutionProviderDevicePolicy")

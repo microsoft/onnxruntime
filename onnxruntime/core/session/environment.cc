@@ -434,11 +434,13 @@ Environment::~Environment() {
   // need to make sure all the OrtAllocator instances are released prior to any plugin EPs being freed
   shared_allocators_.clear();
 
+#if !defined(ORT_MINIMAL_BUILD)
   // unregister any remaining EP libraries
   while (!ep_libraries_.empty()) {
     auto it = ep_libraries_.begin();
     ORT_IGNORE_RETURN_VALUE(UnregisterExecutionProviderLibrary(it->first));
   }
+#endif
 }
 
 AllocatorPtr Environment::GetRegisteredSharedAllocator(const OrtMemoryInfo& mem_info) const {
