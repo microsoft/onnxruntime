@@ -184,7 +184,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                              T* output_qk,                           // Q*K output
                                              ThreadPool* tp,
                                              AllocatorPtr allocator) const {
-  // The case pask_key != nullptr and present_key == nullptr is not supported.
+  // The case past_key != nullptr and present_key == nullptr is not supported.
   // We use the fact present_key is requested to avoid any extra allocation.
   // However, if present_key is not requested, we should avoid allocated more memory than needed but that mean
   // allocating one buffer per thread. That's why the implementation is not done.
