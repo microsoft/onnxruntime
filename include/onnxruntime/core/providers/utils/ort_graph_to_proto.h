@@ -456,11 +456,14 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
       auto* ext_data_entries = tensor_proto->mutable_external_data();
       onnx::StringStringEntryProto* location_entry = ext_data_entries->Add();
       onnx::StringStringEntryProto* offset_entry = ext_data_entries->Add();
+      onnx::StringStringEntryProto* length_entry = ext_data_entries->Add();
 
       location_entry->set_key("location");
       location_entry->set_value(ext_location);
       offset_entry->set_key("offset");
       offset_entry->set_value(std::to_string(ext_offset));
+      length_entry->set_key("length");
+      length_entry->set_value(std::to_string(data_bytes));
     } else {
       // User wants to store data inline the TensorProto's raw_data
       tensor_proto->set_data_location(onnx::TensorProto_DataLocation_DEFAULT);
