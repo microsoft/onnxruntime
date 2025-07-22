@@ -1591,10 +1591,10 @@ MlasGemmBatch(
     thread_local bool kleidiai_attempted = false;
 
     if (!kleidiai_attempted &&
-        GetMlasPlatform().MlasGemmBatch == &ArmKleidiAI::MlasGemmBatch &&
+        GetMlasPlatform().MlasGemmBatchOverride == &ArmKleidiAI::MlasGemmBatch &&
         g_kleidiPackEnabled) {
         kleidiai_attempted = true;
-        GetMlasPlatform().MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
+        GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
         kleidiai_attempted = false;
          return;
     }
@@ -1694,11 +1694,11 @@ Return Value:
     //Kleidi
     thread_local bool kleidiai_pbsize_attempted = false;
     if (!kleidiai_pbsize_attempted &&
-        GetMlasPlatform().MlasGemmPackBSize == &ArmKleidiAI::MlasGemmPackBSize &&
+        GetMlasPlatform().MlasGemmPackBSizeOverride == &ArmKleidiAI::MlasGemmPackBSize &&
         g_kleidiPackEnabled) {
         kleidiai_pbsize_attempted = true;
         size_t bytes_required;
-        bytes_required = GetMlasPlatform().MlasGemmPackBSize(TransA, TransB, N, K);
+        bytes_required = GetMlasPlatform().MlasGemmPackBSizeOverride(TransA, TransB, N, K);
         kleidiai_pbsize_attempted = false;
         if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
             return bytes_required;
@@ -1763,10 +1763,10 @@ Return Value:
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     thread_local bool kai_gemmPb_atttempted;
     if (!kai_gemmPb_atttempted &&
-        GetMlasPlatform().MlasGemmPackB == &ArmKleidiAI::MlasGemmPackB &&
+        GetMlasPlatform().MlasGemmPackBOverride == &ArmKleidiAI::MlasGemmPackB &&
         g_kleidiPackEnabled) {
         kai_gemmPb_atttempted = true;
-        GetMlasPlatform().MlasGemmPackB(TransA, TransB, N, K, B, ldb, PackedB);
+        GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB);
         kai_gemmPb_atttempted = false;
          return;
     }

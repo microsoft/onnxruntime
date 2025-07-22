@@ -868,9 +868,9 @@ Return Value:
     //KleidiAI
     thread_local bool kleidiai_conv_attempted = false;
     if (!kleidiai_conv_attempted &&
-        GetMlasPlatform().MlasConv == &ArmKleidiAI::MlasConv) {
+        GetMlasPlatform().MlasConvOverride == &ArmKleidiAI::MlasConv) {
         kleidiai_conv_attempted = true;
-        GetMlasPlatform().MlasConv(Parameters,Input,Filter,Bias,WorkingBuffer,Output,ThreadPool);
+        GetMlasPlatform().MlasConvOverride(Parameters,Input,Filter,Bias,WorkingBuffer,Output,ThreadPool);
         kleidiai_conv_attempted = false;
          return;
     }
@@ -1109,12 +1109,15 @@ Return Value:
 
 --*/
 {
+// Ensure MlasConvPrepare is only invoked once per thread.
+// This avoids redundant reinitialization if the platform supports
+// thread-local convolution prep logic.
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     thread_local bool kleidiai_convprep_attempted = false;
     if (!kleidiai_convprep_attempted &&
-        GetMlasPlatform().MlasConvPrepare == &ArmKleidiAI::MlasConvPrepare) {
+        GetMlasPlatform().MlasConvPrepareOverride == &ArmKleidiAI::MlasConvPrepare) {
         kleidiai_convprep_attempted = true;
-        GetMlasPlatform().MlasConvPrepare(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
+        GetMlasPlatform().MlasConvPrepareOverride(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
         InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
         Activation, WorkingBufferSize, Beta, ThreadPool);
         kleidiai_convprep_attempted = false;

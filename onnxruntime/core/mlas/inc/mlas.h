@@ -631,20 +631,33 @@ MlasGemm(
 {
     MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
 }
-
+/**
+ * @brief Parameters that define the shape of a dynamically quantized GEMM operation.
+ *
+ * The structure holds the dimensions of the matrices involved in the GEMM
+ * computation:
+ *   C = A * B
+ */
 struct MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS {
-    size_t M = 0;                  /**< Supplies the row size of matrix A */
-    size_t N = 0;                  /**< Supplies the column size of matrix B */
-    size_t K = 0;                  /**< Supplies the column size of matrix A and row size of matrix B */
+    size_t M = 0;                  /**< Row size of matrix A */
+    size_t N = 0;                  /**< Column size of matrix B */
+    size_t K = 0;                  /**< Column size of matrix A and Row size of matrix B */
 };
-
+/**
+ * @brief Parameters that define the data buffers and layout for a dynamic quant GEMM.
+ *
+ * This structure provides the memory pointers and strides for matrices
+ * involved in a dynamically quantized GEMM operation, along with the packed B format.
+ */
 struct MLAS_GEMM_DYN_QUANT_DATA_PARAMS {
-    const float* A = nullptr;
-    size_t lda = 0;
-    const void* PackedB = 0;
-    size_t ldb = 0;
-    float *C = nullptr;
-    size_t ldc = 0;
+    const float* A = nullptr;       /**< Pointer to input matrix A in FP32 format**/
+    size_t lda = 0;                 /**< Num of cols Matrix A (row-major)*/
+    const void* PackedB = 0;        /**< Points to packed weight matrix B */
+    size_t ldb = 0;                 /**< Num of cols Matrix B */
+    float *C = nullptr;             /**< Points to output Matric C */
+    size_t ldc = 0;                 /**< Num of cols Matrix C*/
+    void* lhs_scratch = nullptr;    /**< Scratch buffer for LHS Packing Allocation */
+    size_t lhs_scratch_size = 0;    /**< Scratch buffer size */
 };
 
 void

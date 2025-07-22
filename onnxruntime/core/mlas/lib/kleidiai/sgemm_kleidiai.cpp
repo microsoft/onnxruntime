@@ -43,7 +43,7 @@ Return Value:
 
 --*/
 {
-    if (TransA != CblasNoTrans || !MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME() || N == 0  || K == 0) {
+    if (TransA != CblasNoTrans ||  N == 0  || K == 0) {
         return 0;
     }
     //
@@ -51,7 +51,7 @@ Return Value:
     //
     size_t bytes = 0;
 
-    if (TransA == CblasNoTrans && MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+    if (TransA == CblasNoTrans) {
         switch (TransB) {
             case CblasNoTrans:
                 bytes = kai_get_rhs_packed_size_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(N, K);
@@ -117,7 +117,7 @@ Return Value:
         return;
     }
 
-    if (TransA == CblasNoTrans && MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+    if (TransA == CblasNoTrans) {
         const size_t nr = kai_get_nr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
         const size_t kr = kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
         const size_t sr = kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
@@ -171,19 +171,17 @@ ArmKleidiAI::MlasGemmBatch(
     if (Data->beta == 0.0f){
         std::fill_n(Data->C, M * Data->ldc, 0.0f);
     }
-    // Guard against unsupported cases
-    extern void MLASCALL MlasGemmBatch(CBLAS_TRANSPOSE, CBLAS_TRANSPOSE, size_t, size_t, size_t,const MLAS_SGEMM_DATA_PARAMS*, size_t, MLAS_THREADPOOL*);
+    //Fallback in the case of unsupported cases
     if (M == 0 || N == 0 || K == 0 ||
         TransA != CblasNoTrans ||
-        (TransB != CblasNoTrans && !Data[0].BIsPacked) ||
-        !MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME())
+        (TransB != CblasNoTrans && !Data[0].BIsPacked))
     {
         // If unsupported case, explicitly call the fallback to default via function pointer
         ::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
         return;
     }
 
-    if (TransA == CblasNoTrans && MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+    if (TransA == CblasNoTrans) {
         const size_t mr = kai_get_mr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
         const size_t kr = kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
         const size_t sr = kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
@@ -192,11 +190,8 @@ ArmKleidiAI::MlasGemmBatch(
         auto n_step = kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
 
         if (M < m_step || N < n_step) {
-            if (GetMlasPlatform().MlasGemmBatch != ArmKleidiAI::MlasGemmBatch){
-                //Fallback to MLAS
-                ::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
-                return;
-            }
+            ::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
+            return;
         }
 
         std::vector<MLAS_SGEMM_DATA_PARAMS> KaiPackedData;

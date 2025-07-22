@@ -167,22 +167,39 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
     // only pack Matrix B
     if (input_idx == GetBIdx()) {
       const Tensor* b_zp_tensor{nullptr};
-
-      // assume zero is present
-      auto b_zp_present{true};
+      bool b_zp_present = false;
 
       // zero point tensor could be provided as a direct input to the kernel and not as a constant so this
       // test is not sufficient
       const OrtValue* b_zp;
       if (Info().TryGetConstantInput(IN_B_ZERO_POINT, &b_zp)) {
         b_zp_tensor = &b_zp->Get<Tensor>();
+        b_zp_present = (b_zp_tensor->Shape().Size() != 1) ||
+                       (static_cast<const uint8_t*>(b_zp_tensor->DataRaw())[0] != 0);
       }
 
       // MlasDynamicQgemm requires symmetric quantization for B, so no zero point should exist or it should
       // have a zero value
       if (b_zp_tensor != nullptr) {
-        b_zp_present = (b_zp_tensor->Shape().Size() != 1) ||
-                       (static_cast<const uint8_t*>(b_zp_tensor->DataRaw())[0] != 0);
+        const auto& shape = b_zp_tensor->Shape();
+        const auto* zp_data = static_cast<const uint8_t*>(b_zp_tensor->DataRaw());
+        size_t zp_size = static_cast<size_t>(shape.Size());
+
+        // MlasDynamicQgemm requires symmetric quantization: zp must be scalar 0 or 1D all-zero
+        if (shape.NumDimensions() == 0) {
+          b_zp_present = false;
+        } else if (shape.NumDimensions() == 1) {
+          b_zp_present = false;
+          for (size_t i = 0; i < zp_size; ++i) {
+            if (zp_data[i] != 0) {
+              b_zp_present = true;
+              break;
+            }
+          }
+        } else {
+          // Unsupported higher-rank zp tensor
+          b_zp_present = true;
+        }
       }
 
       // MlasDynamicQgemm requires scale data to be available at packing stage
@@ -191,7 +208,14 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
       can_use_dynamic_quant_mlas_ = (!b_zp_present && b_scale_available);
 
-      // Can we use the MLAS dynamic Q gemm interface supported with float output ?
+      // Only handle the common case of a 2D weight matrix. Additional matrices
+      // could be handled by stacking the packed buffers.
+      b_shape_ = tensor.Shape();
+      if (!(b_shape_.NumDimensions() == 2 || (b_shape_.NumDimensions() == 3 && b_shape_[0] == 1))) {
+        can_use_dynamic_quant_mlas_ = false;
+      }
+
+      // Can we use the mlas dynamic Q gemm interface supported with float output ?
       if (!can_use_dynamic_quant_mlas_) {
         // default to piece wise mlas interface with separate int matmul, quantize and float conversion
         return MatMulIntegerToFloatBase::PrePack(tensor, input_idx, alloc, is_packed, prepacked_weights);
@@ -203,23 +227,11 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
         // Default to all zeros for bias
         const Tensor* bias_tensor{nullptr};
-
-        // Enable this if fix in onnxruntime/core/optimizer/matmul_integer_to_float.cc has been applied
-#if 1
         const OrtValue* bias;
         if (Info().TryGetConstantInput(IN_BIAS, &bias)) {
           bias_tensor = &bias->Get<Tensor>();
           dynamic_quant_mlas_packed_ = true;
         }
-#endif
-
-        // Only handle the common case of a 2D weight matrix. Additional matrices
-        // could be handled by stacking the packed buffers.
-        b_shape_ = tensor.Shape();
-        if (b_shape_.NumDimensions() != 2) {
-          return Status::OK();
-        }
-
         size_t K = static_cast<size_t>(b_shape_[0]);
         size_t N = static_cast<size_t>(b_shape_[1]);
 
@@ -243,9 +255,9 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
         memset(packed_b_.get(), 0, packed_b_size);
 
         const auto scales = static_cast<size_t>(b_scale_tensor->Shape().Size()) == N ? std::vector<float>(&b_scale_tensor->Data<float>()[0],
-                                                                                             &b_scale_tensor->Data<float>()[N])
-                                                                        :
-                                                                        // Broadcast matrix scale to all channels
+                                                                                                          &b_scale_tensor->Data<float>()[N])
+                                                                                     :
+                                                                                     // Broadcast matrix scale to all channels
                                 std::vector<float>(N, b_scale_tensor->Data<float>()[0]);
 
         const auto biases = bias_tensor != nullptr ? std::vector<float>(&bias_tensor->Data<float>()[0],
@@ -336,13 +348,14 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     ParQuantizeLinearStd(a_data, a_data_quant, narrow<size_t>(num_of_elements), a_scale, a_zero_point, ctx->GetOperatorThreadPool());
 
     bool is_b_scale_supported = IsBQuantParamSupported(b_scale_tensor->Shape(), b ? b->Shape() : b_shape_);
+    const bool is_a_signed = false;
     ORT_RETURN_IF_ERROR(ComputeCommon(
         ctx,
         a_data_quant,
         a->Shape(),
         a_scale,
         a_zero_point,
-        false,
+        is_a_signed,
         b,
         is_b_scale_supported ? b_scale_tensor : nullptr,
         b_zp_tensor,

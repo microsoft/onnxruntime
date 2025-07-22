@@ -92,13 +92,21 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
 
         //Dynamic Quantize A - lhs
         auto lhs_size = kai_get_lhs_packed_size_lhs_quant_pack_qai8dxp_f32(Shape.M, Shape.K, mr, kr, sr);
-        auto lhs = std::make_unique<std::byte[]>(lhs_size);
+        std::byte* lhs = nullptr;
+        std::unique_ptr<std::byte[]> fallback;
+
+        if (DataParams->lhs_scratch && DataParams->lhs_scratch_size >= lhs_size) {
+            lhs = static_cast<std::byte*>(DataParams->lhs_scratch);
+        } else {
+            fallback = std::make_unique<std::byte[]>(lhs_size);
+            lhs = fallback.get();
+        }
 
         kai_run_lhs_quant_pack_qai8dxp_f32(Shape.M, Shape.K, mr, kr, sr, 0, DataParams->A,
-                                           Shape.K*sizeof(float), lhs.get());
+                                           Shape.K*sizeof(float), lhs);
 
         kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa(
-            Shape.M, Shape.N, Shape.K, lhs.get(), DataParams->PackedB,
+            Shape.M, Shape.N, Shape.K, lhs, DataParams->PackedB,
             DataParams->C,
             Shape.N * sizeof(float),
             sizeof(float),

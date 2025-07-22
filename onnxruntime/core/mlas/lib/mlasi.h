@@ -1240,12 +1240,12 @@ struct MLAS_PLATFORM {
     // TODO: move to cpuinfo
     bool Avx2Supported_ = false;
     bool Avx512Supported_ = false;
-    // Default MLAS initialisation
-    MLAS_GEMM_BATCH_KERNEL* MlasGemmBatch;
-    MLAS_GEMM_PACK_B_SIZE_KERNEL* MlasGemmPackBSize;
-    MLAS_GEMM_PACK_B_KERNEL* MlasGemmPackB;
-    MLAS_CONV_PREPARE_FLOAT_FN* MlasConvPrepare;
-    MLAS_CONV_FLOAT_FN* MlasConv;
+    // Mlas overrides initialisation
+    MLAS_GEMM_BATCH_KERNEL* MlasGemmBatchOverride;
+    MLAS_GEMM_PACK_B_SIZE_KERNEL* MlasGemmPackBSizeOverride;
+    MLAS_GEMM_PACK_B_KERNEL* MlasGemmPackBOverride;
+    MLAS_CONV_PREPARE_FLOAT_FN* MlasConvPrepareOverride;
+    MLAS_CONV_FLOAT_FN* MlasConvOverride;
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
