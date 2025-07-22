@@ -184,7 +184,7 @@ Status ModelBuilder::RegisterConstant(const onnx::TensorProto& tensor, emscripte
     std::vector<int32_t> int32_data;
     if (should_convert_int64_to_int32) {
       try {
-        int32_data = GetNarrowedIntfromInt64<int32_t>(
+        int32_data = GetNarrowedIntFromInt64<int32_t>(
             gsl::span<const int64_t>(reinterpret_cast<int64_t*>(tensor_ptr), num_elements));
         LOGS(logger, VERBOSE) << "Initializer '" << tensor.name() << "' is converted from int64 to int32.";
       } catch (const std::exception& e) {
