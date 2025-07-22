@@ -6,9 +6,9 @@ numpy==1.21.6 ; python_version < '3.9'
 numpy==2.0.0 ; python_version >= '3.9'
 torch>=2.6.0
 coloredlogs==15.0
-transformers==4.48.0
+transformers==4.52.1
 parameterized>=0.8.1
 sentencepiece
 psutil
 einops
-onnxscript==0.2.3
+onnxscript==0.3.2  # This will bring in onnx-ir
