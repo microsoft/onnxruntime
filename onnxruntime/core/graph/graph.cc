@@ -3822,11 +3822,14 @@ bool Graph::GetOrtValueInitializer(const std::string& name, OrtValue& value, boo
   return false;
 }
 
-Status Graph::LoadInitializerAsOrtValue(const std::string& name, OrtValue& value) {
+Status Graph::LoadExternalInitializerAsOrtValue(const std::string& name, OrtValue& value) {
   auto tensor_proto_iter = name_to_initial_tensor_.find(name);
   ORT_RETURN_IF(tensor_proto_iter == name_to_initial_tensor_.end(), "Cannot load unknown initializer named '",
-                name, ",.");
+                name, "'.");
   const ONNX_NAMESPACE::TensorProto& tensor_proto = *tensor_proto_iter->second;
+
+  auto ext_info_iter = ext_initializers_.find(name);
+  ORT_RETURN_IF(ext_info_iter == ext_initializers_.end(), "Initializer '", name, "' does not have external data.");
 
   auto ort_value_iter = ortvalue_initializers_.find(name);
   if (ort_value_iter != ortvalue_initializers_.end()) {
@@ -3835,31 +3838,14 @@ Status Graph::LoadInitializerAsOrtValue(const std::string& name, OrtValue& value
     return Status::OK();
   }
 
-  auto ext_info_iter = ext_initializers_.find(name);
-  if (ext_info_iter != ext_initializers_.end()) {
-    // mmap external initializer from file.
-    ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), ModelPath(), tensor_proto, value));
+  // mmap external initializer from file.
+  ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), ModelPath(), tensor_proto, value));
 
-    constexpr const bool use_tensor_buffer_true = true;
-    auto tensor_proto_to_add = utils::TensorToTensorProto(value.Get<Tensor>(), tensor_proto.name(),
-                                                          use_tensor_buffer_true);
-    assert(value.IsAllocated());
-    ORT_RETURN_IF_ERROR(ReplaceInitializedTensor(tensor_proto_to_add, value));
-  } else {
-    // load initializer data that is embedded in TensorProto.
-    size_t size_in_bytes = 0;
-    ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &size_in_bytes));
-
-    if (size_in_bytes > utils::kSmallTensorExternalDataThreshold) {
-      ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), ModelPath(), tensor_proto,
-                                                       CPUAllocator::DefaultInstance(), value));
-      constexpr const bool use_tensor_buffer_true = true;
-      auto tensor_proto_to_add = utils::TensorToTensorProto(value.Get<Tensor>(), tensor_proto.name(),
-                                                            use_tensor_buffer_true);
-      assert(value.IsAllocated());
-      ORT_RETURN_IF_ERROR(ReplaceInitializedTensor(tensor_proto_to_add, value));
-    }
-  }
+  constexpr const bool use_tensor_buffer_true = true;
+  auto tensor_proto_to_add = utils::TensorToTensorProto(value.Get<Tensor>(), tensor_proto.name(),
+                                                        use_tensor_buffer_true);
+  assert(value.IsAllocated());
+  ORT_RETURN_IF_ERROR(ReplaceInitializedTensor(tensor_proto_to_add, value));
 
   return Status::OK();
 }

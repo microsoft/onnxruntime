@@ -798,8 +798,23 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
    */
   bool GetOrtValueInitializer(const std::string& name, OrtValue& value, bool check_outer_scope = false) const;
 
-  Status LoadInitializerAsOrtValue(const std::string& name, OrtValue& value);
+  /// <summary>
+  /// Loads an initializer with data in an external file into an OrtValue.
+  /// </summary>
+  /// <param name="name">The name of the initializer.</param>
+  /// <param name="value">Output parameter set to the loaded OrtValue.
+  /// Is set to an existing OrtValue if already loaded.</param>
+  /// <returns>A status indicating an error or success. An error occurs if `name` is not an initializer
+  /// with external data.</returns>
+  Status LoadExternalInitializerAsOrtValue(const std::string& name, OrtValue& value);
 
+  /// <summary>
+  /// Gets information (external filepath, file offset, num bytes) for an initializer with data in an external file.
+  /// </summary>
+  /// <param name="name">The initializer's name.</param>
+  /// <param name="ext_info">Output parameter set to the location information of the external data.</param>
+  /// <param name="check_outer_scope">Set to true if parent graphs should be checked.</param>
+  /// <returns>True if `name` refers to an initializer with data in an external file. Otherwise, returns false</returns>
   bool GetExternalInitializerInfo(const std::string& name, ExternalInitializerInfo& ext_info,
                                   bool check_outer_scope = false) const;
 

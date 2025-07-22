@@ -823,7 +823,8 @@ Status EpGraph::GetInitializerValue(std::string_view name, const OrtValue*& resu
     if (!ort_value->IsAllocated()) {
       // Lazy load the OrtValue. This happens for external initializers.
       Graph& graph = const_cast<Graph&>(graph_viewer_.GetGraph());
-      ORT_RETURN_IF_ERROR(graph.LoadInitializerAsOrtValue(std::string(name), const_cast<OrtValue&>(*ort_value)));
+      ORT_RETURN_IF_ERROR(graph.LoadExternalInitializerAsOrtValue(std::string(name),
+                                                                  const_cast<OrtValue&>(*ort_value)));
     }
 
     return Status::OK();

@@ -87,6 +87,13 @@ TEST(EpGraphTest, Check3LayerNestedSubgraphV2) {
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
 }
 
+TEST(EpGraphTest, CheckModelExternalInitializers) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/conv_qdq_external_ini.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
 static void RunMNISTModel(const ORTCHAR_T* model_path, std::vector<float>& output_data) {
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   Ort::SessionOptions sess_options;
