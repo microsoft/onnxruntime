@@ -366,12 +366,11 @@ struct OrtEpApi {
   /** \brief Get the OrtMemoryDevice from an OrtValue instance if it contains a Tensor.
    *
    * \param[in] value The OrtValue instance to get the memory device from.
-   * \param[out] device The OrtMemoryDevice associated with the OrtValue instance.
-   * \return Status Success if OrtValue contains a Tensor. Otherwise, an error status is returned.
+   * \return Memory device if OrtValue contains a Tensor, nullptr otherwise.
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Value_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device);
+  ORT_API_T(const OrtMemoryDevice*, Value_GetMemoryDevice, _In_ const OrtValue* value);
 
   /** \brief Compare two OrtMemoryDevice instances for equality.
    *
