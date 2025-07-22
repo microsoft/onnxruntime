@@ -57,9 +57,6 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 
-  Status SetEpDynamicOptions(gsl::span<const char* const> keys,
-                             gsl::span<const char* const> value) override;
-
  private:
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
