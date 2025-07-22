@@ -712,6 +712,12 @@ if (onnxruntime_USE_WEBGPU)
         set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
       endif()
     endif()
+
+    if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
+      set(onnxruntime_BUILD_SHARED_LIBS_SAVED ${BUILD_SHARED_LIBS})
+      set(BUILD_SHARED_LIBS ON)
+    endif()
+
     if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
       # use the custom dawn source path if provided
       #
@@ -745,7 +751,10 @@ if (onnxruntime_USE_WEBGPU)
           #
           # - (private) Fulfill the BinSkim requirements
           #   Some build warnings are not allowed to be disabled in project level.
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch)
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch &&
+
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/1.patch)
 
       onnxruntime_fetchcontent_declare(
         dawn
@@ -757,6 +766,10 @@ if (onnxruntime_USE_WEBGPU)
     endif()
 
     onnxruntime_fetchcontent_makeavailable(dawn)
+
+    if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
+      set(BUILD_SHARED_LIBS ${onnxruntime_BUILD_SHARED_LIBS_SAVED})
+    endif()
   endif()
 
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
