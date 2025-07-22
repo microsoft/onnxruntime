@@ -105,6 +105,20 @@ fn storeOutput(offset: u32, row: u32, col: u32, src_slot: u32, row_limit: i32) {
         var value3_2 = scratch[src_slot][3][row * 8 + col + 1];
 )";
 
+  // Handle alpha scaling
+  if (alpha_ != 1.0f) {
+    shader.AdditionalImplementation() << R"(
+        value0 = value0 * uniforms.alpha;
+        value1 = value1 * uniforms.alpha;
+        value2 = value2 * uniforms.alpha;
+        value3 = value3 * uniforms.alpha;
+        value0_2 = value0_2 * uniforms.alpha;
+        value1_2 = value1_2 * uniforms.alpha;
+        value2_2 = value2_2 * uniforms.alpha;
+        value3_2 = value3_2 * uniforms.alpha;
+)";
+  }
+
   // Add bias computation if needed
   if (need_handle_bias_) {
     const ShaderVariableHelper& input_c = shader.AddInput("input_c", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
@@ -230,21 +244,6 @@ fn storeOutput(offset: u32, row: u32, col: u32, src_slot: u32, row_limit: i32) {
         workgroupBarrier();
     }
 )";
-
-  // Handle alpha scaling
-  if (alpha_ != 1.0f) {
-    shader.MainFunctionBody() << R"(
-    // Apply alpha scaling
-    matC00 = subgroupMatrixScalarMultiply(matC00, uniforms.alpha);
-    matC01 = subgroupMatrixScalarMultiply(matC01, uniforms.alpha);
-    matC02 = subgroupMatrixScalarMultiply(matC02, uniforms.alpha);
-    matC03 = subgroupMatrixScalarMultiply(matC03, uniforms.alpha);
-    matC10 = subgroupMatrixScalarMultiply(matC10, uniforms.alpha);
-    matC11 = subgroupMatrixScalarMultiply(matC11, uniforms.alpha);
-    matC12 = subgroupMatrixScalarMultiply(matC12, uniforms.alpha);
-    matC13 = subgroupMatrixScalarMultiply(matC13, uniforms.alpha);
-)";
-  }
 
   shader.MainFunctionBody() << R"(
     // Write out top block
