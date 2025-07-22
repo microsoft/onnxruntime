@@ -18,7 +18,7 @@ Abstract:
 #include "core/mlas/lib/mlasi.h"
 #include "qgemm.h"
 
-#if defined(USE_KLEIDIAI) && (!defined(_MSC_VER) || _MSC_VER >= 1944)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
@@ -208,7 +208,7 @@ MlasDynamicQGemmBatch (
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
 ) {
-#if defined(USE_KLEIDIAI) && (!defined(_MSC_VER) || _MSC_VER >= 1944)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback and putting in guards
     if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
         ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
@@ -332,7 +332,7 @@ MlasDynamicQgemmPackBSize(
 )
 {
     size_t bytes = 0;
-#if defined(USE_KLEIDIAI) && (!defined(_MSC_VER) || _MSC_VER >= 1944)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback available
     if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
         bytes = ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
@@ -419,7 +419,7 @@ MlasDynamicQgemmPackB(
     void* PackedB
 )
 {
-#if defined(USE_KLEIDIAI) && (!defined(_MSC_VER) || _MSC_VER >= 1944)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
         ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);

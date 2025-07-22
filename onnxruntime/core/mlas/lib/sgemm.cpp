@@ -17,7 +17,7 @@ Abstract:
 
 #include "mlasi.h"
 
-#if defined(USE_KLEIDIAI) && (!defined(_MSC_VER) || _MSC_VER >= 1944)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 //
@@ -1557,7 +1557,7 @@ Return Value:
             DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
     }
 }
-#if defined(USE_KLEIDIAI) && (!defined(_MSC_VER) || _MSC_VER >= 1944)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
 // variable to enable or disable kleidi pack routines.
 // work around for unsupported cases in fusedmatmul
 static bool g_kleidiPackEnabled = true;
@@ -1586,7 +1586,7 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-#if defined(USE_KLEIDIAI) && (!defined(_MSC_VER) || _MSC_VER >= 1944)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //Check if external implementation (e.g. KleidiAI)
     thread_local bool kleidiai_attempted = false;
 
@@ -1690,7 +1690,7 @@ Return Value:
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
-#if defined(USE_KLEIDIAI) && (!defined(_MSC_VER) || _MSC_VER >= 1944)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //Kleidi
     thread_local bool kleidiai_pbsize_attempted = false;
     if (!kleidiai_pbsize_attempted &&
@@ -1760,7 +1760,7 @@ Return Value:
 
 --*/
 {
-#if defined(USE_KLEIDIAI) && (!defined(_MSC_VER) || _MSC_VER >= 1944)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     thread_local bool kai_gemmPb_atttempted;
     if (!kai_gemmPb_atttempted &&
         GetMlasPlatform().MlasGemmPackB == &ArmKleidiAI::MlasGemmPackB &&
