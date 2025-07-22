@@ -309,64 +309,6 @@ void QnnHTPBackendTests::SetUp() {
   }
 }
 
-// Checks if Qnn Gpu backend can run a graph on the system.
-// Creates a one node graph with relu op,
-// then calls QNN EP's GetCapability() function
-// to check if the GPU backend is available.
-static BackendSupport GetGPUSupport(const onnxruntime::logging::Logger& logger) {
-  onnxruntime::Model model("Check if GPU is available", false, logger);
-  Graph& graph = model.MainGraph();
-  ModelTestBuilder helper(graph);
-
-  // Build simple QDQ graph: DQ -> InstanceNormalization -> Q
-  auto build_test_case = BuildOpTestCase<float, float>(
-      "Relu",
-      {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f)},
-      {},
-      {});
-
-  build_test_case(helper);
-  helper.SetGraphOutputs();
-  auto status = model.MainGraph().Resolve();
-
-  if (!status.IsOK()) {
-    return BackendSupport::SUPPORT_ERROR;
-  }
-
-  // Create QNN EP and call GetCapability().
-  MockKernelLookup kernel_lookup;
-  onnxruntime::GraphViewer graph_viewer(graph);
-  std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_type", "gpu"}, {"offload_graph_io_quantization", "0"}});
-  GraphOptimizerRegistry graph_optimizer_registry(nullptr, nullptr, nullptr);  // as a placeholder to feed into GetCapability
-
-  qnn_ep->SetLogger(&logger);
-  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, nullptr);
-
-  return result.empty() ? BackendSupport::UNSUPPORTED : BackendSupport::SUPPORTED;
-}
-
-void QnnGPUBackendTests::SetUp() {
-  if (cached_gpu_support_ == BackendSupport::SUPPORTED) {
-    return;
-  }
-
-  const auto& logger = DefaultLoggingManager().DefaultLogger();
-
-  // Determine if GPU backend is supported only if we haven't done so before.
-  if (cached_gpu_support_ == BackendSupport::SUPPORT_UNKNOWN) {
-    cached_gpu_support_ = GetGPUSupport(logger);  // BackendSupport::SUPPORTED;
-  }
-
-  if (cached_gpu_support_ == BackendSupport::UNSUPPORTED) {
-    LOGS(logger, WARNING) << "QNN GPU backend is not available! Skipping test.";
-    GTEST_SKIP();
-  } else if (cached_gpu_support_ == BackendSupport::SUPPORT_ERROR) {
-    LOGS(logger, ERROR) << "Failed to check if QNN GPU backend is available.";
-    FAIL();
-  }
-}
-
 static BackendSupport GetIRSupport(const onnxruntime::logging::Logger& logger);
 
 BackendSupport QnnHTPBackendTests::IsIRBackendSupported() const {
@@ -483,7 +425,6 @@ BackendSupport QnnCPUBackendTests::cached_cpu_support_ = BackendSupport::SUPPORT
 
 BackendSupport QnnHTPBackendTests::cached_ir_support_ = BackendSupport::SUPPORT_UNKNOWN;
 BackendSupport QnnIRBackendTests::cached_ir_support_ = BackendSupport::SUPPORT_UNKNOWN;
-BackendSupport QnnGPUBackendTests::cached_gpu_support_ = BackendSupport::SUPPORT_UNKNOWN;
 
 bool ReduceOpHasAxesInput(const std::string& op_type, int opset_version) {
   static const std::unordered_map<std::string, int> opset_with_axes_as_input = {

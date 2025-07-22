@@ -36,15 +36,15 @@ static GetTestQDQModelFn<QType> BuildQDQArgMxxTestCase(const std::string& op_typ
   };
 }
 
-// Runs an ArgMax/ArgMin model on the specified QNN backend. Checks the graph node assignment, and that inference
+// Runs an ArgMax/ArgMin model on the QNN CPU backend. Checks the graph node assignment, and that inference
 // outputs for QNN EP and CPU EP match.
-static void RunArgMxxOpTest(const std::string& op_type, TestInputDef<float> input_def,
-                            const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                            ExpectedEPNodeAssignment expected_ep_assignment,
-                            const std::string& backend_name = "cpu", int opset = 13) {
+static void RunCPUArgMxxOpTest(const std::string& op_type, TestInputDef<float> input_def,
+                               const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                               ExpectedEPNodeAssignment expected_ep_assignment,
+                               int opset = 13) {
   ProviderOptions provider_options;
 
-  provider_options["backend_type"] = backend_name;
+  provider_options["backend_type"] = "cpu";
 
   RunQnnModelTest(BuildOpTestCase<float>(op_type, {input_def}, {}, attrs),
                   provider_options,
@@ -77,14 +77,14 @@ static void RunQDQArgMxxOpTest(const std::string& op_type, TestInputDef<float> i
 
 // Test that ArgMax/ArgMin with default attributes works on QNN CPU backend. Compares output with CPU EP.
 TEST_F(QnnCPUBackendTests, ArgMaxMin_DefaultAttrs) {
-  RunArgMxxOpTest("ArgMax",
-                  TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),  // Random input.
-                  {},                                                       // All default ONNX attributes.
-                  ExpectedEPNodeAssignment::All, "cpu", 13);
-  RunArgMxxOpTest("ArgMin",
-                  TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),  // Random input.
-                  {},                                                       // All default ONNX attributes.
-                  ExpectedEPNodeAssignment::All, "cpu", 13);
+  RunCPUArgMxxOpTest("ArgMax",
+                     TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),  // Random input.
+                     {},                                                       // All default ONNX attributes.
+                     ExpectedEPNodeAssignment::All, 13);
+  RunCPUArgMxxOpTest("ArgMin",
+                     TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),  // Random input.
+                     {},                                                       // All default ONNX attributes.
+                     ExpectedEPNodeAssignment::All, 13);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -157,42 +157,6 @@ TEST_F(QnnHTPBackendTests, ArgMaxMinU8_RankGreaterThan4_Unsupported) {
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-
-#if defined(_M_ARM64)
-//
-// GPU tests:
-//
-
-// Test that ArgMax/ArgMin with default attributes works on QNN GPU backend. Compares output with CPU EP.
-// Disable Reason : Onnx Op need Int64 output. Can enable after CastOp Int32 to Int64 is done.
-// Can enable after CastOp int32 to int64 is implemented in QnnGpu.
-TEST_F(QnnGPUBackendTests, DISABLED_ArgMaxMin_DefaultAttrs) {
-  RunArgMxxOpTest("ArgMax",
-                  TestInputDef<float>({3, 4, 4}, false, -10.0f, 10.0f),  // Random input.
-                  {},                                                    // All default ONNX attributes.
-                  ExpectedEPNodeAssignment::All, "gpu", 13);
-  RunArgMxxOpTest("ArgMin",
-                  TestInputDef<float>({3, 4, 4}, false, -10.0f, 10.0f),  // Random input.
-                  {},                                                    // All default ONNX attributes.
-                  ExpectedEPNodeAssignment::All, "gpu", 13);
-}
-
-// Test that ArgMax/ArgMin with axis attribute works on QNN GPU backend. Compares output with CPU EP.
-// Disable Reason : Onnx Op need Int64 output. Can enable after CastOp Int32 to Int64 is done.
-// Can enable after CastOp int32 to int64 is implemented in QnnGpu.
-TEST_F(QnnGPUBackendTests, DISABLED_ArgMaxMin_AxisAttr) {
-  RunArgMxxOpTest("ArgMax",
-                  TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),  // Random input.
-                  {utils::MakeAttribute("axis", static_cast<int64_t>(1))},  // axis is 1
-                  ExpectedEPNodeAssignment::All, "gpu", 13);
-  RunArgMxxOpTest("ArgMin",
-                  TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),  // Random input.
-                  {utils::MakeAttribute("axis", static_cast<int64_t>(1))},  // axis is 1
-                  ExpectedEPNodeAssignment::All, "gpu", 13);
-}
-
-#endif  // defined(_M_ARM64) GPU tests
-
 }  // namespace test
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

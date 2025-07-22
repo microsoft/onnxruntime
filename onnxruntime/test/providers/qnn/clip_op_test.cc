@@ -20,18 +20,16 @@ template <typename DataType>
 static void RunClipTest(const TestInputDef<DataType>& input_def,
                         const std::vector<TestInputDef<DataType>>& min_max_defs,
                         ExpectedEPNodeAssignment expected_ep_assignment,
-                        const std::string& backend_name = "cpu",
+                        bool on_cpu_backend = true,
                         int opset = 13,
                         bool enable_fp16_precision = true) {
   ProviderOptions provider_options;
-  provider_options["backend_type"] = backend_name;
+  provider_options["backend_type"] = on_cpu_backend ? "cpu" : "htp";
 
-  if (backend_name == "htp") {
-    if (enable_fp16_precision) {
-      provider_options["enable_htp_fp16_precision"] = "1";
-    } else {
-      provider_options["enable_htp_fp16_precision"] = "0";
-    }
+  if (!on_cpu_backend && enable_fp16_precision) {
+    provider_options["enable_htp_fp16_precision"] = "1";
+  } else {
+    provider_options["enable_htp_fp16_precision"] = "0";
   }
 
   RunQnnModelTest(BuildOpTestCase<DataType, DataType>("Clip", {input_def}, min_max_defs, {}),
@@ -81,22 +79,24 @@ TEST_F(QnnCPUBackendTests, Clip_5D_f32) {
 // Fails with QNN SDK 2.35.0:
 // value pair (-4.54545403, -4.54687548) at index #3 don't match, which is -0.00142145 from -4.54545
 TEST_F(QnnHTPBackendTests, DISABLED_Clip_f32) {
+  bool on_cpu_backend = false;
   RunClipTest<float>(TestInputDef<float>({1, 1, 3, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 12)),
                      {TestInputDef<float>({}, true, {-5.0f}),
                       TestInputDef<float>({}, true, {5.0f})},
                      ExpectedEPNodeAssignment::All,
-                     "htp",
+                     on_cpu_backend,
                      13,
                      false);
 }
 
 // Test Clip with int32 on HTP
 TEST_F(QnnHTPBackendTests, Clip_int32) {
+  bool on_cpu_backend = false;
   RunClipTest<int32_t>(TestInputDef<int32_t>({1, 1, 3, 2}, false, {1, 2, -5, 3, -10, 25}),
                        {TestInputDef<int32_t>({}, true, {-5}),
                         TestInputDef<int32_t>({}, true, {5})},
                        ExpectedEPNodeAssignment::All,
-                       "htp");
+                       on_cpu_backend);
 }
 
 // Runs a QDQ Clip model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment and that inference
@@ -235,35 +235,6 @@ TEST_F(QnnHTPBackendTests, Clip_FP16) {
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-
-#if defined(_M_ARM64)
-//
-// GPU tests:
-//
-
-// Test Clip with float32 on GPU
-TEST_F(QnnGPUBackendTests, Clip_fp32) {
-  RunClipTest<float>(TestInputDef<float>({1, 1, 3, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 12)),
-                     {TestInputDef<float>({}, true, {-5.0f}),
-                      TestInputDef<float>({}, true, {5.0f})},
-                     ExpectedEPNodeAssignment::All,
-                     "gpu",
-                     13,
-                     false);
-}
-
-// Test Clip with int32 on GPU
-// Disable Reason : Doesn't work.
-TEST_F(QnnGPUBackendTests, DISABLED_Clip_int32) {
-  RunClipTest<int32_t>(TestInputDef<int32_t>({1, 1, 3, 2}, false, {1, 2, -5, 3, -10, 25}),
-                       {TestInputDef<int32_t>({}, true, {-5}),
-                        TestInputDef<int32_t>({}, true, {5})},
-                       ExpectedEPNodeAssignment::All,
-                       "gpu");
-}
-
-#endif  // defined(_M_ARM64) GPU tests
-
 }  // namespace test
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)
