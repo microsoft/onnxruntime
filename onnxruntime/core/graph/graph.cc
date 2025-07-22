@@ -3610,6 +3610,7 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
 
     // doesn't matter if it existed or not
     ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(tensor_name));
+    ORT_IGNORE_RETURN_VALUE(ext_initializers_.erase(tensor_name));
 
     SetGraphResolveNeeded();
   } else {
@@ -3838,14 +3839,22 @@ Status Graph::LoadExternalInitializerAsOrtValue(const std::string& name, OrtValu
     return Status::OK();
   }
 
-  // mmap external initializer from file.
+  // Create OrtValue that memory maps external initializer from file.
   ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), ModelPath(), tensor_proto, value));
-
-  constexpr const bool use_tensor_buffer_true = true;
-  auto tensor_proto_to_add = utils::TensorToTensorProto(value.Get<Tensor>(), tensor_proto.name(),
-                                                        use_tensor_buffer_true);
+  ONNX_NAMESPACE::TensorProto tensor_proto_to_add = utils::TensorToTensorProto(value.Get<Tensor>(),
+                                                                               tensor_proto.name(),
+                                                                               /*use_tensor_buffer*/ true);
   assert(value.IsAllocated());
-  ORT_RETURN_IF_ERROR(ReplaceInitializedTensor(tensor_proto_to_add, value));
+
+  // Replace old initializer's tensor_proto and OrtValue.
+  auto& mutable_initializers = *(graph_proto_->mutable_initializer());
+  auto existing_entry = std::find(mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(),
+                                  &tensor_proto);
+  ORT_RETURN_IF_NOT(existing_entry != mutable_initializers.pointer_end(),
+                    "graph_proto_ is not in sync with name_to_initial_tensor_");
+
+  **existing_entry = std::move(tensor_proto_to_add);
+  ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.emplace(name, value));
 
   return Status::OK();
 }

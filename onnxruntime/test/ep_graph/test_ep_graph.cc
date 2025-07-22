@@ -127,7 +127,7 @@ static void RunConvQDQExtIni(const ORTCHAR_T* model_path, std::vector<float>& ou
   output_data.assign(output_values, output_values + num_output_elems);
 }
 
-// Test serializing an OrtGraph (MNIST) to GraphProto. Saves initializers to external file.
+// Test serializing an OrtGraph with external initializers to GraphProto.
 // Checks that the outputs of the serialized and original models are identical.
 TEST(EpGraphTest, SerializeToProto_InputModelHasExternalIni) {
   const ORTCHAR_T* original_model_path = ORT_TSTR("testdata/conv_qdq_external_ini.onnx");
