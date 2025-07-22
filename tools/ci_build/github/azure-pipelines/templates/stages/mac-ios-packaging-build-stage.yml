@@ -11,7 +11,7 @@ stages:
   dependsOn: []
   jobs:
   - job:
-    displayName: "Build iOS package for Full variant"
+    displayName: "Build iOS package"
 
     variables:
       # Note: Keep the Xcode version and iOS simulator version compatible.
