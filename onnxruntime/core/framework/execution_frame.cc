@@ -440,6 +440,9 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
                 // given that, it's unclear why we need to update the sync id in all other streams to allow them
                 // to take this buffer if it was free.
                 //
+                // device_stream_collection calls ReleaseStreamBuffers for all streams including the root stream in
+                // CleanUp, so the chunk will become available to other streams at that point.
+                //
                 // Commenting out to verify.
                 // for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
                 //  stream_aware_arena->WaitOnChunk(mem_pattern_stream, device_streams_->GetStream(j));

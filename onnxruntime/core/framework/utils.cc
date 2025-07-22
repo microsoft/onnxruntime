@@ -74,17 +74,21 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
 
   if (source_mlvalue.IsTensor()) {
     const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
+    void* p_data = nullptr;
     if (target_stream && allocator->IsStreamAware()) {
       size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
-      void* p_data = allocator->AllocOnStream(len, target_stream);
-      if (p_data == nullptr) {
+      p_data = allocator->AllocOnStream(len, target_stream);
+      if (p_data == nullptr && len > 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Allocation failed.");
       }
+    }
 
+    if (p_data) {
       Tensor::InitOrtValue(source_tensor.DataType(),
                            source_tensor.Shape(),
                            p_data,
                            allocator, target_mlvalue);
+
     } else {
       Tensor::InitOrtValue(source_tensor.DataType(),
                            source_tensor.Shape(),
