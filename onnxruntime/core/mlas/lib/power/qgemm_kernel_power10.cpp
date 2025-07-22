@@ -437,49 +437,57 @@ MlasGemmQuantCopyPackA8x8(
             Vtype a2 = vmask;
             Vtype a3 = vmask;
             Vtype a1 = *reinterpret_cast<const Vtype *>(&a[0]);
-            if (CountM == 3) {
-                a3 = *reinterpret_cast<const Vtype *>(&a[lda * 2]);
-            }
-            if (CountM >= 2) {
-                a2 = *reinterpret_cast<const Vtype *>(&a[lda]);
-            }
-            Vtype vx =
-              reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a1),
-                               reinterpret_cast<__vector int>(a2)));
-            Vtype vx1 =
-              reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a3),
-                               reinterpret_cast<__vector int>(a4)));
-            Vtype vx2 =
-              reinterpret_cast<Vtype>(vec_mergeo(reinterpret_cast<__vector int>(a1),
-                               reinterpret_cast<__vector int>(a2)));
-            Vtype vx3 =
-              reinterpret_cast<Vtype>(vec_mergeo(reinterpret_cast<__vector int>(a3),
-                               reinterpret_cast<__vector int>(a4)));
-            Vtype vx4 = vec_xxpermdi(vx, vx1, 0);
-            Vtype vx5 = vec_xxpermdi(vx2, vx3, 0);
-            Vtype vx6 = vec_xxpermdi(vx, vx1, 3);
-            Vtype vx7 = vec_xxpermdi(vx2, vx3, 3);
-            vec_t vx0 =
-              AIsSigned ? reinterpret_cast<vec_t>(vx4) :
-                          reinterpret_cast<vec_t>(vec_sub(vx4, vmask));
-            *reinterpret_cast<vec_t *>(&D[0]) = vx0;
-            vsum = vec_sum4s(vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx5) :
-                              reinterpret_cast<vec_t>(vec_sub(vx5, vmask));
-            *reinterpret_cast<vec_t *>(&D[16]) = vx0;
-            vsum = vec_sum4s(vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx6) :
-                              reinterpret_cast<vec_t>(vec_sub(vx6, vmask));
-            *reinterpret_cast<vec_t *>(&D[32]) = vx0;
-            vsum = vec_sum4s(vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx7) :
-                              reinterpret_cast<vec_t>(vec_sub(vx7, vmask));
-            *reinterpret_cast<vec_t *>(&D[48]) = vx0;
-            vsum = vec_sum4s(vx0, vsum);
-            D += 16 * 4;
+	    if (CountM == 1) {
+		    vec_t va1 = AIsSigned ? reinterpret_cast<vec_t>(a1) :
+			    reinterpret_cast<vec_t>(vec_sub(a1, vmask));
+		    *reinterpret_cast<vec_t *>(&D[0])= (vec_t)va1;
+		    vsum = vec_sum4s(va1,vsum);
+	    }else {
+		    a2 = *reinterpret_cast<const Vtype *>(&a[lda]);
+		    if (CountM == 3)
+			    a3 = *reinterpret_cast<const Vtype *>(&a[lda * 2]);
+		    Vtype vx =
+			    reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a1),
+						    reinterpret_cast<__vector int>(a2)));
+		    Vtype vx1 =
+			    reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a3),
+						    reinterpret_cast<__vector int>(a4)));
+		    Vtype vx2 =
+			    reinterpret_cast<Vtype>(vec_mergeo(reinterpret_cast<__vector int>(a1),
+						    reinterpret_cast<__vector int>(a2)));
+		    Vtype vx3 =
+			    reinterpret_cast<Vtype>(vec_mergeo(reinterpret_cast<__vector int>(a3),
+						    reinterpret_cast<__vector int>(a4)));
+		    Vtype vx4 = vec_xxpermdi(vx, vx1, 0);
+		    Vtype vx5 = vec_xxpermdi(vx2, vx3, 0);
+		    Vtype vx6 = vec_xxpermdi(vx, vx1, 3);
+		    Vtype vx7 = vec_xxpermdi(vx2, vx3, 3);
+		    vec_t vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx4) :
+			    reinterpret_cast<vec_t>(vec_sub(vx4, vmask));
+		    *reinterpret_cast<vec_t *>(&D[0]) = vx0;
+		    vsum = vec_sum4s(vx0, vsum);
+		    vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx5) :
+			    reinterpret_cast<vec_t>(vec_sub(vx5, vmask));
+		    *reinterpret_cast<vec_t *>(&D[16]) = vx0;
+		    vsum = vec_sum4s(vx0, vsum);
+		    vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx6) :
+			    reinterpret_cast<vec_t>(vec_sub(vx6, vmask));
+		    *reinterpret_cast<vec_t *>(&D[32]) = vx0;
+		    vsum = vec_sum4s(vx0, vsum);
+		    vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx7) :
+			    reinterpret_cast<vec_t>(vec_sub(vx7, vmask));
+		    *reinterpret_cast<vec_t *>(&D[48]) = vx0;
+		    vsum = vec_sum4s(vx0, vsum);
+	    }
+            if (CountM == 1)
+		    D += 16;
+            else
+		    D += 16 * 4;
             a += 16;
             y -= 16;
         }
+        if (CountM == 1)
+		vsum[0] += (vsum[1] + vsum[2] + vsum[3]);
         while (y >= 4)
         {
             Vtype vb = vmask;
@@ -496,7 +504,10 @@ MlasGemmQuantCopyPackA8x8(
                           reinterpret_cast<vec_t>(vec_sub(reinterpret_cast<Vtype>(vx1), vmask));
             *reinterpret_cast<vec_t *>(&D[0]) = vx;
             vsum = vec_sum4s(vx, vsum);
-            D += 16;
+	    if (CountM == 1)
+		    D += 4;
+	    else
+		    D += 16;
             a += 4;
             y -= 4;
         }
@@ -533,6 +544,7 @@ MlasGemmQuantCopyPackA8x8(
             vsum = vec_sum4s(vx, vsum);
             D += 16;
         }
+
         *RowSumBuffer++ = vsum[0];
         if (CountM >= 2) {
             *RowSumBuffer++ = vsum[1];
@@ -1058,7 +1070,188 @@ MlasQgemmComputeMMA(
             __builtin_mma_xvi8ger4pp(acc1, va[1], vb[0]);
         }
     }
+
 };
+
+MLAS_FORCEINLINE
+void
+MlasGemmQuantKernel_M1(
+    const MLAS_GEMM_QUANT_KERNEL_POWER10::PackedAType* A,
+    const MLAS_GEMM_QUANT_KERNEL_POWER10::PackedBType* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumBuffer,
+    const int32_t* ColumnSumBuffer,
+    const int32_t* ZeroPointB,
+    bool ZeroMode
+    )
+{
+    size_t Mval = 1;
+    while (CountN > 0) {
+	    const int8_t *a = A;
+	    typedef __vector unsigned char vec_t;
+	    typedef __vector signed char svec_t;
+	    const uint8_t *b = B;
+	    MLAS_INT32X4 result = {0};
+	    __vector signed int  VecC = {0,0, 0, 0};
+	    __vector signed int  VecC2 = {0,0, 0, 0};
+	    __vector signed int  VecC3 = {0,0, 0, 0};
+	    __vector signed int  VecC4 = {0,0, 0, 0};
+	    size_t k = PackedCountK * MLAS_GEMM_QUANT_KERNEL_POWER10::PackedK;
+	    size_t k1 = PackedCountK;
+	    __vector unsigned char va[4];
+	    __vector unsigned char pat = {0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3};
+	    __vector unsigned char pat2 = {4,5,6,7,4,5,6,7,4,5,6,7,4,5,6,7};
+	    __vector unsigned char pat3 = {8,9,10,11,8,9,10,11,8,9,10,11,8,9,10,11};
+	    __vector unsigned char pat4 = {12,13,14,15,12,13,14,15,12,13,14,15,12,13,14,15};
+	    while (k >= 16) {
+		    vec_t *vecA = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(a));
+		    vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(b));
+		    va[0] = vec_perm(vecA[0],vecA[0],pat);
+		    va[1] = vec_perm(vecA[0],vecA[0],pat2);
+		    va[2] = vec_perm(vecA[0],vecA[0],pat3);
+		    va[3] = vec_perm(vecA[0],vecA[0],pat4);
+		    VecC = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC);
+		    VecC = vec_msum((svec_t)va[1], (vec_t)vb[1], VecC);
+		    VecC = vec_msum((svec_t)va[2], (vec_t)vb[2], VecC);
+		    VecC = vec_msum((svec_t)va[3], (vec_t)vb[3], VecC);
+		    vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*16]));
+		    VecC2 = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC2);
+		    VecC2 = vec_msum((svec_t)va[1], (vec_t)vb[1], VecC2);
+		    VecC2 = vec_msum((svec_t)va[2], (vec_t)vb[2], VecC2);
+		    VecC2 = vec_msum((svec_t)va[3], (vec_t)vb[3], VecC2);
+		    vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*32]));
+		    VecC3 = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC3);
+		    VecC3 = vec_msum((svec_t)va[1], (vec_t)vb[1], VecC3);
+		    VecC3 = vec_msum((svec_t)va[2], (vec_t)vb[2], VecC3);
+		    VecC3 = vec_msum((svec_t)va[3], (vec_t)vb[3], VecC3);
+		    vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*48]));
+		    VecC4 = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC4);
+		    VecC4 = vec_msum((svec_t)va[1], (vec_t)vb[1], VecC4);
+		    VecC4 = vec_msum((svec_t)va[2], (vec_t)vb[2], VecC4);
+		    VecC4 = vec_msum((svec_t)va[3], (vec_t)vb[3], VecC4);
+		    b += 64;
+		    a += 16;
+		    k -= 16;
+	    }
+	    if (k >= 12) {
+		    vec_t *vecA = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(a));
+		    vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(b));
+		    va[0]=vec_perm(vecA[0],vecA[0],pat);
+		    va[1] = vec_perm(vecA[0],vecA[0],pat2);
+		    va[2] = vec_perm(vecA[0],vecA[0],pat3);
+		    VecC = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC);
+		    VecC = vec_msum((svec_t)va[1], (vec_t)vb[1], VecC);
+		    VecC = vec_msum((svec_t)va[2], (vec_t)vb[2], VecC);
+		    vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*16]));
+		    VecC2 = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC2);
+		    VecC2 = vec_msum((svec_t)va[1], (vec_t)vb[1], VecC2);
+		    VecC2 = vec_msum((svec_t)va[2], (vec_t)vb[2], VecC2);
+		    vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*32]));
+		    VecC3 = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC3);
+		    VecC3 = vec_msum((svec_t)va[1], (vec_t)vb[1], VecC3);
+		    VecC3 = vec_msum((svec_t)va[2], (vec_t)vb[2], VecC3);
+		    vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*48]));
+		    VecC4 = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC4);
+		    VecC4 = vec_msum((svec_t)va[1], (vec_t)vb[1], VecC4);
+		    VecC4 = vec_msum((svec_t)va[2], (vec_t)vb[2], VecC4);
+		    a += 12;
+		    b += 48;
+		    k -= 12;
+	    }
+            if (k >= 8) {
+		    vec_t *vecA = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(a));
+		    vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(b));
+		    va[0]=vec_perm(vecA[0],vecA[0],pat);
+		    va[1] = vec_perm(vecA[0],vecA[0],pat2);
+		    VecC = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC);
+		    VecC = vec_msum((svec_t)va[1], (vec_t)vb[1], VecC);
+		    vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*16]));
+		    VecC2 = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC2);
+		    VecC2 = vec_msum((svec_t)va[1], (vec_t)vb[1], VecC2);
+		    vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*32]));
+		    VecC3 = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC3);
+		    VecC3 = vec_msum((svec_t)va[1], (vec_t)vb[1], VecC3);
+		    vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*48]));
+		    VecC4 = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC4);
+		    VecC4 = vec_msum((svec_t)va[1], (vec_t)vb[1], VecC4);
+		    a += 8;
+		    b += 32;
+		    k -= 8;
+	    }
+	    if (k >= 4) {
+		    vec_t *vecA = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(a));
+		    vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(b));
+		    va[0] = vec_perm(vecA[0],vecA[0],pat);
+		    VecC = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC);
+		    vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*16]));
+		    VecC2 = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC2);
+		    vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*32]));
+		    VecC3 = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC3);
+		    vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*48]));
+		    VecC4 = vec_msum((svec_t)va[0], (vec_t)vb[0], VecC4);
+		    a += 4;
+		    b += 16;
+		    k -= 4;
+	    }
+	    if (CountN >=16) {
+		    MlasQgemmStoreVectorMMA<0>(&VecC, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 0);
+		    MlasQgemmStoreVectorMMA<4>(&VecC2, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 4);
+		    MlasQgemmStoreVectorMMA<8>(&VecC3, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 8);
+		    MlasQgemmStoreVectorMMA<12>(&VecC4, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 12);
+		    INC_BUFFER(16);
+		    CountN -= 16;
+		    B += 16 * 4 *PackedCountK;
+		    C += 16;
+	    }else {
+		    if (CountN >=12) {
+			    MlasQgemmStoreVectorMMA<0>(&VecC, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 0);
+			    MlasQgemmStoreVectorMMA<4>(&VecC2, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 4);
+			    MlasQgemmStoreVectorMMA<8>(&VecC3, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 8);
+			    INC_BUFFER(12);
+			    if (CountN - 12 > 0)
+				    result = VecC4;
+			    CountN -= 12;
+			    C += 12;
+		    } else if (CountN >=8) {
+			    MlasQgemmStoreVectorMMA<0>(&VecC, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 0);
+			    MlasQgemmStoreVectorMMA<4>(&VecC2, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 4);
+			    INC_BUFFER(8);
+			    if (CountN - 8 > 0)
+				    result=VecC3;
+			    CountN -= 8;
+			    C += 8;
+		    }else if (CountN >=4) {
+			    MlasQgemmStoreVectorMMA<0>(&VecC, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 0);
+			    INC_BUFFER(4);
+			    if (CountN - 4 > 0)
+				    result=VecC2;
+			    CountN -= 4;
+			    C += 4;
+		    }else
+			    result=VecC;
+		    CountN &= 3;
+
+		    // Output the remaining partial output block.
+		    if (CountN > 0) {
+			    MlasQgemmStoreScalarMMA<0>(&result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+			    INC_BUFFER(1);
+		    }
+		    if (CountN >= 2) {
+			    MlasQgemmStoreScalarMMA<1>(&result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+			    INC_BUFFER(1);
+		    }
+		    if (CountN >= 3) {
+			    MlasQgemmStoreScalarMMA<2>(&result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+			    INC_BUFFER(1);
+		    }
+		    CountN=0;
+	    }
+    }
+}
+
 template<>
 size_t
 MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
@@ -1075,6 +1268,11 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
     bool ZeroMode
     )
 {
+    if (CountM == 1) {
+	    MlasGemmQuantKernel_M1(A,B,C,PackedCountK,CountN,ldc,RowSumBuffer,ColumnSumBuffer,ZeroPointB,ZeroMode);
+	    return 1;
+    }
+    else {
     if (CountM < 8 && CountM >= 4) {
         CountM = 4;
     }
@@ -1362,6 +1560,7 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
        return 8;
     }
     return CountM;
+    }
 }
 
 const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10 = {
