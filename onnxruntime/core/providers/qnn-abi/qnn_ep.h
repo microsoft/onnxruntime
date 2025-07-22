@@ -70,9 +70,9 @@ class QnnEp : public OrtEp, public ApiPtrs {
   void PartitionCtxModel(const OrtEp* this_ptr, const OrtGraph* graph, size_t num_nodes_in_graph,
                          OrtEpGraphSupportInfo* graph_support_info);
   // static void GetMainEPCtxNodes(QnnEp* ep, const OrtGraph* graph, std::unordered_set<const OrtNode*>& ep_context_nodes);
-  // void GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
-  //                                  const std::string& model_path_string,
-  //                                  std::string& context_model_path);
+  void GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
+                                   const std::string& model_path_string,
+                                   std::string& context_model_path);
 
   // // Run start/end methods
   // OrtStatus* OnRunStart(const OrtGraph* graph, const OrtRunOptions* run_options);

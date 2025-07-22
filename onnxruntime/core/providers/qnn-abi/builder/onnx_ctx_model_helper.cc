@@ -1,62 +1,132 @@
-// // Copyright (c) Microsoft Corporation. All rights reserved.
-// // Licensed under the MIT License.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-// #include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
+#include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
 
-// #include <iostream>
-// #include <fstream>
-// #include <filesystem>
+#include <iostream>
+#include <fstream>
+#include <filesystem>
 
-// #include "core/providers/qnn-abi/ort_api.h"
-// #include "core/providers/qnn-abi/builder/qnn_utils.h"
-// #include "core/providers/qnn-abi/builder/qnn_model.h"
-// #include "core/providers/qnn-abi/shared_context.h"
+#include "core/providers/qnn-abi/ort_api.h"
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/builder/qnn_model.h"
+#include "core/providers/qnn-abi/shared_context.h"
 
-// namespace onnxruntime {
-// namespace qnn {
+namespace onnxruntime {
+namespace qnn {
 
-// bool GraphHasEpContextNode(const OrtGraph* graph) {
-//     OrtArrayOfConstObjects* graph_nodes = nullptr;
-//     if (ort_api.Graph_GetNodes(graph, &graph_nodes) != nullptr) {
-//         return false;
-//     }
+bool GraphHasEpContextNode(const OrtGraph* graph, const OrtApi& ort_api) {
+  // It's an Onnx model with Qnn context cache binary if it has a node with EPContext type
+  // and the source is QNN or QNNExecutionProvider.
 
-//     size_t num_nodes = 0;
-//     if (ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes) != nullptr) {
-//         ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-//         return false;
-//     }
+  OrtArrayOfConstObjects* nodes = nullptr;
+  OrtStatus* status = ort_api.Graph_GetNodes(graph, &nodes);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return false;
+  }
 
-//     const void* const* node_data = nullptr;
-//     if (ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data) != nullptr) {
-//         ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-//         return false;
-//     }
+  size_t num_nodes = 0;
+  status = ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(nodes);
+    return false;
+  }
 
-//     bool has_ep_context = false;
-//     for (size_t i = 0; i < num_nodes; ++i) {
-//         const OrtNode* node = static_cast<const OrtNode*>(node_data[i]);
-//         const char* op_type = nullptr;
+  const void* const* node_data = nullptr;
+  status = ort_api.ArrayOfConstObjects_GetData(nodes, &node_data);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(nodes);
+    return false;
+  }
 
-//         if (ort_api.Node_GetOperatorType(node, &op_type) == nullptr && op_type != nullptr) {
-//             if (std::string(op_type) == "EPContext") {
-//                 // Check if this EPContext node is from QNN
-//                 OrtArrayOfConstObjects* attributes = nullptr;
-//                 if (ort_api.Node_GetAttributes(node, &attributes) == nullptr) {
-//                     // TODO: Check the 'source' attribute to see if it's "qnn" or "qnnexecutionprovider"
-//                     // For now, assume any EPContext node is from QNN
-//                     has_ep_context = true;
-//                     ort_api.ReleaseArrayOfConstObjects(attributes);
-//                     break;
-//                 }
-//             }
-//         }
-//     }
+  for (size_t i = 0; i < num_nodes; ++i) {
+    const OrtNode* node = static_cast<const OrtNode*>(node_data[i]);
+    const char* op_type = nullptr;
+    status = ort_api.Node_GetOperatorType(node, &op_type);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      continue;
+    }
 
-//     ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-//     return has_ep_context;
-// }
+    if (EPCONTEXT_OP == op_type) {
+      OrtArrayOfConstObjects* attributes = nullptr;
+      status = ort_api.Node_GetAttributes(node, &attributes);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
 
+      size_t num_attributes = 0;
+      status = ort_api.ArrayOfConstObjects_GetSize(attributes, &num_attributes);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        ort_api.ReleaseArrayOfConstObjects(attributes);
+        continue;
+      }
+
+      const void* const* attribute_data = nullptr;
+      status = ort_api.ArrayOfConstObjects_GetData(attributes, &attribute_data);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        ort_api.ReleaseArrayOfConstObjects(attributes);
+        continue;
+      }
+
+      for (size_t attr_idx = 0; attr_idx < num_attributes; ++attr_idx) {
+        const OrtOpAttr* attr = static_cast<const OrtOpAttr*>(attribute_data[attr_idx]);
+        const char* attr_name = nullptr;
+        status = ort_api.OpAttr_GetName(attr, &attr_name);
+        if (status != nullptr) {
+          ort_api.ReleaseStatus(status);
+          continue;
+        }
+
+        if (std::string(attr_name) == SOURCE) {
+          OrtOpAttrType attr_type;
+          status = ort_api.OpAttr_GetType(attr, &attr_type);
+          if (status != nullptr) {
+            ort_api.ReleaseStatus(status);
+            continue;
+          }
+
+          if (attr_type == ORT_OP_ATTR_STRING) {
+            size_t string_len = 0;
+            status = ort_api.ReadOpAttr(attr, ORT_OP_ATTR_STRING, nullptr, 0, &string_len);
+            if (status != nullptr) {
+              ort_api.ReleaseStatus(status);
+              continue;
+            }
+
+            std::string cache_source_str(string_len, '\0');
+            status = ort_api.ReadOpAttr(attr, ORT_OP_ATTR_STRING, &cache_source_str[0], string_len, &string_len);
+            if (status != nullptr) {
+              ort_api.ReleaseStatus(status);
+              continue;
+            }
+            cache_source_str.resize(string_len); // Remove null terminator if it was added
+
+            std::string cache_source = qnn::utils::GetLowercaseString(cache_source_str);
+
+            if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
+              ort_api.ReleaseArrayOfConstObjects(attributes);
+              ort_api.ReleaseArrayOfConstObjects(nodes);
+              return true;
+            }
+          }
+        }
+      }
+      ort_api.ReleaseArrayOfConstObjects(attributes);
+    }
+  }
+
+  ort_api.ReleaseArrayOfConstObjects(nodes);
+  return false;
+}
+
+// TODO: Need to update this to work with OrtGraph and OrtApi
 // bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs) {
 //   for (const auto& fused_node_graph : fused_nodes_and_graphs) {
 //     const onnxruntime::GraphViewer& graph_viewer(fused_node_graph.filtered_graph);
@@ -327,5 +397,5 @@
 //   return Status::OK();
 // }
 
-// }  // namespace qnn
-// }  // namespace onnxruntime
+}  // namespace qnn
+}  // namespace onnxruntime

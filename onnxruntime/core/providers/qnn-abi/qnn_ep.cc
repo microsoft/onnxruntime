@@ -25,58 +25,6 @@
 
 // Forward declarations for NodeUnit-related classes
 namespace onnxruntime {
-// namespace QDQ {
-// struct NodeGroup {
-//   std::vector<size_t> dq_nodes;
-//   std::vector<size_t> q_nodes;
-//   size_t target_node;
-//   std::optional<size_t> redundant_clip_node;
-// };
-// }  // namespace QDQ
-
-// // Simple NodeUnit implementation for ABI layer
-// class NodeUnit {
-//  public:
-//   enum class Type : uint8_t {
-//     SingleNode,
-//     QDQGroup,
-//   };
-
-//   explicit NodeUnit(const Node* node)
-//     : target_node_(node), type_(Type::SingleNode) {}
-
-//   NodeUnit(std::vector<const Node*> dq_nodes, const Node* target_node,
-//            const Node* redundant_clip_node, std::vector<const Node*> q_nodes)
-//     : dq_nodes_(std::move(dq_nodes)),
-//       target_node_(target_node),
-//       redundant_clip_node_(redundant_clip_node),
-//       q_nodes_(std::move(q_nodes)),
-//       type_(Type::QDQGroup) {}
-
-//   Type UnitType() const { return type_; }
-//   const Node& GetNode() const { return *target_node_; }
-//   const Node* GetRedundantClipNode() const { return redundant_clip_node_; }
-//   const std::vector<const Node*>& GetDQNodes() const { return dq_nodes_; }
-//   const std::vector<const Node*>& GetQNodes() const { return q_nodes_; }
-
-//   std::vector<const Node*> GetAllNodesInGroup() const {
-//     std::vector<const Node*> all_nodes;
-//     all_nodes.insert(all_nodes.end(), dq_nodes_.begin(), dq_nodes_.end());
-//     all_nodes.push_back(target_node_);
-//     if (redundant_clip_node_) {
-//       all_nodes.push_back(redundant_clip_node_);
-//     }
-//     all_nodes.insert(all_nodes.end(), q_nodes_.begin(), q_nodes_.end());
-//     return all_nodes;
-//   }
-
-//  private:
-//   std::vector<const Node*> dq_nodes_;
-//   const Node* target_node_;
-//   const Node* redundant_clip_node_ = nullptr;
-//   std::vector<const Node*> q_nodes_;
-//   Type type_;
-// };
 
 QnnEp::QnnEp(QnnEpFactory& factory, const std::string& name,
              const Config& config, const OrtLogger& logger)
@@ -480,17 +428,17 @@ void QnnEp::PartitionCtxModel(const OrtEp* this_ptr, const OrtGraph* graph, size
   ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
 }
 
-// // Helper function to get context ONNX model file path - equivalent to GetContextOnnxModelFilePath
-// void QnnEp::GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
-//                                        const std::string& model_path_string,
-//                                        std::string& context_model_path) {
-//     // always try the path set by user first, it's the only way to set it if load model from memory
-//     if (!user_context_cache_path.empty()) {
-//         context_model_path = user_context_cache_path;
-//     } else if (!model_path_string.empty()) {  // model loaded from file
-//         context_model_path = model_path_string;
-//     }
-// }
+// Helper function to get context ONNX model file path - equivalent to GetContextOnnxModelFilePath
+void QnnEp::GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
+                                       const std::string& model_path_string,
+                                       std::string& context_model_path) {
+    // always try the path set by user first, it's the only way to set it if load model from memory
+    if (!user_context_cache_path.empty()) {
+        context_model_path = user_context_cache_path;
+    } else if (!model_path_string.empty()) {  // model loaded from file
+        context_model_path = model_path_string;
+    }
+}
 
 OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
                                                  const OrtGraph* graph,
@@ -544,7 +492,7 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
 
     std::string model_path_string = "";
     std::string context_model_path;
-    // GetContextOnnxModelFilePath(ep->context_cache_path_cfg_, model_path_string, context_model_path);
+    ep->GetContextOnnxModelFilePath(ep->context_cache_path_cfg_, model_path_string, context_model_path);
 
     std::filesystem::path parent_path = std::filesystem::path(context_model_path).parent_path();
 
@@ -678,38 +626,6 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
                                                                supported_nodes.data(),
                                                                supported_nodes.size(),
                                                                &node_fusion_options));
-
-  //     if (!supported_nodes.empty()) {
-  //         // Mock: Validate partitions (filter out single QuantizeLinear/DequantizeLinear nodes)
-  //         std::vector<const OrtNode*> valid_supported_nodes;
-  //         for (const OrtNode* node : supported_nodes) {
-  //             const char* op_type = nullptr;
-  //             if (ep->ort_api.Node_GetOperatorType(node, &op_type) == nullptr && op_type != nullptr) {
-  //                 std::string op_type_str(op_type);
-  //                 // For single node partitions, skip QuantizeLinear/DequantizeLinear
-  //                 if (supported_nodes.size() == 1 &&
-  //                     (op_type_str == "QuantizeLinear" || op_type_str == "DequantizeLinear")) {
-  //                     continue;
-  //                 }
-  //                 valid_supported_nodes.push_back(node);
-  //             }
-  //         }
-
-  //         if (!valid_supported_nodes.empty()) {
-  //             OrtNodeFusionOptions node_fusion_options = {};
-  //             node_fusion_options.ort_version_supported = ORT_API_VERSION;
-  //             node_fusion_options.drop_constant_initializers = true;
-
-  //             // Use the generated metadef name for the fused node
-  //             // The gen_metadef_name lambda would be used in the actual partition creation
-  //             // For now, we use the EP API to add nodes to fusion
-
-  //             RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
-  //                                                                           valid_supported_nodes.data(),
-  //                                                                           valid_supported_nodes.size(),
-  //                                                                           &node_fusion_options));
-  //         }
-  //     }
 
   // Clean up
   ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
