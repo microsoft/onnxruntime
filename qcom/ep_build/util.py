@@ -13,7 +13,7 @@ from pathlib import Path
 
 def default_parallelism() -> int:
     """A conservative number of processes across which to spread pytests desiring parallelism."""
-    from .github import is_host_github_runner  # avoid circular import
+    from .github import is_host_github_runner  # noqa: PLC0415
 
     cpu_count = os.cpu_count()
     if not cpu_count:
@@ -55,7 +55,7 @@ def git_head_sha() -> str:
 def have_root() -> bool:
     # mypy/pyright are generally unhappy here because these calls aren't always available.
     if is_host_windows():
-        import ctypes
+        import ctypes  # noqa: PLC0415
 
         return ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[attr-defined]
     return os.geteuid() == 0  # type:ignore[attr-defined]
@@ -66,7 +66,7 @@ def is_host_arm64() -> bool:
 
 
 def is_host_in_ci():
-    from .github import is_host_github_runner  # avoid circular import
+    from .github import is_host_github_runner  # noqa: PLC0415
 
     return is_host_github_runner()
 

@@ -97,7 +97,7 @@ class ListTasksTask(Task):
         return False
 
     def run_task(self) -> None:
-        from . import plan
+        from . import plan  # noqa: PLC0415
 
         for task_name in sorted(self.tasks):
             print(task_name)
