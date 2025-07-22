@@ -13,13 +13,13 @@ namespace {
 // Helper function to calculate the output index based on the input index and the sizes of the splits.
 void CalculateOutputIndex(std::ostream& os, size_t output_count) {
   os << "fn calculate_output_index(index: u32) -> u32 {\n"
-      << "  for (var i: u32 = 0u; i < " << output_count << "u; i += 1u ) {\n"
-      << "    if (index < " << GetElementAt("uniforms.sizes_in_split_axis", "i", output_count) << ") {\n"
-      << "      return i;\n"
-      << "    }\n"
-      << "  }\n"
-      << "  return " << output_count << "u;\n"
-      << "}\n";
+     << "  for (var i: u32 = 0u; i < " << output_count << "u; i += 1u ) {\n"
+     << "    if (index < " << GetElementAt("uniforms.sizes_in_split_axis", "i", output_count) << ") {\n"
+     << "      return i;\n"
+     << "    }\n"
+     << "  }\n"
+     << "  return " << output_count << "u;\n"
+     << "}\n";
 }
 
 // Helper function to write the buffer data for each output.
@@ -107,7 +107,7 @@ Status Split::ComputeInternal(ComputeContext& context) const {
   auto output_dimensions = input_shape.AsShapeVector();
   std::vector<Tensor*> all_outputs;
   std::vector<int> non_empty_output_indices;
-  
+
   for (int i = 0; i < num_outputs; ++i) {
     // Update the size of dimension for axis we're splitting on.
     auto split_size = narrow<int>(split_sizes[i]);
@@ -115,7 +115,7 @@ Status Split::ComputeInternal(ComputeContext& context) const {
 
     Tensor* output = context.Output(i, TensorShape{output_dimensions});
     all_outputs.push_back(output);
-    
+
     // Only include non-empty outputs in the GPU program
     if (split_size > 0) {
       non_empty_output_indices.push_back(i);
