@@ -26,6 +26,36 @@
 // Forward declarations for NodeUnit-related classes
 namespace onnxruntime {
 
+static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
+                                    qnn::HtpPerformanceMode& htp_performance_mode,
+                                    const logging::Logger& logger) {
+  htp_performance_mode_string = qnn::utils::GetLowercaseString(htp_performance_mode_string);
+  LOGS(logger, VERBOSE) << "Htp performance mode: " << htp_performance_mode_string;
+  if (htp_performance_mode_string == "burst") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpBurst;
+  } else if (htp_performance_mode_string == "balanced") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpBalanced;
+  } else if (htp_performance_mode_string == "default") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+  } else if (htp_performance_mode_string == "high_performance") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpHighPerformance;
+  } else if (htp_performance_mode_string == "high_power_saver") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpHighPowerSaver;
+  } else if (htp_performance_mode_string == "low_balanced") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpLowBalanced;
+  } else if (htp_performance_mode_string == "low_power_saver") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpLowPowerSaver;
+  } else if (htp_performance_mode_string == "power_saver") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpPowerSaver;
+  } else if (htp_performance_mode_string == "extreme_power_saver") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpExtremePowerSaver;
+  } else if (htp_performance_mode_string == "sustained_high_performance") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpSustainedHighPerformance;
+  } else {
+    LOGS(logger, WARNING) << "Htp performance mode not valid.";
+  }
+}
+
 QnnEp::QnnEp(QnnEpFactory& factory, const std::string& name,
              const Config& config, const OrtLogger& logger)
     : OrtEp{},
@@ -43,6 +73,9 @@ QnnEp::QnnEp(QnnEpFactory& factory, const std::string& name,
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
   Compile = CompileImpl;
+  ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
+  OnRunStart = OnRunStartImpl;
+  OnRunEnd = OnRunEndImpl;
 
   // Initialize the backend manager
   qnn::QnnBackendManagerConfig backend_config;
@@ -717,12 +750,91 @@ OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
 }
 
 void ORT_API_CALL QnnEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
-                                                         OrtNodeComputeInfo** node_compute_infos,
-                                                         size_t num_node_compute_infos) {
+                                                     OrtNodeComputeInfo** node_compute_infos,
+                                                     size_t num_node_compute_infos) {
   ORT_UNUSED_PARAMETER(this_ptr);
   for (size_t idx = 0; idx < num_node_compute_infos; ++idx) {
     delete node_compute_infos[idx];
   }
+}
+
+OrtStatus* ORT_API_CALL QnnEp::OnRunStartImpl(_In_ OrtEp* this_ptr, _In_ const OrtRunOptions* run_options) {
+  QnnEp* ep = static_cast<QnnEp*>(this_ptr);
+  auto logger = *(ep->logger_.ToInternal());
+
+  auto backend_type = ep->qnn_backend_manager_->GetQnnBackendType();
+  if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+    return nullptr;
+  }
+
+  const char* htp_perf_mode = nullptr;
+  ep->ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnPerfMode, &htp_perf_mode);
+  qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+  if (htp_perf_mode != nullptr) {
+    ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode, logger);
+  }
+
+  const char* rpc_latency = nullptr;
+  ep->ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnRpcControlLatency, &rpc_latency);
+  uint32_t rpc_control_latency = 0;
+  if (rpc_latency != nullptr) {
+    rpc_control_latency = static_cast<uint32_t>(std::stoul(rpc_latency));
+    LOGS(logger, VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
+  }
+
+  if (ep->GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+    if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
+      RETURN_IF_NOT_OK(ep->qnn_backend_manager_->SetHtpPowerConfig(ep->GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                   htp_performance_mode),
+                       ep->ort_api);
+    }
+
+    if (rpc_control_latency > 0) {
+      RETURN_IF_NOT_OK(ep->qnn_backend_manager_->SetRpcControlLatency(ep->GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                      rpc_control_latency),
+                       ep->ort_api);
+    }
+  }
+
+  const char* lora_config = nullptr;
+  ep->ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnLoraConfig, &lora_config);
+  if (lora_config != nullptr) {
+    LOGS(logger, VERBOSE) << "lora_config: " << lora_config;
+    RETURN_IF_NOT_OK(ep->qnn_backend_manager_->ParseLoraConfig(lora_config), ep->ort_api);
+  }
+
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL QnnEp::OnRunEndImpl(_In_ OrtEp* this_ptr,
+                                            _In_ const OrtRunOptions* run_options,
+                                            _In_ bool sync_stream) {
+  ORT_UNUSED_PARAMETER(sync_stream);
+
+  QnnEp* ep = static_cast<QnnEp*>(this_ptr);
+  auto logger = *(ep->logger_.ToInternal());
+
+  auto backend_type = ep->qnn_backend_manager_->GetQnnBackendType();
+  if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+    return nullptr;
+  }
+
+  const char* htp_perf_mode = nullptr;
+  ep->ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnPerfMode, &htp_perf_mode);
+  qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+  if (htp_perf_mode != nullptr) {
+    ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode, logger);
+  }
+
+  if (ep->GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+    if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
+      RETURN_IF_NOT_OK(ep->qnn_backend_manager_->SetHtpPowerConfig(ep->GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                   htp_performance_mode),
+                       ep->ort_api);
+    }
+  }
+
+  return nullptr;
 }
 
 QnnEp::PerThreadContext::PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
@@ -811,44 +923,6 @@ void QnnEp::ReleasePerThreadContext() {
   }
 }
 
-// OrtStatus* QnnEp::OnRunStart(const OrtGraph* graph, const OrtRunOptions* run_options) {
-//     // Check backend type - only proceed for HTP or DSP backends
-//     auto backend_type = qnn_backend_manager_->GetQnnBackendType();
-//     if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
-//         return nullptr; // Equivalent to Status::OK()
-//     }
-
-//     // Get config options from run options
-//     // This is equivalent to the ConfigOptions& config_options = RunOptions__GetConfigOptions(run_options)
-//     // in the original implementation
-
-//     // Log that we're in OnRunStart
-//     if (logger_ != nullptr) {
-//         ort_api.Logger_LogMessage(logger_, ORT_LOGGING_LEVEL_VERBOSE,
-//                                 "QnnEp::OnRunStart called",
-//                                 ORT_FILE, __LINE__, __FUNCTION__);
-//     }
-
-//     return nullptr;
-// }
-
-// OrtStatus* QnnEp::OnRunEnd(const OrtGraph* graph, const OrtRunOptions* run_options, bool sync_stream) {
-//     // Check backend type - only proceed for HTP or DSP backends
-//     auto backend_type = qnn_backend_manager_->GetQnnBackendType();
-//     if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
-//         return nullptr; // Equivalent to Status::OK()
-//     }
-
-//     // Log that we're in OnRunEnd
-//     if (logger_ != nullptr) {
-//         ort_api.Logger_LogMessage(logger_, ORT_LOGGING_LEVEL_VERBOSE,
-//                                 "QnnEp::OnRunEnd called",
-//                                 ORT_FILE, __LINE__, __FUNCTION__);
-//     }
-
-//     return nullptr;
-// }
-
 QnnEp::QnnNodeComputeInfo::QnnNodeComputeInfo(QnnEp& ep) : ep(ep) {
   ort_version_supported = ORT_API_VERSION;
   CreateState = CreateStateImpl;
@@ -880,7 +954,7 @@ OrtStatus* QnnEp::QnnNodeComputeInfo::ComputeImpl(OrtNodeComputeInfo* this_ptr,
   QnnEp& ep = node_compute_info->ep;
 
   qnn::QnnModel* model = reinterpret_cast<qnn::QnnModel*>(compute_state);
-  RETURN_IF_NOT_OK(model->ExecuteGraph(*kernel_context, *ep.logger_.ToInternal()), ep.ort_api);
+  RETURN_IF_NOT_OK(model->ExecuteGraph(kernel_context, *ep.logger_.ToInternal()), ep.ort_api);
 
   return nullptr;
 }

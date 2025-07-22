@@ -54,7 +54,7 @@ class QnnModelWrapper {
         output_index_map_(output_index_map),
         qnn_backend_type_(qnn_backend_type),
         model_settings_(model_settings),
-        api_ptrs_{api_ptrs} {
+        api_ptrs_(ApiPtrs{api_ptrs.ort_api, api_ptrs.ep_api, api_ptrs.model_editor_api}) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
 
@@ -397,7 +397,7 @@ class QnnModelWrapper {
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   ModelSettings model_settings_ = {};
   utils::QnnJSONGraph json_qnn_graph_;
-  const ApiPtrs& api_ptrs_;
+  const ApiPtrs api_ptrs_;
 };  // QnnModelWrapper
 
 }  // namespace qnn

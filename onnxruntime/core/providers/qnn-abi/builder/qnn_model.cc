@@ -243,19 +243,19 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
   return Status::OK();
 }
 
-Status QnnModel::ExecuteGraph(const OrtKernelContext& context,
+Status QnnModel::ExecuteGraph(OrtKernelContext* context,
                               const logging::Logger& logger) {
   std::cout << "DEBUG: ExecuteGraph" << std::endl;
   LOGS(logger, VERBOSE) << "QnnModel::ExecuteGraphs";
   size_t num_inputs;
-  api_ptrs_.ort_api.KernelContext_GetInputCount(&context, &num_inputs);
+  api_ptrs_.ort_api.KernelContext_GetInputCount(context, &num_inputs);
   size_t num_outputs;
-  api_ptrs_.ort_api.KernelContext_GetOutputCount(&context, &num_outputs);
+  api_ptrs_.ort_api.KernelContext_GetOutputCount(context, &num_outputs);
   ORT_RETURN_IF_NOT(qnn_input_infos_.size() <= num_inputs, "Inconsistent input sizes");
   ORT_RETURN_IF_NOT(qnn_output_infos_.size() == num_outputs, "Inconsistent output sizes");
 
   using namespace qnn::utils;
-  auto TensorDataSize = [](auto ort_tensor, auto ort_api) -> size_t {
+  auto TensorDataSize = [&ort_api = api_ptrs_.ort_api](auto ort_tensor) -> size_t {
     OrtTensorTypeAndShapeInfo* tensor_type_and_shape = nullptr;
     ort_api.GetTensorTypeAndShape(ort_tensor, &tensor_type_and_shape);
     size_t length;
@@ -273,8 +273,8 @@ Status QnnModel::ExecuteGraph(const OrtKernelContext& context,
     LOGS(logger, VERBOSE) << "model_input = " << qnn_input_info.tensor_wrapper->GetName()
                           << " index = " << qnn_input_info.ort_index;
     const OrtValue* ort_input_tensor = nullptr;
-    api_ptrs_.ort_api.KernelContext_GetInput(&context, qnn_input_info.ort_index, &ort_input_tensor);
-    auto ort_tensor_size = TensorDataSize(ort_input_tensor, api_ptrs_.ort_api);
+    api_ptrs_.ort_api.KernelContext_GetInput(context, qnn_input_info.ort_index, &ort_input_tensor);
+    auto ort_tensor_size = TensorDataSize(ort_input_tensor);
     LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_input_info.tensor_byte_size
                           << " Ort tensor size: " << ort_tensor_size;
     ORT_RETURN_IF_NOT(qnn_input_info.tensor_byte_size == ort_tensor_size,
@@ -304,10 +304,12 @@ Status QnnModel::ExecuteGraph(const OrtKernelContext& context,
     const auto& ort_output_info = GetOutputInfo(model_output_name);
     const std::vector<int64_t>& output_shape = ort_output_info->shape_;
     OrtValue* ort_output_tensor = nullptr;
-    api_ptrs_.ort_api.KernelContext_GetOutput(const_cast<OrtKernelContext*>(&context),
-                                              qnn_output_info.ort_index, output_shape.data(),
-                                              output_shape.size(), &ort_output_tensor);
-    auto ort_tensor_size = TensorDataSize(ort_output_tensor, api_ptrs_.ort_api);
+    api_ptrs_.ort_api.KernelContext_GetOutput(context,
+                                    qnn_output_info.ort_index,
+                                    output_shape.data(),
+                                    output_shape.size(),
+                                    &ort_output_tensor);
+    auto ort_tensor_size = TensorDataSize(ort_output_tensor);
     LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_output_info.tensor_byte_size
                           << " Ort tensor size: " << ort_tensor_size;
     ORT_RETURN_IF_NOT(qnn_output_info.tensor_byte_size == ort_tensor_size,

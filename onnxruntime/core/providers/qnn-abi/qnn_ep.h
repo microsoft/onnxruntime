@@ -55,6 +55,10 @@ class QnnEp : public OrtEp, public ApiPtrs {
   static void ORT_API_CALL ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
                                                        OrtNodeComputeInfo** node_compute_infos,
                                                        size_t num_node_compute_infos);
+  static OrtStatus* ORT_API_CALL OnRunStartImpl(_In_ OrtEp* this_ptr, _In_ const OrtRunOptions* run_options);
+  static OrtStatus* ORT_API_CALL OnRunEndImpl(_In_ OrtEp* this_ptr,
+                                              _In_ const OrtRunOptions* run_options,
+                                              _In_ bool sync_stream);
 
   OrtStatus* GetSupportedNodes(OrtEp* this_ptr,
                                const OrtGraph* graph,
@@ -73,10 +77,6 @@ class QnnEp : public OrtEp, public ApiPtrs {
   void GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
                                    const std::string& model_path_string,
                                    std::string& context_model_path);
-
-  // // Run start/end methods
-  // OrtStatus* OnRunStart(const OrtGraph* graph, const OrtRunOptions* run_options);
-  // OrtStatus* OnRunEnd(const OrtGraph* graph, const OrtRunOptions* run_options, bool sync_stream);
 
   void InitQnnHtpGraphConfigs(
       qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;

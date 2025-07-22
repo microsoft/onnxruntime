@@ -27,7 +27,7 @@ class QnnModel {
   QnnModel(QnnBackendManager* qnn_backend_manager,
            const ApiPtrs& api_ptrs)
       : qnn_backend_manager_(qnn_backend_manager),
-        api_ptrs_{api_ptrs} {
+        api_ptrs_(ApiPtrs{api_ptrs.ort_api, api_ptrs.ep_api, api_ptrs.model_editor_api}) {
     qnn_backend_type_ = qnn_backend_manager_->GetQnnBackendType();
   }
 
@@ -45,7 +45,7 @@ class QnnModel {
 
   Status SetupQnnInputOutput(const logging::Logger& logger);
 
-  Status ExecuteGraph(const OrtKernelContext& context,
+  Status ExecuteGraph(OrtKernelContext* context,
                       const logging::Logger& logger);
 
   const OnnxTensorInfo* GetOutputInfo(const std::string& name) const {
@@ -170,7 +170,7 @@ class QnnModel {
 
   // Mutex acquired during graph execution to support multi-threaded inference of a single session.
   std::mutex graph_exec_mutex_;
-  const ApiPtrs& api_ptrs_;
+  const ApiPtrs api_ptrs_;
 };
 
 }  // namespace qnn
