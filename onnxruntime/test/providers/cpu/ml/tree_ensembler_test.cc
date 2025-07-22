@@ -334,6 +334,7 @@ TEST(MLOpTest, TreeEnsembleLeafLike) {
   test.AddInput<double>("X", {1, 3}, X);
   test.AddOutput<double>("Y", {1, 1}, Y);
   test.Run();
+}
 
 }  // namespace test
 }  // namespace onnxruntime
