@@ -91,7 +91,7 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           # Execute the build process
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --build --update --skip_submodule_sync --parallel --cmake_generator "Visual Studio 17 2022" --use_dml --build_csharp --use_binskim_compliant_compile_flags --build_nodejs --skip_onnx_tests
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --build --update --skip_submodule_sync --parallel --cmake_generator "Visual Studio 17 2022" --use_dml --build_csharp --use_binskim_compliant_compile_flags --build_nodejs --skip_onnx_tests --build_wheel
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -170,7 +170,7 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py   "${{ runner.temp }}\build\RelWithDebInfo\CTestTestfile.cmake" "${{ runner.temp }}\build\RelWithDebInfo"
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --test --skip_submodule_sync --parallel --cmake_generator "Visual Studio 17 2022" --use_dml --build_csharp --use_binskim_compliant_compile_flags --build_nodejs --skip_onnx_tests
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --test --skip_submodule_sync --parallel --cmake_generator "Visual Studio 17 2022" --use_dml --build_csharp --use_binskim_compliant_compile_flags --build_nodejs --skip_onnx_tests --build_wheel
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
