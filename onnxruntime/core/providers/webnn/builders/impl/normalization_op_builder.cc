@@ -234,7 +234,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     output = model_builder.GetBuilder().call<emscripten::val>("instanceNormalization", input, options);
     // Reshape back to the original output shape for 3D input.
     if (input_shape.size() != 4) {
-      std::vector<uint32_t> output_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
+      std::vector<uint32_t> output_shape = GetNarrowedIntFromInt64<uint32_t>(input_shape);
       emscripten::val reshape_output_options = emscripten::val::object();
       reshape_output_options.set("label", node.Name() + "reshape_output");
       output = model_builder.GetBuilder().call<emscripten::val>("reshape",

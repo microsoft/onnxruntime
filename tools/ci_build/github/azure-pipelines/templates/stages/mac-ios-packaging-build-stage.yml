@@ -34,7 +34,7 @@ stages:
         buildSettingsFile: "tools/ci_build/github/apple/default_training_ios_framework_build_settings.json"
         cPodName: onnxruntime-training-c
         objcPodName: onnxruntime-training-objc
-    timeoutInMinutes: 240
+    timeoutInMinutes: 270
     templateContext:
       outputs:
       - output: pipelineArtifact
