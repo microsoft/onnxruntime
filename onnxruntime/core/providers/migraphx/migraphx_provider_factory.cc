@@ -207,8 +207,9 @@ struct MIGraphX_Provider : Provider {
 struct MigraphXEpFactory : OrtEpFactory {
   MigraphXEpFactory(const OrtApi& ort_api_in,
                          const char* ep_name,
-                         OrtHardwareDeviceType hw_type)
-      : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
+                         OrtHardwareDeviceType hw_type,
+                         const OrtLogger& default_logger_in)
+      : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type}, default_logger{default_logger_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
@@ -273,11 +274,11 @@ struct MigraphXEpFactory : OrtEpFactory {
   }
 
   const OrtApi& ort_api;
+  const OrtLogger& default_logger;
   const std::string ep_name;
   const std::string vendor{"AMD"};
 
-  // AMD vendor ID. Refer to the ACPI ID registry (search AMD): https://uefi.org/ACPI_ID_List
-  const uint32_t vendor_id{0x1022}; //TODO: set correct value for AMD GPU
+  const uint32_t vendor_id{0x1002};
   const OrtHardwareDeviceType ort_hw_device_type;  // Supported OrtHardwareDevice
 };
 
@@ -286,13 +287,15 @@ extern "C" {
 // Public symbols
 //
 OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
+                             const OrtLogger* default_logger,
                              OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
 
   // Factory could use registration_name or define its own EP name.
   auto factory_gpu = std::make_unique<MigraphXEpFactory>(*ort_api,
                                                               onnxruntime::kMIGraphXExecutionProvider,
-                                                              OrtHardwareDeviceType_GPU);
+                                                              OrtHardwareDeviceType_GPU,
+                                                              *default_logger);
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
