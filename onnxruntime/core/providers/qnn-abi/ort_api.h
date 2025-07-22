@@ -53,7 +53,6 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 
-
 // #include "core/session/onnxruntime_cxx_api.h"
 
 #include <memory>
@@ -147,18 +146,18 @@ class OrtNodeUnit {
   const std::vector<OrtNodeUnitIODef>& Inputs() const noexcept { return inputs_; }
   const std::vector<OrtNodeUnitIODef>& Outputs() const noexcept { return outputs_; }
 
-  // const std::string& Domain() const noexcept;
-  const std::string& OpType() const noexcept{ return target_node_.GetOpType(); }
+  const std::string& Domain() const noexcept { return target_node_.GetDomain(); }
+  const std::string& OpType() const noexcept { return target_node_.GetOpType(); }
   const std::string& Name() const noexcept { return target_node_.GetName(); }
   // int SinceVersion() const noexcept;
-  // NodeIndex Index() const noexcept;
+  NodeIndex Index() const noexcept { return target_node_.GetId(); }
   // const std::filesystem::path& ModelPath() const noexcept;
   // ProviderType GetExecutionProviderType() const noexcept;
 
   const OrtNode& GetNode() const noexcept { return target_node_; }
-  // const Node* GetRedundantClipNode() const noexcept { return redundant_clip_node_; }
-  // const std::vector<const Node*>& GetDQNodes() const noexcept { return dq_nodes_; }
-  // const std::vector<const Node*>& GetQNodes() const noexcept { return q_nodes_; }
+  const OrtNode* GetRedundantClipNode() const noexcept { return redundant_clip_node_; }
+  const std::vector<const OrtNode*>& GetDQNodes() const noexcept { return dq_nodes_; }
+  const std::vector<const OrtNode*>& GetQNodes() const noexcept { return q_nodes_; }
   std::vector<const OrtNode*> GetAllNodesInGroup() const noexcept {
     std::vector<const OrtNode*> all_nodes = dq_nodes_;
     all_nodes.push_back(&target_node_);
@@ -216,34 +215,34 @@ class OrtNodeAttrHelper {
    * Get with default
    */
   float Get(const std::string& key, float def_val) const;
-//   std::vector<float> Get(const std::string& key, const std::vector<float>& def_val) const;
+  std::vector<float> Get(const std::string& key, const std::vector<float>& def_val) const;
 
   int64_t Get(const std::string& key, int64_t def_val) const;
   std::vector<int64_t> Get(const std::string& key, const std::vector<int64_t>& def_val) const;
 
-//   const std::string& Get(const std::string& key, const std::string& def_val) const;
-//   std::vector<std::string> Get(const std::string& key, const std::vector<std::string>& def_val) const;
+  const std::string& Get(const std::string& key, const std::string& def_val) const;
+  std::vector<std::string> Get(const std::string& key, const std::vector<std::string>& def_val) const;
 
-//   // Convert the i() or ints() of the attribute from int64_t to int32_t
-//   int32_t Get(const std::string& key, int32_t def_val) const;
-//   std::vector<int32_t> Get(const std::string& key, const std::vector<int32_t>& def_val) const;
+  // Convert the i() or ints() of the attribute from int64_t to int32_t
+  int32_t Get(const std::string& key, int32_t def_val) const;
+  std::vector<int32_t> Get(const std::string& key, const std::vector<int32_t>& def_val) const;
 
-//   // Convert the i() or ints() of the attribute from int64_t to uint32_t
-//   uint32_t Get(const std::string& key, uint32_t def_val) const;
-//   std::vector<uint32_t> Get(const std::string& key, const std::vector<uint32_t>& def_val) const;
+  // Convert the i() or ints() of the attribute from int64_t to uint32_t
+  uint32_t Get(const std::string& key, uint32_t def_val) const;
+  std::vector<uint32_t> Get(const std::string& key, const std::vector<uint32_t>& def_val) const;
 
-//   /*
-//    * Get without default.
-//    */
-//   std::optional<float> GetFloat(const std::string& key) const;
-//   std::optional<std::vector<float>> GetFloats(const std::string& key) const;
+  /*
+   * Get without default.
+   */
+  std::optional<float> GetFloat(const std::string& key) const;
+  std::optional<std::vector<float>> GetFloats(const std::string& key) const;
 
-//   std::optional<int64_t> GetInt64(const std::string& key) const;
-//   std::optional<std::vector<int64_t>> GetInt64s(const std::string& key) const;
+  std::optional<int64_t> GetInt64(const std::string& key) const;
+  std::optional<std::vector<int64_t>> GetInt64s(const std::string& key) const;
 
-//   std::optional<std::string> GetString(const std::string& key) const;
+  std::optional<std::string> GetString(const std::string& key) const;
 
-//   bool HasAttr(const std::string& key) const;
+  bool HasAttr(const std::string& key) const;
 
  private:
   const OrtNode& node_;

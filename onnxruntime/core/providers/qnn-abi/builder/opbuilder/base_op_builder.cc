@@ -6,8 +6,9 @@
 #include <utility>
 #include <unordered_set>
 
-#include "core/providers/qnn-abi/builder/qnn_utils.h"
 #include "core/providers/qnn-abi/ort_api.h"
+#include "core/providers/qnn-abi/builder/qnn_def.h"
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -343,42 +344,47 @@ Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& 
   return Status::OK();
 }
 
-// Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrapper,
-//                                            const OrtNodeUnit& node_unit,
-//                                            Qnn_Scalar_t& axis_qnn_scalar,
-//                                            int32_t& default_axis_value) const {
-//   const auto& inputs = node_unit.Inputs();
-//   std::vector<uint32_t> input_shape;
-//   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].shape, input_shape), "Cannot get shape");
+Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrapper,
+                                           const OrtNodeUnit& node_unit,
+                                           Qnn_Scalar_t& axis_qnn_scalar,
+                                           int32_t& default_axis_value) const {
+  const auto& inputs = node_unit.Inputs();
+  std::vector<uint32_t> input_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].shape, input_shape), "Cannot get shape");
 
-//   auto rank = static_cast<int32_t>(input_shape.size());
-//   OrtNodeAttrHelper node_helper(node_unit);
-//   int32_t onnx_axis = node_helper.Get("axis", default_axis_value);
-//   if (onnx_axis < 0) {
-//     onnx_axis += rank;
-//   }
-//   ORT_RETURN_IF_NOT((onnx_axis >= 0 && onnx_axis < static_cast<int32_t>(input_shape.size())), "QNN requires axis range [0, rank-1].");
-//   default_axis_value = onnx_axis;
+  auto rank = static_cast<int32_t>(input_shape.size());
+  OrtNodeAttrHelper node_helper(qnn_model_wrapper.GetOrtApi(), node_unit);
+  int32_t onnx_axis = node_helper.Get("axis", default_axis_value);
+  if (onnx_axis < 0) {
+    onnx_axis += rank;
+  }
+  ORT_RETURN_IF_NOT((onnx_axis >= 0 && onnx_axis < rank), "QNN requires axis range [0, rank-1].");
+  default_axis_value = onnx_axis;
 
-//   bool is_gather_op = (node_unit.OpType() == "Gather");
-//   if (is_gather_op) {
-//     axis_qnn_scalar.dataType = QNN_DATATYPE_INT_32;
-//     axis_qnn_scalar.int32Value = onnx_axis;
-//   } else {
-//     axis_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
-//     axis_qnn_scalar.uint32Value = static_cast<uint32_t>(onnx_axis);
-//   }
+  bool is_gather_op = (node_unit.OpType() == "Gather");
+  if (is_gather_op) {
+    axis_qnn_scalar.dataType = QNN_DATATYPE_INT_32;
+    axis_qnn_scalar.int32Value = onnx_axis;
+  } else {
+    axis_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
+    axis_qnn_scalar.uint32Value = static_cast<uint32_t>(onnx_axis);
+  }
 
-//   return Status::OK();
-// }
+  return Status::OK();
+}
 
-// Status DataTypeCheckForCpuBackend(QnnModelWrapper& qnn_model_wrapper, ONNX_NAMESPACE::DataType onnx_tensor_data_type) {
-//   const auto float_elem_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float");
-//   bool is_cpu_backend = (qnn_model_wrapper.GetQnnBackendType() == QnnBackendType::CPU);
-//   ORT_RETURN_IF(is_cpu_backend && onnx_tensor_data_type != float_elem_type, "QNN CPU backend only support float data type.");
+Status DataTypeCheckForCpuBackend(QnnModelWrapper& qnn_model_wrapper,
+                                  ONNXTensorElementDataType onnx_tensor_data_type,
+                                  std::string error_msg = "") {
+  if (error_msg.empty()) {
+    error_msg = "QNN CPU backend only support float data type.";
+  }
+  const auto float_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  bool is_cpu_backend = IsCpuBackend(qnn_model_wrapper.GetQnnBackendType());
+  ORT_RETURN_IF(is_cpu_backend && onnx_tensor_data_type != float_elem_type, error_msg);
 
-//   return Status::OK();
-// }
+  return Status::OK();
+}
 
 }  // namespace qnn
 }  // namespace onnxruntime

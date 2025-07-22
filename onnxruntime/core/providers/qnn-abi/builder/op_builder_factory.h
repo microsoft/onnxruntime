@@ -72,13 +72,21 @@ class OpBuilderRegistrations {
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type);
 
+void CreateArgMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateBatchNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateCumSumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 // void CreateSoftmaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
-// void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
-// void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 // void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
@@ -86,11 +94,7 @@ void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 
 // void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
-// void CreateArgMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
 // void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
-// void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 // void CreateSliceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
@@ -107,8 +111,6 @@ void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 // void CreateInstanceNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 // void CreateReduceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
-// void CreateBatchNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 // void CreateLayerNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
@@ -129,8 +131,6 @@ void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 // void CreateEinsumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 // void CreateLSTMOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
-// void CreateCumSumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 // void CreateMeanOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 

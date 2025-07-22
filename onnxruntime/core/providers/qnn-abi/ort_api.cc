@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <memory>
 #include <utility>
+#include <gsl/gsl>
 
 namespace onnxruntime {
 
@@ -31,7 +32,7 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
   ort_api.ArrayOfConstObjects_GetData(outputs_array, &outputs_data);
 
   auto add_io_def = [&](std::vector<OrtNodeUnitIODef>& io_defs, const void* const* data, size_t num_data) {
-    for (size_t idx = 0; idx < num_data; ++idx){
+    for (size_t idx = 0; idx < num_data; ++idx) {
       const OrtValueInfo* io = static_cast<const OrtValueInfo*>(data[idx]);
 
       // Get name.
@@ -70,13 +71,11 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 
   ort_api.ReleaseArrayOfConstObjects(inputs_array);
   ort_api.ReleaseArrayOfConstObjects(outputs_array);
-
 }
 
 // std::vector<const Node*> Graph__Nodes(const Graph& graph) {
 //   return graph.Nodes();
 // }
-
 
 #define NODE_ATTR_ITER_VAL(iter) (iter)->second()
 
@@ -90,21 +89,17 @@ float OrtNodeAttrHelper::Get(const std::string& key, float def_val) const {
   return rt ? def_val : api_node_attr->attr_proto.f();
 }
 
-// int32_t OrtNodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     return narrow<int32_t>(NODE_ATTR_ITER_VAL(entry).i());
-//   }
+int32_t OrtNodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  return rt ? def_val : gsl::narrow<int32_t>(api_node_attr->attr_proto.i());
+}
 
-//   return def_val;
-// }
-
-// uint32_t OrtNodeAttrHelper::Get(const std::string& key, uint32_t def_val) const {
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     return narrow<uint32_t>(NODE_ATTR_ITER_VAL(entry).i());
-//   }
-
-//   return def_val;
-// }
+uint32_t OrtNodeAttrHelper::Get(const std::string& key, uint32_t def_val) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  return rt ? def_val : gsl::narrow<uint32_t>(api_node_attr->attr_proto.i());
+}
 
 int64_t OrtNodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
@@ -112,55 +107,63 @@ int64_t OrtNodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
   return rt ? def_val : api_node_attr->attr_proto.i();
 }
 
-// const std::string& OrtNodeAttrHelper::Get(const std::string& key, const std::string& def_val) const {
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     return NODE_ATTR_ITER_VAL(entry).s();
-//   }
+const std::string& OrtNodeAttrHelper::Get(const std::string& key, const std::string& def_val) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (rt) {
+    return def_val;
+  }
+  static std::string result = api_node_attr->attr_proto.s();
+  return result;
+}
 
-//   return def_val;
-// }
+std::vector<std::string> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<std::string>& def_val) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (rt) {
+    return def_val;
+  }
 
-// std::vector<std::string> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<std::string>& def_val) const {
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     std::vector<std::string> res;
-//     for (int i = 0; i < NODE_ATTR_ITER_VAL(entry).strings_size(); i++) {
-//       res.emplace_back(NODE_ATTR_ITER_VAL(entry).strings(i));
-//     }
-//     return res;
-//   }
+  const auto& strings_proto = api_node_attr->attr_proto.strings();
+  std::vector<std::string> result;
+  result.reserve(strings_proto.size());
+  for (int i = 0; i < strings_proto.size(); ++i) {
+    result.emplace_back(strings_proto.Get(i));
+  }
+  return result;
+}
 
-//   return def_val;
-// }
+std::vector<int32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int32_t>& def_val) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (rt) {
+    return def_val;
+  }
 
-// std::vector<int32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int32_t>& def_val) const {
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     const auto& values = NODE_ATTR_ITER_VAL(entry).ints();
-//     const int64_t* cbegin = values.data();
-//     const int64_t* cend = values.data() + values.size();
-//     std::vector<int32_t> v;
-//     v.reserve(static_cast<size_t>(values.size()));
-//     std::transform(cbegin, cend, std::back_inserter(v),
-//                    [](int64_t val) -> int32_t { return narrow<int32_t>(val); });
-//     return v;
-//   }
+  const auto& ints_proto = api_node_attr->attr_proto.ints();
+  std::vector<int32_t> result;
+  result.reserve(ints_proto.size());
+  for (int i = 0; i < ints_proto.size(); ++i) {
+    result.push_back(gsl::narrow<int32_t>(ints_proto.Get(i)));
+  }
+  return result;
+}
 
-//   return def_val;
-// }
+std::vector<uint32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<uint32_t>& def_val) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (rt) {
+    return def_val;
+  }
 
-// std::vector<uint32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<uint32_t>& def_val) const {
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     const auto& values = NODE_ATTR_ITER_VAL(entry).ints();
-//     const int64_t* cbegin = values.data();
-//     const int64_t* cend = values.data() + values.size();
-//     std::vector<uint32_t> v;
-//     v.reserve(static_cast<size_t>(values.size()));
-//     std::transform(cbegin, cend, std::back_inserter(v),
-//                    [](int64_t val) -> uint32_t { return narrow<uint32_t>(val); });
-//     return v;
-//   }
-
-//   return def_val;
-// }
+  const auto& ints_proto = api_node_attr->attr_proto.ints();
+  std::vector<uint32_t> result;
+  result.reserve(ints_proto.size());
+  for (int i = 0; i < ints_proto.size(); ++i) {
+    result.push_back(gsl::narrow<uint32_t>(ints_proto.Get(i)));
+  }
+  return result;
+}
 
 std::vector<int64_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int64_t>& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
@@ -178,70 +181,85 @@ std::vector<int64_t> OrtNodeAttrHelper::Get(const std::string& key, const std::v
   return result;
 }
 
-// std::vector<float> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<float>& def_val) const {
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     const auto& values = NODE_ATTR_ITER_VAL(entry).floats();
-//     const float* cbegin = values.data();
-//     const float* cend = values.data() + values.size();
-//     return std::vector<float>{cbegin, cend};
-//   }
+std::vector<float> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<float>& def_val) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (rt) {
+    return def_val;
+  }
 
-//   return def_val;
-// }
+  const auto& floats_proto = api_node_attr->attr_proto.floats();
+  std::vector<float> result;
+  result.reserve(floats_proto.size());
+  for (int i = 0; i < floats_proto.size(); ++i) {
+    result.push_back(floats_proto.Get(i));
+  }
+  return result;
+}
 
-// std::optional<float> OrtNodeAttrHelper::GetFloat(const std::string& key) const {
-//   std::optional<float> result;
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     result = NODE_ATTR_ITER_VAL(entry).f();
-//   }
+std::optional<float> OrtNodeAttrHelper::GetFloat(const std::string& key) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (rt) {
+    return std::nullopt;
+  }
+  return api_node_attr->attr_proto.f();
+}
 
-//   return result;
-// }
+std::optional<int64_t> OrtNodeAttrHelper::GetInt64(const std::string& key) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (rt) {
+    return std::nullopt;
+  }
+  return api_node_attr->attr_proto.i();
+}
 
-// std::optional<int64_t> OrtNodeAttrHelper::GetInt64(const std::string& key) const {
-//   std::optional<int64_t> result;
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     result = NODE_ATTR_ITER_VAL(entry).i();
-//   }
+std::optional<std::vector<float>> OrtNodeAttrHelper::GetFloats(const std::string& key) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (rt) {
+    return std::nullopt;
+  }
 
-//   return result;
-// }
+  const auto& floats_proto = api_node_attr->attr_proto.floats();
+  std::vector<float> result;
+  result.reserve(floats_proto.size());
+  for (int i = 0; i < floats_proto.size(); ++i) {
+    result.push_back(floats_proto.Get(i));
+  }
+  return result;
+}
 
-// std::optional<std::vector<float>> OrtNodeAttrHelper::GetFloats(const std::string& key) const {
-//   std::optional<std::vector<float>> result;
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     const auto& values = NODE_ATTR_ITER_VAL(entry).floats();
-//     const float* cbegin = values.data();
-//     const float* cend = values.data() + values.size();
-//     result = std::vector<float>(cbegin, cend);
-//   }
+std::optional<std::vector<int64_t>> OrtNodeAttrHelper::GetInt64s(const std::string& key) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (rt) {
+    return std::nullopt;
+  }
 
-//   return result;
-// }
+  const auto& ints_proto = api_node_attr->attr_proto.ints();
+  std::vector<int64_t> result;
+  result.reserve(ints_proto.size());
+  for (int i = 0; i < ints_proto.size(); ++i) {
+    result.push_back(ints_proto.Get(i));
+  }
+  return result;
+}
 
-// std::optional<std::vector<int64_t>> OrtNodeAttrHelper::GetInt64s(const std::string& key) const {
-//   std::optional<std::vector<int64_t>> result;
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     const auto& values = NODE_ATTR_ITER_VAL(entry).ints();
-//     const int64_t* cbegin = values.data();
-//     const int64_t* cend = values.data() + values.size();
-//     result = std::vector<int64_t>(cbegin, cend);
-//   }
+std::optional<std::string> OrtNodeAttrHelper::GetString(const std::string& key) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (rt) {
+    return std::nullopt;
+  }
+  return api_node_attr->attr_proto.s();
+}
 
-//   return result;
-// }
-
-// std::optional<std::string> OrtNodeAttrHelper::GetString(const std::string& key) const {
-//   std::optional<std::string> result;
-//   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-//     result = NODE_ATTR_ITER_VAL(entry).s();
-//   }
-
-//   return result;
-// }
-
-// bool OrtNodeAttrHelper::HasAttr(const std::string& key) const {
-//   return node_attributes_.find(key) != node_attributes_.end();
-// }
+bool OrtNodeAttrHelper::HasAttr(const std::string& key) const {
+  const OrtOpAttr* api_node_attr = nullptr;
+  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  return !rt;  // Return true if attribute exists (rt == 0), false if not found (rt != 0)
+}
 
 }  // namespace onnxruntime

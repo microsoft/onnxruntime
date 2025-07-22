@@ -13,11 +13,37 @@ namespace qnn {
 static OpBuilderRegistrations op_registrations;
 
 OpBuilderRegistrations::OpBuilderRegistrations() {
+  {
+    CreateArgMaxMinOpBuilder("ArgMax", *this);
+    CreateArgMaxMinOpBuilder("ArgMin", *this);
+  }
+
+  {
+    CreateBatchNormOpBuilder("BatchNormalization", *this);
+  }
+
+  {
+    CreateCastOpBuilder("Cast", *this);
+  }
+
+  {
+    CreateClipOpBuilder("Clip", *this);
+  }
+
+  {
+    CreateConvOpBuilder("Conv", *this);
+    CreateConvOpBuilder("ConvTranspose", *this);
+  }
+
+  {
+    CreateCumSumOpBuilder("CumSum", *this);
+  }
+
   // {
   //   CreateSimpleOpBuilder("Add", *this);
   //   CreateSimpleOpBuilder("Asin", *this);
   //   CreateSimpleOpBuilder("Atan", *this);
-    CreateSimpleOpBuilder("Mul", *this);
+  CreateSimpleOpBuilder("Mul", *this);
   //   CreateSimpleOpBuilder("Abs", *this);
   //   CreateSimpleOpBuilder("And", *this);
   //   CreateSimpleOpBuilder("Ceil", *this);
@@ -75,21 +101,12 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   // }
 
   // {
-  //   CreateCastOpBuilder("Cast", *this);
-  // }
-
-  // {
   //   CreateReduceOpBuilder("ReduceMax", *this);
   //   CreateReduceOpBuilder("ReduceMean", *this);
   //   CreateReduceOpBuilder("ReduceMin", *this);
   //   CreateReduceOpBuilder("ReduceProd", *this);
   //   CreateReduceOpBuilder("ReduceSum", *this);
   //   CreateReduceOpBuilder("ReduceL2", *this);
-  // }
-
-  // {
-  //   CreateConvOpBuilder("Conv", *this);
-  //   CreateConvOpBuilder("ConvTranspose", *this);
   // }
 
   // {
@@ -113,15 +130,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   // {
   //   CreateGatherOpBuilder("Gather", *this);
   //   CreateGatherOpBuilder("GatherElements", *this);
-  // }
-
-  // {
-  //   CreateArgMaxMinOpBuilder("ArgMax", *this);
-  //   CreateArgMaxMinOpBuilder("ArgMin", *this);
-  // }
-
-  // {
-  //   CreateClipOpBuilder("Clip", *this);
   // }
 
   // {
@@ -150,10 +158,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   // {
   //   CreateInstanceNormOpBuilder("InstanceNormalization", *this);
-  // }
-
-  // {
-  //   CreateBatchNormOpBuilder("BatchNormalization", *this);
   // }
 
   // {
@@ -194,10 +198,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   // {
   //   CreateLSTMOpBuilder("LSTM", *this);
-  // }
-
-  // {
-  //   CreateCumSumOpBuilder("CumSum", *this);
   // }
 }
 

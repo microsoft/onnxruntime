@@ -259,20 +259,20 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   // Onnx Pads is [x1_begin, x2_begin, x1_end, x2_end], QNN requires [x1_begin, x1_end, x2_begin, x2_end]
-  // void ReArranagePads(std::vector<uint32_t>& pads) const {
-  //   auto pads_size = pads.size();
-  //   auto middle_pos = pads_size / 2;
-  //   std::vector<uint32_t> first_half(pads.begin(), pads.begin() + middle_pos);
-  //   for (size_t i = 0; i < middle_pos; ++i) {
-  //     pads[2 * i] = first_half[i];
-  //     pads[2 * i + 1] = pads[middle_pos + i];
-  //   }
-  // }
+  void ReArranagePads(std::vector<uint32_t>& pads) const {
+    auto pads_size = pads.size();
+    auto middle_pos = pads_size / 2;
+    std::vector<uint32_t> first_half(pads.begin(), pads.begin() + middle_pos);
+    for (size_t i = 0; i < middle_pos; ++i) {
+      pads[2 * i] = first_half[i];
+      pads[2 * i + 1] = pads[middle_pos + i];
+    }
+  }
 
-  // Status ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrapper,
-  //                             const OrtNodeUnit& node_unit,
-  //                             Qnn_Scalar_t& axis_qnn_scalar,
-  //                             int32_t& default_axis_value) const;
+  Status ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrapper,
+                              const OrtNodeUnit& node_unit,
+                              Qnn_Scalar_t& axis_qnn_scalar,
+                              int32_t& default_axis_value) const;
 
   size_t GetInputCountQnnRequired(const OrtNodeUnit& node_unit) const {
     auto input_output_cout = GetInputOutputCountQnnRequired(node_unit.OpType());
@@ -320,7 +320,9 @@ class BaseOpBuilder : public IOpBuilder {
 
 // Layout sensitive op can't use Qnn Op validation API to verify Op support before layout transformation
 // Need to check this explicitly
-// Status DataTypeCheckForCpuBackend(QnnModelWrapper& qnn_model_wrapper, ONNX_NAMESPACE::DataType onnx_tensor_data_type);
+Status DataTypeCheckForCpuBackend(QnnModelWrapper& qnn_model_wrapper,
+                                  ONNXTensorElementDataType onnx_tensor_data_type,
+                                  std::string error_msg);
 
 }  // namespace qnn
 }  // namespace onnxruntime

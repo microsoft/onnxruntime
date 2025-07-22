@@ -517,7 +517,7 @@ Status QnnModelWrapper::GetTensorInfo(const OrtNodeUnitIODef& tensor, TensorInfo
   const std::string& name = tensor.name;
 
   // Fill in quantization param info.
-  ORT_RETURN_IF_ERROR(tensor_info.quant_param.Init(GetOrtApi(), *this, tensor));
+  ORT_RETURN_IF_ERROR(tensor_info.quant_param.Init(api_ptrs_.ort_api, *this, tensor));
 
   // Fill in QNN data type.
   tensor_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;

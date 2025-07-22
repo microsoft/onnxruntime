@@ -26,7 +26,7 @@
 namespace onnxruntime {
 namespace qnn {
 class QnnOpConfigWrapper;
-// class QnnModelWrapper;
+class QnnModelWrapper;
 
 namespace utils {
 /**
@@ -272,14 +272,9 @@ inline std::vector<int64_t> GetInitializerShape(const OrtValueInfo& initializer,
   ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
   size_t num_dims;
   ort_api.GetDimensionsCount(tensor_type_and_shape_info, &num_dims);
-  std::vector<int64_t> dims;
-  dims.resize(num_dims, 0);
-  ort_api.GetDimensions(tensor_type_and_shape_info, dims.data(), dims.size());
-
-  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
-  for (int i = 0; i < dims.size(); ++i) {
-    tensor_shape_vec[i] = static_cast<int64_t>(dims[i]);
-  }
+  std::vector<int64_t> tensor_shape_vec;
+  tensor_shape_vec.resize(num_dims, 0);
+  ort_api.GetDimensions(tensor_type_and_shape_info, tensor_shape_vec.data(), tensor_shape_vec.size());
 
   return tensor_shape_vec;
 }
@@ -362,41 +357,41 @@ Status CnhwShapeToHwcn(gsl::span<const T> cnhw_shape, gsl::span<T> hwcn_shape) {
   return Status::OK();
 }
 
-// Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
-//                                const onnx::TensorProto& initializer,
-//                                std::vector<uint8_t>& transposed_data,
-//                                bool is_3d = false);
-// Status TransposeFromNchwToHwcn(std::vector<int64_t>&& input_shape_dims,
-//                                size_t elem_byte_size,
-//                                gsl::span<const uint8_t> input_buffer,
-//                                gsl::span<uint8_t> output_buffer,
-//                                bool is_3d = false);
+Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
+                               OrtValueInfo& initializer,
+                               std::vector<uint8_t>& transposed_data,
+                               bool is_3d = false);
+Status TransposeFromNchwToHwcn(std::vector<int64_t>&& input_shape_dims,
+                               size_t elem_byte_size,
+                               gsl::span<const uint8_t> input_buffer,
+                               gsl::span<uint8_t> output_buffer,
+                               bool is_3d = false);
 
-// Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
-//                                const onnx::TensorProto& initializer,
-//                                std::vector<uint8_t>& transposed_data,
-//                                bool is_3d = false);
-// Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& input_shape_dims,
-//                                size_t elem_byte_size,
-//                                gsl::span<const uint8_t> input_buffer,
-//                                gsl::span<uint8_t> output_buffer,
-//                                bool is_3d = false);
+Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
+                               OrtValueInfo& initializer,
+                               std::vector<uint8_t>& transposed_data,
+                               bool is_3d = false);
+Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& input_shape_dims,
+                               size_t elem_byte_size,
+                               gsl::span<const uint8_t> input_buffer,
+                               gsl::span<uint8_t> output_buffer,
+                               bool is_3d = false);
 
-// Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
-//                              std::vector<uint32_t>& data_shape,
-//                              const onnx::TensorProto& initializer,
-//                              std::vector<uint8_t>& transposed_data);
+Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
+                             std::vector<uint32_t>& data_shape,
+                             OrtValueInfo& initializer,
+                             std::vector<uint8_t>& transposed_data);
 
-// Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
-//                        const std::string& convert_input_name,
-//                        const std::string& convert_output_name,
-//                        Qnn_DataType_t input_qnn_data_type,
-//                        Qnn_DataType_t output_qnn_data_type,
-//                        int32_t input_offset,
-//                        float input_scale,
-//                        const std::vector<uint32_t>& output_shape,
-//                        bool output_symmetric,
-//                        bool do_op_validation);
+Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
+                       const std::string& convert_input_name,
+                       const std::string& convert_output_name,
+                       Qnn_DataType_t input_qnn_data_type,
+                       Qnn_DataType_t output_qnn_data_type,
+                       int32_t input_offset,
+                       float input_scale,
+                       const std::vector<uint32_t>& output_shape,
+                       bool output_symmetric,
+                       bool do_op_validation);
 
 /**
  * Get permutation to transpose given axis to the last one.
