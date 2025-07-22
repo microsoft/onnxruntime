@@ -87,6 +87,7 @@ TEST(EpGraphTest, Check3LayerNestedSubgraphV2) {
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
 }
 
+// Check correctness of an OrtGraph that has external initializers.
 TEST(EpGraphTest, CheckModelExternalInitializers) {
   auto test_graph = TestGraph::Load(ORT_TSTR("testdata/conv_qdq_external_ini.onnx"));
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";

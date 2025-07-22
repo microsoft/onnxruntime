@@ -49,6 +49,12 @@ struct ModelEditorValueInfo : public OrtValueInfo {
                            "OrtModelEditorApi does not support getting the initializer value for a OrtValueInfo");
   }
 
+  Status GetExternalInitializerInfo(const onnxruntime::ExternalDataInfo*& ext_info) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the external initializer information ",
+                           "for a OrtValueInfo");
+  }
+
   Status IsRequiredGraphInput(bool& /*is_required_graph_input*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support querying if a graph input is required for OrtValueInfo");

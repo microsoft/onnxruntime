@@ -689,15 +689,6 @@ class Node {
   bool can_be_saved_;
 };
 
-// Stores information on an initializer (TensorProto) that is stored in an external file.
-// Graph tracks this information because most initializers are now TensorProtos that refer to an
-// OrtValue Tensor, which looks like an external initializer, but isn't.
-struct ExternalInitializerInfo {
-  std::basic_string<ORTCHAR_T> file_path;
-  int64_t file_offset = 0;
-  SafeInt<size_t> tensor_byte_size = 0;
-};
-
 /**
 @class Graph
 The Graph representation containing the graph inputs and outputs, the Node instances,
@@ -815,7 +806,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <param name="ext_info">Output parameter set to the location information of the external data.</param>
   /// <param name="check_outer_scope">Set to true if parent graphs should be checked.</param>
   /// <returns>True if `name` refers to an initializer with data in an external file. Otherwise, returns false</returns>
-  bool GetExternalInitializerInfo(const std::string& name, ExternalInitializerInfo& ext_info,
+  bool GetExternalInitializerInfo(const std::string& name, const ExternalDataInfo*& ext_info,
                                   bool check_outer_scope = false) const;
 
   /** Gets all the initializer tensors in this Graph. */
@@ -1831,7 +1822,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // in the Graph instance and retrieve during session state finalization.
   std::unordered_map<std::string, OrtValue> ortvalue_initializers_;
 
-  std::unordered_map<std::string, ExternalInitializerInfo> ext_initializers_;
+  std::unordered_map<std::string, std::unique_ptr<ExternalDataInfo>> ext_initializers_;
 
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>

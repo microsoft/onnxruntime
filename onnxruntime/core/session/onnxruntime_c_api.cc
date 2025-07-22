@@ -2503,6 +2503,29 @@ ORT_API_STATUS_IMPL(OrtApis::ValueInfo_GetInitializerValue, _In_ const OrtValueI
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::ValueInfo_GetExternalInitializerInfo, _In_ const OrtValueInfo* value_info,
+                    _Outptr_result_maybenull_ const OrtExternalInitializerInfo** info) {
+  API_IMPL_BEGIN
+  const onnxruntime::ExternalDataInfo* ext_data_info = nullptr;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetExternalInitializerInfo(ext_data_info));
+
+  *info = ext_data_info != nullptr ? reinterpret_cast<const OrtExternalInitializerInfo*>(ext_data_info) : nullptr;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(const ORTCHAR_T*, OrtApis::ExternalInitializerInfo_GetFilePath, _In_ const OrtExternalInitializerInfo* info) {
+  return reinterpret_cast<const onnxruntime::ExternalDataInfo*>(info)->GetRelPath().c_str();
+}
+
+ORT_API(int64_t, OrtApis::ExternalInitializerInfo_GetFileOffset, _In_ const OrtExternalInitializerInfo* info) {
+  return static_cast<int64_t>(reinterpret_cast<const onnxruntime::ExternalDataInfo*>(info)->GetOffset());
+}
+
+ORT_API(size_t, OrtApis::ExternalInitializerInfo_GetByteSize, _In_ const OrtExternalInitializerInfo* info) {
+  return reinterpret_cast<const onnxruntime::ExternalDataInfo*>(info)->GetLength();
+}
+
 ORT_API_STATUS_IMPL(OrtApis::ValueInfo_IsRequiredGraphInput, _In_ const OrtValueInfo* value_info,
                     _Out_ bool* is_required_graph_input) {
   API_IMPL_BEGIN
@@ -3713,6 +3736,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ValueInfo_GetValueNumConsumers,
     &OrtApis::ValueInfo_GetValueConsumers,
     &OrtApis::ValueInfo_GetInitializerValue,
+    &OrtApis::ValueInfo_GetExternalInitializerInfo,
     &OrtApis::ValueInfo_IsRequiredGraphInput,
     &OrtApis::ValueInfo_IsOptionalGraphInput,
     &OrtApis::ValueInfo_IsGraphOutput,
@@ -3752,6 +3776,9 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetGraph,
     &OrtApis::Node_GetEpName,
+    &OrtApis::ExternalInitializerInfo_GetFilePath,
+    &OrtApis::ExternalInitializerInfo_GetFileOffset,
+    &OrtApis::ExternalInitializerInfo_GetByteSize,
 
     &OrtApis::GetRunConfigEntry,
 

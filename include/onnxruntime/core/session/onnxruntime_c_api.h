@@ -322,6 +322,7 @@ ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
+ORT_RUNTIME_CLASS(ExternalInitializerInfo);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -5458,6 +5459,8 @@ struct OrtApi {
    *
    * Supports initializers defined in an outer scope (i.e., a parent graph).
    *
+   * Supports initializers stored in an external file.
+   *
    * \param[in] value_info The OrtValueInfo instance.
    * \param[out] initializer_value Output parameter set to the initializer value or NULL.
    *
@@ -5466,6 +5469,22 @@ struct OrtApi {
    */
   ORT_API2_STATUS(ValueInfo_GetInitializerValue, _In_ const OrtValueInfo* value_info,
                   _Outptr_ const OrtValue** initializer_value);
+
+  /** \brief Get information about an external initializer (e.g., filepath, file offset, byte size).
+   *
+   * Sets the output parameter `info` to NULL if the given OrtValueInfo does not represent an initializer
+   * with external data. In this case, a NULL status (non-error) is returned.
+   *
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] info Output parameter set to an OrtExternalInitializerInfo instance that can be used to query
+   *                  file path, file offset, etc. ORT sets this to NULL if the OrtValue is not an external initializer.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValueInfo_GetExternalInitializerInfo, _In_ const OrtValueInfo* value_info,
+                  _Outptr_result_maybenull_ const OrtExternalInitializerInfo** info);
 
   /** \brief Returns a boolean indicating if the given value is a required graph input.
    *
@@ -6038,6 +6057,42 @@ struct OrtApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Node_GetEpName, _In_ const OrtNode* node, _Outptr_result_maybenull_ const char** out);
+
+  /// @}
+
+  /// \name OrtExternalInitializerInfo
+  /// @{
+
+  /** \brief Get the relative path to the file that stores the initializer's data.
+   *
+   * \note The path is relative to the filesystem directory where the ONNX model was stored.
+   * Caller can use Graph_GetModelPath to get the model's full path and construct the absolute path to the
+   * external initializer file if necessary.
+   *
+   * \param[in] info The OrtExternalInitializerInfo instance.
+   * \return The relative path to the file that stores the initializer's data. Do NOT free this pointer.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(const ORTCHAR_T*, ExternalInitializerInfo_GetFilePath, _In_ const OrtExternalInitializerInfo* info);
+
+  /** \brief Get the byte offset within the file where the initializer's data is stored.
+   *
+   * \param[in] info The OrtExternalInitializerInfo instance.
+   * \return The byte offset where the initializer's data is stored within the file.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(int64_t, ExternalInitializerInfo_GetFileOffset, _In_ const OrtExternalInitializerInfo* info);
+
+  /** \brief Get the size in bytes of the initializer's data within the file.
+   *
+   * \param[in] info The OrtExternalInitializerInfo instance.
+   * \return The size in bytes of the initializer's data within the file.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(size_t, ExternalInitializerInfo_GetByteSize, _In_ const OrtExternalInitializerInfo* info);
 
   /// @}
 

@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "core/framework/allocator.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/graph_viewer.h"
@@ -457,6 +458,24 @@ Status EpValueInfo::GetInitializerValue(const OrtValue*& result) const {
   return Status::OK();
 }
 
+Status EpValueInfo::GetExternalInitializerInfo(const onnxruntime::ExternalDataInfo*& result) const {
+  if (!IsFlagSet(kIsConstantInitializer) && !IsFlagSet(kIsOptionalGraphInput)) {
+    result = nullptr;
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF(graph_ == nullptr, "Unable to get external initializer information for value named '",
+                name_, "': parent graph is NULL");
+
+  const onnxruntime::Graph& graph = graph_->GetGraphViewer().GetGraph();
+
+  result = nullptr;
+  if (!graph.GetExternalInitializerInfo(name_, result, /*check_outer_scope*/ true)) {
+    result = nullptr;
+    return Status::OK();
+  }
+}
+
 Status EpValueInfo::IsRequiredGraphInput(bool& is_required_graph_input) const {
   is_required_graph_input = IsFlagSet(Flags::kIsRequiredGraphInput);
   return Status::OK();
@@ -599,7 +618,7 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
                                                                              /*check_outer_scope*/ false);
 
     if (!graph_has_ortvalue) {
-      ExternalInitializerInfo ext_info = {};
+      const ExternalDataInfo* ext_info = nullptr;
 
       if (graph_viewer.GetGraph().GetExternalInitializerInfo(initializer_name, ext_info, /*check_outer_scope*/ false)) {
         // Do nothing for external initializers. Will load/mmap into an OrtValue on demand.
@@ -674,7 +693,7 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
       // Add the OrtValue if this is an initializer.
       if (outer_initializer != nullptr) {
         if (!outer_initializer_value->IsAllocated()) {
-          ExternalInitializerInfo ext_info = {};
+          const ExternalDataInfo* ext_info = nullptr;
 
           if (parent_graph->GetExternalInitializerInfo(implicit_name, ext_info, /*check_outer_scope*/ true)) {
             // Do nothing for external initializers. Will load/mmap into an OrtValue on demand.

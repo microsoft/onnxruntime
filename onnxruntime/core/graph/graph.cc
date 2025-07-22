@@ -1359,11 +1359,10 @@ Graph::Graph(const Model& owning_model,
       std::basic_string<ORTCHAR_T> tensor_proto_dir;
       ORT_THROW_IF_ERROR(GetDirNameFromFilePath(model_path.c_str(), tensor_proto_dir));
 
-      ExternalInitializerInfo ext_info = {};
-      ORT_THROW_IF_ERROR(utils::GetExternalDataInfo(tensor, tensor_proto_dir, ext_info.file_path, ext_info.file_offset,
-                                                    ext_info.tensor_byte_size));
+      std::unique_ptr<ExternalDataInfo> external_data_info;
+      ORT_THROW_IF_ERROR(ExternalDataInfo::Create(tensor.external_data(), external_data_info));
 
-      ext_initializers_.emplace(tensor.name(), std::move(ext_info));
+      ext_initializers_.emplace(tensor.name(), std::move(external_data_info));
     }
 
     auto p = name_to_initial_tensor_.emplace(tensor.name(), &tensor);
@@ -3859,14 +3858,14 @@ Status Graph::LoadExternalInitializerAsOrtValue(const std::string& name, OrtValu
   return Status::OK();
 }
 
-bool Graph::GetExternalInitializerInfo(const std::string& name, ExternalInitializerInfo& ext_info,
+bool Graph::GetExternalInitializerInfo(const std::string& name, const ExternalDataInfo*& ext_info,
                                        bool check_outer_scope) const {
   // We want to make sure that the ort_value is found on the same level as its tensor_proto
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   if (GetInitializedTensor(name, initializer)) {
     auto it = ext_initializers_.find(name);
     if (it != ext_initializers_.end()) {
-      ext_info = it->second;
+      ext_info = it->second.get();
       return true;
     }
   }
