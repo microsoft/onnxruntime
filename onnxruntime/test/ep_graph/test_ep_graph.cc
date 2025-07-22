@@ -470,7 +470,8 @@ static void CheckValueInfoConsumers(const GraphViewer& graph_viewer, const OrtVa
 }
 
 static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
-                                      const ONNX_NAMESPACE::TensorProto* tensor_proto) {
+                                      const ONNX_NAMESPACE::TensorProto* tensor_proto,
+                                      const GraphViewer& graph_viewer) {
   const OrtApi& ort_api = Ort::GetApi();
 
   const OrtValue* api_initializer_value = nullptr;
@@ -480,6 +481,23 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
   const char* api_initializer_name = nullptr;
   ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(api_value_info, &api_initializer_name));
   ASSERT_NE(api_initializer_name, nullptr);
+
+  // Check external initializer info (if any).
+  const OrtExternalInitializerInfo* api_ext_info = nullptr;
+  const ExternalDataInfo* ext_info = nullptr;
+  bool has_ext_info = graph_viewer.GetGraph().GetExternalInitializerInfo(api_initializer_name, ext_info, true);
+  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetExternalInitializerInfo(api_value_info, &api_ext_info));
+
+  if (has_ext_info) {
+    ASSERT_NE(api_ext_info, nullptr);
+    const ORTCHAR_T* api_ext_file_path = ort_api.ExternalInitializerInfo_GetFilePath(api_ext_info);
+    int64_t api_ext_file_offset = ort_api.ExternalInitializerInfo_GetFileOffset(api_ext_info);
+    size_t api_ext_byte_size = ort_api.ExternalInitializerInfo_GetByteSize(api_ext_info);
+
+    ASSERT_EQ(PathString(api_ext_file_path), ext_info->GetRelPath());
+    ASSERT_EQ(api_ext_file_offset, static_cast<int64_t>(ext_info->GetOffset()));
+    ASSERT_EQ(api_ext_byte_size, ext_info->GetLength());
+  }
 
   // Check initializer type.
   const ONNX_NAMESPACE::TypeProto type_proto = utils::TypeProtoFromTensorProto(*tensor_proto);
@@ -491,7 +509,8 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
 }
 
 static void CheckInitializerValueInfosCApi(gsl::span<const OrtValueInfo* const> initializer_value_infos,
-                                           const InitializedTensorSet& initializer_tensor_protos) {
+                                           const InitializedTensorSet& initializer_tensor_protos,
+                                           const GraphViewer& graph_viewer) {
   const OrtApi& ort_api = Ort::GetApi();
 
   for (size_t i = 0; i < initializer_value_infos.size(); i++) {
@@ -507,7 +526,7 @@ static void CheckInitializerValueInfosCApi(gsl::span<const OrtValueInfo* const> 
     const ONNX_NAMESPACE::TensorProto* tensor_proto = tensor_proto_iter->second;
     ASSERT_NE(tensor_proto, nullptr);
 
-    CheckInitializerValueInfo(api_value_info, tensor_proto);
+    CheckInitializerValueInfo(api_value_info, tensor_proto, graph_viewer);
   }
 }
 
@@ -571,7 +590,7 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
       ASSERT_EQ(api_is_const_initializer, is_const_initializer);
 
       if (is_const_initializer || api_is_opt_graph_input) {
-        CheckInitializerValueInfo(value_info, initializer);
+        CheckInitializerValueInfo(value_info, initializer, graph_viewer);
       } else {
         auto node_arg_type_info = OrtTypeInfo::FromTypeProto(*node_arg->TypeAsProto());
         const OrtTypeInfo* api_type_info = nullptr;
@@ -665,7 +684,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
 
   std::vector<const OrtValueInfo*> api_initializers(api_num_initializers);
   ASSERT_ORTSTATUS_OK(ort_api.Graph_GetInitializers(&api_graph, api_initializers.data(), api_initializers.size()));
-  CheckInitializerValueInfosCApi(api_initializers, graph_initializers);
+  CheckInitializerValueInfosCApi(api_initializers, graph_initializers, graph_viewer);
 
   // Check if it has a parent node.
   const Node* parent_node = graph_viewer.ParentNode();
