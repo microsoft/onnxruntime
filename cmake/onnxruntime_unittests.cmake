@@ -198,13 +198,8 @@ function(AddTest)
     # xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      # We might have already executed the following "find_program" code when we build ORT nodejs binding.
-      # Then the program is found the result is stored in the variable and the search will not be repeated.
-      find_program(NPM_CLI
-         NAMES "npm.cmd" "npm"
-         DOC "NPM command line client"
-         REQUIRED
-      )
+      # Include the Node.js helper for finding and validating Node.js and NPM
+      include(node_helper.cmake)
 
       if (onnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER)
         add_custom_command(TARGET ${_UT_TARGET} POST_BUILD
