@@ -290,5 +290,50 @@ TEST(MLOpTest, TreeEnsembleLeafOnly) {
   test.Run();
 }
 
+TEST(MLOpTest, TreeEnsembleLeafLike) {
+  OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
+  int64_t n_targets = 1;
+
+  int64_t aggregate_function = 1; // SUM
+  int64_t post_transform = 0; // NONE
+  std::vector<int64_t> tree_roots = {0, 2};
+  std::vector<uint8_t> nodes_modes = {0, 0, 0, 0, 0}; // BRANCH_LEQ
+  std::vector<int64_t> nodes_featureids = {0, 1, 0, 1, 2};
+  std::vector<double> nodes_splits = {2.0, 2.0, 3.0, 2.0, 1.0};
+  std::vector<int64_t> nodes_truenodeids = {1, 0, 3, 4, 5};
+  std::vector<int64_t> nodes_trueleafs = {0, 1, 1, 1, 1};
+  std::vector<int64_t> nodes_falsenodeids = {2, 1, 3, 4, 6};
+  std::vector<int64_t> nodes_falseleafs = {1, 1, 0, 0, 1};
+
+  std::vector<int64_t> leaf_targetids = {0, 0, 0, 0, 0, 0, 0};
+  std::vector<double> leaf_weights = {100.0, 0.0, 25.0, 0.5, -0.5, -5.0, -9.0};
+
+  auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
+  auto nodes_splits_as_tensor = make_tensor(nodes_splits, "nodes_splits");
+  auto leaf_weights_as_tensor = make_tensor(leaf_weights, "leaf_weight");
+
+  // add attributes
+  test.AddAttribute("n_targets", n_targets);
+  test.AddAttribute("aggregate_function", aggregate_function);
+  test.AddAttribute("post_transform", post_transform);
+  test.AddAttribute("tree_roots", tree_roots);
+  test.AddAttribute("nodes_modes", nodes_modes_as_tensor);
+  test.AddAttribute("nodes_featureids", nodes_featureids);
+  test.AddAttribute("nodes_splits", nodes_splits_as_tensor);
+  test.AddAttribute("nodes_truenodeids", nodes_truenodeids);
+  test.AddAttribute("nodes_trueleafs", nodes_trueleafs);
+  test.AddAttribute("nodes_falsenodeids", nodes_falsenodeids);
+  test.AddAttribute("nodes_falseleafs", nodes_falseleafs);
+  test.AddAttribute("leaf_targetids", leaf_targetids);
+  test.AddAttribute("leaf_weights", leaf_weights_as_tensor);
+
+  // fill input data
+  std::vector<double> X = {7.0, 7.0, 4.0};
+  std::vector<double> Y = {16.0};
+
+  test.AddInput<double>("X", {1, 3}, X);
+  test.AddOutput<double>("Y", {1, 1}, Y);
+  test.Run();
+
 }  // namespace test
 }  // namespace onnxruntime
