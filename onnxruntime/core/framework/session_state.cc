@@ -1472,7 +1472,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   //   initializers and they are only enabled in an extended minimal build.
   {
     InlinedVector<std::string> unused_initializer_names;
-    for (const auto& name : graph_.GetAllInitializerNames()) {
+    for (const auto& name : graph_.GetAllInitializersNames()) {
       int idx;
       if (!ort_value_name_idx_map_.GetIdx(name, idx).IsOK()) {
         unused_initializer_names.push_back(name);

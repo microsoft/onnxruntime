@@ -269,7 +269,7 @@ common::Status SaveInitializedTensors(
   };
 
   // 1. first plan the memory
-  auto initializers_names = graph.GetAllInitializerNames();
+  auto initializers_names = graph.GetAllInitializersNames();
   InlinedHashMap<int, const ONNX_NAMESPACE::TensorProto*> id_to_initialized_tensor;
   InlinedHashSet<int> user_supplied_initializer_ids;  // set containing the ort value ids of all user supplied initializers
 

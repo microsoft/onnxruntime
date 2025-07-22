@@ -61,7 +61,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
   }
 
   if (include_initializer) {
-    const auto initializers = graph_view.GetAllInitializerNames();
+    const auto initializers = graph_view.GetAllInitializersNames();
 
     // Sort initializers to maintain consistency in model proto created across inference requests
     InlinedVector<InitializersNames::const_iterator> const_inits;

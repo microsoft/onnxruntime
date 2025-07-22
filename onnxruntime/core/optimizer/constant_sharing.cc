@@ -180,7 +180,7 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   // > The key is a string representation of initializer's data type, value and rank.
   // > The value is newly created initializer NodeArg* to be shared.
   InlinedHashMap<std::string, NodeArg*> pattern_key_to_shared_arg_map;
-  const auto initialized_tensor_set = graph.GetAllInitializerNames();
+  const auto initialized_tensor_set = graph.GetAllInitializersNames();
   InlinedVector<std::string> original_initializer_names;
   original_initializer_names.reserve(initialized_tensor_set.size());
   for (const auto& name : initialized_tensor_set) {

@@ -657,7 +657,7 @@ class PlannerImpl {
     }
 
     // All initializers should be treated as input
-    for (const auto& initializer_name : graph_viewer_.GetAllInitializerNames()) {
+    for (const auto& initializer_name : graph_viewer_.GetAllInitializersNames()) {
       UseCount(initializer_name)++;
     }
 
@@ -723,7 +723,7 @@ class PlannerImpl {
     }
 
     // All initializers should be treated as input
-    for (const auto& initializer_name : graph_viewer_.GetAllInitializerNames()) {
+    for (const auto& initializer_name : graph_viewer_.GetAllInitializersNames()) {
       OrtValueIndex index = Index(initializer_name);
       ProcessDef(index, graph_viewer_.GetNodeArg(initializer_name));
     }
@@ -2252,7 +2252,7 @@ class PlannerImpl {
       produced_values.insert(index);
     }
 
-    for (const auto& initializer_name : graph_viewer_.GetAllInitializerNames()) {
+    for (const auto& initializer_name : graph_viewer_.GetAllInitializersNames()) {
       OrtValueIndex index = Index(initializer_name);
       produced_values.insert(index);
     }

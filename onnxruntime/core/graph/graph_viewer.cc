@@ -353,8 +353,8 @@ const InitializedTensorSet& GraphViewer::GetAllInitializedTensors() const noexce
              : filtered_initializers_;
 }
 
-InitializersNames GraphViewer::GetAllInitializerNames() const noexcept {
-  return (filter_info_ == nullptr) ? graph_->GetAllInitializerNames()
+InitializersNames GraphViewer::GetAllInitializersNames() const noexcept {
+  return (filter_info_ == nullptr) ? graph_->GetAllInitializersNames()
                                    : InitializersNames(filtered_initializers_);
 }
 

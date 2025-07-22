@@ -533,7 +533,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
   }
 
   // populate names.
-  const auto initializers = graph_viewer_.GetAllInitializerNames();
+  const auto initializers = graph_viewer_.GetAllInitializersNames();
   const auto& inputs = graph_viewer_.GetInputs();
   // rough guess to try and avoid reallocs. most nodes produce one output but some have more so allow for that.
   // also need to convert attributes to constants so allow for that
@@ -755,9 +755,9 @@ std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::st
  * General implementation
  */
 void ModelBuilder::PreprocessInitializers() {
-  // TODO: We should be using GetConstantInitializer not GetAllInitializerNames in all places.
+  // TODO: We should be using GetConstantInitializer not GetAllInitializersNames in all places.
   // non-constant initializers need to be passed in as model inputs in case they're overridden at runtime.
-  const auto initializers = graph_viewer_.GetAllInitializerNames();
+  const auto initializers = graph_viewer_.GetAllInitializersNames();
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
 
   for (size_t i = 0; i < node_indices.size(); i++) {

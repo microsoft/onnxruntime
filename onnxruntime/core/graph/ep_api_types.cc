@@ -563,7 +563,7 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
   std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> outer_scope_initializer_values;
 
   // Create OrtValueInfo and OrtValue instances for each initializer.
-  auto initializers_names = graph_viewer.GetAllInitializerNames();
+  auto initializers_names = graph_viewer.GetAllInitializersNames();
   std::vector<EpValueInfo*> initializer_value_infos;
   std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values;
 

@@ -150,7 +150,7 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     }
   }
 
-  for (const auto& initializer_name : graph.GetAllInitializerNames()) {
+  for (const auto& initializer_name : graph.GetAllInitializersNames()) {
     if (graph.GetConsumerNodes(initializer_name).size() > 1) {
       auto node_arg = graph.GetNodeArg(initializer_name);
       if (node_arg) {

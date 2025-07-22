@@ -3091,12 +3091,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   auto userWeights = std::make_unique<std::vector<TensorrtUserWeights>>();
 
   if (load_user_initializer_) {
-    auto allInitializers = graph_body_viewer.GetAllInitializedTensors();
+    auto allInitializers = graph_body_viewer.GetAllInitializersNames();
 
-    for (auto entry : allInitializers) {
-      auto name = entry.first;
-      auto* tp = entry.second;
-      if (tp->has_raw_data()) {
+    for (const auto& name : allInitializers) {
+      const ONNX_NAMESPACE::TensorProto* tp = nullptr;
+      graph_body_viewer.GetInitialize if (tp->has_raw_data()) {
         userWeights->push_back(
             TensorrtUserWeights{tp->name(), tp->raw_data(), (int64_t)tp->raw_data().size()});
       }
