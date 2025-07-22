@@ -696,7 +696,7 @@ struct OrtEp {
    * \since Version 1.23.
    */
   ORT_API_T(const char*, GetCompiledModelCompatibilityInfo, _In_ OrtEp* this_ptr,
-                                                            _In_ const OrtGraph* graph);
+            _In_ const OrtGraph* graph);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
