@@ -1096,7 +1096,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
       // Collect inputs that are initializers
       graph_viewer.GetNode(node_idx)->ForEachDef([&mgx_required_initializers,
                                                   &graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
-              if(is_input && graph_viewer.GetAllInitializedTensors().count(node_arg.Name())) {
+              if(is_input && graph_viewer.GetAllInitializersNames().count(node_arg.Name())) {
                 mgx_required_initializers.insert(node_arg.Name());
               } },
                                                  true);

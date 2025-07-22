@@ -353,6 +353,11 @@ const InitializedTensorSet& GraphViewer::GetAllInitializedTensors() const noexce
              : filtered_initializers_;
 }
 
+InitializersNames GraphViewer::GetAllInitializerNames() const noexcept {
+  return (filter_info_ == nullptr) ? graph_->GetAllInitializerNames()
+                                   : InitializersNames(filtered_initializers_);
+}
+
 const NodeArg* GraphViewer::GetNodeArg(const std::string& name) const {
   return graph_->GetNodeArg(name);
 }

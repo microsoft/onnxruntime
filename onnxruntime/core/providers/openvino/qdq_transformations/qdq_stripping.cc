@@ -62,14 +62,14 @@ static NodeArg& ProcessNodeUnitIO(onnxruntime::Graph& dst_graph,
   // Handle quantized input or output. Convert to float type.
   if (io_def.quant_param.has_value()) {
     // Copy the original quantized type proto, but update the type to be the type of scale param.
-    const auto& src_initializers = src_graph.GetAllInitializedTensors();
+    const auto src_initializers = src_graph.GetAllInitializersNames();
     const std::string& scale_initializer_name = io_def.quant_param->scale.Name();
-    auto tensor_proto_iter = src_initializers.find(scale_initializer_name);
+    const bool tensor_proto_contain = src_initializers.contains(scale_initializer_name);
 
-    ORT_ENFORCE(tensor_proto_iter != src_initializers.end(),
-                "Unable to find scale initializer ", scale_initializer_name);
+    ORT_ENFORCE(tensor_proto_contain, "Unable to find scale initializer ", scale_initializer_name);
 
-    const auto* scale_tensor_proto = tensor_proto_iter->second;
+    const ONNX_NAMESPACE::TensorProto* scale_tensor_proto = nullptr;
+    src_initializers.GetInitializedTensor(scale_initializer_name, scale_tensor_proto);
     int32_t float_type = scale_tensor_proto->data_type();
 
     // Noe set the arg type to the float type of scale. Could be one of float/float16/bfloat16
@@ -77,7 +77,7 @@ static NodeArg& ProcessNodeUnitIO(onnxruntime::Graph& dst_graph,
     type_proto->copy_from(orig_type_proto);
     type_proto->mutable_tensor_type()->set_elem_type(float_type);
 
-    if (src_graph.GetAllInitializedTensors().count(name)) {
+    if (src_initializers.count(name)) {
       initializers_to_keep.insert({name});
     }
 
@@ -92,7 +92,7 @@ static void KeepInitsInDstGraph(std::set<std::string>& initializers_to_keep,
                                 const onnxruntime::GraphViewer& src_graph,
                                 const Node* qdq_node) {
   for (const auto& def : qdq_node->InputDefs()) {
-    if (src_graph.GetAllInitializedTensors().count(def->Name())) {
+    if (src_graph.GetAllInitializersNames().count(def->Name())) {
       initializers_to_keep.insert({def->Name()});
     }
   }
@@ -572,7 +572,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
              &dst_graph.GetOrCreateNodeArg(dq_node->InputNodesBegin()->InputDefs().at(0)->Name(),
                                            dq_node->InputNodesBegin()->InputDefs().at(0)->TypeAsProto())});
         // Also keep the initializer in the graph
-        if (src_graph.GetAllInitializedTensors().count(dq_node->InputNodesBegin()->InputDefs().at(0)->Name())) {
+        if (src_graph.GetAllInitializersNames().count(dq_node->InputNodesBegin()->InputDefs().at(0)->Name())) {
           initializers_to_keep.insert({dq_node->InputNodesBegin()->InputDefs().at(0)->Name()});
         }
       }
@@ -786,20 +786,20 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   }
 
   //  Copy initializers to dst graph.
-  const auto& initializers = src_graph.GetAllInitializedTensors();
+  const auto initializers = src_graph.GetAllInitializersNames();
 
   InlinedHashSet<std::string> current_scope_initializer_set;
   current_scope_initializer_set.reserve(initializers.size());
 
   // Sort initializers to maintain consistency in model proto created across inference requests
 
-  InlinedVector<InitializedTensorSet::const_iterator> all_inits;
+  InlinedVector<InitializersNames::const_iterator> all_inits;
   all_inits.reserve(initializers.size());
   for (auto it = initializers.cbegin(), end = initializers.cend(); it != end; ++it) {
     all_inits.push_back(it);
   }
   std::sort(all_inits.begin(), all_inits.end(), [](const auto& i1, const auto& i2) {
-    return i1->first < i2->first;
+    return *i1 < *i2;
   });
 
   // initialize map for creating metadata for initilizers with external weights
@@ -835,8 +835,12 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
 
   // Handle initializers
   for (const auto& it : all_inits) {
-    const auto& [name, init] = *it;
-    const auto& initializer_tensor = *init;
+    const std::string& name = *it;
+    const ONNX_NAMESPACE::TensorProto* initializer_tensor = nullptr;
+    if (!src_graph.GetInitializedTensor(name, true, initializer_tensor)) {
+      // Initializer not found
+      continue;
+    }
 
     std::unique_ptr<ONNX_NAMESPACE::TensorProto> init_with_data;
     ORT_RETURN_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(initializer_tensor, init_with_data));

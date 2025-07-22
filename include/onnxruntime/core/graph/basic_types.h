@@ -40,13 +40,13 @@ using ProviderType = const std::string&;
 // exposing begin()/end(), size(), empty methods. Begin()/end() method pairs must return a onnxruntime::transform_iterator template
 // that returns references to the map keys only. That transform iterator must use std::select1st() as a transformation function.
 namespace details {
-constexpr auto select2nd = [](auto&& x) noexcept -> decltype(auto) {
-  return std::get<1>(std::forward<decltype(x)>(x));
+constexpr auto select1st = [](auto&& x) noexcept -> decltype(auto) {
+  return std::get<0>(std::forward<decltype(x)>(x));
 };
 
 using TensorSetIterator = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>::const_iterator;
 using ProjectedTensorSetIterator =
-    onnxruntime::transform_iterator<TensorSetIterator, decltype(select2nd)>;
+    onnxruntime::transform_iterator<TensorSetIterator, decltype(select1st)>;
 
 }  // namespace details
 
@@ -64,17 +64,25 @@ using ProjectedTensorSetIterator =
  * @remarks The lifetime of an InitializedTensorSetProxy instance must not exceed the lifetime
  * of the underlying container it references.
  */
-class InitializedTensorSetProxy {
+class InitializersNames {
  public:
   using const_iterator = details::ProjectedTensorSetIterator;
   using container = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
-  InitializedTensorSetProxy(const container& initialized_tensors)
+
+  InitializersNames(const container& initialized_tensors) noexcept
       : initialized_tensors_(initialized_tensors) {}
+
   const_iterator begin() const {
-    return const_iterator(initialized_tensors_.get().begin(), details::select2nd);
+    return const_iterator(initialized_tensors_.get().begin(), details::select1st);
+  }
+  const_iterator cbegin() const {
+    return const_iterator(initialized_tensors_.get().begin(), details::select1st);
   }
   const_iterator end() const {
-    return const_iterator(initialized_tensors_.get().end(), details::select2nd);
+    return const_iterator(initialized_tensors_.get().end(), details::select1st);
+  }
+  const_iterator cend() const {
+    return const_iterator(initialized_tensors_.get().end(), details::select1st);
   }
   size_t size() const {
     return initialized_tensors_.get().size();
@@ -84,6 +92,9 @@ class InitializedTensorSetProxy {
   }
   bool count(const std::string& name) const {
     return initialized_tensors_.get().count(name);
+  }
+  bool contains(const std::string& name) const {
+    return initialized_tensors_.get().count(name) > 0;
   }
 
  private:

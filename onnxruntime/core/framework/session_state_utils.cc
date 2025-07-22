@@ -269,20 +269,22 @@ common::Status SaveInitializedTensors(
   };
 
   // 1. first plan the memory
-  const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+  auto initializers_names = graph.GetAllInitializerNames();
   InlinedHashMap<int, const ONNX_NAMESPACE::TensorProto*> id_to_initialized_tensor;
   InlinedHashSet<int> user_supplied_initializer_ids;  // set containing the ort value ids of all user supplied initializers
 
-  id_to_initialized_tensor.reserve(initialized_tensor_set.size());
+  id_to_initialized_tensor.reserve(initializers_names.size());
   user_supplied_initializer_ids.reserve(session_options.initializers_to_share_map.size());
 
-  for (const auto& entry : initialized_tensor_set) {
+  for (const auto& name : initializers_names) {
     int ort_value_index;
-    ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(entry.first, ort_value_index));
-    if (use_user_supplied_initializer(entry.first)) {
+    ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(name, ort_value_index));
+    if (use_user_supplied_initializer(name)) {
       user_supplied_initializer_ids.insert(ort_value_index);
     }
-    id_to_initialized_tensor[ort_value_index] = entry.second;
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    graph.GetInitializedTensor(name, tensor_proto);
+    id_to_initialized_tensor[ort_value_index] = tensor_proto;
   }
 
   static const auto default_cpu_device = OrtDevice();

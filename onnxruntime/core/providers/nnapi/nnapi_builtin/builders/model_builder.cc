@@ -752,8 +752,8 @@ DataLayout ModelBuilder::GetPreferredLayout() const {
   return use_nchw_ ? DataLayout::NCHW : DataLayout::NHWC;
 }
 
-const InitializedTensorSet& ModelBuilder::GetInitializerTensors() const {
-  return graph_viewer_.GetAllInitializedTensors();
+InitializersNames ModelBuilder::GetInitializerTensors() const {
+  return graph_viewer_.GetAllInitializersNames();
 }
 
 const ONNX_NAMESPACE::TensorProto* ModelBuilder::GetConstantInitializer(const std::string& name) const {

@@ -788,8 +788,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
    */
   bool GetOrtValueInitializer(const std::string& name, OrtValue& value, bool check_outer_scope = false) const;
 
-  /** Gets all the initializer tensors in this Graph. */
+  /** Gets all the initializer tensors in this Graph. To be deprecated and removed */
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return name_to_initial_tensor_; }
+
+  InitializersNames GetAllInitializerNames() const noexcept {
+    return InitializersNames{name_to_initial_tensor_};
+  }
 
   /** Removes all initializer tensors from this Graph and releases the memory they were using. */
   void CleanAllInitializedTensors() noexcept;

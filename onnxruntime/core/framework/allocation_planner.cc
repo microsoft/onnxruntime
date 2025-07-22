@@ -657,8 +657,7 @@ class PlannerImpl {
     }
 
     // All initializers should be treated as input
-    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
-      const auto& initializer_name = pair.first;
+    for (const auto& initializer_name : graph_viewer_.GetAllInitializerNames()) {
       UseCount(initializer_name)++;
     }
 
@@ -724,10 +723,9 @@ class PlannerImpl {
     }
 
     // All initializers should be treated as input
-    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
-      const auto& initializer_name = pair.first;
+    for (const auto& initializer_name : graph_viewer_.GetAllInitializerNames()) {
       OrtValueIndex index = Index(initializer_name);
-      ProcessDef(index, graph_viewer_.GetNodeArg(pair.first));
+      ProcessDef(index, graph_viewer_.GetNodeArg(initializer_name));
     }
 
     // If both devices are OrtDevice::CPU or both are HOST_ACCESSIBLE we use the one with the higher alignment.
@@ -2254,8 +2252,7 @@ class PlannerImpl {
       produced_values.insert(index);
     }
 
-    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
-      const auto& initializer_name = pair.first;
+    for (const auto& initializer_name : graph_viewer_.GetAllInitializerNames()) {
       OrtValueIndex index = Index(initializer_name);
       produced_values.insert(index);
     }

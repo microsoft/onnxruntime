@@ -113,7 +113,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                      const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
+  const auto initializers = input_params.graph_viewer.GetAllInitializerNames();
 
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
@@ -146,7 +146,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     }
 
     // only support if `constant_value` input is a constant initializer
-    if (!Contains(initializers, input_defs[2]->Name())) {
+    if (!initializers.contains(input_defs[2]->Name())) {
       LOGS(logger, VERBOSE) << "constant_value must be a constant initializer.";
       return false;
     }
@@ -163,14 +163,14 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
   {
     // only support if `pads` input is known and does not contain negative values and only applies padding values
     // for last two dimensions.
-    const auto pads_initializer_it = initializers.find(input_defs[1]->Name());
-    if (pads_initializer_it == initializers.end()) {
+    if (!initializers.contains(input_defs[1]->Name())) {
       LOGS(logger, VERBOSE) << "pads must be a constant initializer.";
       return false;
     }
 
-    const ONNX_NAMESPACE::TensorProto& pads_initializer = *pads_initializer_it->second;
-    Initializer unpacked_tensor(pads_initializer);
+    const ONNX_NAMESPACE::TensorProto* pads_initializer = nullptr;
+    graph_viewer.GetInitializedTensor(input_defs[1]->Name(), pads_initializer);
+    Initializer unpacked_tensor(*pads_initializer);
 
     auto pads_tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
     for (size_t i = 0; i < unpacked_tensor.size(); i++) {

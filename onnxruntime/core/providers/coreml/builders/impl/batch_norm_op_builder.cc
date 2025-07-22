@@ -130,20 +130,20 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBu
   const auto& b_name = input_defs[2]->Name();
   const auto& mean_name = input_defs[3]->Name();
   const auto& var_name = input_defs[4]->Name();
-  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
-  if (!Contains(initializers, scale_name)) {
+  const auto initializers = input_params.graph_viewer.GetAllInitializerNames();
+  if (!initializers.contains(scale_name)) {
     LOGS(logger, VERBOSE) << "Scale of BN must be a constant initializer";
     return false;
   }
-  if (!Contains(initializers, b_name)) {
+  if (!initializers.contains(b_name)) {
     LOGS(logger, VERBOSE) << "B of BN must be a constant initializer";
     return false;
   }
-  if (!Contains(initializers, mean_name)) {
+  if (!initializers.contains(mean_name)) {
     LOGS(logger, VERBOSE) << "Mean of BN must be a constant initializer";
     return false;
   }
-  if (!Contains(initializers, var_name)) {
+  if (!initializers.contains(var_name)) {
     LOGS(logger, VERBOSE) << "Var of BN must be a constant initializer";
     return false;
   }

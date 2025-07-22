@@ -632,10 +632,11 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
 bool DataOps::unsupported_op_mode(const Node* node, bool& has_external_weights_) {
   bool result = false;
   const auto& optype = node->OpType();
-  const auto& initializers = graph_viewer_.GetAllInitializedTensors();
+  const auto initializers = graph_viewer_.GetAllInitializersNames();
 
-  for (const auto& tensor_pair : initializers) {
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = tensor_pair.second;
+  for (const auto& name : initializers) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    graph_viewer_.GetInitializedTensor(name, tensor_proto);
     // Check if the tensor exists and if it has an external data location
     if (tensor_proto && tensor_proto->has_data_location() &&
         tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
@@ -843,7 +844,7 @@ std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std
       // Collect inputs that are initializers
       graph_viewer_.GetNode(node_idx)->ForEachDef([&ng_required_initializers, this](const NodeArg& node_arg,
                                                                                     bool is_input) {
-            if (is_input && this->graph_viewer_.GetAllInitializedTensors().count(node_arg.Name())) {
+            if (is_input && this->graph_viewer_.GetAllInitializersNames().count(node_arg.Name())) {
                 ng_required_initializers.insert(node_arg.Name());
               } },
                                                   true);

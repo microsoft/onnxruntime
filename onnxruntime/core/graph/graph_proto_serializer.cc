@@ -61,16 +61,16 @@ void GraphViewerToProto(const GraphViewer& graph_view,
   }
 
   if (include_initializer) {
-    const auto& initializers = graph_view.GetAllInitializedTensors();
+    const auto initializers = graph_view.GetAllInitializerNames();
 
     // Sort initializers to maintain consistency in model proto created across inference requests
-    InlinedVector<InitializedTensorSet::const_iterator> const_inits;
+    InlinedVector<InitializersNames::const_iterator> const_inits;
     const_inits.reserve(initializers.size());
     for (auto it = initializers.cbegin(), end = initializers.cend(); it != end; ++it) {
       const_inits.push_back(it);
     }
     std::sort(const_inits.begin(), const_inits.end(), [](const auto& i1, const auto& i2) {
-      return i1->first < i2->first;
+      return *i1 < *i2;
     });
 
     InlinedHashSet<std::string_view> current_scope_initializer_set;
@@ -90,10 +90,13 @@ void GraphViewerToProto(const GraphViewer& graph_view,
 
     // Handle this scope initializers
     for (const auto& it : const_inits) {
-      const auto& [name, init] = *it;
+      const auto& name = *it;
+
       current_scope_initializer_set.insert(name);
       auto* p_initializer = graph_proto.add_initializer();
 
+      const ONNX_NAMESPACE::TensorProto* init = nullptr;
+      graph_view.GetInitializedTensor(name, init);
       // Do not save raw into the graph, only the metadata
       if (!include_initializer_data && init->has_raw_data()) {
         // Set datatype
