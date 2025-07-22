@@ -12,15 +12,15 @@ namespace {
 
 // Helper function to calculate the output index based on the input index and the sizes of the splits.
 void CalculateOutputIndex(std::ostream& os, size_t output_count) {
-    os << "fn calculate_output_index(index: u32) -> u32 {\n"
-       << "  for (var i: u32 = 0u; i < " << output_count << "u; i += 1u ) {\n"
-       << "    if (index < " << GetElementAt("uniforms.sizes_in_split_axis", "i", output_count) << ") {\n"
-       << "      return i;\n"
-       << "    }\n"
-       << "  }\n"
-       << "  return " << output_count << "u;\n"
-       << "}\n";
-  }
+  os << "fn calculate_output_index(index: u32) -> u32 {\n"
+      << "  for (var i: u32 = 0u; i < " << output_count << "u; i += 1u ) {\n"
+      << "    if (index < " << GetElementAt("uniforms.sizes_in_split_axis", "i", output_count) << ") {\n"
+      << "      return i;\n"
+      << "    }\n"
+      << "  }\n"
+      << "  return " << output_count << "u;\n"
+      << "}\n";
+}
 
 // Helper function to write the buffer data for each output.
 void WriteBufferData(std::ostream& os, const ShaderVariableHelper& input,
