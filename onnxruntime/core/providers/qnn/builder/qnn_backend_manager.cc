@@ -1443,37 +1443,13 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
   return Status::OK();
 }
 
-Status QnnBackendManager::SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
-                                             uint32_t rpc_control_latency,
-                                             uint32_t rpc_polling_time) {
+Status QnnBackendManager::SetRpcControlLatency(uint32_t htp_power_config_client_id,
+                                               uint32_t rpc_control_latency) {
   // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
   // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
   // set RPC control latency. Otherwise, this causes a segfault because the QNN backend library is unloaded.
   ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot set HTP RPC control latency if backend setup is not complete.");
-
-  constexpr int kNumRpcPollingPowerConfigs = 2;
-  std::vector<QnnHtpPerfInfrastructure_PowerConfig_t> rpc_power_configs;
-  rpc_power_configs.reserve(kNumRpcPollingPowerConfigs);
-
-  // Set rpc control latency here
   if (rpc_control_latency != 0) {
-    QnnHtpPerfInfrastructure_PowerConfig_t rpc_control_latency_cfg;
-    rpc_control_latency_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_CONTROL_LATENCY;
-    rpc_control_latency_cfg.rpcControlLatencyConfig = rpc_control_latency;
-
-    rpc_power_configs.emplace(rpc_power_configs.end(), rpc_control_latency_cfg);
-  }
-
-  // Note: v68 does not support rpc polling mode
-  if (rpc_polling_time != 0) {
-    QnnHtpPerfInfrastructure_PowerConfig_t rpc_polling_time_cfg;
-    rpc_polling_time_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
-    rpc_polling_time_cfg.rpcPollingTimeConfig = rpc_polling_time;
-
-    rpc_power_configs.emplace(rpc_power_configs.end(), rpc_polling_time_cfg);
-  }
-
-  if (rpc_power_configs.size() > 0) {
     QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
     auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
     ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -1483,6 +1459,15 @@ Status QnnBackendManager::SetRpcPowerConfigs(uint32_t htp_power_config_client_id
                   "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
     QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
 
+    // Set rpc control latency here, but note that v68 doesn't support rpc polling mode.
+    constexpr int kNumRpcPollingPowerConfigs = 2;
+    std::vector<QnnHtpPerfInfrastructure_PowerConfig_t> rpc_power_configs(kNumRpcPollingPowerConfigs);
+    QnnHtpPerfInfrastructure_PowerConfig_t& rpc_control_latency_cfg = rpc_power_configs[0];
+    // v68 doesn't support this.
+    QnnHtpPerfInfrastructure_PowerConfig_t& rpc_polling_time = rpc_power_configs[1];
+    rpc_control_latency_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_CONTROL_LATENCY;
+    rpc_polling_time.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
+    rpc_control_latency_cfg.rpcControlLatencyConfig = rpc_control_latency;
     std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr =
         ObtainNullTermPtrVector(rpc_power_configs);
     status = htp_perf_infra.setPowerConfig(htp_power_config_client_id, perf_power_configs_ptr.data());
