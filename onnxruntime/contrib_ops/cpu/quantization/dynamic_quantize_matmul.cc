@@ -242,7 +242,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
         // if and when we try to cache this pre-packed buffer for sharing between sessions.
         memset(packed_b_.get(), 0, packed_b_size);
 
-        const auto scales = static_cast(b_scale_tensor->Shape().Size()) == N ? std::vector<float>(&b_scale_tensor->Data<float>()[0],
+        const auto scales = static_cast<size_t>(b_scale_tensor->Shape().Size()) == N ? std::vector<float>(&b_scale_tensor->Data<float>()[0],
                                                                                              &b_scale_tensor->Data<float>()[N])
                                                                         :
                                                                         // Broadcast matrix scale to all channels
