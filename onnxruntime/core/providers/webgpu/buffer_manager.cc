@@ -199,12 +199,12 @@ class BucketCacheManager : public IBufferCacheManager {
     if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
       it->second.emplace_back(buffer);
     } else {
-      pending_buffers.emplace_back(buffer, buffer_size);
+      pending_buffers_.emplace_back(buffer, buffer_size);
     }
   }
 
   void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
-    for (auto& [buffer, buffer_size] : pending_buffers) {
+    for (auto& [buffer, buffer_size] : pending_buffers_) {
       auto it = buckets_.find(buffer_size);
       if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
         it->second.emplace_back(buffer);
@@ -212,7 +212,7 @@ class BucketCacheManager : public IBufferCacheManager {
         wgpuBufferRelease(buffer);
       }
     }
-    pending_buffers.clear();
+    pending_buffers_.clear();
   }
 
   ~BucketCacheManager() {
@@ -244,7 +244,7 @@ class BucketCacheManager : public IBufferCacheManager {
   }
   std::unordered_map<size_t, size_t> buckets_limit_;
   std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
-  std::vector<std::pair<WGPUBuffer, size_t>> pending_buffers;
+  std::vector<std::pair<WGPUBuffer, size_t>> pending_buffers_;
   std::vector<size_t> buckets_keys_;
 };
 
