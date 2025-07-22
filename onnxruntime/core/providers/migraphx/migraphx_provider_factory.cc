@@ -76,30 +76,6 @@ struct MIGraphX_Provider : Provider {
     return std::make_shared<MIGraphXProviderFactory>(info);
   }
 
-  /*
-  //TODO: Interface change might require changes in other parts of win-onnxruntime?
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) {
-    if (param == nullptr) {
-      LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Passed NULL options to CreateExecutionProviderFactory()";
-      return nullptr;
-    }
-
-    // std::array<const void*, 2> pointers_array = *reinterpret_cast<const std::array<const void*, 2>*>(param);
-    const ProviderOptions* provider_options = reinterpret_cast<const ProviderOptions*>(param);
-    // const ConfigOptions* config_options = reinterpret_cast<const ConfigOptions*>(pointers_array[1]);
-
-    if (provider_options == nullptr) {
-      LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
-      return nullptr;
-    }
-
-    MIGraphXExecutionProviderInfo info = {};
-
-    UpdateProviderOptions(&info, *provider_options);
-    return std::make_shared<MIGraphXProviderFactory>(info);
-  }
-  */
-
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
     auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);
     MIGraphXExecutionProviderInfo info;
@@ -175,9 +151,6 @@ struct MIGraphX_Provider : Provider {
                                   const OrtSessionOptions& session_options,
                                   const OrtLogger& logger,
                                   std::unique_ptr<IExecutionProvider>& ep) override {
-    //if (num_devices != 1) {
-    //  return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "[MigraphX/AMDGPU EP]  only supports one device.");
-    //}
 
     const ConfigOptions* config_options = &session_options.GetConfigOptions();
 
