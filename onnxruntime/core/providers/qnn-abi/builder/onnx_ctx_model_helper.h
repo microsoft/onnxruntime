@@ -26,7 +26,7 @@ static const std::string PARTITION_NAME = "partition_name";
 static const std::string SOURCE = "source";
 static const std::string MAX_SIZE = "max_size";
 
-bool GraphHasEpContextNode(const OrtGraph* graph);
+bool GraphHasEpContextNode(const OrtGraph* graph, const OrtApi& ort_api);
 
 // bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs);
 

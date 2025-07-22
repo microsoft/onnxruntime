@@ -18,7 +18,10 @@
 #include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_model.h"
 #include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
 #include "test/autoep/library/example_plugin_ep_utils.h"
+#include "core/providers/qnn-abi/qnn_telemetry.h"
+#include "core/providers/qnn-abi/rpcmem_library.h"
 
 namespace onnxruntime {
 class QnnEpFactory;
@@ -38,7 +41,7 @@ class QnnEp : public OrtEp, public ApiPtrs {
   };
 
   QnnEp(QnnEpFactory& factory, const std::string& name,
-        const Config& config, const OrtLogger& logger);
+        const OrtSessionOptions& session_options, const OrtLogger& logger);
   ~QnnEp();
 
  private:
@@ -70,10 +73,12 @@ class QnnEp : public OrtEp, public ApiPtrs {
   // // Helper functions
   // int GenerateMetadefId(const OrtGraph* graph, uint64_t& model_hash);
   // std::string MakeMetadefName(const OrtGraph* graph);
-  // bool EpSharedContextsHasAllGraphs(const OrtGraph* graph);
+  bool EpSharedContextsHasAllGraphs(QnnEp* ep, const OrtGraph* graph);
+  void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string);
+  qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level);
   void PartitionCtxModel(const OrtEp* this_ptr, const OrtGraph* graph, size_t num_nodes_in_graph,
                          OrtEpGraphSupportInfo* graph_support_info);
-  // static void GetMainEPCtxNodes(QnnEp* ep, const OrtGraph* graph, std::unordered_set<const OrtNode*>& ep_context_nodes);
+  static void GetMainEPCtxNodes(QnnEp* ep, const OrtGraph* graph, std::unordered_set<const OrtNode*>& ep_context_nodes);
   void GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
                                    const std::string& model_path_string,
                                    std::string& context_model_path);
@@ -156,6 +161,16 @@ class QnnEp : public OrtEp, public ApiPtrs {
   bool enable_vtcm_backup_buffer_sharing_;
   std::string context_node_name_prefix_;
   std::string context_cache_path_cfg_;
+  const OrtSessionOptions& session_options_;
+
+  bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
+  bool qnn_context_embed_mode_ = true;
+  bool stop_share_ep_contexts_ = false;
+  bool enable_spill_fill_buffer_ = false;
+  #if defined(_WIN32)
+    onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
+  #endif
+
 
   // Metadef ID generation state
   mutable std::unordered_map<uint64_t, uint64_t> main_graph_hash_;
@@ -176,6 +191,10 @@ class QnnEp : public OrtEp, public ApiPtrs {
 
   bool dump_json_qnn_graph_ = false;
   std::string json_qnn_graph_dir_ = "";
+
+  // Whether this is set depends on a session option enabling it and if the RPCMEM dynamic library is available.
+  // This is potentially shared with HtpSharedMemoryAllocator which may be returned by CreatePreferredAllocators().
+  std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library_ = nullptr;
 };
 
 }

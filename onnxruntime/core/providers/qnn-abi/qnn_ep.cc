@@ -16,7 +16,7 @@
 #include "HTP/QnnHtpGraph.h"
 
 #include "core/providers/qnn-abi/qnn_ep_factory.h"
-// #include "core/providers/qnn-abi/shared_context.h"
+#include "core/providers/qnn-abi/shared_context.h"
 #include "core/providers/qnn-abi/builder/qnn_backend_manager.h"
 #include "core/providers/qnn-abi/builder/qnn_configs_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_model.h"
@@ -26,11 +26,89 @@
 // Forward declarations for NodeUnit-related classes
 namespace onnxruntime {
 
+constexpr const char* QNN = "QNN";
+
+static std::string MakeSharedLibraryPath(std::string_view name) {
+#if defined(_WIN32)
+  return MakeString(name, ".dll");
+#else
+  return MakeString("lib", name, ".so");
+#endif
+}
+
+const std::string kDefaultCpuBackendPath = MakeSharedLibraryPath("QnnCpu");
+const std::string kDefaultGpuBackendPath = MakeSharedLibraryPath("QnnGpu");
+const std::string kDefaultHtpBackendPath = MakeSharedLibraryPath("QnnHtp");
+const std::string kDefaultSaverBackendPath = MakeSharedLibraryPath("QnnSaver");
+const std::string kDefaultIrBackendPath = MakeSharedLibraryPath("QnnIr");
+
+static bool ParseBackendTypeName(std::string_view backend_type_name, std::string& backend_path) {
+  constexpr std::string_view kCpuBackendTypeName{"cpu"};
+  constexpr std::string_view kGpuBackendTypeName{"gpu"};
+  constexpr std::string_view kHtpBackendTypeName{"htp"};
+  constexpr std::string_view kSaverBackendTypeName{"saver"};
+  constexpr std::string_view kIrBackendTypeName{"ir"};
+
+  constexpr std::array kAllowedBackendTypeNames{
+      kCpuBackendTypeName,
+      kGpuBackendTypeName,
+      kHtpBackendTypeName,
+      kSaverBackendTypeName,
+      kIrBackendTypeName,
+  };
+
+  std::optional<std::string> associated_backend_path{};
+  if (backend_type_name == kCpuBackendTypeName) {
+    associated_backend_path = kDefaultCpuBackendPath;
+  } else if (backend_type_name == kGpuBackendTypeName) {
+    associated_backend_path = kDefaultGpuBackendPath;
+  } else if (backend_type_name == kHtpBackendTypeName) {
+    associated_backend_path = kDefaultHtpBackendPath;
+  } else if (backend_type_name == kSaverBackendTypeName) {
+    associated_backend_path = kDefaultSaverBackendPath;
+  } else if (backend_type_name == kIrBackendTypeName) {
+    associated_backend_path = kDefaultIrBackendPath;
+  }
+
+  if (associated_backend_path.has_value()) {
+    backend_path = std::move(*associated_backend_path);
+    return true;
+  }
+
+  std::ostringstream warning{};
+  warning << "Invalid backend type name: " << backend_type_name << ". Allowed backend type names: ";
+  for (size_t i = 0; i < kAllowedBackendTypeNames.size(); ++i) {
+    warning << kAllowedBackendTypeNames[i];
+    if (i + 1 < kAllowedBackendTypeNames.size()) {
+      warning << ", ";
+    }
+  }
+  LOGS_DEFAULT(WARNING) << warning.str();
+  return false;
+}
+
+static void ParseProfilingLevel(std::string profiling_level_string,
+                                qnn::ProfilingLevel& profiling_level) {
+  std::transform(profiling_level_string.begin(), profiling_level_string.end(),
+                profiling_level_string.begin(), [](unsigned char c) { return std::tolower(c); });
+  LOGS_DEFAULT(INFO) << "profiling_level: " << profiling_level_string;
+  if (profiling_level_string == "off") {
+    profiling_level = qnn::ProfilingLevel::OFF;
+  } else if (profiling_level_string == "basic") {
+    profiling_level = qnn::ProfilingLevel::BASIC;
+  } else if (profiling_level_string == "detailed") {
+    profiling_level = qnn::ProfilingLevel::DETAILED;
+  } else {
+    LOGS_DEFAULT(WARNING) << "Profiling level not valid.";
+  }
+}
+
 static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
                                     qnn::HtpPerformanceMode& htp_performance_mode,
                                     const logging::Logger& logger) {
-  htp_performance_mode_string = qnn::utils::GetLowercaseString(htp_performance_mode_string);
-  LOGS(logger, VERBOSE) << "Htp performance mode: " << htp_performance_mode_string;
+  std::transform(htp_performance_mode_string.begin(), htp_performance_mode_string.end(),
+                 htp_performance_mode_string.begin(), [](unsigned char c) { return std::tolower(c); });
+  LOGS_DEFAULT(VERBOSE) << "Htp performance mode: " << htp_performance_mode_string;
   if (htp_performance_mode_string == "burst") {
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpBurst;
   } else if (htp_performance_mode_string == "balanced") {
@@ -56,19 +134,181 @@ static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
   }
 }
 
+static void ParseQnnContextPriority(std::string context_priority_string, qnn::ContextPriority& context_priority) {
+  std::transform(context_priority_string.begin(), context_priority_string.end(),
+                 context_priority_string.begin(), [](unsigned char c) { return std::tolower(c); });
+  LOGS_DEFAULT(VERBOSE) << "QNN context priority: " << context_priority_string;
+  if (context_priority_string == "low") {
+    context_priority = qnn::ContextPriority::LOW;
+  } else if (context_priority_string == "normal") {
+    context_priority = qnn::ContextPriority::NORMAL;
+  } else if (context_priority_string == "normal_high") {
+    context_priority = qnn::ContextPriority::NORMAL_HIGH;
+  } else if (context_priority_string == "high") {
+    context_priority = qnn::ContextPriority::HIGH;
+  } else {
+    context_priority = qnn::ContextPriority::UNDEFINED;
+    LOGS_DEFAULT(WARNING) << "QNN context priority: " << context_priority_string << " not valid, set to undefined.";
+  }
+}
+
+void QnnEp::ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string) {
+  LOGS_DEFAULT(VERBOSE) << "HTP graph finalization optimization mode: "
+                        << htp_graph_finalization_opt_mode_string;
+
+  if (htp_graph_finalization_opt_mode_string.empty() || htp_graph_finalization_opt_mode_string == "0") {
+    htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
+  } else if (htp_graph_finalization_opt_mode_string == "1") {
+    htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kMode1;
+  } else if (htp_graph_finalization_opt_mode_string == "2") {
+    htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kMode2;
+  } else if (htp_graph_finalization_opt_mode_string == "3") {
+    htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kMode3;
+  } else {
+    LOGS_DEFAULT(WARNING) << "Invalid HTP graph finalization optimization mode: "
+                          << htp_graph_finalization_opt_mode_string;
+  }
+}
+
+static void ParseHtpArchitecture(const std::string& htp_arch_string, QnnHtpDevice_Arch_t& qnn_htp_arch) {
+  if (htp_arch_string.empty() || htp_arch_string == "0") {
+    qnn_htp_arch = QNN_HTP_DEVICE_ARCH_NONE;
+  } else if (htp_arch_string == "68") {
+    qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V68;
+  } else if (htp_arch_string == "69") {
+    qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V69;
+  } else if (htp_arch_string == "73") {
+    qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V73;
+  } else if (htp_arch_string == "75") {
+    qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V75;
+  } else {
+    LOGS_DEFAULT(WARNING) << "Invalid HTP architecture: " << htp_arch_string;
+  }
+}
+
+static void ParseOpPackages(const std::string& op_packages_string, std::vector<onnxruntime::qnn::OpPackage>& op_packages) {
+  for (const auto& op_package : utils::SplitString(op_packages_string, ",", true)) {
+    auto splitStrings = utils::SplitString(op_package, ":", true);
+    if (splitStrings.size() < 3 || splitStrings.size() > 4) {
+      LOGS_DEFAULT(WARNING) << "Invalid op_package passed, expected <OpType>:<PackagePath>:<InterfaceSymbolName>[:<Target>], got " << op_package;
+      LOGS_DEFAULT(WARNING) << "Skip registration.";
+      continue;
+    }
+
+    std::string op_type = std::string(splitStrings[0]);
+    std::string op_package_path = std::string(splitStrings[1]);
+    std::string op_package_interface = std::string(splitStrings[2]);
+    std::string op_package_target;
+
+    if (op_type.empty()) {
+      LOGS_DEFAULT(WARNING) << "Op type is empty. Skip registration";
+      continue;
+    }
+
+    if (op_package_path.empty()) {
+      LOGS_DEFAULT(WARNING) << "Op package path is empty. Skip registration";
+      continue;
+    }
+
+    if (op_package_interface.empty()) {
+      LOGS_DEFAULT(WARNING) << "Op package interface is empty. Skip registration";
+      continue;
+    }
+
+    LOGS_DEFAULT(VERBOSE) << "Loading op package from path: " << op_package_path << " for op " << op_type;
+    LOGS_DEFAULT(VERBOSE) << "Op package interface: " << op_package_interface;
+    if (splitStrings.size() > 3 && splitStrings[3].size()) {
+      op_package_target = std::string(splitStrings[3]);
+      LOGS_DEFAULT(VERBOSE) << "Op package target: " << op_package_target;
+    }
+    op_packages.push_back({op_type, op_package_path, op_package_interface, op_package_target});
+  }
+}
+
+static bool ParseBoolOption(const OrtApi& ort_api, const OrtSessionOptions& session_options,
+                           const char* key, bool default_value) {
+  bool result = default_value;
+  std::string value_str;
+  GetSessionConfigEntryOrDefault(ort_api, session_options, key, default_value ? "1" : "0", value_str);
+
+  if ("1" == value_str) {
+    result = true;
+  } else if ("0" == value_str) {
+    result = false;
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "Invalid value for " << key << " (" << value_str << "). Only 0 or 1 allowed.";
+  }
+  LOGS_DEFAULT(VERBOSE) << "Using " << key << ": " << result;
+
+  return result;
+}
+
+qnn::ProfilingLevel QnnEp::GetProfilingLevelFromETWLevel(unsigned char level) {
+  if (level == 5) {
+    LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
+    return qnn::ProfilingLevel::BASIC;
+  } else if (level < 5) {
+    LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: "
+                       << static_cast<int>(level);
+    return qnn::ProfilingLevel::OFF;
+  } else {
+    LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
+    return qnn::ProfilingLevel::DETAILED;
+  }
+}
+
+static std::unique_ptr<qnn::QnnSerializerConfig> ParseSerializerBackendOptions(const OrtApi& ort_api, const OrtSessionOptions& session_options) {
+  // Enable use of QNN Saver if the user provides a path the QNN Saver backend library.
+  static const std::string QNN_SAVER_PATH_KEY = "qnn_saver_path";
+  std::string qnn_saver_path;
+  GetSessionConfigEntryOrDefault(ort_api, session_options, QNN_SAVER_PATH_KEY.c_str(), "", qnn_saver_path);
+  if (!qnn_saver_path.empty()) {
+    LOGS_DEFAULT(VERBOSE) << "User specified QNN Saver path: " << qnn_saver_path;
+    return qnn::QnnSerializerConfig::CreateSaver(qnn_saver_path);
+  }
+
+  static const std::string DUMP_QNN_IR_DLC = "dump_qnn_ir_dlc";
+  auto dump_qnn_ir_dlc = ParseBoolOption(ort_api, session_options, DUMP_QNN_IR_DLC.c_str(), false);
+
+  static const std::string DUMP_QNN_IR_DLC_DIR = "dump_qnn_ir_dlc_dir";
+  std::string qnn_ir_dlc_dir;
+  GetSessionConfigEntryOrDefault(ort_api, session_options, DUMP_QNN_IR_DLC_DIR.c_str(), "", qnn_ir_dlc_dir);
+  if (!qnn_ir_dlc_dir.empty()) {
+    if (dump_qnn_ir_dlc) {
+      LOGS_DEFAULT(INFO) << "IR DLC directory: " << qnn_ir_dlc_dir;
+    } else {
+      LOGS_DEFAULT(WARNING) << "Provided a directory for dumping QNN graphs to DLC, "
+                            << "but did not set dump_qnn_ir_dlc to 1.";
+    }
+  }
+
+  static const std::string QNN_IR_BACKEND_PATH = "qnn_ir_backend_path";
+  std::string qnn_ir_backend_path = kDefaultIrBackendPath;
+  GetSessionConfigEntryOrDefault(ort_api, session_options, QNN_IR_BACKEND_PATH.c_str(), kDefaultIrBackendPath, qnn_ir_backend_path);
+  if (qnn_ir_backend_path != kDefaultIrBackendPath) {
+    if (dump_qnn_ir_dlc) {
+      LOGS_DEFAULT(INFO) << "IR backend path: " << qnn_ir_backend_path;
+    } else {
+      LOGS_DEFAULT(WARNING) << "Provided a path to the Ir backend for dumping QNN graphs to DLC, "
+                            << "but did not set dump_qnn_ir_dlc to 1.";
+    }
+  }
+
+  if (dump_qnn_ir_dlc) {
+    return qnn::QnnSerializerConfig::CreateIr(std::move(qnn_ir_backend_path), std::move(qnn_ir_dlc_dir));
+  }
+
+  return nullptr;
+}
+
 QnnEp::QnnEp(QnnEpFactory& factory, const std::string& name,
-             const Config& config, const OrtLogger& logger)
+             const OrtSessionOptions& session_options, const OrtLogger& logger)
     : OrtEp{},
       ApiPtrs{static_cast<const ApiPtrs&>(factory)},
       factory_{factory},
       name_{name},
-      config_{config},
-      logger_{logger} {
-  // context_cache_enabled_{config.enable_ep_context},
-  // share_ep_contexts_{config.share_ep_contexts},
-  // enable_vtcm_backup_buffer_sharing_{config.enable_vtcm_backup_buffer_sharing},
-  // context_node_name_prefix_{""},
-  // context_cache_path_cfg_{""}{
+      logger_{logger},
+      session_options_{session_options} {
   std::cout << "DEBUG: QnnEp constructor called with name: " << name << std::endl;
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
@@ -77,13 +317,404 @@ QnnEp::QnnEp(QnnEpFactory& factory, const std::string& name,
   OnRunStart = OnRunStartImpl;
   OnRunEnd = OnRunEndImpl;
 
-  // Initialize the backend manager
-  qnn::QnnBackendManagerConfig backend_config;
-  backend_config.backend_path = "QnnCpu.dll";  // Default backend path
-  backend_config.profiling_file_path = "";
-  backend_config.device_id = 0;
-  backend_config.soc_model = 0;
-  qnn_backend_manager_ = qnn::QnnBackendManager::Create(backend_config, *logger.ToInternal());
+  // Initialize from session options
+  {
+    // Get disable_cpu_ep_fallback setting from session options
+    std::string disable_cpu_ep_fallback_str;
+    GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                                  kOrtSessionOptionsDisableCPUEPFallback, "0",
+                                                  disable_cpu_ep_fallback_str);
+    disable_cpu_ep_fallback_ = disable_cpu_ep_fallback_str == "1";
+
+    // Get context cache settings
+    std::string context_cache_enabled_str;
+    GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                                  kOrtSessionOptionEpContextEnable, "0",
+                                                  context_cache_enabled_str);
+    context_cache_enabled_ = context_cache_enabled_str == "1";
+    LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled_;
+
+    std::string embed_mode;
+    GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                                  kOrtSessionOptionEpContextEmbedMode, "0",
+                                                  embed_mode);
+    if ("1" == embed_mode) {
+      qnn_context_embed_mode_ = true;
+    } else if ("0" == embed_mode) {
+      qnn_context_embed_mode_ = false;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
+    }
+    LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << qnn_context_embed_mode_;
+
+    GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                                  kOrtSessionOptionEpContextFilePath, "",
+                                                  context_cache_path_cfg_);
+    LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path_cfg_;
+
+    // For the case that workaround QNN context PD memory limit, user need split the model into pieces and
+    // generate the QNN context model separately.
+    // It could happen that the generated EPContext node in separate graph has same node name.
+    // User can set this context_node_name_prefix for each split pieces to avoid that happens.
+    GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                                  kOrtSessionOptionEpContextNodeNamePrefix, "",
+                                                  context_node_name_prefix_);
+    LOGS_DEFAULT(VERBOSE) << "User specified QNN context node name prefix: " << context_node_name_prefix_;
+
+    std::string share_ep_contexts_str;
+    GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                                  kOrtSessionOptionShareEpContexts, "0",
+                                                  share_ep_contexts_str);
+    share_ep_contexts_ = share_ep_contexts_str == "1";
+    LOGS_DEFAULT(VERBOSE) << "User specified option - share EP contexts across sessions: " << share_ep_contexts_;
+
+    std::string stop_share_ep_contexts_str;
+    GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                                  kOrtSessionOptionStopShareEpContexts, "0",
+                                                  stop_share_ep_contexts_str);
+    stop_share_ep_contexts_ = stop_share_ep_contexts_str == "1";
+    LOGS_DEFAULT(VERBOSE) << "User specified option - stop share EP contexts across sessions: " << stop_share_ep_contexts_;
+  }
+
+  std::string backend_path = kDefaultHtpBackendPath;
+  {
+    std::optional<std::string> backend_path_from_options{};
+
+    // Get backend type and path from session options
+    std::string backend_type;
+    std::string backend_path_option;
+
+    GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                  "backend_type", "",
+                                  backend_type);
+
+    GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                  "backend_path", "",
+                                  backend_path_option);
+
+    // Check if both options are provided
+    if (!backend_type.empty() && !backend_path_option.empty()) {
+      LOGS_DEFAULT(ERROR) << "Only one of 'backend_type' and 'backend_path' should be set.";
+    }
+    if (!backend_type.empty()) {
+      if (std::string parsed_backend_path; ParseBackendTypeName(backend_type, parsed_backend_path)) {
+        backend_path_from_options = parsed_backend_path;
+      } else {
+        LOGS_DEFAULT(ERROR) << "Failed to parse '" << "backend_type" << "' value.";
+      }
+    } else if (!backend_path_option.empty()) {
+      backend_path_from_options = backend_path_option;
+    }
+
+    // Use the determined backend path or default
+    if (backend_path_from_options.has_value()) {
+      backend_path = std::move(*backend_path_from_options);
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Using default backend path: " << backend_path;
+    }
+
+    LOGS_DEFAULT(VERBOSE) << "Using backend path: " << backend_path;
+  }
+
+  std::unique_ptr<qnn::QnnSerializerConfig> qnn_serializer_config = ParseSerializerBackendOptions(ort_api, session_options_);
+
+  std::string profiling_file_path;
+  static const std::string PROFILING_LEVEL = "profiling_level";
+  qnn::ProfilingLevel profiling_level = qnn::ProfilingLevel::OFF;
+  // separate out the profiling level for ETW in case it gets disabled later when we extract the events
+  // set to invalid to indicate that ETW is no enabled when we setup QNN
+  qnn::ProfilingLevel profiling_level_etw = qnn::ProfilingLevel::INVALID;
+  profiling_level_etw;
+
+#ifdef _WIN32
+  auto& provider = qnn::QnnTelemetry::Instance();
+  if (provider.IsEnabled()) {
+    auto level = provider.Level();
+    auto keyword = provider.Keyword();
+    if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
+      if (level != 0) {
+        profiling_level_etw = GetProfilingLevelFromETWLevel(level);
+      }
+    }
+  }
+#endif  // defined(_WIN32)
+
+  // Get profiling settings from session options
+  std::string profiling_level_str;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "profiling_level", "off",
+                                profiling_level_str);
+  ParseProfilingLevel(profiling_level_str, profiling_level);
+
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "profiling_file_path", "",
+                                profiling_file_path);
+  LOGS_DEFAULT(VERBOSE) << "Profiling file path: " << profiling_file_path;
+
+  // Get RPC control latency from session options
+  std::string rpc_control_latency_str;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "rpc_control_latency", "0",
+                                rpc_control_latency_str);
+  if (!rpc_control_latency_str.empty() && rpc_control_latency_str != "0") {
+    default_rpc_control_latency_ = static_cast<uint32_t>(std::stoul(rpc_control_latency_str));
+    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << default_rpc_control_latency_;
+  }
+
+  // default_htp_performance_mode from QNN EP option.
+  // set it once only for each thread as default so user don't need to set it for every session run
+  std::string htp_performance_mode_str;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "htp_performance_mode", "",
+                                htp_performance_mode_str);
+  if (!htp_performance_mode_str.empty()) {
+    auto logger_i = *(logger.ToInternal());
+    ParseHtpPerformanceMode(htp_performance_mode_str, default_htp_performance_mode_, logger_i);
+  }
+
+  // HTP graph finalization optimization mode
+  htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
+  std::string htp_graph_finalization_opt_mode_str;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "htp_graph_finalization_optimization_mode", "",
+                                htp_graph_finalization_opt_mode_str);
+  if (!htp_graph_finalization_opt_mode_str.empty()) {
+    ParseHtpGraphFinalizationOptimizationMode(htp_graph_finalization_opt_mode_str);
+  }
+
+  // QNN context priority
+  qnn::ContextPriority context_priority = qnn::ContextPriority::NORMAL;
+  std::string context_priority_str;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "qnn_context_priority", "",
+                                context_priority_str);
+  if (!context_priority_str.empty()) {
+    ParseQnnContextPriority(context_priority_str, context_priority);
+  }
+
+  // VTCM MB
+  std::string vtcm_mb_str;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "vtcm_mb", "0",
+                                vtcm_mb_str);
+  if (!vtcm_mb_str.empty() && vtcm_mb_str != "0") {
+    vtcm_size_in_mb_ = std::stoi(vtcm_mb_str);
+    LOGS_DEFAULT(VERBOSE) << "vtcm_mb: " << vtcm_size_in_mb_;
+    if (vtcm_size_in_mb_ <= 0) {
+      LOGS_DEFAULT(WARNING) << "Skip invalid vtcm_mb: " << vtcm_size_in_mb_;
+    }
+  }
+
+  // VTCM backup buffer sharing
+  std::string enable_vtcm_backup_buffer_sharing_str;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "enable_vtcm_backup_buffer_sharing", "0",
+                                enable_vtcm_backup_buffer_sharing_str);
+  if (enable_vtcm_backup_buffer_sharing_str == "1") {
+    enable_vtcm_backup_buffer_sharing_ = true;
+  } else if (enable_vtcm_backup_buffer_sharing_str != "0") {
+    LOGS_DEFAULT(WARNING) << "Invalid value entered for enable_vtcm_backup_buffer_sharing"
+                          << ": " << enable_vtcm_backup_buffer_sharing_str
+                          << ", only 1 or 0 are allowed. Setting to 0.";
+  }
+
+  LOGS_DEFAULT(VERBOSE) << "User specified enable_vtcm_backup_buffer_sharing: " << enable_vtcm_backup_buffer_sharing_;
+
+#if QNN_API_VERSION_MAJOR < 2 || ((QNN_API_VERSION_MAJOR) == 2 && (QNN_API_VERSION_MINOR < 26))
+    if (enable_vtcm_backup_buffer_sharing_) {
+      LOGS_DEFAULT(WARNING) << "User specified enable_vtcm_backup_buffer_sharing but QNN API version is older than 2.26.";
+    }
+#endif
+
+  // Device ID
+  std::string device_id_str;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "device_id", "0",
+                                device_id_str);
+  if (!device_id_str.empty()) {
+    int value = std::stoi(device_id_str);
+    if (value < 0) {
+      LOGS_DEFAULT(WARNING) << "Invalid device ID '" << value
+                            << "', only >= 0 allowed. Set to " << device_id_ << ".";
+    } else {
+      device_id_ = static_cast<uint32_t>(value);
+    }
+  }
+
+  // HTP architecture
+  std::string htp_arch_str;
+  QnnHtpDevice_Arch_t htp_arch = QNN_HTP_DEVICE_ARCH_NONE;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "htp_arch", "",
+                                htp_arch_str);
+  if (!htp_arch_str.empty()) {
+    ParseHtpArchitecture(htp_arch_str, htp_arch);
+  }
+
+  // SoC model
+  std::string soc_model_str;
+  uint32_t soc_model = QNN_SOC_MODEL_UNKNOWN;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "soc_model", "0",
+                                soc_model_str);
+  if (!soc_model_str.empty()) {
+    int value = std::stoi(soc_model_str);
+    if (value < 0) {
+      LOGS_DEFAULT(WARNING) << "Invalid SoC Model '" << value
+                            << "', only >= 0 allowed. Set to " << soc_model << ".";
+    } else {
+      soc_model = static_cast<uint32_t>(value);
+    }
+  }
+
+  // Op packages
+  std::string op_packages_str;
+  std::vector<onnxruntime::qnn::OpPackage> op_packages;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "op_packages", "",
+                                op_packages_str);
+  if (!op_packages_str.empty()) {
+    ParseOpPackages(op_packages_str, op_packages);
+  }
+
+  // HTP FP16 precision mode
+  std::string enable_htp_fp16_precision_str;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "enable_htp_fp16_precision", "0",
+                                enable_htp_fp16_precision_str);
+  if (enable_htp_fp16_precision_str == "1") {
+    enable_HTP_FP16_precision_ = true;
+  } else if (enable_htp_fp16_precision_str == "0") {
+    enable_HTP_FP16_precision_ = false;
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "Invalid enable_htp_fp16_precision: " << enable_HTP_FP16_precision_ << " only 0 or 1 allowed. Set to 0.";
+  }
+  LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_fp16_precision: " << enable_HTP_FP16_precision_;
+
+  // Check for conflicts
+  if (qnn_context_embed_mode_ && share_ep_contexts_) {
+    LOGS_DEFAULT(ERROR) << "[EP context generation:] Weight sharing enabled conflict with EP context embed mode. Inference will not work as expected!";
+  }
+
+  if (qnn_context_embed_mode_ && enable_vtcm_backup_buffer_sharing_) {
+    LOGS_DEFAULT(ERROR) << "[EP context generation:] VTCM backup buffer sharing enabled conflict with EP context embed mode. Inference will not work as expected!";
+  }
+
+  // HTP spill fill buffer
+  std::string enable_htp_spill_fill_buffer_str;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_,
+                                "enable_htp_spill_fill_buffer", "0",
+                                enable_htp_spill_fill_buffer_str);
+  enable_spill_fill_buffer_ = enable_htp_spill_fill_buffer_str == "1";
+
+  model_settings_.offload_graph_io_quantization = ParseBoolOption(ort_api, session_options_,
+                                                                 "offload_graph_io_quantization", true);
+
+  if (disable_cpu_ep_fallback_ && model_settings_.offload_graph_io_quantization) {
+    LOGS_DEFAULT(INFO) << "Fallback to CPU EP is disabled, but user tried to configure QNN EP to offload graph I/O "
+                       << "quantization/dequantization to another EP. These are conflicting options. Fallback to CPU "
+                       << "EP will remain disabled and graph I/O quantization/dequantization will not be offloaded "
+                       << "to another EP.";
+    model_settings_.offload_graph_io_quantization = false;
+  }
+
+  static const std::string QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED = "enable_htp_shared_memory_allocator";
+  if (ParseBoolOption(ort_api, session_options_, QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED.c_str(), false)) {
+    // Initialize rpcmem_library_.
+    // This is necessary for HtpSharedMemoryAllocator to function and also indicates that the allocator is available.
+    rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
+    model_settings_.htp_shared_memory = true;
+  }
+
+  dump_json_qnn_graph_ = ParseBoolOption(ort_api, session_options_, "dump_json_qnn_graph", false);
+
+  static const std::string QNN_GRAPH_DUMP_DIR = "json_qnn_graph_dir";
+  std::string json_graph_dir_str;
+  GetSessionConfigEntryOrDefault(ort_api, session_options_, QNN_GRAPH_DUMP_DIR.c_str(), "", json_graph_dir_str);
+
+  if (!json_graph_dir_str.empty()) {
+    json_qnn_graph_dir_ = json_graph_dir_str;
+    if (dump_json_qnn_graph_) {
+      LOGS_DEFAULT(INFO) << "JSON graphs directory: " << json_qnn_graph_dir_;
+    } else {
+      LOGS_DEFAULT(WARNING) << "Provided a directory for dumping QNN JSON graphs, "
+                            << "but did not enable dumping of QNN JSON graphs.";
+    }
+  }
+
+  // For context binary generation with weight sharing enabled, use the QnnBackendManager from the shared context if it exits
+  // So that all graphs from later sessions will be compiled into the same QNN context
+  if (((context_cache_enabled_ && share_ep_contexts_) || enable_vtcm_backup_buffer_sharing_) && SharedContext::GetInstance().GetSharedQnnBackendManager()) {
+    qnn_backend_manager_ = SharedContext::GetInstance().GetSharedQnnBackendManager();
+    // Clear the QnnBackendManager from singleton to stop the resource share
+    if (stop_share_ep_contexts_) {
+      SharedContext::GetInstance().ResetSharedQnnBackendManager();
+    }
+  } else {
+    qnn_backend_manager_ = qnn::QnnBackendManager::Create(
+        qnn::QnnBackendManagerConfig{backend_path,
+                                     profiling_level_etw,
+                                     profiling_level,
+                                     profiling_file_path,
+                                     context_priority,
+                                     std::move(qnn_serializer_config),
+                                     device_id_,
+                                     htp_arch,
+                                     soc_model,
+                                     op_packages}, *logger.ToInternal());
+    if (enable_vtcm_backup_buffer_sharing_) {
+      SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_);
+    }
+  }
+
+#if defined(_WIN32)
+  if (onnxruntime::logging::EtwRegistrationManager::SupportsETW()) {
+    auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
+    // Register callback for ETW capture state (rundown)
+    callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
+        [&etwRegistrationManager, this](
+            LPCGUID SourceId,
+            ULONG IsEnabled,
+            UCHAR Level,
+            ULONGLONG MatchAnyKeyword,
+            ULONGLONG MatchAllKeyword,
+            PEVENT_FILTER_DESCRIPTOR FilterData,
+            PVOID CallbackContext) {
+          ORT_UNUSED_PARAMETER(SourceId);
+          ORT_UNUSED_PARAMETER(MatchAnyKeyword);
+          ORT_UNUSED_PARAMETER(MatchAllKeyword);
+          ORT_UNUSED_PARAMETER(FilterData);
+          ORT_UNUSED_PARAMETER(CallbackContext);
+
+          if (IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
+            if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) {
+              auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
+              (void)qnn_backend_manager_->ResetQnnLogLevel(ortETWSeverity);
+            }
+            if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
+              if (Level != 0) {
+                // Commenting out Dynamic QNN Profiling for now
+                // There seems to be a crash in 3rd party QC QnnHtp.dll with this.
+                // Repro Scenario - start ETW tracing prior to session creation.
+                //    Then disable/enable ETW Tracing with the code below uncommented a few times
+                // auto profiling_level_etw = GetProfilingLevelFromETWLevel(Level);
+                // (void)qnn_backend_manager_->SetProfilingLevelETW(profiling_level_etw);
+                //
+                // NOTE(1/2/2025): It is possible that the above was not working in part because it is using the
+                // *logging ETW* subsystem to modify profiling, which should use an entirely different
+                // ETW provider (see QnnTelemetry). Should add callbacks for profiling to the QnnTelemetry ETW provider.
+              }
+            }
+          }
+
+          if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
+            // (void)qnn_backend_manager_->SetProfilingLevelETW(qnn::ProfilingLevel::INVALID);
+            (void)qnn_backend_manager_->ResetQnnLogLevel(std::nullopt);
+          }
+        });
+    etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
+  }
+#endif
 }
 
 QnnEp::~QnnEp() = default;
@@ -93,40 +724,40 @@ const char* ORT_API_CALL QnnEp::GetNameImpl(const OrtEp* this_ptr) noexcept {
   return qnn_ep->name_.c_str();
 }
 
-// // Logs information about the supported/unsupported nodes.
-// static void LogNodeSupport(const logging::Logger& logger,
-//                            logging::Severity log_severity,
-//                            logging::DataType log_data_type,
-//                            const onnxruntime::CodeLocation& call_site,
-//                            const qnn::IQnnNodeGroup& qnn_node_group,
-//                            Status support_status) {
-//   if (!logger.OutputIsEnabled(log_severity, log_data_type)) {
-//     return;
-//   }
+// Logs information about the supported/unsupported nodes.
+static void LogNodeSupport(const logging::Logger& logger,
+                           logging::Severity log_severity,
+                           logging::DataType log_data_type,
+                           const qnn::IQnnNodeGroup& qnn_node_group,
+                           Status support_status) {
+  if (!logger.OutputIsEnabled(log_severity, log_data_type)) {
+    return;
+  }
 
-//   size_t num_nodes = 0;
-//   std::ostringstream oss;
-//   for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
-//     for (const Node* node : node_unit->GetAllNodesInGroup()) {
-//       oss << "\tOperator type: " << node->OpType()
-//           << " Node name: " << node->Name()
-//           << " Node index: " << node->Index() << std::endl;
-//       num_nodes += 1;
-//     }
-//   }
-//   if (!support_status.IsOK()) {
-//     oss << "\tREASON : " << support_status.ErrorMessage() << std::endl;
-//   }
+  size_t num_nodes = 0;
+  std::ostringstream oss;
+  for (const OrtNodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
+    for (const OrtNode* node : node_unit->GetAllNodesInGroup()) {
+      size_t node_id = node->GetId();
+      const std::string& op_type = node->GetOpType();
+      const std::string& name = node->GetName();
 
-//   auto log_capture = Factory<logging::Capture>::Create(logger, log_severity,
-//                                                        logging::Category::onnxruntime,
-//                                                        log_data_type, call_site);
-//   log_capture->Stream()
-//       << (support_status.IsOK() ? "Validation PASSED " : "Validation FAILED ") << "for " << num_nodes
-//       << " nodes in " << qnn_node_group.Type() << " (" << qnn_node_group.GetTargetNodeUnit()->OpType() << ") :"
-//       << std::endl
-//       << oss.str();
-// }
+      oss << "\tOperator type: " << op_type
+          << " Node name: " << name
+          << " Node index: " << node_id << std::endl;
+      num_nodes += 1;
+    }
+  }
+  if (!support_status.IsOK()) {
+    oss << "\tREASON : " << support_status.ErrorMessage() << std::endl;
+  }
+
+  LOGS(logger, INFO) << (support_status.IsOK() ? "Validation PASSED " : "Validation FAILED ")
+      << "for " << num_nodes
+      << " nodes in " << qnn_node_group.Type() << " (" << qnn_node_group.GetTargetNodeUnit()->OpType() << ") :"
+      << std::endl
+      << oss.str();
+}
 
 OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
                                     const OrtGraph* graph,
@@ -184,11 +815,11 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
   for (const std::unique_ptr<qnn::IQnnNodeGroup>& qnn_node_group : qnn_node_groups) {
     const bool supported = qnn_node_group->IsSupported(qnn_model_wrapper, logger).IsOK();
 
-    // constexpr auto log_severity = logging::Severity::kINFO;
-    // constexpr auto log_data_type = logging::DataType::SYSTEM;
-    // if (logger.OutputIsEnabled(log_severity, log_data_type)) {
-    //   LogNodeSupport(logger, log_severity, log_data_type, ORT_WHERE, *qnn_node_group, status);
-    // }
+    constexpr auto log_severity = logging::Severity::kINFO;
+    constexpr auto log_data_type = logging::DataType::SYSTEM;
+    if (logger.OutputIsEnabled(log_severity, log_data_type)) {
+      LogNodeSupport(logger, log_severity, log_data_type, *qnn_node_group, status);
+    }
 
     if (supported) {
       for (const OrtNodeUnit* node_unit : qnn_node_group->GetNodeUnits()) {
@@ -240,140 +871,136 @@ void QnnEp::InitQnnHtpGraphConfigs(
   }
 }
 
-// bool QnnEp::EpSharedContextsHasAllGraphs(const OrtGraph* graph) {
-//     OrtArrayOfConstObjects* graph_nodes = nullptr;
-//     if (ort_api.Graph_GetNodes(graph, &graph_nodes) != nullptr) {
-//         return false;
-//     }
+bool QnnEp::EpSharedContextsHasAllGraphs(QnnEp* ep, const OrtGraph* graph) {
+    auto logger = *(ep->logger_.ToInternal());
+    OrtArrayOfConstObjects* graph_nodes = nullptr;
+    if (ort_api.Graph_GetNodes(graph, &graph_nodes) != nullptr) {
+        return false;
+    }
 
-//     size_t num_nodes = 0;
-//     if (ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes) != nullptr) {
-//         ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-//         return false;
-//     }
+    size_t num_nodes = 0;
+    if (ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes) != nullptr) {
+        ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+        return false;
+    }
 
-//     const void* const* node_data = nullptr;
-//     if (ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data) != nullptr) {
-//         ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-//         return false;
-//     }
+    const void* const* node_data = nullptr;
+    if (ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data) != nullptr) {
+        ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+        return false;
+    }
 
-//     bool all_graphs_found = true;
+    bool all_graphs_found = true;
 
-//     for (size_t i = 0; i < num_nodes; ++i) {
-//         const OrtNode* node = static_cast<const OrtNode*>(node_data[i]);
-//         const char* op_type = nullptr;
+    for (size_t i = 0; i < num_nodes; ++i) {
+        const OrtNode* node = static_cast<const OrtNode*>(node_data[i]);
+        const char* op_type = nullptr;
 
-//         if (ort_api.Node_GetOperatorType(node, &op_type) == nullptr && op_type != nullptr) {
-//             if (std::string(op_type) == "EPContext") {
-//                 // Check the 'source' attribute to verify it's from QNN
-//                 const OrtOpAttr* source_attr = nullptr;
-//                 if (ort_api.Node_GetAttributeByName(node, "source", &source_attr) == nullptr && source_attr != nullptr) {
-//                     char source_buffer[256] = {0};
-//                     size_t source_len = 0;
-//                     if (ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len) == nullptr) {
-//                         std::string cache_source(source_buffer, source_len);
+        if (ort_api.Node_GetOperatorType(node, &op_type) == nullptr && op_type != nullptr) {
+            if (std::string(op_type) == "EPContext") {
+                // Check the 'source' attribute to verify it's from QNN
+                const OrtOpAttr* source_attr = nullptr;
+                if (ort_api.Node_GetAttributeByName(node, "source", &source_attr) == nullptr && source_attr != nullptr) {
+                    char source_buffer[256] = {0};
+                    size_t source_len = 0;
+                    if (ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len) == nullptr) {
+                        std::string cache_source(source_buffer, source_len);
 
-//                         // Convert to lowercase for comparison
-//                         std::transform(cache_source.begin(), cache_source.end(), cache_source.begin(),
-//                                      [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+                        // Convert to lowercase for comparison
+                        std::transform(cache_source.begin(), cache_source.end(), cache_source.begin(),
+                                     [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
 
-//                         if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
-//                             // Get the graph name (node name)
-//                             const char* node_name = nullptr;
-//                             if (ort_api.Node_GetName(node, &node_name) == nullptr && node_name != nullptr) {
-//                                 std::string graph_name(node_name);
-//                                 bool has_shared_qnn_model = SharedContext::GetInstance().HasQnnModel(graph_name);
-//                                 if (!has_shared_qnn_model) {
-//                                     // Log the missing graph (equivalent to LOGS(logger, VERBOSE))
-//                                     if (logger_ != nullptr) {
-//                                         std::string log_message = "Graph: " + graph_name + " from EpContext node not found from shared EP contexts.";
-//                                         ort_api.Logger_LogMessage(logger_, ORT_LOGGING_LEVEL_VERBOSE, log_message.c_str(),
-//                                                                 ORT_FILE, __LINE__, __FUNCTION__);
-//                                     }
-//                                     all_graphs_found = false;
-//                                     break;
-//                                 }
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
+                        if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
+                            // Get the graph name (node name)
+                            const char* node_name = nullptr;
+                            if (ort_api.Node_GetName(node, &node_name) == nullptr && node_name != nullptr) {
+                                std::string graph_name(node_name);
+                                bool has_shared_qnn_model = SharedContext::GetInstance().HasQnnModel(graph_name);
+                                if (!has_shared_qnn_model) {
+                                    // Log the missing graph (equivalent to LOGS(logger, VERBOSE))
+                                    std::string log_message = "Graph: " + graph_name + " from EpContext node not found from shared EP contexts.";
+                                    LOGS(logger, VERBOSE) << log_message;
+                                    all_graphs_found = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-//     ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-//     return all_graphs_found;
-// }
+    ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+    return all_graphs_found;
+}
 
-// // Helper function to get main EPContext nodes - equivalent to GetMainEPCtxNodes
-// void QnnEp::GetMainEPCtxNodes(QnnEp* ep, const OrtGraph* graph, std::unordered_set<const OrtNode*>& ep_context_nodes) {
-//     OrtArrayOfConstObjects* graph_nodes = nullptr;
-//     if (ep->ort_api.Graph_GetNodes(graph, &graph_nodes) != nullptr) {
-//         return;
-//     }
+// Helper function to get main EPContext nodes - equivalent to GetMainEPCtxNodes
+void QnnEp::GetMainEPCtxNodes(QnnEp* ep, const OrtGraph* graph, std::unordered_set<const OrtNode*>& ep_context_nodes) {
+    auto logger = *(ep->logger_.ToInternal());
+    OrtArrayOfConstObjects* graph_nodes = nullptr;
+    if (ep->ort_api.Graph_GetNodes(graph, &graph_nodes) != nullptr) {
+        return;
+    }
 
-//     size_t num_nodes = 0;
-//     if (ep->ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes) != nullptr) {
-//         ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-//         return;
-//     }
+    size_t num_nodes = 0;
+    if (ep->ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes) != nullptr) {
+        ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+        return;
+    }
 
-//     const void* const* node_data = nullptr;
-//     if (ep->ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data) != nullptr) {
-//         ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-//         return;
-//     }
+    const void* const* node_data = nullptr;
+    if (ep->ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data) != nullptr) {
+        ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+        return;
+    }
 
-//     for (size_t i = 0; i < num_nodes; ++i) {
-//         const OrtNode* node = static_cast<const OrtNode*>(node_data[i]);
-//         const char* op_type = nullptr;
+    for (size_t i = 0; i < num_nodes; ++i) {
+        const OrtNode* node = static_cast<const OrtNode*>(node_data[i]);
+        const char* op_type = nullptr;
 
-//         if (ep->ort_api.Node_GetOperatorType(node, &op_type) == nullptr && op_type != nullptr) {
-//             if (std::string(op_type) == "EPContext") {
-//                 // Check main_context attribute
-//                 const OrtOpAttr* main_context_attr = nullptr;
-//                 if (ep->ort_api.Node_GetAttributeByName(node, "main_context", &main_context_attr) == nullptr && main_context_attr != nullptr) {
-//                     int64_t is_main_context = 0;
-//                     size_t out_size = 0;
-//                     if (ep->ort_api.ReadOpAttr(main_context_attr, ORT_OP_ATTR_INT, &is_main_context, sizeof(is_main_context), &out_size) == nullptr) {
-//                         // Check source attribute
-//                         const OrtOpAttr* source_attr = nullptr;
-//                         if (ep->ort_api.Node_GetAttributeByName(node, "source", &source_attr) == nullptr && source_attr != nullptr) {
-//                             char source_buffer[256] = {0};
-//                             size_t source_len = 0;
-//                             if (ep->ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len) == nullptr) {
-//                                 std::string cache_source(source_buffer, source_len);
+        if (ep->ort_api.Node_GetOperatorType(node, &op_type) == nullptr && op_type != nullptr) {
+            if (std::string(op_type) == "EPContext") {
+                // Check main_context attribute
+                const OrtOpAttr* main_context_attr = nullptr;
+                if (ep->ort_api.Node_GetAttributeByName(node, "main_context", &main_context_attr) == nullptr && main_context_attr != nullptr) {
+                    int64_t is_main_context = 0;
+                    size_t out_size = 0;
+                    if (ep->ort_api.ReadOpAttr(main_context_attr, ORT_OP_ATTR_INT, &is_main_context, sizeof(is_main_context), &out_size) == nullptr) {
+                        // Check source attribute
+                        const OrtOpAttr* source_attr = nullptr;
+                        if (ep->ort_api.Node_GetAttributeByName(node, "source", &source_attr) == nullptr && source_attr != nullptr) {
+                            char source_buffer[256] = {0};
+                            size_t source_len = 0;
+                            if (ep->ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len) == nullptr) {
+                                std::string cache_source(source_buffer, source_len);
 
-//                                 // Convert to lowercase for comparison
-//                                 std::transform(cache_source.begin(), cache_source.end(), cache_source.begin(),
-//                                              [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+                                // Convert to lowercase for comparison
+                                std::transform(cache_source.begin(), cache_source.end(), cache_source.begin(),
+                                             [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
 
-//                                 if (is_main_context && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
-//                                     // Log the found EPContext node
-//                                     if (ep->logger_ != nullptr) {
-//                                         const char* node_name = nullptr;
-//                                         size_t node_id = 0;
-//                                         ep->ort_api.Node_GetName(node, &node_name);
-//                                         ep->ort_api.Node_GetId(node, &node_id);
+                                if (is_main_context && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
+                                    // Log the found EPContext node
+                                    const char* node_name = nullptr;
+                                    size_t node_id = 0;
+                                    ep->ort_api.Node_GetName(node, &node_name);
+                                    ep->ort_api.Node_GetId(node, &node_id);
 
-//                                         std::string log_message = "EPContext Node found: [1] index: [" + std::to_string(node_id) +
-//                                                                 "] name: [" + (node_name ? node_name : "unknown") + "]";
-//                                         ep->ort_api.Logger_LogMessage(ep->logger_, ORT_LOGGING_LEVEL_VERBOSE, log_message.c_str(),
-//                                                                 ORT_FILE, __LINE__, __FUNCTION__);
-//                                     }
-//                                     ep_context_nodes.insert(node);
-//                                 }
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
+                                    std::string log_message = "EPContext Node found: [1] index: [" + std::to_string(node_id) +
+                                                            "] name: [" + (node_name ? node_name : "unknown") + "]";
+                                    LOGS(logger, VERBOSE) << log_message;
+                                    ep_context_nodes.insert(node);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-//     ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-// }
+    ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+}
 
 void QnnEp::PartitionCtxModel(const OrtEp* this_ptr, const OrtGraph* graph, size_t num_nodes_in_graph,
                               OrtEpGraphSupportInfo* graph_support_info) {
@@ -496,8 +1123,7 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
     return nullptr;
   }
 
-  // bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph);
-  bool is_qnn_ctx_model = false;
+  bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph, ep->ort_api);
 
   // auto gen_metadef_name = [ep, graph]() -> std::string {
   //     return ep->MakeMetadefName(graph);
@@ -508,20 +1134,20 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   RETURN_IF_ERROR(ep->ort_api.Graph_GetInputs(graph, &graph_inputs));
   RETURN_IF_ERROR(ep->ort_api.Graph_GetOutputs(graph, &graph_outputs));
 
-  if (is_qnn_ctx_model && ep->config_.share_ep_contexts && false) {  // SharedContext::GetInstance().HasSharedQnnModels()) {
-                                                                     // if (ep->EpSharedContextsHasAllGraphs(graph)) {
-    ep->PartitionCtxModel(this_ptr, graph, num_nodes_in_graph, graph_support_info);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_outputs);
-    return nullptr;
-    // }
+  if (is_qnn_ctx_model && ep->config_.share_ep_contexts && SharedContext::GetInstance().HasSharedQnnModels()) {
+    if (ep->EpSharedContextsHasAllGraphs(ep, graph)) {
+      ep->PartitionCtxModel(this_ptr, graph, num_nodes_in_graph, graph_support_info);
+      ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+      ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
+      ep->ort_api.ReleaseArrayOfConstObjects(graph_outputs);
+      return nullptr;
+    }
   }
 
   std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>> context_bin_map;
   if (ep->enable_vtcm_backup_buffer_sharing_) {
     std::unordered_set<const OrtNode*> ep_ctx_nodes;
-    // GetMainEPCtxNodes(ep, graph, ep_ctx_nodes);
+    ep->GetMainEPCtxNodes(ep, graph, ep_ctx_nodes);
 
     std::string model_path_string = "";
     std::string context_model_path;

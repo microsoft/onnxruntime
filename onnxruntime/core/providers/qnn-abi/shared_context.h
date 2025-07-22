@@ -7,11 +7,8 @@
 #include <mutex>
 #include <vector>
 
-// #if !BUILD_QNN_EP_STATIC_LIB
-// #include "core/providers/qnn-abi/builder/qnn_model.h"
-// #else
-// #include "core/providers/qnn-abi/builder/qnn_model.h"
-// #endif
+#include "core/providers/qnn-abi/ort_api.h"
+#include "core/providers/qnn-abi/builder/qnn_model.h"
 
 namespace onnxruntime {
 
@@ -22,28 +19,28 @@ class SharedContext {
     return instance_;
   }
 
-  // bool HasSharedQnnModels() {
-  //   const std::lock_guard<std::mutex> lock(mtx_);
-  //   return !shared_qnn_models_.empty();
-  // }
+  bool HasSharedQnnModels() {
+    const std::lock_guard<std::mutex> lock(mtx_);
+    return !shared_qnn_models_.empty();
+  }
 
-  // bool HasQnnModel(const std::string& model_name) {
-  //   auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
-  //                     [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
-  //   return it != shared_qnn_models_.end();
-  // }
+  bool HasQnnModel(const std::string& model_name) {
+    auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
+                      [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
+    return it != shared_qnn_models_.end();
+  }
 
-  // std::unique_ptr<qnn::QnnModel> GetSharedQnnModel(const std::string& model_name) {
-  //   const std::lock_guard<std::mutex> lock(mtx_);
-  //   auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
-  //                     [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
-  //   if (it == shared_qnn_models_.end()) {
-  //     return nullptr;
-  //   }
-  //   auto qnn_model = std::move(*it);
-  //   shared_qnn_models_.erase(it);
-  //   return qnn_model;
-  // }
+  std::unique_ptr<qnn::QnnModel> GetSharedQnnModel(const std::string& model_name) {
+    const std::lock_guard<std::mutex> lock(mtx_);
+    auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
+                      [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
+    if (it == shared_qnn_models_.end()) {
+      return nullptr;
+    }
+    auto qnn_model = std::move(*it);
+    shared_qnn_models_.erase(it);
+    return qnn_model;
+  }
 
   // bool SetSharedQnnModel(std::vector<std::unique_ptr<qnn::QnnModel>>&& shared_qnn_models,
   //                        std::string& duplicate_graph_names) {
@@ -109,7 +106,7 @@ class SharedContext {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SharedContext);
 
   // Used for passing through QNN models (deserialized from context binary) across sessions
-  // std::vector<std::unique_ptr<qnn::QnnModel>> shared_qnn_models_;
+  std::vector<std::unique_ptr<qnn::QnnModel>> shared_qnn_models_;
   // Used for compiling multiple models into same QNN context binary
   std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   // Track the shared ctx binary .bin file name, all _ctx.onnx point to this .bin file

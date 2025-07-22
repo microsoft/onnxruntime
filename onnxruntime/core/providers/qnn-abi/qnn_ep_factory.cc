@@ -146,20 +146,7 @@ OrtStatus* ORT_API_CALL QnnEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                      OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
                                                      "Creating QNN EP", ORT_FILE, __LINE__, __FUNCTION__));
 
-  // use properties from the device and ep_metadata if needed
-  // const OrtHardwareDevice* device = devices[0];
-  // const OrtKeyValuePairs* ep_metadata = ep_metadata[0];
-
-  // Create EP configuration from session options, if needed.
-  // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
-  std::string ep_context_enable;
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(factory->ort_api, *session_options,
-                                                 "ep.context_enable", "0", ep_context_enable));
-
-  QnnEp::Config config = {};
-  config.enable_ep_context = ep_context_enable == "1";
-
-  auto dummy_ep = std::make_unique<QnnEp>(*factory, factory->ep_name_, config, *logger);
+  auto dummy_ep = std::make_unique<QnnEp>(*factory, factory->ep_name_, *session_options, *logger);
 
   *ep = dummy_ep.release();
   return nullptr;
