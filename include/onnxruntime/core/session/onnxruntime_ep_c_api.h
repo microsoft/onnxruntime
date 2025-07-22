@@ -874,8 +874,8 @@ struct OrtEpFactory {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(ValidateCompiledModelCompatibilityInfo, _In_ OrtEpFactory* this_ptr,
-                                                          _In_ const char* compatibility_info,
-                                                          _Out_ OrtCompiledModelCompatibility* model_compatibility);
+                  _In_ const char* compatibility_info,
+                  _Out_ OrtCompiledModelCompatibility* model_compatibility);
 
   /** \brief Create an OrtAllocator that can be shared across sessions for the given OrtMemoryInfo.
    *
