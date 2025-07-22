@@ -3,7 +3,6 @@
 #include <limits>
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
-#include "core/common/span_utils.h"
 #include "core/framework/tensorprotoutils.h"
 
 #pragma once
@@ -273,7 +272,7 @@ struct MatchUnidirMaskResult {
   std::vector<NodeIndex> node_indices;  // id of all nodes in the subgraph for removing later.
 };
 
-// Return true when mask is unidirectional (lower trigular) or all elements are 1.
+// Return true when mask is unidirectional (lower triangular) or all elements are 1.
 template <class T>
 bool ValidateUnidirMask(gsl::span<const T> mask_data, int64_t w, bool& is_undirectional) {
   // The mask data has shape 1x1xWxW

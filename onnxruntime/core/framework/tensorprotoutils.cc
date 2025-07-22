@@ -274,14 +274,12 @@ Status TensorProtoWithExternalDataToTensorProto(
     ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(ten_proto.external_data(), external_data_info));
 
     // file_offset is address
-    if (utils::HasString(ten_proto)) {
-      auto tensor_shape = utils::GetTensorShapeFromTensorProto(ten_proto);
-      std::string* data = reinterpret_cast<std::string*>(external_data_info->GetOffset());
-      for (size_t i = 0, lim = narrow<size_t>(tensor_shape.Size()); i < lim; ++i) {
-        // set in raw data
-        result.add_string_data(*data);
-        ++data;
-      }
+    auto tensor_shape = utils::GetTensorShapeFromTensorProto(ten_proto);
+    std::string* data = reinterpret_cast<std::string*>(external_data_info->GetOffset());
+    for (size_t i = 0, lim = narrow<size_t>(tensor_shape.Size()); i < lim; ++i) {
+      // set in raw data
+      result.add_string_data(*data);
+      ++data;
     }
   } else {
     // Load the external data into memory
