@@ -105,7 +105,8 @@ jobs:
           Remove-Item -Path "$outputDir\models" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item -Path "$outputDir\vcpkg_installed" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item -Path "$outputDir\_deps" -Recurse -Force -ErrorAction SilentlyContinue
-
+          Remove-Item -Path "$outputDir\CMakeCache.txt" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\CMakeFiles" -Recurse -Force -ErrorAction SilentlyContinue
           # Remove intermediate object files as in the original script
           Remove-Item -Path $outputDir -Include "*.obj" -Recurse
         shell: pwsh
