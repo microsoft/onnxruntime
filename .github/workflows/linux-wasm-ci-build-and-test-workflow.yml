@@ -50,17 +50,6 @@ jobs:
         with:
           node-version: "22"
 
-      # The image used in this workflow has an old version of Node.js installed at /bin/node and npm at /bin/npm.
-      # We need to remove the system Node.js and npm, otherwise CMake will not be able to find the correct Node.js and npm executables.
-      - name: Remove the system Node.js
-        run: |
-          if [ -f /bin/node ]; then
-            rm /bin/node
-          fi
-          if [ -f /bin/npm ]; then
-            rm /bin/npm
-          fi
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
