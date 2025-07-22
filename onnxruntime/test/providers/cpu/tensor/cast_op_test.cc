@@ -1416,6 +1416,26 @@ TEST(CastOpTest, Float8E4M3FNToInt4x2) {
   TestCastOp<Float8E4M3FN, Int4x2>(gsl::make_span(float8_input), gsl::make_span(expected_int4x2_output), shape);
 }
 
+TEST(CastOpTest, Float8E4M3FNToInt4x2_OddShape) {
+  // GIVEN
+  const std::vector<int64_t> shape{1, 2, 3};
+  std::vector<Float8E4M3FN> float8_input;
+  const std::vector<float> input_values = {-8.0f, 7.0f, 0.0f, -1.0f, 3.0f, -5.0f};
+  for (float val : input_values) {
+    float8_input.emplace_back(Float8E4M3FN(val, true));
+  }
+
+  const std::vector<Int4x2> expected_int4x2_output = {
+      Int4x2(-8, 7),
+      Int4x2(0, -1),
+      Int4x2(3, -5)};
+
+  // WHEN, THEN
+  // The 'saturate_' bool inside the 'Cast' class can only be false if the conversion is to a float 8 type,
+  // so it's sufficient to test with the default saturate = 1 here, since we are not converting to float 8.
+  TestCastOp<Float8E4M3FN, Int4x2>(gsl::make_span(float8_input), gsl::make_span(expected_int4x2_output), shape);
+}
+
 TEST(CastOpTest, Float8E4M3FNToUInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
