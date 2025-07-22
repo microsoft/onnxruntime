@@ -294,10 +294,10 @@ TEST(MLOpTest, TreeEnsembleLeafLike) {
   OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
   int64_t n_targets = 1;
 
-  int64_t aggregate_function = 1; // SUM
-  int64_t post_transform = 0; // NONE
+  int64_t aggregate_function = 1;  // SUM
+  int64_t post_transform = 0;      // NONE
   std::vector<int64_t> tree_roots = {0, 2};
-  std::vector<uint8_t> nodes_modes = {0, 0, 0, 0, 0}; // BRANCH_LEQ
+  std::vector<uint8_t> nodes_modes = {0, 0, 0, 0, 0};  // BRANCH_LEQ
   std::vector<int64_t> nodes_featureids = {0, 1, 0, 1, 2};
   std::vector<double> nodes_splits = {2.0, 2.0, 3.0, 2.0, 1.0};
   std::vector<int64_t> nodes_truenodeids = {1, 0, 3, 4, 5};
