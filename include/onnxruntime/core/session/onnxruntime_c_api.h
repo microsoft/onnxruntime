@@ -5566,7 +5566,8 @@ struct OrtApi {
    * via CreateSessionFromArray.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] model_path Output parameter set to the model's filepath, which is an empty path string if unknown.
+   * \param[out] model_path Output parameter set to the model's null-terminated filepath.
+   *                        Set to an empty path string if unknown.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
