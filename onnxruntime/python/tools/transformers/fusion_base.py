@@ -95,7 +95,7 @@ class Fusion:
             if not isinstance(vals, np.ndarray):
                 bytes = np.array(vals, dtype=np_type).tobytes()
             else:
-                bytes = vals.astype(np_type).tobytes()
+                bytes = vals.tobytes()
             tensor = helper.make_tensor(
                 name=name,
                 data_type=data_type,
