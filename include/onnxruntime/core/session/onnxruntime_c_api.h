@@ -5560,7 +5560,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetName, _In_ const OrtGraph* graph, _Outptr_ const char** graph_name);
 
-  /** \brief Get the filepath to the ONNX model from which an OrtGraph is constructed.
+  /** \brief Get the filepath to the model from which an OrtGraph is constructed.
    *
    * \note The model's filepath is empty if the filepath is unknown, such as when the model is loaded from bytes
    * via CreateSessionFromArray.
