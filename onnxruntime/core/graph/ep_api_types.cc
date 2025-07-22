@@ -618,13 +618,9 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
                                                                              /*check_outer_scope*/ false);
 
     if (!graph_has_ortvalue) {
-      const ExternalDataInfo* ext_info = nullptr;
-
-      if (graph_viewer.GetGraph().GetExternalInitializerInfo(initializer_name, ext_info, /*check_outer_scope*/ false)) {
-        // Do nothing for external initializers. Will load/mmap into an OrtValue on demand.
-        assert(!initializer_value->IsAllocated());
-      } else {
-        // Copy to OrtValue. This should only happen for small initializers.
+      // Copy to OrtValue if not external. This should only happen for small initializers.
+      // Do nothing for external initializers, as we will load/mmap into an OrtValue on demand.
+      if (!utils::HasExternalData(*tensor_proto)) {
         ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
                                                          initializer_allocator, *initializer_value));
       }
@@ -693,12 +689,9 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
       // Add the OrtValue if this is an initializer.
       if (outer_initializer != nullptr) {
         if (!outer_initializer_value->IsAllocated()) {
-          const ExternalDataInfo* ext_info = nullptr;
-
-          if (parent_graph->GetExternalInitializerInfo(implicit_name, ext_info, /*check_outer_scope*/ true)) {
-            // Do nothing for external initializers. Will load/mmap into an OrtValue on demand.
-          } else {
-            // Copy to OrtValue. This should only happen for small initializers.
+          // Copy to OrtValue if not external. This should only happen for small initializers.
+          // Do nothing for external initializers. Will load/mmap into an OrtValue on demand.
+          if (!utils::HasExternalData(*outer_initializer)) {
             ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
                                                              *outer_initializer, initializer_allocator,
                                                              *outer_initializer_value));

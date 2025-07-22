@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// DO NOT include ORT header files as this is meant to be a header-only utility that can be copied
+// to other projects.
+
 /*
  SUMMARY:
    Utilities to serialize an OrtGraph into an ONNX GraphProto or ModelProto. Can be used by execution provider

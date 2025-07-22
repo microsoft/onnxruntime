@@ -3860,7 +3860,7 @@ Status Graph::LoadExternalInitializerAsOrtValue(const std::string& name, OrtValu
 
 bool Graph::GetExternalInitializerInfo(const std::string& name, const ExternalDataInfo*& ext_info,
                                        bool check_outer_scope) const {
-  // We want to make sure that the ort_value is found on the same level as its tensor_proto
+  // We want to make sure that the external data info is found on the same level as its tensor_proto
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   if (GetInitializedTensor(name, initializer)) {
     auto it = ext_initializers_.find(name);
