@@ -44,7 +44,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
         // model_file_path will use so_context_file_path if the onnx_model_path_name is not available,
         // especially in case of CreateSessionFormArray() where user must explicitly
         // specify absolute path for so_context_file_path.
-        auto model_file_path = [this]() {
+        auto model_file_path = [this]() -> const std::filesystem::path& {
           if (!session_context_.onnx_model_path_name.empty() &&
               std::filesystem::exists(session_context_.onnx_model_path_name)) return session_context_.onnx_model_path_name;
 
