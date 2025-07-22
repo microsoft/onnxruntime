@@ -1457,16 +1457,20 @@ Status QnnBackendManager::SetRpcPowerConfigs(uint32_t htp_power_config_client_id
 
   // Set rpc control latency here
   if (rpc_control_latency != 0) {
-    auto& rpc_control_latency_cfg = rpc_power_configs.emplace_back();
+    QnnHtpPerfInfrastructure_PowerConfig_t rpc_control_latency_cfg;
     rpc_control_latency_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_CONTROL_LATENCY;
     rpc_control_latency_cfg.rpcControlLatencyConfig = rpc_control_latency;
+
+    rpc_power_configs.emplace(rpc_power_configs.end(), rpc_control_latency_cfg);
   }
 
   // Note: v68 does not support rpc polling mode
   if (rpc_polling_time != 0) {
-    auto& rpc_polling_time_cfg = rpc_power_configs.emplace_back();
+    QnnHtpPerfInfrastructure_PowerConfig_t rpc_polling_time_cfg;
     rpc_polling_time_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
     rpc_polling_time_cfg.rpcPollingTimeConfig = rpc_polling_time;
+
+    rpc_power_configs.emplace(rpc_power_configs.end(), rpc_polling_time_cfg);
   }
 
   if (rpc_power_configs.size() > 0) {
