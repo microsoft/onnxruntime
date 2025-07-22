@@ -22,6 +22,8 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
             pkg_name += "-tensorrt"
         elif ep == "rocm":
             pkg_name += "-rocm"
+        elif ep == "migraphx":
+            pkg_name += "-migraphx"
     elif os == "linux":
         pkg_name += "-linux-"
         pkg_name += cpu_arch
@@ -31,6 +33,8 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
             pkg_name += "-tensorrt"
         elif ep == "rocm":
             pkg_name += "-rocm"
+        elif ep == "migraphx":
+            pkg_name += "-migraphx"
     elif os == "osx":
         pkg_name = "onnxruntime-osx-" + cpu_arch
     return pkg_name
@@ -43,8 +47,6 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
 # and not included in the base Microsoft.ML.OnnxRuntime.Gpu package
 def is_this_file_needed(ep, filename, package_name):
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
-        return False
-    if package_name == "Microsoft.ML.OnnxRuntime.MIGraphX":
         return False
     return (
         (ep != "cuda" or "cuda" in filename)
@@ -70,8 +72,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                     if (
                         child_file.suffix in suffixes
                         and is_this_file_needed(ep, child_file.name, package_name)
-                        and package_name not in ["Microsoft.ML.OnnxRuntime.Gpu.Linux",
-                                                 "Microsoft.ML.OnnxRuntime.MIGraphX.Linux"]
+                        and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Linux"
                     ):
                         files_list.append(
                             '<file src="' + str(child_file) + f'" target="runtimes/win-{cpu_arch}/native"/>'
@@ -102,7 +103,6 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                         child_file.suffix == ".so"
                         and is_this_file_needed(ep, child_file.name, package_name)
                         and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Windows"
-                        and package_name != "Microsoft.ML.OnnxRuntime.MIGraphX.Windows"
                     ):
                         files_list.append(
                             '<file src="' + str(child_file) + f'" target="runtimes/linux-{cpu_arch}/native"/>'
@@ -190,10 +190,8 @@ def generate_description(line_list, package_name):
         description = "This package contains Linux native shared library artifacts for ONNX Runtime with CUDA."
     elif "Microsoft.ML.OnnxRuntime.Gpu.Windows" in package_name:
         description = "This package contains Windows native shared library artifacts for ONNX Runtime with CUDA."
-    elif "Microsoft.ML.OnnxRuntime.MIGraphX.Linux" in package_name:
-        description = "This package contains Linux native shared library artifacts for ONNX Runtime with the MIGraphX."
-    elif "Microsoft.ML.OnnxRuntime.MIGraphX.Windows" in package_name:
-        description = "This package contains Windows native shared library artifacts for ONNX Runtime with the MIGraphX."
+    elif "Microsoft.ML.OnnxRuntime.MIGraphX" in package_name:
+        description = "This package contains native shared library artifacts for ONNX Runtime with MIGraphX."
     elif "Intel.ML.OnnxRuntime" in package_name:
         description = "This package contains native shared library artifacts for ONNX Runtime with OpenVINO."
     elif "Microsoft.ML.OnnxRuntime" in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
@@ -236,8 +234,6 @@ def add_common_dependencies(xml_text, package_name, version):
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Windows"' + ' version="' + version + '"/>')
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Linux"' + ' version="' + version + '"/>')
-    if package_name == "Microsoft.ML.OnnxRuntime.MIGraphX":
-        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.MIGraphX.Windows"' + ' version="' + version + '"/>')
 
 
 def generate_dependencies(xml_text, package_name, version):
@@ -374,8 +370,6 @@ def generate_files(line_list, args):
     is_snpe_package = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe"
     is_qnn_package = args.package_name == "Microsoft.ML.OnnxRuntime.QNN"
     is_migraphx_package = args.package_name == "Microsoft.ML.OnnxRuntime.MIGraphX"
-    is_migraphx_win_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.MIGraphX.Windows"
-    is_migraphx_linux_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.MIGraphX.Linux"
     is_training_package = args.package_name in [
         "Microsoft.ML.OnnxRuntime.Training",
         "Microsoft.ML.OnnxRuntime.Training.Gpu",
@@ -614,7 +608,7 @@ def generate_files(line_list, args):
                 ep_list = ["tensorrt", "cuda", None]
             elif is_rocm_gpu_package:
                 ep_list = ["rocm", None]
-            elif is_migraphx_package or is_migraphx_win_sub_package or is_migraphx_linux_sub_package:
+            elif is_migraphx_package:
                 ep_list = ["migraphx", None]
             else:
                 ep_list = [None]
@@ -830,7 +824,7 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
-    if args.execution_provider == "migraphx" or (is_migraphx_win_sub_package and not is_ado_packaging_build):
+    if args.execution_provider == "migraphx":
         files_list.append(
             "<file src="
             + '"'
