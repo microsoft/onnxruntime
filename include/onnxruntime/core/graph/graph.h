@@ -45,6 +45,7 @@
 struct OrtGraph;
 
 namespace onnxruntime {
+class ExternalDataInfo;
 class Graph;
 struct IndexedSubGraph;
 class Model;

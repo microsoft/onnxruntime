@@ -5477,7 +5477,8 @@ struct OrtApi {
    *
    * \param[in] value_info The OrtValueInfo instance.
    * \param[out] info Output parameter set to an OrtExternalInitializerInfo instance that can be used to query
-   *                  file path, file offset, etc. ORT sets this to NULL if the OrtValue is not an external initializer.
+   *                  file path, file offset, etc. ORT sets this to NULL if the OrtValueInfo does not represent
+   *                  an external initializer.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

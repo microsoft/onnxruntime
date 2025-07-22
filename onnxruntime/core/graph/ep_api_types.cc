@@ -472,8 +472,9 @@ Status EpValueInfo::GetExternalInitializerInfo(const onnxruntime::ExternalDataIn
   result = nullptr;
   if (!graph.GetExternalInitializerInfo(name_, result, /*check_outer_scope*/ true)) {
     result = nullptr;
-    return Status::OK();
   }
+
+  return Status::OK();
 }
 
 Status EpValueInfo::IsRequiredGraphInput(bool& is_required_graph_input) const {
