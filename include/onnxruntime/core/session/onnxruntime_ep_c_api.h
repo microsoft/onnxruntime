@@ -366,12 +366,11 @@ struct OrtEpApi {
   /** \brief Get the OrtMemoryDevice from an OrtValue instance if it contains a Tensor.
    *
    * \param[in] value The OrtValue instance to get the memory device from.
-   * \param[out] device The OrtMemoryDevice associated with the OrtValue instance.
-   * \return Status Success if OrtValue contains a Tensor. Otherwise, an error status is returned.
+   * \return Memory device if OrtValue contains a Tensor, nullptr otherwise.
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Value_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device);
+  ORT_API_T(const OrtMemoryDevice*, Value_GetMemoryDevice, _In_ const OrtValue* value);
 
   /** \brief Compare two OrtMemoryDevice instances for equality.
    *
@@ -441,6 +440,18 @@ typedef enum OrtEpDataLayout {
 
   OrtEpDataLayout_Default = OrtEpDataLayout_NCHW,
 } OrtEpDataLayout;
+
+/**
+ * \brief Enumeration describing the compatibility state of a compiled model relative to an execution provider.
+ *
+ * \since Version 1.23.
+ */
+typedef enum OrtCompiledModelCompatibility {
+  OrtCompiledModelCompatibility_EP_NOT_APPLICABLE = 0,
+  OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL,
+  OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION,
+  OrtCompiledModelCompatibility_EP_UNSUPPORTED,
+} OrtCompiledModelCompatibility;
 
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
@@ -668,6 +679,24 @@ struct OrtEp {
   ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ OrtEp* this_ptr,
                   _In_ const OrtMemoryDevice* memory_device,
                   _Outptr_ OrtSyncStreamImpl** stream);
+
+  /** \brief Get a string with details about the EP stack used to produce a compiled model.
+   *
+   * This function gets a compatibility information string that contains details about the execution provider
+   * used to compile a given model. This string can later be used with ValidateCompiledModelCompatibilityInfo
+   * to determine if a compiled model is compatible with the EP.
+   *
+   * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graph The OrtGraph instance for which to generate compatibility information.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(const char*, GetCompiledModelCompatibilityInfo, _In_ OrtEp* this_ptr,
+            _In_ const OrtGraph* graph);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -830,6 +859,23 @@ struct OrtEpFactory {
    * \since Version 1.23.
    */
   ORT_API_T(const char*, GetVersion, _In_ const OrtEpFactory* this_ptr);
+
+  /** \brief Validate the compatibility of a compiled model with the execution provider.
+   *
+   * This function validates if a model produced with the supplied compatibility info string is supported by the underlying EP.
+   * The EP should check if a compiled model is compatible with the EP and set the model_compatibility parameter accordingly.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] compatibility_info The compatibility information string that will be used
+   * \param[out] model_compatibility OrtCompiledModelCompatibility enum value describing the compatibility of the model with the EP.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValidateCompiledModelCompatibilityInfo, _In_ OrtEpFactory* this_ptr,
+                  _In_ const char* compatibility_info,
+                  _Out_ OrtCompiledModelCompatibility* model_compatibility);
 
   /** \brief Create an OrtAllocator that can be shared across sessions for the given OrtMemoryInfo.
    *
