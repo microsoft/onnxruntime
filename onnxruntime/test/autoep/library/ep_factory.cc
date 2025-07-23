@@ -209,8 +209,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
                                         "Value did not come directly from an OrtEpDevice returned by this factory.");
   }
 
-  OrtDeviceMemoryType mem_type;
-  RETURN_IF_ERROR(factory.ort_api.MemoryInfoGetDeviceMemType(memory_info, &mem_type));
+  OrtDeviceMemoryType mem_type = factory.ort_api.MemoryInfoGetDeviceMemType(memory_info);
 
   if (mem_type != OrtDeviceMemoryType_DEFAULT) {
     // we only registered default memory with EpDevice_AddAllocatorInfo so this should never happen

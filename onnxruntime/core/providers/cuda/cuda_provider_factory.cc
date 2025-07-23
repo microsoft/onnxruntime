@@ -680,7 +680,6 @@ struct CudaEpFactory : OrtEpFactory {
 
     CreateAllocator = CreateAllocatorImpl;
     ReleaseAllocator = ReleaseAllocatorImpl;
-
     CreateDataTransfer = CreateDataTransferImpl;
 
     IsStreamAware = IsStreamAwareImpl;

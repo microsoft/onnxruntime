@@ -546,9 +546,12 @@ Status PluginExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const>
 }
 std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTransfer() const {
   OrtDataTransferImpl* data_transfer_impl = nullptr;
-  OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
-  if (status != nullptr) {
-    ORT_THROW("Error creating data transfer: ", ToStatusAndRelease(status).ToString());
+
+  if (ep_factory_.CreateDataTransfer != nullptr) {
+    OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
+    if (status != nullptr) {
+      ORT_THROW("Error creating data transfer: ", ToStatusAndRelease(status).ToString());
+    }
   }
 
   if (data_transfer_impl == nullptr) {
@@ -564,6 +567,11 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
 
   for (const auto* memory_info : allocator_mem_infos_) {
     OrtAllocator* ort_allocator_ptr = nullptr;
+
+    if (!ort_ep_->CreateAllocator && !ep_factory_.CreateAllocator) {
+      ORT_THROW("The OrtEpDevice requires the EP library to implement an allocator, but none were found.");
+    }
+
     // prefer OrtEp function if available, otherwise fall back to using the OrtEpFactory implementation.
     OrtStatus* ort_status = ort_ep_->CreateAllocator
                                 ? ort_ep_->CreateAllocator(ort_ep_.get(), memory_info, &ort_allocator_ptr)
@@ -595,7 +603,7 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
 
 void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& registry,
                                                      AllocatorMap& /*allocators*/) const {
-  if (!ep_factory_.IsStreamAware(&ep_factory_)) {
+  if (ep_factory_.IsStreamAware == nullptr || !ep_factory_.IsStreamAware(&ep_factory_)) {
     return;
   }
 
@@ -603,6 +611,10 @@ void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistr
     if (mem_info->device.UsesCpuMemory()) {
       // CPU memory does not need a stream
       continue;
+    }
+
+    if (!ort_ep_->CreateSyncStreamForDevice && !ep_factory_.CreateSyncStreamForDevice) {
+      ORT_THROW("The OrtEpFactory is stream aware, but did not provide CreateSyncStreamForDevice.");
     }
 
     auto device_type = mem_info->device.Type();

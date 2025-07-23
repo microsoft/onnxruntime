@@ -26,15 +26,15 @@ std::string BarrierStep::ToString() const {
 WaitOnEPStep::WaitOnEPStep(WaitNotificationFn handle, NotificationIndex idx, NodeIndex node_index)
     : SequentialExecutionPlan::ExecutionStep(node_index),
       wait_fn_(handle),
-      notification_idx_(idx) {}
+      notification_idx_(idx) {
+  ORT_ENFORCE(wait_fn_, "WaitNoficationFn must be provided.");
+}
 
 Status WaitOnEPStep::Execute(StreamExecutionContext& ctx,
                              size_t stream_idx,
                              SessionScope& /*session_scope*/,
                              const bool& /*terminate_flag*/,
                              bool& continue_flag) {
-  ORT_ENFORCE(wait_fn_, "WaitOnEPStep.wait_handle is null");
-
   auto* stream = ctx.GetDeviceStream(stream_idx);
   auto& notification = *ctx.GetNotification(notification_idx_);
   wait_fn_(stream, notification);

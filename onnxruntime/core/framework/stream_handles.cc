@@ -3,6 +3,8 @@
 
 #include "core/framework/stream_handles.h"
 
+#include <algorithm>
+
 namespace onnxruntime {
 
 void Stream::UpdateWithAwaitedNotification(const synchronize::Notification& notification) {
