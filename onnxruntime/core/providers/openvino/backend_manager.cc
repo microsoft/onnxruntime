@@ -183,9 +183,13 @@ BackendManager::BackendManager(SessionContext& session_context,
   }
   if (session_context_.so_context_enable &&
       (subgraph_context_.is_ep_ctx_ovir_encapsulated || !subgraph_context_.is_ep_ctx_graph)) {
-    auto status = onnxruntime::openvino_ep::BackendManager::ExportCompiledBlobAsEPCtxNode(subgraph);
-    if (!status.IsOK()) {
-      ORT_THROW(status);
+    if (concrete_backend_) {
+      auto status = onnxruntime::openvino_ep::BackendManager::ExportCompiledBlobAsEPCtxNode(subgraph);
+      if (!status.IsOK()) {
+        ORT_THROW(status);
+      }
+    } else {
+      ORT_THROW("[OpenVINO-EP] Cannot export compiled blob as EPCtx Node: Backend not initialized.");
     }
   }
 }
@@ -660,6 +664,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
 }
 
 void BackendManager::ShutdownBackendManager() {
+  std::unique_lock<std::mutex> lock(mutex_);
   backend_map_.clear();
   concrete_backend_.reset();
 }
