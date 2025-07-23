@@ -96,12 +96,12 @@ OrtStatus* OpenVINOEpPluginFactory::GetSupportedDevices(const OrtHardwareDevice*
 
     const auto& ov_device_type = device_it->second;
     std::string ov_device_name;
-    auto get_pci_device_id = [&](const std::string& ov_device) {
+    auto get_gpu_device_id = [&](const std::string& ov_device) {
       try {
-        ov::device::PCIInfo pci_info = ov_core_->get_property(ov_device, ov::device::pci_info);
-        return pci_info.device;
+        auto device_id_str = ov_core_->get_property(ov_device, "GPU_DEVICE_ID").as<std::string>();
+        return static_cast<uint32_t>(std::stoul(device_id_str, nullptr, 0));
       } catch (ov::Exception&) {
-        return 0u;  // If we can't get the PCI info, we won't have a device ID.
+        return 0u;  // If we can't get the GPU_DEVICE_ID info, we won't have a device ID.
       }
     };
 
@@ -111,7 +111,7 @@ OrtStatus* OpenVINOEpPluginFactory::GetSupportedDevices(const OrtHardwareDevice*
       // If there are multiple devices of the same type, we need to match by device ID.
       matched_device = std::find_if(filtered_devices.begin(), filtered_devices.end(), [&](const std::string& ov_device) {
         uint32_t ort_device_id = ort_api.HardwareDevice_DeviceId(&device);
-        return ort_device_id == get_pci_device_id(ov_device);
+        return ort_device_id == get_gpu_device_id(ov_device);
       });
     }
 
