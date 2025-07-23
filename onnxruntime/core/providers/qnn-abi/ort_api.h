@@ -121,6 +121,8 @@ struct OrtNodeUnitIODef {
   ONNXTensorElementDataType type;
   std::vector<int64_t> shape;
   std::optional<QuantParam> quant_param;
+
+  bool Exists() const noexcept { return !name.empty(); }
 };
 
 class OrtNodeUnit {
@@ -149,7 +151,14 @@ class OrtNodeUnit {
   const std::string& Domain() const noexcept { return target_node_.GetDomain(); }
   const std::string& OpType() const noexcept { return target_node_.GetOpType(); }
   const std::string& Name() const noexcept { return target_node_.GetName(); }
-  // int SinceVersion() const noexcept;
+  int SinceVersion() const noexcept {
+    int since_version;
+    Status status = target_node_.GetSinceVersion(since_version);
+    if (!status.IsOK()) {
+      since_version = -1;
+    }
+    return since_version;
+  }
   NodeIndex Index() const noexcept { return target_node_.GetId(); }
   // const std::filesystem::path& ModelPath() const noexcept;
   // ProviderType GetExecutionProviderType() const noexcept;

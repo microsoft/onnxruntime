@@ -39,171 +39,171 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateCumSumOpBuilder("CumSum", *this);
   }
 
-  // {
-  //   CreateSimpleOpBuilder("Add", *this);
-  //   CreateSimpleOpBuilder("Asin", *this);
-  //   CreateSimpleOpBuilder("Atan", *this);
-  CreateSimpleOpBuilder("Mul", *this);
-  //   CreateSimpleOpBuilder("Abs", *this);
-  //   CreateSimpleOpBuilder("And", *this);
-  //   CreateSimpleOpBuilder("Ceil", *this);
-  //   CreateSimpleOpBuilder("Cos", *this);
-  //   CreateSimpleOpBuilder("Sign", *this);
-  //   CreateSimpleOpBuilder("Div", *this);
-  //   CreateSimpleOpBuilder("Equal", *this);
-  //   CreateSimpleOpBuilder("Exp", *this);
-  //   CreateSimpleOpBuilder("Floor", *this);
-  //   CreateSimpleOpBuilder("Greater", *this);
-  //   CreateSimpleOpBuilder("GreaterOrEqual", *this);
-  //   CreateSimpleOpBuilder("LeakyRelu", *this);
-  //   CreateSimpleOpBuilder("Less", *this);
-  //   CreateSimpleOpBuilder("LessOrEqual", *this);
-  //   CreateSimpleOpBuilder("Log", *this);
-  //   CreateSimpleOpBuilder("Max", *this);
-  //   CreateSimpleOpBuilder("Min", *this);
-  //   CreateSimpleOpBuilder("Neg", *this);
-  //   CreateSimpleOpBuilder("Not", *this);
-  //   CreateSimpleOpBuilder("Or", *this);
-  //   CreateSimpleOpBuilder("Pow", *this);
-  //   CreateSimpleOpBuilder("PRelu", *this);
-  //   CreateSimpleOpBuilder("Relu", *this);
-  //   CreateSimpleOpBuilder("Gelu", *this);
-  //   CreateSimpleOpBuilder("Elu", *this);
-  //   CreateSimpleOpBuilder("Round", *this);
-  //   CreateSimpleOpBuilder("Where", *this);
-  //   CreateSimpleOpBuilder("ScatterND", *this);
-  //   CreateSimpleOpBuilder("Sigmoid", *this);
-  //   CreateSimpleOpBuilder("Sin", *this);
-  //   CreateSimpleOpBuilder("Sqrt", *this);
-  //   CreateSimpleOpBuilder("Sub", *this);
-  //   CreateSimpleOpBuilder("Sum", *this);
-  //   CreateSimpleOpBuilder("Tanh", *this);
+  {
+    CreateEinsumOpBuilder("Einsum", *this);
+  }
 
-  //   CreateSimpleOpBuilder("Concat", *this);
+  {
+    CreateExpandOpBuilder("Expand", *this);
+  }
 
-  //   CreateSimpleOpBuilder("QuantizeLinear", *this);
-  //   CreateSimpleOpBuilder("DequantizeLinear", *this);
+  {
+    CreateGatherOpBuilder("Gather", *this);
+    CreateGatherOpBuilder("GatherElements", *this);
+  }
 
-  //   CreateSimpleOpBuilder("HardSwish", *this);
-  //   CreateSimpleOpBuilder("HardSigmoid", *this);
+  {
+    CreateGemmOpBuilder("Gemm", *this);
+  }
 
-  //   CreateSimpleOpBuilder("DepthToSpace", *this);
-  //   CreateSimpleOpBuilder("SpaceToDepth", *this);
+  {
+    CreateInstanceNormOpBuilder("InstanceNormalization", *this);
+  }
 
-  //   CreateSimpleOpBuilder("GridSample", *this);
+  {
+    CreateLayerNormOpBuilder("LayerNormalization", *this);
+  }
 
-  //   CreateSimpleOpBuilder("LpNormalization", *this);
-  // }
+  {
+    CreateLRNOpBuilder("LRN", *this);
+  }
 
-  // {
-  //   CreateSoftmaxOpBuilder("Softmax", *this);
-  //   CreateSoftmaxOpBuilder("LogSoftmax", *this);
-  // }
+  {
+    CreateLSTMOpBuilder("LSTM", *this);
+  }
 
-  // {
-  //   CreateReduceOpBuilder("ReduceMax", *this);
-  //   CreateReduceOpBuilder("ReduceMean", *this);
-  //   CreateReduceOpBuilder("ReduceMin", *this);
-  //   CreateReduceOpBuilder("ReduceProd", *this);
-  //   CreateReduceOpBuilder("ReduceSum", *this);
-  //   CreateReduceOpBuilder("ReduceL2", *this);
-  // }
+  {
+    CreateMatMulOpBuilder("MatMul", *this);
+  }
 
-  // {
-  //   CreatePoolOpBuilder("GlobalAveragePool", *this);
-  //   CreatePoolOpBuilder("AveragePool", *this);
-  //   CreatePoolOpBuilder("MaxPool", *this);
-  //   CreatePoolOpBuilder("GlobalMaxPool", *this);
-  // }
+  {
+    CreateMeanOpBuilder("Mean", *this);
+  }
 
-  // {
-  //   CreateReshapeOpBuilder("Reshape", *this);
-  //   CreateReshapeOpBuilder("Flatten", *this);
-  //   CreateReshapeOpBuilder("Squeeze", *this);
-  //   CreateReshapeOpBuilder("Unsqueeze", *this);
-  // }
+  {
+    CreatePadOpBuilder("Pad", *this);
+  }
 
-  // {
-  //   CreateGemmOpBuilder("Gemm", *this);
-  // }
+  {
+    CreatePoolOpBuilder("GlobalAveragePool", *this);
+    CreatePoolOpBuilder("AveragePool", *this);
+    CreatePoolOpBuilder("MaxPool", *this);
+    CreatePoolOpBuilder("GlobalMaxPool", *this);
+  }
 
-  // {
-  //   CreateGatherOpBuilder("Gather", *this);
-  //   CreateGatherOpBuilder("GatherElements", *this);
-  // }
+  {
+    CreateReciprocalOpBuilder("Reciprocal", *this);
+  }
 
-  // {
-  //   CreateSliceOpBuilder("Slice", *this);
-  // }
+  {
+    CreateReduceOpBuilder("ReduceMax", *this);
+    CreateReduceOpBuilder("ReduceMean", *this);
+    CreateReduceOpBuilder("ReduceMin", *this);
+    CreateReduceOpBuilder("ReduceProd", *this);
+    CreateReduceOpBuilder("ReduceSum", *this);
+    CreateReduceOpBuilder("ReduceL2", *this);
+  }
 
-  // {
-  //   CreateSplitOpBuilder("Split", *this);
-  // }
+  {
+    CreateReshapeOpBuilder("Reshape", *this);
+    CreateReshapeOpBuilder("Flatten", *this);
+    CreateReshapeOpBuilder("Squeeze", *this);
+    CreateReshapeOpBuilder("Unsqueeze", *this);
+  }
 
-  // {
-  //   CreateResizeOpBuilder("Resize", *this);
-  // }
+  {
+    CreateResizeOpBuilder("Resize", *this);
+  }
 
-  // {
-  //   CreateUpsampleOpBuilder("Upsample", *this);
-  // }
+  {
+    CreateSimpleOpBuilder("Add", *this);
+    CreateSimpleOpBuilder("Asin", *this);
+    CreateSimpleOpBuilder("Atan", *this);
+    CreateSimpleOpBuilder("Mul", *this);
+    CreateSimpleOpBuilder("Abs", *this);
+    CreateSimpleOpBuilder("And", *this);
+    CreateSimpleOpBuilder("Ceil", *this);
+    CreateSimpleOpBuilder("Cos", *this);
+    CreateSimpleOpBuilder("Sign", *this);
+    CreateSimpleOpBuilder("Div", *this);
+    CreateSimpleOpBuilder("Equal", *this);
+    CreateSimpleOpBuilder("Exp", *this);
+    CreateSimpleOpBuilder("Floor", *this);
+    CreateSimpleOpBuilder("Greater", *this);
+    CreateSimpleOpBuilder("GreaterOrEqual", *this);
+    CreateSimpleOpBuilder("LeakyRelu", *this);
+    CreateSimpleOpBuilder("Less", *this);
+    CreateSimpleOpBuilder("LessOrEqual", *this);
+    CreateSimpleOpBuilder("Log", *this);
+    CreateSimpleOpBuilder("Max", *this);
+    CreateSimpleOpBuilder("Min", *this);
+    CreateSimpleOpBuilder("Neg", *this);
+    CreateSimpleOpBuilder("Not", *this);
+    CreateSimpleOpBuilder("Or", *this);
+    CreateSimpleOpBuilder("Pow", *this);
+    CreateSimpleOpBuilder("PRelu", *this);
+    CreateSimpleOpBuilder("Relu", *this);
+    CreateSimpleOpBuilder("Gelu", *this);
+    CreateSimpleOpBuilder("Elu", *this);
+    CreateSimpleOpBuilder("Round", *this);
+    CreateSimpleOpBuilder("Where", *this);
+    CreateSimpleOpBuilder("ScatterND", *this);
+    CreateSimpleOpBuilder("Sigmoid", *this);
+    CreateSimpleOpBuilder("Sin", *this);
+    CreateSimpleOpBuilder("Sqrt", *this);
+    CreateSimpleOpBuilder("Sub", *this);
+    CreateSimpleOpBuilder("Sum", *this);
+    CreateSimpleOpBuilder("Tanh", *this);
 
-  // {
-  //   CreateTopKOpBuilder("TopK", *this);
-  // }
+    CreateSimpleOpBuilder("Concat", *this);
 
-  // {
-  //   CreateTileOpBuilder("Tile", *this);
-  // }
+    CreateSimpleOpBuilder("QuantizeLinear", *this);
+    CreateSimpleOpBuilder("DequantizeLinear", *this);
 
-  // {
-  //   CreateInstanceNormOpBuilder("InstanceNormalization", *this);
-  // }
+    CreateSimpleOpBuilder("HardSwish", *this);
+    CreateSimpleOpBuilder("HardSigmoid", *this);
 
-  // {
-  //   CreateLayerNormOpBuilder("LayerNormalization", *this);
-  // }
+    CreateSimpleOpBuilder("DepthToSpace", *this);
+    CreateSimpleOpBuilder("SpaceToDepth", *this);
 
-  // {
-  //   CreateLRNOpBuilder("LRN", *this);
-  // }
+    CreateSimpleOpBuilder("GridSample", *this);
 
-  // {
-  //   CreateTransposeOpBuilder("Transpose", *this);
-  // }
+    CreateSimpleOpBuilder("LpNormalization", *this);
+  }
 
-  // {
-  //   CreateReciprocalOpBuilder("Reciprocal", *this);
-  // }
+  {
+    CreateSliceOpBuilder("Slice", *this);
+  }
 
-  // {
-  //   CreatePadOpBuilder("Pad", *this);
-  // }
+  {
+    CreateSoftmaxOpBuilder("Softmax", *this);
+    CreateSoftmaxOpBuilder("LogSoftmax", *this);
+  }
 
-  // {
-  //   CreateExpandOpBuilder("Expand", *this);
-  // }
+  {
+    CreateSplitOpBuilder("Split", *this);
+  }
 
-  // {
-  //   CreateEinsumOpBuilder("Einsum", *this);
-  // }
+  {
+    CreateTileOpBuilder("Tile", *this);
+  }
 
-  // {
-  //   CreateMatMulOpBuilder("MatMul", *this);
-  // }
+  {
+    CreateTopKOpBuilder("TopK", *this);
+  }
 
-  // {
-  //   CreateMeanOpBuilder("Mean", *this);
-  // }
+  {
+    CreateTransposeOpBuilder("Transpose", *this);
+  }
 
-  // {
-  //   CreateLSTMOpBuilder("LSTM", *this);
-  // }
+  {
+    CreateUpsampleOpBuilder("Upsample", *this);
+  }
 }
 
-// void RegisterUDOBuilder(const std::string& op_type, const std::string& op_package) {
-//   CreateUDOBuilder(op_type, op_package, op_registrations);
-// }
+void RegisterUDOBuilder(const std::string& op_type, const std::string& op_package) {
+  CreateUDOBuilder(op_type, op_package, op_registrations);
+}
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type) {
   return op_registrations.GetOpBuilderByOnnxOpType(onnx_op_type);

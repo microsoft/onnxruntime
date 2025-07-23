@@ -306,17 +306,17 @@ class BaseOpBuilder : public IOpBuilder {
   std::string op_builder_type_;
 };
 
-// // Type that holds information about an ONNX attribute.
-// template <typename ValType>
-// struct OnnxAttrInfo {
-//   std::string name;     // Attribute's name.
-//   ValType default_val;  // Attribute's default value.
-// };
+// Type that holds information about an ONNX attribute.
+template <typename ValType>
+struct OnnxAttrInfo {
+  std::string name;     // Attribute's name.
+  ValType default_val;  // Attribute's default value.
+};
 
-// template <typename ValType>
-// inline ValType GetOnnxAttr(const NodeAttrHelper& node_helper, const OnnxAttrInfo<ValType>& attr_info) {
-//   return node_helper.Get(attr_info.name, attr_info.default_val);
-// }
+template <typename ValType>
+inline ValType GetOnnxAttr(const OrtNodeAttrHelper& node_helper, const OnnxAttrInfo<ValType>& attr_info) {
+  return node_helper.Get(attr_info.name, attr_info.default_val);
+}
 
 // Layout sensitive op can't use Qnn Op validation API to verify Op support before layout transformation
 // Need to check this explicitly

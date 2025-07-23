@@ -99,13 +99,13 @@ bool OnnxDataTypeToQnnDataType(const ONNXTensorElementDataType onnx_data_type,
                                Qnn_DataType_t& qnn_data_type,
                                bool is_quantized = false);
 
-inline Status GetOnnxTensorElemDataType(const NodeArg& node_arg, /*out*/ int32_t& onnx_data_type) {
-  auto type_proto = node_arg.TypeAsProto();
-  ORT_RETURN_IF_NOT(type_proto != nullptr && type_proto->has_tensor_type() && type_proto->tensor_type().has_elem_type(),
-                    "NodeArg must have a tensor TypeProto");
-  onnx_data_type = type_proto->tensor_type().elem_type();
-  return Status::OK();
-}
+// inline Status GetOnnxTensorElemDataType(const NodeArg& node_arg, /*out*/ int32_t& onnx_data_type) {
+//   auto type_proto = node_arg.TypeAsProto();
+//   ORT_RETURN_IF_NOT(type_proto != nullptr && type_proto->has_tensor_type() && type_proto->tensor_type().has_elem_type(),
+//                     "NodeArg must have a tensor TypeProto");
+//   onnx_data_type = type_proto->tensor_type().elem_type();
+//   return Status::OK();
+// }
 
 template <typename IntType>
 static Status InvertPerm(gsl::span<const IntType> perm, /*out*/ gsl::span<IntType> perm_inv) {
