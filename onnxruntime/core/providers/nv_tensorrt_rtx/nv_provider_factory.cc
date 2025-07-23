@@ -283,9 +283,8 @@ struct NvTrtRtxDataTransferImpl : OrtDataTransferImpl {
       OrtValue* dst_tensor = dst_tensors[idx];
       OrtSyncStream* stream = streams ? streams[idx] : nullptr;
 
-      const OrtMemoryDevice *src_device = nullptr, *dst_device = nullptr;
-      RETURN_IF_ERROR(impl.ep_api.Value_GetMemoryDevice(src_tensor, &src_device));
-      RETURN_IF_ERROR(impl.ep_api.Value_GetMemoryDevice(dst_tensor, &dst_device));
+      const OrtMemoryDevice* src_device = impl.ep_api.Value_GetMemoryDevice(src_tensor);
+      const OrtMemoryDevice* dst_device = impl.ep_api.Value_GetMemoryDevice(dst_tensor);
 
       size_t bytes;
       RETURN_IF_ERROR(impl.ort_api.GetTensorSizeInBytes(src_tensor, &bytes));
@@ -591,16 +590,16 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
         factory->ort_api.CreateKeyValuePairs(&ep_options);
         factory->ort_api.AddKeyValuePair(ep_options, "device_id", std::to_string(device_id).c_str());
 
-        OrtEpDevice* ep_device = nullptr;
         RETURN_IF_ERROR(factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, nullptr, ep_options,
-                                                                   &ep_devices[num_ep_devices++]));
+                                                                   &ep_devices[num_ep_devices]));
         factory->ort_api.ReleaseKeyValuePairs(ep_options);
 
         const OrtMemoryInfo* gpu_mem_info = factory->gpu_memory_infos[device_id].get();
         const OrtMemoryInfo* host_accessible_mem_info = factory->host_accessible_memory_infos[device_id].get();
 
-        RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, gpu_mem_info));
-        RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, host_accessible_mem_info));
+        RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_devices[num_ep_devices], gpu_mem_info));
+        RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_devices[num_ep_devices], host_accessible_mem_info));
+        num_ep_devices++;
         device_id++;
       }
     }
@@ -731,18 +730,14 @@ OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
 
   // Factory could use registration_name or define its own EP name.
-<<<<<<< HEAD
-  auto factory_gpu = std::make_unique<NvTensorRtRtxEpFactory>(*ort_api, *default_logger, OrtHardwareDeviceType_GPU);
-=======
-  auto factory_gpu = std::make_unique<NvTensorRtRtxEpFactory>(*ort_api, *default_logger);
->>>>>>> c8d880128 (!. copied changes from CUDA EP for the EP afctory interface.)
+  auto factory = std::make_unique<NvTensorRtRtxEpFactory>(*ort_api, *default_logger);
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
                                  "Not enough space to return EP factory. Need at least one.");
   }
 
-  factories[0] = factory_gpu.release();
+  factories[0] = factory.release();
   *num_factories = 1;
 
   return nullptr;

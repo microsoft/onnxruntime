@@ -8,8 +8,12 @@
 #include "gtest/gtest.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/common/trt_op_test_utils.h"
+#include "test/providers/nv_tensorrt_rtx/test_nv_trt_rtx_ep_util.h"
 
+#include "test/util/include/api_asserts.h"
+#include "test/util/include/asserts.h"
 #include <onnxruntime_cxx_api.h>
+#include <onnxruntime_ep_device_ep_metadata_keys.h>
 #include <onnxruntime_run_options_config_keys.h>
 #include <onnxruntime_session_options_config_keys.h>
 #include <string>
@@ -20,7 +24,7 @@
 using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
-
+extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 
 namespace test {
@@ -410,9 +414,10 @@ static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
 TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
   PathString model_name = ORT_TSTR("nv_execution_provider_data_dyn_test.onnx");
   std::string graph_name = "test";
-  std::vector<int> dims = {1, -1, -1};
 
-  CreateBaseModel(model_name, graph_name, dims, true);
+  std::vector<int> dims = {1, 3, 2};
+
+  CreateBaseModel(model_name, graph_name, dims);
 
   auto env = Ort::Env();
   auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
@@ -429,6 +434,90 @@ TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
 
   env.UnregisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider);
 }
+
+TEST(NvExecutionProviderTest, GetSharedAllocator) {
+  const OrtApi& c_api = Ort::GetApi();
+  RegisteredEpDeviceUniquePtr nv_tensorrt_rtx_ep;
+  Utils::RegisterAndGetNvTensorRtRtxEp(*ort_env, nv_tensorrt_rtx_ep);
+
+  const auto* ep_memory_info = c_api.EpDevice_MemoryInfo(nv_tensorrt_rtx_ep.get(), OrtDeviceMemoryType_DEFAULT);
+
+  // validate there is a shared allocator
+  OrtAllocator* allocator = nullptr;
+  ASSERT_ORTSTATUS_OK(c_api.GetSharedAllocator(*ort_env, ep_memory_info, &allocator));
+  ASSERT_NE(allocator, nullptr);
+
+  const auto* ep_host_accessible_memory_info = c_api.EpDevice_MemoryInfo(nv_tensorrt_rtx_ep.get(), OrtDeviceMemoryType_HOST_ACCESSIBLE);
+  OrtAllocator* host_accessible_allocator = nullptr;
+  ASSERT_ORTSTATUS_OK(c_api.GetSharedAllocator(*ort_env, ep_host_accessible_memory_info, &host_accessible_allocator));
+  ASSERT_NE(host_accessible_allocator, nullptr);
+
+
+}
+
+TEST(NvExecutionProviderTest, LoadUnloadPluginLibrary) {
+  const std::filesystem::path& library_path = Utils::nv_tensorrt_rtx_ep_info.library_path;
+  const std::string& registration_name = Utils::nv_tensorrt_rtx_ep_info.registration_name;
+
+  const OrtApi* c_api = &Ort::GetApi();
+  // this should load the library and create OrtEpDevice
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, registration_name.c_str(),
+                                                                     library_path.c_str()));
+
+  const OrtEpDevice* const* ep_devices = nullptr;
+  size_t num_devices = 0;
+
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().GetEpDevices(*ort_env, &ep_devices, &num_devices));
+  // should be one device for the example EP
+  auto num_test_ep_devices = std::count_if(ep_devices, ep_devices + num_devices,
+                                           [&registration_name, &c_api](const OrtEpDevice* device) {
+                                             // the example uses the registration name for the EP name
+                                             // but that is not a requirement and the two can differ.
+                                             return c_api->EpDevice_EpName(device) == registration_name;
+                                           });
+  ASSERT_EQ(num_test_ep_devices, 1) << "Expected an OrtEpDevice to have been created by the test library.";
+
+  // and this should unload it
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env,
+                                                                       registration_name.c_str()));
+}
+
+TEST(NvExecutionProviderTest, LoadUnloadPluginLibraryCxxApi) {
+  const std::filesystem::path& library_path = Utils::nv_tensorrt_rtx_ep_info.library_path;
+  const std::string& registration_name = Utils::nv_tensorrt_rtx_ep_info.registration_name;
+  const OrtApi* c_api = &Ort::GetApi();
+  // this should load the library and create OrtEpDevice
+  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+
+  std::vector<Ort::ConstEpDevice> ep_devices = ort_env->GetEpDevices();
+
+  auto test_ep_device = std::find_if(ep_devices.begin(), ep_devices.end(),
+                                     [&registration_name, &c_api](const Ort::ConstEpDevice& device) {
+                                       return device.EpName() == registration_name;
+                                     });
+  ASSERT_NE(test_ep_device, ep_devices.end()) << "Expected an OrtEpDevice to have been created by the test library.";
+
+  // test all the C++ getters. expected values are from \onnxruntime\test\autoep\library\example_plugin_ep.cc
+  ASSERT_STREQ(test_ep_device->EpVendor(), "NVIDIA");
+
+  auto metadata = test_ep_device->EpMetadata();
+  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_Version), ORT_VERSION);
+  //ASSERT_STREQ(metadata.GetValue("supported_devices"), "NVIDIA RTX");
+
+  // the GPU device info will vary by machine so check for the lowest common denominator values
+  Ort::ConstHardwareDevice device = test_ep_device->Device();
+  ASSERT_EQ(device.Type(), OrtHardwareDeviceType_GPU);
+  ASSERT_GE(device.VendorId(), 0);
+  ASSERT_GE(device.DeviceId(), 0);
+  ASSERT_NE(device.Vendor(), nullptr);
+  Ort::ConstKeyValuePairs device_metadata = device.Metadata();
+  std::unordered_map<std::string, std::string> metadata_entries = device_metadata.GetKeyValuePairs();
+  ASSERT_GT(metadata_entries.size(), 0);  // should have at least SPDRP_HARDWAREID on Windows
+
+  // and this should unload it without throwing
+  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+}
+
 #endif  // defined(WIN32)
 
 }  // namespace test
