@@ -2983,7 +2983,7 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
     }
     if (missing_initializer_data) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "TensorRT EP's RefitEngine is missing " + std::to_string(missing_initializer_data) + " initializers.");
+                             "[TensorRT EP] RefitEngine is missing " + std::to_string(missing_initializer_data) + " initializers.");
     }
 
     // Load extracted initializers into the parser
