@@ -411,7 +411,7 @@ TEST(SplitOperatorTest, ZeroSizeOutput) {
   outputs.push_back({{2, 2}, {1.f, 2.f, 4.f, 5.f}});
   outputs.push_back({{2, 1}, {3.f, 6.f}});
 
-  RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider}, false, true);
+  RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kDmlExecutionProvider}, false, true);
 }
 
 // test a split of a dimension that has leading and trailing dimensions
