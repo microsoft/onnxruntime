@@ -620,7 +620,7 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
     if (!graph_has_ortvalue) {
       // Copy to OrtValue if not external. This should only happen for small initializers.
       // Do nothing for external initializers, as we will load/mmap into an OrtValue on demand.
-      if (!utils::HasExternalData(*tensor_proto)) {
+      if (!utils::HasExternalDataInFile(*tensor_proto)) {
         ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
                                                          initializer_allocator, *initializer_value));
       }
@@ -691,7 +691,7 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
         if (!outer_initializer_value->IsAllocated()) {
           // Copy to OrtValue if not external. This should only happen for small initializers.
           // Do nothing for external initializers. Will load/mmap into an OrtValue on demand.
-          if (!utils::HasExternalData(*outer_initializer)) {
+          if (!utils::HasExternalDataInFile(*outer_initializer)) {
             ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
                                                              *outer_initializer, initializer_allocator,
                                                              *outer_initializer_value));
