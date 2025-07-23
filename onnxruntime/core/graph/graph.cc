@@ -3603,7 +3603,6 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
 
     // doesn't matter if it existed or not
     ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(tensor_name));
-    ORT_IGNORE_RETURN_VALUE(external_data_infos_.erase(tensor_name));
 
     SetGraphResolveNeeded();
   } else {
@@ -3656,9 +3655,6 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
   ORT_RETURN_IF_NOT(utils::HasExternalDataInMemory(new_initializer) || !ort_value.IsAllocated(),
                     "All TensorProtos are expected to point to an OrtValue");
 
-  ORT_RETURN_IF(utils::HasExternalDataInFile(new_initializer), "New replacement initializer cannot have external ",
-                "data in a file. Only in-memory external data or inline data is supported.");
-
   ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
   ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
                     "Replacement tensor's data type does not match.");
@@ -3677,11 +3673,6 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
   } else {
     ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(initializer_name));
   }
-
-  // Remove ExternalDataInfo for the old initializer. No need to check if we actually have any info.
-  // We don't add new ExternalDataInfo for the new initializer because the new initializer
-  // is not pointing to an external file (checked above).
-  ORT_IGNORE_RETURN_VALUE(external_data_infos_.erase(initializer_name));
 
   **existing_entry = std::move(new_initializer);
 
@@ -3824,65 +3815,35 @@ bool Graph::GetOrtValueInitializer(const std::string& name, OrtValue& value, boo
   return false;
 }
 
-Status Graph::LoadExternalInitializerAsOrtValue(const std::string& name, OrtValue& value) {
+Status Graph::LoadExternalInitializerAsOrtValue(const std::string& name, OrtValue& value) const {
   auto tensor_proto_iter = name_to_initial_tensor_.find(name);
   ORT_RETURN_IF(tensor_proto_iter == name_to_initial_tensor_.end(), "Cannot load unknown initializer named '",
                 name, "'.");
   const ONNX_NAMESPACE::TensorProto& tensor_proto = *tensor_proto_iter->second;
 
-  auto ort_value_iter = ortvalue_initializers_.find(name);
-  if (ort_value_iter != ortvalue_initializers_.end()) {
-    // Already loaded to OrtValue, so just return it.
-    value = ort_value_iter->second;
-    return Status::OK();
-  }
-
+  // This only supports TensorProtos that currently have their external data in an actual file.
+  // This doesn't cache the new OrtValue because it would overwrite TensorProto.external_data and plugin EPs require
+  // every call to Graph::GetExternalInitializerInfo to return the actual external file info (path, offset, length).
   ORT_RETURN_IF(!utils::HasExternalDataInFile(tensor_proto), "Initializer '", name,
                 "' does not have external data in a file.");
 
   // Create OrtValue that memory maps external initializer from file.
   ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), ModelPath(), tensor_proto, value));
-  ONNX_NAMESPACE::TensorProto tensor_proto_to_add = utils::TensorToTensorProto(value.Get<Tensor>(),
-                                                                               tensor_proto.name(),
-                                                                               /*use_tensor_buffer*/ true);
   assert(value.IsAllocated());
-
-  // Since we're about to overwrite the TensorProto's external_data information (file path, offset, etc.),
-  // need to store it so that it is available for callers of Graph::GetExternalInitializerInfo.
-  if (external_data_infos_.count(name) == 0) {
-    std::unique_ptr<ExternalDataInfo> external_data_info;
-    ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
-    external_data_infos_.emplace(name, std::move(external_data_info));
-  }
-
-  // Replace old initializer's tensor_proto and OrtValue.
-  auto& mutable_initializers = *(graph_proto_->mutable_initializer());
-  auto existing_entry = std::find(mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(),
-                                  &tensor_proto);
-  ORT_RETURN_IF_NOT(existing_entry != mutable_initializers.pointer_end(),
-                    "graph_proto_ is not in sync with name_to_initial_tensor_");
-
-  **existing_entry = std::move(tensor_proto_to_add);
-  ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.emplace(name, value));
 
   return Status::OK();
 }
 
-bool Graph::GetExternalInitializerInfo(const std::string& name, const ExternalDataInfo*& ext_info,
+bool Graph::GetExternalInitializerInfo(const std::string& name, std::unique_ptr<ExternalDataInfo>& ext_info,
                                        bool check_outer_scope) const {
   // We want to make sure that the external data info is found on the same level as its tensor_proto
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   if (GetInitializedTensor(name, initializer)) {
-    auto it = external_data_infos_.find(name);
-    if (it != external_data_infos_.end()) {
-      ext_info = it->second.get();
-      return true;
-    } else if (utils::HasExternalDataInFile(*initializer)) {
+    if (utils::HasExternalDataInFile(*initializer)) {
       std::unique_ptr<ExternalDataInfo> external_data_info;
       ORT_THROW_IF_ERROR(ExternalDataInfo::Create(initializer->external_data(), external_data_info));
 
-      ext_info = external_data_info.get();
-      external_data_infos_.emplace(name, std::move(external_data_info));
+      ext_info = std::move(external_data_info);
       return true;
     }
   }

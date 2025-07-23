@@ -622,7 +622,7 @@ ORT_API_STATUS_IMPL(ValueInfo_GetValueConsumers, _In_ const OrtValueInfo* value_
 ORT_API_STATUS_IMPL(ValueInfo_GetInitializerValue, _In_ const OrtValueInfo* value_info,
                     _Outptr_ const OrtValue** initializer_value);
 ORT_API_STATUS_IMPL(ValueInfo_GetExternalInitializerInfo, _In_ const OrtValueInfo* value_info,
-                    _Outptr_result_maybenull_ const OrtExternalInitializerInfo** info);
+                    _Outptr_result_maybenull_ OrtExternalInitializerInfo** info);
 ORT_API_STATUS_IMPL(ValueInfo_IsRequiredGraphInput, _In_ const OrtValueInfo* value_info,
                     _Out_ bool* is_required_graph_input);
 ORT_API_STATUS_IMPL(ValueInfo_IsOptionalGraphInput, _In_ const OrtValueInfo* value_info,
@@ -688,6 +688,7 @@ ORT_API_STATUS_IMPL(Node_GetGraph, _In_ const OrtNode* node, _Outptr_result_mayb
 ORT_API_STATUS_IMPL(Node_GetEpName, _In_ const OrtNode* node, _Outptr_result_maybenull_ const char** out);
 
 // OrtExternalInitializerInfo
+ORT_API(void, ReleaseExternalInitializerInfo, _Frees_ptr_opt_ OrtExternalInitializerInfo* info);
 ORT_API(const ORTCHAR_T*, ExternalInitializerInfo_GetFilePath, _In_ const OrtExternalInitializerInfo* info);
 ORT_API(int64_t, ExternalInitializerInfo_GetFileOffset, _In_ const OrtExternalInitializerInfo* info);
 ORT_API(size_t, ExternalInitializerInfo_GetByteSize, _In_ const OrtExternalInitializerInfo* info);

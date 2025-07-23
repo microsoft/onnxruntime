@@ -790,14 +790,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   bool GetOrtValueInitializer(const std::string& name, OrtValue& value, bool check_outer_scope = false) const;
 
   /// <summary>
-  /// Loads an initializer with data in an external file into an OrtValue.
+  /// Loads an initializer with data in an external file into an OrtValue. Does NOT cache the OrtValue
+  /// in this Graph.
   /// </summary>
   /// <param name="name">The name of the initializer.</param>
   /// <param name="value">Output parameter set to the loaded OrtValue. Set to an existing OrtValue if
   /// it is already loaded.</param>
   /// <returns>A status indicating an error or success. An error occurs if `name` is not an initializer
   /// with external data.</returns>
-  Status LoadExternalInitializerAsOrtValue(const std::string& name, OrtValue& value);
+  Status LoadExternalInitializerAsOrtValue(const std::string& name, OrtValue& value) const;
 
   /// <summary>
   /// Gets information (external filepath, file offset, num bytes) for an initializer with data in an external file.
@@ -806,7 +807,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <param name="ext_info">Output parameter set to the location information of the external data.</param>
   /// <param name="check_outer_scope">Set to true if parent graphs should be checked.</param>
   /// <returns>True if `name` refers to an initializer with data in an external file. Otherwise, returns false</returns>
-  bool GetExternalInitializerInfo(const std::string& name, const ExternalDataInfo*& ext_info,
+  bool GetExternalInitializerInfo(const std::string& name, std::unique_ptr<ExternalDataInfo>& ext_info,
                                   bool check_outer_scope = false) const;
 
   /** Gets all the initializer tensors in this Graph. */
@@ -1830,20 +1831,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // As we need to convert to TensorProto for the optimizers to work and keep the deleter information we store them
   // in the Graph instance and retrieve during session state finalization.
   std::unordered_map<std::string, OrtValue> ortvalue_initializers_;
-
-  // Stores information (file path, file offset, byte size) for initializers with data stored in external files.
-  // Mainly used by EPs that need to know where an external initializer came from in order to do custom memory mapping.
-  //
-  // Elements are added to this map incrementally as needed. This avoids having to compute all of this information
-  // on Graph construction for EPs that may never query it. The following member functions update this map:
-  //
-  //   - GetExternalInitializerInfo: adds an entry if it doesn't exist.
-  //   - LoadExternalInitializerAsOrtValue: adds an entry for the initializer before loading it into an OrtValue,
-  //                                        which overwrites an TensorProto.external_data() information.
-  //
-  // It is marked 'mutable' because an entry may need to be added in a call to Graph::GetExternalInitializerInfo,
-  // which is a const member function.
-  mutable std::unordered_map<std::string, std::unique_ptr<ExternalDataInfo>> external_data_infos_;
 
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>

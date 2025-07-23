@@ -49,7 +49,7 @@ struct ModelEditorValueInfo : public OrtValueInfo {
                            "OrtModelEditorApi does not support getting the initializer value for a OrtValueInfo");
   }
 
-  Status GetExternalInitializerInfo(const onnxruntime::ExternalDataInfo*& /*ext_info*/) const override {
+  Status GetExternalInitializerInfo(std::unique_ptr<onnxruntime::ExternalDataInfo>& /*ext_info*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the external initializer information ",
                            "for a OrtValueInfo");

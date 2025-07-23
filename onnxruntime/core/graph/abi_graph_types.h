@@ -106,7 +106,8 @@ struct OrtValueInfo {
   /// initializer.</param>
   /// <returns>A status indicating an error or success. Calling this function on an OrtValueInfo that does not represent
   /// an external initializer is NOT an error.</returns>
-  virtual onnxruntime::Status GetExternalInitializerInfo(const onnxruntime::ExternalDataInfo*& ext_info) const = 0;
+  virtual onnxruntime::Status GetExternalInitializerInfo(
+      std::unique_ptr<onnxruntime::ExternalDataInfo>& ext_info) const = 0;
 
   /// <summary>
   /// Determine if the value is a required graph input.

@@ -458,7 +458,7 @@ Status EpValueInfo::GetInitializerValue(const OrtValue*& result) const {
   return Status::OK();
 }
 
-Status EpValueInfo::GetExternalInitializerInfo(const onnxruntime::ExternalDataInfo*& result) const {
+Status EpValueInfo::GetExternalInitializerInfo(std::unique_ptr<ExternalDataInfo>& result) const {
   if (!IsFlagSet(kIsConstantInitializer) && !IsFlagSet(kIsOptionalGraphInput)) {
     result = nullptr;
     return Status::OK();
@@ -834,7 +834,7 @@ Status EpGraph::GetInitializerValue(std::string_view name, const OrtValue*& resu
   auto ensure_ort_value_loaded = [&](const std::unique_ptr<OrtValue>& ort_value) -> Status {
     if (!ort_value->IsAllocated()) {
       // Lazy load the OrtValue. This happens for external initializers.
-      Graph& graph = const_cast<Graph&>(graph_viewer_.GetGraph());
+      const Graph& graph = graph_viewer_.GetGraph();
       ORT_RETURN_IF_ERROR(graph.LoadExternalInitializerAsOrtValue(std::string(name),
                                                                   const_cast<OrtValue&>(*ort_value)));
     }

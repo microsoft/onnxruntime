@@ -5484,12 +5484,13 @@ struct OrtApi {
    *
    * Supports initializers defined in an outer scope (i.e., a parent graph).
    *
-   * Supports initializers stored in an external file.
+   * Supports initializers stored in an external file. For external initializers, ORT memory maps
+   * the initializer data on the first call to this function. If caller needs custom memory mapping,
+   * use ValueInfo_GetExternalInitializerInfo to get the location of the initializer data.
    *
    * \param[in] value_info The OrtValueInfo instance.
-   * \param[out] initializer_value Output parameter set to the initializer value or NULL. The OrtValue data pointer
-   *                               (obtained via GetTensorData) is stable during the lifetime of the OrtSession
-   *                               that owns the OrtGraph.
+   * \param[out] initializer_value Output parameter set to the initializer value or NULL. Do not cache the OrtValue
+   *                               as it is released when the owning OrtGraph is released.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5507,13 +5508,14 @@ struct OrtApi {
    * \param[out] info Output parameter set to an OrtExternalInitializerInfo instance that can be used to query
    *                  file path, file offset, etc. ORT sets this to NULL if the OrtValueInfo does not represent
    *                  an external initializer.
+   *                  Must release with ReleaseExternalInitializerInfo.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(ValueInfo_GetExternalInitializerInfo, _In_ const OrtValueInfo* value_info,
-                  _Outptr_result_maybenull_ const OrtExternalInitializerInfo** info);
+                  _Outptr_result_maybenull_ OrtExternalInitializerInfo** info);
 
   /** \brief Returns a boolean indicating if the given value is a required graph input.
    *
@@ -6091,6 +6093,14 @@ struct OrtApi {
 
   /// \name OrtExternalInitializerInfo
   /// @{
+
+  /** \brief Release an OrtExternalInitializerInfo instance.
+   *
+   * \param[in] input OrtExternalInitializerInfo instance to be released.
+   *
+   * \since Version 1.23.
+   */
+  ORT_CLASS_RELEASE(ExternalInitializerInfo);
 
   /** \brief Get the relative path to the file that stores the initializer's data.
    *

@@ -67,7 +67,7 @@ struct EpValueInfo : public OrtValueInfo {
 
   // Gets external initializer information (file path, file offset, byte size) if this is an external initializer.
   // Otherwise, sets the output parameter `ext_info` to nullptr (not an error).
-  Status GetExternalInitializerInfo(const onnxruntime::ExternalDataInfo*& ext_info) const override;
+  Status GetExternalInitializerInfo(std::unique_ptr<onnxruntime::ExternalDataInfo>& ext_info) const override;
 
   // Check if this value is a required graph input.
   Status IsRequiredGraphInput(bool& is_required_graph_input) const override;

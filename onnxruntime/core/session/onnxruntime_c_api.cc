@@ -2515,14 +2515,20 @@ ORT_API_STATUS_IMPL(OrtApis::ValueInfo_GetInitializerValue, _In_ const OrtValueI
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ValueInfo_GetExternalInitializerInfo, _In_ const OrtValueInfo* value_info,
-                    _Outptr_result_maybenull_ const OrtExternalInitializerInfo** info) {
+                    _Outptr_result_maybenull_ OrtExternalInitializerInfo** info) {
   API_IMPL_BEGIN
-  const onnxruntime::ExternalDataInfo* ext_data_info = nullptr;
+  std::unique_ptr<onnxruntime::ExternalDataInfo> ext_data_info = nullptr;
   ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetExternalInitializerInfo(ext_data_info));
 
-  *info = ext_data_info != nullptr ? static_cast<const OrtExternalInitializerInfo*>(ext_data_info) : nullptr;
+  // Note: ext_data_info can be nullptr if this OrtValueInfo does not represent an external initializer.
+  // std::unique_ptr::release() handles both cases.
+  *info = static_cast<OrtExternalInitializerInfo*>(ext_data_info.release());
   return nullptr;
   API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseExternalInitializerInfo, _Frees_ptr_opt_ OrtExternalInitializerInfo* info) {
+  delete static_cast<onnxruntime::ExternalDataInfo*>(info);
 }
 
 ORT_API(const ORTCHAR_T*, OrtApis::ExternalInitializerInfo_GetFilePath, _In_ const OrtExternalInitializerInfo* info) {
@@ -4018,6 +4024,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetGraph,
     &OrtApis::Node_GetEpName,
+    &OrtApis::ReleaseExternalInitializerInfo,
     &OrtApis::ExternalInitializerInfo_GetFilePath,
     &OrtApis::ExternalInitializerInfo_GetFileOffset,
     &OrtApis::ExternalInitializerInfo_GetByteSize,

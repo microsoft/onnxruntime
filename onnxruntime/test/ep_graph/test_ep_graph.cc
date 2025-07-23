@@ -550,10 +550,11 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
   ASSERT_NE(api_initializer_name, nullptr);
 
   // Check external initializer info (if any).
-  const OrtExternalInitializerInfo* api_ext_info = nullptr;
+  OrtExternalInitializerInfo* api_ext_info = nullptr;
   ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetExternalInitializerInfo(api_value_info, &api_ext_info));
+  DeferOrtRelease<OrtExternalInitializerInfo> defer_release_info(&api_ext_info, ort_api.ReleaseExternalInitializerInfo);
 
-  const ExternalDataInfo* ext_info = nullptr;
+  std::unique_ptr<ExternalDataInfo> ext_info = nullptr;
   bool has_ext_info = graph_viewer.GetGraph().GetExternalInitializerInfo(api_initializer_name, ext_info, true);
 
   if (has_ext_info) {
