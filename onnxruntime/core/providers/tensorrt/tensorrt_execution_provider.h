@@ -158,10 +158,25 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
 
 // Struct to hold user weights when ModelProtos are serialized with data.
-struct TensorrtUserWeights {
-  std::string name{};
-  std::string data{};
-  int64_t size{};
+class TensorrtUserWeights {
+ public:
+  TensorrtUserWeights(const std::string& name, const std::string& data) : name_(name), data_(data) {};
+
+  const char* Name() const {
+    return name_.c_str();
+  };
+
+  const void* Data() const {
+    return static_cast<void const*>(data_.data());
+  }
+
+  const int64_t Size() const {
+    return static_cast<int64_t>(data_.size());
+  }
+
+ private:
+  std::string name_{};
+  std::string data_{};
 };
 
 // Information to construct kernel function state.
