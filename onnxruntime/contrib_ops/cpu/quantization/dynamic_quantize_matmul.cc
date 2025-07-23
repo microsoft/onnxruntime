@@ -178,13 +178,13 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
       // MlasDynamicQgemm requires symmetric quantization for B, so no zero point should exist or it should
       // have a zero value
-      if (b_zp_tensor != nullptr) {//Covers the case where tensor is not a constant
+      if (b_zp_tensor != nullptr) {  // Covers the case where tensor is not a constant
         const auto& shape = b_zp_tensor->Shape();
         const auto* zp_data = static_cast<const uint8_t*>(b_zp_tensor->DataRaw());
         size_t zp_size = static_cast<size_t>(shape.Size());
 
         // MlasDynamicQgemm requires symmetric quantization: zp must be scalar 0 or 1D all-zero
-        if ((shape.NumDimensions() == 0) && (zp_data[0] == 0)){
+        if ((shape.NumDimensions() == 0) && (zp_data[0] == 0)) {
           b_zp_present = false;
         } else if (shape.NumDimensions() == 1) {
           b_zp_present = false;
