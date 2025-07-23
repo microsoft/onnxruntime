@@ -30,6 +30,9 @@ enum class OrtGraphIrApi {
   kEpApi,
 };
 
+// Alias OrtExternalInitializerInfo to the internal type.
+struct OrtExternalInitializerInfo : onnxruntime::ExternalDataInfo {};
+
 /// <summary>
 /// Public type that represents an ONNX value info.
 /// </summary>

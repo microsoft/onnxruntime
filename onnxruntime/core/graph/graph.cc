@@ -3653,10 +3653,11 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
 
   // New initializers data generally are within OrtValues
   // Small initializers are still stored inside TensorProto
-  ORT_RETURN_IF_NOT(utils::HasExternalDataInMemory(new_initializer) ||
-                        (!ort_value.IsAllocated() && !utils::HasExternalData(new_initializer)),
-                    "All replacement TensorProtos are expected to either point to an OrtValue or store the ",
-                    "initializer data inside the TensorProto");
+  ORT_RETURN_IF_NOT(utils::HasExternalDataInMemory(new_initializer) || !ort_value.IsAllocated(),
+                    "All TensorProtos are expected to point to an OrtValue");
+
+  ORT_RETURN_IF(utils::HasExternalDataInFile(new_initializer), "New replacement initializer cannot have external ",
+                "data in a file. Only in-memory external data or inline data is supported.");
 
   ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
   ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
@@ -3829,14 +3830,15 @@ Status Graph::LoadExternalInitializerAsOrtValue(const std::string& name, OrtValu
                 name, "'.");
   const ONNX_NAMESPACE::TensorProto& tensor_proto = *tensor_proto_iter->second;
 
-  ORT_RETURN_IF(!utils::HasExternalDataInFile(tensor_proto), "Initializer '", name, "' does not have external data.");
-
   auto ort_value_iter = ortvalue_initializers_.find(name);
   if (ort_value_iter != ortvalue_initializers_.end()) {
     // Already loaded to OrtValue, so just return it.
     value = ort_value_iter->second;
     return Status::OK();
   }
+
+  ORT_RETURN_IF(!utils::HasExternalDataInFile(tensor_proto), "Initializer '", name,
+                "' does not have external data in a file.");
 
   // Create OrtValue that memory maps external initializer from file.
   ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), ModelPath(), tensor_proto, value));

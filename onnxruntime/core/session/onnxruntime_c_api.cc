@@ -2520,21 +2520,21 @@ ORT_API_STATUS_IMPL(OrtApis::ValueInfo_GetExternalInitializerInfo, _In_ const Or
   const onnxruntime::ExternalDataInfo* ext_data_info = nullptr;
   ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetExternalInitializerInfo(ext_data_info));
 
-  *info = ext_data_info != nullptr ? reinterpret_cast<const OrtExternalInitializerInfo*>(ext_data_info) : nullptr;
+  *info = ext_data_info != nullptr ? static_cast<const OrtExternalInitializerInfo*>(ext_data_info) : nullptr;
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API(const ORTCHAR_T*, OrtApis::ExternalInitializerInfo_GetFilePath, _In_ const OrtExternalInitializerInfo* info) {
-  return reinterpret_cast<const onnxruntime::ExternalDataInfo*>(info)->GetRelPath().c_str();
+  return info->GetRelPath().c_str();
 }
 
 ORT_API(int64_t, OrtApis::ExternalInitializerInfo_GetFileOffset, _In_ const OrtExternalInitializerInfo* info) {
-  return static_cast<int64_t>(reinterpret_cast<const onnxruntime::ExternalDataInfo*>(info)->GetOffset());
+  return static_cast<int64_t>(info->GetOffset());
 }
 
 ORT_API(size_t, OrtApis::ExternalInitializerInfo_GetByteSize, _In_ const OrtExternalInitializerInfo* info) {
-  return reinterpret_cast<const onnxruntime::ExternalDataInfo*>(info)->GetLength();
+  return info->GetLength();
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ValueInfo_IsRequiredGraphInput, _In_ const OrtValueInfo* value_info,
