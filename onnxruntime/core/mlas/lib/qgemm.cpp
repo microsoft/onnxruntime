@@ -210,9 +210,7 @@ MlasDynamicQGemmBatch (
 ) {
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback and putting in guards
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
-        ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
-    }
+    ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
 #endif
 
     MLAS_UNREFERENCED_PARAMETER(Shape);
@@ -334,9 +332,7 @@ MlasDynamicQgemmPackBSize(
     size_t bytes = 0;
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback available
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
-        bytes = ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
-    }
+    bytes = ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
 #endif
 
     MLAS_UNREFERENCED_PARAMETER(N);
@@ -421,9 +417,7 @@ MlasDynamicQgemmPackB(
 {
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
-        ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
-    }
+    ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
 #endif
 
     MLAS_UNREFERENCED_PARAMETER(N);
