@@ -695,8 +695,8 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  const char*(ORT_API_CALL* GetCompiledModelCompatibilityInfo)(_In_ OrtEp* this_ptr,
-                                                               _In_ const OrtGraph* graph);
+  ORT_API_T(const char*, GetCompiledModelCompatibilityInfo, _In_ OrtEp* this_ptr,
+            _In_ const OrtGraph* graph);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -873,9 +873,9 @@ struct OrtEpFactory {
    *
    * \since Version 1.23.
    */
-  OrtStatus*(ORT_API_CALL* ValidateCompiledModelCompatibilityInfo)(_In_ OrtEpFactory* this_ptr,
-                                                                   _In_ const char* compatibility_info,
-                                                                   _Out_ OrtCompiledModelCompatibility* model_compatibility);
+  ORT_API2_STATUS(ValidateCompiledModelCompatibilityInfo, _In_ OrtEpFactory* this_ptr,
+                  _In_ const char* compatibility_info,
+                  _Out_ OrtCompiledModelCompatibility* model_compatibility);
 
   /** \brief Create an OrtAllocator that can be shared across sessions for the given OrtMemoryInfo.
    *
