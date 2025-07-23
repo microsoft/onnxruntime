@@ -469,7 +469,6 @@ Status EpValueInfo::GetExternalInitializerInfo(const onnxruntime::ExternalDataIn
 
   const onnxruntime::Graph& graph = graph_->GetGraphViewer().GetGraph();
 
-  result = nullptr;
   if (!graph.GetExternalInitializerInfo(name_, result, /*check_outer_scope*/ true)) {
     result = nullptr;
   }
