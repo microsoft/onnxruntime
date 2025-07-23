@@ -692,6 +692,10 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
 
 const std::string& EpGraph::GetName() const { return graph_viewer_.Name(); }
 
+const ORTCHAR_T* EpGraph::GetModelPath() const {
+  return graph_viewer_.ModelPath().c_str();
+}
+
 int64_t EpGraph::GetOnnxIRVersion() const { return graph_viewer_.GetOnnxIRVersion(); }
 
 Status EpGraph::GetNumOperatorSets(size_t& num_operator_sets) const {
