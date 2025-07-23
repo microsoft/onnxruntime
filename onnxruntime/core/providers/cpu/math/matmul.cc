@@ -196,17 +196,9 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
 #endif
     {
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-      auto node_op_type = this->Node().OpType();
-      // Workaround for a unit test inconsistency involving Kleidi and MLAS backends.
-      //
-      // In the test, matrix B is pre-packed using Kleidi's format. However, at runtime,
-      // the system may fall back to MLAS for the actual matrix multiplication. Since MLAS
-      // expects a different packed format, it misinterprets the Kleidi-packed data,
-      // resulting in incorrect outputs.
-      //
-      // To prevent this, we exclude this op type (which works bypasses the failing test case).
-      // If the operator is "FusedMatMul", we disable the kleidi path entirely (set enable_kleidi_packing = false).
-      if (node_op_type == "FusedMatMul") {
+      // Workaround for Kleidi not being able to support tranpose A.
+      // If the trans_a_attr_ 1, we disable the kleidi path entirely (set enable_kleidi_packing = false).
+      if (this->trans_a_attr_ == 1) {
         is_packed = GemmPackBFp32(alloc, tensor, false, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_, false);
       } else {
         is_packed = GemmPackBFp32(alloc, tensor, false, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_, true);

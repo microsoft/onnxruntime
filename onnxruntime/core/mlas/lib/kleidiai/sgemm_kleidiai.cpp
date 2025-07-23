@@ -186,7 +186,10 @@ ArmKleidiAI::MlasGemmBatch(
         auto n_step = kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
 
         if (M < m_step || N < n_step) {
-            return false;
+            if (GetMlasPlatform().MlasGemmBatchOverride != ArmKleidiAI::MlasGemmBatch){
+                //Fallback to MLAS
+                return false;
+            }
         }
 
         std::vector<MLAS_SGEMM_DATA_PARAMS> KaiPackedData;
