@@ -110,6 +110,10 @@ jobs:
 
       - name: Build and Test
         shell: pwsh
+        # Currently setting onnxruntime_BUILD_DAWN_SHARED_LIBRARY to OFF because of a build issue.
+        # If the build is fixed in upstream, this can be set to ON.
+        # See:
+        # https://github.com/google/dawn/pull/33
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `
             --config RelWithDebInfo `
@@ -128,7 +132,7 @@ jobs:
             ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg' || '' }} `
             --cmake_extra_defines `
             onnxruntime_BUILD_UNIT_TESTS=ON `
-            onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON
+            onnxruntime_BUILD_DAWN_SHARED_LIBRARY=OFF
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }

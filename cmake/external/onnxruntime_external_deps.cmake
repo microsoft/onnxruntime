@@ -751,10 +751,7 @@ if (onnxruntime_USE_WEBGPU)
           #
           # - (private) Fulfill the BinSkim requirements
           #   Some build warnings are not allowed to be disabled in project level.
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch &&
-
-          #
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/1.patch)
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch)
 
       onnxruntime_fetchcontent_declare(
         dawn
