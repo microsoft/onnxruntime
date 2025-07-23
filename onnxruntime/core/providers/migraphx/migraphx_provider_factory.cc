@@ -184,6 +184,7 @@ struct MigraphXEpFactory : OrtEpFactory {
       : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type}, default_logger{default_logger_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVendorId = GetVendorIdImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
@@ -199,6 +200,11 @@ struct MigraphXEpFactory : OrtEpFactory {
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) {
     const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
     return factory->vendor.c_str();
+  }
+
+  static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) {
+    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    return factory->vendor_id;
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
