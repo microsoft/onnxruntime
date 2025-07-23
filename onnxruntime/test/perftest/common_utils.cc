@@ -54,7 +54,8 @@ bool RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test
 
 bool UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config) {
   for (auto& registration_name : test_config.registered_plugin_eps) {
-    auto status = Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str());
+    //auto status = Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str());
+    env.UnregisterExecutionProviderLibrary(registration_name.c_str());
   }
   return true;
 }
