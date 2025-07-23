@@ -414,7 +414,6 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
     return ov_ep;
   }
 
-
  private:
   ProviderInfo provider_info_;
   std::shared_ptr<SharedContext> shared_context_;
@@ -460,14 +459,13 @@ struct OpenVINO_Provider : Provider {
     // For provider options that we don't support directly but are still supported through load_config,
     // give some specific guidance & example about how to make use of the option through load_config.
     const std::vector<std::pair<std::string, std::string>> block_and_advise_entries = {
-      {"cache_dir", "\"CACHE_DIR\": \"<filesystem_path>\""},
-      {"precision", "\"INFERENCE_PRECISION_HINT\": \"F32\""},
-      {"num_of_threads", "\"INFERENCE_NUM_THREADS\": \"1\""},
-      {"num_streams", "\"NUM_STREAMS\": \"1\""},
-      {"model_priority", "\"MODEL_PRIORITY\": \"LOW\""},
-      {"enable_opencl_throttling", "\"GPU\": {\"PLUGIN_THROTTLE\": \"1\"}"},
-      {"enable_qdq_optimizer", "\"NPU\": {\"NPU_QDQ_OPTIMIZATION\": \"YES\"}"}
-    };
+        {"cache_dir", "\"CACHE_DIR\": \"<filesystem_path>\""},
+        {"precision", "\"INFERENCE_PRECISION_HINT\": \"F32\""},
+        {"num_of_threads", "\"INFERENCE_NUM_THREADS\": \"1\""},
+        {"num_streams", "\"NUM_STREAMS\": \"1\""},
+        {"model_priority", "\"MODEL_PRIORITY\": \"LOW\""},
+        {"enable_opencl_throttling", "\"GPU\": {\"PLUGIN_THROTTLE\": \"1\"}"},
+        {"enable_qdq_optimizer", "\"NPU\": {\"NPU_QDQ_OPTIMIZATION\": \"YES\"}"}};
 
     for (auto& block_and_advise_entry : block_and_advise_entries) {
       if (provider_options.find(block_and_advise_entry.first) != provider_options.end()) {
@@ -481,7 +479,7 @@ struct OpenVINO_Provider : Provider {
 
     // For the rest of the disallowed provider options, give a generic error message.
     const std::vector<std::string> blocked_provider_keys = {
-      "device_type", "device_id", "device_luid", "context", "disable_dynamic_shapes"};
+        "device_type", "device_id", "device_luid", "context", "disable_dynamic_shapes"};
 
     for (const auto& key : blocked_provider_keys) {
       if (provider_options.find(key) != provider_options.end()) {
@@ -502,7 +500,7 @@ struct OpenVINO_Provider : Provider {
       if (ov_device_it == device_meta_data->Entries().end()) {
         return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT, "OpenVINO EP device metadata not found.");
       }
-      auto &ov_device = ov_device_it->second;
+      auto& ov_device = ov_device_it->second;
 
       // Add to ordered_unique only if not already present
       if (unique_ov_devices.insert(ov_device).second) {
