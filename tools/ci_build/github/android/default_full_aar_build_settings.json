@@ -17,6 +17,7 @@
         "--use_nnapi",
         "--use_xnnpack",
         "--use_webgpu",
+        "--cmake_extra_defines=CMAKE_CXX_SCAN_FOR_MODULES=OFF",
         "--skip_tests"
     ]
 }
