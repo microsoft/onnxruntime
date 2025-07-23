@@ -221,7 +221,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   //       allocator on each call. To do this have an allocator instance as an OrtEpFactory class member and make
   //       ReleaseAllocatorImpl a no-op.
   //
-  // NOTE: EP should implement it's own arena logic. ep_arena.cc/h is provided as a reference and we use it here for
+  // NOTE: EP should implement its own arena logic. ep_arena.cc/h is provided as a reference and we use it here for
   //       device memory. `allocator_options` can be used for arena configuration and there is a helper in ep_arena.h
   //       to convert from OrtKeyValuePairs to the same arena config settings that ORT uses.
   //       You are of course free to have completely different settings.

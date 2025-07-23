@@ -196,7 +196,7 @@ ORT_API(uint64_t, GetSyncIdForLastWaitOnSyncStream, _In_ const OrtSyncStream* pr
     const auto& producer = *static_cast<const Stream*>(producer_stream);
     const auto& consumer = *static_cast<const Stream*>(consumer_stream);
 
-    // If both streams are valid, we can return the sync id for the last wait on the consumer stream.
+    // If both streams are valid, we can return the sync id for the last wait on the producer stream.
     // This is useful for synchronizing operations between different streams.
     id = consumer.GetSyncIdForLastWaitOnStream(producer);
   }
