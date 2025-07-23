@@ -463,7 +463,7 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
 }
 
 static void CheckInitializerValueInfosCApi(gsl::span<const OrtValueInfo* const> initializer_value_infos,
-                                           const InitializedTensorSet& initializer_tensor_protos) {
+                                           const GraphViewer& graph_viewer) {
   const OrtApi& ort_api = Ort::GetApi();
 
   for (size_t i = 0; i < initializer_value_infos.size(); i++) {
@@ -473,10 +473,8 @@ static void CheckInitializerValueInfosCApi(gsl::span<const OrtValueInfo* const> 
     ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(api_value_info, &api_initializer_name));
     ASSERT_NE(api_initializer_name, nullptr);
 
-    auto tensor_proto_iter = initializer_tensor_protos.find(api_initializer_name);
-    ASSERT_NE(tensor_proto_iter, initializer_tensor_protos.end());
-
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = tensor_proto_iter->second;
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    graph_viewer.GetInitializedTensor(api_initializer_name, tensor_proto);
     ASSERT_NE(tensor_proto, nullptr);
 
     CheckInitializerValueInfo(api_value_info, tensor_proto);
@@ -635,7 +633,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   CheckValueInfosCApi(graph_viewer, api_graph_outputs, graph_output_node_args);
 
   // Check graph initializers
-  const auto& graph_initializers = graph_viewer.GetAllInitializedTensors();
+  const auto graph_initializers = graph_viewer.GetAllInitializersNames();
 
   size_t api_num_initializers = 0;
   ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNumInitializers(&api_graph, &api_num_initializers));
@@ -643,7 +641,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
 
   std::vector<const OrtValueInfo*> api_initializers(api_num_initializers);
   ASSERT_ORTSTATUS_OK(ort_api.Graph_GetInitializers(&api_graph, api_initializers.data(), api_initializers.size()));
-  CheckInitializerValueInfosCApi(api_initializers, graph_initializers);
+  CheckInitializerValueInfosCApi(api_initializers, graph_viewer);
 
   // Check if it has a parent node.
   const Node* parent_node = graph_viewer.ParentNode();

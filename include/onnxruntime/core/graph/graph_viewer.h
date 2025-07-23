@@ -130,7 +130,7 @@ class GraphViewer {
   const std::vector<NodeIndex>& GetRootNodes() const;
 
   /** Gets all tensors created from initializers. To be deprecated. */
-  // [[deprecated("Use GetAllInitializedTensorNames")]]
+  // [[deprecated("Use GetAllInitializedTensorNames() + GetInitializedTensor()")]]
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept;
 
   /** Gets all the names of the initializers in this Graph. */

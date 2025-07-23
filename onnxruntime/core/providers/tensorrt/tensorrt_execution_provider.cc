@@ -2335,11 +2335,12 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         // Keep inits in memory instead of writing to ModelProto.
         if (load_user_initializer_) {
-          auto allInitializers = graph_viewer->GetAllInitializedTensors();
+          auto allInitializers = graph_viewer->GetAllInitializersNames();
 
-          for (auto entry : allInitializers) {
-            auto* tp = entry.second;
-            if (tp->has_raw_data()) {
+          for (const auto& name : allInitializers) {
+            const ONNX_NAMESPACE::TensorProto* tp = nullptr;
+            graph_viewer->GetInitializedTensor(name, tp);
+            if (tp && tp->has_raw_data()) {
               userWeights.push_back(
                   TensorrtUserWeights{tp->name(), tp->raw_data(), (int64_t)tp->raw_data().size()});
             }

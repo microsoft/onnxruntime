@@ -1322,7 +1322,7 @@ struct ProviderHostImpl : ProviderHost {
     return p->GetConstantInitializer(name, check_outer_scope);
   }
   const InitializedTensorSet& Graph__GetAllInitializedTensors(const Graph* p) override { return p->GetAllInitializedTensors(); }
-  InitializersNames Graph__GetAllInitializerNames(const Graph* p) override {
+  InitializersNames Graph__GetAllInitializersNames(const Graph* p) override {
     return p->GetAllInitializersNames();
   }
   int Graph__MaxNodeIndex(const Graph* p) const noexcept override { return p->MaxNodeIndex(); }
@@ -1373,7 +1373,7 @@ struct ProviderHostImpl : ProviderHost {
   const InitializedTensorSet& GraphViewer__GetAllInitializedTensors(const GraphViewer* p) override {
     return p->GetAllInitializedTensors();
   }
-  InitializersNames GraphViewer__GetAllInitializerNames(const GraphViewer* p) override {
+  InitializersNames GraphViewer__GetAllInitializersNames(const GraphViewer* p) override {
     return p->GetAllInitializersNames();
   }
 

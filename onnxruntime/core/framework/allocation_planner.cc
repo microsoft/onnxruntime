@@ -985,13 +985,13 @@ class PlannerImpl {
   }
 
   void GeneratePlanForWeightsHelper(const GraphViewer& graph_viewer,
-                                    const InitializedTensorSet& weights,
                                     const KernelCreateInfoMap& kernel_create_info_map,
                                     const std::string& subgraph_kernel_create_info_map_key_base,
                                     size_t graph_depth,
                                     /*out*/ std::vector<std::vector<OrtDevice>>& locations) {
     // Iterate over nodes in current level firstly to record location of usages
     // in current graph
+    auto weights = graph_viewer.GetAllInitializersNames();
     for (const auto& node : graph_viewer.Nodes()) {
       const auto& input_node_args = node.InputDefs();
       size_t num_node_inputs = input_node_args.size();
@@ -1072,7 +1072,6 @@ class PlannerImpl {
           ORT_ENFORCE(specific_subgraph_kernel_create_info_map != subgraphs_kernel_create_info_maps_.end());
 
           GeneratePlanForWeightsHelper(subgraph_viewer,
-                                       weights,
                                        specific_subgraph_kernel_create_info_map->second,
                                        local_subgraph_kernel_create_info_map_key,
                                        graph_depth + 1,
@@ -1100,8 +1099,7 @@ class PlannerImpl {
     // over to the appropriate device before the subgraphs are executed.
     std::vector<std::vector<OrtDevice>> locations(plan_.allocation_plan.size());
 
-    GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
-                                 kernel_create_info_map_, "", 0, locations);
+    GeneratePlanForWeightsHelper(graph_viewer_, kernel_create_info_map_, "", 0, locations);
 
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtDevice>& loc = locations[i];

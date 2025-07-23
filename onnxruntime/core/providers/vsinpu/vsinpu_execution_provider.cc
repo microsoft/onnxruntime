@@ -59,15 +59,15 @@ VSINPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     return result;
   }
 
-  for (const auto& tensor : graph_viewer.GetAllInitializedTensors()) {
-    if (tensor.second->has_data_location()) {
-      LOGS(logger, VERBOSE) << "location:" << tensor.second->data_location();
-      if (tensor.second->data_location() ==
-          ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-        LOGS(logger, WARNING) << "VSINPU: Initializers with external data location are not "
-                                 "currently supported";
-        return result;
-      }
+  for (const auto& name : graph_viewer.GetAllInitializersNames()) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    graph_viewer.GetInitializedTensor(name, tensor_proto);
+
+    if (utils::HasExternalData(*tensor_proto)) {
+      LOGS(logger, WARNING) << "VSINPU: Initializers with external data location are not "
+                            << "currently supported: "
+                            << "location:" << tensor_proto->data_location();
+      return result;
     }
   }
   // Get all the NodeUnits in the graph_viewer

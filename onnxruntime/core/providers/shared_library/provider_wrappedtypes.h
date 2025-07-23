@@ -1091,9 +1091,9 @@ struct Graph final {
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const {
     return g_host->Graph__GetConstantInitializer(this, name, check_outer_scope);
   }
-  // [[deprecated("Use GetAllInitializedTensorNames")]]
+  // [[deprecated("Use GetAllInitializedTensorNames() + GetInitializedTensor()")]]
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return g_host->Graph__GetAllInitializedTensors(this); }
-  InitializersNames GetAllInitializedTensorNames() const noexcept { return g_host->Graph__GetAllInitializerNames(this); }
+  InitializersNames GetAllInitializerNames() const noexcept { return g_host->Graph__GetAllInitializersNames(this); }
   int MaxNodeIndex() const noexcept { return g_host->Graph__MaxNodeIndex(this); }
   const Node* GetNode(NodeIndex node_index) const noexcept { return g_host->Graph__GetNode(this, node_index); }
   Node* GetNode(NodeIndex node_index) noexcept { return g_host->Graph__GetNode(this, node_index); }
@@ -1138,12 +1138,12 @@ class GraphViewer final {
   }
   const std::unordered_set<const NodeArg*>& GetValueInfo() const noexcept { return g_host->GraphViewer__GetValueInfo(this); }
 
-  // [[deprecated("Use GetAllInitializedTensorNames")]]
+  // [[deprecated("Use GetAllInitializedTensorNames() + GetInitializedTensor()")]]
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept {
     return g_host->GraphViewer__GetAllInitializedTensors(this);
   }
   InitializersNames GetAllInitializersNames() const noexcept {
-    return g_host->GraphViewer__GetAllInitializerNames(this);
+    return g_host->GraphViewer__GetAllInitializersNames(this);
   }
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const { return g_host->GraphViewer__GetInitializedTensor(this, tensor_name, value); }
 

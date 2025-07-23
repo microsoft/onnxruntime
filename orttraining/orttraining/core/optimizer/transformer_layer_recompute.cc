@@ -110,7 +110,7 @@ std::vector<const Node*> TransformerLayerRecompute::NodesBetweenEdges(const Grap
 }
 
 void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::vector<const Node*>& nodes, int priority) const {
-  auto initializers = graph.GetAllInitializedTensors();
+  auto initializers = graph.GetAllInitializersNames();
 
   for (const Node* n : nodes) {
     Node* node = graph.GetNode(n->Index());
@@ -122,7 +122,7 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
       const Node* p_node = graph.GetProducerNode(input->Name());
 
       bool use_original_input =
-          initializers.find(input->Name()) != initializers.end() ||
+          initializers.contains(input->Name()) ||
           std::find(nodes.begin(), nodes.end(), p_node) == nodes.end();
 
       Node& recompute_node = InsertDropoutRecompute(graph, *node, use_original_input);

@@ -27,20 +27,28 @@ WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type) {
 
 InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer) {
   InitializedTensorSet all_initializers;
+  auto collect_initializers = [](const Graph& graph, InitializedTensorSet& initializers) {
+    const auto current_initializers = graph.GetAllInitializersNames();
+    for (const auto& initializer_name : current_initializers) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+      if (graph.GetInitializedTensor(initializer_name, tensor_proto)) {
+        initializers.emplace(initializer_name, tensor_proto);
+      }
+    }
+  };
   if (graph_viewer.IsSubgraph()) {
     const Graph* cur_graph = &graph_viewer.GetGraph();
     // Traverse up to the top-level graph, collecting all initializers.
     while (cur_graph->IsSubgraph()) {
-      const auto& current_initializers = cur_graph->GetAllInitializedTensors();
-      all_initializers.insert(current_initializers.begin(), current_initializers.end());
+      collect_initializers(*cur_graph, all_initializers);
       cur_graph = cur_graph->ParentGraph();
     }
     // Collect initializers in top-level graph.
-    const auto& current_initializers = cur_graph->GetAllInitializedTensors();
-    all_initializers.insert(current_initializers.begin(), current_initializers.end());
+    collect_initializers(*cur_graph, all_initializers);
   }
+}
 
-  return all_initializers;
+return all_initializers;
 }
 
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger) {

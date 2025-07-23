@@ -29,17 +29,16 @@ namespace vsi {
 namespace npu {
 bool BaseOpBuilder::IsSupported(const onnxruntime::GraphViewer& graph_viewer,
                                 const NodeUnit& node_unit) const {
-  auto initializers = graph_viewer.GetAllInitializedTensors();
   if (!HasSupportedOpSet(node_unit)) {
     return false;
   }
-  if (!HasSupportedInputOutputs(initializers, node_unit)) {
+  if (!HasSupportedInputOutputs(graph_viewer, node_unit)) {
     return false;
   }
   return IsOpSupported(graph_viewer, &node_unit.GetNode());
 }
 
-bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initializers,
+bool BaseOpBuilder::HasSupportedInputOutputs(const GraphViewer& graph_viewer,
                                              const NodeUnit& node_unit) const {
   // We do not support unknown(null) input shape
   auto has_supported_shape = [](const NodeArg& node_arg, const std::string& name, const std::string& op_type) {
@@ -64,13 +63,12 @@ bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initial
     return true;
   };
 
-  auto has_initialized_quant_param = [](const NodeArg& arg, const InitializedTensorSet& initializers) {
-    auto it = initializers.find(arg.Name());
-    if (it == initializers.end()) {
+  auto has_initialized_quant_param = [](const NodeArg& arg, const InitializersNames& initializers) {
+    const bool found = initializers.contains(arg.Name());
+    if (!found) {
       LOGS_DEFAULT(WARNING) << "The quantization param must be an initializer tensor";
-      return false;
     }
-    return true;
+    return found;
   };
 
   for (const auto& input : node_unit.Inputs()) {
@@ -84,13 +82,13 @@ bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initial
       if (!has_supported_shape(input.quant_param->scale, node_unit.Name(), node_unit.OpType()))
         return false;
 
-      if (!has_initialized_quant_param(input.quant_param->scale, initializers))
+      if (!has_initialized_quant_param(input.quant_param->scale, graph_viewer.GetAllInitializersNames()))
         return false;
       // zero point is optional
       if (input.quant_param->zero_point) {
         if (!has_supported_shape(*input.quant_param->zero_point, node_unit.Name(), node_unit.OpType()))
           return false;
-        if (!has_initialized_quant_param(*input.quant_param->zero_point, initializers))
+        if (!has_initialized_quant_param(*input.quant_param->zero_point, graph_viewer.GetAllInitializersNames()))
           return false;
         if (input.quant_param->zero_point->Type() != input.node_arg.Type()) {
           LOGS_DEFAULT(ERROR) << "Invalid input type because the data type mismatch with its' quant param type.";
@@ -114,13 +112,13 @@ bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initial
       if (!has_supported_shape(output.quant_param->scale, node_unit.Name(), node_unit.OpType()))
         return false;
 
-      if (!has_initialized_quant_param(output.quant_param->scale, initializers))
+      if (!has_initialized_quant_param(output.quant_param->scale, graph_viewer.GetAllInitializersNames()))
         return false;
       // zero point is optional
       if (output.quant_param->zero_point) {
         if (!has_supported_shape(*output.quant_param->zero_point, node_unit.Name(), node_unit.OpType()))
           return false;
-        if (!has_initialized_quant_param(*output.quant_param->zero_point, initializers))
+        if (!has_initialized_quant_param(*output.quant_param->zero_point, graph_viewer.GetAllInitializersNames()))
           return false;
       }
     }

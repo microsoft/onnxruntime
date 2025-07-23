@@ -1051,7 +1051,7 @@ struct ProviderHost {
   virtual void Graph__UpdateProducerNode(Graph* p, const std::string& node_arg_name, NodeIndex node_index) = 0;
   virtual const ONNX_NAMESPACE::TensorProto* Graph__GetConstantInitializer(const Graph* p, const std::string& name, bool check_outer_scope) const = 0;
   virtual const InitializedTensorSet& Graph__GetAllInitializedTensors(const Graph* p) = 0;
-  virtual InitializersNames Graph__GetAllInitializerNames(const Graph* p) = 0;
+  virtual InitializersNames Graph__GetAllInitializersNames(const Graph* p) = 0;
   virtual int Graph__MaxNodeIndex(const Graph* p) const noexcept = 0;
   virtual Node* Graph__GetNode(Graph* p, NodeIndex node_index) noexcept = 0;
   virtual const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const = 0;
@@ -1086,7 +1086,7 @@ struct ProviderHost {
   virtual const std::unordered_set<const NodeArg*>& GraphViewer__GetValueInfo(const GraphViewer* p) noexcept = 0;
 
   virtual const InitializedTensorSet& GraphViewer__GetAllInitializedTensors(const GraphViewer* p) = 0;
-  virtual InitializersNames GraphViewer__GetAllInitializerNames(const GraphViewer* p) = 0;
+  virtual InitializersNames GraphViewer__GetAllInitializersNames(const GraphViewer* p) = 0;
   virtual bool GraphViewer__GetInitializedTensor(const GraphViewer* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) = 0;
   virtual const std::unordered_map<std::string, int>& GraphViewer__DomainToVersionMap(const GraphViewer* p) = 0;
 

@@ -239,8 +239,10 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   ASSERT_TRUE((status = Model::Load(oss.str(), model, nullptr, DefaultLoggingManager().DefaultLogger())).IsOK())
       << status;
   Graph& graph = model->MainGraph();
+
   // take a copy as this gets cleared during session state initialization
-  InitializedTensorSet initializers = graph.GetAllInitializedTensors();
+  const auto init_names = graph.GetAllInitializersNames();
+  InlinedHashSet<std::string> initializers(init_names.begin(), init_names.end());
 
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi{false};
@@ -296,16 +298,16 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   } else {
     const auto& name_to_idx = session_state.GetOrtValueNameIdxMap();
 
-    for (const auto& entry : initializers) {
+    for (const auto& name : initializers) {
       int idx;
-      ASSERT_STATUS_OK(name_to_idx.GetIdx(entry.first, idx));
+      ASSERT_STATUS_OK(name_to_idx.GetIdx(name, idx));
 
-      bool found = initialized_tensors.find(idx) != initialized_tensors.cend();
-      ASSERT_TRUE(found) << "Missing entry for " << entry.first << " in session state initialized tensors";
+      bool found = initialized_tensors.count(idx) > 0;
+      ASSERT_TRUE(found) << "Missing entry for " << name << " in session state initialized tensors";
 
-      if (graph_utils::IsConstantInitializer(graph, entry.first, false)) {
-        found = const_initialized_tensors.find(idx) != const_initialized_tensors.cend();
-        ASSERT_TRUE(found) << "Missing entry for " << entry.first << " in session state const initialized tensors";
+      if (graph_utils::IsConstantInitializer(graph, name, false)) {
+        found = const_initialized_tensors.count(idx) > 0;
+        ASSERT_TRUE(found) << "Missing entry for " << name << " in session state const initialized tensors";
       }
     }
   }

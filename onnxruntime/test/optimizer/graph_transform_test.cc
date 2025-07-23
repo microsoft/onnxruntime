@@ -6834,7 +6834,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
     TEST_RETURN_IF_NOT(op_count_pre["Mul"] == 3);
     TEST_RETURN_IF_NOT(op_count_pre["Neg"] == 1);
     TEST_RETURN_IF_NOT(op_count_pre["Cast"] == 1);
-    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 15U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializersNames().size() == 15U);
     return Status::OK();
   };
 
@@ -6846,7 +6846,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
     int32_t suber = subers[test_data_index];
     int32_t muler = mulers[test_data_index];
     auto post_graph_checker = [adder, suber, muler](Graph& graph) {
-      const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+      const auto initialized_tensor_set = graph.GetAllInitializersNames();
       TEST_RETURN_IF_NOT(initialized_tensor_set.size() == 5U);
       const NodeArg* add_initializer = nullptr;
       const NodeArg* clip_min_initializer = nullptr;
@@ -6906,25 +6906,25 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
         }
       }
 
-      for (const auto& entry : initialized_tensor_set) {
+      for (const auto& init_name : initialized_tensor_set) {
         InlinedVector<int64_t> values;
         constexpr bool require_constant = true;
-        NodeArg* initializer_node_arg = graph.GetNodeArg(entry.first);
+        NodeArg* initializer_node_arg = graph.GetNodeArg(init_name);
         TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
 
-        if (add_initializer != nullptr && entry.first.compare(add_initializer->Name()) == 0) {
+        if (add_initializer != nullptr && init_name.compare(add_initializer->Name()) == 0) {
           TEST_RETURN_IF_NOT(values.size() == 1U);
           TEST_RETURN_IF_NOT(values[0] == adder);
-        } else if (clip_min_initializer != nullptr && entry.first.compare(clip_min_initializer->Name()) == 0) {
+        } else if (clip_min_initializer != nullptr && init_name.compare(clip_min_initializer->Name()) == 0) {
           TEST_RETURN_IF_NOT(values.size() == 1U);
           TEST_RETURN_IF_NOT(values[0] == 0);
-        } else if (clip_max_initializer != nullptr && entry.first.compare(clip_max_initializer->Name()) == 0) {
+        } else if (clip_max_initializer != nullptr && init_name.compare(clip_max_initializer->Name()) == 0) {
           TEST_RETURN_IF_NOT(values.size() == 1U);
           TEST_RETURN_IF_NOT(values[0] == 511);
-        } else if (sub_initializer != nullptr && entry.first.compare(sub_initializer->Name()) == 0) {
+        } else if (sub_initializer != nullptr && init_name.compare(sub_initializer->Name()) == 0) {
           TEST_RETURN_IF_NOT(values.size() == 1U);
           TEST_RETURN_IF_NOT(values[0] == suber);
-        } else if (mul_initializer != nullptr && entry.first.compare(mul_initializer->Name()) == 0) {
+        } else if (mul_initializer != nullptr && init_name.compare(mul_initializer->Name()) == 0) {
           TEST_RETURN_IF_NOT(values.size() == 1U);
           TEST_RETURN_IF_NOT(values[0] == muler);
         }
@@ -7026,12 +7026,12 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitialize
     TEST_RETURN_IF_NOT(op_count_pre.size() == 2U);
     TEST_RETURN_IF_NOT(op_count_pre["Div"] == 1);
     TEST_RETURN_IF_NOT(op_count_pre["Mul"] == 12);
-    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 12U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializersNames().size() == 12U);
     return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
-    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    const auto initialized_tensor_set = graph.GetAllInitializersNames();
     TEST_RETURN_IF_NOT(initialized_tensor_set.size() == 1U);
     const NodeArg* mul_initializer = nullptr;
     for (auto& node : graph.Nodes()) {
@@ -7046,9 +7046,10 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitialize
       }
     }
     TEST_RETURN_IF(mul_initializer == nullptr);
-    for (const auto& entry : initialized_tensor_set) {
-      if (entry.first.compare(mul_initializer->Name()) == 0) {
-        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+    for (const auto& init_name : initialized_tensor_set) {
+      if (init_name.compare(mul_initializer->Name()) == 0) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(init_name, tensor_proto));
         int32_t data_type = tensor_proto->data_type();
         onnxruntime::Initializer float_const{graph, *tensor_proto, graph.ModelPath()};
         TEST_RETURN_IF_NOT(float_const.size() == 1U);
@@ -7149,12 +7150,12 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatOrHalfTypedInitiali
     TEST_RETURN_IF_NOT(op_count_pre.size() == 2U);
     TEST_RETURN_IF_NOT(op_count_pre["Div"] == 1);
     TEST_RETURN_IF_NOT(op_count_pre["Mul"] == 12);
-    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 12U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializersNames().size() == 12U);
     return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
-    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    const auto initialized_tensor_set = graph.GetAllInitializersNames();
     TEST_RETURN_IF_NOT(initialized_tensor_set.size() == 1U);
     const NodeArg* mul_initializer = nullptr;
     for (auto& node : graph.Nodes()) {
@@ -7169,9 +7170,10 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatOrHalfTypedInitiali
       }
     }
     TEST_RETURN_IF(mul_initializer == nullptr);
-    for (const auto& entry : initialized_tensor_set) {
-      if (entry.first.compare(mul_initializer->Name()) == 0) {
-        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+    for (const auto& init_name : initialized_tensor_set) {
+      if (init_name.compare(mul_initializer->Name()) == 0) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(init_name, tensor_proto));
         int32_t data_type = tensor_proto->data_type();
         onnxruntime::Initializer float_const{graph, *tensor_proto, graph.ModelPath()};
         TEST_RETURN_IF_NOT(float_const.size() == 8U);
@@ -7246,12 +7248,12 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
     TEST_RETURN_IF_NOT(op_count_pre["Cast"] == 1);
     TEST_RETURN_IF_NOT(op_count_pre["Mul"] == 3);
     TEST_RETURN_IF_NOT(op_count_pre["Add"] == 3);
-    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 6U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializersNames().size() == 6U);
     return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
-    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    const auto initialized_tensor_set = graph.GetAllInitializersNames();
     TEST_RETURN_IF_NOT(initialized_tensor_set.size() == 2U);
     const NodeArg* mul_initializer = nullptr;
     const NodeArg* add_initializer = nullptr;
@@ -7276,16 +7278,17 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
     }
     TEST_RETURN_IF(mul_initializer == nullptr);
     TEST_RETURN_IF(add_initializer == nullptr);
-    for (const auto& entry : initialized_tensor_set) {
-      const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+    for (const auto& init_name : initialized_tensor_set) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+      TEST_RETURN_IF_NOT(graph.GetInitializedTensor(init_name, tensor_proto));
       int32_t data_type = tensor_proto->data_type();
       onnxruntime::Initializer float_const{graph, *tensor_proto, graph.ModelPath()};
-      if (entry.first.compare(mul_initializer->Name()) == 0) {
+      if (init_name.compare(mul_initializer->Name()) == 0) {
         TEST_RETURN_IF_NOT(float_const.size() == 1U);
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
         float float_const_value = *(float_const.data<float>());
         TEST_RETURN_IF_NOT(float_const_value == 1.0f);
-      } else if (entry.first.compare(add_initializer->Name()) == 0) {
+      } else if (init_name.compare(add_initializer->Name()) == 0) {
         TEST_RETURN_IF_NOT(float_const.size() == 1U);
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
         float float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
@@ -7359,12 +7362,12 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
     TEST_RETURN_IF_NOT(op_count_pre["Mul"] == 3);
     TEST_RETURN_IF_NOT(op_count_pre["Sub"] == 3);
     TEST_RETURN_IF_NOT(op_count_pre["Add"] == 3);
-    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 9U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializersNames().size() == 9U);
     return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
-    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    const auto initialized_tensor_set = graph.GetAllInitializersNames();
     TEST_RETURN_IF_NOT(initialized_tensor_set.size() == 3U);
     const NodeArg* mul_initializer = nullptr;
     const NodeArg* sub_initializer = nullptr;
@@ -7405,24 +7408,25 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
     TEST_RETURN_IF(mul_initializer == nullptr);
     TEST_RETURN_IF(sub_initializer == nullptr);
     TEST_RETURN_IF(add_initializer == nullptr);
-    for (const auto& entry : initialized_tensor_set) {
-      const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+    for (const auto& init_name : initialized_tensor_set) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+      TEST_RETURN_IF_NOT(graph.GetInitializedTensor(init_name, tensor_proto));
       int32_t data_type = tensor_proto->data_type();
       onnxruntime::Initializer float_const{graph, *tensor_proto, graph.ModelPath()};
       TEST_RETURN_IF_NOT(float_const.size() == 8U);
-      if (entry.first.compare(mul_initializer->Name()) == 0) {
+      if (init_name.compare(mul_initializer->Name()) == 0) {
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
         for (int i = 0; i < 8; ++i) {
           float float_const_value = *(float_const.data<float>() + i);
           TEST_RETURN_IF_NOT(float_const_value == i * 1.0f);
         }
-      } else if (entry.first.compare(sub_initializer->Name()) == 0) {
+      } else if (init_name.compare(sub_initializer->Name()) == 0) {
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
         for (int i = 0; i < 8; ++i) {
           float float_const_value = *(float_const.data<float>() + i);
           TEST_RETURN_IF_NOT(float_const_value == i * 1.0f);
         }
-      } else if (entry.first.compare(add_initializer->Name()) == 0) {
+      } else if (init_name.compare(add_initializer->Name()) == 0) {
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
         for (int i = 0; i < 8; ++i) {
           float float_const_value = math::halfToFloat((float_const.data<MLFloat16>() + i)->val);
@@ -7513,12 +7517,12 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityIniti
     TEST_RETURN_IF_NOT(op_count_pre["Div"] == 1);
     TEST_RETURN_IF_NOT(op_count_pre["Mul"] == 12);
     TEST_RETURN_IF_NOT(op_count_pre["Sub"] == 12);
-    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 24U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializersNames().size() == 24U);
     return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
-    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    const auto initialized_tensor_set = graph.GetAllInitializersNames();
     TEST_RETURN_IF_NOT(initialized_tensor_set.size() == 2U);
     const NodeArg* mul_initializer = nullptr;
     const NodeArg* sub_initializer = nullptr;
@@ -7543,15 +7547,17 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityIniti
     }
     TEST_RETURN_IF(mul_initializer == nullptr);
     TEST_RETURN_IF(sub_initializer == nullptr);
-    for (const auto& entry : initialized_tensor_set) {
-      if (entry.first.compare(mul_initializer->Name()) == 0) {
-        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+    for (const auto& init_name : initialized_tensor_set) {
+      if (init_name.compare(mul_initializer->Name()) == 0) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(init_name, tensor_proto));
         onnxruntime::Initializer int64_const{graph, *tensor_proto, graph.ModelPath()};
         TEST_RETURN_IF_NOT(int64_const.size() == 1U);
         int64_t int64_const_value = *(int64_const.data<int64_t>());
         TEST_RETURN_IF_NOT(int64_const_value == std::numeric_limits<int64_t>::max());
-      } else if (entry.first.compare(sub_initializer->Name()) == 0) {
-        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+      } else if (init_name.compare(sub_initializer->Name()) == 0) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(init_name, tensor_proto));
         onnxruntime::Initializer float_const{graph, *tensor_proto, graph.ModelPath()};
         TEST_RETURN_IF_NOT(float_const.size() == 1U);
         float float_const_value = *(float_const.data<float>());
@@ -7622,7 +7628,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShouldNotShareForGraphOutput) {
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count["Add"] == 1);
     // Be noted, constant nodes are converted to initialized already.
-    ASSERT_TRUE(graph.GetAllInitializedTensors().size() == 2U);
+    ASSERT_TRUE(graph.GetAllInitializersNames().size() == 2U);
   }
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -7631,7 +7637,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShouldNotShareForGraphOutput) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   {
-    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    const auto initialized_tensor_set = graph.GetAllInitializersNames();
     ASSERT_TRUE(initialized_tensor_set.size() == 2U);
     const NodeArg* add_initializer = nullptr;
     for (auto& node : graph.Nodes()) {
@@ -7642,15 +7648,17 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShouldNotShareForGraphOutput) {
       }
     }
     ASSERT_TRUE(add_initializer != nullptr);
-    for (const auto& entry : initialized_tensor_set) {
-      if (entry.first.compare("y_scale") == 0) {
-        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+    for (const auto& init_name : initialized_tensor_set) {
+      if (init_name.compare("y_scale") == 0) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+        ASSERT_TRUE(graph.GetInitializedTensor(init_name, tensor_proto));
         onnxruntime::Initializer int64_const{graph, *tensor_proto, graph.ModelPath()};
         ASSERT_TRUE(int64_const.size() == 1U);
         float float_const_value = *(int64_const.data<float>());
         ASSERT_TRUE(float_const_value == 1);
       } else {
-        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+        ASSERT_TRUE(graph.GetInitializedTensor(init_name, tensor_proto));
         onnxruntime::Initializer uint8_const{graph, *tensor_proto, graph.ModelPath()};
         ASSERT_TRUE(uint8_const.size() == 1U);
         uint8_t uint8_const_value = *(uint8_const.data<uint8_t>());

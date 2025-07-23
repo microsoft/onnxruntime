@@ -491,11 +491,11 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   }
 
   // Convert initializers including trainable weights from FP32 to FP16/BF16
-  const auto& initialized_tensors = graph.GetAllInitializedTensors();
+  const auto initialized_tensors = graph.GetAllInitializersNames();
   std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_mixed_precision_node_arg_result{};
   std::vector<std::pair<std::string, const ONNX_NAMESPACE::TensorProto*>> mixed_precision_initializers;
-  for (const auto& kv : initialized_tensors) {
-    NodeArg* input = graph.GetNodeArg(kv.first);
+  for (const auto& init_name : initialized_tensors) {
+    NodeArg* input = graph.GetNodeArg(init_name);
     if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       // If all consumers are from loss graph, don't convert it.
       if (!loss_subgraph.ContainsAllConsumers(graph, input->Name())) {
@@ -506,10 +506,11 @@ Status TransformGraphForMixedPrecision(Graph& graph,
                                                                                               input,
                                                                                               mixed_precision_type);
           if (mixed_precision_weight_arg != nullptr) {
-            mixed_precision_initializers.emplace_back(mixed_precision_weight_arg->Name(), kv.second);
-            const auto it = weights_to_train.find(kv.first);
-            if (it != weights_to_train.cend()) {
-              fp32_weight_name_to_mixed_precision_node_arg_result[kv.first] = mixed_precision_weight_arg;
+            const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+            graph.GetInitializedTensor(init_name, tensor_proto);
+            mixed_precision_initializers.emplace_back(mixed_precision_weight_arg->Name(), tensor_proto);
+            if (weights_to_train.cound(init_name) > 0) {
+              fp32_weight_name_to_mixed_precision_node_arg_result[init_name] = mixed_precision_weight_arg;
             }
           }
         } else {

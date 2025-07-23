@@ -35,7 +35,8 @@ class ClipOpBuilder final : public BaseOpBuilder {
                      const Node* node) const override {
     if (node->SinceVersion() > 6) {
       if (node->InputDefs().size() > 1 &&
-          !Contains(graph_viewer.GetAllInitializedTensors(), node->InputDefs()[1]->Name())) {
+          !graph_viewer.GetAllInitializersNames().contains(
+              node->InputDefs()[1]->Name())) {
         LOGS_DEFAULT(WARNING) << "Min/Max value must be const input or attribute.";
         return false;
       }

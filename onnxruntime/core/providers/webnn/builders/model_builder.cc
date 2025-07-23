@@ -63,7 +63,15 @@ InitializedTensorSet ModelBuilder::GetInitializerTensors() {
     }
     return subgraph_initializers;
   } else {
-    return graph_viewer_.GetAllInitializedTensors();
+    InitializedTensorSet initializers;
+    const auto init_names = graph_viewer_.GetAllInitializersNames();
+    for (const auto& name : init_names) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+      if (graph_viewer_.GetInitializedTensor(name, tensor_proto)) {
+        initializers.emplace(name, *tensor_proto);
+      }
+    }
+    return initializers;
   }
 }
 
@@ -77,14 +85,14 @@ InitializedTensorSet ModelBuilder::GetInitializerTensors() {
 }
 
 void ModelBuilder::PreprocessInitializers() {
-  const auto& initializers = graph_viewer_.GetAllInitializedTensors();
+  const auto initializers = graph_viewer_.GetAllInitializersNames();
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
 
     // find all initializers consumed. AddInitializersToSkip will potentially decrement the usage count.
     for (const auto* input : node->InputDefs()) {
-      if (input->Exists() && Contains(initializers, input->Name())) {
+      if (input->Exists() && initializers.contains(input->Name())) {
         initializer_usage_[input->Name()]++;
       }
     }

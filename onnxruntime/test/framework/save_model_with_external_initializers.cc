@@ -42,18 +42,21 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
   ORT_RETURN_IF_ERROR(graph.Resolve());
   Graph& graph_from_external = model_from_external->MainGraph();
 
-  InitializedTensorSet initializers = graph.GetAllInitializedTensors();
-  InitializedTensorSet initializers_from_external = graph_from_external.GetAllInitializedTensors();
+  auto initializers = graph.GetAllInitializersNames();
+  auto initializers_from_external = graph_from_external.GetAllInitializersNames();
 
   ORT_RETURN_IF_NOT(initializers.size() == initializers_from_external.size(), "size mismatch");
 
   // Compare the initializers of the two versions.
   std::filesystem::path model_path{};
   std::filesystem::path external_data_path{};
-  for (const auto& i : initializers) {
-    const std::string kInitName = i.first;
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = i.second;
-    const ONNX_NAMESPACE::TensorProto* from_external_tensor_proto = initializers_from_external[kInitName];
+  for (const auto& init_name : initializers) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    ORT_RETURN_IF_NOT(graph.GetInitializedTensor(init_name, tensor_proto),
+                      "tensor_proto is null for initializer: ", init_name);
+    const ONNX_NAMESPACE::TensorProto* from_external_tensor_proto = nullptr;
+    ORT_RETURN_IF_NOT(graph_from_external.GetInitializedTensor(init_name, from_external_tensor_proto),
+                      "from_external_tensor_proto is null for initializer: ", init_name);
 
     std::vector<uint8_t> tensor_proto_data;
     model_path = input_onnx;

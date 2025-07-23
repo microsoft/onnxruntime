@@ -16,12 +16,13 @@ namespace horizontal_parallel_test_utils {
 
 Status MergeGraph(Graph& graph, Graph& graph_to_merge, int rank, std::vector<Node*>& megatronGs) {
   // Merge graph_to_merge's initializers into graph.
-  const auto& init_tensors = graph_to_merge.GetAllInitializedTensors();
-  for (const auto& tensor : init_tensors) {
-    const ONNX_NAMESPACE::TensorProto* tmp_tensor;
+  const auto init_tensors = graph_to_merge.GetAllInitializersNames();
+  for (const auto& tensor_name : init_tensors) {
+    const ONNX_NAMESPACE::TensorProto* tmp_tensor = nullptr;
     // For those initializers already existing, we assume every rank should have same value.
-    if (!graph.GetInitializedTensor(tensor.first, tmp_tensor)) {
-      graph.AddInitializedTensor(*(tensor.second));
+    if (!graph.GetInitializedTensor(tensor_name, tmp_tensor)) {
+      graph_to_merge.GetInitializedTensor(name, tmp_tensor);
+      graph.AddInitializedTensor(*(tmp_tensor));
     }
   }
 

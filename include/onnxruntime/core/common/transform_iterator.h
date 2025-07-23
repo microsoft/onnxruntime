@@ -20,15 +20,21 @@ class transform_iterator_base<Iterator, UnaryFunction, false> {
  protected:
   using traits = std::iterator_traits<Iterator>;
   using value_type = std::remove_cv_t<std::remove_reference_t<std::invoke_result_t<UnaryFunction, typename traits::reference>>>;
+  using func_return_type = std::invoke_result_t<UnaryFunction, typename traits::reference>;
 
  public:
   using pointer = value_type*;
 
  protected:
-  pointer operator_arrow(const UnaryFunction& f, const Iterator& current) const {
-    result_cache_ = f(*current);
+  pointer operator_arrow(const Iterator& current) const {
+    result_cache_ = f_(*current);
     return &result_cache_;
   }
+
+  explicit transform_iterator_base(std::function<func_return_type(typename traits::reference)> f)
+      : f_(std::move(f)) {}
+
+  std::function<func_return_type(typename traits::reference)> f_{};
 
  private:
   mutable value_type result_cache_;
@@ -40,14 +46,20 @@ class transform_iterator_base<Iterator, UnaryFunction, true> {
  protected:
   using traits = std::iterator_traits<Iterator>;
   using reference = std::invoke_result_t<UnaryFunction, typename traits::reference>;
+  using func_return_type = std::invoke_result_t<UnaryFunction, typename traits::reference>;
+
+  explicit transform_iterator_base(std::function<func_return_type(typename traits::reference)> f)
+      : f_(std::move(f)) {}
 
  public:
   using pointer = std::remove_reference_t<reference>*;
 
  protected:
-  pointer operator_arrow(const UnaryFunction& f, const Iterator& current) const {
-    return &f(*current);
+  pointer operator_arrow(const Iterator& current) const {
+    return &f_(*current);
   }
+
+  std::function<func_return_type(typename traits::reference)> f_{};
 };
 
 }  // namespace detail
@@ -67,7 +79,6 @@ class transform_iterator_base<Iterator, UnaryFunction, true> {
 template <typename Iterator, typename UnaryFunction>
 class transform_iterator : public detail::transform_iterator_base<Iterator, UnaryFunction> {
   using base = detail::transform_iterator_base<Iterator, UnaryFunction>;
-  using func_return_type = std::invoke_result_t<UnaryFunction, typename base::traits::reference>;
 
  public:
   using underlying_iterator_type = Iterator;
@@ -82,15 +93,14 @@ class transform_iterator : public detail::transform_iterator_base<Iterator, Unar
   using pointer = typename base::pointer;
 
   transform_iterator() = default;
-  transform_iterator(Iterator it, UnaryFunction f) : current_(std::move(it)),
-                                                     f_(std::move(f)) {}
+  transform_iterator(Iterator it, UnaryFunction f) : base(std::move(f)), current_(std::move(it)) {}
 
   reference operator*() const {
-    return f_(*current_);
+    return this->f_(*current_);
   }
 
   pointer operator->() const {
-    return this->operator_arrow(f_, current_);
+    return this->operator_arrow(current_);
   }
 
   transform_iterator& operator++() {
@@ -149,15 +159,13 @@ class transform_iterator : public detail::transform_iterator_base<Iterator, Unar
 
   // Swap support
   void swap(transform_iterator& other) noexcept(
-      std::is_nothrow_swappable_v<Iterator> && std::is_nothrow_swappable_v<UnaryFunction>) {
-    using std::swap;
-    swap(current_, other.current_);
-    swap(f_, other.f_);
+      std::is_nothrow_swappable_v<Iterator>) {
+    f_.swap(other.f_);
+    std::swap(current_, other.current_);
   }
 
  private:
   Iterator current_{};
-  std::function<func_return_type(typename traits::reference)> f_{};
 };
 
 // Non-member swap function
