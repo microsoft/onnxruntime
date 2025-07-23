@@ -362,10 +362,10 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
     GetMlasPlatform().ErfKernelRoutine(Input, Output, N);
 #else 
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE()) {
+    #ifdef __ARM_FEATURE_SVE
         MlasSveErfKernel(Input, Output, N);
-    } else {
+    #else
         MlasErfKernel(Input, Output, N);
-    }
+    #endif
 #endif
 }

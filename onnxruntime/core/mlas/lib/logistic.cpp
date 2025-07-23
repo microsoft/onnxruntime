@@ -271,10 +271,10 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
     GetMlasPlatform().LogisticKernelRoutine(Input, Output, N);
 #else
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE()) {
+    #ifdef __ARM_FEATURE_SVE
         MlasSveLogisticKernel(Input, Output, N);
-    } else {
+    #else
         MlasLogisticKernel(Input, Output, N);
-    }
+    #endif
 #endif
 }

@@ -366,11 +366,11 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
     GetMlasPlatform().ComputeExpF32Kernel(Input, Output, N);
 #else
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE()) {
+    #ifdef __ARM_FEATURE_SVE
         MlasSveComputeExpF32Kernel(Input, Output, N);
-    } else {
+    #else
         MlasComputeExpF32Kernel(Input, Output, N);
-    }
+    #endif
 #endif
 }
 
@@ -1164,14 +1164,7 @@ Return Value:
 --*/
 {
     const auto* WorkBlock = (MLAS_SOFTMAX_WORK_BLOCK<float>*)Context;
-
-#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_SVE_INTRINSICS)
-    //
-    // Check for SVE availability. This flag will be used multiple times.
-    //
-    bool hasSVE = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE();
-#endif
-
+    
     //
     // Partition the operation along the N dimension.
     //
@@ -1217,12 +1210,11 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
         Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
 #else 
-        if (hasSVE) {
+        #ifdef __ARM_FEATURE_SVE
             Maximum = MlasSveReduceMaximumF32Kernel(Input, D);
-        } 
-        else {
+        #else
             Maximum = MlasReduceMaximumF32Kernel(Input, D);
-        }
+        #endif
 #endif
         float NegativeMaximum = -Maximum;
         if (SmoothSoftmax && NegativeMaximum > 0.0f) {
@@ -1239,11 +1231,11 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
         Accumulation = GetMlasPlatform().ComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
 #else
-        if (hasSVE) {
+        #ifdef __ARM_FEATURE_SVE
             Accumulation = MlasSveComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
-        } else {
+        #else
             Accumulation = MlasComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
-        }
+        #endif
 #endif
 
         if (SmoothSoftmax) {
@@ -1259,12 +1251,11 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
             GetMlasPlatform().ComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
 #else 
-            if (hasSVE) {
+            #ifdef __ARM_FEATURE_SVE
                 MlasSveComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
-            }
-            else {
+            #else
                 MlasComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
-            }
+            #endif
 #endif
         } else {
             //
@@ -1275,12 +1266,11 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
             GetMlasPlatform().ComputeSoftmaxOutputF32Kernel(Output, D, Parameters);
 #else
-            if (hasSVE) {
+            #ifdef __ARM_FEATURE_SVE
                 MlasSveComputeSoftmaxOutputF32Kernel(Output, D, Parameters);
-            } 
-            else {
+            #else
                 MlasComputeSoftmaxOutputF32Kernel(Output, D, Parameters);
-            }
+            #endif
 #endif
         }
 
