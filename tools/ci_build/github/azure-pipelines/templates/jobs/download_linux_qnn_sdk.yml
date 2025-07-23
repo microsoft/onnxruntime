@@ -35,9 +35,7 @@ steps:
       fi
     displayName: "Sanity Check: QnnSDKVersion vs sdk.yaml version"
 
-  - script: |
-      cp '/data/qnnsdk/Qualcomm AI Hub Proprietary License.pdf' $(QnnSDKRootDir)
-    displayName: 'Download Qualcomm AI Hub license'
+
 
   - script: |
       ls -al $(QnnSDKRootDir)
