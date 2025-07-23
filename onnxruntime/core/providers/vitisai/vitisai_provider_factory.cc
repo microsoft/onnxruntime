@@ -194,11 +194,8 @@ struct VitisAIEpFactory : OrtEpFactory {
         "CreateAllocator should not be called as we did not add OrtMemoryInfo to our OrtEpDevice.");
   }
 
-  static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* this_ptr, OrtAllocator* /*allocator*/) noexcept {
-    auto* factory = static_cast<VitisAIEpFactory*>(this_ptr);
-
-    return factory->ort_api.CreateStatus(
-        ORT_INVALID_ARGUMENT, "ReleaseAllocator should not be called as we did not implement CreateAllocator.");
+  static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* /*allocator*/) noexcept {
+    // should never be called as we don't implement CreateAllocator
   }
 
   static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* /*this_ptr*/,
