@@ -5397,24 +5397,20 @@ struct OrtApi {
   /** \brief Get the device memory type from ::OrtMemoryInfo
    *
    * \param[in] ptr The OrtMemoryInfo instance to query.
-   * \param[out] out The device memory type.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \return The device memory type.
    *
    * \since Version 1.23
    */
-  ORT_API2_STATUS(MemoryInfoGetDeviceMemType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtDeviceMemoryType* out);
+  ORT_API_T(OrtDeviceMemoryType, MemoryInfoGetDeviceMemType, _In_ const OrtMemoryInfo* ptr);
 
   /** \brief Get the vendor id from ::OrtMemoryInfo
    *
    * \param[in] ptr The OrtMemoryInfo instance to query.
-   * \param[out] out The vendor id.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \return The vendor id.
    *
    * \since Version 1.23
    */
-  ORT_API2_STATUS(MemoryInfoGetVendorId, _In_ const OrtMemoryInfo* ptr, _Out_ uint32_t* out);
+  ORT_API_T(uint32_t, MemoryInfoGetVendorId, _In_ const OrtMemoryInfo* ptr);
 
   /// \name OrtValueInfo
   /// @{
@@ -6084,15 +6080,14 @@ struct OrtApi {
    *
    * \param[in] options The OrtRunOptions instance.
    * \param[in] config_key The configuration entry key. A null-terminated string.
-   * \param[out] config_value Output parameter set to the configuration entry value. Either a null-terminated string if
-   *                          a configuration entry exists or NULL otherwise.
-   *                          Do not free this value. It is owned by `options` and will be invalidated if another call
-   *                          to `AddRunConfigEntry()` overwrites it.
+   * \return The configuration entry value. Either a null-terminated string if the entry was found. nullptr otherwise.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
    */
-  ORT_API2_STATUS(GetRunConfigEntry, _In_ const OrtRunOptions* options,
-                  _In_z_ const char* config_key, _Outptr_result_maybenull_z_ const char** config_value);
+  ORT_API_T(const char*, GetRunConfigEntry, _In_ const OrtRunOptions* options,
+            _In_z_ const char* config_key);
 
   /// @}
 
@@ -6176,7 +6171,7 @@ struct OrtApi {
   /** \brief Get a const pointer to the raw data inside a tensor
    *
    * Used to read the internal tensor data directly.
-   * \note The returned pointer is valid until the \p value is destroyed.
+   * \note The returned pointer is valid until the OrtValue is destroyed.
    *
    * \param[in] value A tensor type (string tensors are not supported)
    * \param[out] out Filled in with a pointer to the internal storage
