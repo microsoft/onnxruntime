@@ -49,6 +49,7 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
           .AddAssignmentToReference(nv::provider_option_names::kProfilesMaxShapes, info.profile_max_shapes)
           .AddAssignmentToReference(nv::provider_option_names::kProfilesOptShapes, info.profile_opt_shapes)
           .AddAssignmentToReference(nv::provider_option_names::kCudaGraphEnable, info.cuda_graph_enable)
+          .AddAssignmentToReference(nv::provider_option_names::kUseExternalDataInitializer, info.use_external_data_initializer)
           .AddAssignmentToReference(nv::provider_option_names::kMultiProfileEnable, info.multi_profile_enable)
           .AddValueParser(
               nv::provider_option_names::kONNXBytestream,
@@ -105,6 +106,8 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
     ORT_THROW("Invalid ", kOrtSessionOptionEpContextEmbedMode, " must 0 or 1");
   }
 
+  // info.use_external_data_initializer = true;
+
   return info;
 }
 
@@ -123,6 +126,7 @@ ProviderOptions NvExecutionProviderInfo::ToProviderOptions(const NvExecutionProv
       {nv::provider_option_names::kCudaGraphEnable, MakeStringWithClassicLocale(info.cuda_graph_enable)},
       {nv::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(info.onnx_bytestream)},
       {nv::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.onnx_bytestream_size)},
+      {nv::provider_option_names::kUseExternalDataInitializer, MakeStringWithClassicLocale(info.use_external_data_initializer)},
       {nv::provider_option_names::kExternalDataBytestream, MakeStringWithClassicLocale(info.external_data_bytestream)},
       {nv::provider_option_names::kExternalDataBytestreamSize, MakeStringWithClassicLocale(info.external_data_bytestream_size)},
   };

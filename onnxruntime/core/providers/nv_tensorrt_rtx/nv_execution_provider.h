@@ -153,11 +153,26 @@ struct TensorParams {
   }
 };
 
-// Struct to hold user weights when ModelProtos are serialized with external data
-struct TensorrtUserWeights {
-  std::string name{};
-  std::string data{};
-  int64_t size{};
+// Data structure to hold user weights when ModelProtos are serialized with external data
+class TensorrtUserWeights {
+ public:
+  TensorrtUserWeights(const std::string& name, const std::string& data) : name_(name), data_(data) {};
+
+  const char* Name() const {
+    return name_.c_str();
+  };
+
+  const void* Data() const {
+    return static_cast<void const*>(data_.data());
+  }
+
+  const int64_t Size() const {
+    return static_cast<int64_t>(data_.size());
+  }
+
+ private:
+  std::string name_{};
+  std::string data_{};
 };
 
 // Information to construct kernel function state.
@@ -291,8 +306,7 @@ class NvExecutionProvider : public IExecutionProvider {
                                     size_t onnx_external_data_bytestream_size,
                                     nvinfer1::ICudaEngine* trt_engine,
                                     bool serialize_refitted_engine,
-                                    bool detailed_build_log,
-                                    const GraphViewer* graph_body_viewer = nullptr);
+                                    bool detailed_build_log);
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
@@ -312,6 +326,7 @@ class NvExecutionProvider : public IExecutionProvider {
   std::string onnx_model_folder_path_;
   const void* onnx_model_bytestream_;
   size_t onnx_model_bytestream_size_;
+  bool use_external_data_initializer_ = false;
   const void* onnx_external_data_bytestream_ = nullptr;
   size_t onnx_external_data_bytestream_size_ = 0;
   bool sparsity_enable_ = false;

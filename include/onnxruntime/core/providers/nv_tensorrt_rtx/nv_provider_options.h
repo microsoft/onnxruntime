@@ -35,6 +35,7 @@ constexpr const char* kCudaGraphEnable = "nv_cuda_graph_enable";
 constexpr const char* kONNXBytestream = "nv_onnx_bytestream";
 constexpr const char* kONNXBytestreamSize = "nv_onnx_bytestream_size";
 constexpr const char* kMultiProfileEnable = "nv_multi_profile_enable";
+constexpr const char* kUseExternalDataInitializer = "nv_use_external_data_initializer";
 constexpr const char* kExternalDataBytestream = "nv_external_data_bytestream";
 constexpr const char* kExternalDataBytestreamSize = "nv_external_data_bytestream_size";
 
