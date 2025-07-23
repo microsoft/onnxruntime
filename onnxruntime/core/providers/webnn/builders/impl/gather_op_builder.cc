@@ -20,8 +20,6 @@ class GatherOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
@@ -50,25 +48,6 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-
-bool GatherOpBuilder::IsOpSupportedImpl(const GraphViewer&,
-                                        const Node& node,
-                                        const WebnnDeviceType /* device_type */,
-                                        const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-  const auto rank = input_shape.size();
-  if (rank < 1) {
-    LOGS(logger, VERBOSE) << "Gather only supports input shapes >= 1D, but input is "
-                          << rank << "d shape";
-    return false;
-  }
-
-  return true;
-}
-
 bool GatherOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                              const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input = *node.InputDefs()[0];
@@ -80,8 +59,9 @@ bool GatherOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& nod
       !GetType(indices, indices_type, logger))
     return false;
 
-  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger) &&
-         IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
+  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger) &&
+         IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

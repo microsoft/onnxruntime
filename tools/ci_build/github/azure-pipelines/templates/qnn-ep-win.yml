@@ -1,5 +1,5 @@
 parameters:
-  QnnSdk: '2.36.0.250627'
+  QnnSdk: '2.36.1.250708'
   build_config: 'RelWithDebInfo'
   IsReleaseBuild: false
   DoEsrp: false
@@ -20,7 +20,7 @@ stages:
       name: ${{ parameters.qnn_ep_build_pool_name }}
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
-      commonBuildArgs: '--compile_no_warning_as_error --skip_submodule_sync --build_shared_lib --client_package_build --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags '
+      commonBuildArgs: '--skip_submodule_sync --build_shared_lib --client_package_build --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags '
 
     steps:
     - template: set-version-number-variables-step.yml
