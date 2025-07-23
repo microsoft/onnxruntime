@@ -95,7 +95,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
       auto* p_initializer = graph_proto.add_initializer();
 
       // Do not save raw into the graph, only the metadata
-      if (!include_initializer_data && init->has_raw_data()) {
+      if (!include_initializer_data && (init->has_raw_data() || utils::HasExternalDataInMemory(*init))) {
         // Set datatype
         if (init->has_data_type()) {
           p_initializer->set_data_type(init->data_type());
