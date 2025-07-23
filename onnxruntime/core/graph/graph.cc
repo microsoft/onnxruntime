@@ -3847,9 +3847,11 @@ Status Graph::LoadExternalInitializerAsOrtValue(const std::string& name, OrtValu
 
   // Since we're about overwrite the TensorProto's external_data information (file path, offset, etc.),
   // need to store it so that is available for callers of Graph::GetExternalInitializerInfo.
-  std::unique_ptr<ExternalDataInfo> external_data_info;
-  ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
-  external_data_infos_.emplace(name, std::move(external_data_info));
+  if (external_data_infos_.count(name) == 0) {
+    std::unique_ptr<ExternalDataInfo> external_data_info;
+    ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+    external_data_infos_.emplace(name, std::move(external_data_info));
+  }
 
   // Replace old initializer's tensor_proto and OrtValue.
   auto& mutable_initializers = *(graph_proto_->mutable_initializer());
@@ -3879,6 +3881,7 @@ bool Graph::GetExternalInitializerInfo(const std::string& name, const ExternalDa
 
       ext_info = external_data_info.get();
       external_data_infos_.emplace(name, std::move(external_data_info));
+      return true;
     }
   }
 

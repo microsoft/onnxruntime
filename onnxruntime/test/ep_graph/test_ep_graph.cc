@@ -474,19 +474,16 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
                                       const GraphViewer& graph_viewer) {
   const OrtApi& ort_api = Ort::GetApi();
 
-  const OrtValue* api_initializer_value = nullptr;
-  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(api_value_info, &api_initializer_value));
-  ASSERT_NE(api_initializer_value, nullptr);
-
   const char* api_initializer_name = nullptr;
   ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(api_value_info, &api_initializer_name));
   ASSERT_NE(api_initializer_name, nullptr);
 
   // Check external initializer info (if any).
   const OrtExternalInitializerInfo* api_ext_info = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetExternalInitializerInfo(api_value_info, &api_ext_info));
+
   const ExternalDataInfo* ext_info = nullptr;
   bool has_ext_info = graph_viewer.GetGraph().GetExternalInitializerInfo(api_initializer_name, ext_info, true);
-  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetExternalInitializerInfo(api_value_info, &api_ext_info));
 
   if (has_ext_info) {
     ASSERT_NE(api_ext_info, nullptr);
@@ -499,7 +496,12 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
     ASSERT_EQ(api_ext_byte_size, ext_info->GetLength());
   } else {
     ASSERT_EQ(api_ext_info, nullptr);
+    ASSERT_FALSE(utils::HasExternalDataInFile(*tensor_proto));
   }
+
+  const OrtValue* api_initializer_value = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(api_value_info, &api_initializer_value));
+  ASSERT_NE(api_initializer_value, nullptr);
 
   // Check initializer type.
   const ONNX_NAMESPACE::TypeProto type_proto = utils::TypeProtoFromTensorProto(*tensor_proto);
