@@ -130,16 +130,13 @@ ORT_API(const OrtMemoryDevice*, MemoryInfo_GetMemoryDevice, _In_ const OrtMemory
   return static_cast<const OrtMemoryDevice*>(&memory_info->device);
 }
 
-ORT_API_STATUS_IMPL(Value_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device) {
-  *device = nullptr;
+ORT_API(const OrtMemoryDevice*, Value_GetMemoryDevice, _In_ const OrtValue* value) {
   if (value == nullptr || value->IsTensor() == false) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtValue does not contain an allocated tensor.");
+    return nullptr;  // Tensor always has a device, so we don't need a more specific error here.
   }
 
   auto& tensor = value->Get<Tensor>();
-  *device = static_cast<const OrtMemoryDevice*>(&tensor.Location().device);
-
-  return nullptr;
+  return static_cast<const OrtMemoryDevice*>(&tensor.Location().device);
 }
 
 ORT_API(bool, MemoryDevice_AreEqual, _In_ const OrtMemoryDevice* a, _In_ const OrtMemoryDevice* b) {

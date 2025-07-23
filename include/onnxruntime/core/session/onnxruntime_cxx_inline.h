@@ -768,9 +768,7 @@ inline RunOptions& RunOptions::AddConfigEntry(const char* config_key, const char
 }
 
 inline const char* RunOptions::GetConfigEntry(const char* config_key) {
-  const char* out{};
-  ThrowOnError(GetApi().GetRunConfigEntry(p_, config_key, &out));
-  return out;
+  return GetApi().GetRunConfigEntry(p_, config_key);
 }
 
 inline RunOptions& RunOptions::SetTerminate() {
