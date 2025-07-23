@@ -10,6 +10,14 @@
 
 #include "core/common/transform_iterator.h"
 
+namespace ONNX_NAMESPACE {
+#ifndef SHARED_PROVIDER
+class TensorProto;
+#else
+struct TensorProto;
+#endif
+}  // namespace ONNX_NAMESPACE
+
 namespace onnxruntime {
 // Create a shallow class to act as a proxy for whatever container is currently used for the initialized tensors
 // in the graph. Exposing begin()/end(), size(), empty methods. Begin()/end() method pairs must return a

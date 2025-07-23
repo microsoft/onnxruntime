@@ -576,13 +576,14 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
                                   ? EpValueInfo::kIsConstantInitializer
                                   : EpValueInfo::kIsOptionalGraphInput;
 
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    graph_viewer.GetInitializedTensor(initializer_name, tensor_proto);
+
     auto iter = value_infos_map.find(initializer_name);
     if (iter != value_infos_map.end()) {
       value_info = iter->second.get();
       value_info->SetFlag(flag);
     } else {
-      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-      graph_viewer.GetInitializedTensor(initializer_name, tensor_proto);
       auto type_proto = utils::TypeProtoFromTensorProto(*tensor_proto);
       std::unique_ptr<OrtTypeInfo> type_info = OrtTypeInfo::FromTypeProto(type_proto);
       auto unique_value_info = std::make_unique<EpValueInfo>(ep_graph.get(), initializer_name, std::move(type_info),

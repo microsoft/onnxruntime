@@ -53,7 +53,7 @@ class transform_iterator_base<Iterator, UnaryFunction, true> {
 }  // namespace detail
 
 /**
- * @brief An iterator adaptor that applies a unary function to the result of dereferencing another iterator.
+ * @brief An iterator adapter that applies a unary function to the result of dereferencing another iterator.
  *
  * This iterator wraps an underlying iterator and transforms its dereferenced value using a provided function.
  * It supports different iterator categories (input, forward, bidirectional, random access) based on the
@@ -67,6 +67,7 @@ class transform_iterator_base<Iterator, UnaryFunction, true> {
 template <typename Iterator, typename UnaryFunction>
 class transform_iterator : public detail::transform_iterator_base<Iterator, UnaryFunction> {
   using base = detail::transform_iterator_base<Iterator, UnaryFunction>;
+  using func_return_type = std::invoke_result_t<UnaryFunction, typename base::traits::reference>;
 
  public:
   using underlying_iterator_type = Iterator;
@@ -146,10 +147,25 @@ class transform_iterator : public detail::transform_iterator_base<Iterator, Unar
 
   const underlying_iterator_type& get_underlying() const { return current_; }
 
+  // Swap support
+  void swap(transform_iterator& other) noexcept(
+      std::is_nothrow_swappable_v<Iterator> && std::is_nothrow_swappable_v<UnaryFunction>) {
+    using std::swap;
+    swap(current_, other.current_);
+    swap(f_, other.f_);
+  }
+
  private:
   Iterator current_{};
-  UnaryFunction f_{};
+  std::function<func_return_type(typename traits::reference)> f_{};
 };
+
+// Non-member swap function
+template <typename Iterator, typename UnaryFunction>
+void swap(transform_iterator<Iterator, UnaryFunction>& a,
+          transform_iterator<Iterator, UnaryFunction>& b) noexcept(noexcept(a.swap(b))) {
+  a.swap(b);
+}
 
 // Comparison operators
 template <typename Iter1, typename Func1, typename Iter2, typename Func2>
