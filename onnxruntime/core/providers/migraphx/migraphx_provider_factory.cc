@@ -265,9 +265,9 @@ OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase
 
   // Factory could use registration_name or define its own EP name.
   auto factory_gpu = std::make_unique<MigraphXEpFactory>(*ort_api,
-                                                              onnxruntime::kMIGraphXExecutionProvider,
-                                                              OrtHardwareDeviceType_GPU,
-                                                              *default_logger);
+                                                         onnxruntime::kMIGraphXExecutionProvider,
+                                                         OrtHardwareDeviceType_GPU,
+                                                         *default_logger);
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
