@@ -194,7 +194,7 @@ bool MatchesOpSetDomain(const Node& node, std::string_view domain);
 /// </summary>
 /// <param name="tensor_proto"></param>
 /// <param name="tensor"></param>
-/// <returns>true if successfull</returns>
+/// <returns>true if successful</returns>
 [[nodiscard]] bool CheckInMemoryDataMatch(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                           const Tensor& tensor);
 

@@ -768,9 +768,7 @@ inline RunOptions& RunOptions::AddConfigEntry(const char* config_key, const char
 }
 
 inline const char* RunOptions::GetConfigEntry(const char* config_key) {
-  const char* out{};
-  ThrowOnError(GetApi().GetRunConfigEntry(p_, config_key, &out));
-  return out;
+  return GetApi().GetRunConfigEntry(p_, config_key);
 }
 
 inline RunOptions& RunOptions::SetTerminate() {
@@ -2627,7 +2625,7 @@ inline std::string ShapeInferContext::GetAttrString(const char* attr_name) {
   if (status) {
     std::vector<char> chars(out, '\0');
     Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRING, chars.data(), out, &out));
-    return {chars.data()};
+    return std::string{chars.data(), out};
   } else {
     return {c};
   }

@@ -1576,11 +1576,22 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                        std::optional<std::string_view> new_name);
 
   /// <summary>
-  /// Subgraph initializers are already copied using Node::ToProto()
+  /// This function is used by ToGraphProto() to ensure in-memory external data references
+  /// don't leak externally since they are non-standard.
+  ///
+  /// It handles two scenarios:
+  /// - When GraphSynchronizationNeeded() is false: GraphProto is simply copied
+  ///   from graph_proto_ by ToGraphProto(). This copy includes both main graph
+  ///   and subgraph initializers. This function examines all initializers
+  ///   and inlines any in-memory data references.
+  /// - When GraphSynchronizationNeeded() is true: ToGraphProto() generates a new GraphProto
+  ///   using ToGraphProtoInternal(). This doesn't transfer main graph initializers, which are
+  ///   copied and inlined by ToGraphProto() itself. This function processes only the subgraph initializers
+  ///   as needed.
   /// </summary>
-  /// <param name="output_graph_proto"></param>
-  /// <param name="process_main">process main graph if true</param>
-  /// <returns>Status</returns>
+  /// <param name="output_graph_proto">The GraphProto to process</param>
+  /// <param name="process_main">Whether to process the main graph initializers</param>
+  /// <returns>Status indicating success or failure</returns>  ///
   Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto, bool process_main) const;
 
   /// <summary>

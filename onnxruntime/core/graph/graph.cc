@@ -1239,7 +1239,9 @@ Graph::Graph(const Model& owning_model,
       auto tensor_proto_to_add = utils::TensorToTensorProto(ort_value.Get<Tensor>(), tensor_proto.name(),
                                                             use_tensor_buffer_true);
       assert(ort_value.IsAllocated());
-      ortvalue_initializers_.insert_or_assign(tensor_proto_to_add.name(), std::move(ort_value));
+      auto ins_result = ortvalue_initializers_.insert_or_assign(tensor_proto_to_add.name(), std::move(ort_value));
+      ORT_ENFORCE(ins_result.second, "Unexpected duplicate insert or assign OrtValue for tensor: ", tensor_proto_to_add.name(),
+                  " in the initializer list.");
       tensor_proto = std::move(tensor_proto_to_add);
     }
   };
@@ -4254,8 +4256,8 @@ namespace {
 // The function examines initializer tensor_proto and if the data is in memory it inlines
 // and adds it to the output initializers. Otherwise, it copies the initializer.
 // External data on disk references are preserved.
-Status InlineOrCopyInitializerToGraphProto(const Graph& src_graph, const ONNX_NAMESPACE::TensorProto& initializer,
-                                           ONNX_NAMESPACE::TensorProto& output) {
+Status InlineOrCopyInitializer(const Graph& src_graph, const ONNX_NAMESPACE::TensorProto& initializer,
+                               ONNX_NAMESPACE::TensorProto& output) {
   // copy any in-memory external data into raw data
   if (utils::HasExternalDataInMemory(initializer)) {
     OrtValue ort_value;
@@ -4330,7 +4332,7 @@ Status Graph::ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_gr
       auto& initializer = *first;
       if (utils::HasExternalDataInMemory(initializer)) {
         // If the initializer has external data in memory, we need to inline it.
-        ORT_RETURN_IF_ERROR(InlineOrCopyInitializerToGraphProto(*this, initializer, initializer));
+        ORT_RETURN_IF_ERROR(InlineOrCopyInitializer(*this, initializer, initializer));
       }
       if (has_sparse_initializers && sparse_end != sparse_tensor_names_.find(initializer.name())) {
         auto& sparse_initializer = *output_graph_proto.add_sparse_initializer();
@@ -4359,9 +4361,30 @@ Status Graph::ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_gr
   }
   return Status::OK();
 }
+#else
+    for (auto& initializer : *output_graph_proto.mutable_initializer()) {
+      if (utils::HasExternalDataInMemory(initializer)) {
+        // If the initializer has external data in memory, we need to inline it.
+        ORT_RETURN_IF_ERROR(InlineOrCopyInitializer(*this, initializer, initializer));
+      }
+    }
+#endif
+  }
+  return Status::OK();
+}
 
 ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   GraphProto result;
+  if (!GraphProtoSyncNeeded()) {
+    result = *graph_proto_;
+    ORT_THROW_IF_ERROR(ProcessSubgraphsInMemoryData(result, /*process_main*/ true));
+  } else {
+    ToGraphProtoInternal(result);
+
+    ORT_THROW_IF_ERROR(ProcessSubgraphsInMemoryData(result, /*process_main*/ false));
+
+    // Add initializers to parent graph by copy converting them from graph_proto_
+    // ToGraphProtoInternal() does not copy initializers for the main graph
   if (!GraphProtoSyncNeeded()) {
     result = *graph_proto_;
     ORT_THROW_IF_ERROR(ProcessSubgraphsInMemoryData(result, /*process_main*/ true));
@@ -4381,14 +4404,14 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
 
     for (const auto& initializer : graph_proto_->initializer()) {
       if (!has_sparse_initializers || sparse_end == sparse_tensor_names_.find(initializer.name())) {
-        ORT_THROW_IF_ERROR(InlineOrCopyInitializerToGraphProto(*this, initializer,
-                                                               *mutable_initializers->Add()));
+        ORT_THROW_IF_ERROR(InlineOrCopyInitializer(*this, initializer,
+                                                   *mutable_initializers->Add()));
       } else {
         auto& sparse_initializer = *result.add_sparse_initializer();
         if (utils::HasExternalDataInMemory(initializer)) {
           ONNX_NAMESPACE::TensorProto tensor_proto;
-          ORT_THROW_IF_ERROR(InlineOrCopyInitializerToGraphProto(*this, initializer,
-                                                                 tensor_proto));
+          ORT_THROW_IF_ERROR(InlineOrCopyInitializer(*this, initializer,
+                                                     tensor_proto));
           ORT_THROW_IF_ERROR(utils::DenseTensorToSparseTensorProto(tensor_proto, model_path, sparse_initializer));
         } else {
           ORT_THROW_IF_ERROR(utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer));
@@ -4399,7 +4422,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
     // Add initializers to parent graph by copy converting them from graph_proto_
     // ToGraphProtoInternal() does not copy initializers for the main graph
     for (const auto& initializer : graph_proto_->initializer()) {
-      ORT_THROW_IF_ERROR(InlineOrCopyInitializerToGraphProto(*this, initializer, *mutable_initializers->Add()));
+      ORT_THROW_IF_ERROR(InlineOrCopyInitializer(*this, initializer, *mutable_initializers->Add()));
     }
 #endif
   }
@@ -4481,7 +4504,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
 
       // We do not externalize string tensors.
       if (utils::HasString(initializer)) {
-        ORT_RETURN_IF_ERROR(InlineOrCopyInitializerToGraphProto(
+        ORT_RETURN_IF_ERROR(InlineOrCopyInitializer(
             *this, initializer,
             *output_graph_proto.mutable_initializer()->Add()));
         continue;
