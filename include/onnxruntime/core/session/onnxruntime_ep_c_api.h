@@ -366,12 +366,11 @@ struct OrtEpApi {
   /** \brief Get the OrtMemoryDevice from an OrtValue instance if it contains a Tensor.
    *
    * \param[in] value The OrtValue instance to get the memory device from.
-   * \param[out] device The OrtMemoryDevice associated with the OrtValue instance.
-   * \return Status Success if OrtValue contains a Tensor. Otherwise, an error status is returned.
+   * \return Memory device if OrtValue contains a Tensor, nullptr otherwise.
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Value_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device);
+  ORT_API_T(const OrtMemoryDevice*, Value_GetMemoryDevice, _In_ const OrtValue* value);
 
   /** \brief Compare two OrtMemoryDevice instances for equality.
    *
@@ -696,8 +695,8 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  const char*(ORT_API_CALL* GetCompiledModelCompatibilityInfo)(_In_ OrtEp* this_ptr,
-                                                               _In_ const OrtGraph* graph);
+  ORT_API_T(const char*, GetCompiledModelCompatibilityInfo, _In_ OrtEp* this_ptr,
+            _In_ const OrtGraph* graph);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -874,9 +873,9 @@ struct OrtEpFactory {
    *
    * \since Version 1.23.
    */
-  OrtStatus*(ORT_API_CALL* ValidateCompiledModelCompatibilityInfo)(_In_ OrtEpFactory* this_ptr,
-                                                                   _In_ const char* compatibility_info,
-                                                                   _Out_ OrtCompiledModelCompatibility* model_compatibility);
+  ORT_API2_STATUS(ValidateCompiledModelCompatibilityInfo, _In_ OrtEpFactory* this_ptr,
+                  _In_ const char* compatibility_info,
+                  _Out_ OrtCompiledModelCompatibility* model_compatibility);
 
   /** \brief Create an OrtAllocator that can be shared across sessions for the given OrtMemoryInfo.
    *

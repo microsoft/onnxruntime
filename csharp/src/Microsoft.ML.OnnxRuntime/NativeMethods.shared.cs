@@ -31,10 +31,12 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateStatus;
         public IntPtr GetErrorCode;
         public IntPtr GetErrorMessage;
+
         public IntPtr CreateEnv;
         public IntPtr CreateEnvWithCustomLogger;
         public IntPtr EnableTelemetryEvents;
         public IntPtr DisableTelemetryEvents;
+
         public IntPtr CreateSession;
         public IntPtr CreateSessionFromArray;
         public IntPtr Run;
@@ -70,6 +72,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionGetInputName;
         public IntPtr SessionGetOutputName;
         public IntPtr SessionGetOverridableInitializerName;
+
         public IntPtr CreateRunOptions;
         public IntPtr RunOptionsSetRunLogVerbosityLevel;
         public IntPtr RunOptionsSetRunLogSeverityLevel;
@@ -84,8 +87,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateTensorWithDataAsOrtValue;
         public IntPtr IsTensor;
         public IntPtr GetTensorMutableData;
-        public IntPtr FillStringTensor;
 
+        public IntPtr FillStringTensor;
         public IntPtr GetStringTensorDataLength;
         public IntPtr GetStringTensorContent;
 
@@ -139,6 +142,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseTensorTypeAndShapeInfo;
         public IntPtr ReleaseSessionOptions;
         public IntPtr ReleaseCustomOpDomain;
+        // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr GetDenotationFromTypeInfo;
         public IntPtr CastTypeInfoToMapTypeInfo;
         public IntPtr CastTypeInfoToSequenceTypeInfo;
@@ -148,7 +153,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseMapTypeInfo;
         public IntPtr ReleaseSequenceTypeInfo;
         public IntPtr SessionEndProfiling;
-
         public IntPtr SessionGetModelMetadata;
         public IntPtr ModelMetadataGetProducerName;
         public IntPtr ModelMetadataGetGraphName;
@@ -157,6 +161,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ModelMetadataLookupCustomMetadataMap;
         public IntPtr ModelMetadataGetVersion;
         public IntPtr ReleaseModelMetadata;
+        // End of Version 2 - DO NOT MODIFY ABOVE (see above text for more information);
 
         public IntPtr CreateEnvWithGlobalThreadPools;
         public IntPtr DisablePerSessionThreads;
@@ -164,9 +169,12 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseThreadingOptions;
         public IntPtr ModelMetadataGetCustomMetadataMapKeys;
         public IntPtr AddFreeDimensionOverrideByName;
+        // End of Version 3 - DO NOT MODIFY ABOVE (see above text for more information);
 
         public IntPtr GetAvailableProviders;
         public IntPtr ReleaseAvailableProviders;
+        // End of Version 4 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr GetStringTensorElementLength;
         public IntPtr GetStringTensorElement;
         public IntPtr FillStringTensorElement;
@@ -191,6 +199,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetGlobalIntraOpNumThreads;
         public IntPtr SetGlobalInterOpNumThreads;
         public IntPtr SetGlobalSpinControl;
+        // End of Version 5 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr AddInitializer;
         public IntPtr CreateEnvWithCustomLoggerAndGlobalThreadPools;
         public IntPtr SessionOptionsAppendExecutionProvider_CUDA;
@@ -199,10 +209,14 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetGlobalDenormalAsZero;
         public IntPtr CreateArenaCfg;
         public IntPtr ReleaseArenaCfg;
+        // End of Version 6 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr ModelMetadataGetGraphDescription;
         public IntPtr SessionOptionsAppendExecutionProvider_TensorRT;
         public IntPtr SetCurrentGpuDeviceId;
         public IntPtr GetCurrentGpuDeviceId;
+        // End of Version 7 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr KernelInfoGetAttributeArray_float;
         public IntPtr KernelInfoGetAttributeArray_int64;
         public IntPtr CreateArenaCfgV2;
@@ -211,6 +225,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleasePrepackedWeightsContainer;
         public IntPtr CreateSessionWithPrepackedWeightsContainer;
         public IntPtr CreateSessionFromArrayWithPrepackedWeightsContainer;
+        // End of Version 8 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr SessionOptionsAppendExecutionProvider_TensorRT_V2;
         public IntPtr CreateTensorRTProviderOptions;
         public IntPtr UpdateTensorRTProviderOptions;
@@ -233,6 +249,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetSparseTensorValues;
         public IntPtr GetSparseTensorIndicesTypeShape;
         public IntPtr GetSparseTensorIndices;
+        // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr HasValue;
         public IntPtr KernelContext_GetGPUComputeStream;
         public IntPtr GetTensorMemoryInfo;
@@ -245,12 +263,16 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetGlobalCustomJoinThreadFn;
         public IntPtr SynchronizeBoundInputs;
         public IntPtr SynchronizeBoundOutputs;
+        // End of Version 10 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr SessionOptionsAppendExecutionProvider_CUDA_V2;
         public IntPtr CreateCUDAProviderOptions;
         public IntPtr UpdateCUDAProviderOptions;
         public IntPtr GetCUDAProviderOptionsAsString;
         public IntPtr ReleaseCUDAProviderOptions;
         public IntPtr SessionOptionsAppendExecutionProvider_MIGraphX;
+        // End of Version 11 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr AddExternalInitializers;
         public IntPtr CreateOpAttr;
         public IntPtr ReleaseOpAttr;
@@ -260,6 +282,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionOptionsAppendExecutionProvider;
         public IntPtr CopyKernelInfo;
         public IntPtr ReleaseKernelInfo;
+        // End of Version 12 - DO NOT MODIFY ABOVE (see above text for more information);
 
         public IntPtr GetTrainingApi;
         public IntPtr SessionOptionsAppendExecutionProvider_CANN;
@@ -267,6 +290,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr UpdateCANNProviderOptions;
         public IntPtr GetCANNProviderOptionsAsString;
         public IntPtr ReleaseCANNProviderOptions;
+        // End of Version 13 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr MemoryInfoGetDeviceType;
         public IntPtr UpdateEnvWithCustomLogLevel;
         public IntPtr SetGlobalIntraOpThreadAffinity;
@@ -281,6 +306,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr KernelInfoGetAttribute_tensor;
         public IntPtr HasSessionConfigEntry;
         public IntPtr GetSessionConfigEntry;
+        // End of Version 14 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr SessionOptionsAppendExecutionProvider_Dnnl;
         public IntPtr CreateDnnlProviderOptions;
         public IntPtr UpdateDnnlProviderOptions;
@@ -297,6 +324,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetResizedStringTensorElementBuffer;
         public IntPtr KernelContext_GetAllocator;
         public IntPtr GetBuildInfoString;
+        // End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr CreateROCMProviderOptions;
         public IntPtr UpdateROCMProviderOptions;
         public IntPtr GetROCMProviderOptionsAsString;
@@ -308,6 +337,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr UpdateCUDAProviderOptionsWithValue;
         public IntPtr GetCUDAProviderOptionsByName;
         public IntPtr KernelContext_GetResource;
+        // End of Version 16 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr SetUserLoggingFunction;
         public IntPtr ShapeInferContext_GetInputCount;
         public IntPtr ShapeInferContext_GetInputTypeShape;
@@ -318,25 +349,35 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetDeterministicCompute;
         public IntPtr KernelContext_ParallelFor;
         public IntPtr SessionOptionsAppendExecutionProvider_OpenVINO_V2;
+        // End of Version 17 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr SessionOptionsAppendExecutionProvider_VitisAI;
         public IntPtr KernelContext_GetScratchBuffer;
         public IntPtr KernelInfoGetAllocator;
         public IntPtr AddExternalInitializersFromFilesInMemory;
+        // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information);
+        // End of Version 19 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr CreateLoraAdapter;
         public IntPtr CreateLoraAdapterFromArray;
         public IntPtr ReleaseLoraAdapter;
         public IntPtr RunOptionsAddActiveLoraAdapter;
+
         public IntPtr SetEpDynamicOptions;
+        // End of Version 20 - DO NOT MODIFY ABOVE (see above text for more information);
+
         public IntPtr ReleaseValueInfo;
         public IntPtr ReleaseNode;
         public IntPtr ReleaseGraph;
         public IntPtr ReleaseModel;
+
         public IntPtr GetValueInfoName;
         public IntPtr GetValueInfoTypeInfo;
+
         public IntPtr GetModelEditorApi;
+
         public IntPtr CreateTensorWithDataAndDeleterAsOrtValue;
         public IntPtr SessionOptionsSetLoadCancellationFlag;
-
         public IntPtr GetCompileApi;
 
         public IntPtr CreateKeyValuePairs;
@@ -348,9 +389,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public IntPtr RegisterExecutionProviderLibrary;
         public IntPtr UnregisterExecutionProviderLibrary;
-
         public IntPtr GetEpDevices;
-
         public IntPtr SessionOptionsAppendExecutionProvider_V2;
         public IntPtr SessionOptionsSetEpSelectionPolicy;
         public IntPtr SessionOptionsSetEpSelectionPolicyDelegate;
@@ -368,11 +407,14 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr EpDevice_Device;
 
         public IntPtr GetEpApi;
+        // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information);
 
         public IntPtr GetTensorSizeInBytes;
         public IntPtr AllocatorGetStats;
 
         public IntPtr CreateMemoryInfo_V2;
+        public IntPtr MemoryInfoGetDeviceMemType;
+        public IntPtr MemoryInfoGetVendorId;
 
         public IntPtr ValueInfo_GetValueProducer;
         public IntPtr ValueInfo_GetValueNumConsumers;
@@ -416,7 +458,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr Node_GetNumSubgraphs;
         public IntPtr Node_GetSubgraphs;
         public IntPtr Node_GetGraph;
-        public IntPtr Node_GetEpType;
+        public IntPtr Node_GetEpName;
 
         public IntPtr GetRunConfigEntry;
 
@@ -428,7 +470,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public IntPtr GetTensorData;
 
-	public IntPtr GetSessionOptionsConfigEntries;
+        public IntPtr GetSessionOptionsConfigEntries;
 
         public IntPtr SessionGetMemoryInfoForInputs;
         public IntPtr SessionGetMemoryInfoForOutputs;

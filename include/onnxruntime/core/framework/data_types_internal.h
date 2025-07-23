@@ -319,6 +319,10 @@ class CallableDispatchableHelper {
  public:
   explicit CallableDispatchableHelper(int32_t dt_type) noexcept : dt_type_(dt_type), called_(0) {}
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4702)
+#endif
   // Must return integer to be in a expandable context
   template <class T, class Fn, class... Args>
   int Invoke(Fn&& fn, Args&&... args) {
@@ -328,6 +332,9 @@ class CallableDispatchableHelper {
     }
     return 0;
   }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
   void CheckCalledOnce() const {
     ORT_ENFORCE(called_ == 1, "Unsupported data type: ", dt_type_);
@@ -338,7 +345,7 @@ class CallableDispatchableHelper {
 // Other policies may set the second result argument accordingly.
 template <class Ret>
 struct UnsupportedTypeDefaultPolicy {
-  void operator()(int32_t dt_type, Ret& /*result*/) const {
+  [[noreturn]] void operator()(int32_t dt_type, Ret& /*result*/) const {
     ORT_THROW("Unsupported data type: ", dt_type);
   }
 };
