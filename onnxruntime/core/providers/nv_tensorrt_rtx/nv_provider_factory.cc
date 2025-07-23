@@ -587,12 +587,17 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
       if (factory->ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU &&
           factory->ort_api.HardwareDevice_VendorId(&device) == factory->vendor_id) {
         OrtKeyValuePairs* ep_options = nullptr;
+        OrtKeyValuePairs* ep_metadata = nullptr;
+
         factory->ort_api.CreateKeyValuePairs(&ep_options);
+        factory->ort_api.CreateKeyValuePairs(&ep_metadata)
+        ;
         factory->ort_api.AddKeyValuePair(ep_options, "device_id", std::to_string(device_id).c_str());
 
-        RETURN_IF_ERROR(factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, nullptr, ep_options,
+        RETURN_IF_ERROR(factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, ep_metadata, ep_options,
                                                                    &ep_devices[num_ep_devices]));
         factory->ort_api.ReleaseKeyValuePairs(ep_options);
+        factory->ort_api.ReleaseKeyValuePairs(ep_metadata);
 
         const OrtMemoryInfo* gpu_mem_info = factory->gpu_memory_infos[device_id].get();
         const OrtMemoryInfo* host_accessible_mem_info = factory->host_accessible_memory_infos[device_id].get();

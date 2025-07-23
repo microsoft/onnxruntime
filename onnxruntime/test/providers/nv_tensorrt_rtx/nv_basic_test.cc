@@ -8,6 +8,7 @@
 #include "gtest/gtest.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/common/trt_op_test_utils.h"
+#include "test/common/random_generator.h"
 #include "test/providers/nv_tensorrt_rtx/test_nv_trt_rtx_ep_util.h"
 
 #include "test/util/include/api_asserts.h"
@@ -502,7 +503,7 @@ TEST(NvExecutionProviderTest, LoadUnloadPluginLibraryCxxApi) {
 
   auto metadata = test_ep_device->EpMetadata();
   ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_Version), ORT_VERSION);
-  //ASSERT_STREQ(metadata.GetValue("supported_devices"), "NVIDIA RTX");
+
 
   // the GPU device info will vary by machine so check for the lowest common denominator values
   Ort::ConstHardwareDevice device = test_ep_device->Device();
@@ -517,6 +518,72 @@ TEST(NvExecutionProviderTest, LoadUnloadPluginLibraryCxxApi) {
   // and this should unload it without throwing
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
 }
+
+
+TEST(NvExecutionProviderTest, DataTransfer) {
+  const OrtApi& c_api = Ort::GetApi();
+  RegisteredEpDeviceUniquePtr nv_tensorrt_rtx_ep;
+  Utils::RegisterAndGetNvTensorRtRtxEp(*ort_env, nv_tensorrt_rtx_ep);
+  const OrtEpDevice* ep_device = nv_tensorrt_rtx_ep.get();
+
+  const OrtMemoryInfo* device_memory_info = c_api.EpDevice_MemoryInfo(ep_device, OrtDeviceMemoryType_DEFAULT);
+
+  // create a tensor using the default CPU allocator
+  Ort::AllocatorWithDefaultOptions cpu_allocator;
+  std::vector<int64_t> shape{2, 3, 4};  // shape doesn't matter
+  const size_t num_elements = 2 * 3 * 4;
+
+  RandomValueGenerator random{};
+  std::vector<float> input_data = random.Gaussian<float>(shape, 0.0f, 2.f);
+  Ort::Value cpu_tensor = Ort::Value::CreateTensor<float>(cpu_allocator.GetInfo(),
+                                                          input_data.data(), input_data.size(),
+                                                          shape.data(), shape.size());
+
+  // create an on-device Tensor using the NV TensorRT RTX EP  GPU allocator.
+
+  OrtAllocator* allocator = nullptr;
+  ASSERT_ORTSTATUS_OK(c_api.GetSharedAllocator(*ort_env, device_memory_info, &allocator));
+  ASSERT_NE(allocator, nullptr);
+  Ort::Value device_tensor = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
+
+  std::vector<const OrtValue*> src_tensor_ptrs{cpu_tensor};
+  std::vector<OrtValue*> dst_tensor_ptrs{device_tensor};
+
+  ASSERT_ORTSTATUS_OK(c_api.CopyTensors(*ort_env, src_tensor_ptrs.data(), dst_tensor_ptrs.data(), nullptr,
+                                        src_tensor_ptrs.size()));
+
+  // Copy data back from device_tensor to a new CPU tensor and verify the contents
+
+  // Create a new CPU tensor to receive the data
+  Ort::Value cpu_tensor_copy = Ort::Value::CreateTensor<float>(cpu_allocator, shape.data(), shape.size());
+
+  std::vector<const OrtValue*> src_tensor_ptrs_back{device_tensor};
+  std::vector<OrtValue*> dst_tensor_ptrs_back{cpu_tensor_copy};
+
+  ASSERT_ORTSTATUS_OK(c_api.CopyTensors(*ort_env, src_tensor_ptrs_back.data(), dst_tensor_ptrs_back.data(), nullptr,
+                                        src_tensor_ptrs_back.size()));
+
+  const float* cpu_copy_data = nullptr;
+  ASSERT_ORTSTATUS_OK(c_api.GetTensorData(cpu_tensor_copy, reinterpret_cast<const void**>(&cpu_copy_data)));
+
+  const float* src_data = nullptr;
+  ASSERT_ORTSTATUS_OK(c_api.GetTensorData(cpu_tensor, reinterpret_cast<const void**>(&src_data)));
+
+  size_t bytes;
+  ASSERT_ORTSTATUS_OK(c_api.GetTensorSizeInBytes(cpu_tensor, &bytes));
+  ASSERT_EQ(bytes, num_elements * sizeof(float));
+
+  ASSERT_NE(src_data, cpu_copy_data) << "Should have copied between two different memory locations";
+
+  auto src_span = gsl::make_span(src_data, num_elements);
+  auto cpu_copy_span = gsl::make_span(cpu_copy_data, num_elements);
+
+  EXPECT_THAT(src_span, ::testing::ContainerEq(cpu_copy_span));
+
+  // must release this before we unload the EP and the allocator is deleted
+  device_tensor = Ort::Value();
+}
+
 
 #endif  // defined(WIN32)
 
