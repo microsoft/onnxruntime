@@ -78,6 +78,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       for (auto index : device_list) {
         if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
           fprintf(stderr, "%s", "The device index provided is not correct. Will skip this device id.");
+          continue;
         }
 
         Ort::ConstEpDevice& device = ep_devices[index];
@@ -107,11 +108,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     }
 
     if (added_ep_devices.empty()) {
-      for (auto ep_name : registered_plugin_ep_names_) {
-        env.UnregisterExecutionProviderLibrary(ep_name.c_str());
-      }
-      ORT_THROW(
-          "[ERROR] [plugin EP]: No matching devices found.");
+      ORT_THROW("[ERROR] [plugin EP]: No matching devices found.");
     }
 
     std::string provider_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);

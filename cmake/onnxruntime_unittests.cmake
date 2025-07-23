@@ -1258,7 +1258,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
 
     if(onnxruntime_DISABLE_EXCEPTIONS)
-     add_definitions(-DDISABLE_EXCEPTIONS=1)
+     add_definitions(-DCXXOPTS_NO_EXCEPTIONS)
     endif()
 
     if (onnxruntime_BUILD_SHARED_LIB)

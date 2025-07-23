@@ -20,11 +20,7 @@ int real_main(int argc, char* argv[]) {
 #endif
   g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   perftest::PerformanceTestConfig test_config;
-#ifdef DISABLE_EXCEPTIONS
-  if (!perftest::CommandLineParser::ParseArguments(test_config, argc, argv)) {
-#else
   if (!perftest::CommandLineParser::ParseArgumentsV2(test_config, argc, argv)) {
-#endif
     perftest::CommandLineParser::ShowUsage();
     return -1;
   }
@@ -52,8 +48,14 @@ int real_main(int argc, char* argv[]) {
     perftest::utils::RegisterExecutionProviderLibrary(env, test_config);
   }
 
+  auto unregister_plugin_eps_at_scope_exit = gsl::finally([&]() {
+    if (!test_config.registered_plugin_eps.empty()) {
+      perftest::utils::UnregisterExecutionProviderLibrary(env, test_config);  // TODO ensure that this won't throw since it is called from the gsl::final_action destructor.
+    }
+  });
+
   if (test_config.list_available_devices) {
-    perftest::utils::list_devices(env);
+    perftest::utils::ListDevices(env);
     if (test_config.registered_plugin_eps.empty()) {
       fprintf(stdout, "No plugin execution provider libraries are registered. Please specify them using \"--plugin_ep_libs\"; otherwise, only CPU may be available.\n");
     } else {

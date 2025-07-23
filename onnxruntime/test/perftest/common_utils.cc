@@ -13,7 +13,7 @@ namespace onnxruntime {
 namespace perftest {
 namespace utils {
 
-void list_devices(Ort::Env& env) {
+void ListDevices(const Ort::Env& env) {
   std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
 
   for (size_t i = 0; i < ep_devices.size(); ++i) {
@@ -44,7 +44,7 @@ bool RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test
       for (auto& pair : ep_names_to_libs) {
         const std::filesystem::path library_path = pair.second;
         const std::string registration_name = pair.first;
-        env.RegisterExecutionProviderLibrary(registration_name.c_str(), Utf8ToOrtString(library_path.string()));
+        env.RegisterExecutionProviderLibrary(registration_name.c_str(), ToPathString(library_path.string()));
         test_config.registered_plugin_eps.push_back(registration_name);
       }
     }
@@ -54,7 +54,7 @@ bool RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test
 
 bool UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config) {
   for (auto& registration_name : test_config.registered_plugin_eps) {
-    env.UnregisterExecutionProviderLibrary(registration_name.c_str());
+    auto status = Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str());
   }
   return true;
 }

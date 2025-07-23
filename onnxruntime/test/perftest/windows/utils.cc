@@ -78,7 +78,6 @@ std::unique_ptr<ICPUUsage> CreateICPUUsage() {
   return std::make_unique<CPUUsage>();
 }
 
-#ifdef _WIN32
 std::vector<std::string> ConvertArgvToUtf8Strings(int argc, wchar_t* argv[]) {
   std::vector<std::string> utf8_args;
   utf8_args.reserve(argc);
@@ -92,28 +91,9 @@ std::vector<const char*> ConvertArgvToUtf8CharPtrs(std::vector<std::string>& utf
   std::vector<const char*> utf8_argv;
   utf8_argv.reserve(utf8_args.size());
   for (auto& str : utf8_args) {
-    utf8_argv.push_back(&str[0]);  // safe since std::string is mutable
+    utf8_argv.push_back(&str[0]);
   }
   return utf8_argv;
-}
-#endif
-
-std::basic_string<ORTCHAR_T> Utf8ToOrtString(const std::string& utf8_str) {
-  // ORTCHAR_T == char -> just convert to std::basic_string<char>
-  if constexpr (std::is_same_v<ORTCHAR_T, char>) {
-    return std::basic_string<ORTCHAR_T>(utf8_str.begin(), utf8_str.end());
-  }
-
-  if (utf8_str.empty()) return std::basic_string<ORTCHAR_T>();
-
-  int size_needed = MultiByteToWideChar(CP_UTF8, 0, utf8_str.c_str(), -1, nullptr, 0);
-  if (size_needed <= 0) return std::basic_string<ORTCHAR_T>();
-
-  std::basic_string<ORTCHAR_T> wide_str(size_needed, 0);
-  MultiByteToWideChar(CP_UTF8, 0, utf8_str.c_str(), -1, &wide_str[0], size_needed);
-  wide_str.pop_back();  // Remove null terminator added by API
-
-  return wide_str;
 }
 }  // namespace utils
 }  // namespace perftest

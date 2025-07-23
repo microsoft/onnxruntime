@@ -29,13 +29,11 @@ std::vector<std::string> ConvertArgvToUtf8Strings(int argc, wchar_t* argv[]);
 std::vector<const char*> ConvertArgvToUtf8CharPtrs(std::vector<std::string>& utf8_args);
 #endif
 
-std::basic_string<ORTCHAR_T> Utf8ToOrtString(const std::string& utf8_str);
-
 bool RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
 
 bool UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
 
-void list_devices(Ort::Env& env);
+void ListDevices(const Ort::Env& env);
 
 }  // namespace utils
 }  // namespace perftest
