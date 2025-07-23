@@ -3845,8 +3845,8 @@ Status Graph::LoadExternalInitializerAsOrtValue(const std::string& name, OrtValu
                                                                                /*use_tensor_buffer*/ true);
   assert(value.IsAllocated());
 
-  // Since we're about overwrite the TensorProto's external_data information (file path, offset, etc.),
-  // need to store it so that is available for callers of Graph::GetExternalInitializerInfo.
+  // Since we're about to overwrite the TensorProto's external_data information (file path, offset, etc.),
+  // need to store it so that it is available for callers of Graph::GetExternalInitializerInfo.
   if (external_data_infos_.count(name) == 0) {
     std::unique_ptr<ExternalDataInfo> external_data_info;
     ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
