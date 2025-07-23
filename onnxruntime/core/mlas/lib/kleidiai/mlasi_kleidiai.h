@@ -28,7 +28,7 @@ MlasGemmPackBSize(
     size_t K
     );
 
-void
+bool
 MLASCALL
 MlasGemmPackB(
     CBLAS_TRANSPOSE TransA,
@@ -40,7 +40,7 @@ MlasGemmPackB(
     void* PackedB
     );
 
-void
+bool
 MLASCALL
 MlasGemmBatch(
     CBLAS_TRANSPOSE TransA,
@@ -81,7 +81,8 @@ MlasDynamicQGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
-void MLASCALL
+bool
+MLASCALL
 MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t Dimensions,
                 size_t BatchCount,
@@ -99,7 +100,7 @@ MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 float Beta,
                 MLAS_THREADPOOL* ThreadPool);
 
-void
+bool
 MLASCALL
 MlasConv(
     const MLAS_CONV_PARAMETERS* Parameters,

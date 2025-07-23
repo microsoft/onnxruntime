@@ -1586,20 +1586,11 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    //Check if external implementation (e.g. KleidiAI)
-    thread_local bool kleidiai_attempted = false;
-
-    if (!kleidiai_attempted &&
-        GetMlasPlatform().MlasGemmBatch == &ArmKleidiAI::MlasGemmBatch &&
-        g_kleidiPackEnabled.load(std::memory_order_relaxed)) {
-        kleidiai_attempted = true;
-        GetMlasPlatform().MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
-        kleidiai_attempted = false;
-         return;
+    //KleidiAI or other override
+    if(GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
+        GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
+        return;
     }
-#endif
-
     //
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
@@ -1690,21 +1681,17 @@ Return Value:
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    //Kleidi
-    thread_local bool kleidiai_pbsize_attempted = false;
-    if (!kleidiai_pbsize_attempted &&
-        GetMlasPlatform().MlasGemmPackBSize == &ArmKleidiAI::MlasGemmPackBSize &&
+    // KleidiAI or other override
+    #if defined(USE_KLEIDIAI) && !defined(_MSC_VER) // We have to keep this for the g_kleidiPackEnabled defined within
+    if (GetMlasPlatform().MlasGemmPackBSizeOverride != nullptr &&
         g_kleidiPackEnabled.load(std::memory_order_relaxed)) {
-        kleidiai_pbsize_attempted = true;
         size_t bytes_required;
-        bytes_required = GetMlasPlatform().MlasGemmPackBSize(TransA, TransB, N, K);
-        kleidiai_pbsize_attempted = false;
+        bytes_required = GetMlasPlatform().MlasGemmPackBSizeOverride(TransA, TransB, N, K);
         if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
             return bytes_required;
         }
     }
-#endif
+    #endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(TransB);
 
@@ -1760,14 +1747,10 @@ Return Value:
 
 --*/
 {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    thread_local bool kai_gemmPb_atttempted;
-    if (!kai_gemmPb_atttempted &&
-        GetMlasPlatform().MlasGemmPackB == &ArmKleidiAI::MlasGemmPackB &&
-        g_kleidiPackEnabled.load(std::memory_order_relaxed)) {
-        kai_gemmPb_atttempted = true;
-        GetMlasPlatform().MlasGemmPackB(TransA, TransB, N, K, B, ldb, PackedB);
-        kai_gemmPb_atttempted = false;
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER) // We need to keep this for the g_kleidiPackEnabled var
+    if (GetMlasPlatform().MlasGemmPackBOverride != nullptr &&
+        g_kleidiPackEnabled.load(std::memory_order_relaxed) &&
+        GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
          return;
     }
 #endif

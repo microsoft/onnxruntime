@@ -864,17 +864,11 @@ Return Value:
 
 --*/
 {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    //KleidiAI
-    thread_local bool kleidiai_conv_attempted = false;
-    if (!kleidiai_conv_attempted &&
-        GetMlasPlatform().MlasConvOverride == &ArmKleidiAI::MlasConv) {
-        kleidiai_conv_attempted = true;
-        GetMlasPlatform().MlasConvOverride(Parameters,Input,Filter,Bias,WorkingBuffer,Output,ThreadPool);
-        kleidiai_conv_attempted = false;
-         return;
+    // KleidiAI or other override
+    if(GetMlasPlatform().MlasConvOverride != nullptr &&
+        GetMlasPlatform().MlasConvOverride(Parameters,Input,Filter,Bias,WorkingBuffer,Output,ThreadPool)){
+    return;
     }
-#endif
 
     const size_t FilterCount = Parameters->FilterCount;
     const size_t OutputSize = Parameters->OutputSize;
@@ -1109,22 +1103,13 @@ Return Value:
 
 --*/
 {
-// Ensure MlasConvPrepare is only invoked once per thread.
-// This avoids redundant reinitialization if the platform supports
-// thread-local convolution prep logic.
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    thread_local bool kleidiai_convprep_attempted = false;
-    if (!kleidiai_convprep_attempted &&
-        GetMlasPlatform().MlasConvPrepareOverride == &ArmKleidiAI::MlasConvPrepare) {
-        kleidiai_convprep_attempted = true;
+    // KleidiAI or other override
+    if (GetMlasPlatform().MlasConvPrepareOverride != nullptr &&
         GetMlasPlatform().MlasConvPrepareOverride(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
         InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
-        Activation, WorkingBufferSize, Beta, ThreadPool);
-        kleidiai_convprep_attempted = false;
-         return;
+        Activation, WorkingBufferSize, Beta, ThreadPool)){
+        return;
     }
-#endif
-
     //
     // Save the convolution parameters.
     //

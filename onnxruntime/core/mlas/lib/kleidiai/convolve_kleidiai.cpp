@@ -619,7 +619,7 @@ static void ConvolveSme(const size_t co, //channels out
     }
 }
 
-void MLASCALL
+bool MLASCALL
 ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t Dimensions,
                 size_t BatchCount,
@@ -639,9 +639,7 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 {
     //Check dimensions before accessing
     if (Dimensions < 2) {
-        ::MlasConvPrepare(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
-        InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
-        Activation, WorkingBufferSize, Beta, ThreadPool);
+        return false;
     }
 
     Parameters->Activation = Activation;
@@ -678,10 +676,7 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
     Parameters->ThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
     if(!CheckCapabilitiesSme(Parameters)){
-        ::MlasConvPrepare(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
-        InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
-        Activation, WorkingBufferSize, Beta, ThreadPool);
-        return;
+        return false;
     }
 
     //Allocate an aligned buffer for MlasTranspose()
@@ -691,9 +686,10 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                                                       Parameters->DilationShape[0], Parameters->DilationShape[1],
                                                       Parameters->StrideShape[0], Parameters->StrideShape[1],
                                                       Parameters->Padding[0]);
+    return true;
 }
 
-void
+bool
 MLASCALL
 ArmKleidiAI::MlasConv(
     const MLAS_CONV_PARAMETERS* Parameters,
@@ -707,10 +703,8 @@ ArmKleidiAI::MlasConv(
 {
     if(!CheckCapabilitiesSme(Parameters)){
         //Fallback to Default Mlas
-        ::MlasConv(Parameters,Input,Filter, Bias, WorkingBuffer,Output,ThreadPool);
-        return;
+        return false;
     };
-
     ConvolveSme(Parameters->FilterCount, Parameters->InputChannels,          // channel out, in
                 Parameters->InputShape[0], Parameters->InputShape[1],        // image dimensions
                 Parameters->KernelShape[0], Parameters->KernelShape[1],      // kernel dimensions
@@ -722,4 +716,5 @@ ArmKleidiAI::MlasConv(
 
     MlasActivation(Parameters->Activation, Output, nullptr, Parameters->FilterCount, Parameters->OutputSize,
                    Parameters->OutputSize);
+    return true;
 }

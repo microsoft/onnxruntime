@@ -793,8 +793,39 @@ void
     MLAS_THREADPOOL* ThreadPool
     );
 typedef
+bool
+(MLASCALL MLAS_CONV_FLOAT_OVERRIDE)(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    const float* Bias,
+    float* WorkingBuffer,
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
+    );
+typedef
 void
 (MLASCALL MLAS_CONV_PREPARE_FLOAT_FN)(
+    MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannels,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
+    size_t* WorkingBufferSize,
+    float Beta,
+    MLAS_THREADPOOL* ThreadPool
+    );
+typedef
+bool
+(MLASCALL MLAS_CONV_PREPARE_FLOAT_OVERRIDE)(
     MLAS_CONV_PARAMETERS* Parameters,
     size_t Dimensions,
     size_t BatchCount,
@@ -823,13 +854,38 @@ typedef void (MLASCALL MLAS_GEMM_BATCH_KERNEL)(
     size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool);
 
+typedef bool (MLASCALL MLAS_GEMM_BATCH_KERNEL_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool);
+
 typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_KERNEL)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K);
 
+typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_KERNEL_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K);
+
 typedef void (MLASCALL MLAS_GEMM_PACK_B_KERNEL)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB);
+
+typedef bool (MLASCALL MLAS_GEMM_PACK_B_KERNEL_OVERRIDE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
@@ -1241,11 +1297,11 @@ struct MLAS_PLATFORM {
     bool Avx2Supported_ = false;
     bool Avx512Supported_ = false;
     // Mlas overrides initialisation
-    MLAS_GEMM_BATCH_KERNEL* MlasGemmBatchOverride;
-    MLAS_GEMM_PACK_B_SIZE_KERNEL* MlasGemmPackBSizeOverride;
-    MLAS_GEMM_PACK_B_KERNEL* MlasGemmPackBOverride;
-    MLAS_CONV_PREPARE_FLOAT_FN* MlasConvPrepareOverride;
-    MLAS_CONV_FLOAT_FN* MlasConvOverride;
+    MLAS_GEMM_BATCH_KERNEL_OVERRIDE* MlasGemmBatchOverride;
+    MLAS_GEMM_PACK_B_SIZE_KERNEL_OVERRIDE* MlasGemmPackBSizeOverride;
+    MLAS_GEMM_PACK_B_KERNEL_OVERRIDE* MlasGemmPackBOverride;
+    MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride;
+    MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride;
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;

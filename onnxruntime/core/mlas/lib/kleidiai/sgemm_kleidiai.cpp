@@ -69,7 +69,7 @@ Return Value:
     return bytes;
 }
 
-void
+bool
 MLASCALL
 ArmKleidiAI::MlasGemmPackB(
     CBLAS_TRANSPOSE TransA,
@@ -111,10 +111,8 @@ Return Value:
 
 --*/
 {
-      if (N == 0 || K == 0) {
-        // no computation to do
-        ::MlasGemmPackB(TransA, TransB, N, K, B, ldb, PackedB); // fallback
-        return;
+    if (N == 0 || K == 0) {
+        return false;
     }
 
     if (TransA == CblasNoTrans) {
@@ -133,15 +131,16 @@ Return Value:
                 kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr, ldb * sizeof(float), B, bias.data(), nullptr, PackedB, 0, nullptr);
                 break;
             default:
-                ::MlasGemmPackB(TransA, TransB, N, K, B, ldb, PackedB); // fallback
+                return false;
         }
+        return true;
     }
     else{
-        ::MlasGemmPackB(TransA, TransB, N, K, B, ldb, PackedB); // fallback
+        return false;
     }
 }
 
-void
+bool
 MLASCALL
 ArmKleidiAI::MlasGemmBatch(
     CBLAS_TRANSPOSE TransA,
@@ -156,8 +155,7 @@ ArmKleidiAI::MlasGemmBatch(
 {
     if(TransA == CblasTrans)
     {
-        ::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
-        return;
+        return false;
     }
     if (TransA == CblasNoTrans && K == 0) {
         if (Data->beta != 1.0f) {
@@ -176,9 +174,7 @@ ArmKleidiAI::MlasGemmBatch(
         TransA != CblasNoTrans ||
         (TransB != CblasNoTrans && !Data[0].BIsPacked))
     {
-        // If unsupported case, explicitly call the fallback to default via function pointer
-        ::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
-        return;
+        return false;
     }
 
     if (TransA == CblasNoTrans) {
@@ -190,8 +186,7 @@ ArmKleidiAI::MlasGemmBatch(
         auto n_step = kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
 
         if (M < m_step || N < n_step) {
-            ::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
-            return;
+            return false;
         }
 
         std::vector<MLAS_SGEMM_DATA_PARAMS> KaiPackedData;
@@ -346,4 +341,5 @@ ArmKleidiAI::MlasGemmBatch(
             }
         });
     }
+    return true;
 }
