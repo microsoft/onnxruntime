@@ -155,7 +155,6 @@ ORT_API(onnxruntime::Provider*, GetProvider) {
 }
 }
 
-
 //
 // Plug-in EP infrastructure
 //
@@ -440,13 +439,11 @@ struct NvTrtRtxSyncNotificationImpl : OrtSyncNotificationImpl {
 };
 
 struct NvTrtRtxSyncStreamImpl : OrtSyncStreamImpl {
-
-
   NvTrtRtxSyncStreamImpl(cudaStream_t&& stream,
-                     const OrtDevice& device,
-                     AllocatorPtr cpu_allocator,
-                     bool release_cpu_buffer_on_cuda_stream,
-                     const OrtApi& ort_api_in)
+                         const OrtDevice& device,
+                         AllocatorPtr cpu_allocator,
+                         bool release_cpu_buffer_on_cuda_stream,
+                         const OrtApi& ort_api_in)
       : stream_{
             stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, /*own*/ true,
             /*external_cudnn_handle*/ nullptr,
@@ -510,19 +507,15 @@ struct NvTrtRtxSyncStreamImpl : OrtSyncStreamImpl {
   const OrtApi& ort_api;
 };
 
-
 // OrtEpApi infrastructure to be able to use the NvTensorRTRTX EP as an OrtEpFactory for auto EP selection.
 struct NvTensorRtRtxEpFactory : OrtEpFactory {
-
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
 
-
   NvTensorRtRtxEpFactory(const OrtApi& ort_api_in,
-                         const OrtLogger& default_logger_in): ort_api{ort_api_in},
-                         ep_api{*ort_api_in.GetEpApi()},
-                         default_logger{default_logger_in},
-                         data_transfer_impl{ort_api_in}
-                         {
+                         const OrtLogger& default_logger_in) : ort_api{ort_api_in},
+                                                               ep_api{*ort_api_in.GetEpApi()},
+                                                               default_logger{default_logger_in},
+                                                               data_transfer_impl{ort_api_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
     GetVendorId = GetVendorIdImpl;
@@ -590,12 +583,11 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
         OrtKeyValuePairs* ep_metadata = nullptr;
 
         factory->ort_api.CreateKeyValuePairs(&ep_options);
-        factory->ort_api.CreateKeyValuePairs(&ep_metadata)
-        ;
+        factory->ort_api.CreateKeyValuePairs(&ep_metadata);
         factory->ort_api.AddKeyValuePair(ep_options, "device_id", std::to_string(device_id).c_str());
 
         RETURN_IF_ERROR(factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, ep_metadata, ep_options,
-                                                                   &ep_devices[num_ep_devices]));
+                                                                    &ep_devices[num_ep_devices]));
         factory->ort_api.ReleaseKeyValuePairs(ep_options);
         factory->ort_api.ReleaseKeyValuePairs(ep_metadata);
 
@@ -626,9 +618,9 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
   }
 
   static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
-                                        const OrtMemoryInfo* memory_info,
-                                        const OrtKeyValuePairs* /*allocator_options*/,
-                                        OrtAllocator** allocator) noexcept {
+                                                     const OrtMemoryInfo* memory_info,
+                                                     const OrtKeyValuePairs* /*allocator_options*/,
+                                                     OrtAllocator** allocator) noexcept {
     auto& factory = *static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
     auto allocator_ = std::make_unique<NvTrtRtxOrtAllocator>(memory_info, factory.ort_api);
     *allocator = allocator_.release();
@@ -640,22 +632,20 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
   }
 
   static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* this_ptr,
-                                        OrtDataTransferImpl** data_transfer) noexcept {
+                                                        OrtDataTransferImpl** data_transfer) noexcept {
     auto& factory = *static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
     *data_transfer = &factory.data_transfer_impl;
     return nullptr;
   }
-
-
 
   static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
     return true;
   }
 
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
-                                                  const OrtMemoryDevice* memory_device,
-                                                  const OrtKeyValuePairs* /*stream_options*/,
-                                                  OrtSyncStreamImpl** ort_stream) noexcept {
+                                                               const OrtMemoryDevice* memory_device,
+                                                               const OrtKeyValuePairs* /*stream_options*/,
+                                                               OrtSyncStreamImpl** ort_stream) noexcept {
     auto& factory = *static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
 
     auto device_id = factory.ep_api.MemoryDevice_GetDeviceId(memory_device);
@@ -666,8 +656,8 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     const OrtDevice* ort_device = static_cast<const OrtDevice*>(memory_device);
 
     auto impl = std::make_unique<NvTrtRtxSyncStreamImpl>(std::move(stream), *ort_device, nullptr,
-                                                     /*release_cpu_buffer_on_cuda_stream*/ true,
-                                                     factory.ort_api);
+                                                         /*release_cpu_buffer_on_cuda_stream*/ true,
+                                                         factory.ort_api);
     *ort_stream = impl.release();
     return nullptr;
   }
@@ -721,8 +711,6 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
   NvTensorRtRtxEpFactory(NvTensorRtRtxEpFactory&&) = default;
   NvTensorRtRtxEpFactory& operator=(NvTensorRtRtxEpFactory&&) = default;
-
-
 };
 
 extern "C" {

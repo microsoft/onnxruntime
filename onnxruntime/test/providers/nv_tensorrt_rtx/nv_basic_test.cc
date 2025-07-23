@@ -452,8 +452,6 @@ TEST(NvExecutionProviderTest, GetSharedAllocator) {
   OrtAllocator* host_accessible_allocator = nullptr;
   ASSERT_ORTSTATUS_OK(c_api.GetSharedAllocator(*ort_env, ep_host_accessible_memory_info, &host_accessible_allocator));
   ASSERT_NE(host_accessible_allocator, nullptr);
-
-
 }
 
 TEST(NvExecutionProviderTest, LoadUnloadPluginLibrary) {
@@ -504,7 +502,6 @@ TEST(NvExecutionProviderTest, LoadUnloadPluginLibraryCxxApi) {
   auto metadata = test_ep_device->EpMetadata();
   ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_Version), ORT_VERSION);
 
-
   // the GPU device info will vary by machine so check for the lowest common denominator values
   Ort::ConstHardwareDevice device = test_ep_device->Device();
   ASSERT_EQ(device.Type(), OrtHardwareDeviceType_GPU);
@@ -518,7 +515,6 @@ TEST(NvExecutionProviderTest, LoadUnloadPluginLibraryCxxApi) {
   // and this should unload it without throwing
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
 }
-
 
 TEST(NvExecutionProviderTest, DataTransfer) {
   const OrtApi& c_api = Ort::GetApi();
@@ -583,7 +579,6 @@ TEST(NvExecutionProviderTest, DataTransfer) {
   // must release this before we unload the EP and the allocator is deleted
   device_tensor = Ort::Value();
 }
-
 
 #endif  // defined(WIN32)
 
