@@ -205,7 +205,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
       // resulting in incorrect outputs.
       //
       // To prevent this, we exclude this op type (which works bypasses the failing test case).
-      // If the operator is "FusedMatMul", we disable the kleidi path entirely (set enableKleidiPacking = false).
+      // If the operator is "FusedMatMul", we disable the kleidi path entirely (set enable_kleidi_packing = false).
       if (node_op_type == "FusedMatMul") {
         is_packed = GemmPackBFp32(alloc, tensor, false, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_, false);
       } else {

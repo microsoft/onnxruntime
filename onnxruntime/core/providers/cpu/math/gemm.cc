@@ -109,7 +109,7 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
                    TensorShape& b_shape
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
                    ,
-                   bool enableKleidiPacking
+                   bool enable_kleidi_packing
 #endif
 ) {
   // Only handle the common case of a 2D weight matrix. Additional matrices
@@ -123,7 +123,7 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
 
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-  MlasGemmBatchPackUseKleidi(enableKleidiPacking);
+  MlasGemmBatchPackUseKleidi(enable_kleidi_packing);
 #endif
   packed_b_size = MlasGemmPackBSize(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans, N, K);
   if (packed_b_size == 0) {

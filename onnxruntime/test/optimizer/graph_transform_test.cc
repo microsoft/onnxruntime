@@ -6228,7 +6228,7 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Int8Bias_Input0) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
-  // check graph structure before applying transormations
+  // check graph structure before applying transformations
   const Node* add_node = nullptr;
   for (const auto& node : graph.Nodes()) {
     if (node.OpType() == "Add") {
@@ -6242,7 +6242,7 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Int8Bias_Input0) {
   const auto& inputs = add_node->InputDefs();
   ASSERT_EQ(inputs.size(), 2u);
 
-  // Assert bias is in position 0
+  // Assert bias is in position 1
   EXPECT_EQ(inputs[1]->Name(), "bias") << "Expected bias in input 1 but found in input 0.";
 
   // Apply the transformer
@@ -6264,7 +6264,7 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Int8Bias_Input1) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
-  // check graph structure before applying transormations
+  // check graph structure before applying transformations
   const Node* add_node = nullptr;
   for (const auto& node : graph.Nodes()) {
     if (node.OpType() == "Add") {

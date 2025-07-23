@@ -16,7 +16,7 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
                    TensorShape& b_shape
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
                    ,
-                   bool enableKleidiPacking = true
+                   bool enable_kleidi_packing = true
 #endif
 );
 
