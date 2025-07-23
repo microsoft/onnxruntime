@@ -262,4 +262,177 @@ bool OrtNodeAttrHelper::HasAttr(const std::string& key) const {
   return !rt;  // Return true if attribute exists (rt == 0), false if not found (rt != 0)
 }
 
+PathString OrtGetRuntimePath() {
+#ifdef _WIN32
+  IMAGE_DOS_HEADER __ImageBase;
+  wchar_t buffer[MAX_PATH];
+  if (!GetModuleFileNameW(reinterpret_cast<HINSTANCE>(&__ImageBase), buffer, _countof(buffer))) {
+    return PathString();
+  }
+
+  // Remove the filename at the end, but keep the trailing slash
+  PathString path(buffer);
+  auto slash_index = path.find_last_of(ORT_TSTR('\\'));
+  if (slash_index == std::string::npos) {
+    // Windows supports forward slashes
+    slash_index = path.find_last_of(ORT_TSTR('/'));
+    if (slash_index == std::string::npos) {
+      return PathString();
+    }
+  }
+  return path.substr(0, slash_index + 1);
+#else
+  return PathString();
+#endif
+}
+
+Status OrtLoadDynamicLibrary(const PathString& wlibrary_filename, bool /* global_symbols */, void** handle) {
+#ifdef _WIN32
+#if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
+  *handle = ::LoadPackagedLibrary(wlibrary_filename.c_str(), 0);
+#else
+  // TODO: in most cases, the path name is a relative path and the behavior of the following line of code is undefined.
+  *handle = ::LoadLibraryExW(wlibrary_filename.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+#endif
+  if (!*handle) {
+    const auto error_code = GetLastError();
+    return ORT_MAKE_STATUS(ONNXRUNTIME,
+                           FAIL,
+                           "Loadibrary failed with error ",
+                           error_code,
+                           " - ",
+                           std::system_category().message(error_code));
+  }
+  return Status::OK();
+#else
+  dlerror();  // clear any old error_str
+  *handle = dlopen(library_filename.c_str(), RTLD_NOW | (global_symbols ? RTLD_GLOBAL : RTLD_LOCAL));
+  char* error_str = dlerror();
+  if (!*handle) {
+    return Status(ONNXRUNTIME, FAIL, "Failed to load library " + library_filename + " with error: " + error_str);
+  }
+  return Status::OK();
+#endif
+}
+
+Status OrtUnloadDynamicLibrary(void* handle) {
+#ifdef _WIN32
+  if (::FreeLibrary(reinterpret_cast<HMODULE>(handle)) == 0) {
+    const auto error_code = GetLastError();
+    return ORT_MAKE_STATUS(ONNXRUNTIME,
+                           FAIL,
+                           "FreeLibrary failed with error ",
+                           error_code,
+                           " - ",
+                           std::system_category().message(error_code));
+  }
+  return Status::OK();
+#else
+  if (!handle) {
+    return Status(ONNXRUNTIME, FAIL, "Got null library handle");
+  }
+  dlerror();  // clear any old error_str
+  int retval = dlclose(handle);
+  char* error_str = dlerror();
+  if (retval != 0) {
+    return Status(ONNXRUNTIME, FAIL, "Failed to unload library with error: " + std::string(error_str));
+  }
+  return Status::OK();
+#endif
+}
+
+#ifdef _WIN32
+namespace ort_dlfcn_win32 {
+// adapted from https://github.com/dlfcn-win32 version 1.3.1.
+// Simplified to only support finding symbols in libraries that were linked against.
+// If ORT dynamically loads a custom ops library using RegisterCustomOpsLibrary[_V2] the handle from the library load
+// is explicitly provided in the call to GetSymbolFromLibrary.
+//
+/* Load Psapi.dll at runtime, this avoids linking caveat */
+bool OrtMyEnumProcessModules(HANDLE hProcess, HMODULE* lphModule, DWORD cb, LPDWORD lpcbNeeded) {
+  using EnumProcessModulesFn = BOOL(WINAPI*)(HANDLE, HMODULE*, DWORD, LPDWORD);
+  static EnumProcessModulesFn EnumProcessModulesPtr = []() {
+    EnumProcessModulesFn fn = nullptr;
+    // Windows 7 and newer versions have K32EnumProcessModules in Kernel32.dll which is always pre-loaded
+    HMODULE psapi = GetModuleHandleA("Kernel32.dll");
+    if (psapi) {
+      fn = (EnumProcessModulesFn)(LPVOID)GetProcAddress(psapi, "K32EnumProcessModules");
+    }
+
+    return fn;
+  }();
+
+  if (EnumProcessModulesPtr == nullptr) {
+    return false;
+  }
+
+  return EnumProcessModulesPtr(hProcess, lphModule, cb, lpcbNeeded);
+}
+
+void* OrtSearchModulesForSymbol(const char* name) {
+  HANDLE current_proc = GetCurrentProcess();
+  DWORD size = 0;
+  void* symbol = nullptr;
+
+  // GetModuleHandle(NULL) only returns the current program file. So if we want to get ALL loaded module including
+  // those in linked DLLs, we have to use EnumProcessModules().
+  if (OrtMyEnumProcessModules(current_proc, nullptr, 0, &size) != false) {
+    size_t num_handles = size / sizeof(HMODULE);
+    std::unique_ptr<HMODULE[]> modules = std::make_unique<HMODULE[]>(num_handles);
+    HMODULE* modules_ptr = modules.get();
+    DWORD cb_needed = 0;
+    if (OrtMyEnumProcessModules(current_proc, modules_ptr, size, &cb_needed) != 0 && size == cb_needed) {
+      for (size_t i = 0; i < num_handles; i++) {
+        symbol = GetProcAddress(modules[i], name);
+        if (symbol != nullptr) {
+          break;
+        }
+      }
+    }
+  }
+
+  return symbol;
+}
+}  // namespace ort_dlfcn_win32
+#endif  // ifdef _WIN32
+
+Status OrtGetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) {
+#ifdef _WIN32
+  Status status = Status::OK();
+
+  // global search to replicate dlsym RTLD_DEFAULT if handle is nullptr
+  if (handle == nullptr) {
+    *symbol = ort_dlfcn_win32::OrtSearchModulesForSymbol(symbol_name.c_str());
+  } else {
+    *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
+  }
+
+  if (!*symbol) {
+    const auto error_code = GetLastError();
+    return ORT_MAKE_STATUS(ONNXRUNTIME,
+                           FAIL,
+                           "GetSymbol failed with error ",
+                           error_code,
+                           " - ",
+                           std::system_category().message(error_code));
+  }
+
+  return status;
+#else
+  dlerror();  // clear any old error str
+
+  // search global space if handle is nullptr.
+  // value of RTLD_DEFAULT differs across posix platforms (-2 on macos, 0 on linux).
+  handle = handle ? handle : RTLD_DEFAULT;
+  *symbol = dlsym(handle, symbol_name.c_str());
+
+  char* error_str = dlerror();
+  if (error_str) {
+    return Status(ONNXRUNTIME, FAIL, "Failed to get symbol " + symbol_name + " with error: " + error_str);
+  }
+  // it's possible to get a NULL symbol in our case when Schemas are not custom.
+  return Status::OK();
+#endif
+}
+
 }  // namespace onnxruntime

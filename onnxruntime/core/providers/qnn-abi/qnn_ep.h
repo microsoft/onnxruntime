@@ -40,8 +40,10 @@ class QnnEp : public OrtEp, public ApiPtrs {
     bool disable_cpu_ep_fallback{false};
   };
 
-  QnnEp(QnnEpFactory& factory, const std::string& name,
-        const OrtSessionOptions& session_options, const OrtLogger& logger);
+  QnnEp(QnnEpFactory& factory,
+        const std::string& name,
+        const OrtSessionOptions& session_options,
+        const OrtLogger& logger);
   ~QnnEp();
 
  private:
@@ -74,8 +76,9 @@ class QnnEp : public OrtEp, public ApiPtrs {
   // int GenerateMetadefId(const OrtGraph* graph, uint64_t& model_hash);
   // std::string MakeMetadefName(const OrtGraph* graph);
   bool EpSharedContextsHasAllGraphs(QnnEp* ep, const OrtGraph* graph);
-  void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string);
-  qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level);
+  void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string,
+                                                 const logging::Logger& logger);
+  qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level, const logging::Logger& logger);
   void PartitionCtxModel(const OrtEp* this_ptr, const OrtGraph* graph, size_t num_nodes_in_graph,
                          OrtEpGraphSupportInfo* graph_support_info);
   static void GetMainEPCtxNodes(QnnEp* ep, const OrtGraph* graph, std::unordered_set<const OrtNode*>& ep_context_nodes);

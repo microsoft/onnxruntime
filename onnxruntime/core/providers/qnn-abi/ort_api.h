@@ -22,7 +22,6 @@
 #include "core/common/logging/capture.h"
 #include "core/common/path_string.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/platform/env.h"
 #include "core/framework/data_types.h"
 #include "core/framework/float16.h"
 #include "core/framework/run_options.h"
@@ -258,5 +257,16 @@ class OrtNodeAttrHelper {
   const OrtApi& ort_api_;
   const OrtArrayOfConstObjects** attributes;
 };
+
+// TODO
+// Not sure why Env::Default() fails inside EP, replicate below implementations from "core/platform/posix/env.cc" and
+// "core/platform/windows/env.cc" to here.
+PathString OrtGetRuntimePath();
+
+Status OrtLoadDynamicLibrary(const PathString& wlibrary_filename, bool global_symbols, void** handle);
+
+Status OrtUnloadDynamicLibrary(void* handle);
+
+Status OrtGetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol);
 
 }  // namespace onnxruntime

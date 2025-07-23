@@ -24,15 +24,11 @@
 
 #include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/qnn_allocator.h"
+#include "core/providers/qnn-abi/qnn_telemetry.h"
 #include "core/providers/qnn-abi/shared_context.h"
 // #include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_configs_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_utils.h"
-
-#ifdef _WIN32
-#include <winmeta.h>
-#include "core/platform/tracing.h"
-#endif
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -1536,17 +1532,19 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   if (ProfilingLevel::OFF == profiling_level_merge_ || ProfilingLevel::INVALID == profiling_level_merge_) {
     return Status::OK();
   }
+  std::cout << "DEBUG: ExtractBackendProfilingInfo" << std::endl;
 
   bool tracelogging_provider_ep_enabled = false;
-  const Env& env = Env::Default();
-  auto& provider = env.GetTelemetryProvider();
-  auto level = provider.Level();
+#ifdef _WIN32
+  auto& provider = QnnTelemetry::Instance();
   if (provider.IsEnabled()) {
+    auto level = provider.Level();
     auto keyword = provider.Keyword();
     if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0 && level >= 5) {
       tracelogging_provider_ep_enabled = true;
     }
   }
+#endif // defined(_WIN32)
 
   // ETW disabled previously, but enabled now
   if (ProfilingLevel::INVALID == profiling_level_etw_ && tracelogging_provider_ep_enabled) {
@@ -1924,8 +1922,7 @@ void* QnnBackendManager::LoadLib(const char* file_name, int flags, std::string& 
   auto file_path = std::filesystem::path(file_name);
   if (!file_path.is_absolute()) {
     // construct an absolute path from ORT runtime path + file_name and check whether it exists.
-    const Env& env = Env::Default();
-    auto pathstring = env.GetRuntimePath() + ToPathString(file_name);
+    auto pathstring = OrtGetRuntimePath() + ToPathString(file_name);
     auto absolute_path = pathstring.c_str();
     if (std::filesystem::exists(std::filesystem::path(absolute_path))) {
       // load library from absolute path and search for dependencies there.
