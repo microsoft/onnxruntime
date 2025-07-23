@@ -1356,9 +1356,6 @@ Graph::Graph(const Model& owning_model,
         sparse_tensor_names_.emplace(tensor.name());
       }
     } else {
-      std::basic_string<ORTCHAR_T> tensor_proto_dir;
-      ORT_THROW_IF_ERROR(GetDirNameFromFilePath(model_path.c_str(), tensor_proto_dir));
-
       std::unique_ptr<ExternalDataInfo> external_data_info;
       ORT_THROW_IF_ERROR(ExternalDataInfo::Create(tensor.external_data(), external_data_info));
 
@@ -3659,8 +3656,10 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
 
   // New initializers data generally are within OrtValues
   // Small initializers are still stored inside TensorProto
-  ORT_RETURN_IF_NOT(utils::HasExternalDataInMemory(new_initializer) || !ort_value.IsAllocated(),
-                    "All TensorProtos are expected to point to an OrtValue");
+  ORT_RETURN_IF_NOT(utils::HasExternalDataInMemory(new_initializer) ||
+                        (!ort_value.IsAllocated() && !utils::HasExternalData(new_initializer)),
+                    "All replacement TensorProtos are expected to either point to an OrtValue or store the ",
+                    "initializer data inside the TensorProto");
 
   ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
   ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
@@ -3680,6 +3679,11 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
   } else {
     ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(initializer_name));
   }
+
+  // Remove ExternalDataInfo for the old initializer. No need to check if we actually have any info.
+  // We don't add new ExternalDataInfo for the new initializer because the new initializer
+  // is not pointing to an external file (checked above).
+  ORT_IGNORE_RETURN_VALUE(ext_initializers_.erase(initializer_name));
 
   **existing_entry = std::move(new_initializer);
 
