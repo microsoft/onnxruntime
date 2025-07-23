@@ -40,7 +40,7 @@ struct OrtStatus {
 #define BACKEND_PROC "CPU"
 #endif
 
-#if USE_DNNL
+#ifdef USE_DNNL
 #define BACKEND_DNNL "-DNNL"
 #else
 #define BACKEND_DNNL ""
