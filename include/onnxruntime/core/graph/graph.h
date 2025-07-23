@@ -1823,7 +1823,19 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // in the Graph instance and retrieve during session state finalization.
   std::unordered_map<std::string, OrtValue> ortvalue_initializers_;
 
-  std::unordered_map<std::string, std::unique_ptr<ExternalDataInfo>> ext_initializers_;
+  // Stores information (file path, file offset, byte size) for initializers with data stored in external files.
+  // Mainly used by EPs that need to know where an external initializer came from in order to do custom memory mapping.
+  //
+  // Elements are added to this map incrementally as needed. This avoids having to compute all of this information
+  // on Graph construction for EPs that may never query it. The following member functions update this map:
+  //
+  //   - GetExternalInitializerInfo: adds an entry if it doesn't exist.
+  //   - LoadExternalInitializerAsOrtValue: adds an entry for the initializer before loading it into an OrtValue,
+  //                                        which overwrites an TensorProto.external_data() information.
+  //
+  // It is marked 'mutable' because an entry may need to be added in a call to Graph::GetExternalInitializerInfo,
+  // which is a const member function.
+  mutable std::unordered_map<std::string, std::unique_ptr<ExternalDataInfo>> external_data_infos_;
 
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>

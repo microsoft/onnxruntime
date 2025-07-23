@@ -497,6 +497,8 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
     ASSERT_EQ(PathString(api_ext_file_path), ext_info->GetRelPath());
     ASSERT_EQ(api_ext_file_offset, static_cast<int64_t>(ext_info->GetOffset()));
     ASSERT_EQ(api_ext_byte_size, ext_info->GetLength());
+  } else {
+    ASSERT_EQ(api_ext_info, nullptr);
   }
 
   // Check initializer type.

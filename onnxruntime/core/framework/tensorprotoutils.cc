@@ -252,6 +252,10 @@ bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   return false;  // No external data in memory
 }
 
+bool HasExternalDataInFile(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  return HasExternalData(tensor_proto) && !HasExternalDataInMemory(tensor_proto);
+}
+
 Status TensorProtoWithExternalDataToTensorProto(
     const ONNX_NAMESPACE::TensorProto& ten_proto,
     const std::filesystem::path& model_path,
