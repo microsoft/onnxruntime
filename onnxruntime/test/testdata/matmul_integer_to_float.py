@@ -62,7 +62,7 @@ def GenerateModel(
         # Use a constant initializer
         bias_vals = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float16 if output_type_fp16 else np.float32)
         bias_tensor = numpy_helper.from_array(bias_vals, name="bias")
-        initializers = [bias_tensor]  # You’ll need to pass this to make_model later
+        initializers = [bias_tensor]
     else:
         # Use runtime input
         inputs.append(
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         bias=True,
     )
     GenerateModel(
-        "matmul_integer_to_float_int8_bias_initializer.onnx",
+        "matmul_integer_to_float_int8_bias_initializer_index1.onnx",
         sign_i=False,
         sign_w=True,
         output_type_fp16=False,
@@ -116,7 +116,7 @@ if __name__ == "__main__":
         bias_initializer=True,
     )
     GenerateModel(
-        "matmul_integer_to_float_int8_bias_flipped_initializer.onnx",
+        "matmul_integer_to_float_int8_bias_initializer_index0.onnx",
         sign_i=False,
         sign_w=True,
         output_type_fp16=False,
@@ -125,7 +125,6 @@ if __name__ == "__main__":
         bias_flip=True,
         bias_initializer=True,
     )
-
     GenerateModel("matmul_integer_to_float_int8_int8.onnx", sign_i=True, sign_w=True, output_type_fp16=False)
     GenerateModel(
         "matmul_integer_to_float_int8_int8_bias.onnx",

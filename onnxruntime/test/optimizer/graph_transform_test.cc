@@ -6221,8 +6221,9 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
   EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 3);
   EXPECT_EQ(op_to_count["Add"], 1);
 }
+
 TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Int8Bias_Input0) {
-  constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/matmul_integer_to_float_int8_bias_initializer.onnx");
+  constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/matmul_integer_to_float_int8_bias_initializer_index1.onnx");
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
@@ -6248,10 +6249,17 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Int8Bias_Input0) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<MatMulIntegerToFloatFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["MatMulInteger"], 0);
+  EXPECT_EQ(op_to_count["Cast"], 0);
+  EXPECT_EQ(op_to_count["Mul"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+  EXPECT_EQ(op_to_count["Add"], 0);
 }
 
 TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Int8Bias_Input1) {
-  constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/matmul_integer_to_float_int8_bias_flipped_initializer.onnx");
+  constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/matmul_integer_to_float_int8_bias_initializer_index0.onnx");
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
@@ -6277,6 +6285,13 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Int8Bias_Input1) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<MatMulIntegerToFloatFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["MatMulInteger"], 0);
+  EXPECT_EQ(op_to_count["Cast"], 0);
+  EXPECT_EQ(op_to_count["Mul"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+  EXPECT_EQ(op_to_count["Add"], 0);
 }
 
 #ifdef USE_DML
