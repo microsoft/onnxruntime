@@ -118,7 +118,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     fs::path metadata_file_path = context_model_file_path.parent_path() / metadata_filename;
     std::ifstream file(metadata_file_path, std::ios::binary);
     ORT_RETURN_IF_NOT(file, "Metadata file was not found: " + metadata_file_path.string());
-    shared_context_->shared_weights.metadata_filepath = metadata_file_path;
+    shared_context_->shared_weights.metadata_filepath = std::move(metadata_file_path);
     file >> metadata;
   }
 

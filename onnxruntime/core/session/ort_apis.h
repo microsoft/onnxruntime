@@ -608,8 +608,8 @@ ORT_API_STATUS_IMPL(CreateMemoryInfo_V2, _In_ const char* name, _In_ enum OrtMem
                     _In_ size_t alignment, enum OrtAllocatorType allocator_type,
                     _Outptr_ OrtMemoryInfo** out);
 
-ORT_API_STATUS_IMPL(MemoryInfoGetDeviceMemType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtDeviceMemoryType* out);
-ORT_API_STATUS_IMPL(MemoryInfoGetVendorId, _In_ const OrtMemoryInfo* ptr, _Out_ uint32_t* out);
+ORT_API(OrtDeviceMemoryType, MemoryInfoGetDeviceMemType, _In_ const OrtMemoryInfo* ptr);
+ORT_API(uint32_t, MemoryInfoGetVendorId, _In_ const OrtMemoryInfo* ptr);
 
 // OrtValueInfo
 ORT_API_STATUS_IMPL(ValueInfo_GetValueProducer, _In_ const OrtValueInfo* value_info,
@@ -685,8 +685,7 @@ ORT_API_STATUS_IMPL(Node_GetSubgraphs, _In_ const OrtNode* node,
 ORT_API_STATUS_IMPL(Node_GetGraph, _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtGraph** graph);
 ORT_API_STATUS_IMPL(Node_GetEpName, _In_ const OrtNode* node, _Outptr_result_maybenull_ const char** out);
 
-ORT_API_STATUS_IMPL(GetRunConfigEntry, _In_ const OrtRunOptions* options,
-                    _In_z_ const char* config_key, _Outptr_result_maybenull_z_ const char** config_value);
+ORT_API(const char*, GetRunConfigEntry, _In_ const OrtRunOptions* options, _In_z_ const char* config_key);
 
 ORT_API(const OrtMemoryInfo*, EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device,
         _In_ OrtDeviceMemoryType memory_type);
