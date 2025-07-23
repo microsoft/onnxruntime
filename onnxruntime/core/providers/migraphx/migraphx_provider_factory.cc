@@ -151,7 +151,6 @@ struct MIGraphX_Provider : Provider {
                                   const OrtSessionOptions& session_options,
                                   const OrtLogger& logger,
                                   std::unique_ptr<IExecutionProvider>& ep) override {
-
     const ConfigOptions* config_options = &session_options.GetConfigOptions();
 
     std::array<const void*, 2> configs_array = {&provider_options, config_options};
