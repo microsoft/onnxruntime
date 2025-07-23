@@ -427,7 +427,18 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseSharedAllocator;
 
         public IntPtr GetTensorData;
-        public IntPtr GetSessionOptionsConfigEntries;
+
+	public IntPtr GetSessionOptionsConfigEntries;
+
+        public IntPtr SessionGetMemoryInfoForInputs;
+        public IntPtr SessionGetMemoryInfoForOutputs;
+        public IntPtr SessionGetEpDeviceForInputs;
+
+        public IntPtr CreateSyncStreamForEpDevice;
+        public IntPtr SyncStream_GetHandle;
+        public IntPtr ReleaseSyncStream;
+
+        public IntPtr CopyTensors;
 
         public IntPtr CreateMIGraphXProviderOptions;
         public IntPtr UpdateMIGraphXProviderOptions;

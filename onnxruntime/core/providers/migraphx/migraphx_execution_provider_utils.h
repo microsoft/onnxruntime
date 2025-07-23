@@ -242,8 +242,8 @@ inline bool ReadDynamicRange(const std::filesystem::path& filename,
  * Get cache by name
  *
  */
-inline std::filesystem::path GetCachePath(const std::filesystem::path& root, const std::string& name) {
-  return root.empty() ? name : root / name;
+inline std::filesystem::path GetCachePath(const std::filesystem::path& root, const std::string_view name) {
+  return root.empty() ? std::filesystem::path{name} : root / name;
 }
 
 inline std::string GenerateGraphId(const GraphViewer& graph_viewer) {

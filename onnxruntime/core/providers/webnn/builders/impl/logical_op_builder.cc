@@ -91,8 +91,10 @@ bool LogicalOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& no
     }
   }
 
+  const std::string_view webnn_input_name = GetWebNNOpFirstInputName(op_type);
   std::string onnx_input_name = op_type == "Not" ? "X" : "A";
-  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", onnx_input_name, logger);
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, webnn_input_name, onnx_input_name, logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 void CreateLogicalOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
