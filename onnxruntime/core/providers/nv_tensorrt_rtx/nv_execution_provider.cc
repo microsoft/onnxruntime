@@ -866,6 +866,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
                                        "When providing either 'trt_onnx_bytestream_size' or "
                                        "'trt_onnx_bytestream' both have to be provided"));
   }
+  use_external_data_initializer_ = info.use_external_data_initializer;
   onnx_external_data_bytestream_ = info.external_data_bytestream;
   onnx_external_data_bytestream_size_ = info.external_data_bytestream_size;
   if ((onnx_external_data_bytestream_ != nullptr && onnx_external_data_bytestream_size_ == 0) ||
@@ -1038,6 +1039,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
                         << ", nv_cache_prefix: " << cache_prefix_
                         << ", nv_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_
                         << ", nv_onnx_external_bytestream_size_: " << onnx_external_data_bytestream_size_
+                        << ", nv_use_external_data_initializer_: " << use_external_data_initializer_
                         << ", nv_op_types_to_exclude: " << op_types_to_exclude_;
 }
 
@@ -1512,18 +1514,25 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
         // the model proto that has different node ordering compared to original onnx model.
 
-        // get initializer data
+        // save user provided external data in memory instead of writing to ModelProto
+        // needed for models > 2GB
         std::vector<TensorrtUserWeights> userWeights;
 
-        auto allInitializers = graph_viewer->GetAllInitializedTensors();
-        for (auto entry : allInitializers){
+        if(use_external_data_initializer_) {
+          auto allInitializers = graph_viewer->GetAllInitializedTensors();
+          for (auto &entry : allInitializers) {
             auto* tp = entry.second;
-            if (tp->has_raw_data()){
-              userWeights.push_back(
-                TensorrtUserWeights{tp->name(), tp->raw_data(), (int64_t)tp->raw_data().size()});
+            if (tp->has_raw_data()) {
+              userWeights.emplace_back(tp->name(), tp->raw_data());
+            } else if (utils::HasExternalDataInMemory(*tp)) {
+              std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+              ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
+              userWeights.emplace_back(full_init->name(), full_init->raw_data());
             }
+          }
         }
-        graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, false /*include raw initializers*/);
+
+        graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, !use_external_data_initializer_ /*include raw initializers*/);
 
 
         model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -1550,12 +1559,16 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         {
           auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
 
-          trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
-
-          for (auto const& userWeight : userWeights){
-            trt_parser->loadInitializer(userWeight.name.c_str(), static_cast<void const*>(userWeight.data.c_str()), userWeight.size);
+          if (use_external_data_initializer_) {
+            trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
+            for (auto const& userWeight : userWeights){
+              trt_parser->loadInitializer(userWeight.Name(), userWeight.Data(), userWeight.Size());
+            }
+            is_model_supported = trt_parser->parseModelProto();
           }
-          is_model_supported = trt_parser->parseModelProto();
+          else {
+            is_model_supported = trt_parser->supportsModelV2(string_buf.data(), string_buf.size(), model_path_);
+          }
 
           // Note: Calling getNbSubgraphs or getSubgraphNodes before calling supportsModelV2 results in undefined behavior.
           auto num_subgraphs = trt_parser->getNbSubgraphs();
@@ -1980,9 +1993,10 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
                                                 size_t onnx_external_data_bytestream_size,
                                                 nvinfer1::ICudaEngine* trt_engine,
                                                 bool serialize_refitted_engine,
-                                                bool detailed_build_log,
-                                                const GraphViewer* graph_body_viewer) {
+                                                bool detailed_build_log) {
+
   bool refit_from_file = onnx_model_bytestream == nullptr && onnx_model_bytestream_size == 0;
+  bool refit_with_external_data = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
   bool refit_complete = false;
   std::filesystem::path onnx_model_path{onnx_model_folder_path};
   if (refit_from_file) {
@@ -2006,6 +2020,7 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
                                "The ONNX model path has '..'. For security purpose, it's not "
                                "allowed to point outside the directory.");
       }
+
       if (!(std::filesystem::exists(onnx_model_path) && std::filesystem::is_regular_file(onnx_model_path))) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "The ONNX model " + onnx_model_path.string() +
@@ -2013,164 +2028,136 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
       }
     }
   }
+
   // weight-stripped engine refit logic
   TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log);
   auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(*trt_engine, trt_logger));
   auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
       nvonnxparser::createParserRefitter(*refitter, trt_logger));
 
-  bool refit_with_external_data = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
-
   // New refit APIs
-  if (refit_with_external_data || graph_body_viewer) {
+  if (refit_with_external_data) {
+    // A valid model bytestream must be passed.
     if (refit_from_file) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-        "TensorRT EP's refit with external data must be called with a valid ONNX model bytestream");
+                             "TensorRT EP's refit with external data must be called with a valid ONNX model bytestream");
     }
 
-    if (!parser_refitter->loadModelProto(onnx_model_bytestream, onnx_model_bytestream_size, nullptr)){
+    if (!parser_refitter->loadModelProto(onnx_model_bytestream, onnx_model_bytestream_size, nullptr)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "TensorRT EP's IParserRefitter could not load model from provided onnx_model_bytestream");
     }
 
-    // Extract weight information from the Refitter
+    // Extract weight information from the Refitter.
     int required_weights = refitter->getAllWeights(0, nullptr);
     std::vector<char const*> refit_names(required_weights);
     refitter->getAllWeights(required_weights, refit_names.data());
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Refitter requires " << required_weights << " weights";
 
-    // Vectors to keep track of data pointers
-    std::vector<const char*> names;
+    // Vectors to keep track of data pointers.
+    std::vector<std::string> names;
     names.reserve(required_weights);
     std::vector<const char*> bytes;
     bytes.reserve(required_weights);
     std::vector<int64_t> sizes;
     sizes.reserve(required_weights);
 
-    /*
-    TODO: Instead of passing in a single pointer and reconstructing the entire ONNX model, is it better to pre-partition the weights?
-    This function will now have parameters void ** data, const char ** names, int64_t * sizes, int64_t num_weights
-    for (int i = 0; i < num_weights; i++)
-    {
-        parser_refitter->loadInitializer(data[i], names[i], sizes[i]);
+    auto onnx_model = ModelProto::Create();
+    TensorProtos* allInitializers_byte_stream;
+
+    // Reconstruct onnx model view.
+    const auto onnx_model_view = std::string((const char*)onnx_model_bytestream,
+                                             onnx_model_bytestream_size);
+    if (!onnx_model->ParseFromString(onnx_model_view)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "The provided ONNX bytestream to refit could not be parsed.");
     }
-    */
 
-    if (refit_with_external_data)
-    {
-      auto onnx_model = ModelProto::Create();
-      TensorProtos* allInitializers_byte_stream;
+    // Extract graph and initializer information.
+    auto const& graph = onnx_model->mutable_graph();
+    allInitializers_byte_stream = graph->mutable_initializer();
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Initializers that were found " << allInitializers_byte_stream->size();
 
-      // Reconstruct onnx model view.
-      const auto onnx_model_view = std::string((const char*)onnx_model_bytestream,
-                                                onnx_model_bytestream_size);
-      if (!onnx_model->ParseFromString(onnx_model_view)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                "The provided ONNX bytestream to refit could not be parsed.");
-      }
-
-      // Extract graph and initializer information.
-      auto const& graph = onnx_model->mutable_graph();
-      allInitializers_byte_stream = graph->mutable_initializer();
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Initializers that were found " << allInitializers_byte_stream->size();
-
-      // Loop through all initializers
-      for (int initializer_idx = 0; initializer_idx < allInitializers_byte_stream->size(); ++initializer_idx) {
-        auto& proto = allInitializers_byte_stream->at(initializer_idx);
-        auto& proto_name = proto.name();
-        bool weight_is_refittable = std::find(refit_names.begin(), refit_names.end(), proto_name) != refit_names.end();
-        if (weight_is_refittable) {
-          if (proto.has_data_location()) {
-            if (proto.data_location() == TensorProto_DataLocation_EXTERNAL) {
-              // Default values for reading into external_data blob.
-              int64_t offset = 0;
-              size_t length = 0;
-              auto external_data = proto.mutable_external_data();
-              const std::string kOffset = "offset", kLength = "length";
-              for (int entry_idx = 0; entry_idx < external_data->size(); ++entry_idx) {
-                auto current_key = external_data->at(entry_idx).mutable_key();
-                auto current_value = external_data->at(entry_idx).mutable_value();
-                if (*current_key == kOffset && !current_value->empty()) {
-                  offset = std::stoll(*current_value);
-                } else if (*current_key == kLength && !current_value->empty()) {
-                  length = std::stoul(*current_value);
-                }
+    // Loop through all initializers
+    int missing_initializer_data = 0;
+    for (int initializer_idx = 0; initializer_idx < allInitializers_byte_stream->size(); ++initializer_idx) {
+      auto& proto = allInitializers_byte_stream->at(initializer_idx);
+      auto& proto_name = proto.name();
+      bool weight_is_refittable = std::find(refit_names.begin(), refit_names.end(), proto_name) != refit_names.end();
+      if (weight_is_refittable) {
+        if (proto.has_data_location()) {
+          if (proto.data_location() == TensorProto_DataLocation_EXTERNAL) {
+            // Default values for reading into external_data blob.
+            int64_t offset = 0;
+            size_t length = 0;
+            auto external_data = proto.mutable_external_data();
+            const std::string kOffset = "offset", kLength = "length";
+            for (int entry_idx = 0; entry_idx < external_data->size(); ++entry_idx) {
+              auto current_key = external_data->at(entry_idx).mutable_key();
+              auto current_value = external_data->at(entry_idx).mutable_value();
+              if (*current_key == kOffset && !current_value->empty()) {
+                offset = std::stoll(*current_value);
+              } else if (*current_key == kLength && !current_value->empty()) {
+                length = std::stoul(*current_value);
               }
-              names.push_back(proto.name().c_str());
-              bytes.push_back(static_cast<const char*>(onnx_external_data_bytestream) + offset);
-              sizes.push_back(length);
-            } else {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                      "[TensorRT EP] Proto: " + proto_name + " has default as data location which is not supported");
             }
+            names.push_back(proto.name());
+            bytes.push_back(static_cast<const char*>(onnx_external_data_bytestream) + offset);
+            sizes.push_back(length);
           } else {
-            if (!proto.has_raw_data()) {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                      "[TensorRT EP] Proto: " + proto_name + " has no raw data");
-            }
-            auto& raw_data = proto.raw_data();
-            names.push_back(proto.name().c_str());
-            bytes.push_back(raw_data.c_str());
-            sizes.push_back(raw_data.size());
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "[TensorRT EP] Proto: " + proto_name + " expected to have external datalocation, but default datalocation was provided instead.");
           }
+        } else if (proto.has_raw_data()) {
+          auto& raw_data = proto.raw_data();
+          names.push_back(proto.name());
+          bytes.push_back(raw_data.c_str());
+          sizes.push_back(raw_data.size());
         } else {
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Initializer with name: " << proto_name << " was not marked as refittable";
+          LOGS_DEFAULT(WARNING) << "[TensorRT EP] Proto: " + proto_name + " has no raw nor external data.";
+          ++missing_initializer_data;
         }
+      } else {
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Initializer with name: " << proto_name << " was not marked as refittable";
       }
     }
-    else { // graph_body_viewer path.
-      // This path will only be used if
-      // 1. An ONNX was provided as byte array including initializers
-      // 2. An ONNX was provided as byte array and it's initializers were provided using AddExternalInitializers* API
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Refitting using initializers of the current graph in memory";
-
-      auto allInitializers_graph_body = &graph_body_viewer->GetAllInitializedTensors();
-
-      for (auto& entry : *allInitializers_graph_body) {
-        auto* tp = entry.second;
-        auto& proto_name = tp->name();
-        bool weight_is_refittable = std::find(refit_names.begin(), refit_names.end(), proto_name) != refit_names.end();
-        if (tp->has_raw_data() && weight_is_refittable) {
-          names.push_back(proto_name.c_str());
-          bytes.push_back(tp->raw_data().c_str());
-          sizes.push_back(tp->raw_data().size());
-        }
-      }
+    if (missing_initializer_data) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "[TensorRT EP] RefitEngine is missing " + std::to_string(missing_initializer_data) + " initializers.");
     }
 
     // Load extracted initializers into the parser
     if (!names.empty()) {
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Number of initializers submitted to refitter " << names.size();
-      for (size_t i = 0; i < names.size(); i++)
-      {
-        bool refloadInit = parser_refitter->loadInitializer(names[i], bytes[i], sizes[i]);
+      for (size_t i = 0; i < names.size(); i++) {
+        bool refloadInit = parser_refitter->loadInitializer(names[i].c_str(), bytes[i], sizes[i]);
         if (!refloadInit) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in the provided bytestraem");
+                                 "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in the provided bytestream");
         }
       }
     }
     // Perform refit.
-    if(!parser_refitter->refitModelProto())
-    {
-       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                              "TensorRT EP's IParserRefitter refitModelProto() failed with the provided external data bytestream.");
+    if (!parser_refitter->refitModelProto()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "TensorRT EP's IParserRefitter refitModelProto() failed with the provided external data bytestream.");
     }
     refit_complete = true;
-
   }
+
   // If new refit flow was not completed, then fallback to refit_from_file.
-  if (!refit_complete){
+  if (!refit_complete) {
     if (refit_from_file) {
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Refitting from file on disk: " << onnx_model_path.string();
       if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                              "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
+                               "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
       }
-    }else {
+    } else {
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Refitting from byte array";
       if (!parser_refitter->refitFromBytes(onnx_model_bytestream, onnx_model_bytestream_size)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                              "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in the provided bytestream");
+                               "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in the provided bytestream");
       }
     }
   }
@@ -2178,7 +2165,7 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weight-stripped engine.";
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                            "TensorRT EP's IRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
+                           "TensorRT EP's IRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
   }
 
   // serialize the refitted engine to disk
@@ -2187,10 +2174,11 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
     nvinfer1::IHostMemory* serialized_engine = trt_engine->serialize();
     std::ofstream engine_file(refitted_engine_cache, std::ios::binary | std::ios::out);
     engine_file.write(reinterpret_cast<const char*>(serialized_engine->data()), serialized_engine->size());
-    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Serialize the refitted engine to " << refitted_engine_cache;
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialize the refitted engine to " << refitted_engine_cache;
   }
   return Status::OK();
 }
+
 
 common::Status NvExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                             std::vector<NodeComputeInfo>& node_compute_funcs) {
@@ -2344,21 +2332,25 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   // exclude weights if external
   auto userWeights = std::make_unique<std::vector<TensorrtUserWeights>>();
 
-  auto allInitializers = graph_body_viewer.GetAllInitializedTensors();
-  for (auto entry : allInitializers){
-      auto name = entry.first;
+  if (use_external_data_initializer_) {
+    auto allInitializers = graph_body_viewer.GetAllInitializedTensors();
+    for (auto& entry : allInitializers){
       auto* tp = entry.second;
       if (tp->has_raw_data()){
-          userWeights->push_back(
-            TensorrtUserWeights{tp->name(), tp->raw_data(), (int64_t)tp->raw_data().size()});
+        userWeights->emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data()));
+      } else if (utils::HasExternalDataInMemory(*tp)) {
+        std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+        ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
+        userWeights->emplace_back(TensorrtUserWeights(full_init->name(), full_init->raw_data()));
       }
+    }
   }
 
   // ORT's default topological sort is using reversed DFS.
   // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
   // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
   // the model proto that has different node ordering compared to original onnx model.
-  graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, false);
+  graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, !use_external_data_initializer_ /*include raw initializers*/);
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   std::string string_buf;
   model_proto->SerializeToString(string_buf);
@@ -2375,11 +2367,17 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
   auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
   auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-  trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
-  for (auto const& userWeight : *userWeights){
-    trt_parser->loadInitializer(userWeight.name.c_str(), static_cast<void const*>(userWeight.data.c_str()), userWeight.size);
+
+  if (use_external_data_initializer_) {
+    trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
+    for (auto const& userWeight : *userWeights){
+      trt_parser->loadInitializer(userWeight.Name(), userWeight.Data(), userWeight.Size());
+    }
+    trt_parser->parseModelProto();
   }
-  trt_parser->parseModelProto();
+  else {
+    trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
+  }
 
   if (max_workspace_size_ > 0) {
     trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
@@ -2647,14 +2645,12 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
   if (weight_stripped_engine_refit_) {
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refit engine from main ONNX file after engine build";
-    char* onnx = string_buf.data();
-    size_t onnx_size = string_buf.size();
     auto status = RefitEngine(model_path_,
                               onnx_model_folder_path_,
                               engine_cache_path,
                               false /* path check for security */,
-                              onnx,
-                              onnx_size,
+                              onnx_model_bytestream_,
+                              onnx_model_bytestream_size_,
                               onnx_external_data_bytestream_,
                               onnx_external_data_bytestream_size_,
                               trt_engine.get(),
