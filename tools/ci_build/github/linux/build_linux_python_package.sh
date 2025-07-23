@@ -130,20 +130,11 @@ else
   NODEJS_ARCH=$CPU_ARCH
 fi
 GetFile https://nodejs.org/dist/v22.17.1/node-v22.17.1-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v22.17.1-linux-${NODEJS_ARCH}.tar.gz
-tar --strip 1 -xf /tmp/src/node-v22.17.1-linux-${NODEJS_ARCH}.tar.gz -C /usr
-
-cd /
-rm -rf /tmp/src
-
-echo "location of node and npm"
-which node
-which npm
-
-echo "version of node and npm"
-node --version
-npm --version
+tar --strip 1 -xf /tmp/src/node-v22.17.1-linux-${NODEJS_ARCH}.tar.gz -C /tmp
 
 # End of copied part
+
+cd /onnxruntime_src
 
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
@@ -155,7 +146,7 @@ do
   # like xnnpack's cmakefile, it uses pythone3 to run a external command
   python3_dir=$(dirname "$PYTHON_EXE")
   ${PYTHON_EXE} -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
-  PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
+  PATH=$python3_dir:/tmp/bin:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
 done
 
