@@ -184,7 +184,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
         size_t zp_size = static_cast<size_t>(shape.Size());
 
         // MlasDynamicQgemm requires symmetric quantization: zp must be scalar 0 or 1D all-zero
-        if (shape.NumDimensions() == 0) && (zp_data[0] == 0){
+        if ((shape.NumDimensions() == 0) && (zp_data[0] == 0)){
           b_zp_present = false;
         } else if (shape.NumDimensions() == 1) {
           b_zp_present = false;
