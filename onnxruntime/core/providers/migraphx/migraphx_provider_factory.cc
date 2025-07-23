@@ -178,9 +178,9 @@ struct MIGraphX_Provider : Provider {
 // OrtEpApi infrastructure to be able to use the MigraphX/AMDGPU EP as an OrtEpFactory for auto EP selection.
 struct MigraphXEpFactory : OrtEpFactory {
   MigraphXEpFactory(const OrtApi& ort_api_in,
-                         const char* ep_name,
-                         OrtHardwareDeviceType hw_type,
-                         const OrtLogger& default_logger_in)
+                    const char* ep_name,
+                    OrtHardwareDeviceType hw_type,
+                    const OrtLogger& default_logger_in)
       : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type}, default_logger{default_logger_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
