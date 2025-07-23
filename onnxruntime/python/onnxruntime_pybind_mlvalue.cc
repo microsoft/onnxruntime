@@ -196,9 +196,10 @@ void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_CUDA().cudaMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, CudaToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0}, CudaToCpuMemCpy},
+  };
 
   return &map;
 }
@@ -253,9 +254,10 @@ void MIGraphXToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_MIGraphX().MIGraphXMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetMIGraphXToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, MIGraphXToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetMIGraphXToHostMemCpyFunction(const OrtDevice& device) {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, 0}, MIGraphXToCpuMemCpy},
+  };
 
   return &map;
 }
@@ -372,9 +374,10 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
       D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, DmlToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetDmlToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::MICROSOFT, 0}, DmlToCpuMemCpy},
+  };
 
   return &map;
 }
@@ -390,9 +393,10 @@ void CannToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_CANN().cannMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCannToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::NPU, CannToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetCannToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::NPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::HUAWEI, 0}, CannToCpuMemCpy},
+  };
 
   return &map;
 }
@@ -440,9 +444,10 @@ void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_ROCM().rocmMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, RocmToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, 0}, RocmToCpuMemCpy},
+  };
 
   return &map;
 }

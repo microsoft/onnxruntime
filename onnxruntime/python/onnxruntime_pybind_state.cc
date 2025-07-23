@@ -205,7 +205,7 @@ void AppendLoraParametersAsInputs(const RunOptions& run_options,
 template <typename T>
 static py::object AddNonTensor(const OrtValue& val,
                                const DataTransferManager* /*data_transfer_manager*/,
-                               const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
+                               const std::unordered_map<OrtDevice, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
   return py::cast(val.Get<T>());
 }
 
@@ -265,7 +265,7 @@ pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value, cons
 // pretty much does what a DataTransferManager does - copy data from device(s) to the host
 py::object GetPyObjFromTensor(const OrtValue& ort_value,
                               const DataTransferManager* data_transfer_manager,
-                              const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                              const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
   ORT_ENFORCE(ort_value.IsTensor(), "This function only supports tensors");
 
   const auto& tensor = ort_value.Get<Tensor>();
@@ -291,9 +291,18 @@ py::object GetPyObjFromTensor(const OrtValue& ort_value,
   } else {
     bool copied = false;
     if (mem_cpy_to_host_functions) {
-      auto mem_cpy_to_host = mem_cpy_to_host_functions->find(device_type);
-      if (mem_cpy_to_host != mem_cpy_to_host_functions->end()) {
-        result = PrimitiveTensorToNumpyFromDevice(ort_value, mem_cpy_to_host->second);
+      auto it = std::find_if(mem_cpy_to_host_functions->begin(), mem_cpy_to_host_functions->end(),
+                             [&device](const auto& entry) {
+                               const auto& copy_device = entry.first;
+                               // We're ignoring OrtDevice.Id() currently.
+                               // We leave that up to the copy function to deal with.
+                               return device.Type() == copy_device.Type() &&
+                                      device.MemType() == copy_device.MemType() &&
+                                      device.Vendor() == copy_device.Vendor();
+                             });
+
+      if (it != mem_cpy_to_host_functions->end()) {
+        result = PrimitiveTensorToNumpyFromDevice(ort_value, it->second);
         copied = true;
       }
     }
@@ -386,7 +395,7 @@ py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, co
 template <>
 py::object AddNonTensor<TensorSeq>(const OrtValue& val,
                                    const DataTransferManager* data_transfer_manager,
-                                   const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                                   const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
   for (const auto& ort_value : seq_tensors) {
@@ -402,7 +411,7 @@ py::object AddNonTensor<TensorSeq>(const OrtValue& val,
 
 py::object AddNonTensorAsPyObj(const OrtValue& val,
                                const DataTransferManager* data_transfer_manager,
-                               const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                               const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
   if (val_type->IsTensorSequenceType()) {
@@ -442,7 +451,7 @@ py::object AddNonTensorAsPyObj(const OrtValue& val,
 }
 
 py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager,
-                            const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                            const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
   return GetPyObjFromTensor(val, data_transfer_manager, mem_cpy_to_host_functions);
 }
 

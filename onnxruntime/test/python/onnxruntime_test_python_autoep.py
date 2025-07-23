@@ -251,6 +251,9 @@ class TestAutoEP(AutoEpTestCase):
         if sys.platform != "win32":
             self.skipTest("Skipping test because device discovery is only supported on Windows")
 
+        if "DmlExecutionProvider" in onnxrt.get_available_providers():
+            self.skipTest("Skipping because DML EP data transfer is broken if we haven't created an inference session")
+
         ep_lib_path = "example_plugin_ep.dll"
         try:
             ep_lib_path = get_name("example_plugin_ep.dll")
