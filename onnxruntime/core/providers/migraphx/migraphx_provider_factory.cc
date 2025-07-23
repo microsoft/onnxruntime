@@ -208,7 +208,7 @@ struct MigraphXEpFactory : OrtEpFactory {
     return factory->ep_name.c_str();
   }
 
-  static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept{
+  static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
     return factory->vendor.c_str();
   }
@@ -224,7 +224,7 @@ struct MigraphXEpFactory : OrtEpFactory {
                                             size_t num_devices,
                                             OrtEpDevice** ep_devices,
                                             size_t max_ep_devices,
-                                            size_t* p_num_ep_devices) noexcept{
+                                            size_t* p_num_ep_devices) noexcept {
     size_t& num_ep_devices = *p_num_ep_devices;
     auto* factory = static_cast<MigraphXEpFactory*>(this_ptr);
 
@@ -249,11 +249,11 @@ struct MigraphXEpFactory : OrtEpFactory {
                                  _In_ size_t /*num_devices*/,
                                  _In_ const OrtSessionOptions* /*session_options*/,
                                  _In_ const OrtLogger* /*logger*/,
-                                 _Out_ OrtEp** /*ep*/) noexcept{
+                                 _Out_ OrtEp** /*ep*/) noexcept {
     return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT, "[MigraphX/AMDGPU EP] EP factory does not support this method.");
   }
 
-  static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* /*ep*/) noexcept{
+  static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* /*ep*/) noexcept {
     // no-op as we never create an EP here.
   }
 
