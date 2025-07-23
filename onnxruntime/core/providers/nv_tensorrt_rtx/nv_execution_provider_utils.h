@@ -683,4 +683,29 @@ std::string GetCacheSuffix(const std::string& fused_node_name, const std::string
   }
   return "";
 }
+
+/*
+ * Checks if there is a an element with value `-1` in nvinfer1::Dims
+*/
+static bool checkTrtDimIsDynamic(nvinfer1::Dims dims) {
+  for (int j = 0, end = dims.nbDims; j < end; ++j) {
+    if (dims.d[j] == -1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/*
+ * Checks if an nvinfer1::ITensor signales a dynamic shape,
+ * either due to dynamic shapes or due to it being a shape tensor
+ */
+static bool checkTrtTensorIsDynamic(nvinfer1::ITensor* tensor) {
+  if (tensor->isShapeTensor()) {
+    return true;
+  } else {
+    // Execution tensor
+    return checkTrtDimIsDynamic(tensor->getDimensions());
+  }
+}
 }  // namespace onnxruntime
