@@ -1534,9 +1534,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           migraphx::program_parameters quant_params;
 
           if ((int8_enable xor fp8_enable) and int8_calibration_cache_available) {
-            auto param_shapes = prog.get_parameter_shapes();
+            auto local_param_shapes = prog.get_parameter_shapes();
             // Add input parameter data and the values they're set to
-            for (auto&& name : param_shapes.names()) {
+            for (auto&& name : local_param_shapes.names()) {
               if (map_input_name_index.count(name) > 0) {
                 auto input_tensor = ctx.GetInput(map_input_name_index[name]);
                 auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
@@ -1545,12 +1545,12 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
                 migraphx_shape_datatype_t mgx_type;
                 getMIGraphXType(tensor_type, mgx_type);
-                auto mgx_s = param_shapes[name];
+                auto mgx_s = local_param_shapes[name];
 
                 if (mgx_type != mgx_s.type()) {
                   LOGS_DEFAULT(FATAL) << "MIGraphX: param type mismatch";
                 }
-                quant_params.add(name, migraphx::argument(param_shapes[name], const_cast<void*>(input_tensor.GetTensorRawData())));
+                quant_params.add(name, migraphx::argument(local_param_shapes[name], const_cast<void*>(input_tensor.GetTensorRawData())));
               }
             }
           }
