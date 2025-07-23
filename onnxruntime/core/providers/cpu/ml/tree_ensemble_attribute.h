@@ -23,7 +23,7 @@ inline bool _isnan_(int32_t) { return false; }
 
 template <typename ThresholdType>
 struct TreeEnsembleAttributesV3 {
-  TreeEnsembleAttributesV3() {}
+  TreeEnsembleAttributesV3() : n_targets_or_classes(0) {}
   TreeEnsembleAttributesV3(const OpKernelInfo& info, bool classifier) {
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "base_values_as_tensor", base_values_as_tensor));
@@ -121,7 +121,7 @@ struct TreeEnsembleAttributesV3 {
 
 template <typename ThresholdType>
 struct TreeEnsembleAttributesV5 {
-  TreeEnsembleAttributesV5() {}
+  TreeEnsembleAttributesV5() : aggregate_function(1), n_targets(0), post_transform(0) {}
   TreeEnsembleAttributesV5(const OpKernelInfo& info) {
 #if !defined(ORT_MINIMAL_BUILD)
     std::vector<uint8_t> nodes_modes_i;

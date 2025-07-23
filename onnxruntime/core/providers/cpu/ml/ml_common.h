@@ -61,7 +61,10 @@ static inline NODE_MODE_ONNX MakeTreeNodeMode(const std::string& input) {
   if (input == "BRANCH_MEMBER_BIGSET") {
     return NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET;
   }
-  return NODE_MODE_ONNX::BRANCH_NEQ;
+  if (input == "BRANCH_NEQ") {
+    return NODE_MODE_ONNX::BRANCH_NEQ;
+  }
+  ORT_THROW("Unexpected value for node_mode");
 }
 
 enum class POST_EVAL_TRANSFORM : int64_t {
@@ -85,7 +88,10 @@ static inline POST_EVAL_TRANSFORM MakeTransform(const std::string& input) {
   if (input == "SOFTMAX_ZERO") {
     return POST_EVAL_TRANSFORM::SOFTMAX_ZERO;
   }
-  return POST_EVAL_TRANSFORM::PROBIT;
+  if (input == "PROBIT") {
+    return POST_EVAL_TRANSFORM::PROBIT;
+  }
+  ORT_THROW("Unexpected value for post_eval_transform");
 }
 
 enum class AGGREGATE_FUNCTION : int64_t {
@@ -105,7 +111,10 @@ static inline AGGREGATE_FUNCTION MakeAggregateFunction(const std::string& input)
   if (input == "MIN") {
     return AGGREGATE_FUNCTION::MIN;
   }
-  return AGGREGATE_FUNCTION::MAX;
+  if (input == "MAX") {
+    return AGGREGATE_FUNCTION::MAX;
+  }
+  ORT_THROW("Unexpected value for aggregate_function");
 }
 
 enum class CAST_TO {
@@ -159,7 +168,10 @@ static inline KERNEL MakeKernel(const std::string& input) {
   if (input == "RBF") {
     return KERNEL::RBF;
   }
-  return KERNEL::SIGMOID;
+  if (input == "SIGMOID") {
+    return KERNEL::SIGMOID;
+  }
+  ORT_THROW("Unexpected value for KERNEL");
 }
 
 enum NORMALIZE {

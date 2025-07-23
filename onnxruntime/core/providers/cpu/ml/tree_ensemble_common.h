@@ -43,6 +43,21 @@ class TreeEnsembleCommonAttributes {
   virtual Status compute(OpKernelContext*, const Tensor*, Tensor*, Tensor*) const = 0;
   virtual ~TreeEnsembleCommonAttributes() {}
 
+  // Default constructor with reasonable defaults for all members
+  TreeEnsembleCommonAttributes()
+      : n_targets_or_classes_(1),
+        post_transform_(POST_EVAL_TRANSFORM::NONE),
+        aggregate_function_(AGGREGATE_FUNCTION::SUM),
+        n_nodes_(0),
+        max_tree_depth_(1),
+        max_feature_id_(0),
+        n_trees_(0),
+        same_mode_(true),
+        has_missing_tracks_(false),
+        parallel_tree_(80),
+        parallel_tree_N_(128),
+        parallel_N_(50) {}
+
  protected:
   int64_t n_targets_or_classes_;
   POST_EVAL_TRANSFORM post_transform_;
