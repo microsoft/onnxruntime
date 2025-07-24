@@ -1,0 +1,163 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 30c8f5938c..c0c373b60e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -329,10 +329,22 @@ message(STATUS "Webgpu IDL path: ${WEBGPU_IDL_PATH}")
+ message(STATUS "Go exe: ${GO_EXECUTABLE}")
+ message(STATUS "")
+ 
+-option(DAWN_FETCH_DEPENDENCIES "Use fetch_dawn_dependencies.py as an alternative to using depot_tools" OFF)
+-option(DAWN_BUILD_MONOLITHIC_LIBRARY "Build one big monolithic library file" ON)
+-
++# Handling of the type of monolithic library to build, if any.
++set(DAWN_BUILD_MONOLITHIC_LIBRARY "OFF" CACHE STRING "Build monolithic library: SHARED, STATIC, or OFF.")
++set_property(CACHE DAWN_BUILD_MONOLITHIC_LIBRARY PROPERTY STRINGS SHARED SHARED STATIC)
++
++string(TOUPPER "${DAWN_BUILD_MONOLITHIC_LIBRARY}" _option_upper)
++if(NOT _option_upper STREQUAL "OFF" AND
++   NOT _option_upper STREQUAL "SHARED" AND
++   NOT _option_upper STREQUAL "STATIC")
++    message(FATAL_ERROR "DAWN_BUILD_MONOLITHIC_LIBRARY must be SHARED, STATIC, or OFF, but was \"${DAWN_BUILD_MONOLITHIC_LIBRARY}\".")
++endif()
++if (DAWN_BUILD_MONOLITHIC_LIBRARY AND BUILD_SHARED_LIBS)
++    message(FATAL_ERROR "DAWN_BUILD_MONOLITHIC_LIBRARY SHARED/STATIC requires BUILD_SHARED_LIBS=OFF. Otherwise the bundled library will depend on other shared libraries which defeats the purpose.")
++endif()
+ message(STATUS "Dawn build monolithic library: ${DAWN_BUILD_MONOLITHIC_LIBRARY}")
++
++option(DAWN_FETCH_DEPENDENCIES "Use fetch_dawn_dependencies.py as an alternative to using depot_tools" OFF)
+ message(STATUS "Dawn fetch dependencies: ${DAWN_FETCH_DEPENDENCIES}")
+ message(STATUS "")
+ 
+diff --git a/src/cmake/BundleLibraries.cmake b/src/cmake/BundleLibraries.cmake
+index 0e93c9b9dc..682a73924c 100644
+--- a/src/cmake/BundleLibraries.cmake
++++ b/src/cmake/BundleLibraries.cmake
+@@ -25,7 +25,7 @@
+ # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ 
+-function(bundle_libraries output_target)
++function(bundle_libraries output_target library_type)
+   # This function recursively finds all dependencies of a given target.
+   # It populates a list variable named 'all_dependencies' in the parent scope.
+   # Note: This recursive approach with PARENT_SCOPE works but can be a bit
+@@ -45,12 +45,9 @@ function(bundle_libraries output_target)
+       return()
+     endif()
+ 
+-    # Add the current target to the list in the parent scope
+-    # list(APPEND) modifies the variable in the current scope.
+-    # set(... PARENT_SCOPE) copies the current scope's variable to the parent scope.
+-    # This pattern, while slightly verbose, works for recursive list building across scopes.
++    # Add the current target to the list of dependencies that we have seen. It will be copied
++    # to the parent scope before returning at the end of this function.
+     list(APPEND all_dependencies ${input_target})
+-    set(all_dependencies ${all_dependencies} PARENT_SCOPE) # Propagate change up
+ 
+     # Get dependencies from LINK_LIBRARIES (Private and Public linkage)
+     get_target_property(link_libraries ${input_target} LINK_LIBRARIES)
+@@ -72,6 +69,7 @@ function(bundle_libraries output_target)
+ 
+     # The final 'all_dependencies' list is available in the parent scope
+     # after the initial call to get_dependencies completes.
++    set(all_dependencies ${all_dependencies} PARENT_SCOPE) # Propagate change up
+   endfunction()
+ 
+   # ARGN contains all arguments after the named parameters so it is the list of
+@@ -113,10 +111,9 @@ function(bundle_libraries output_target)
+ 
+   # Create the output library using the validated type and collected objects
+   # If all_objects is empty, add_library will still create an empty library of the specified type.
+-  add_library(${output_target} ${all_objects})
++  add_library(${output_target} ${library_type} ${all_objects})
+ 
+   # Add dependencies to ensure input targets are built before the bundled library.
+   # This handles the build order correctly.
+   add_dependencies(${output_target} ${ARGN})
+-
+ endfunction()
+diff --git a/src/dawn/native/CMakeLists.txt b/src/dawn/native/CMakeLists.txt
+index 820b1b0dfa..8701411136 100644
+--- a/src/dawn/native/CMakeLists.txt
++++ b/src/dawn/native/CMakeLists.txt
+@@ -934,44 +934,59 @@ if (DAWN_BUILD_MONOLITHIC_LIBRARY)
+     # Note that this library name is referenced in several places, search for it and things like:
+     # "{{.*}}_dawn" when you rename it.
+     ###############################################################################
++
++    # First make an object library for webgpu_dawn_native_proc sources for the export macros to
++    # get applied as well as backend-specific dawn_native entrypoints that also use export macros.
++    # This is essentially the same as dawn_native but using OBJECT as a library type and the
++    # DAWN_BUILD_MONOLITHIC_LIBRARY option to choose the export macros.
+     DawnJSONGenerator(
+         TARGET "webgpu_dawn_native_proc"
+         PRINT_NAME "Dawn native WebGPU procs"
+         OUTPUT_SOURCES WEBGPU_DAWN_NATIVE_PROC_GEN_SOURCES
+     )
+-    # Bundle all objects of dawn_native, it's public dependencies and private dependencies.
+-    include(BundleLibraries)
+-    bundle_libraries(webgpu_dawn dawn::dawn_native_objects)
+ 
+-    add_library(dawn::webgpu_dawn ALIAS webgpu_dawn)
+-    # Compile backend specific sources along with webgpu_dawn_native_proc sources for export macros to get applied.
+-    target_sources(webgpu_dawn
+-        PRIVATE
++    dawn_add_library(
++      webgpu_dawn_objects
++      UTILITY_TARGET dawn_internal_config
++      FORCE_OBJECT
++      SOURCES
+         ${WEBGPU_DAWN_NATIVE_PROC_GEN_SOURCES}
+         ${dawn_component_srcs}
++      DEPENDS
++        ${dawn_native_public_depends}
++      PRIVATE_DEPENDS
++        dawn::dawn_native_objects
++        ${dawn_native_private_depends}
++        ${conditional_private_platform_depends}
+     )
+-    target_compile_definitions(webgpu_dawn
++
++    target_compile_definitions(webgpu_dawn_objects
+         PRIVATE
+             "WGPU_IMPLEMENTATION"
+             "DAWN_NATIVE_IMPLEMENTATION"
+     )
+-    if (BUILD_SHARED_LIBS)
+-        target_compile_definitions(webgpu_dawn
++    if (DAWN_BUILD_MONOLITHIC_LIBRARY STREQUAL SHARED)
++        target_compile_definitions(webgpu_dawn_objects
+             PUBLIC
+-                "$<$<BOOL:BUILD_SHARED_LIBS>:WGPU_SHARED_LIBRARY>"
+-                "$<$<BOOL:BUILD_SHARED_LIBS>:DAWN_NATIVE_SHARED_LIBRARY>"
++                "WGPU_SHARED_LIBRARY"
++                "DAWN_NATIVE_SHARED_LIBRARY"
+         )
+     endif()
+-    # Apart from dawn_public_config, everything else goes inside PRIVATE, otherwise install rules will complain that they were not exported.
+-    target_link_libraries(webgpu_dawn
+-        PUBLIC
+-            dawn_public_config
+-        PRIVATE
+-            dawn_internal_config
+-            ${dawn_native_public_depends}
+-            ${dawn_native_private_depends}
+-            ${conditional_private_platform_depends}
++
++    # Do the bundling of all the objects and dependencies together.
++    include(BundleLibraries)
++    bundle_libraries(webgpu_dawn ${DAWN_BUILD_MONOLITHIC_LIBRARY} webgpu_dawn_objects)
++    add_library(dawn::webgpu_dawn ALIAS webgpu_dawn)
++
++    # Since this is a bundled library, the only dependency is the config needed to use it.
++    target_link_libraries(
++      webgpu_dawn
++      PUBLIC
++        dawn_public_config
++      PRIVATE
++        ${conditional_private_platform_depends}
+     )
++
+     set(webgpu_dawn_public_headers)
+     foreach(dawn_target_name IN ITEMS dawn_headers dawncpp_headers dawn_native_objects)
+         get_target_property(headers "${dawn_target_name}" INTERFACE_SOURCES)
