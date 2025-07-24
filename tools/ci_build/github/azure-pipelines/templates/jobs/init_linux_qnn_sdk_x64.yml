@@ -4,12 +4,8 @@ parameters:
     default: '2.36.1.250708'
 
 steps:
-  - script: |
-      azcopy cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v${{ parameters.QnnSDKVersion }} $(Agent.TempDirectory)
-    displayName: 'Download QNN SDK v${{ parameters.QnnSDKVersion }}'
-
   - bash: |
-      echo "##vso[task.setvariable variable=QnnSDKRootDir]$(Agent.TempDirectory)/qnn-v${{ parameters.QnnSDKVersion }}"
+      echo "##vso[task.setvariable variable=QnnSDKRootDir]/data/qnnsdk/qnn-v${{ parameters.QnnSDKVersion }}"
     displayName: Set QnnSDKRootDir
 
   - script: |
@@ -39,9 +35,7 @@ steps:
       fi
     displayName: "Sanity Check: QnnSDKVersion vs sdk.yaml version"
 
-  - script: |
-      azcopy cp --recursive 'https://lotusscus.blob.core.windows.net/models/qnnsdk/Qualcomm AI Hub Proprietary License.pdf' $(QnnSDKRootDir)
-    displayName: 'Download Qualcomm AI Hub license'
+
 
   - script: |
       ls -al $(QnnSDKRootDir)
