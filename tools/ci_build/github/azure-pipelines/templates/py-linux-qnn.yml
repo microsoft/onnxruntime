@@ -41,21 +41,19 @@ jobs:
   pool:
     name: ${{ parameters.machine_pool }}
     os: linux
+  templateContext:
+    outputs:
+    - output: pipelineArtifact
+      targetPath: $(Build.BinariesDirectory)/dist
+      artifactName: onnxruntime-linux-qnn-x64
+
   variables:
-  # The build machine pool doesn't have dotnet, so it can't run CG.
-  - name: skipComponentGovernanceDetection
-    value: true
-  - name: ORT_CACHE_DIR
-    value: $(Agent.TempDirectory)/ort_ccache
-  - name: TODAY
-    value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   - name: extra_build_args
     ${{ if ne(parameters.extra_build_arg, '') }}:
       value: -x ${{ parameters.extra_build_arg }}
     ${{ if eq(parameters.extra_build_arg, '') }}:
       value: ''
   steps:
-
   - checkout: self
     clean: true
     submodules: none
@@ -73,33 +71,12 @@ jobs:
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuildpythonx86_64_qnn
 
-  - template: linux-build-step-with-cache.yml
-    parameters:
-      WithCache: ${{parameters.with_cache}}
-      Today: $(TODAY)
-      AdditionalKey: Linux_py_qnn_Wheels_x64
-      CacheDir: $(ORT_CACHE_DIR)
-      ChangeEveryCommit: true
-      BuildStep:
-      - task: Bash@3
-        displayName: 'Build Python Wheel'
-        inputs:
-          targetType: filePath
-          filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-          arguments: -i onnxruntimecpubuildpythonx86_64_qnn -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
-        env:
-          ADDITIONAL_DOCKER_PARAMETER: "--volume $(QnnSDKRootDir):/qnn_sdk"
-  - ${{ if eq(parameters.is1ES, true) }}:
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Artifact: Linux ONNXRuntime QNN python wheel'
-      inputs:
-        targetPath: '$(Build.BinariesDirectory)/dist'
-        artifactName: onnxruntime-linux-qnn-x64
-
-  - ${{ if eq(parameters.is1ES, false) }}:
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Artifact: Linux ONNXRuntime QNN python wheel'
-      inputs:
-        targetPath: '$(Build.BinariesDirectory)/dist'
-        artifactName: onnxruntime-linux-qnn-x64
+  - task: Bash@3
+    displayName: 'Build Python Wheel'
+    inputs:
+      targetType: filePath
+      filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
+      arguments: -i onnxruntimecpubuildpythonx86_64_qnn -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
+    env:
+      ADDITIONAL_DOCKER_PARAMETER: "--volume $(QnnSDKRootDir):/qnn_sdk"
 
