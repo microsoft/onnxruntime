@@ -87,7 +87,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           if (added_ep_device_index_set.find(index) == added_ep_device_index_set.end()) {
             added_ep_devices.push_back(device);
             added_ep_device_index_set.insert(index);
-            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s] has been added to session.", index, device.EpName());
+            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s] has been added to session.\n", index, device.EpName());
           }
         } else {
           std::string err_msg = "[Plugin EP] [WARNING] : The EP device index and its corresponding OrtEpDevice is not created from " +
@@ -102,7 +102,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         Ort::ConstEpDevice& device = ep_devices[index];
         if (std::string(device.EpName()) == performance_test_config.machine_config.provider_type_name) {
           added_ep_devices.push_back(device);
-          fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.", index, device.EpName());
+          fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.\n", index, device.EpName());
         }
       }
     }
