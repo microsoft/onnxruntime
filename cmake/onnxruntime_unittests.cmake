@@ -114,11 +114,12 @@ function(AddTest)
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
     endif()
     target_compile_options(${_UT_TARGET} PRIVATE ${disabled_warnings})
-  else()
-    target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-error=sign-compare>"
-            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
-    if (${HAS_NOERROR})
-      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=uninitialized>")
+    else()
+      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-error=sign-compare>"
+              "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
+      if (${HAS_NOERROR})
+        target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=uninitialized>")
+      endif()
     endif()
     if (${HAS_CHARACTER_CONVERSION})
       target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=character-conversion>")
@@ -1797,14 +1798,14 @@ endif()
 # Build library that can be used with RegisterExecutionProviderLibrary and automatic EP selection
 # We need a shared lib build to use that as a dependency for the test library
 # Currently we only have device discovery on Windows so no point building the test app on other platforms.
-if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
+if ((WIN32 OR (UNIX AND onnxruntime_USE_QNN)) AND onnxruntime_BUILD_SHARED_LIB AND
     NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
     NOT onnxruntime_MINIMAL_BUILD)
   file(GLOB onnxruntime_autoep_test_library_src "${TEST_SRC_DIR}/autoep/library/*.h"
                                                 "${TEST_SRC_DIR}/autoep/library/*.cc")
   onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
   target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
-  target_link_libraries(example_plugin_ep PRIVATE onnxruntime)
+  target_link_libraries(example_plugin_ep PRIVATE onnxruntime ${GSL_TARGET})
 
   if(UNIX)
     if (APPLE)
@@ -1857,6 +1858,7 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
           LIBS ${onnxruntime_autoep_test_LIBS}
           DEPENDS ${all_dependencies} example_plugin_ep
   )
+
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)

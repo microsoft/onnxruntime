@@ -7,8 +7,11 @@
 #include <memory>
 #include <string>
 #include <utility>
-
 #include <gsl/gsl>
+
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
 
 namespace onnxruntime {
 
@@ -20,44 +23,110 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
   OrtArrayOfConstObjects* inputs_array = nullptr;
   OrtArrayOfConstObjects* outputs_array = nullptr;
 
-  ort_api.Node_GetInputs(&target_node_, &inputs_array);
-  ort_api.Node_GetOutputs(&target_node_, &outputs_array);
+  OrtStatus* status = ort_api.Node_GetInputs(&target_node_, &inputs_array);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return;
+  }
+
+  status = ort_api.Node_GetOutputs(&target_node_, &outputs_array);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs_array);
+    return;
+  }
 
   size_t num_inputs = 0;
   size_t num_outputs = 0;
-  ort_api.ArrayOfConstObjects_GetSize(inputs_array, &num_inputs);
-  ort_api.ArrayOfConstObjects_GetSize(outputs_array, &num_outputs);
+  status = ort_api.ArrayOfConstObjects_GetSize(inputs_array, &num_inputs);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs_array);
+    ort_api.ReleaseArrayOfConstObjects(outputs_array);
+    return;
+  }
+
+  status = ort_api.ArrayOfConstObjects_GetSize(outputs_array, &num_outputs);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs_array);
+    ort_api.ReleaseArrayOfConstObjects(outputs_array);
+    return;
+  }
 
   const void* const* inputs_data = nullptr;
   const void* const* outputs_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(inputs_array, &inputs_data);
-  ort_api.ArrayOfConstObjects_GetData(outputs_array, &outputs_data);
+  status = ort_api.ArrayOfConstObjects_GetData(inputs_array, &inputs_data);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs_array);
+    ort_api.ReleaseArrayOfConstObjects(outputs_array);
+    return;
+  }
 
-  auto add_io_def = [&](std::vector<OrtNodeUnitIODef>& io_defs, const void* const* data, size_t num_data) {
-    for (size_t idx = 0; idx < num_data; ++idx) {
+  status = ort_api.ArrayOfConstObjects_GetData(outputs_array, &outputs_data);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs_array);
+    ort_api.ReleaseArrayOfConstObjects(outputs_array);
+    return;
+  }
+
+  auto add_io_def = [&](std::vector<OrtNodeUnitIODef>& /*io_defs*/, const void* const* data, size_t num_data) {
+    for (size_t idx = 0; idx < num_data; ++idx){
       const OrtValueInfo* io = static_cast<const OrtValueInfo*>(data[idx]);
 
       // Get name.
       const char* name = nullptr;
-      ort_api.GetValueInfoName(io, &name);
+      OrtStatus* status = ort_api.GetValueInfoName(io, &name);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
 
       // Get type and shape.
       const OrtTypeInfo* type_info = nullptr;
-      ort_api.GetValueInfoTypeInfo(io, &type_info);
+      status = ort_api.GetValueInfoTypeInfo(io, &type_info);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
+
       const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-      ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
+      status = ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+        continue;
+      }
 
       ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-      ort_api.GetTensorElementType(type_shape, &elem_type);
+      status = ort_api.GetTensorElementType(type_shape, &elem_type);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+        continue;
+      }
 
       size_t num_dims = 0;
-      ort_api.GetDimensionsCount(type_shape, &num_dims);
+      status = ort_api.GetDimensionsCount(type_shape, &num_dims);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+        continue;
+      }
 
       std::vector<int64_t> shape;
       shape.resize(num_dims, 0);
-      ort_api.GetDimensions(type_shape, shape.data(), shape.size());
+      status = ort_api.GetDimensions(type_shape, shape.data(), shape.size());
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+        continue;
+      }
 
-      io_defs.push_back(OrtNodeUnitIODef{name, elem_type, shape});
+      // TODO: this is incorrect usage
+      // io_defs.push_back(OrtNodeUnitIODef{name, elem_type, shape});
 
       // TODO: SegFault if enabled release.
       // ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(type_shape));
@@ -73,11 +142,13 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 
   ort_api.ReleaseArrayOfConstObjects(inputs_array);
   ort_api.ReleaseArrayOfConstObjects(outputs_array);
+
 }
 
 // std::vector<const Node*> Graph__Nodes(const Graph& graph) {
 //   return graph.Nodes();
 // }
+
 
 #define NODE_ATTR_ITER_VAL(iter) (iter)->second()
 
@@ -87,42 +158,63 @@ OrtNodeAttrHelper::OrtNodeAttrHelper(const OrtApi& ort_api, const OrtNodeUnit& n
 
 float OrtNodeAttrHelper::Get(const std::string& key, float def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  return rt ? def_val : api_node_attr->attr_proto.f();
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
+    return def_val;
+  }
+  return api_node_attr->attr_proto.f();
 }
 
 int32_t OrtNodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  return rt ? def_val : gsl::narrow<int32_t>(api_node_attr->attr_proto.i());
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
+    return def_val;
+  }
+  return static_cast<int32_t>(api_node_attr->attr_proto.i());
 }
 
 uint32_t OrtNodeAttrHelper::Get(const std::string& key, uint32_t def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  return rt ? def_val : gsl::narrow<uint32_t>(api_node_attr->attr_proto.i());
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
+    return def_val;
+  }
+  return static_cast<uint32_t>(api_node_attr->attr_proto.i());
 }
 
 int64_t OrtNodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  return rt ? def_val : api_node_attr->attr_proto.i();
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
+    return def_val;
+  }
+  return api_node_attr->attr_proto.i();
 }
 
 const std::string& OrtNodeAttrHelper::Get(const std::string& key, const std::string& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
     return def_val;
   }
-  static std::string result = api_node_attr->attr_proto.s();
-  return result;
+
+  // Store the string in a static thread_local variable to ensure it remains valid
+  static thread_local std::string result_string;
+  result_string = api_node_attr->attr_proto.s();
+  return result_string;
 }
 
 std::vector<std::string> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<std::string>& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
     return def_val;
   }
 
@@ -137,8 +229,9 @@ std::vector<std::string> OrtNodeAttrHelper::Get(const std::string& key, const st
 
 std::vector<int32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int32_t>& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
     return def_val;
   }
 
@@ -146,15 +239,16 @@ std::vector<int32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::v
   std::vector<int32_t> result;
   result.reserve(ints_proto.size());
   for (int i = 0; i < ints_proto.size(); ++i) {
-    result.push_back(gsl::narrow<int32_t>(ints_proto.Get(i)));
+    result.push_back(static_cast<int32_t>(ints_proto.Get(i)));
   }
   return result;
 }
 
 std::vector<uint32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<uint32_t>& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
     return def_val;
   }
 
@@ -162,15 +256,16 @@ std::vector<uint32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::
   std::vector<uint32_t> result;
   result.reserve(ints_proto.size());
   for (int i = 0; i < ints_proto.size(); ++i) {
-    result.push_back(gsl::narrow<uint32_t>(ints_proto.Get(i)));
+    result.push_back(static_cast<uint32_t>(ints_proto.Get(i)));
   }
   return result;
 }
 
 std::vector<int64_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int64_t>& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
     return def_val;
   }
 
@@ -185,8 +280,9 @@ std::vector<int64_t> OrtNodeAttrHelper::Get(const std::string& key, const std::v
 
 std::vector<float> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<float>& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
     return def_val;
   }
 
@@ -201,8 +297,9 @@ std::vector<float> OrtNodeAttrHelper::Get(const std::string& key, const std::vec
 
 std::optional<float> OrtNodeAttrHelper::GetFloat(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
     return std::nullopt;
   }
   return api_node_attr->attr_proto.f();
@@ -210,8 +307,9 @@ std::optional<float> OrtNodeAttrHelper::GetFloat(const std::string& key) const {
 
 std::optional<int64_t> OrtNodeAttrHelper::GetInt64(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
     return std::nullopt;
   }
   return api_node_attr->attr_proto.i();
@@ -219,8 +317,9 @@ std::optional<int64_t> OrtNodeAttrHelper::GetInt64(const std::string& key) const
 
 std::optional<std::vector<float>> OrtNodeAttrHelper::GetFloats(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
     return std::nullopt;
   }
 
@@ -235,8 +334,9 @@ std::optional<std::vector<float>> OrtNodeAttrHelper::GetFloats(const std::string
 
 std::optional<std::vector<int64_t>> OrtNodeAttrHelper::GetInt64s(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
     return std::nullopt;
   }
 
@@ -251,8 +351,9 @@ std::optional<std::vector<int64_t>> OrtNodeAttrHelper::GetInt64s(const std::stri
 
 std::optional<std::string> OrtNodeAttrHelper::GetString(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
     return std::nullopt;
   }
   return api_node_attr->attr_proto.s();
@@ -260,8 +361,12 @@ std::optional<std::string> OrtNodeAttrHelper::GetString(const std::string& key) 
 
 bool OrtNodeAttrHelper::HasAttr(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
-  auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  return !rt;  // Return true if attribute exists (rt == 0), false if not found (rt != 0)
+  OrtStatus* status = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
+  if (status != nullptr) {
+    ort_api_.ReleaseStatus(status);
+    return false;
+  }
+  return true;
 }
 
 OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,
@@ -311,8 +416,9 @@ PathString OrtGetRuntimePath() {
 #endif
 }
 
-Status OrtLoadDynamicLibrary(const PathString& wlibrary_filename, bool /* global_symbols */, void** handle) {
+Status OrtLoadDynamicLibrary(const PathString& wlibrary_filename, bool global_symbols, void** handle) {
 #ifdef _WIN32
+  ORT_UNUSED_PARAMETER(global_symbols);
 #if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
   *handle = ::LoadPackagedLibrary(wlibrary_filename.c_str(), 0);
 #else
@@ -330,11 +436,20 @@ Status OrtLoadDynamicLibrary(const PathString& wlibrary_filename, bool /* global
   }
   return Status::OK();
 #else
+  // Convert wide string to narrow string for Linux
+  std::string library_filename;
+#ifdef _WIN32
+  // This should not be reached on Linux, but keeping for safety
+  library_filename = std::string(wlibrary_filename.begin(), wlibrary_filename.end());
+#else
+  library_filename = wlibrary_filename;
+#endif
+
   dlerror();  // clear any old error_str
   *handle = dlopen(library_filename.c_str(), RTLD_NOW | (global_symbols ? RTLD_GLOBAL : RTLD_LOCAL));
   char* error_str = dlerror();
   if (!*handle) {
-    return Status(ONNXRUNTIME, FAIL, "Failed to load library " + library_filename + " with error: " + error_str);
+    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to load library " + library_filename + " with error: " + std::string(error_str ? error_str : "unknown error"));
   }
   return Status::OK();
 #endif
@@ -354,13 +469,13 @@ Status OrtUnloadDynamicLibrary(void* handle) {
   return Status::OK();
 #else
   if (!handle) {
-    return Status(ONNXRUNTIME, FAIL, "Got null library handle");
+    return Status(common::ONNXRUNTIME, common::FAIL, "Got null library handle");
   }
   dlerror();  // clear any old error_str
   int retval = dlclose(handle);
   char* error_str = dlerror();
   if (retval != 0) {
-    return Status(ONNXRUNTIME, FAIL, "Failed to unload library with error: " + std::string(error_str));
+    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to unload library with error: " + std::string(error_str ? error_str : "unknown error"));
   }
   return Status::OK();
 #endif
@@ -453,7 +568,7 @@ Status OrtGetSymbolFromLibrary(void* handle, const std::string& symbol_name, voi
 
   char* error_str = dlerror();
   if (error_str) {
-    return Status(ONNXRUNTIME, FAIL, "Failed to get symbol " + symbol_name + " with error: " + error_str);
+    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get symbol " + symbol_name + " with error: " + std::string(error_str));
   }
   // it's possible to get a NULL symbol in our case when Schemas are not custom.
   return Status::OK();

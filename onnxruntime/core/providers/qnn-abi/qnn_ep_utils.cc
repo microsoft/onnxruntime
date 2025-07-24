@@ -687,11 +687,10 @@ bool OrtDropQDQNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort
 }
 
 // Implementation of Check() for OrtDropDQNodeGroupSelector
-bool OrtDropDQNodeGroupSelector::Check(const OrtGraph* /*graph*/, const OrtApi& ort_api, const OrtNode* node,
+bool OrtDropDQNodeGroupSelector::Check(const OrtGraph* /*graph*/, const OrtApi& ort_api, const OrtNode* /*node*/,
                                       const OrtNode* redundant_clip_node,
                                       const std::vector<const OrtNode*>& dq_nodes,
-                                      const std::vector<const OrtNode*>& q_nodes) const {
-                                        q_nodes;node;
+                                      const std::vector<const OrtNode*>& /*q_nodes*/) const {
   // For drop DQ operations, we check if the node has exactly one DQ input
   if (redundant_clip_node) {
     return false;
@@ -1901,12 +1900,18 @@ std::optional<OrtNodeGroup> GetOrtQDQSelection(const OrtGraph* graph, const OrtA
 
     // Get node indices
     size_t target_node_idx = 0;
-    ort_api.Node_GetId(node, &target_node_idx);
+    status = ort_api.Node_GetId(node, &target_node_idx);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+    }
     node_group.target_node = static_cast<int>(target_node_idx);
 
     if (clip_node) {
       size_t clip_node_idx = 0;
-      ort_api.Node_GetId(clip_node, &clip_node_idx);
+      status = ort_api.Node_GetId(clip_node, &clip_node_idx);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+      }
       node_group.redundant_clip_node = static_cast<int>(clip_node_idx);
     }
 
@@ -1914,7 +1919,10 @@ std::optional<OrtNodeGroup> GetOrtQDQSelection(const OrtGraph* graph, const OrtA
     node_group.dq_nodes.reserve(dq_nodes.size());
     for (const OrtNode* dq_node : dq_nodes) {
       size_t dq_node_idx = 0;
-      ort_api.Node_GetId(dq_node, &dq_node_idx);
+      status = ort_api.Node_GetId(dq_node, &dq_node_idx);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+      }
       node_group.dq_nodes.push_back(static_cast<int>(dq_node_idx));
     }
 
@@ -1922,7 +1930,10 @@ std::optional<OrtNodeGroup> GetOrtQDQSelection(const OrtGraph* graph, const OrtA
     node_group.q_nodes.reserve(q_nodes.size());
     for (const OrtNode* q_node : q_nodes) {
       size_t q_node_idx = 0;
-      ort_api.Node_GetId(q_node, &q_node_idx);
+      status = ort_api.Node_GetId(q_node, &q_node_idx);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+      }
       node_group.q_nodes.push_back(static_cast<int>(q_node_idx));
     }
 
@@ -2130,13 +2141,27 @@ std::vector<OrtNodeGroup> OrtSelectorManager::GetOrtQDQSelections(const OrtGraph
 
   // Get all nodes from the graph
   OrtArrayOfConstObjects* nodes = nullptr;
-  ort_api.Graph_GetNodes(graph, &nodes);
+  OrtStatus* status = ort_api.Graph_GetNodes(graph, &nodes);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return qdq_selections;
+  }
 
   size_t num_nodes = 0;
-  ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
+  status = ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(nodes);
+    return qdq_selections;
+  }
 
   const void* const* node_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(nodes, &node_data);
+  status = ort_api.ArrayOfConstObjects_GetData(nodes, &node_data);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(nodes);
+    return qdq_selections;
+  }
 
   // Process each node
   for (size_t i = 0; i < num_nodes; ++i) {
@@ -2147,7 +2172,11 @@ std::vector<OrtNodeGroup> OrtSelectorManager::GetOrtQDQSelections(const OrtGraph
 
     // Get node domain
     const char* domain = nullptr;
-    ort_api.Node_GetDomain(node, &domain);
+    status = ort_api.Node_GetDomain(node, &domain);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      continue;
+    }
 
     // Check domain (similar to the GraphViewer version)
     std::string domain_str(domain);
@@ -2168,7 +2197,11 @@ std::vector<OrtNodeGroup> OrtSelectorManager::GetOrtQDQSelections(const OrtGraph
     if (!versions.empty()) {
       // Get node version
       int since_version = 0;
-      ort_api.Node_GetSinceVersion(node, &since_version);
+      status = ort_api.Node_GetSinceVersion(node, &since_version);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
 
       if (std::find(versions.cbegin(), versions.cend(), since_version) == versions.cend()) {
         LOGS(logger, VERBOSE) << "Op version is not supported for " << op_type;
@@ -2195,19 +2228,33 @@ class QnnEp;
 // Implementation of GetQDQNodeUnits for OrtGraph
 std::pair<std::vector<std::unique_ptr<OrtNodeUnit>>, std::unordered_map<const OrtNode*, const OrtNodeUnit*>>
 GetAllOrtNodeUnits(OrtApi ort_api, const OrtGraph* graph, const logging::Logger& logger) {
-  logger;
+  ORT_UNUSED_PARAMETER(logger);
   std::vector<std::unique_ptr<OrtNodeUnit>> node_unit_holder;
   std::unordered_map<const OrtNode*, const OrtNodeUnit*> node_unit_map;
 
   // Get all nodes from the graph
   OrtArrayOfConstObjects* nodes = nullptr;
-  ort_api.Graph_GetNodes(graph, &nodes);
+  OrtStatus* status = ort_api.Graph_GetNodes(graph, &nodes);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return std::make_pair(std::move(node_unit_holder), std::move(node_unit_map));
+  }
 
   size_t num_nodes = 0;
-  ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
+  status = ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(nodes);
+    return std::make_pair(std::move(node_unit_holder), std::move(node_unit_map));
+  }
 
   const void* const* node_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(nodes, &node_data);
+  status = ort_api.ArrayOfConstObjects_GetData(nodes, &node_data);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(nodes);
+    return std::make_pair(std::move(node_unit_holder), std::move(node_unit_map));
+  }
 
   const auto add_node_unit_to_map = [&](const std::vector<int>& node_indices) {
     for (auto node_idx : node_indices) {

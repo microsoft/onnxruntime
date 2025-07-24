@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 // registration/selection is only supported on windows as there's no device discovery on other platforms
-#ifdef _WIN32
+// #ifdef _WIN32
 
 #include <filesystem>
 // #include <absl/base/config.h>
@@ -65,7 +65,12 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
 }
 
 TEST(OrtEpLibrary, QnnEp_AppendV2_MulInference) {
-  const std::filesystem::path& library_path = "onnxruntime_providers_qnn_abi.dll";
+  const std::filesystem::path& library_path =
+#if _WIN32
+      "./onnxruntime_providers_qnn_abi.dll";
+#else
+      "./libonnxruntime_providers_qnn_abi.so";
+#endif
   const std::string& registration_name = "QnnAbiTestProvider";
 
   ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
@@ -141,9 +146,9 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
 TEST(OrtEpLibrary, QnnAbiEp_SharedLibraryCodePathExecution) {
   const std::filesystem::path& library_path =
 #if _WIN32
-      "./onnxruntime_providers_qnn.dll";
+      "./onnxruntime_providers_qnn_abi.dll";
 #else
-      "./libonnxruntime_providers_qnn.so";
+      "./libonnxruntime_providers_qnn_abi.so";
 #endif
   const std::string& registration_name = "QnnAbiTestProvider";
 
@@ -175,4 +180,4 @@ TEST(OrtEpLibrary, QnnAbiEp_SharedLibraryCodePathExecution) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif  // _WIN32
+// #endif  // _WIN32

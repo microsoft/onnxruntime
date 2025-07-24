@@ -22,6 +22,7 @@
 #include "QnnTypes.h"
 
 #include "core/providers/qnn-abi/ort_api.h"
+// Forward declaration to avoid circular dependency
 
 namespace onnxruntime {
 namespace qnn {
@@ -267,15 +268,46 @@ Status UnpackInt4ToInt8(size_t num_int4_elems, std::vector<uint8_t>& data_bytes)
 
 inline std::vector<int64_t> GetInitializerShape(const OrtValueInfo& initializer, const OrtApi& ort_api) {
   const OrtTypeInfo* type_info = nullptr;
-  ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
-  const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
-  ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
-  size_t num_dims;
-  ort_api.GetDimensionsCount(tensor_type_and_shape_info, &num_dims);
-  std::vector<int64_t> tensor_shape_vec;
-  tensor_shape_vec.resize(num_dims, 0);
-  ort_api.GetDimensions(tensor_type_and_shape_info, tensor_shape_vec.data(), tensor_shape_vec.size());
+  OrtStatus* status = ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return {};
+  }
 
+  const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
+  status = ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+    return {};
+  }
+
+  size_t num_dims;
+  status = ort_api.GetDimensionsCount(tensor_type_and_shape_info, &num_dims);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+    ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info));
+    return {};
+  }
+
+  std::vector<int64_t> dims;
+  dims.resize(num_dims, 0);
+  status = ort_api.GetDimensions(tensor_type_and_shape_info, dims.data(), dims.size());
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+    ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info));
+    return {};
+  }
+
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (size_t i = 0; i < dims.size(); ++i) {
+    tensor_shape_vec[i] = static_cast<int64_t>(dims[i]);
+  }
+
+  ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+  ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info));
   return tensor_shape_vec;
 }
 
@@ -357,6 +389,8 @@ Status CnhwShapeToHwcn(gsl::span<const T> cnhw_shape, gsl::span<T> hwcn_shape) {
   return Status::OK();
 }
 
+
+
 Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
                                OrtValueInfo& initializer,
                                std::vector<uint8_t>& transposed_data,
@@ -406,13 +440,34 @@ Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& pe
 #define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                                                             \
   case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_##TYPE: {                                      \
     const OrtTypeInfo* type_info_##TYPE = nullptr;                                                             \
-    ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info_##TYPE);           \
+    status = ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info_##TYPE); \
+    if (status != nullptr) {                                                                                   \
+      ort_api.ReleaseStatus(status);                                                                           \
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get value info type info");                  \
+    }                                                                                                          \
     const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info_##TYPE = nullptr;                              \
-    ort_api.CastTypeInfoToTensorInfo(type_info_##TYPE, &tensor_type_and_shape_info_##TYPE);                    \
+    status = ort_api.CastTypeInfoToTensorInfo(type_info_##TYPE, &tensor_type_and_shape_info_##TYPE);           \
+    if (status != nullptr) {                                                                                   \
+      ort_api.ReleaseStatus(status);                                                                           \
+      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info_##TYPE));                                     \
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to cast type info to tensor info");             \
+    }                                                                                                          \
     size_t num_dims_##TYPE = 0;                                                                                \
-    ort_api.GetDimensionsCount(tensor_type_and_shape_info_##TYPE, &num_dims_##TYPE);                           \
+    status = ort_api.GetDimensionsCount(tensor_type_and_shape_info_##TYPE, &num_dims_##TYPE);                  \
+    if (status != nullptr) {                                                                                   \
+      ort_api.ReleaseStatus(status);                                                                           \
+      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info_##TYPE));                                     \
+      ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info_##TYPE)); \
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get dimensions count");                      \
+    }                                                                                                          \
     std::vector<int64_t> dims_##TYPE(num_dims_##TYPE);                                                         \
-    ort_api.GetDimensions(tensor_type_and_shape_info_##TYPE, dims_##TYPE.data(), dims_##TYPE.size());          \
+    status = ort_api.GetDimensions(tensor_type_and_shape_info_##TYPE, dims_##TYPE.data(), dims_##TYPE.size()); \
+    if (status != nullptr) {                                                                                   \
+      ort_api.ReleaseStatus(status);                                                                           \
+      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info_##TYPE));                                     \
+      ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info_##TYPE)); \
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get dimensions");                            \
+    }                                                                                                          \
                                                                                                                \
     /* Calculate element count from shape */                                                                   \
     size_t element_count = 1;                                                                                  \
@@ -425,15 +480,30 @@ Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& pe
                                                                                                                \
     /* Get tensor data */                                                                                      \
     const OrtValue* initializer_value = nullptr;                                                               \
-    ort_api.ValueInfo_GetInitializerValue(static_cast<const OrtValueInfo*>(&initializer), &initializer_value); \
+    status = ort_api.ValueInfo_GetInitializerValue(static_cast<const OrtValueInfo*>(&initializer), &initializer_value); \
+    if (status != nullptr) {                                                                                   \
+      ort_api.ReleaseStatus(status);                                                                           \
+      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info_##TYPE));                                     \
+      ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info_##TYPE)); \
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get initializer value");                     \
+    }                                                                                                          \
     const void* data = nullptr;                                                                                \
-    ort_api.GetTensorData(initializer_value, &data);                                                           \
+    status = ort_api.GetTensorData(initializer_value, &data);                                                  \
+    if (status != nullptr) {                                                                                   \
+      ort_api.ReleaseStatus(status);                                                                           \
+      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info_##TYPE));                                     \
+      ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info_##TYPE)); \
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get tensor data");                           \
+    }                                                                                                          \
                                                                                                                \
     /* Resize output buffer and copy data */                                                                   \
     unpacked_tensor.resize(tensor_byte_size);                                                                  \
     if (data != nullptr && tensor_byte_size > 0) {                                                             \
       std::memcpy(unpacked_tensor.data(), data, tensor_byte_size);                                             \
     }                                                                                                          \
+                                                                                                               \
+    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info_##TYPE));                                       \
+    ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info_##TYPE)); \
     return Status::OK();                                                                                       \
   }
 
@@ -441,13 +511,34 @@ Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& pe
   case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_##TYPE: {                                      \
     /* Get tensor shape to calculate element count */                                                          \
     const OrtTypeInfo* type_info_##TYPE = nullptr;                                                             \
-    ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info_##TYPE);           \
+    status = ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info_##TYPE); \
+    if (status != nullptr) {                                                                                   \
+      ort_api.ReleaseStatus(status);                                                                           \
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get value info type info");                  \
+    }                                                                                                          \
     const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info_##TYPE = nullptr;                              \
-    ort_api.CastTypeInfoToTensorInfo(type_info_##TYPE, &tensor_type_and_shape_info_##TYPE);                    \
+    status = ort_api.CastTypeInfoToTensorInfo(type_info_##TYPE, &tensor_type_and_shape_info_##TYPE);           \
+    if (status != nullptr) {                                                                                   \
+      ort_api.ReleaseStatus(status);                                                                           \
+      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info_##TYPE));                                     \
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to cast type info to tensor info");             \
+    }                                                                                                          \
     size_t num_dims_##TYPE = 0;                                                                                \
-    ort_api.GetDimensionsCount(tensor_type_and_shape_info_##TYPE, &num_dims_##TYPE);                           \
+    status = ort_api.GetDimensionsCount(tensor_type_and_shape_info_##TYPE, &num_dims_##TYPE);                  \
+    if (status != nullptr) {                                                                                   \
+      ort_api.ReleaseStatus(status);                                                                           \
+      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info_##TYPE));                                     \
+      ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info_##TYPE)); \
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get dimensions count");                      \
+    }                                                                                                          \
     std::vector<int64_t> dims_##TYPE(num_dims_##TYPE);                                                         \
-    ort_api.GetDimensions(tensor_type_and_shape_info_##TYPE, dims_##TYPE.data(), dims_##TYPE.size());          \
+    status = ort_api.GetDimensions(tensor_type_and_shape_info_##TYPE, dims_##TYPE.data(), dims_##TYPE.size()); \
+    if (status != nullptr) {                                                                                   \
+      ort_api.ReleaseStatus(status);                                                                           \
+      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info_##TYPE));                                     \
+      ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info_##TYPE)); \
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get dimensions");                            \
+    }                                                                                                          \
                                                                                                                \
     /* Calculate element count from shape */                                                                   \
     size_t element_count = 1;                                                                                  \
@@ -461,15 +552,30 @@ Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& pe
                                                                                                                \
     /* Get tensor data */                                                                                      \
     const OrtValue* initializer_value = nullptr;                                                               \
-    ort_api.ValueInfo_GetInitializerValue(static_cast<const OrtValueInfo*>(&initializer), &initializer_value); \
+    status = ort_api.ValueInfo_GetInitializerValue(static_cast<const OrtValueInfo*>(&initializer), &initializer_value); \
+    if (status != nullptr) {                                                                                   \
+      ort_api.ReleaseStatus(status);                                                                           \
+      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info_##TYPE));                                     \
+      ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info_##TYPE)); \
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get initializer value");                     \
+    }                                                                                                          \
     const void* data = nullptr;                                                                                \
-    ort_api.GetTensorData(initializer_value, &data);                                                           \
+    status = ort_api.GetTensorData(initializer_value, &data);                                                  \
+    if (status != nullptr) {                                                                                   \
+      ort_api.ReleaseStatus(status);                                                                           \
+      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info_##TYPE));                                     \
+      ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info_##TYPE)); \
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get tensor data");                           \
+    }                                                                                                          \
                                                                                                                \
     /* Resize output buffer and copy data */                                                                   \
     unpacked_tensor.resize(tensor_byte_size);                                                                  \
     if (data != nullptr && tensor_byte_size > 0) {                                                             \
       std::memcpy(unpacked_tensor.data(), data, tensor_byte_size);                                             \
     }                                                                                                          \
+                                                                                                               \
+    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info_##TYPE));                                       \
+    ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info_##TYPE)); \
     return Status::OK();                                                                                       \
   }
 
@@ -491,11 +597,28 @@ inline Status UnpackInitializerData(const OrtApi& ort_api,
   // }
 
   const OrtTypeInfo* type_info = nullptr;
-  ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  OrtStatus* status = ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get value info type info");
+  }
+
   const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
-  ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
+  status = ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to cast type info to tensor info");
+  }
+
   ONNXTensorElementDataType onnx_data_type;
-  ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
+  status = ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+    ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_type_and_shape_info));
+    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get tensor element type");
+  }
 
   switch (onnx_data_type) {
     CASE_UNPACK(FLOAT, float, float_data_size);

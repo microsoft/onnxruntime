@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
 
-#include "core/providers/qnn-abi/qnn_ep_factory.h"
+#include "qnn_ep_factory.h"
+#include "qnn_ep_data_transfer.h"
 
 #include <cassert>
 #include <iostream>
@@ -11,7 +12,7 @@
 #include "core/providers/qnn-abi/qnn_ep_data_transfer.h"
 
 // Global registry to store the QNN EP factory for auto EP selection
-static OrtEpFactory* g_qnn_plugin_factory = nullptr;
+// static OrtEpFactory* g_qnn_plugin_factory = nullptr;
 
 namespace onnxruntime {
 
@@ -35,24 +36,22 @@ QnnEpFactory::QnnEpFactory(const char* ep_name,
   // setup the OrtMemoryInfo instances required by the EP.
   // NPU allocator OrtMemoryInfo
   OrtMemoryInfo* mem_info = nullptr;
-  auto* status = ort_api.CreateMemoryInfo_V2("ExampleEP NPU", OrtMemoryInfoDeviceType_NPU,
+  assert(ort_api.CreateMemoryInfo_V2("ExampleEP NPU", OrtMemoryInfoDeviceType_NPU,
                                              /*vendor*/ vendor_id_, /* device_id */ 0,
                                              OrtDeviceMemoryType_DEFAULT,
                                              /*alignment*/ 0,
                                              OrtAllocatorType::OrtDeviceAllocator,
-                                             &mem_info);
-  assert(status == nullptr);  // should never fail.
+                                             &mem_info) == nullptr);  // should never fail.
   default_npu_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
 
   // HOST_ACCESSIBLE memory should use the non-CPU device type
   mem_info = nullptr;
-  status = ort_api.CreateMemoryInfo_V2("ExampleEP NPU pinned", OrtMemoryInfoDeviceType_NPU,
+  assert(ort_api.CreateMemoryInfo_V2("ExampleEP NPU pinned", OrtMemoryInfoDeviceType_NPU,
                                        /*vendor*/ vendor_id_, /* device_id */ 0,
                                        OrtDeviceMemoryType_HOST_ACCESSIBLE,
                                        /*alignment*/ 0,
                                        OrtAllocatorType::OrtDeviceAllocator,
-                                       &mem_info);
-  assert(status == nullptr);  // should never fail.
+                                       &mem_info) == nullptr);  // should never fail.
   host_accessible_npu_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
 
   // if we were to use NPU we'd create it like this
@@ -154,7 +153,6 @@ void ORT_API_CALL QnnEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp*
 OrtStatus* ORT_API_CALL QnnEpFactory::CreateDataTransferImpl(OrtEpFactory* this_ptr,
                                                              OrtDataTransferImpl** data_transfer) noexcept {
   auto& factory = *static_cast<QnnEpFactory*>(this_ptr);
-  factory;
   std::cout << "DEBUG: QNN CreateDataTransferImpl called!" << std::endl;
   *data_transfer = factory.data_transfer_impl_.get();
 

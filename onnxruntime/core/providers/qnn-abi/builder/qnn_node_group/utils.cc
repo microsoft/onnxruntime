@@ -22,10 +22,19 @@ const OrtNodeUnit* GetOnlyChildOfType(const QnnModelWrapper& qnn_model_wrapper,
 
   // Parent must have a single child (1 output edge) and must not produce a graph output.
   OrtArrayOfConstObjects* outputs = nullptr;
-  ort_api.Node_GetOutputs(&parent_node, &outputs);
+  OrtStatus* status = ort_api.Node_GetOutputs(&parent_node, &outputs);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return nullptr;
+  }
 
   size_t num_outputs = 0;
-  ort_api.ArrayOfConstObjects_GetSize(outputs, &num_outputs);
+  status = ort_api.ArrayOfConstObjects_GetSize(outputs, &num_outputs);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(outputs);
+    return nullptr;
+  }
 
   if (num_outputs != 1) {
     ort_api.ReleaseArrayOfConstObjects(outputs);
@@ -34,20 +43,25 @@ const OrtNodeUnit* GetOnlyChildOfType(const QnnModelWrapper& qnn_model_wrapper,
 
   // Check if any of the node's outputs are graph outputs
   const void* const* outputs_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(outputs, &outputs_data);
+  status = ort_api.ArrayOfConstObjects_GetData(outputs, &outputs_data);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(outputs);
+    return nullptr;
+  }
   const OrtValueInfo* output_info = static_cast<const OrtValueInfo*>(outputs_data[0]);
 
   bool is_graph_output = false;
-  Status status = output_info->IsGraphOutput(is_graph_output);
-  if (status.IsOK() && is_graph_output) {
+  Status ort_status = output_info->IsGraphOutput(is_graph_output);
+  if (ort_status.IsOK() && is_graph_output) {
     ort_api.ReleaseArrayOfConstObjects(outputs);
     return nullptr;
   }
 
   // Get the consumers of this output
   std::vector<OrtValueInfo::ConsumerInfo> consumer_infos;
-  status = output_info->GetConsumerInfos(consumer_infos);
-  if (!status.IsOK() || consumer_infos.empty()) {
+  ort_status = output_info->GetConsumerInfos(consumer_infos);
+  if (!ort_status.IsOK() || consumer_infos.empty()) {
     ort_api.ReleaseArrayOfConstObjects(outputs);
     return nullptr;
   }

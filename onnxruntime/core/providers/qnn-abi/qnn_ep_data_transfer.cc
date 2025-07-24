@@ -12,7 +12,7 @@ namespace onnxruntime {
 bool ORT_API_CALL QnnDataTransfer::CanCopyImpl(void* this_ptr,
                                                const OrtMemoryDevice* src_memory_device,
                                                const OrtMemoryDevice* dst_memory_device) noexcept {
-  static constexpr uint32_t VendorId = 0x5143;
+  // static constexpr uint32_t VendorId = 0x5143; // unused
 
   auto& impl = *static_cast<QnnDataTransfer*>(this_ptr);
   bool src_is_our_device = impl.ep_api.MemoryDevice_AreEqual(src_memory_device, impl.device_mem_info);

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 // registration/selection is only supported on windows as there's no device discovery on other platforms
-#ifdef _WIN32
+// #ifdef _WIN32
 
 #include <filesystem>
 // #include <absl/base/config.h>
@@ -503,4 +503,4 @@ TEST(AutoEpSelection, PolicyDelegateReturnsError) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif  // _WIN32
+// #endif  // _WIN32

@@ -30,18 +30,31 @@ const OrtNodeUnit* GetReshapeNodeUnit(
   // Get gemm node inputs
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
   OrtArrayOfConstObjects* inputs = nullptr;
-  ort_api.Node_GetInputs(&gemm_node, &inputs);
+  OrtStatus* ort_status = ort_api.Node_GetInputs(&gemm_node, &inputs);
+
+  if (ort_status != nullptr) {
+    ort_api.ReleaseStatus(ort_status);
+    ort_api.ReleaseArrayOfConstObjects(inputs);
+    return nullptr;
+  }
 
   size_t num_inputs = 0;
-  ort_api.ArrayOfConstObjects_GetSize(inputs, &num_inputs);
+  ort_status = ort_api.ArrayOfConstObjects_GetSize(inputs, &num_inputs);
 
-  if (num_inputs < 1) {
+  if (ort_status != nullptr || num_inputs < 1) {
+    ort_api.ReleaseStatus(ort_status);
     ort_api.ReleaseArrayOfConstObjects(inputs);
     return nullptr;
   }
 
   const void* const* inputs_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(inputs, &inputs_data);
+  ort_status = ort_api.ArrayOfConstObjects_GetData(inputs, &inputs_data);
+
+  if (ort_status != nullptr) {
+    ort_api.ReleaseStatus(ort_status);
+    ort_api.ReleaseArrayOfConstObjects(inputs);
+    return nullptr;
+  }
 
   // Get the first input (index 0)
   const OrtValueInfo* input_value_info = static_cast<const OrtValueInfo*>(inputs_data[0]);
@@ -61,10 +74,21 @@ const OrtNodeUnit* GetReshapeNodeUnit(
   if (reshape_node->GetOpType() == "Reshape") {
     // Check if reshape node produces graph output
     OrtArrayOfConstObjects* reshape_outputs = nullptr;
-    ort_api.Node_GetOutputs(reshape_node, &reshape_outputs);
+    ort_status = ort_api.Node_GetOutputs(reshape_node, &reshape_outputs);
+    if (ort_status != nullptr) {
+      ort_api.ReleaseStatus(ort_status);
+      ort_api.ReleaseArrayOfConstObjects(inputs);
+      return nullptr;
+    }
 
     size_t num_outputs = 0;
-    ort_api.ArrayOfConstObjects_GetSize(reshape_outputs, &num_outputs);
+    ort_status = ort_api.ArrayOfConstObjects_GetSize(reshape_outputs, &num_outputs);
+    if (ort_status != nullptr) {
+      ort_api.ReleaseStatus(ort_status);
+      ort_api.ReleaseArrayOfConstObjects(reshape_outputs);
+      ort_api.ReleaseArrayOfConstObjects(inputs);
+      return nullptr;
+    }
 
     if (num_outputs != 1) {
       ort_api.ReleaseArrayOfConstObjects(reshape_outputs);
@@ -73,7 +97,13 @@ const OrtNodeUnit* GetReshapeNodeUnit(
     }
 
     const void* const* outputs_data = nullptr;
-    ort_api.ArrayOfConstObjects_GetData(reshape_outputs, &outputs_data);
+    ort_status = ort_api.ArrayOfConstObjects_GetData(reshape_outputs, &outputs_data);
+    if (ort_status != nullptr) {
+      ort_api.ReleaseStatus(ort_status);
+      ort_api.ReleaseArrayOfConstObjects(reshape_outputs);
+      ort_api.ReleaseArrayOfConstObjects(inputs);
+      return nullptr;
+    }
     const OrtValueInfo* output_info = static_cast<const OrtValueInfo*>(outputs_data[0]);
 
     bool is_graph_output = false;
@@ -112,13 +142,36 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
   // Get reshape node inputs and outputs
   OrtArrayOfConstObjects* inputs = nullptr;
   OrtArrayOfConstObjects* outputs = nullptr;
-  ort_api.Node_GetInputs(&reshape_node, &inputs);
-  ort_api.Node_GetOutputs(&reshape_node, &outputs);
+  OrtStatus* status = ort_api.Node_GetInputs(&reshape_node, &inputs);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return false;
+  }
+
+  status = ort_api.Node_GetOutputs(&reshape_node, &outputs);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs);
+    return false;
+  }
 
   const void* const* inputs_data = nullptr;
   const void* const* outputs_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(inputs, &inputs_data);
-  ort_api.ArrayOfConstObjects_GetData(outputs, &outputs_data);
+  status = ort_api.ArrayOfConstObjects_GetData(inputs, &inputs_data);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs);
+    ort_api.ReleaseArrayOfConstObjects(outputs);
+    return false;
+  }
+
+  status = ort_api.ArrayOfConstObjects_GetData(outputs, &outputs_data);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs);
+    ort_api.ReleaseArrayOfConstObjects(outputs);
+    return false;
+  }
 
   const OrtValueInfo* input_info = static_cast<const OrtValueInfo*>(inputs_data[0]);
   const OrtValueInfo* output_info = static_cast<const OrtValueInfo*>(outputs_data[0]);
@@ -136,8 +189,21 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
   // Cast to tensor info
   const OrtTensorTypeAndShapeInfo* input_tensor_info = nullptr;
   const OrtTensorTypeAndShapeInfo* output_tensor_info = nullptr;
-  ort_api.CastTypeInfoToTensorInfo(input_type_info, &input_tensor_info);
-  ort_api.CastTypeInfoToTensorInfo(output_type_info, &output_tensor_info);
+  status = ort_api.CastTypeInfoToTensorInfo(input_type_info, &input_tensor_info);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs);
+    ort_api.ReleaseArrayOfConstObjects(outputs);
+    return false;
+  }
+
+  status = ort_api.CastTypeInfoToTensorInfo(output_type_info, &output_tensor_info);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs);
+    ort_api.ReleaseArrayOfConstObjects(outputs);
+    return false;
+  }
 
   if (!input_tensor_info || !output_tensor_info) {
     ort_api.ReleaseArrayOfConstObjects(inputs);
@@ -148,8 +214,21 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
   // Get dimensions
   size_t input_dims_count = 0;
   size_t output_dims_count = 0;
-  ort_api.GetDimensionsCount(input_tensor_info, &input_dims_count);
-  ort_api.GetDimensionsCount(output_tensor_info, &output_dims_count);
+  status = ort_api.GetDimensionsCount(input_tensor_info, &input_dims_count);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs);
+    ort_api.ReleaseArrayOfConstObjects(outputs);
+    return false;
+  }
+
+  status = ort_api.GetDimensionsCount(output_tensor_info, &output_dims_count);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs);
+    ort_api.ReleaseArrayOfConstObjects(outputs);
+    return false;
+  }
 
   if (output_dims_count != 2) {
     ort_api.ReleaseArrayOfConstObjects(inputs);
@@ -160,8 +239,21 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
   std::vector<int64_t> input_dims(input_dims_count);
   std::vector<int64_t> output_dims(output_dims_count);
 
-  ort_api.GetDimensions(input_tensor_info, input_dims.data(), input_dims_count);
-  ort_api.GetDimensions(output_tensor_info, output_dims.data(), output_dims_count);
+  status = ort_api.GetDimensions(input_tensor_info, input_dims.data(), input_dims_count);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs);
+    ort_api.ReleaseArrayOfConstObjects(outputs);
+    return false;
+  }
+
+  status = ort_api.GetDimensions(output_tensor_info, output_dims.data(), output_dims_count);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(inputs);
+    ort_api.ReleaseArrayOfConstObjects(outputs);
+    return false;
+  }
 
   // Check if the reshape is from [x0, x1, ..., xn, k] to [x0 * x1 * ... * xn, k]
   int64_t input_product = 1;

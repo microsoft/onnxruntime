@@ -60,21 +60,53 @@ Status UDOBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrappe
   }
 
   OrtArrayOfConstObjects* attributes = nullptr;
-  ort_api.Node_GetAttributes(&(node_unit.GetNode()), &attributes);
+  OrtStatus* status = ort_api.Node_GetAttributes(&(node_unit.GetNode()), &attributes);
+  if (status != nullptr) {
+    const char* error_message = ort_api.GetErrorMessage(status);
+    ort_api.ReleaseStatus(status);
+    return onnxruntime::common::Status(onnxruntime::common::StatusCategory::ONNXRUNTIME, ORT_FAIL, error_message);
+  }
+
   const OrtArrayOfConstObjects* attributes_const = static_cast<const OrtArrayOfConstObjects*>(attributes);
   size_t num_attrs = 0;
-  ort_api.ArrayOfConstObjects_GetSize(attributes_const, &num_attrs);
+  status = ort_api.ArrayOfConstObjects_GetSize(attributes_const, &num_attrs);
+  if (status != nullptr) {
+    const char* error_message = ort_api.GetErrorMessage(status);
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(attributes); // Release attributes object
+    return onnxruntime::common::Status(onnxruntime::common::StatusCategory::ONNXRUNTIME, ORT_FAIL, error_message);
+  }
+
   const void* const* attrs_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(attributes_const, &attrs_data);
+  status = ort_api.ArrayOfConstObjects_GetData(attributes_const, &attrs_data);
+  if (status != nullptr) {
+    const char* error_message = ort_api.GetErrorMessage(status);
+    ort_api.ReleaseStatus(status);
+    ort_api.ReleaseArrayOfConstObjects(attributes); // Release attributes object
+    return onnxruntime::common::Status(onnxruntime::common::StatusCategory::ONNXRUNTIME, ORT_FAIL, error_message);
+  }
 
   std::vector<std::string> param_names;
   OrtNodeAttrHelper node_helper(ort_api, node_unit);
   for (size_t i = 0; i < num_attrs; ++i) {
     const OrtOpAttr* attr = static_cast<const OrtOpAttr*>(attrs_data[i]);
     OrtOpAttrType attr_type = ORT_OP_ATTR_UNDEFINED;
-    ort_api.OpAttr_GetType(attr, &attr_type);
+    status = ort_api.OpAttr_GetType(attr, &attr_type);
+    if (status != nullptr) {
+      const char* error_message = ort_api.GetErrorMessage(status);
+      ort_api.ReleaseStatus(status);
+      ort_api.ReleaseArrayOfConstObjects(attributes); // Release attributes object
+      return onnxruntime::common::Status(onnxruntime::common::StatusCategory::ONNXRUNTIME, ORT_FAIL, error_message);
+    }
+
     const char* attribute_name;
-    ort_api.OpAttr_GetName(attr, &attribute_name);
+    status = ort_api.OpAttr_GetName(attr, &attribute_name);
+    if (status != nullptr) {
+      const char* error_message = ort_api.GetErrorMessage(status);
+      ort_api.ReleaseStatus(status);
+      ort_api.ReleaseArrayOfConstObjects(attributes); // Release attributes object
+      return onnxruntime::common::Status(onnxruntime::common::StatusCategory::ONNXRUNTIME, ORT_FAIL, error_message);
+    }
     std::string attr_name = std::string(attribute_name);
 
     LOGS(logger, VERBOSE) << "Parse attr name: " << attr_name << " for op " << node_name;
@@ -128,10 +160,15 @@ Status UDOBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrappe
         break;
       }
       default: {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add scalar attr ", attr_name, " data_type ", attr_type, " in op ", node_name, " to qnn_model_wrapper.");
+        onnxruntime::common::Status onnx_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add scalar attr ", attr_name, " data_type ", attr_type, " in op ", node_name, " to qnn_model_wrapper.");
+        ort_api.ReleaseArrayOfConstObjects(attributes); // Release attributes object
+        return onnx_status;
       }
     }
   }
+
+  // Release attributes object after use
+  ort_api.ReleaseArrayOfConstObjects(attributes);
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(node_name,
                                                     op_package_,
