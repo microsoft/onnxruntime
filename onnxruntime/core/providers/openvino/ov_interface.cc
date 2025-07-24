@@ -331,7 +331,7 @@ OVTensorPtr OVInferRequest::GetTensor(const std::string& input_name) {
 }
 
 std::string OVInferRequest::GetInputTensorName(uint32_t index) {
-  return OvExceptionBoundary([&]() {
+  return OvExceptionBoundary([&]() -> const std::string& {
     const auto& model = ovInfReq.get_compiled_model();
     return *model.input(index).get_names().begin();
   },

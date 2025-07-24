@@ -271,8 +271,8 @@ void ShaderVariableHelper::Impl(std::ostream& ss) const {
   // Implementation of "fn get_{name}_by_indices"
   if (usage_ & ShaderUsage::UseGetByIndices) {
     if (rank_ >= 2) {
-      SS_APPEND(ss, "fn get_", name_, "_by_indices(indices: ", IndicesType(), ")->", ValueType(), " {\n");
-      SS_APPEND(ss, "  return ", GetByOffset("i2o_" + name_ + "(indices)"), ";\n");
+      SS_APPEND(ss, "fn get_", name_, "_by_indices(indices_fnarg: ", IndicesType(), ")->", ValueType(), " {\n");
+      SS_APPEND(ss, "  return ", GetByOffset("i2o_" + name_ + "(indices_fnarg)"), ";\n");
       SS_APPEND(ss, "}\n");
     }
   }
