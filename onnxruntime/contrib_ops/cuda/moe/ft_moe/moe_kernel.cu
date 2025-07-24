@@ -45,13 +45,11 @@
 namespace ort_fastertransformer {
 static constexpr int WARP_SIZE = 32;
 
-// SwiGLU is like the following python code using PyTorch:
+// SwiGLU with interleaved is like the following python code using PyTorch:
 //   dim = x.shape[-1]
 //   x = x.view(-1, dim // 2, 2)
 //   x_glu, x_linear = x[..., 0], x[..., 1]
 //   y = x_glu * torch.sigmoid(alpha * x_glu) * (x_linear + 1)
-// See https://github.com/triton-lang/triton/blob/main/python/triton_kernels/triton_kernels/swiglu.py
-
 template <typename T>
 __global__ void swiglu_kernel_interleaved(T* output, T const* input, int intermediate_size, int num_rows, float swiglu_alpha) {
   int const row = blockIdx.x;
@@ -74,6 +72,7 @@ __global__ void swiglu_kernel_interleaved(T* output, T const* input, int interme
   }
 }
 
+// Non interleaved version of SwiGLU kernel, which splits each row into two chunks of same size.
 template <typename T>
 __global__ void swiglu_kernel_chunked(T* output, T const* input, int intermediate_size, int num_rows, float swiglu_alpha) {
   int const row = blockIdx.x;
@@ -734,16 +733,13 @@ __global__ void dispatch_activations_kernel(int64_t* total_rows_before_expert, i
 
 template <typename T, typename WeightType, typename Enable>
 CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(int sm_version, ActivationType activation_type, bool has_fc3,
-                                                              bool normalize_routing_weights, bool use_sparse_mixer,
-                                                              bool swiglu_interleaved, float swiglu_alpha)
+                                                              bool normalize_routing_weights, bool use_sparse_mixer)
     : activation_type_(activation_type),
       has_fc3_(has_fc3),
       total_past_rows_(0),
       total_covered_rows_(0),
       normalize_routing_weights_(normalize_routing_weights),
-      use_sparse_mixer_(use_sparse_mixer),
-      swiglu_interleaved_(swiglu_interleaved),
-      swiglu_alpha_(swiglu_alpha) {
+      use_sparse_mixer_(use_sparse_mixer) {
   moe_gemm_runner_.initialize(sm_version);
 }
 
@@ -999,13 +995,14 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
         ActivationType::Identity,
         stream);
 
-    invokeSwiGLU(
+    constexpr bool swiglu_interleaved = true;
+    constexpr float swiglu_alpha = 1.702f;
+    invokeSwiGLU<T, swiglu_interleaved>(
         swiglu_output_buffer + total_past_rows_ * inter_size,
         gemm1_output_buffer + total_past_rows_ * 2 * inter_size,
         inter_size,
         total_covered_rows_,
-        swiglu_interleaved_,
-        swiglu_alpha_,
+        swiglu_alpha,
         stream);
 
     moe_gemm_runner_.moe_gemm(
