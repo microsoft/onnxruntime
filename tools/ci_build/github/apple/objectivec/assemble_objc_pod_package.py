@@ -85,7 +85,7 @@ training_only_objc_files = {
 
 def get_pod_files():
     """
-    Gets the source and header files for the Full package variant.
+    Gets the source and header files for the given package variant.
     """
     # return files that are in pod_files but not in training_only_objc_files
     filtered_pod_files = {}
@@ -96,7 +96,7 @@ def get_pod_files():
 
 def get_pod_config_file():
     """
-    Gets the pod configuration file path for the Full package variant.
+    Gets the pod configuration file path for the given package variant.
     """
     return _script_dir / "onnxruntime-objc.config.json"
 

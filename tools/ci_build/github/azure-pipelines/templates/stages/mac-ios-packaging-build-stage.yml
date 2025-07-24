@@ -7,7 +7,7 @@ parameters:
   default: normal
 
 stages:
-- stage: IosPackaging_Build_Full
+- stage: IosPackaging_Build
   dependsOn: []
   jobs:
   - job:

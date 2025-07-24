@@ -22,7 +22,7 @@ from package_assembly_utils import (  # noqa: E402
 
 def get_pod_config_file():
     """
-    Gets the pod configuration file path for the Full package variant.
+    Gets the pod configuration file path for the given package variant.
     """
     return _script_dir / "onnxruntime-c.config.json"
 
