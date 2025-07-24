@@ -1802,23 +1802,25 @@ Status ProviderLibrary::Load() {
 
   try {
     std::lock_guard<std::mutex> lock{mutex_};
-    s_library_shared.Ensure();
+    if (!provider_) {
+      s_library_shared.Ensure();
 
-    if (absolute_) {
-      // If filename_ is not absolute it should not be loaded.
-      if (!std::filesystem::path{filename_}.is_absolute()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+      if (absolute_) {
+        // If filename_ is not absolute it should not be loaded.
+        if (!std::filesystem::path{filename_}.is_absolute()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+        }
+        ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
+      } else {
+        auto full_path = Env::Default().GetRuntimePath() + filename_;
+        ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
       }
-      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
-    } else {
-      auto full_path = Env::Default().GetRuntimePath() + filename_;
-      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+
+      Provider* (*PGetProvider)();
+      ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+
+      provider_ = PGetProvider();
     }
-
-    Provider* (*PGetProvider)();
-    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
-
-    provider_ = PGetProvider();
   } catch (const std::exception&) {
     Unload();  // If anything fails we unload the library and rethrow
     throw;
@@ -1835,7 +1837,9 @@ Provider& ProviderLibrary::Get() {
       }
 
       std::lock_guard<std::mutex> lock{mutex_};
-      provider_->Initialize();
+      if (!initialized_) {
+        provider_->Initialize();
+      }
       initialized_ = true;
     }
 
