@@ -13,7 +13,7 @@ parameters:
 stages:
 - stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
   dependsOn:
-  - NuGet_Packaging_${{ parameters.StageSuffix }}
+  - Setup
   condition: succeeded()
   jobs:
   - job: NuGet_Test_Linux_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}

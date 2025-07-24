@@ -3,6 +3,7 @@
 
 #include "core/session/ep_library_plugin.h"
 
+#include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
 #include "core/session/environment.h"
 
@@ -24,6 +25,7 @@ Status EpLibraryPlugin::Load() {
 
       size_t num_factories = 0;
       ORT_RETURN_IF_ERROR(ToStatusAndRelease(create_fn_(registration_name_.c_str(), OrtGetApiBase(),
+                                                        logging::LoggingManager::DefaultLogger().ToExternal(),
                                                         factories.data(), factories.size(), &num_factories)));
 
       for (size_t i = 0; i < num_factories; ++i) {

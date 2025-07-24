@@ -74,7 +74,7 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
 
   auto input_batch = ov_model->input(main_input_name).get_partial_shape()[0];
 
-  auto beam_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({input_batch}));
+  auto beam_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({std::move(input_batch)}));
   beam_idx->set_friendly_name("beam_idx");
   beam_idx->output(0).get_tensor().add_names({"beam_idx"});
   ov_model->add_parameters({beam_idx});

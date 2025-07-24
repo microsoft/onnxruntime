@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include "core/common/inlined_containers_fwd.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
 
@@ -28,6 +29,9 @@ enum class OrtGraphIrApi {
   kModelEditorApi,
   kEpApi,
 };
+
+// Alias OrtExternalInitializerInfo to the internal type.
+struct OrtExternalInitializerInfo : onnxruntime::ExternalDataInfo {};
 
 /// <summary>
 /// Public type that represents an ONNX value info.
@@ -93,6 +97,17 @@ struct OrtValueInfo {
   ///                     an initializer.</param>
   /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetInitializerValue(const OrtValue*& value) const = 0;
+
+  /// <summary>
+  /// Get information (file path, file offset, byte size) if this OrtValueInfo represents an initializer with
+  /// data in an external file.
+  /// </summary>
+  /// <param name="ext_info">Output parameter set to the external initializer info or NULL if this is not an external
+  /// initializer.</param>
+  /// <returns>A status indicating an error or success. Calling this function on an OrtValueInfo that does not represent
+  /// an external initializer is NOT an error.</returns>
+  virtual onnxruntime::Status GetExternalInitializerInfo(
+      std::unique_ptr<onnxruntime::ExternalDataInfo>& ext_info) const = 0;
 
   /// <summary>
   /// Determine if the value is a required graph input.
@@ -275,6 +290,12 @@ struct OrtGraph {
   /// </summary>
   /// <returns>The graph's name.</returns>
   virtual const std::string& GetName() const = 0;
+
+  /// <summary>
+  /// Returns the model's path, which is empty if unknown.
+  /// </summary>
+  /// <returns>The model path.</returns>
+  virtual const ORTCHAR_T* GetModelPath() const = 0;
 
   /// <summary>
   /// Returns the model's ONNX IR version. Important in checking for optional graph inputs

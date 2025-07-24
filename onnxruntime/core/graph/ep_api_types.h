@@ -65,6 +65,10 @@ struct EpValueInfo : public OrtValueInfo {
   // represent an initializer (either constant or non-constant).
   Status GetInitializerValue(const OrtValue*& value) const override;
 
+  // Gets external initializer information (file path, file offset, byte size) if this is an external initializer.
+  // Otherwise, sets the output parameter `ext_info` to nullptr (not an error).
+  Status GetExternalInitializerInfo(std::unique_ptr<onnxruntime::ExternalDataInfo>& ext_info) const override;
+
   // Check if this value is a required graph input.
   Status IsRequiredGraphInput(bool& is_required_graph_input) const override;
 
@@ -290,6 +294,9 @@ struct EpGraph : public OrtGraph {
   // Returns the graph's name.
   const std::string& GetName() const override;
 
+  // Returns the model path.
+  const ORTCHAR_T* GetModelPath() const override;
+
   // Returns the model's ONNX IR version.
   int64_t GetOnnxIRVersion() const override;
 
@@ -348,7 +355,7 @@ struct EpGraph : public OrtGraph {
   // Considers both constant and non-constant initializers.
   // Supports initializers defined in an outer scope as long as that initializer is used
   // within this graph.
-  const OrtValue* GetInitializerValue(std::string_view name) const;
+  Status GetInitializerValue(std::string_view name, const OrtValue*& value) const;
 
  private:
   /// <summary>

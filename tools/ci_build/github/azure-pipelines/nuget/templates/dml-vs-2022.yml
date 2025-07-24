@@ -37,7 +37,6 @@ stages:
       clean: all
     pool:
       name: onnxruntime-Win-CPU-2022
-      demands: ${{ parameters.AgentDemands }}
     variables:
       buildDirectory: '$(Build.BinariesDirectory)'
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
@@ -54,28 +53,21 @@ stages:
         clean: true
         submodules: none
 
-      - powershell: |
-          if($env:TELEMETRYGUID)
-          {
-            $length = $env:TELEMETRYGUID.length
-            $fileContent = "#define TraceLoggingOptionMicrosoftTelemetry() \
-              TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
-            New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
-            Write-Output "Enabling TELEMETRY"
-          }
-        displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
-        env:
-          TELEMETRYGUID: $(TELEMETRYGUID)
+      - template: ../../templates/telemetry-steps.yml
 
       - task: NodeTool@0
         inputs:
-          versionSpec: '20.x'
+          versionSpec: '22.x'
 
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.12'
           addToPath: true
           architecture: ${{ parameters.BuildArch }}
+      - task: PipAuthenticate@1
+        displayName: 'Pip Authenticate'
+        inputs:
+          artifactFeeds: 'Lotus'
 
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - task: UseDotNet@2
