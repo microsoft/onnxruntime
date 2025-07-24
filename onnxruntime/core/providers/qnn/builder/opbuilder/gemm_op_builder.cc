@@ -60,7 +60,6 @@ Status GemmOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
     }
 
     if (inputC_shape.size() == 2 && node_unit.Inputs()[2].quant_param.has_value()) {
-      bool a = node_unit.Inputs()[2].quant_param.has_value();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support unquantized C with shape [N, M].");
     }
   }
@@ -224,7 +223,6 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     TensorInfo output_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
     std::vector<uint32_t> output_shape = output_info.shape;
-    QnnQuantParamsWrapper op_input_quant_param = input_info.quant_param.Copy();
     QnnQuantParamsWrapper op_output_quant_param = output_info.quant_param.Copy();
 
     const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(org_output_name);
@@ -250,7 +248,7 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 
     // Create Add Node
     Qnn_TensorType_t op_output_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-    std::string split_add_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_Add";
+    std::string split_add_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_add";
     QnnTensorWrapper op_output_tensor_wrapper(org_output_name, op_output_tensor_type, output_info.qnn_data_type,
                                               op_output_quant_param.Copy(), std::vector<uint32_t>(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(op_output_tensor_wrapper)),
