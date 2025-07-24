@@ -99,6 +99,44 @@ TensorShape GetShape(const py::array& arr) {
   return shape;
 }
 
+AllocatorPtr GetSharedAllocator(const OrtDevice& device) {
+  auto& env = GetOrtEnv()->GetEnvironment();
+
+  OrtMemoryInfo mem_info("ignored", OrtDeviceAllocator, device);
+  return env.GetRegisteredSharedAllocator(mem_info);
+}
+
+MemCpyFunc CreateDataTransferMemCpy([[maybe_unused]] const OrtDevice& src_device,
+                                    [[maybe_unused]] const OrtDevice& dst_device) {
+#if defined(ORT_MINIMAL_BUILD)
+  // plugin EPs are not supported in a minimal build so there won't be any data transfers registered
+  return nullptr;
+#else
+
+  auto& env = GetOrtEnv()->GetEnvironment();
+  const DataTransferManager& data_transfer_manager = env.GetDataTransferManager();
+  const IDataTransfer* data_transfer = data_transfer_manager.GetDataTransfer(src_device, dst_device);
+  if (!data_transfer) {
+    return nullptr;
+  }
+
+  const auto copy_func = [src_device, dst_device, data_transfer](void* dst, const void* src, size_t bytes) {
+    OrtMemoryInfo src_memory_info("ignored", OrtDeviceAllocator, src_device);
+    OrtMemoryInfo dst_memory_info("ignored", OrtDeviceAllocator, dst_device);
+
+    // real shape doesn't matter as the Tensor instances are temporary here so we can set the shape to `bytes` and
+    // the data type to uint8_t to copy the correct number of bytes.
+    TensorShape shape = {narrow<int64_t>(bytes)};
+    Tensor src_tensor{DataTypeImpl::GetType<uint8_t>(), shape, const_cast<void*>(src), src_memory_info};
+    Tensor dst_tensor{DataTypeImpl::GetType<uint8_t>(), shape, dst, dst_memory_info};
+
+    ORT_THROW_IF_ERROR(data_transfer->CopyTensor(src_tensor, dst_tensor));
+  };
+
+  return copy_func;
+#endif
+}
+
 void CpuToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   memcpy(dst, src, num_bytes);
 }
@@ -158,9 +196,10 @@ void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_CUDA().cudaMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, CudaToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0}, CudaToCpuMemCpy},
+  };
 
   return &map;
 }
@@ -215,9 +254,10 @@ void MIGraphXToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_MIGraphX().MIGraphXMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetMIGraphXToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, MIGraphXToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetMIGraphXToHostMemCpyFunction(const OrtDevice& device) {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, 0}, MIGraphXToCpuMemCpy},
+  };
 
   return &map;
 }
@@ -334,9 +374,10 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
       D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, DmlToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetDmlToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::MICROSOFT, 0}, DmlToCpuMemCpy},
+  };
 
   return &map;
 }
@@ -352,9 +393,10 @@ void CannToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_CANN().cannMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCannToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::NPU, CannToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetCannToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::NPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::HUAWEI, 0}, CannToCpuMemCpy},
+  };
 
   return &map;
 }
@@ -402,9 +444,10 @@ void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_ROCM().rocmMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, RocmToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, 0}, RocmToCpuMemCpy},
+  };
 
   return &map;
 }
@@ -994,9 +1037,9 @@ static void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc,
 // Setting `use_numpy_data_memory` to `true` will ensure that the underlying numpy array buffer is directly used
 // as the backing data buffer for the ORT Tensor where applicable (for numeric tensors)
 // The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope
-void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc, const std::string& name_input,
-                          const py::object& value, OrtValue* p_mlvalue, bool accept_only_numpy_array,
-                          bool use_numpy_data_memory, MemCpyFunc mem_cpy_to_device) {
+void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc,
+                          const std::string& name_input, const py::object& value, OrtValue* p_mlvalue,
+                          bool accept_only_numpy_array, bool use_numpy_data_memory, MemCpyFunc mem_cpy_to_device) {
   onnx::TypeProto type_proto;
   if (PyObjectCheck_NumpyArray(value.ptr())) {
     // The most frequent case: input comes as an array.
