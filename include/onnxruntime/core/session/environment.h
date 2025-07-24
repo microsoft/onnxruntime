@@ -137,7 +137,8 @@ class Environment {
     return execution_devices_;
   }
 
-  Status CreateSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type,
+  Status CreateSharedAllocator(const OrtEpDevice& ep_device,
+                               OrtDeviceMemoryType mem_type, OrtAllocatorType allocator_type,
                                const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator);
   Status ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type);
 
@@ -160,7 +161,8 @@ class Environment {
 
   Status RegisterAllocatorImpl(AllocatorPtr allocator);
   Status UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool error_if_not_found = true);
-  Status CreateSharedAllocatorImpl(const OrtEpDevice& ep_device, const OrtMemoryInfo& memory_info,
+  Status CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
+                                   const OrtMemoryInfo& memory_info, OrtAllocatorType allocator_type,
                                    const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator,
                                    bool replace_existing);
 

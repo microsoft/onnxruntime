@@ -139,10 +139,6 @@ class Notification {
   Stream& stream_;
 
   // This is a snapshot of the sync history for the stream that created the Notification.
-  //
-  // TODO: use inline container.
-  // currently this class is header only, but abseil doesn't compile with nvcc
-  // we need to add new symbol to provider_bridge and hide abseil from the header.
   std::unordered_map<const Stream*, uint64_t> stream_sync_info_{};
 };
 }  // namespace synchronize

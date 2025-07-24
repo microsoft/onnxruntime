@@ -363,9 +363,10 @@ typedef struct OrtAllocator {
   /**
    * @brief Function used to get the statistics of the allocator.
    *
-   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator
-   * and the user should call OrtApi::ReleaseKeyValuePairs.
-   * Supported keys are:
+   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator.
+   * The user should call OrtApi::ReleaseKeyValuePairs when done.
+   *
+   * Current known keys are:
    * - Limit: Bytes limit of the allocator. -1 if no limit is set.
    * - InUse: Number of bytes in use.
    * - TotalAllocated: The total number of allocated bytes by the allocator.
@@ -376,7 +377,11 @@ typedef struct OrtAllocator {
    * - NumArenaShrinkages: Number of arena shrinkages (Relevant only for arena based allocators)
    * - MaxAllocSize: The max single allocation seen.
    *
-   * NOTE: If the allocator does not implement this function, the OrtKeyValuePairs instance will be empty.
+   * The allocator is free to add other entries as appropriate.
+   *
+   * \note Implementation of this function is optional and GetStats may be set to a nullptr.
+   *       If the OrtAllocator is wrapping an internal ORT allocator that does not implement GetStats
+   *       the returned OrtKeyValuePairs instance will be empty.
    *
    * \since 1.23
    */
@@ -394,6 +399,7 @@ typedef struct OrtAllocator {
    *
    * \return pointer to an allocated block of `size` bytes
    *
+   * \note Implementation of this function is optional and AllocOnStream may be set to a nullptr.
    * \since 1.23
    */
   void*(ORT_API_CALL* AllocOnStream)(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream);
@@ -5266,7 +5272,7 @@ struct OrtApi {
   /** \brief Get the hardware device type.
    *
    * \param[in] device The OrtHardwareDevice instance to query.
-   * \return The hardware device type.
+   * \return The hardware deGetTevice type.
    *
    * \since Version 1.22.
    */
@@ -6154,6 +6160,7 @@ struct OrtApi {
    * \param[in] env The OrtEnv instance to create the shared allocator in.
    * \param[in] ep_device The OrtEpDevice instance to create the shared allocator for.
    * \param[in] mem_type The memory type to use for the shared allocator.
+   * \param[in] allocator_type The type of allocator to create. Only OrtDeviceAllocator is valid currently.
    * \param[in] allocator_options Optional key-value pairs to configure the allocator. If arena based, see
    *                              include/onnxruntime/core/framework/allocator.h for the keys and values that can be
    *                              used.
@@ -6164,7 +6171,8 @@ struct OrtApi {
    * \since Version 1.23
    */
   ORT_API2_STATUS(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
-                  _In_ OrtDeviceMemoryType mem_type, _In_opt_ const OrtKeyValuePairs* allocator_options,
+                  _In_ OrtDeviceMemoryType mem_type, _In_ OrtAllocatorType allocator_type,
+                  _In_opt_ const OrtKeyValuePairs* allocator_options,
                   _Outptr_opt_ OrtAllocator** allocator);
 
   /** \brief Get a shared allocator from the OrtEnv.

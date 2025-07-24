@@ -329,6 +329,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator,
                     [[maybe_unused]] _In_ OrtEnv* ort_env,
                     [[maybe_unused]] _In_ const OrtEpDevice* ep_device,
                     [[maybe_unused]] _In_ OrtDeviceMemoryType mem_type,
+                    [[maybe_unused]] _In_ OrtAllocatorType allocator_type,
                     [[maybe_unused]] _In_opt_ const OrtKeyValuePairs* allocator_options,
                     _Outptr_opt_ OrtAllocator** allocator) {
 #if !defined(ORT_MINIMAL_BUILD)
@@ -338,7 +339,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator,
   }
 
   auto& env = ort_env->GetEnvironment();
-  ORT_API_RETURN_IF_STATUS_NOT_OK(env.CreateSharedAllocator(*ep_device, mem_type, allocator_options,
+  ORT_API_RETURN_IF_STATUS_NOT_OK(env.CreateSharedAllocator(*ep_device, mem_type, allocator_type, allocator_options,
                                                             allocator));
 
   return nullptr;
