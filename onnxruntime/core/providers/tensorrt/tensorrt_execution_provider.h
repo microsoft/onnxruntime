@@ -170,7 +170,7 @@ class TensorrtUserWeights {
     return static_cast<void const*>(data_.data());
   }
 
-  const int64_t Size() const {
+  int64_t Size() const {
     return static_cast<int64_t>(data_.size());
   }
 
