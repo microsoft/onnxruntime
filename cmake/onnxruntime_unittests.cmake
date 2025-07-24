@@ -198,13 +198,8 @@ function(AddTest)
     # xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      # We might have already executed the following "find_program" code when we build ORT nodejs binding.
-      # Then the program is found the result is stored in the variable and the search will not be repeated.
-      find_program(NPM_CLI
-         NAMES "npm.cmd" "npm"
-         DOC "NPM command line client"
-         REQUIRED
-      )
+      # Include the Node.js helper for finding and validating Node.js and NPM
+      include(node_helper.cmake)
 
       if (onnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER)
         add_custom_command(TARGET ${_UT_TARGET} POST_BUILD
@@ -498,17 +493,19 @@ set (ONNXRUNTIME_AUTOEP_TEST_SRC_DIR "${TEST_SRC_DIR}/autoep")
 set (ONNXRUNTIME_EP_GRAPH_TEST_SRC_DIR "${TEST_SRC_DIR}/ep_graph")
 
 set (onnxruntime_shared_lib_test_SRC
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_allocator.cc
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_data_copy.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc)
+          )
 
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
