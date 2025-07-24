@@ -656,6 +656,7 @@ if (onnxruntime_USE_KLEIDIAI AND (
       (onnxruntime_target_platform STREQUAL "ARM64") OR
       (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
 
+  # TODO Add checks for MSVC Compilation
   if(NOT MSVC)
     check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
     check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)

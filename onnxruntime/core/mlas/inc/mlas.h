@@ -653,7 +653,6 @@ struct MLAS_GEMM_DYN_QUANT_DATA_PARAMS {
     const float* A = nullptr;       /**< Pointer to input matrix A in FP32 format**/
     size_t lda = 0;                 /**< Num of cols Matrix A (row-major)*/
     const void* PackedB = 0;        /**< Points to packed weight matrix B */
-    size_t ldb = 0;                 /**< Num of cols Matrix B */
     float *C = nullptr;             /**< Points to output Matric C */
     size_t ldc = 0;                 /**< Num of cols Matrix C*/
     void* lhs_scratch = nullptr;    /**< Scratch buffer for LHS Packing Allocation */

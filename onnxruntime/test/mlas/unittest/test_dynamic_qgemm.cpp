@@ -7,14 +7,16 @@
 #include "test_util.h"
 
 class MlasDynamicQgemmTest {
+ private:
+  MatrixGuardBuffer<float> buffer_a;
+  MatrixGuardBuffer<float> buffer_bf;
+  MatrixGuardBuffer<int8_t> buffer_bq;
+  MatrixGuardBuffer<float> buffer_c;
+  MatrixGuardBuffer<float> buffer_c_ref;
+
  public:
   void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
     // Setup buffers for holding various data
-    MatrixGuardBuffer<float> buffer_a;
-    MatrixGuardBuffer<float> buffer_bf;
-    MatrixGuardBuffer<int8_t> buffer_bq;
-    MatrixGuardBuffer<float> buffer_c;
-    MatrixGuardBuffer<float> buffer_c_ref;
 
     float* A = buffer_a.GetBuffer(M * K * BatchSize);
     // Buffer for holding floating point version of weight matrix
@@ -63,7 +65,6 @@ class MlasDynamicQgemmTest {
     for (size_t b = 0; b < BatchSize; ++b) {
       params[b].A = A + b * M * K;
       params[b].lda = K;
-      params[b].ldb = N;
       params[b].C = C + b * M * N;
       params[b].ldc = N;
       // Pack b matrix using MlasDynamicQgemmPackBSize & MlasDynamicQgemmPackB
