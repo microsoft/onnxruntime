@@ -465,6 +465,25 @@ class InferenceSession {
    */
   std::pair<common::Status, const OutputDefList*> GetModelOutputs() const;
 
+  enum class SessionInputOutputType : uint8_t {
+    kInput = 0,
+    kOutput = 1,
+    kOverridableInitializer = 2
+  };
+
+  /**
+   * Get the OrtMemoryInfo for the inputs or outputs of the model.
+   *
+   * This is required for a user to know the location of the input/output when autoep selection is enabled.
+   */
+  common::Status GetInputOutputMemoryInfo(SessionInputOutputType type,
+                                          InlinedVector<const OrtMemoryInfo*>& memory_info) const;
+  /**
+   * Get the OrtEpDevice (if available) for the inputs of the model.
+   *
+   * This is required for a user to know the location of the input/output when autoep selection is enabled.
+   */
+  common::Status GetEpDeviceForInputs(InlinedVector<const OrtEpDevice*>& memory_info) const;
   /**
    * Get the current number of in-progress concurrent Run calls.
    */
@@ -628,6 +647,10 @@ class InferenceSession {
 
   const std::string& GetWeightHash() const {
     return weight_hash_;
+  }
+
+  uint32_t GetCurrentSessionId() const {
+    return session_id_;
   }
 
  protected:

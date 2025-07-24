@@ -1008,6 +1008,60 @@ TEST_F(QnnHTPBackendTests, Reciprocal_QU8) {
                         ExpectedEPNodeAssignment::All);
 }
 
+// Test Mean Op on HTP
+TEST_F(QnnHTPBackendTests, Mean_TwoInputs) {
+  std::vector<float> input1 = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<float> input2 = {5.0f, 6.0f, 7.0f, 8.0f};
+
+  RunOpTest<float>("Mean",
+                   {
+                       TestInputDef<float>({4}, false, std::move(input1)),
+                       TestInputDef<float>({4}, false, std::move(input2)),
+                   },
+                   {},
+                   13,  // Opset version
+                   ExpectedEPNodeAssignment::All);
+}
+
+// Test Mean Op with multiple inputs on HTP
+TEST_F(QnnHTPBackendTests, Mean_FourInputs) {
+  std::vector<float> input1 = {1.0f, 1.0f, 1.0f, 1.0f};
+  std::vector<float> input2 = {2.0f, 2.0f, 2.0f, 2.0f};
+  std::vector<float> input3 = {3.0f, 3.0f, 3.0f, 3.0f};
+  std::vector<float> input4 = {4.0f, 4.0f, 4.0f, 4.0f};
+
+  RunOpTest<float>("Mean",
+                   {
+                       TestInputDef<float>({4}, false, std::move(input1)),
+                       TestInputDef<float>({4}, false, std::move(input2)),
+                       TestInputDef<float>({4}, false, std::move(input3)),
+                       TestInputDef<float>({4}, false, std::move(input4)),
+                   },
+                   {},
+                   13,
+                   ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, Mean_TwoInputs_QU8) {
+  RunQDQOpTest<uint8_t>("Mean",
+                        {TestInputDef<float>({1, 2, 2}, false, GetFloatDataInRange(0.0f, 10.0f, 4)),
+                         TestInputDef<float>({1, 2, 2}, false, GetFloatDataInRange(10.0f, 20.0f, 4))},
+                        {},  // No attributes for Mean
+                        13,  // Opset version
+                        ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, Mean_FourInputs_QU8) {
+  RunQDQOpTest<uint8_t>("Mean",
+                        {TestInputDef<float>({1, 2, 2}, false, GetFloatDataInRange(0.0f, 10.0f, 4)),
+                         TestInputDef<float>({1, 2, 2}, false, GetFloatDataInRange(10.0f, 20.0f, 4)),
+                         TestInputDef<float>({1, 2, 2}, false, GetFloatDataInRange(20.0f, 30.0f, 4)),
+                         TestInputDef<float>({1, 2, 2}, false, GetFloatDataInRange(30.0f, 40.0f, 4))},
+                        {},  // No attributes for Mean
+                        13,  // Opset version
+                        ExpectedEPNodeAssignment::All);
+}
+
 // Test ScatterND op on HTP
 TEST_F(QnnHTPBackendTests, ScatterND_int64_int64) {
   std::vector<int64_t> data = {0, 1, 2, 3};
@@ -1198,6 +1252,38 @@ TEST_F(QnnHTPBackendTests, GridSample_U16_Nearest) {
                          ExpectedEPNodeAssignment::All,
                          kOnnxDomain,
                          true);
+}
+
+// Test QDQ GridSample with `linear` mode on opset 20+.
+TEST_F(QnnHTPBackendTests, GridSample_Linear_ZerosPadding) {
+  RunQDQOpTest<uint8_t>("GridSample",
+                        {TestInputDef<float>({1, 3, 4, 6}, false, GetFloatDataInRange(-10.0f, 10.0f, 72)),
+                         TestInputDef<float>({1, 4, 6, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 48))},
+                        {utils::MakeAttribute("mode", "linear"), utils::MakeAttribute("padding_mode", "zeros")},
+                        /*opset_version=*/20,
+                        /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, GridSample_Linear_AlignCorners_BorderPadding) {
+  RunQDQOpTest<uint8_t>("GridSample",
+                        {TestInputDef<float>({1, 3, 4, 6}, false, GetFloatDataInRange(-10.0f, 10.0f, 72)),
+                         TestInputDef<float>({1, 4, 6, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 48))},
+                        {utils::MakeAttribute("align_corners", static_cast<int64_t>(1)),
+                         utils::MakeAttribute("mode", "linear"),
+                         utils::MakeAttribute("padding_mode", "border")},
+                        /*opset_version=*/20,
+                        /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, GridSample_Linear_ReflectionPadding_U16) {
+  RunQDQOpTest<uint16_t>("GridSample",
+                         {TestInputDef<float>({1, 3, 4, 6}, false, GetFloatDataInRange(-10.0f, 10.0f, 72)),
+                          TestInputDef<float>({1, 4, 6, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 48))},
+                         {utils::MakeAttribute("mode", "linear"), utils::MakeAttribute("padding_mode", "reflection")},
+                         /*opset_version=*/21,
+                         /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
+                         /*op_domain=*/kOnnxDomain,
+                         /*use_contrib_qdq=*/true);
 }
 
 // Test QDQ GridSample with reflection padding mode

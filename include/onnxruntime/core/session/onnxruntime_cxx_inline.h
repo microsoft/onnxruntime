@@ -767,6 +767,10 @@ inline RunOptions& RunOptions::AddConfigEntry(const char* config_key, const char
   return *this;
 }
 
+inline const char* RunOptions::GetConfigEntry(const char* config_key) {
+  return GetApi().GetRunConfigEntry(p_, config_key);
+}
+
 inline RunOptions& RunOptions::SetTerminate() {
   ThrowOnError(GetApi().RunOptionsSetTerminate(p_));
   return *this;
@@ -810,6 +814,15 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetInputModelFromBuffer
 inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelPath(
     const ORTCHAR_T* output_model_path) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelPath(this->p_, output_model_path));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextBinaryInformation(
+    const ORTCHAR_T* output_directory, const ORTCHAR_T* model_name) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextBinaryInformation(
+      this->p_,
+      output_directory,
+      model_name));
   return *this;
 }
 
@@ -2612,7 +2625,7 @@ inline std::string ShapeInferContext::GetAttrString(const char* attr_name) {
   if (status) {
     std::vector<char> chars(out, '\0');
     Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRING, chars.data(), out, &out));
-    return {chars.data()};
+    return std::string{chars.data(), out};
   } else {
     return {c};
   }

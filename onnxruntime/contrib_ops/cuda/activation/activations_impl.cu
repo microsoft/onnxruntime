@@ -59,10 +59,10 @@ struct OP_QuickGelu : public CtxQuickGelu {
 #define SPECIALIZED_UNARY_ACTIVATION_IMPL(name, T) \
   template void Impl_##name<T>(cudaStream_t stream, const T* input_data, T* output_data, const Ctx##name* func_ctx, size_t count);
 
-#define SPECIALIZED_UNARY_ACTIVATIONL_HFD(name)  \
-  SPECIALIZED_UNARY_ACTIVATION_IMPL(name, half)  \
-  SPECIALIZED_UNARY_ACTIVATION_IMPL(name, float) \
-  SPECIALIZED_UNARY_ACTIVATION_IMPL(name, double)  \
+#define SPECIALIZED_UNARY_ACTIVATIONL_HFD(name)   \
+  SPECIALIZED_UNARY_ACTIVATION_IMPL(name, half)   \
+  SPECIALIZED_UNARY_ACTIVATION_IMPL(name, float)  \
+  SPECIALIZED_UNARY_ACTIVATION_IMPL(name, double) \
   SPECIALIZED_UNARY_ACTIVATION_IMPL(name, BFloat16)
 
 #define UNARY_ACTIVATION_OP_NAME(name) \

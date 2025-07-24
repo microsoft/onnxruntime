@@ -73,6 +73,7 @@ class WhisperHelper:
         model_name_or_path: str,
         provider: str,
         separate_encoder_and_decoder_init: bool,
+        use_decoder_masked_mha: bool,
         output_qk: bool,
         encoder_path: str,
         decoder_path: str,
@@ -596,7 +597,7 @@ class WhisperHelper:
                 "no_repeat_ngram_size": 0,
                 "num_beams": 1,
                 "num_return_sequences": 1,
-                "past_present_share_buffer": provider == "cuda",
+                "past_present_share_buffer": use_decoder_masked_mha,
                 "repetition_penalty": 1.0,
                 "temperature": 1.0,
                 "top_k": 1,
@@ -604,16 +605,13 @@ class WhisperHelper:
             },
         }
 
-        # Requirements for the DMMHA kernel (which is currently
-        # enabled for CUDA only):
+        # Requirements for the DMMHA kernel:
         # - Buffer sharing = true
         # - New input: past_sequence_length
         # - New input: cache_indirection
-        # Otherwise, buffer sharing should be false and the new inputs
-        # should not be added for beam search to work in ORT GenAI.
-
-        if provider == "cuda":
-            # Add inputs for DMMHA kernel
+        # Otherwise, buffer sharing should be false and the new inputs should not be added
+        # for beam search to work in ORT GenAI.
+        if use_decoder_masked_mha:
             genai_config["model"]["decoder"]["inputs"].update(
                 {
                     "past_sequence_length": "past_sequence_length",
@@ -664,7 +662,7 @@ class WhisperHelper:
             )
         else:
             # Load from OpenAI
-            import whisper
+            import whisper  # noqa: PLC0415
 
             if not os.path.exists(model_name_or_path):
                 name_or_path = model_name_or_path.split("/")[-1][8:]
@@ -765,17 +763,18 @@ class WhisperHelper:
         is_float16: bool,
         num_attention_heads: int,
         hidden_size: int,
-        num_layers: int,
+        num_decoder_layers: int,
         use_external_data_format: bool = False,
         use_gpu: bool = False,
         provider: str = "cpu",
         is_decoder: bool = False,
         no_beam_search_op: bool = False,
+        use_decoder_masked_mha: bool = False,
         output_qk: bool = False,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
-        from fusion_options import FusionOptions
+        from fusion_options import FusionOptions  # noqa: PLC0415
 
         optimization_options = FusionOptions("bart")
         optimization_options.use_multi_head_attention = True
@@ -794,7 +793,7 @@ class WhisperHelper:
 
         # Add `past_sequence_length`, `cache_indirection`, and `output_qk` to `MultiHeadAttention` ops
         if is_decoder and no_beam_search_op:
-            if provider == "cuda":  # FP32 CPU can be supported here once the DMMHA CPU kernel bugs are fixed
+            if use_decoder_masked_mha:
                 # FP16 CUDA, FP32 CUDA, and FP32 CPU use the `DecoderMaskedMultiHeadAttention` kernel
                 # via `MultiHeadAttention`, which requires the `past_sequence_length` and
                 # `cache_indirection` inputs
@@ -802,7 +801,7 @@ class WhisperHelper:
                 m = add_cache_indirection_to_mha(m, past_seq_len_name)
 
             if output_qk:
-                m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2 * num_layers, 2)))
+                m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2 * num_decoder_layers, 2)))
 
         m.save_model_to_file(optimized_model_path, use_external_data_format, all_tensors_to_one_file=True)
 
@@ -816,14 +815,14 @@ class WhisperHelper:
     ):
         # Try to import `datasets` pip package
         try:
-            from datasets import load_dataset
+            from datasets import load_dataset  # noqa: PLC0415
         except Exception as e:
             logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)  # noqa: G201
             install_cmd = "pip install datasets"
             logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
             os.system(install_cmd)
 
-        from datasets import load_dataset
+        from datasets import load_dataset  # noqa: PLC0415
 
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features_ = []

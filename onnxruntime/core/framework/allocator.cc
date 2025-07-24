@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/narrow.h"
+#include "core/common/parse_string.h"
 #include "core/common/safeint.h"
+#include "core/common/status.h"
 #include "core/framework/allocator.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/utils.h"
@@ -14,6 +17,53 @@
 #endif
 
 #include "core/framework/bfc_arena.h"
+
+using namespace onnxruntime;
+using Status = common::Status;
+
+Status OrtArenaCfg::FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg& cfg) {
+  cfg = OrtArenaCfg{};  // reset to default values
+
+  const auto from_string = [](const std::string& key, const std::string& str, auto& value) -> Status {
+    if (!ParseStringWithClassicLocale(str, value).IsOK()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to parse value for ", key, " from ", str);
+    }
+
+    return Status::OK();
+  };
+
+  const auto& kvps_entries = kvps.Entries();
+  if (auto it = kvps_entries.find(ConfigKeyNames::ArenaExtendStrategy); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.arena_extend_strategy));
+  }
+
+  if (auto it = kvps_entries.find(ConfigKeyNames::InitialChunkSizeBytes); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.initial_chunk_size_bytes));
+  }
+
+  if (auto it = kvps_entries.find(ConfigKeyNames::MaxDeadBytesPerChunk); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.max_dead_bytes_per_chunk));
+  }
+
+  if (auto it = kvps_entries.find(ConfigKeyNames::InitialGrowthChunkSizeBytes); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.initial_growth_chunk_size_bytes));
+  }
+
+  if (auto it = kvps_entries.find(ConfigKeyNames::MaxPowerOfTwoExtendBytes); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.max_power_of_two_extend_bytes));
+  }
+
+  if (auto it = kvps_entries.find(ConfigKeyNames::MaxMem); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.max_mem));
+  }
+
+  if (!cfg.IsValid()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid arena configuration. Please check the values provided.");
+  }
+
+  return Status::OK();
+}
 
 namespace onnxruntime {
 
@@ -175,12 +225,13 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
         mem_type1);
   } else if (strcmp(name1, onnxruntime::CUDA_PINNED) == 0) {
     *out = new OrtMemoryInfo(
-        name1, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA, device_id),
+        name1, type,
+        OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::HIP_PINNED) == 0) {
     *out = new OrtMemoryInfo(
         name1, type,
-        OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD, device_id),
+        OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::QNN_HTP_SHARED) == 0) {
     *out = new OrtMemoryInfo(
@@ -200,7 +251,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo_V2, _In_ const char* name, _In_ enum OrtMemoryInfoDeviceType device_type,
-                    _In_ uint32_t vendor_id, _In_ int16_t device_id, _In_ enum OrtDeviceMemoryType mem_type,
+                    _In_ uint32_t vendor_id, _In_ int32_t device_id, _In_ enum OrtDeviceMemoryType mem_type,
                     _In_ size_t alignment, enum OrtAllocatorType type,
                     _Outptr_ OrtMemoryInfo** out) {
   // map the public enum values to internal OrtDevice values
@@ -225,7 +276,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo_V2, _In_ const char* name, _In_ en
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid device type specified.");
   }
 
-  *out = new OrtMemoryInfo(name, type, OrtDevice{dt, mt, vendor_id, device_id, alignment},
+  *out = new OrtMemoryInfo(name, type, OrtDevice{dt, mt, vendor_id, narrow<int16_t>(device_id), alignment},
                            mem_type == OrtDeviceMemoryType_DEFAULT ? OrtMemTypeDefault : OrtMemTypeCPU);
   return nullptr;
 }
@@ -262,4 +313,12 @@ ORT_API_STATUS_IMPL(OrtApis::CompareMemoryInfo, _In_ const OrtMemoryInfo* info1,
 
 ORT_API(void, OrtApis::MemoryInfoGetDeviceType, _In_ const OrtMemoryInfo* info, _Out_ OrtMemoryInfoDeviceType* out) {
   *out = static_cast<OrtMemoryInfoDeviceType>(info->device.Type());
+}
+
+ORT_API(OrtDeviceMemoryType, OrtApis::MemoryInfoGetDeviceMemType, _In_ const OrtMemoryInfo* ptr) {
+  return static_cast<OrtDeviceMemoryType>(ptr->device.MemType());
+}
+
+ORT_API(uint32_t, OrtApis::MemoryInfoGetVendorId, _In_ const OrtMemoryInfo* ptr) {
+  return ptr->device.Vendor();
 }

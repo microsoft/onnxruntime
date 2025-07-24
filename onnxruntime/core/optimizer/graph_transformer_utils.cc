@@ -215,10 +215,17 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   const InlinedHashSet<std::string_view> cpu_acl_eps = {onnxruntime::kCpuExecutionProvider,
                                                         onnxruntime::kAclExecutionProvider};
 #endif
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
   const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
   AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
 
   switch (level) {
+    case TransformerLevel::Default: {
+      if (!session_options.free_dimension_overrides.empty()) {
+        transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
+            session_options.free_dimension_overrides));
+      }
+    } break;
     case TransformerLevel::Level1: {
       // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
       // so run them first so there is potentially less for the more intensive optimizations like ConstantFolding,
@@ -243,7 +250,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       for (const auto& p : session_options.initializers_to_share_map) {
         excluded_initializers.insert(p.first);
       }
-      const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
       transformers.emplace_back(std::make_unique<ConstantSharing>(no_limit_empty_ep_list, excluded_initializers));
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq,
@@ -363,14 +369,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_acl_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_rocm_eps));
-
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_rocm_eps));
-
       transformers.emplace_back(std::make_unique<GroupQueryAttentionFusion>(cuda_eps));
-
+      // Run MatMulAddFusion again after *AttentionFusion transforms with `preserve_attention_pattern = false`,
+      // to cleanup the remaining MatMul-Add that were part of the attention pattern but not detected or fused.
+      transformers.emplace_back(std::make_unique<MatMulAddFusion>(no_limit_empty_ep_list, false));
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_rocm_eps));
-
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_rocm_eps));
 

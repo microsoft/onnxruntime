@@ -35,9 +35,9 @@ class NvExecutionProviderTest : public ::testing::Test {
     } else if constexpr (std::is_same<T, float>::value) {
       dtype_name = "fp32";
     } else if constexpr (std::is_same<T, BFloat16>::value) {
-      dtype_name = "fp16";
-    } else if constexpr (std::is_same<T, MLFloat16>::value) {
       dtype_name = "bf16";
+    } else if constexpr (std::is_same<T, MLFloat16>::value) {
+      dtype_name = "fp16";
     } else if constexpr (std::is_same<T, int8_t>::value) {
       dtype_name = "int8";
     } else if constexpr (std::is_same<T, uint8_t>::value) {
@@ -184,6 +184,7 @@ static void CreateBaseModel(const PathString& model_name,
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
   status = onnxruntime::Model::Save(model, model_name);
+  ASSERT_TRUE(status.IsOK());
 }
 
 static Ort::IoBinding generate_io_binding(Ort::Session& session, std::map<std::string, std::vector<int64_t>> shape_overwrites = {}) {
@@ -321,7 +322,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
   std::string graph_name = "test";
   std::vector<int> dims = {1, -1, -1};
 
-  CreateBaseModel(model_name, graph_name, dims, true);
+  CreateBaseModel(model_name, graph_name, dims);
 
   auto env = Ort::Env();
   auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
@@ -370,7 +371,7 @@ TYPED_TEST(NvExecutionProviderTest, IOTypeTests) {
   std::string graph_name = "test" + dtype_name;
   std::vector<int> dims = {1, -1, -1};
 
-  CreateBaseModel(model_name, graph_name, dims, true);
+  CreateBaseModel(model_name, graph_name, dims);
 
   auto env = Ort::Env();
   auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
@@ -387,6 +388,48 @@ TYPED_TEST(NvExecutionProviderTest, IOTypeTests) {
     session_object.Run(run_options, io_binding);
   }
 }
+
+static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
+  // Access the underlying InferenceSession.
+  const OrtSession* ort_session = session;
+  const InferenceSession* s = reinterpret_cast<const InferenceSession*>(ort_session);
+  bool has_ep = false;
+
+  for (const auto& provider : s->GetRegisteredProviderTypes()) {
+    if (provider == ep_name) {
+      has_ep = true;
+      break;
+    }
+  }
+  return has_ep;
+}
+
+#if defined(WIN32)
+// Tests autoEP feature to automatically select an EP that supports the GPU.
+// Currently only works on Windows.
+TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
+  PathString model_name = ORT_TSTR("nv_execution_provider_data_dyn_test.onnx");
+  std::string graph_name = "test";
+  std::vector<int> dims = {1, -1, -1};
+
+  CreateBaseModel(model_name, graph_name, dims, true);
+
+  auto env = Ort::Env();
+  auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
+  env.UpdateEnvWithCustomLogLevel(logging_level);
+
+  {
+    env.RegisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider, ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx.dll"));
+
+    Ort::SessionOptions so;
+    so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
+    Ort::Session session_object(env, model_name.c_str(), so);
+    EXPECT_TRUE(SessionHasEp(session_object, kNvTensorRTRTXExecutionProvider));
+  }
+
+  env.UnregisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider);
+}
+#endif  // defined(WIN32)
 
 }  // namespace test
 }  // namespace onnxruntime

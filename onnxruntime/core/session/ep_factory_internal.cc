@@ -8,33 +8,32 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ep_api_utils.h"
 #include "core/session/ort_apis.h"
+#include "onnxruntime_config.h"  // for ORT_VERSION
 
 namespace onnxruntime {
 
 using Forward = ForwardToFactory<EpFactoryInternal>;
 
-EpFactoryInternal::EpFactoryInternal(const std::string& ep_name, const std::string& vendor,
-                                     GetSupportedFunc&& get_supported_func,
-                                     CreateFunc&& create_func)
-    : ep_name_{ep_name},
-      vendor_{vendor},
-      get_supported_func_{std::move(get_supported_func)},
-      create_func_{create_func} {
+EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl)
+    : impl_{std::move(impl)} {
   ort_version_supported = ORT_API_VERSION;
 
   OrtEpFactory::GetName = Forward::GetFactoryName;
   OrtEpFactory::GetVendor = Forward::GetVendor;
+  OrtEpFactory::GetVendorId = Forward::GetVendorId;
+  OrtEpFactory::GetVersion = Forward::GetVersion;
   OrtEpFactory::GetSupportedDevices = Forward::GetSupportedDevices;
   OrtEpFactory::CreateEp = Forward::CreateEp;
   OrtEpFactory::ReleaseEp = Forward::ReleaseEp;
+  OrtEpFactory::CreateAllocator = Forward::CreateAllocator;
+  OrtEpFactory::ReleaseAllocator = Forward::ReleaseAllocator;
+  OrtEpFactory::CreateDataTransfer = Forward::CreateDataTransfer;
+  OrtEpFactory::IsStreamAware = Forward::IsStreamAware;
+  OrtEpFactory::CreateSyncStreamForDevice = Forward::CreateSyncStreamForDevice;
 }
 
-OrtStatus* EpFactoryInternal::GetSupportedDevices(const OrtHardwareDevice* const* devices,
-                                                  size_t num_devices,
-                                                  OrtEpDevice** ep_devices,
-                                                  size_t max_ep_devices,
-                                                  size_t* num_ep_devices) {
-  return get_supported_func_(this, devices, num_devices, ep_devices, max_ep_devices, num_ep_devices);
+const char* EpFactoryInternal::GetVersion() const noexcept {
+  return ORT_VERSION;
 }
 
 OrtStatus* EpFactoryInternal::CreateEp(const OrtHardwareDevice* const* /*devices*/,
@@ -46,25 +45,23 @@ OrtStatus* EpFactoryInternal::CreateEp(const OrtHardwareDevice* const* /*devices
   ORT_THROW("Internal error. CreateIExecutionProvider should be used for EpFactoryInternal.");
 }
 
-OrtStatus* EpFactoryInternal::CreateIExecutionProvider(const OrtHardwareDevice* const* devices,
-                                                       const OrtKeyValuePairs* const* ep_metadata_pairs,
-                                                       size_t num_devices,
-                                                       const OrtSessionOptions* session_options,
-                                                       const OrtLogger* session_logger,
-                                                       std::unique_ptr<IExecutionProvider>* ep) {
-  *ep = nullptr;
+// Prior to addition to SessionOptions the EP options do not have a prefix.
+// They are prefixed with 'ep.<ep_name>.' when added to SessionOptions.
+//
+// Use this function to get the options without the prefix from SessionOptions.
+// Required by the option parsing for multiple existing EPs.
+ProviderOptions EpFactoryInternalImpl::GetOptionsFromSessionOptions(const SessionOptions& session_options) const {
+  const std::string option_prefix = OrtSessionOptions::GetProviderOptionPrefix(GetName());
+  ProviderOptions ep_options;
 
-  if (num_devices != 1) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "EpFactoryInternal currently only supports one device at a time.");
+  for (const auto& [key, value] : session_options.config_options.configurations) {
+    if (key.find(option_prefix) == 0) {
+      // remove the prefix and add
+      ep_options[key.substr(option_prefix.length())] = value;
+    }
   }
 
-  return create_func_(this, devices, ep_metadata_pairs, num_devices, session_options, session_logger, ep);
-}
-
-void EpFactoryInternal::ReleaseEp(OrtEp* /*ep*/) {
-  // we never create an OrtEp so we should never be trying to release one
-  ORT_THROW("Internal error. No ReleaseEp call is required for EpFactoryInternal.");
+  return ep_options;
 }
 
 InternalExecutionProviderFactory::InternalExecutionProviderFactory(EpFactoryInternal& ep_factory,

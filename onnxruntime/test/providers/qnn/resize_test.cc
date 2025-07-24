@@ -259,20 +259,14 @@ TEST_F(QnnCPUBackendTests, ResizeDownsampleNearestAlignCorners_rpf) {
 // Cpu tests that use the "linear" mode.
 //
 
-// accuracy issue since QNN 2.31
-// Expected: contains 240 values, where each value and its corresponding value in 16-byte object <F0-00 00-00 00-00 00-00 40-01 57-DD 45-01 00-00> are an almost-equal pair
-// Actual: 16-byte object <F0-00 00-00 00-00 00-00 40-01 39-DD 45-01 00-00>, where the value pair (-10, -10.5084743) at index #0 don't match, which is -0.508474 from -10
-TEST_F(QnnCPUBackendTests, DISABLED_Resize2xLinearHalfPixel) {
+TEST_F(QnnCPUBackendTests, Resize2xLinearHalfPixel) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 60);
   RunCPUResizeOpTest(TestInputDef<float>({1, 3, 4, 5}, false, input_data),
                      {1, 3, 8, 10}, "linear", "half_pixel", "",
                      ExpectedEPNodeAssignment::All);
 }
 
-// accuracy issue since QNN 2.31
-// Expected: contains 240 values, where each value and its corresponding value in 16-byte object <F0-00 00-00 00-00 00-00 40-01 57-4B C9-02 00-00> are an almost-equal pair
-// Actual: 16-byte object <F0-00 00-00 00-00 00-00 40-01 39-4B C9-02 00-00>, where the value pair (-10, -10.5084743) at index #0 don't match, which is -0.508474 from -10
-TEST_F(QnnCPUBackendTests, DISABLED_Resize2xLinearHalfPixel_scales) {
+TEST_F(QnnCPUBackendTests, Resize2xLinearHalfPixel_scales) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 60);
   RunCPUResizeOpTestWithScales(TestInputDef<float>({1, 3, 4, 5}, false, input_data),
                                {1.0f, 1.0f, 2.0f, 2.0f}, "linear", "half_pixel", "",
@@ -336,9 +330,7 @@ TEST_F(QnnHTPBackendTests, Resize_DownSample_Linear_HalfPixel) {
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 1, 2, 4}, false, input_data),
                               {1, 1, 1, 2}, "linear", "half_pixel", "",
                               ExpectedEPNodeAssignment::All,
-                              19,
-                              // Need tolerance of 0.539% of output range after QNN SDK 2.17
-                              QDQTolerance(0.00539f));
+                              19);
 }
 
 // Test 2x QDQ Resize mode: "linear", coordinate_transformation_mode: "pytorch_half_pixel"
@@ -348,9 +340,7 @@ TEST_F(QnnHTPBackendTests, ResizeU8_2xLinearPytorchHalfPixel) {
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, input_data),
                               {1, 3, 8, 8}, "linear", "pytorch_half_pixel", "",
                               ExpectedEPNodeAssignment::All,
-                              19,
-                              // Need tolerance of 0.609% of output range after QNN SDK 2.17
-                              QDQTolerance(0.00609f));
+                              19);
 }
 
 // Test 2x QDQ Resize mode: "linear", coordinate_transformation_mode: "half_pixel"
@@ -360,9 +350,7 @@ TEST_F(QnnHTPBackendTests, ResizeU8_2xLinearHalfPixel) {
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, input_data),
                               {1, 3, 8, 8}, "linear", "half_pixel", "",
                               ExpectedEPNodeAssignment::All,
-                              19,
-                              // Need tolerance of 0.609% of output range after QNN SDK 2.17
-                              QDQTolerance(0.00609f));
+                              19);
 }
 
 // Test 2x QDQ Resize mode: "linear", coordinate_transformation_mode: "align_corners"
@@ -372,9 +360,7 @@ TEST_F(QnnHTPBackendTests, ResizeU8_2xLinearAlignCorners) {
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, input_data),
                               {1, 3, 8, 8}, "linear", "align_corners", "",
                               ExpectedEPNodeAssignment::All,
-                              19,
-                              // Need tolerance of 0.533% of output range after QNN SDK 2.17
-                              QDQTolerance(0.00533f));
+                              19);
 }
 
 // Test 2x QDQ Resize mode: "linear", coordinate_transformation_mode: "asymmetric"
@@ -384,9 +370,7 @@ TEST_F(QnnHTPBackendTests, ResizeU8_2xLinearAsymmetric) {
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, input_data),
                               {1, 3, 8, 8}, "linear", "asymmetric", "",
                               ExpectedEPNodeAssignment::All,
-                              19,
-                              // Need tolerance of 0.619% of output range after QNN SDK 2.17
-                              QDQTolerance(0.00619f));
+                              19);
 }
 
 // Test 2x QDQ Resize mode: "nearest", coordinate_transformation_mode: "half_pixel", nearest_mode: "round_prefer_floor"

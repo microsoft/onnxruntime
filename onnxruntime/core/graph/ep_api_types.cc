@@ -22,6 +22,21 @@
 
 namespace onnxruntime {
 
+template <typename DstElem>
+static Status CheckCopyDestination(std::string_view error_array_label, size_t src_size, gsl::span<DstElem const> dst) {
+  if (dst.size() < src_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Not enough space for ", error_array_label, ": expected buffer with room for at least ",
+                           src_size, " elements, but got buffer with room for only ", dst.size(), " elements.");
+  }
+
+  if (dst.data() == nullptr && src_size > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store ", error_array_label, " is NULL.");
+  }
+
+  return Status::OK();
+}
+
 // Create an EpValueInfo from a NodeArg.
 static std::unique_ptr<EpValueInfo> CreateValueInfo(const NodeArg& node_arg, const EpGraph* ep_graph, size_t flags) {
   const auto* type_proto = node_arg.TypeAsProto();
@@ -91,6 +106,20 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
   ConvertNodeArgsToValueInfos(ep_graph, value_infos_map, node_inputs, ep_node_inputs);
   ConvertNodeArgsToValueInfos(ep_graph, value_infos_map, node_outputs, ep_node_outputs);
 
+  const auto& node_attrs = node.GetAttributes();
+  std::unordered_map<std::string, std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> ep_node_attributes_map;
+  std::vector<OrtOpAttr*> ep_node_attributes;
+
+  if (node_attrs.size() > 0) {
+    ep_node_attributes.reserve(node_attrs.size());
+
+    for (const auto& item : node_attrs) {
+      auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>(item.second);  // Copy AttributeProto and owned by this EpNode object.
+      ep_node_attributes.push_back(reinterpret_cast<OrtOpAttr*>(attr.get()));
+      ep_node_attributes_map.emplace(item.first, std::move(attr));
+    }
+  }
+
   std::vector<SubgraphState> ep_node_subgraphs;
   std::vector<EpValueInfo*> ep_node_implicit_inputs;
 
@@ -100,11 +129,12 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
 
     ConvertNodeArgsToValueInfos(ep_graph, value_infos_map, node_implicit_inputs, ep_node_implicit_inputs);
 
-    std::vector<gsl::not_null<const Graph*>> node_subgraphs = node.GetSubgraphs();
-    ep_node_subgraphs.reserve(node_subgraphs.size());
+    std::unordered_map<std::string, gsl::not_null<const Graph*>> subgraphs_map = node.GetAttributeNameToSubgraphMap();
+    ep_node_subgraphs.reserve(subgraphs_map.size());
 
-    for (gsl::not_null<const Graph*> subgraph : node_subgraphs) {
+    for (const auto& [attr_name, subgraph] : subgraphs_map) {
       SubgraphState subgraph_state;
+      subgraph_state.attribute_name = attr_name;
       subgraph_state.subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
       ORT_RETURN_IF_ERROR(EpGraph::Create(*subgraph_state.subgraph_viewer, subgraph_state.ep_subgraph));
       subgraph_state.ep_subgraph->SetParentNode(ep_node.get());
@@ -115,6 +145,8 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
 
   ep_node->inputs_ = std::move(ep_node_inputs);
   ep_node->outputs_ = std::move(ep_node_outputs);
+  ep_node->attributes_map_ = std::move(ep_node_attributes_map);
+  ep_node->attributes_ = std::move(ep_node_attributes);
   ep_node->implicit_inputs_ = std::move(ep_node_implicit_inputs);
   ep_node->subgraphs_ = std::move(ep_node_subgraphs);
 
@@ -136,51 +168,89 @@ Status EpNode::GetSinceVersion(int& since_version) const {
   return Status::OK();
 }
 
-Status EpNode::GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtValueInfo);
-  result->storage.reserve(inputs_.size());
+size_t EpNode::GetNumInputs() const {
+  return inputs_.size();
+}
 
-  for (const EpValueInfo* input : inputs_) {
-    result->storage.push_back(input);
+Status EpNode::GetInputs(gsl::span<const OrtValueInfo*> dst) const {
+  const size_t num_inputs = inputs_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("node inputs", num_inputs, dst)));
+
+  for (size_t i = 0; i < num_inputs; ++i) {
+    dst[i] = inputs_[i];
   }
 
   return Status::OK();
 }
 
-Status EpNode::GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtValueInfo);
-  result->storage.reserve(outputs_.size());
+size_t EpNode::GetNumOutputs() const {
+  return outputs_.size();
+}
 
-  for (const EpValueInfo* output : outputs_) {
-    result->storage.push_back(output);
+Status EpNode::GetOutputs(gsl::span<const OrtValueInfo*> dst) const {
+  const size_t num_outputs = outputs_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("node outputs", num_outputs, dst)));
+
+  for (size_t i = 0; i < num_outputs; ++i) {
+    dst[i] = outputs_[i];
   }
 
   return Status::OK();
 }
 
-Status EpNode::GetImplicitInputs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtValueInfo);
-  result->storage.reserve(implicit_inputs_.size());
+Status EpNode::GetNumImplicitInputs(size_t& num_implicit_inputs) const {
+  num_implicit_inputs = implicit_inputs_.size();
+  return Status::OK();
+}
 
-  for (const EpValueInfo* implicit_input : implicit_inputs_) {
-    result->storage.push_back(implicit_input);
+Status EpNode::GetImplicitInputs(gsl::span<const OrtValueInfo*> dst) const {
+  const size_t num_implicit_inputs = implicit_inputs_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("node implicit inputs", num_implicit_inputs, dst)));
+
+  for (size_t i = 0; i < num_implicit_inputs; ++i) {
+    dst[i] = implicit_inputs_[i];
   }
 
   return Status::OK();
 }
 
-Status EpNode::GetSubgraphs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtGraph);
-  result->storage.reserve(subgraphs_.size());
+size_t EpNode::GetNumAttributes() const {
+  return attributes_.size();
+}
 
-  for (const SubgraphState& subgraph : subgraphs_) {
-    result->storage.push_back(subgraph.ep_subgraph->ToExternal());
+Status EpNode::GetAttributes(gsl::span<const OrtOpAttr*> dst) const {
+  const size_t num_attributes = attributes_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtOpAttr*>("node attributes", num_attributes, dst)));
+
+  for (size_t i = 0; i < num_attributes; ++i) {
+    dst[i] = attributes_[i];
   }
 
   return Status::OK();
 }
 
-Status EpNode::GetParentGraph(const OrtGraph*& parent_graph) const {
+Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {
+  num_subgraphs = subgraphs_.size();
+  return Status::OK();
+}
+
+Status EpNode::GetSubgraphs(gsl::span<const OrtGraph*> subgraphs,
+                            const char** opt_attribute_names) const {
+  const size_t num_subgraphs = subgraphs_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtGraph*>("node subgraphs", num_subgraphs, subgraphs)));
+
+  for (size_t i = 0; i < num_subgraphs; ++i) {
+    subgraphs[i] = subgraphs_[i].ep_subgraph.get();
+
+    if (opt_attribute_names) {
+      opt_attribute_names[i] = subgraphs_[i].attribute_name.c_str();
+    }
+  }
+
+  return Status::OK();
+}
+
+Status EpNode::GetGraph(const OrtGraph*& parent_graph) const {
   parent_graph = ep_graph_->ToExternal();
   return Status::OK();
 }
@@ -195,6 +265,19 @@ gsl::span<const EpValueInfo* const> EpNode::GetImplicitInputsSpan() const {
 
 gsl::span<const EpValueInfo* const> EpNode::GetOutputsSpan() const {
   return outputs_;
+}
+
+const OrtOpAttr* EpNode::GetAttribute(const std::string& name) const {
+  auto iter = attributes_map_.find(name);
+  if (iter == attributes_map_.end()) {
+    return nullptr;
+  } else {
+    return reinterpret_cast<const OrtOpAttr*>(iter->second.get());
+  }
+}
+
+const std::string& EpNode::GetEpName() const {
+  return node_.GetExecutionProviderType();
 }
 
 //
@@ -426,10 +509,34 @@ void EpGraph::IndexToEpNodeMap::SetEpNode(NodeIndex node_index, EpNode* ep_node)
 EpGraph::EpGraph(const GraphViewer& graph_viewer, PrivateTag)
     : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(graph_viewer) {}
 
+EpGraph::EpGraph(std::unique_ptr<GraphViewer> graph_viewer,
+                 std::unique_ptr<IndexedSubGraph> indexed_sub_graph,
+                 PrivateTag)
+    : OrtGraph(OrtGraphIrApi::kEpApi),
+      graph_viewer_(*graph_viewer.get()),
+      owned_graph_viewer_(std::move(graph_viewer)),
+      owned_indexed_sub_graph_(std::move(indexed_sub_graph)) {}
+
 // Static class function to create a std::unique_ptr<EpGraph>.
 Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
   auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
 
+  return CreateImpl(std::move(ep_graph), graph_viewer, result);
+}
+
+// Static class function to create a std::unique_ptr<EpGraph>.
+Status EpGraph::Create(std::unique_ptr<GraphViewer> src_graph_viewer,
+                       std::unique_ptr<IndexedSubGraph> src_indexed_sub_graph,
+                       /*out*/ std::unique_ptr<EpGraph>& result) {
+  auto& graph_viewer = *src_graph_viewer.get();
+  auto ep_graph = std::make_unique<EpGraph>(std::move(src_graph_viewer),
+                                            std::move(src_indexed_sub_graph),
+                                            PrivateTag{});
+
+  return CreateImpl(std::move(ep_graph), graph_viewer, result);
+}
+
+Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
   AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map;
 
@@ -485,12 +592,18 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
 
     initializer_value_infos.push_back(value_info);
 
-    // Temporary: Copy onnx::TensorProto into OrtValue objects owned by this EpGraph.
-    // TODO: Remove this logic once a separate PR that updates onnxruntime::Graph to store initializers as
-    // OrtValue instances is merged.
+    // Initialize OrtValue for the initializer.
     auto initializer_value = std::make_unique<OrtValue>();
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
-                                                     initializer_allocator, *initializer_value));
+    bool graph_has_ortvalue = graph_viewer.GetGraph().GetOrtValueInitializer(initializer_name, *initializer_value,
+                                                                             /*check_outer_scope*/ false);
+
+    if (!graph_has_ortvalue) {
+      // onnxruntime::Graph does not have an OrtValue for this initializer, so create one from the TensorProto.
+      // This should only happen for small initializers that are needed for ONNX shape inferencing.
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
+                                                       initializer_allocator, *initializer_value));
+    }
+
     initializer_values.emplace(value_info->GetName(), std::move(initializer_value));
   }
 
@@ -538,24 +651,27 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
 
       EpValueInfo* outer_value_info = value_info_iter->second.get();
       bool is_constant = false;
+      auto outer_initializer_value = std::make_unique<OrtValue>();
       const ONNX_NAMESPACE::TensorProto* outer_initializer = parent_graph->GetInitializer(implicit_name,
-                                                                                          /*check_outer_scope*/ true,
-                                                                                          is_constant);
+                                                                                          *outer_initializer_value,
+                                                                                          is_constant,
+                                                                                          /*check_outer_scope*/ true);
       outer_value_info->SetFlag(EpValueInfo::kIsOuterScope);
 
       if (outer_initializer != nullptr) {
         outer_value_info->SetFlag(is_constant ? EpValueInfo::kIsConstantInitializer : EpValueInfo::kIsOptionalGraphInput);
       }
 
-      // Temporary: Copy onnx::TensorProto into OrtValue objects owned by this EpGraph.
-      // TODO: Remove this logic once a separate PR that updates onnxruntime::Graph to store initializers as
-      // OrtValue instances is merged.
+      // Add the OrtValue if this is an initializer.
       if (outer_initializer != nullptr) {
-        auto initializer_value = std::make_unique<OrtValue>();
-        ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
-                                                         *outer_initializer, initializer_allocator,
-                                                         *initializer_value));
-        outer_scope_initializer_values.emplace(outer_value_info->GetName(), std::move(initializer_value));
+        if (!outer_initializer_value->IsAllocated()) {
+          // onnxruntime::Graph does not have an OrtValue for this initializer, so create one from the TensorProto.
+          // This should only happen for small initializers that are needed for ONNX shape inferencing.
+          ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
+                                                           *outer_initializer, initializer_allocator,
+                                                           *outer_initializer_value));
+        }
+        outer_scope_initializer_values.emplace(outer_value_info->GetName(), std::move(outer_initializer_value));
       }
     }
   }
@@ -576,47 +692,104 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
 
 const std::string& EpGraph::GetName() const { return graph_viewer_.Name(); }
 
+const ORTCHAR_T* EpGraph::GetModelPath() const {
+  return graph_viewer_.ModelPath().c_str();
+}
+
 int64_t EpGraph::GetOnnxIRVersion() const { return graph_viewer_.GetOnnxIRVersion(); }
 
-Status EpGraph::GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtValueInfo);
-  result->storage.reserve(inputs_.size());
+Status EpGraph::GetNumOperatorSets(size_t& num_operator_sets) const {
+  num_operator_sets = graph_viewer_.DomainToVersionMap().size();
+  return Status::OK();
+}
 
-  for (const EpValueInfo* input : inputs_) {
-    result->storage.push_back(input);
+Status EpGraph::GetOperatorSets(gsl::span<const char*> domains,
+                                gsl::span<int64_t> opset_versions) const {
+  const std::unordered_map<std::string, int>& domain_to_version = graph_viewer_.DomainToVersionMap();
+  size_t num_operator_sets = domain_to_version.size();
+
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const char*>("operator set domains", num_operator_sets, domains)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<int64_t>("operator set versions", num_operator_sets, opset_versions)));
+
+  // Collect (domain, version) pairs and sort them by domain to ensure user always gets a stable ordering.
+  std::vector<std::pair<const char*, int>> pairs;
+  pairs.reserve(num_operator_sets);
+
+  for (const auto& [domain, version] : domain_to_version) {
+    pairs.emplace_back(domain.c_str(), version);
+  }
+
+  std::sort(pairs.begin(), pairs.end(),
+            [](const std::pair<const char*, int>& a, const std::pair<const char*, int>& b) -> bool {
+              return std::strcmp(a.first, b.first) < 0;
+            });
+
+  // Copy sorted (domain, version) pairs into the destination buffers.
+  size_t index = 0;
+  for (const auto& [domain_c_str, version] : pairs) {
+    domains[index] = domain_c_str;
+    opset_versions[index] = version;
+    index++;
   }
 
   return Status::OK();
 }
 
-Status EpGraph::GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtValueInfo);
-  result->storage.reserve(outputs_.size());
+size_t EpGraph::GetNumInputs() const {
+  return inputs_.size();
+}
 
-  for (const EpValueInfo* output : outputs_) {
-    result->storage.push_back(output);
+Status EpGraph::GetInputs(gsl::span<const OrtValueInfo*> dst) const {
+  const size_t num_inputs = inputs_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("graph inputs", num_inputs, dst)));
+
+  for (size_t i = 0; i < num_inputs; ++i) {
+    dst[i] = inputs_[i];
   }
 
   return Status::OK();
 }
 
-Status EpGraph::GetInitializers(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtValueInfo);
-  result->storage.reserve(initializer_value_infos_.size());
+size_t EpGraph::GetNumOutputs() const {
+  return outputs_.size();
+}
 
-  for (const EpValueInfo* initializer_value_info : initializer_value_infos_) {
-    result->storage.push_back(initializer_value_info);
+Status EpGraph::GetOutputs(gsl::span<const OrtValueInfo*> dst) const {
+  const size_t num_outputs = outputs_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("graph outputs", num_outputs, dst)));
+
+  for (size_t i = 0; i < num_outputs; ++i) {
+    dst[i] = outputs_[i];
   }
 
   return Status::OK();
 }
 
-Status EpGraph::GetNodes(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtNode);
-  result->storage.reserve(nodes_.size());
+size_t EpGraph::GetNumInitializers() const {
+  return initializer_value_infos_.size();
+}
 
-  for (const std::unique_ptr<EpNode>& ep_node : nodes_) {
-    result->storage.push_back(ep_node->ToExternal());
+Status EpGraph::GetInitializers(gsl::span<const OrtValueInfo*> dst) const {
+  const size_t num_initializers = initializer_value_infos_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("graph initializers", num_initializers, dst)));
+
+  for (size_t i = 0; i < num_initializers; ++i) {
+    dst[i] = initializer_value_infos_[i];
+  }
+
+  return Status::OK();
+}
+
+size_t EpGraph::GetNumNodes() const {
+  return nodes_.size();
+}
+
+Status EpGraph::GetNodes(gsl::span<const OrtNode*> dst) const {
+  const size_t num_nodes = nodes_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtNode*>("graph nodes", num_nodes, dst)));
+
+  for (size_t i = 0; i < num_nodes; ++i) {
+    dst[i] = nodes_[i].get();
   }
 
   return Status::OK();

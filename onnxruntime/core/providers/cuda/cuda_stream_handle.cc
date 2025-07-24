@@ -228,11 +228,12 @@ void* CudaStream::GetResource(int version, int id) const {
 }
 
 // CPU Stream command handles
-void WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
-  static_cast<CudaNotification*>(&notification)->wait_on_device(stream);
+void WaitCudaNotificationOnDevice(Stream* stream, synchronize::Notification& notification) {
+  assert(stream != nullptr);  // should never happen
+  static_cast<CudaNotification*>(&notification)->wait_on_device(*stream);
 }
 
-void WaitCudaNotificationOnHost(Stream& /*stream*/, synchronize::Notification& notification) {
+void WaitCudaNotificationOnHost(Stream* /*stream*/, synchronize::Notification& notification) {
   static_cast<CudaNotification*>(&notification)->wait_on_host();
 }
 

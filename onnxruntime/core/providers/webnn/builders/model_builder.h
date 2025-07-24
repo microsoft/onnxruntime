@@ -78,7 +78,7 @@ class ModelBuilder {
   const GraphViewer& graph_viewer_;
   const logging::Logger& logger_;
   const bool is_float16array_available_ = !emscripten::val::global("Float16Array").isUndefined() &&
-                                          emscripten::val::global("Float16Array").hasOwnProperty("from");
+                                          !emscripten::val::global("Float16Array")["from"].isUndefined();
 
   emscripten::val wnn_context_ = emscripten::val::undefined();
   emscripten::val wnn_builder_ = emscripten::val::undefined();
@@ -120,7 +120,7 @@ class ModelBuilder {
 // Create or retrieve one of the following:
 // - A WebNN constant MLOperand filled with the specified value, data type, and shape.
 // - A WebNN scalar constant MLOperand with the specified value and data type.
-// For scalar constant, it is workaround for builer.constant(type, value) method since
+// For scalar constant, it is workaround for builder.constant(type, value) method since
 // it has not been implemented now.
 // https://webmachinelearning.github.io/webnn/#api-mlgraphbuilder-constant-type-value
 //

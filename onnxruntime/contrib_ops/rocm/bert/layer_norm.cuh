@@ -155,7 +155,7 @@ __device__ inline void SimplifiedLayerNormVec(
       const VecV gamma_v = *reinterpret_cast<const VecV*>(gamma + i);
       VecV output_v = *reinterpret_cast<const VecV*>(output + idx);
 
-      #pragma unroll
+#pragma unroll
       for (int k = 0; k < ILP; k++) {
         output_v.val[k] = U(gamma_v.val[k]) * U(output_v.val[k]) * rsigma;
       }
@@ -191,10 +191,9 @@ __device__ inline void LayerNormVec(
       const VecV gamma_v = *reinterpret_cast<const VecV*>(gamma + i);
       VecV output_v = *reinterpret_cast<const VecV*>(output + idx);
 
-      #pragma unroll
+#pragma unroll
       for (int k = 0; k < ILP; k++) {
-        output_v.val[k] = (beta != nullptr) ? U(gamma_v.val[k]) * (U(output_v.val[k]) - mu) * rsigma + U(beta_v.val[k]) :
-                                              U(gamma_v.val[k]) * (U(output_v.val[k]) - mu) * rsigma;
+        output_v.val[k] = (beta != nullptr) ? U(gamma_v.val[k]) * (U(output_v.val[k]) - mu) * rsigma + U(beta_v.val[k]) : U(gamma_v.val[k]) * (U(output_v.val[k]) - mu) * rsigma;
       }
       *(reinterpret_cast<VecV*>(output + idx)) = output_v;
     }
@@ -228,10 +227,9 @@ __device__ inline void LayerNormSmall(const T* input_v, const hipcub::KeyValuePa
     const VecV gamma_v = *reinterpret_cast<const VecV*>(gamma + threadIdx.x * ILP);
     VecV output_v;
 
-    #pragma unroll
+#pragma unroll
     for (int i = 0; i < ILP; i++) {
-      output_v.val[i] = (beta != nullptr) ? U(gamma_v.val[i]) * (U(input_v[i]) - mu) * rsigma + U(beta_v.val[i]) :
-                                            U(gamma_v.val[i]) * (U(input_v[i]) - mu) * rsigma;
+      output_v.val[i] = (beta != nullptr) ? U(gamma_v.val[i]) * (U(input_v[i]) - mu) * rsigma + U(beta_v.val[i]) : U(gamma_v.val[i]) * (U(input_v[i]) - mu) * rsigma;
     }
     *(reinterpret_cast<VecV*>(output + idx)) = output_v;
   }
@@ -259,7 +257,7 @@ __device__ inline void SimplifiedLayerNormSmall(const T* input_v, const U& threa
     const VecV gamma_v = *reinterpret_cast<const VecV*>(gamma + threadIdx.x * ILP);
     VecV output_v;
 
-    #pragma unroll
+#pragma unroll
     for (int i = 0; i < ILP; i++) {
       output_v.val[i] = U(gamma_v.val[i]) * U(input_v[i]) * rsigma;
     }

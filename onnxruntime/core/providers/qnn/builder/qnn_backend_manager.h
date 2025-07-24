@@ -27,6 +27,7 @@
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -149,15 +150,18 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Initializes handles to QNN resources (device, logger, etc.).
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
-                      bool need_load_system_lib, bool share_ep_contexts);
+                      bool need_load_system_lib, bool share_ep_contexts,
+                      bool enable_vtcm_backup_buffer_sharing,
+                      std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
   Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
                            HtpPerformanceMode htp_performance_mode);
 
-  Status SetRpcControlLatency(uint32_t htp_power_config_client_id,
-                              uint32_t rpc_control_latency);
+  Status SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
+                            uint32_t rpc_control_latency,
+                            uint32_t rpc_polling_time);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -209,6 +213,18 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   QnnSerializerConfig* GetQnnSerializerConfig();
 
+  // Handler to be called upon successful context creation via contextCreateFromBinaryListAsync()
+  // This handler is expected to be called in the callback ContextCreateAsyncCallback() in the .cc file
+  // Takes in the context and the notifyParam objects received by the callback function
+  // notifyParam is expected to be a pointer to a vector of node names associated with that context handle
+  // For each node name, a mapping to the context handle will be created
+  void ProcessContextFromBinListAsync(Qnn_ContextHandle_t handle, void* notifyParam);
+
+  // Sets the context priority to the given value, if valid
+  Status SetContextPriority(ContextPriority context_priority);
+  // Resets the context priority to the session default as defined by context_priority_
+  Status ResetContextPriority();
+
  private:
   Status LoadBackend();
 
@@ -225,6 +241,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status ReleaseProfilehandle();
 
   Status CreateContext(bool enable_htp_weight_sharing);
+
+  Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string,
+                                                                        std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
   Status ReleaseContext();
 
@@ -310,7 +329,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 #endif
 
   // Adds a new QNN context.
-  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance.
+  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
   Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
 
  private:
@@ -376,13 +395,13 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
       }
       ORT_RETURN_IF(QNN_SUCCESS != result, "Failed to register op package to backend. Error: ", QnnErrorHandleToString(result));
       LOGS(*logger_, VERBOSE) << "Successfully register the op package.";
-      std::string op_package_for_registration = std::filesystem::path(op_package.path).stem().string();
-      // remove lib prefix in Linux
-      std::string prefix = "lib";
-      if (op_package_for_registration.compare(0, prefix.size(), prefix) == 0) {
-        op_package_for_registration = op_package_for_registration.substr(prefix.size());
+      std::string op_package_for_registration = op_package.interface;
+      std::string suffix = "InterfaceProvider";
+      if (op_package_for_registration.size() >= suffix.size() &&
+          op_package_for_registration.compare(op_package_for_registration.size() - suffix.size(), suffix.size(), suffix) == 0) {
+        op_package_for_registration.erase(op_package_for_registration.size() - suffix.size());
       }
-      qnn::RegisterUDOBuilder(op_package.op_type, op_package_for_registration);
+      registerUDO(op_package.op_type, op_package_for_registration);
     }
 
     return Status::OK();
@@ -407,6 +426,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // HtpSharedMemoryAllocator allocation cleanup callback.
   std::unordered_map<Qnn_ContextHandle_t, std::shared_ptr<QnnContextHandleRecord>> context_map_;
 
+  // Map of EP Main Context Node names to Qnn_ContextHandle_t
+  std::mutex ep_context_handle_map_mutex_;
+  std::unordered_map<std::string, Qnn_ContextHandle_t> ep_context_handle_map_;
+
   // Vector of Qnn_ContextHandle_t. The context handles are owned by context_map_.
   std::vector<Qnn_ContextHandle_t> contexts_;
 
@@ -418,6 +441,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool device_created_ = false;
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
+  bool vtcm_backup_buffer_sharing_enabled_ = false;
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
