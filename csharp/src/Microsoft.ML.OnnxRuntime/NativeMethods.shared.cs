@@ -426,6 +426,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ValueInfo_IsConstantInitializer;
         public IntPtr ValueInfo_IsFromOuterScope;
         public IntPtr Graph_GetName;
+	public IntPtr Graph_GetModelPath;
         public IntPtr Graph_GetOnnxIRVersion;
         public IntPtr Graph_GetNumOperatorSets;
         public IntPtr Graph_GetOperatorSets;
