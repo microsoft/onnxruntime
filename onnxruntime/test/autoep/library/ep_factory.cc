@@ -238,7 +238,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   if (is_readonly_allocator) {
     auto read_only_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
     *allocator = read_only_allocator.release();
-    return;
+    return nullptr;
   }
 
   // create/use the shared arena based allocator
