@@ -195,7 +195,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
 bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   ORT_TRY {
     cxxopts::Options options("onnxruntime_perf_test", "perf_test [options...] model_path [result_file]");
-    
+
     // See ShowUsage() for detailed option descriptions.
     options.add_options()("f", "", cxxopts::value<std::vector<std::string> >());
     options.add_options()("F", "", cxxopts::value<std::vector<std::string> >());
