@@ -162,6 +162,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
   Status Compute(OpKernelContext* context) const override;
 
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override {
@@ -275,6 +276,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
     }
     return Status::OK();
   }
+#endif
 
   enum InputTensors : int {
     IN_A = 0,
@@ -358,7 +360,11 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     if (!is_b_scale_supported) {
       ScaleOutput(*b_scale_tensor, *ctx->Output<Tensor>(0));
     }
-  } else {
+  }
+  // Guard against KleidiAI functions being called in non kleidi builds
+  // TODO: migrate to a suitable override function call for kleidi dynamic qgemm function calls
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+  else {
     MatMulComputeHelper helper;
     ORT_RETURN_IF_ERROR(helper.Compute(ctx->Input<Tensor>(IN_A)->Shape(),
                                        b_shape_,  // ctx->Input<Tensor>(IN_B)->Shape(), this is not available now constant data is
@@ -411,6 +417,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
       }
     }
   }
+#endif
   return Status::OK();
 }
 

@@ -1,0 +1,72 @@
+From 30cd96c0f7a4cbf91d53d5621d99fb09e16e1731 Mon Sep 17 00:00:00 2001
+From: Jonathan Clohessy <jonclo01@iegalmacmini07.galway.arm.com>
+Date: Thu, 24 Jul 2025 22:03:49 +0100
+Subject: [PATCH] Added guards for kleidi specific dyn qgemm call sites
+
+Signed-off-by: Jonathan Clohessy <jonclo01@iegalmacmini07.galway.arm.com>
+---
+ .../cpu/quantization/dynamic_quantize_matmul.cc          | 9 ++++++++-
+ onnxruntime/test/mlas/unittest/test_dynamic_qgemm.cpp    | 3 +++
+ 2 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/onnxruntime/contrib_ops/cpu/quantization/dynamic_quantize_matmul.cc b/onnxruntime/contrib_ops/cpu/quantization/dynamic_quantize_matmul.cc
+index 75135a11b..fdfc8c220 100644
+--- a/onnxruntime/contrib_ops/cpu/quantization/dynamic_quantize_matmul.cc
++++ b/onnxruntime/contrib_ops/cpu/quantization/dynamic_quantize_matmul.cc
+@@ -161,6 +161,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
+
+   Status Compute(OpKernelContext* context) const override;
+
++#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                  /*out*/ bool& is_packed,
+                  /*out*/ PrePackedWeights* prepacked_weights) override {
+@@ -277,6 +278,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
+
+     return Status::OK();
+   }
++#endif
+
+   enum InputTensors : int {
+     IN_A = 0,
+@@ -360,7 +362,11 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
+     if (!is_b_scale_supported) {
+       ScaleOutput(*b_scale_tensor, *ctx->Output<Tensor>(0));
+     }
+-  } else {
++  }
++  // Guard against KleidiAI functions being called in non kleidi builds
++  // TODO: migrate to a suitable override function call for kleidi dynamic qgemm function calls
++#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
++    else {
+     MatMulComputeHelper helper;
+     ORT_RETURN_IF_ERROR(helper.Compute(ctx->Input<Tensor>(IN_A)->Shape(),
+                                        b_shape_,  // ctx->Input<Tensor>(IN_B)->Shape(), this is not available now constant data is
+@@ -413,6 +419,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
+       }
+     }
+   }
++  #endif
+   return Status::OK();
+ }
+
+diff --git a/onnxruntime/test/mlas/unittest/test_dynamic_qgemm.cpp b/onnxruntime/test/mlas/unittest/test_dynamic_qgemm.cpp
+index 286b03e54..a048ded83 100644
+--- a/onnxruntime/test/mlas/unittest/test_dynamic_qgemm.cpp
++++ b/onnxruntime/test/mlas/unittest/test_dynamic_qgemm.cpp
+@@ -5,6 +5,8 @@
+ //
+
+ #include "test_util.h"
++// Currently this test only applies to KleidiAI Guard against it running in any other situation
++#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+
+ class MlasDynamicQgemmTest {
+  private:
+@@ -160,3 +162,4 @@ class DynamicQgemmExecuteTest : public MlasTestFixture<MlasDynamicQgemmTest> {
+ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
+   return DynamicQgemmExecuteTest::RegisterAll(is_short_execute);
+ });
++#endif
+--
+2.39.5 (Apple Git-154)

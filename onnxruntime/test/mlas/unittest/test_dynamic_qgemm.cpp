@@ -5,6 +5,8 @@
 //
 
 #include "test_util.h"
+// Currently this test only applies to KleidiAI Guard against it running in any other situation
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
 
 class MlasDynamicQgemmTest {
  private:
@@ -160,3 +162,4 @@ class DynamicQgemmExecuteTest : public MlasTestFixture<MlasDynamicQgemmTest> {
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return DynamicQgemmExecuteTest::RegisterAll(is_short_execute);
 });
+#endif
