@@ -5272,7 +5272,7 @@ struct OrtApi {
   /** \brief Get the hardware device type.
    *
    * \param[in] device The OrtHardwareDevice instance to query.
-   * \return The hardware deGetTevice type.
+   * \return The hardware device type.
    *
    * \since Version 1.22.
    */
