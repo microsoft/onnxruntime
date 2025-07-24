@@ -34,10 +34,10 @@ bool IsInteger(const std::string& s) {
 }
 }  // namespace
 
-#define WEBGPU_EINSUM_KERNEL_DECL(version)                                               \
-  ONNX_OPERATOR_KERNEL_EX(                                                               \
-      Einsum, kOnnxDomain, version, kWebGpuExecutionProvider,                            \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),    \
+#define WEBGPU_EINSUM_KERNEL_DECL(version)                                            \
+  ONNX_OPERATOR_KERNEL_EX(                                                            \
+      Einsum, kOnnxDomain, version, kWebGpuExecutionProvider,                         \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
       Einsum);
 
 WEBGPU_EINSUM_KERNEL_DECL(12);
