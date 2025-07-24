@@ -352,8 +352,8 @@ std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* n
   return g_host->CreateCUDAAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) {
-  return g_host->CreateCUDAPinnedAllocator(name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateCUDAPinnedAllocator(device_id, name);
 }
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
@@ -361,7 +361,6 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 }
 #endif
 
-#ifdef USE_MIGRAPHX
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXAllocator(device_id, name);
 }
@@ -369,7 +368,6 @@ std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const cha
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXPinnedAllocator(device_id, name);
 }
-#endif
 
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);

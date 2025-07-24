@@ -527,6 +527,15 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_client_package_args(parser: argparse.ArgumentParser) -> None:
+    """Adds arguments for client package build package."""
+    parser.add_argument(
+        "--client_package_build",
+        action="store_true",
+        help="Create ORT package with default settings more appropriate for client/on-device workloads.",
+    )
+
+
 def add_python_binding_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Python bindings."""
     parser.add_argument("--enable_pybind", action="store_true", help="Enable Python bindings.")
@@ -648,6 +657,7 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     )
     trt_group.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS ONNX parser.")
     trt_group.add_argument("--tensorrt_home", help="Path to TensorRT installation directory.")
+    trt_group.add_argument("--tensorrt_rtx_home", help="Path to TensorRT RTX installation directory.")
 
     # --- Nv ---
     nv_group = parser.add_argument_group("Nv Execution Provider")
@@ -736,6 +746,12 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     webgpu_group.add_argument(
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
     )
+    webgpu_group.add_argument(
+        "--wgsl_template",
+        choices=["static", "dynamic"],
+        default="static",  # By default, use static WGSL template generation
+        help="Specify the generator for WebGPU WGSL template generation.",
+    )
 
     # --- XNNPACK ---
     xnn_group = parser.add_argument_group("XNNPACK Execution Provider")
@@ -756,9 +772,6 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ms_experimental", action="store_true", help="Build Microsoft experimental operators.")
     parser.add_argument(
         "--enable_msinternal", action="store_true", help="[MS Internal] Enable Microsoft internal build features."
-    )
-    parser.add_argument(
-        "--use_triton_kernel", action="store_true", help="Use Triton compiled kernels (requires Triton)."
     )
     parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
     parser.add_argument(
@@ -826,6 +839,7 @@ def parse_arguments() -> argparse.Namespace:
     add_dependency_args(parser)
     add_extension_args(parser)
     add_size_reduction_args(parser)
+    add_client_package_args(parser)
 
     # Language Bindings
     add_python_binding_args(parser)

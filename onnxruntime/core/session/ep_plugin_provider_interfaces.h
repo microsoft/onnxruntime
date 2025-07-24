@@ -65,7 +65,7 @@ class PluginExecutionProvider : public IExecutionProvider {
 
  public:
   explicit PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options, OrtEpFactory& ep_factory,
-                                   gsl::span<const OrtEpDevice* const> ep_devices);
+                                   gsl::span<const OrtEpDevice* const> ep_devices, const logging::Logger& logger);
   ~PluginExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -93,6 +93,8 @@ class PluginExecutionProvider : public IExecutionProvider {
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
+
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry&, AllocatorMap&) const override;
 
   // create per-session allocators
   // longer term we should prefer shared allocators in Environment and only create per-session allocators as

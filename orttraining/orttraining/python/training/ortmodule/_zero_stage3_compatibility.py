@@ -77,7 +77,7 @@ def post_processing_enable_zero_stage3_compat(
         STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
     )
 
-    from onnxruntime.training.utils.hooks._zero_offload_subscriber import (
+    from onnxruntime.training.utils.hooks._zero_offload_subscriber import (  # noqa: PLC0415
         ORTZeROOffloadPostForwardFunction,
         ORTZeROOffloadPreForwardFunction,
     )
@@ -178,7 +178,7 @@ def post_processing_enable_zero_stage3_compat(
     exported_model.graph.node.insert(0, weight_pull_node)
 
     # Update safe_run_mode attribute for PythonOp.
-    from onnxruntime.training.utils.hooks._subscriber_manager import _IncrementStep
+    from onnxruntime.training.utils.hooks._subscriber_manager import _IncrementStep  # noqa: PLC0415
 
     _allowed_unsafe_run_python_op_names = [
         get_fully_qualified_class_name(ORTZeROOffloadPreForwardFunction),
@@ -406,23 +406,23 @@ def stage3_export_context(enable: bool, stage3_param_handle, flattened_module):
 
     else:
         original_func = torch.onnx.symbolic_helper._get_tensor_rank
-        from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_all_zero_stage3_params
+        from onnxruntime.training.utils.hooks._zero_offload_subscriber import (  # noqa: PLC0415
+            _get_all_zero_stage3_params,
+        )
 
         # Delay collecting stage3 parameters here instead of in the graph execution manager,
         # to make sure DeepSpeed initialization is done, so that the parameters ds_status are correct.
         stage3_param_handle._zero_stage3_param_map = _get_all_zero_stage3_params(flattened_module)
 
         try:
-            from torch.onnx._internal import _beartype
 
-            @_beartype.beartype
             def _get_tensor_rank(x) -> int | None:
                 ### Adapted from https://github.com/pytorch/pytorch/blob/185515368bcd7d94ac06ab1634f22b747b03c6d9/torch/onnx/symbolic_helper.py#L561
                 # Retrieve the real rank for the stage3 weights, because stage3 weights are all (0).
-                from typing import cast as typing_cast
+                from typing import cast as typing_cast  # noqa: PLC0415
 
-                from torch import _C
-                from torch.onnx.symbolic_helper import _is_tensor
+                from torch import _C  # noqa: PLC0415
+                from torch.onnx.symbolic_helper import _is_tensor  # noqa: PLC0415
 
                 input_name = x.debugName()
                 if input_name in stage3_param_handle._zero_stage3_param_map:

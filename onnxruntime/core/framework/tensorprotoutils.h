@@ -500,7 +500,7 @@ inline bool HasName(const ONNX_NAMESPACE::TypeProto_Opaque& op_proto) {
 /// </summary>
 /// <param name="tensor_proto">tensor_proto</param>
 /// <returns>true if ten_proto has external data and it is in memory</returns>
-bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+[[nodiscard]] bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 /// <summary>
 /// This function converts TensorProto with external data to TensorProto with inline data.

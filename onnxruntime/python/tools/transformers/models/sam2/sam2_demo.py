@@ -26,7 +26,7 @@ def show_mask(mask, ax, random_color=False, borders=True):
     mask = mask.astype(np.uint8)
     mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
     if borders:
-        import cv2
+        import cv2  # noqa: PLC0415
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         # Try to smooth contours

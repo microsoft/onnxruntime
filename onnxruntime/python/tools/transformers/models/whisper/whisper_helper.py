@@ -662,7 +662,7 @@ class WhisperHelper:
             )
         else:
             # Load from OpenAI
-            import whisper
+            import whisper  # noqa: PLC0415
 
             if not os.path.exists(model_name_or_path):
                 name_or_path = model_name_or_path.split("/")[-1][8:]
@@ -763,7 +763,7 @@ class WhisperHelper:
         is_float16: bool,
         num_attention_heads: int,
         hidden_size: int,
-        num_layers: int,
+        num_decoder_layers: int,
         use_external_data_format: bool = False,
         use_gpu: bool = False,
         provider: str = "cpu",
@@ -774,7 +774,7 @@ class WhisperHelper:
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
-        from fusion_options import FusionOptions
+        from fusion_options import FusionOptions  # noqa: PLC0415
 
         optimization_options = FusionOptions("bart")
         optimization_options.use_multi_head_attention = True
@@ -801,7 +801,7 @@ class WhisperHelper:
                 m = add_cache_indirection_to_mha(m, past_seq_len_name)
 
             if output_qk:
-                m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2 * num_layers, 2)))
+                m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2 * num_decoder_layers, 2)))
 
         m.save_model_to_file(optimized_model_path, use_external_data_format, all_tensors_to_one_file=True)
 
@@ -815,14 +815,14 @@ class WhisperHelper:
     ):
         # Try to import `datasets` pip package
         try:
-            from datasets import load_dataset
+            from datasets import load_dataset  # noqa: PLC0415
         except Exception as e:
             logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)  # noqa: G201
             install_cmd = "pip install datasets"
             logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
             os.system(install_cmd)
 
-        from datasets import load_dataset
+        from datasets import load_dataset  # noqa: PLC0415
 
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features_ = []

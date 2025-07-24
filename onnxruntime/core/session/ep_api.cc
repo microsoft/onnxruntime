@@ -5,15 +5,19 @@
 
 #include <algorithm>
 #include <vector>
+
+#include "core/common/semver.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/func_api.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/framework/tensor.h"
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
 
 using namespace onnxruntime;
@@ -32,6 +36,21 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
 
   if (ep_metadata) {
     ep_device->ep_metadata = *ep_metadata;
+  }
+
+  // Add EP version from OrtEpFactory to metadata. OrtEpFactory::GetVersion is supported since 1.23.
+  if (ep_factory->ort_version_supported >= uint32_t{23}) {
+    if (ep_device->ep_metadata.Entries().find(kOrtEpDevice_EpMetadataKey_Version) !=
+        ep_device->ep_metadata.Entries().end()) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "The provided EP metadata should not explicitly specify the EP version.");
+    }
+
+    {
+      std::string ep_version = ep_factory->GetVersion(ep_factory);
+      ORT_API_RETURN_IF_STATUS_NOT_OK(ParseSemVerVersion(ep_version, nullptr));
+      ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_Version, std::move(ep_version));
+    }
   }
 
   if (ep_options) {
@@ -95,7 +114,11 @@ ORT_API_STATUS_IMPL(EpDevice_AddAllocatorInfo, _In_ OrtEpDevice* ep_device,
   const OrtDevice& info = allocator_memory_info->device;
   switch (info.MemType()) {
     case OrtDevice::MemType::DEFAULT:
-      ep_device->device_memory_info = allocator_memory_info;
+      if (allocator_memory_info->alloc_type == OrtReadOnlyAllocator) {
+        ep_device->read_only_device_memory_info = allocator_memory_info;
+      } else {
+        ep_device->device_memory_info = allocator_memory_info;
+      }
       break;
     case OrtDevice::MemType::HOST_ACCESSIBLE:
       ep_device->host_accessible_memory_info = allocator_memory_info;
@@ -111,16 +134,13 @@ ORT_API(const OrtMemoryDevice*, MemoryInfo_GetMemoryDevice, _In_ const OrtMemory
   return static_cast<const OrtMemoryDevice*>(&memory_info->device);
 }
 
-ORT_API_STATUS_IMPL(Value_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device) {
-  *device = nullptr;
+ORT_API(const OrtMemoryDevice*, Value_GetMemoryDevice, _In_ const OrtValue* value) {
   if (value == nullptr || value->IsTensor() == false) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtValue does not contain an allocated tensor.");
+    return nullptr;  // Tensor always has a device, so we don't need a more specific error here.
   }
 
   auto& tensor = value->Get<Tensor>();
-  *device = static_cast<const OrtMemoryDevice*>(&tensor.Location().device);
-
-  return nullptr;
+  return static_cast<const OrtMemoryDevice*>(&tensor.Location().device);
 }
 
 ORT_API(bool, MemoryDevice_AreEqual, _In_ const OrtMemoryDevice* a, _In_ const OrtMemoryDevice* b) {

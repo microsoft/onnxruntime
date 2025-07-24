@@ -39,9 +39,9 @@ variables:
   - template: templates/common-variables.yml
   - name: docker_base_image
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250714.2
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
   - name: linux_trt_version
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: ${{ variables.linux_trt_version_cuda11 }}
@@ -77,28 +77,20 @@ jobs:
       "
       Repository: onnxruntimetensorrtcudaminimalbuild
 
-  - template: templates/linux-build-step-with-cache.yml
-    parameters:
-      WithCache: true
-      Today: $(TODAY)
-      AdditionalKey: gpu_tensorrt_cuda_minimal
-      CacheDir: '$(ORT_CACHE_DIR)'
-      BuildStep:
-        - task: CmdLine@2
-          inputs:
-            script: |
-              docker run -e SYSTEM_COLLECTIONURI --gpus all --rm \
-                  --volume /data/onnx:/data/onnx:ro \
-                  --volume $(Build.SourcesDirectory):/onnxruntime_src \
-                  --volume $(Build.BinariesDirectory):/build \
-                  --volume /data/models:/build/models:ro \
-                  --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-                  --volume $(ORT_CACHE_DIR):/cache \
-                  -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-                  -e NIGHTLY_BUILD \
-                  -e BUILD_BUILDNUMBER \
-                  -e CCACHE_DIR=/cache -w /onnxruntime_src \
-                  onnxruntimetensorrtcudaminimalbuild tools/ci_build/github/linux/build_tensorrt_ci.sh --cuda_minimal=ON
-            workingDirectory: $(Build.SourcesDirectory)
+  - task: CmdLine@2
+    inputs:
+      script: |
+          docker run -e SYSTEM_COLLECTIONURI --gpus all --rm \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              -w /onnxruntime_src \
+              onnxruntimetensorrtcudaminimalbuild tools/ci_build/github/linux/build_tensorrt_ci.sh --cuda_minimal=ON
+      workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/explicitly-defined-final-tasks.yml

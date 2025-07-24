@@ -952,8 +952,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return const_cast<Graph*>(this)->GetNodeArg(name);
   }
 
-  // search this and up through any parent_graph_ instance for a NodeArg
+  // Searches for a NodeArg in the current graph and its parent graphs, and returns the corresponding mutable NodeArg
   NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name);
+
+  // Searches for a NodeArg in the current graph and its parent graphs, and returns the corresponding const NodeArg
+  const NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name) const;
 
   /** Gets a mutable NodeArg by name. Creates a new NodeArg that is owned by this Graph if not found.
   @param name The NodeArg name.
@@ -1195,8 +1198,16 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-  /** Gets the GraphProto representation of this Graph. */
+  /** Gets the GraphProto representation of this Graph only. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
+
+  /// <summary>
+  // This function recurses subgraphs and examines each initializer
+  // If initializer data points to in-memory location, it is inlined
+  // otherwise, the initializer is copied as is including any
+  // external data references.
+  /// </summary>
+  /// <returns>GraphProto</returns>
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   /** Gets the GraphProto representation of this Graph
@@ -1557,6 +1568,25 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto,
                                        std::optional<std::string_view> new_name);
+
+  /// <summary>
+  /// This function is used by ToGraphProto() to ensure in-memory external data references
+  /// don't leak externally since they are non-standard.
+  ///
+  /// It handles two scenarios:
+  /// - When GraphSynchronizationNeeded() is false: GraphProto is simply copied
+  ///   from graph_proto_ by ToGraphProto(). This copy includes both main graph
+  ///   and subgraph initializers. This function examines all initializers
+  ///   and inlines any in-memory data references.
+  /// - When GraphSynchronizationNeeded() is true: ToGraphProto() generates a new GraphProto
+  ///   using ToGraphProtoInternal(). This doesn't transfer main graph initializers, which are
+  ///   copied and inlined by ToGraphProto() itself. This function processes only the subgraph initializers
+  ///   as needed.
+  /// </summary>
+  /// <param name="output_graph_proto">The GraphProto to process</param>
+  /// <param name="process_main">Whether to process the main graph initializers</param>
+  /// <returns>Status indicating success or failure</returns>  ///
+  Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto, bool process_main) const;
 
   /// <summary>
   /// This function traverses the graph bottom up and externalizes

@@ -220,6 +220,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
 
   switch (level) {
+    case TransformerLevel::Default: {
+      if (!session_options.free_dimension_overrides.empty()) {
+        transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
+            session_options.free_dimension_overrides));
+      }
+    } break;
     case TransformerLevel::Level1: {
       // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
       // so run them first so there is potentially less for the more intensive optimizations like ConstantFolding,

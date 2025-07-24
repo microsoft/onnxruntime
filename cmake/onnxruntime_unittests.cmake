@@ -198,13 +198,8 @@ function(AddTest)
     # xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      # We might have already executed the following "find_program" code when we build ORT nodejs binding.
-      # Then the program is found the result is stored in the variable and the search will not be repeated.
-      find_program(NPM_CLI
-         NAMES "npm.cmd" "npm"
-         DOC "NPM command line client"
-         REQUIRED
-      )
+      # Include the Node.js helper for finding and validating Node.js and NPM
+      include(node_helper.cmake)
 
       if (onnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER)
         add_custom_command(TARGET ${_UT_TARGET} POST_BUILD
@@ -498,17 +493,19 @@ set (ONNXRUNTIME_AUTOEP_TEST_SRC_DIR "${TEST_SRC_DIR}/autoep")
 set (ONNXRUNTIME_EP_GRAPH_TEST_SRC_DIR "${TEST_SRC_DIR}/ep_graph")
 
 set (onnxruntime_shared_lib_test_SRC
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_allocator.cc
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_data_copy.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc)
+          )
 
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
@@ -722,6 +719,7 @@ endif()
 if(onnxruntime_USE_QNN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/*)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/qnn_node_group/*)
+  list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/optimizer/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
   if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
@@ -765,6 +763,13 @@ if(onnxruntime_USE_AZURE)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_azure)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_azure)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_azure)
+endif()
+
+if (onnxruntime_USE_OPENVINO)
+  list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/openvino/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_openvino)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_shared)
 endif()
 
 file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
@@ -1111,7 +1116,7 @@ if (NOT IOS)
 
     target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} nlohmann_json::nlohmann_json)
     target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
-    
+
     if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_link_libraries(onnx_test_runner PRIVATE Python::Python)
     endif()
@@ -1232,7 +1237,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_include_directories(onnxruntime_perf_test PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
           ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
           ${CMAKE_CURRENT_BINARY_DIR})
-    
+
     if (WIN32)
       target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
       if (NOT DEFINED SYS_PATH_LIB)
@@ -1338,7 +1343,7 @@ endif()
     if (onnxruntime_USE_CUDA)
       list(APPEND onnxruntime_shared_lib_test_LIBS)
     endif()
-    
+
     if (onnxruntime_USE_TENSORRT)
       list(APPEND onnxruntime_shared_lib_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
@@ -1372,7 +1377,7 @@ endif()
     if (onnxruntime_USE_NV)
       target_include_directories(onnxruntime_shared_lib_test PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
     endif()
-    
+
 
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       target_sources(onnxruntime_shared_lib_test PRIVATE
@@ -1429,7 +1434,7 @@ endif()
       DEPENDS ${all_dependencies}
     )
 
-    
+
 
     target_compile_definitions(onnxruntime_test_debug_node_inputs_outputs
       PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
@@ -1983,6 +1988,11 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
           LIBS ${onnxruntime_ep_graph_test_LIBS}
           DEPENDS ${all_dependencies}
   )
+  if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
+    # The test_main.cc includes NvInfer.h where it has many deprecated declarations
+    # simply ignore them for TensorRT EP build
+    set_property(TARGET onnxruntime_ep_graph_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
+  endif()
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

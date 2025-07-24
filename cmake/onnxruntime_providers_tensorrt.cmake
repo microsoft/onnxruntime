@@ -72,10 +72,9 @@
   endif()
 
   # TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows,
-  # for example, nvinfer_10.dll, nvinfer_plugin_10.dll, nvonnxparser_10.dll ...
+  # for example, nvinfer_10.dll, nvonnxparser_10.dll ...
   if (WIN32 AND TRT_GREATER_OR_EQUAL_TRT_10_GA)
     set(NVINFER_LIB "nvinfer_${NV_TENSORRT_MAJOR}")
-    set(NVINFER_PLUGIN_LIB "nvinfer_plugin_${NV_TENSORRT_MAJOR}")
     set(PARSER_LIB "nvonnxparser_${NV_TENSORRT_MAJOR}")
   endif()
 
@@ -83,15 +82,11 @@
      set(NVINFER_LIB "nvinfer")
   endif()
 
-  if (NOT NVINFER_PLUGIN_LIB)
-     set(NVINFER_PLUGIN_LIB "nvinfer_plugin")
-  endif()
-
   if (NOT PARSER_LIB)
      set(PARSER_LIB "nvonnxparser")
   endif()
 
-  MESSAGE(STATUS "Looking for ${NVINFER_LIB} and ${NVINFER_PLUGIN_LIB}")
+  MESSAGE(STATUS "Looking for ${NVINFER_LIB}")
 
   find_library(TENSORRT_LIBRARY_INFER ${NVINFER_LIB}
     HINTS ${TENSORRT_ROOT}
@@ -99,14 +94,6 @@
 
   if (NOT TENSORRT_LIBRARY_INFER)
     MESSAGE(STATUS "Can't find ${NVINFER_LIB}")
-  endif()
-
-  find_library(TENSORRT_LIBRARY_INFER_PLUGIN ${NVINFER_PLUGIN_LIB}
-    HINTS  ${TENSORRT_ROOT}
-    PATH_SUFFIXES lib lib64 lib/x64)
-
-  if (NOT TENSORRT_LIBRARY_INFER_PLUGIN)
-    MESSAGE(STATUS "Can't find ${NVINFER_PLUGIN_LIB}")
   endif()
 
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
@@ -120,7 +107,7 @@
       MESSAGE(STATUS "Can't find ${PARSER_LIB}")
     endif()
 
-    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN} ${TENSORRT_LIBRARY_NVONNXPARSER})
+    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_NVONNXPARSER})
     MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   else()
     if (TRT_GREATER_OR_EQUAL_TRT_10_GA)
@@ -138,7 +125,6 @@
     # The onnx_tensorrt repo contains a test program, getSupportedAPITest, which doesn't support Windows. It uses
     # unistd.h. So we must exclude it from our build. onnxruntime_fetchcontent_makeavailable is for the purpose.
     onnxruntime_fetchcontent_makeavailable(onnx_tensorrt)
-    include_directories(${onnx_tensorrt_SOURCE_DIR})
     set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
     if ( CMAKE_COMPILER_IS_GNUCC )
       set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
@@ -154,16 +140,15 @@
     endif()
     # Static libraries are just nvonnxparser_static on all platforms
     set(onnxparser_link_libs nvonnxparser_static)
-    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN})
+    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER})
     MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   endif()
 
-  include_directories(${TENSORRT_INCLUDE_DIR})
   # ${TENSORRT_LIBRARY} is empty if we link nvonnxparser_static.
   # nvonnxparser_static is linked against tensorrt libraries in onnx-tensorrt
   # See https://github.com/onnx/onnx-tensorrt/blob/8af13d1b106f58df1e98945a5e7c851ddb5f0791/CMakeLists.txt#L121
   # However, starting from TRT 10 GA, nvonnxparser_static doesn't link against tensorrt libraries.
-  # Therefore, the above code finds ${TENSORRT_LIBRARY_INFER} and ${TENSORRT_LIBRARY_INFER_PLUGIN}.
+  # Therefore, the above code finds ${TENSORRT_LIBRARY_INFER}.
   if(onnxruntime_CUDA_MINIMAL)
     set(trt_link_libs ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
   else()
@@ -197,9 +182,11 @@
   else()
     target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
   endif()
-  target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}
+  target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${TENSORRT_INCLUDE_DIR}
     PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
-
+  if (NOT onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
+        target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${onnx_tensorrt_SOURCE_DIR})
+  endif()
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   set_target_properties(onnxruntime_providers_tensorrt PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_tensorrt PROPERTIES FOLDER "ONNXRuntime")
