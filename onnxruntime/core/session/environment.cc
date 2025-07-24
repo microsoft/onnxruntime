@@ -645,7 +645,7 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
                            "The EP implements arena support internally so please use OrtDeviceAllocator and provide "
                            "any arena options via the allocator options.");
   }
-  
+
   // we need to remove from shared_ort_allocators_ first in case the entry in shared_allocators_ owns the pointer in
   // shared_ort_allocators_.
   if (auto it = FindExistingAllocator(shared_ort_allocators_, memory_info, /*match_name*/ true);
