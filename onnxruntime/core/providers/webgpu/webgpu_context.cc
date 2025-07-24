@@ -785,6 +785,11 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
   Flush(buffer_manager);
 
   graph_capture_state_ = GraphCaptureState::Default;
+
+  // This wait roughly compensates for the output buffer readback.
+  auto status = Wait(device_queue_.OnSubmittedWorkDone(
+    wgpu::CallbackMode::WaitAnyOnly, [](wgpu::QueueWorkDoneStatus, wgpu::StringView) {}));
+  ORT_ENFORCE(status == Status::OK(), "Replay failed.");
 }
 
 void WebGpuContext::CaptureEnd() {
