@@ -4,12 +4,11 @@
 // SPDX-License-Identifier: MIT
 //
 
-
 #include "test_util.h"
 
 class MlasDynamicQgemmTest {
  public:
-void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
+  void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
     // Setup buffers for holding various data
     MatrixGuardBuffer<float> buffer_a;
     MatrixGuardBuffer<float> buffer_bf;
@@ -27,33 +26,33 @@ void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
 
     // Initialize A and Bf
     for (size_t i = 0; i < M * K * BatchSize; ++i)
-        A[i] = static_cast<float>((rand() % 255 - 128) / 16.0f);
+      A[i] = static_cast<float>((rand() % 255 - 128) / 16.0f);
     for (size_t i = 0; i < K * N * BatchSize; ++i)
-        Bf[i] = static_cast<float>((rand() % 255 - 128) / 16.0f);
+      Bf[i] = static_cast<float>((rand() % 255 - 128) / 16.0f);
 
     // Quantize Bf → Bq and compute per-column scale and bias per batch
     std::vector<std::vector<float>> b_scale_batches(BatchSize, std::vector<float>(N));
     std::vector<std::vector<float>> b_bias_batches(BatchSize, std::vector<float>(N, 0.0f));
 
     for (size_t b = 0; b < BatchSize; ++b) {
-        for (size_t n = 0; n < N; ++n) {
-            float min_val = Bf[b * K * N + n];
-            float max_val = min_val;
-            for (size_t k = 1; k < K; ++k) {
-                float v = Bf[b * K * N + k * N + n];
-                min_val = std::min(min_val, v);
-                max_val = std::max(max_val, v);
-            }
-            float scale = (max_val - min_val) / 255.0f;
-            if (scale < 1e-8f) scale = 1.0f;
-            b_scale_batches[b][n] = scale;
-
-            for (size_t k = 0; k < K; ++k) {
-                float v = Bf[b * K * N + k * N + n];
-                int q = static_cast<int>(std::round(v / scale));
-                Bq[b * K * N + k * N + n] = static_cast<int8_t>(std::clamp(q, -128, 127));
-            }
+      for (size_t n = 0; n < N; ++n) {
+        float min_val = Bf[b * K * N + n];
+        float max_val = min_val;
+        for (size_t k = 1; k < K; ++k) {
+          float v = Bf[b * K * N + k * N + n];
+          min_val = std::min(min_val, v);
+          max_val = std::max(max_val, v);
         }
+        float scale = (max_val - min_val) / 255.0f;
+        if (scale < 1e-8f) scale = 1.0f;
+        b_scale_batches[b][n] = scale;
+
+        for (size_t k = 0; k < K; ++k) {
+          float v = Bf[b * K * N + k * N + n];
+          int q = static_cast<int>(std::round(v / scale));
+          Bq[b * K * N + k * N + n] = static_cast<int8_t>(std::clamp(q, -128, 127));
+        }
+      }
     }
 
     // Prepare kernel parameters
@@ -62,19 +61,19 @@ void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
     std::vector<MLAS_GEMM_DYN_QUANT_DATA_PARAMS> params(BatchSize);
 
     for (size_t b = 0; b < BatchSize; ++b) {
-        params[b].A = A + b * M * K;
-        params[b].lda = K;
-        params[b].ldb = N;
-        params[b].C = C + b * M * N;
-        params[b].ldc = N;
-        // Pack b matrix using MlasDynamicQgemmPackBSize & MlasDynamicQgemmPackB
-        void* packed_b = packed_b_storage.data() + b * MlasDynamicQgemmPackBSize(N, K);
-        MlasDynamicQgemmPackB(N, K,
-                              Bq + b * K * N,
-                              b_scale_batches[b].data(),
-                              b_bias_batches[b].data(),
-                              packed_b);
-        params[b].PackedB = packed_b;
+      params[b].A = A + b * M * K;
+      params[b].lda = K;
+      params[b].ldb = N;
+      params[b].C = C + b * M * N;
+      params[b].ldc = N;
+      // Pack b matrix using MlasDynamicQgemmPackBSize & MlasDynamicQgemmPackB
+      void* packed_b = packed_b_storage.data() + b * MlasDynamicQgemmPackBSize(N, K);
+      MlasDynamicQgemmPackB(N, K,
+                            Bq + b * K * N,
+                            b_scale_batches[b].data(),
+                            b_bias_batches[b].data(),
+                            packed_b);
+      params[b].PackedB = packed_b;
     }
 
     // call MlasDynamicQGemmBatch Function
@@ -82,30 +81,30 @@ void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
 
     // Compute reference result
     for (size_t b = 0; b < BatchSize; ++b) {
-        for (size_t m = 0; m < M; ++m) {
-            for (size_t n = 0; n < N; ++n) {
-                float sum = 0.0f;
-                for (size_t k = 0; k < K; ++k) {
-                    float a = A[b * M * K + m * K + k];
-                    float bval = static_cast<float>(Bq[b * K * N + k * N + n]) * b_scale_batches[b][n];
-                    sum += a * bval;
-                }
-                CRef[b * M * N + m * N + n] = sum;
-            }
+      for (size_t m = 0; m < M; ++m) {
+        for (size_t n = 0; n < N; ++n) {
+          float sum = 0.0f;
+          for (size_t k = 0; k < K; ++k) {
+            float a = A[b * M * K + m * K + k];
+            float bval = static_cast<float>(Bq[b * K * N + k * N + n]) * b_scale_batches[b][n];
+            sum += a * bval;
+          }
+          CRef[b * M * N + m * N + n] = sum;
         }
+      }
     }
 
     // Validate results
     for (size_t i = 0; i < M * N * BatchSize; ++i) {
-        float abs_c_ref = std::abs(CRef[i]);
-        float dynamic_rel_tol = (K <= 4) ? 0.05f : 0.03f;
-        float rel_tol = dynamic_rel_tol * std::max(abs_c_ref, 1.0f);
-        float abs_tol = 3.0f;
-        float allowed = std::max(rel_tol, abs_tol);
-        float diff = std::abs(C[i] - CRef[i]);
-        ASSERT_LE(diff, allowed);
+      float abs_c_ref = std::abs(CRef[i]);
+      float dynamic_rel_tol = (K <= 4) ? 0.05f : 0.03f;
+      float rel_tol = dynamic_rel_tol * std::max(abs_c_ref, 1.0f);
+      float abs_tol = 3.0f;
+      float allowed = std::max(rel_tol, abs_tol);
+      float diff = std::abs(C[i] - CRef[i]);
+      ASSERT_LE(diff, allowed);
     }
-}
+  }
 
   static const char* GetTestSuiteName() {
     return "DynamicQgemm";
@@ -120,7 +119,7 @@ class DynamicQgemmExecuteTest : public MlasTestFixture<MlasDynamicQgemmTest> {
   void TestBody() override {
     this->mlas_tester->Test(M_, N_, K_, BatchSize_);
   }
-    static size_t RegisterSingleTest(size_t M, size_t N, size_t K, size_t BatchSize) {
+  static size_t RegisterSingleTest(size_t M, size_t N, size_t K, size_t BatchSize) {
     std::stringstream ss;
     ss << "M" << M << "_N" << N << "_K" << K << "_B" << BatchSize;
 
@@ -142,7 +141,7 @@ class DynamicQgemmExecuteTest : public MlasTestFixture<MlasDynamicQgemmTest> {
 
   static size_t RegisterAll(bool is_short_execute) {
     const std::vector<size_t> batch_size = is_short_execute ? std::vector<size_t>{1UL, 2UL, 4UL}
-              : std::vector<size_t>{1UL, 2UL, 4UL, 8UL, 16UL, 32UL, 64UL};
+                                                            : std::vector<size_t>{1UL, 2UL, 4UL, 8UL, 16UL, 32UL, 64UL};
     size_t count = 0;
     const size_t sizes[] = {1, 4, 8, 16, 32, 64};
     for (size_t M : sizes)
