@@ -532,6 +532,8 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     IsStreamAware = IsStreamAwareImpl;
     CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+
+    ort_version_supported = ORT_API_VERSION;  // Set to the ORT version we were compiled with.
   }
 
   // Returns the name for the EP. Each unique factory configuration must have a unique name.

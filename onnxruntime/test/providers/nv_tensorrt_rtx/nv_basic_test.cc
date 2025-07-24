@@ -559,22 +559,22 @@ TEST(NvExecutionProviderTest, DataTransfer) {
   ASSERT_ORTSTATUS_OK(c_api.CopyTensors(*ort_env, src_tensor_ptrs_back.data(), dst_tensor_ptrs_back.data(), nullptr,
                                         src_tensor_ptrs_back.size()));
 
+  const float* src_data = nullptr;
+  ASSERT_ORTSTATUS_OK(c_api.GetTensorData(cpu_tensor, reinterpret_cast<const void**>(&src_data)));
+
   const float* cpu_copy_data = nullptr;
   ASSERT_ORTSTATUS_OK(c_api.GetTensorData(cpu_tensor_copy, reinterpret_cast<const void**>(&cpu_copy_data)));
 
-  const float* src_data = nullptr;
-  ASSERT_ORTSTATUS_OK(c_api.GetTensorData(cpu_tensor, reinterpret_cast<const void**>(&src_data)));
+  ASSERT_NE(src_data, cpu_copy_data) << "Should have copied between two different memory locations";
 
   size_t bytes;
   ASSERT_ORTSTATUS_OK(c_api.GetTensorSizeInBytes(cpu_tensor, &bytes));
   ASSERT_EQ(bytes, num_elements * sizeof(float));
 
-  ASSERT_NE(src_data, cpu_copy_data) << "Should have copied between two different memory locations";
-
   auto src_span = gsl::make_span(src_data, num_elements);
   auto cpu_copy_span = gsl::make_span(cpu_copy_data, num_elements);
 
-  EXPECT_THAT(src_span, ::testing::ContainerEq(cpu_copy_span));
+  EXPECT_THAT(cpu_copy_span, ::testing::ContainerEq(src_span));
 
   // must release this before we unload the EP and the allocator is deleted
   device_tensor = Ort::Value();
