@@ -750,8 +750,6 @@ if (onnxruntime_USE_WEBGPU)
           # in the uniform and converting to fp16 before using.
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/uniform_and_storage_buffer_16_bit_access.patch)
 
-      add_compile_definitions(ORT_WEBGPU_NO_FP16_IN_UNIFORMS)
-
       onnxruntime_fetchcontent_declare(
         dawn
         URL ${DEP_URL_dawn}
