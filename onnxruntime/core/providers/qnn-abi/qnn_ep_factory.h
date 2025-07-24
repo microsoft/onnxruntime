@@ -3,15 +3,10 @@
 
 #pragma once
 
-#include "core/providers/qnn-abi/ort_api.h"
-// #include "qnn_ep.h"
-#include "test/autoep/library/ep_data_transfer.h"
-#include "test/autoep/library/example_plugin_ep_utils.h"
-
-#if !BUILD_QNN_EP_STATIC_LIB
 #include "core/framework/error_code_helper.h"
-#include "qnn_ep_data_transfer.h"
-#include "qnn_ep.h"
+#include "core/providers/qnn-abi/ort_api.h"
+#include "core/providers/qnn-abi/qnn_ep_data_transfer.h"
+#include "core/providers/qnn-abi/qnn_ep.h"
 
 namespace onnxruntime {
 // OrtEpApi infrastructure to be able to use the QNN EP as an OrtEpFactory for auto EP selection.
@@ -62,5 +57,3 @@ struct QnnEpFactory : public OrtEpFactory, public ApiPtrs {
 };
 
 }  // namespace onnxruntime
-
-#endif  // !BUILD_QNN_EP_STATIC_LIB

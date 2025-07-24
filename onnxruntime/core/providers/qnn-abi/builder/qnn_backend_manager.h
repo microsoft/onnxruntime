@@ -33,7 +33,7 @@
 namespace onnxruntime {
 namespace qnn {
 
-// class QnnModel;
+class QnnModel;
 
 class QnnSerializerConfig {
  public:
@@ -119,13 +119,17 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
  public:
   static std::shared_ptr<QnnBackendManager> Create(const QnnBackendManagerConfig& config,
+                                                   const ApiPtrs& api_ptrs,
                                                    const logging::Logger& logger) {
-    return std::make_shared<QnnBackendManager>(config, logger, PrivateConstructorTag{});
+    return std::make_shared<QnnBackendManager>(config, api_ptrs, logger, PrivateConstructorTag{});
   }
 
   // Note: Creation should be done via Create(). This constructor is public so that it can be called from
   // std::make_shared().
-  QnnBackendManager(const QnnBackendManagerConfig& config, const logging::Logger& logger, PrivateConstructorTag)
+  QnnBackendManager(const QnnBackendManagerConfig& config,
+                    const ApiPtrs& api_ptrs,
+                    const logging::Logger& logger,
+                    PrivateConstructorTag)
       : backend_path_(config.backend_path),
         profiling_level_etw_(config.profiling_level_etw),
         profiling_level_(config.profiling_level),
@@ -136,6 +140,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         htp_arch_(config.htp_arch),
         soc_model_(config.soc_model),
         op_packages_(config.op_packages),
+        api_ptrs_(api_ptrs),
         logger_(logger) {
   }
 
@@ -145,10 +150,11 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
-  // Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
-  //                                       std::string node_name,
-  //                                       std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
-  //                                       int64_t max_spill_fill_size);
+  Status LoadCachedQnnContextFromBuffer(char* buffer,
+                                        uint64_t buffer_length,
+                                        std::string node_name,
+                                        std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
+                                        int64_t max_spill_fill_size);
 
   // Initializes handles to QNN resources (device, logger, etc.).
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
@@ -454,6 +460,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
   const std::vector<OpPackage> op_packages_;
 
+  const ApiPtrs api_ptrs_;
   const logging::Logger& logger_;
 };
 

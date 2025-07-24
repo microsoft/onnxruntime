@@ -26,8 +26,8 @@
 #include "core/providers/qnn-abi/qnn_allocator.h"
 #include "core/providers/qnn-abi/qnn_telemetry.h"
 #include "core/providers/qnn-abi/shared_context.h"
-// #include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_configs_helper.h"
+#include "core/providers/qnn-abi/builder/qnn_model.h"
 #include "core/providers/qnn-abi/builder/qnn_utils.h"
 
 // Flag to determine if Backend should do node validation for each opNode added
@@ -1017,134 +1017,136 @@ Status QnnBackendManager::GetMaxSpillFillBufferSize(unsigned char* buffer,
   return Status::OK();
 }
 
-// Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
-//                                                          std::string node_name,
-//                                                          QnnModelLookupTable& qnn_models,
-//                                                          int64_t max_spill_fill_size) {
-//   bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
-//                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
-//                 nullptr == qnn_sys_interface_.systemContextFree;
-//   ORT_RETURN_IF(result, "Failed to get valid function pointer.");
+Status QnnBackendManager::LoadCachedQnnContextFromBuffer(
+    char* buffer,
+    uint64_t buffer_length,
+    std::string node_name,
+    std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
+    int64_t max_spill_fill_size) {
+  bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
+                nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
+                nullptr == qnn_sys_interface_.systemContextFree;
+  ORT_RETURN_IF(result, "Failed to get valid function pointer.");
 
-//   QnnSystemContext_Handle_t sys_ctx_handle = nullptr;
-//   auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
-//   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create system handle.");
+  QnnSystemContext_Handle_t sys_ctx_handle = nullptr;
+  auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
+  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create system handle.");
 
-//   const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
-//   Qnn_ContextBinarySize_t binary_info_size{0};
-//   rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
-//                                                      static_cast<void*>(buffer),
-//                                                      buffer_length,
-//                                                      &binary_info,
-//                                                      &binary_info_size);
-//   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary info.");
+  const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
+  Qnn_ContextBinarySize_t binary_info_size{0};
+  rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
+                                                     static_cast<void*>(buffer),
+                                                     buffer_length,
+                                                     &binary_info,
+                                                     &binary_info_size);
+  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary info.");
 
-//   // binary_info life cycle is here
-//   // Binary info to graph info
-//   // retrieve Qnn graph info from binary info
-//   ORT_RETURN_IF(nullptr == binary_info, "Qnn cached binary info is nullptr.");
-//   uint32_t graph_count = 0;
-//   QnnSystemContext_GraphInfo_t* graphs_info = nullptr;
-//   if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_1) {
-//     graph_count = binary_info->contextBinaryInfoV1.numGraphs;
-//     graphs_info = binary_info->contextBinaryInfoV1.graphs;
-//   }
-// #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 15)  // starts from 2.22
-//   else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_2) {
-//     graph_count = binary_info->contextBinaryInfoV2.numGraphs;
-//     graphs_info = binary_info->contextBinaryInfoV2.graphs;
-//   }
-// #endif
-// #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)  // starts from 2.28
-//   else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_3) {
-//     graph_count = binary_info->contextBinaryInfoV3.numGraphs;
-//     graphs_info = binary_info->contextBinaryInfoV3.graphs;
-//   }
-// #endif
-//   else {
-//     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported context binary info version.");
-//   }
+  // binary_info life cycle is here
+  // Binary info to graph info
+  // retrieve Qnn graph info from binary info
+  ORT_RETURN_IF(nullptr == binary_info, "Qnn cached binary info is nullptr.");
+  uint32_t graph_count = 0;
+  QnnSystemContext_GraphInfo_t* graphs_info = nullptr;
+  if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_1) {
+    graph_count = binary_info->contextBinaryInfoV1.numGraphs;
+    graphs_info = binary_info->contextBinaryInfoV1.graphs;
+  }
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 15)  // starts from 2.22
+  else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_2) {
+    graph_count = binary_info->contextBinaryInfoV2.numGraphs;
+    graphs_info = binary_info->contextBinaryInfoV2.graphs;
+  }
+#endif
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)  // starts from 2.28
+  else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_3) {
+    graph_count = binary_info->contextBinaryInfoV3.numGraphs;
+    graphs_info = binary_info->contextBinaryInfoV3.graphs;
+  }
+#endif
+  else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported context binary info version.");
+  }
 
-//   ORT_RETURN_IF(graph_count < 1 || graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
-//   LOGS(logger_, VERBOSE) << "Graph count from QNN context: " << graph_count;
+  ORT_RETURN_IF(graph_count < 1 || graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
+  LOGS(logger_, VERBOSE) << "Graph count from QNN context: " << graph_count;
 
-//   Qnn_ContextHandle_t context = nullptr;
-// #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 26)
-//   if (vtcm_backup_buffer_sharing_enabled_) {
-//     if (ep_context_handle_map_.find(node_name) != ep_context_handle_map_.end()) {
-//       context = ep_context_handle_map_.at(node_name);
-//     }
-//     ORT_RETURN_IF(nullptr == context, "Failed to retrieve context for ", node_name);
+  Qnn_ContextHandle_t context = nullptr;
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 26)
+  if (vtcm_backup_buffer_sharing_enabled_) {
+    if (ep_context_handle_map_.find(node_name) != ep_context_handle_map_.end()) {
+      context = ep_context_handle_map_.at(node_name);
+    }
+    ORT_RETURN_IF(nullptr == context, "Failed to retrieve context for ", node_name);
 
-//   } else {
-// #endif
-//     QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
-//     ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
+  } else {
+#endif
+    QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
+    ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
 
-//     // Register spill fill buffer for multi context
-//     QnnContext_Config_t spill_fill_config = QNN_CONTEXT_CONFIG_INIT;
+    // Register spill fill buffer for multi context
+    QnnContext_Config_t spill_fill_config = QNN_CONTEXT_CONFIG_INIT;
 
-//     // The spill fill buffer is available since 2.28, API version starts from 2.21
-// #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)
-//     QnnHtpContext_CustomConfig_t custom_config;
-//     custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_REGISTER_MULTI_CONTEXTS;
-//     QnnHtpContext_GroupRegistration_t group_info;
-//     size_t current_contexts_size = GetQnnContextSize();
-//     // set to 0x0 (new group) if this is the first context, otherwise point to the first context handle
-//     // note that we already move the context with max spill fill size to the beginning of the list
-//     group_info.firstGroupHandle = (max_spill_fill_size > 0 && current_contexts_size > 0) ? GetQnnContext(0) : 0x0;
-//     group_info.maxSpillFillBuffer = max_spill_fill_size;  // Max spill-fill buffer across contexts. Must be >0
-//     custom_config.groupRegistration = group_info;
-//     spill_fill_config.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
-//     spill_fill_config.customConfig = &custom_config;
+    // The spill fill buffer is available since 2.28, API version starts from 2.21
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)
+    QnnHtpContext_CustomConfig_t custom_config;
+    custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_REGISTER_MULTI_CONTEXTS;
+    QnnHtpContext_GroupRegistration_t group_info;
+    size_t current_contexts_size = GetQnnContextSize();
+    // set to 0x0 (new group) if this is the first context, otherwise point to the first context handle
+    // note that we already move the context with max spill fill size to the beginning of the list
+    group_info.firstGroupHandle = (max_spill_fill_size > 0 && current_contexts_size > 0) ? GetQnnContext(0) : 0x0;
+    group_info.maxSpillFillBuffer = max_spill_fill_size;  // Max spill-fill buffer across contexts. Must be >0
+    custom_config.groupRegistration = group_info;
+    spill_fill_config.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
+    spill_fill_config.customConfig = &custom_config;
 
-// #endif
+#endif
 
-//     QnnContext_Config_t* spill_fill_config_pointer = max_spill_fill_size > 0 ? &spill_fill_config : nullptr;
-//     LOGS(logger_, VERBOSE) << "Max spill fill buffer size:" << max_spill_fill_size;
+    QnnContext_Config_t* spill_fill_config_pointer = max_spill_fill_size > 0 ? &spill_fill_config : nullptr;
+    LOGS(logger_, VERBOSE) << "Max spill fill buffer size:" << max_spill_fill_size;
 
-//     const QnnContext_Config_t* context_configs[] = {&qnn_context_config, spill_fill_config_pointer, nullptr};
+    const QnnContext_Config_t* context_configs[] = {&qnn_context_config, spill_fill_config_pointer, nullptr};
 
-//     ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
-//                   "Invalid function pointer for contextCreateFromBinary.");
+    ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
+                  "Invalid function pointer for contextCreateFromBinary.");
 
-//     rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
-//                                                 device_handle_,
-//                                                 context_configs,
-//                                                 static_cast<void*>(buffer),
-//                                                 buffer_length,
-//                                                 &context,
-//                                                 profile_backend_handle_);
-//     ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary. Error code: ", rt);
-//     ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
+    rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
+                                                device_handle_,
+                                                context_configs,
+                                                static_cast<void*>(buffer),
+                                                buffer_length,
+                                                &context,
+                                                profile_backend_handle_);
+    ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary. Error code: ", rt);
+    ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
 
-// #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 26)
-//   }
-// #endif
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 26)
+  }
+#endif
 
-//   if (1 == graph_count) {
-//     // in case the EPContext node is generated from script
-//     // the graph name from the context binary may not match the EPContext node name
-//     auto qnn_model = std::make_unique<qnn::QnnModel>(this);
-//     ORT_RETURN_IF_ERROR(qnn_model->DeserializeGraphInfoFromBinaryInfo(graphs_info[0], context));
-//     qnn_models.emplace(node_name, std::move(qnn_model));
-//   } else {
-//     for (uint32_t i = 0; i < graph_count; ++i) {
-//       auto qnn_model = std::make_unique<qnn::QnnModel>(this);
-//       ORT_RETURN_IF_ERROR(qnn_model->DeserializeGraphInfoFromBinaryInfo(graphs_info[i], context));
-//       qnn_models.emplace(graphs_info[i].graphInfoV1.graphName, std::move(qnn_model));
-//     }
-//   }
+  if (1 == graph_count) {
+    // in case the EPContext node is generated from script
+    // the graph name from the context binary may not match the EPContext node name
+    auto qnn_model = std::make_unique<qnn::QnnModel>(this, api_ptrs_);
+    ORT_RETURN_IF_ERROR(qnn_model->DeserializeGraphInfoFromBinaryInfo(graphs_info[0], context));
+    qnn_models.emplace(node_name, std::move(qnn_model));
+  } else {
+    for (uint32_t i = 0; i < graph_count; ++i) {
+      auto qnn_model = std::make_unique<qnn::QnnModel>(this, api_ptrs_);
+      ORT_RETURN_IF_ERROR(qnn_model->DeserializeGraphInfoFromBinaryInfo(graphs_info[i], context));
+      qnn_models.emplace(graphs_info[i].graphInfoV1.graphName, std::move(qnn_model));
+    }
+  }
 
-//   qnn_sys_interface_.systemContextFree(sys_ctx_handle);
-//   sys_ctx_handle = nullptr;
+  qnn_sys_interface_.systemContextFree(sys_ctx_handle);
+  sys_ctx_handle = nullptr;
 
-//   ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
-//   context_created_ = true;
+  ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
+  context_created_ = true;
 
-//   LOGS(logger_, VERBOSE) << "Load from cached QNN Context completed.";
-//   return Status::OK();
-// }
+  LOGS(logger_, VERBOSE) << "Load from cached QNN Context completed.";
+  return Status::OK();
+}
 
 // need to load system lib if load from Qnn context binary
 // or generate Qnn context binary is enabled -- to get the max spill fill buffer size

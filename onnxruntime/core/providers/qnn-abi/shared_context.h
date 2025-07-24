@@ -42,24 +42,24 @@ class SharedContext {
     return qnn_model;
   }
 
-  // bool SetSharedQnnModel(std::vector<std::unique_ptr<qnn::QnnModel>>&& shared_qnn_models,
-  //                        std::string& duplicate_graph_names) {
-  //   const std::lock_guard<std::mutex> lock(mtx_);
-  //   bool graph_exist = false;
-  //   for (auto& shared_qnn_model : shared_qnn_models) {
-  //     auto& model_name = shared_qnn_model->Name();
-  //     auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
-  //                       [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
-  //     if (it == shared_qnn_models_.end()) {
-  //       shared_qnn_models_.push_back(std::move(shared_qnn_model));
-  //     } else {
-  //       duplicate_graph_names.append(model_name + " ");
-  //       graph_exist = true;
-  //     }
-  //   }
+  bool SetSharedQnnModel(std::vector<std::unique_ptr<qnn::QnnModel>>&& shared_qnn_models,
+                         std::string& duplicate_graph_names) {
+    const std::lock_guard<std::mutex> lock(mtx_);
+    bool graph_exist = false;
+    for (auto& shared_qnn_model : shared_qnn_models) {
+      auto& model_name = shared_qnn_model->Name();
+      auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
+                        [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
+      if (it == shared_qnn_models_.end()) {
+        shared_qnn_models_.push_back(std::move(shared_qnn_model));
+      } else {
+        duplicate_graph_names.append(model_name + " ");
+        graph_exist = true;
+      }
+    }
 
-  //   return graph_exist;
-  // }
+    return graph_exist;
+  }
 
   bool SetSharedQnnBackendManager(std::shared_ptr<qnn::QnnBackendManager>& qnn_backend_manager) {
     const std::lock_guard<std::mutex> lock(mtx_);

@@ -68,6 +68,27 @@ namespace onnxruntime {
     }                                                                   \
   } while (0)
 
+#define RETURN_IF_ERROR(fn)    \
+  do {                         \
+    OrtStatus* _status = (fn); \
+    if (_status != nullptr) {  \
+      return _status;          \
+    }                          \
+  } while (0)
+
+#define RETURN_IF(cond, ort_api, msg)                    \
+  do {                                                   \
+    if ((cond)) {                                        \
+      return (ort_api).CreateStatus(ORT_EP_FAIL, (msg)); \
+    }                                                    \
+  } while (0)
+
+struct ApiPtrs {
+  const OrtApi& ort_api;
+  const OrtEpApi& ep_api;
+  const OrtModelEditorApi& model_editor_api;
+};
+
 // inline void InitOrtCppApi() {
 //   // Call util function in provider bridge that initializes the global api_ object.
 //   InitProviderOrtApi();
@@ -257,6 +278,12 @@ class OrtNodeAttrHelper {
   const OrtApi& ort_api_;
   const OrtArrayOfConstObjects** attributes;
 };
+
+OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,
+                                          const OrtSessionOptions& session_options,
+                                          const char* config_key,
+                                          const std::string& default_val,
+                                          /*out*/ std::string& config_val);
 
 // TODO
 // Not sure why Env::Default() fails inside EP, replicate below implementations from "core/platform/posix/env.cc" and

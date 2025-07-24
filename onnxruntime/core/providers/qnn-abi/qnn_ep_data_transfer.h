@@ -3,7 +3,9 @@
 
 #pragma once
 
-#include "test/autoep/library/example_plugin_ep_utils.h"
+#include "core/providers/qnn-abi/ort_api.h"
+
+namespace onnxruntime {
 
 struct QnnDataTransfer : OrtDataTransferImpl, ApiPtrs {
   QnnDataTransfer(ApiPtrs api_ptrs,
@@ -32,3 +34,5 @@ struct QnnDataTransfer : OrtDataTransferImpl, ApiPtrs {
   const OrtMemoryDevice* device_mem_info;
   const OrtMemoryDevice* shared_mem_info;
 };
+
+}  // namespace onnxruntime

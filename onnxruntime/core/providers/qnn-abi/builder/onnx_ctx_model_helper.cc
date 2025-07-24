@@ -126,37 +126,48 @@ bool GraphHasEpContextNode(const OrtGraph* graph, const OrtApi& ort_api) {
   return false;
 }
 
-// TODO: Need to update this to work with OrtGraph and OrtApi
-// bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs) {
-//   for (const auto& fused_node_graph : fused_nodes_and_graphs) {
-//     const onnxruntime::GraphViewer& graph_viewer(fused_node_graph.filtered_graph);
-//     bool has_qnn_ep_context_node = GraphHasEpContextNode(graph_viewer);
-//     if (has_qnn_ep_context_node) {
-//       return true;
-//     }
-//   }
-//   return false;
-// }
+bool IsOrtGraphHasCtxNode(const OrtGraph** graphs, size_t count, const OrtApi& ort_api) {
+  for (size_t graph_idx = 0; graph_idx < count; ++graph_idx) {
+    if (GraphHasEpContextNode(graphs[graph_idx], ort_api)) {
+      return true;
+    }
+  }
+  return false;
+}
 
-// Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-//                           std::vector<int>& main_context_pos) {
-//   for (size_t i = 0; i < fused_nodes_and_graphs.size(); ++i) {
-//     // Only EPContext nodes are filtered in
-//     // There is only one EPContext node in one filtered graph -- this is guaranteed by GetCapability
-//     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[i].filtered_graph);
-//     ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
-//     const Node& ep_context_node = *graph_viewer.Nodes().begin();
-//     ORT_RETURN_IF_NOT(EPCONTEXT_OP == ep_context_node.OpType(), "Should only filter in the EPContext node.");
-//     NodeAttrHelper node_helper(ep_context_node);
-//     int64_t is_main_context = node_helper.Get(MAIN_CONTEXT, static_cast<int64_t>(0));
-//     if (1 == is_main_context) {
-//       main_context_pos.push_back(static_cast<int>(i));
-//     }
-//   }
+Status GetMainContextNode(const OrtGraph** graphs,
+                          size_t count,
+                          const OrtApi& ort_api,
+                          std::vector<int>& main_context_pos) {
+  for (size_t graph_idx = 0; graph_idx < count; ++graph_idx) {
+    OrtArrayOfConstObjects* nodes = nullptr;
+    ort_api.Graph_GetNodes(graphs[graph_idx], &nodes);
 
-//   ORT_RETURN_IF(main_context_pos.size() < 1, "Failed to find the EPContext node with main_context=1");
-//   return Status::OK();
-// }
+    size_t num_nodes = 0;
+    ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
+    ORT_RETURN_IF(num_nodes != 1, "OrtGraph should has only one EPContext node.");
+
+    const void* node = nullptr;
+    ort_api.ArrayOfConstObjects_GetElementAt(nodes, 0, &node);
+
+    const OrtNode* ep_context_node = static_cast<const OrtNode*>(node);
+
+    const char* op_type = nullptr;
+    ort_api.Node_GetOperatorType(ep_context_node, &op_type);
+    ORT_RETURN_IF(op_type != EPCONTEXT_OP, "EPContext node should be EPContext type.");
+
+    OrtNodeAttrHelper node_helper(ort_api, *ep_context_node);
+    int64_t is_main_context = node_helper.Get(MAIN_CONTEXT, static_cast<int64_t>(0));
+    if (is_main_context == 1) {
+      main_context_pos.push_back(static_cast<int>(graph_idx));
+    }
+
+    ort_api.ReleaseArrayOfConstObjects(nodes);
+  }
+
+  ORT_RETURN_IF(main_context_pos.size() < 1, "Failed to find the EPContext node with main_context=1.");
+  return Status::OK();
+}
 
 // Status CreateNodeArgs(const std::vector<std::string>& names,
 //                       const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,
@@ -178,118 +189,162 @@ bool GraphHasEpContextNode(const OrtGraph* graph, const OrtApi& ort_api) {
 //   return Status::OK();
 // }
 
-// Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
-//                                 const onnxruntime::PathString& ctx_onnx_model_path,
-//                                 QnnBackendManager* qnn_backend_manager,
-//                                 QnnModelLookupTable& qnn_models,
-//                                 int64_t max_spill_fill_size) {
-//   ORT_RETURN_IF_NOT(EPCONTEXT_OP == main_context_node.OpType(), "Should only filter in the EPContext node.");
-//   NodeAttrHelper node_helper(main_context_node);
-//   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
-//   if (is_embed_mode) {
-//     const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, "");
-//     return qnn_backend_manager->LoadCachedQnnContextFromBuffer(const_cast<char*>(context_binary.c_str()),
-//                                                                static_cast<uint64_t>(context_binary.length()),
-//                                                                main_context_node.Name(),
-//                                                                qnn_models,
-//                                                                max_spill_fill_size);
-//   }
+Status GetEpContextFromMainNode(const OrtNode* main_context_node,
+                                const OrtApi& ort_api,
+                                const onnxruntime::PathString& ctx_onnx_model_path,
+                                QnnBackendManager* qnn_backend_manager,
+                                QnnModelLookupTable& qnn_models,
+                                int64_t max_spill_fill_size) {
+  const char* op_type = nullptr;
+  ort_api.Node_GetOperatorType(main_context_node, &op_type);
+  ORT_RETURN_IF(op_type != EPCONTEXT_OP, "EPContext node should be EPContext type.");
 
-//   std::filesystem::path folder_path = std::filesystem::path(ctx_onnx_model_path).parent_path();
-//   std::string external_qnn_ctx_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
-//   ORT_RETURN_IF(external_qnn_ctx_binary_file_name.empty(), "The file path in ep_cache_context should not be empty.");
-// #ifdef _WIN32
-//   onnxruntime::PathString external_qnn_context_binary_path = onnxruntime::ToPathString(external_qnn_ctx_binary_file_name);
-//   auto ctx_file_path = std::filesystem::path(external_qnn_context_binary_path.c_str());
-//   ORT_RETURN_IF(ctx_file_path.is_absolute(), "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
-//                 external_qnn_ctx_binary_file_name);
-//   auto relative_path = ctx_file_path.lexically_normal().make_preferred().wstring();
-//   if (relative_path.find(L"..", 0) != std::string::npos) {
-//     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context field has '..'. It's not allowed to point outside the directory.");
-//   }
+  const char* main_context_node_name = nullptr;
+  ort_api.Node_GetName(main_context_node, &main_context_node_name);
 
-//   std::filesystem::path context_binary_path = folder_path.append(relative_path);
-// #else
-//   ORT_RETURN_IF(external_qnn_ctx_binary_file_name[0] == '/',
-//                 "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
-//                 external_qnn_ctx_binary_file_name);
-//   if (external_qnn_ctx_binary_file_name.find("..", 0) != std::string::npos) {
-//     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context field has '..'. It's not allowed to point outside the directory.");
-//   }
-//   std::filesystem::path context_binary_path = folder_path.append(external_qnn_ctx_binary_file_name);
-//   std::string file_full_path = context_binary_path.string();
-// #endif
-//   if (!std::filesystem::is_regular_file(context_binary_path)) {
-//     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
-//   }
+  OrtNodeAttrHelper node_helper(ort_api, *main_context_node);
+  bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
+  if (is_embed_mode) {
+    const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, "");
+    return qnn_backend_manager->LoadCachedQnnContextFromBuffer(const_cast<char*>(context_binary.c_str()),
+                                                               static_cast<uint64_t>(context_binary.length()),
+                                                               main_context_node_name,
+                                                               qnn_models,
+                                                               max_spill_fill_size);
+  }
 
-//   size_t buffer_size{0};
-//   std::ifstream cache_file(context_binary_path.string().c_str(), std::ifstream::binary);
-//   ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
+  std::filesystem::path folder_path = std::filesystem::path(ctx_onnx_model_path).parent_path();
+  std::string external_qnn_ctx_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
+  ORT_RETURN_IF(external_qnn_ctx_binary_file_name.empty(), "The file path in ep_cache_context should not be empty.");
+#ifdef _WIN32
+  onnxruntime::PathString external_qnn_context_binary_path = onnxruntime::ToPathString(external_qnn_ctx_binary_file_name);
+  auto ctx_file_path = std::filesystem::path(external_qnn_context_binary_path.c_str());
+  ORT_RETURN_IF(ctx_file_path.is_absolute(),
+                "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
+                external_qnn_ctx_binary_file_name);
+  auto relative_path = ctx_file_path.lexically_normal().make_preferred().wstring();
+  if (relative_path.find(L"..", 0) != std::string::npos) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME,
+                           INVALID_GRAPH,
+                           "The file path in ep_cache_context field has '..'.",
+                           "It's not allowed to point outside the directory.");
+  }
 
-//   cache_file.seekg(0, cache_file.end);
-//   buffer_size = static_cast<size_t>(cache_file.tellg());
-//   ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
+  std::filesystem::path context_binary_path = folder_path.append(relative_path);
+#else
+  ORT_RETURN_IF(external_qnn_ctx_binary_file_name[0] == '/',
+                "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
+                external_qnn_ctx_binary_file_name);
+  if (external_qnn_ctx_binary_file_name.find("..", 0) != std::string::npos) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME,
+                           INVALID_GRAPH, "The file path in ep_cache_context field has '..'."
+                           "It's not allowed to point outside the directory.");
+  }
+  std::filesystem::path context_binary_path = folder_path.append(external_qnn_ctx_binary_file_name);
+  std::string file_full_path = context_binary_path.string();
+#endif
+  if (!std::filesystem::is_regular_file(context_binary_path)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME,
+                           INVALID_GRAPH,
+                           "The file path in ep_cache_context does not exist or is not accessible.");
+  }
 
-//   cache_file.seekg(0, cache_file.beg);
-//   std::unique_ptr<char[]> buffer = std::make_unique<char[]>(buffer_size);
-//   ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
-//   // Load file into buffer
-//   const auto& read_result = cache_file.read(buffer.get(), buffer_size);
-//   ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
-//   cache_file.close();
-//   return qnn_backend_manager->LoadCachedQnnContextFromBuffer(buffer.get(),
-//                                                              static_cast<uint64_t>(buffer_size),
-//                                                              main_context_node.Name(),
-//                                                              qnn_models,
-//                                                              max_spill_fill_size);
-// }
+  size_t buffer_size{0};
+  std::ifstream cache_file(context_binary_path.string().c_str(), std::ifstream::binary);
+  ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
 
-// Status TryGetMaxSpillFillSize(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-//                               uint32_t total_context_size,
-//                               int64_t& max_spill_fill_size,
-//                               std::vector<int>& main_context_pos_list) {
-//   max_spill_fill_size = 0;
-//   int max_size_index = 0;
-//   for (uint32_t i = 0; i < total_context_size; ++i) {
-//     auto index = main_context_pos_list[i];
-//     const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[index].filtered_graph);
-//     ORT_RETURN_IF(main_ctx_graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
-//     const Node& ep_context_node = *main_ctx_graph_viewer.Nodes().begin();
-//     NodeAttrHelper node_helper(ep_context_node);
-//     int64_t max_size = node_helper.Get(MAX_SIZE, static_cast<int64_t>(0));
-//     if (max_size > max_spill_fill_size) {
-//       max_spill_fill_size = max_size;
-//       max_size_index = i;
-//     }
-//   }
-//   if (0 != max_size_index) {
-//     int tmp_index = main_context_pos_list[0];
-//     main_context_pos_list[0] = main_context_pos_list[max_size_index];
-//     main_context_pos_list[max_size_index] = tmp_index;
-//   }
+  cache_file.seekg(0, cache_file.end);
+  buffer_size = static_cast<size_t>(cache_file.tellg());
+  ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
 
-//   return Status::OK();
-// }
+  cache_file.seekg(0, cache_file.beg);
+  std::unique_ptr<char[]> buffer = std::make_unique<char[]>(buffer_size);
+  ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
+  // Load file into buffer
+  const auto& read_result = cache_file.read(buffer.get(), buffer_size);
+  ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
+  cache_file.close();
+  return qnn_backend_manager->LoadCachedQnnContextFromBuffer(buffer.get(),
+                                                             static_cast<uint64_t>(buffer_size),
+                                                             main_context_node_name,
+                                                             qnn_models,
+                                                             max_spill_fill_size);
+}
 
-// Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
-//                                const onnxruntime::PathString& ctx_onnx_model_path,
-//                                QnnBackendManager* qnn_backend_manager,
-//                                QnnModelLookupTable& qnn_models,
-//                                const logging::Logger& logger,
-//                                int64_t max_spill_fill_size) {
-//   ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
-//   Status status = GetEpContextFromMainNode(*graph_viewer.Nodes().begin(), ctx_onnx_model_path, qnn_backend_manager,
-//                                            qnn_models, max_spill_fill_size);
+Status TryGetMaxSpillFillSize(const OrtGraph** graphs,
+                              const OrtApi& ort_api,
+                              uint32_t total_context_size,
+                              int64_t& max_spill_fill_size,
+                              std::vector<int>& main_context_pos_list) {
+  max_spill_fill_size = 0;
+  int max_size_index = 0;
+  for (uint32_t idx = 0; idx < total_context_size; ++idx) {
+    OrtArrayOfConstObjects* nodes = nullptr;
+    ort_api.Graph_GetNodes(graphs[idx], &nodes);
 
-//   // This is the protocol with customer that status with INVALID_GRAPH will be generated if failed to load context model
-//   if (!status.IsOK()) {
-//     LOGS(logger, ERROR) << "Failed to load from EpContext model. " << status.ErrorMessage();
-//     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to load from EpContext model. ", status.ErrorMessage());
-//   }
+    size_t num_nodes = 0;
+    ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
+    ORT_RETURN_IF(num_nodes != 1, "OrtGraph should has only one EPContext node.");
 
-//   return Status::OK();
-// }
+    const void* node = nullptr;
+    ort_api.ArrayOfConstObjects_GetElementAt(nodes, 0, &node);
+
+    const OrtNode* ep_context_node = static_cast<const OrtNode*>(node);
+
+    OrtNodeAttrHelper node_helper(ort_api, *ep_context_node);
+    int64_t max_size = node_helper.Get(MAX_SIZE, static_cast<int64_t>(0));
+    if (max_size > max_spill_fill_size) {
+      max_spill_fill_size = max_size;
+      max_size_index = idx;
+    }
+
+    ort_api.ReleaseArrayOfConstObjects(nodes);
+  }
+
+  if (0 != max_size_index) {
+    int tmp_index = main_context_pos_list[0];
+    main_context_pos_list[0] = main_context_pos_list[max_size_index];
+    main_context_pos_list[max_size_index] = tmp_index;
+  }
+
+  return Status::OK();
+}
+
+Status LoadQnnCtxFromOnnxGraph(const OrtGraph* graph,
+                               const OrtApi& ort_api,
+                               const onnxruntime::PathString& ctx_onnx_model_path,
+                               QnnBackendManager* qnn_backend_manager,
+                               QnnModelLookupTable& qnn_models,
+                               const logging::Logger& logger,
+                               int64_t max_spill_fill_size) {
+  OrtArrayOfConstObjects* nodes = nullptr;
+  ort_api.Graph_GetNodes(graph, &nodes);
+
+  size_t num_nodes = 0;
+  ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
+  ORT_RETURN_IF(num_nodes != 1, "OrtGraph should has only one EPContext node.");
+
+  const void* node = nullptr;
+  ort_api.ArrayOfConstObjects_GetElementAt(nodes, 0, &node);
+
+  const OrtNode* ep_context_node = static_cast<const OrtNode*>(node);
+  Status status = GetEpContextFromMainNode(ep_context_node,
+                                           ort_api,
+                                           ctx_onnx_model_path,
+                                           qnn_backend_manager,
+                                           qnn_models,
+                                           max_spill_fill_size);
+
+  ort_api.ReleaseArrayOfConstObjects(nodes);
+
+  // This is the protocol with customer that status with INVALID_GRAPH will be generated if failed to load context model
+  if (!status.IsOK()) {
+    LOGS(logger, ERROR) << "Failed to load from EpContext model. " << status.ErrorMessage();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to load from EpContext model. ", status.ErrorMessage());
+  }
+
+  return Status::OK();
+}
 
 // Status CreateEPContextNodes(Model* model,
 //                             unsigned char* buffer,

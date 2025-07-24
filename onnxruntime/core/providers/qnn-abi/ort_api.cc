@@ -5,7 +5,9 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <utility>
+
 #include <gsl/gsl>
 
 namespace onnxruntime {
@@ -260,6 +262,29 @@ bool OrtNodeAttrHelper::HasAttr(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
   return !rt;  // Return true if attribute exists (rt == 0), false if not found (rt != 0)
+}
+
+OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,
+                                          const OrtSessionOptions& session_options,
+                                          const char* config_key,
+                                          const std::string& default_val,
+                                          /*out*/ std::string& config_val) {
+  int has_config = 0;
+  RETURN_IF_ERROR(ort_api.HasSessionConfigEntry(&session_options, config_key, &has_config));
+
+  if (has_config != 1) {
+    config_val = default_val;
+    return nullptr;
+  }
+
+  size_t size = 0;
+  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key, nullptr, &size));
+
+  config_val.resize(size);
+  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key, config_val.data(), &size));
+  config_val.resize(size - 1);  // remove the terminating '\0'
+
+  return nullptr;
 }
 
 PathString OrtGetRuntimePath() {

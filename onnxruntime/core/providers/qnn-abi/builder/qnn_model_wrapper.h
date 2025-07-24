@@ -15,7 +15,6 @@
 #include "core/providers/qnn-abi/builder/qnn_def.h"
 #include "core/providers/qnn-abi/builder/qnn_quant_params_wrapper.h"
 #include "core/providers/qnn-abi/builder/qnn_utils.h"
-#include "test/autoep/library/example_plugin_ep_utils.h"
 
 namespace onnxruntime {
 namespace qnn {

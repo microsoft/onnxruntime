@@ -6,6 +6,8 @@
 #include <cassert>
 #include <gsl/span>
 
+namespace onnxruntime {
+
 /*static*/
 bool ORT_API_CALL QnnDataTransfer::CanCopyImpl(void* this_ptr,
                                                const OrtMemoryDevice* src_memory_device,
@@ -97,3 +99,5 @@ void ORT_API_CALL QnnDataTransfer::ReleaseImpl(void* /*this_ptr*/) noexcept {
   // If you create a new instance on each call to OrtEpFactory::CreateDataTransfer you call `delete` here
   // delete static_cast<QnnDataTransfer*>(this_ptr);
 }
+
+}  // namespace onnxruntime

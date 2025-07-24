@@ -19,7 +19,6 @@
 #include "core/providers/qnn-abi/builder/qnn_model.h"
 #include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
-#include "test/autoep/library/example_plugin_ep_utils.h"
 #include "core/providers/qnn-abi/qnn_telemetry.h"
 #include "core/providers/qnn-abi/rpcmem_library.h"
 
@@ -72,19 +71,18 @@ class QnnEp : public OrtEp, public ApiPtrs {
                                const logging::Logger& logger,
                                std::vector<const OrtNode*>& supported_nodes) const;
 
+  void PartitionCtxModel(const OrtGraph* graph, OrtEpGraphSupportInfo* graph_support_info);
+
+  OrtStatus* CompileContextModel(const OrtGraph** graphs,
+                                 const OrtNode** fused_nodes,
+                                 size_t count,
+                                 OrtNodeComputeInfo** node_compute_infos);
+
   // // Helper functions
   // int GenerateMetadefId(const OrtGraph* graph, uint64_t& model_hash);
   // std::string MakeMetadefName(const OrtGraph* graph);
-  bool EpSharedContextsHasAllGraphs(QnnEp* ep, const OrtGraph* graph);
   void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string,
                                                  const logging::Logger& logger);
-  qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level, const logging::Logger& logger);
-  void PartitionCtxModel(const OrtEp* this_ptr, const OrtGraph* graph, size_t num_nodes_in_graph,
-                         OrtEpGraphSupportInfo* graph_support_info);
-  static void GetMainEPCtxNodes(QnnEp* ep, const OrtGraph* graph, std::unordered_set<const OrtNode*>& ep_context_nodes);
-  void GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
-                                   const std::string& model_path_string,
-                                   std::string& context_model_path);
 
   void InitQnnHtpGraphConfigs(
       qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;

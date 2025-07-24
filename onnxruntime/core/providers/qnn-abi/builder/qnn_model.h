@@ -11,7 +11,6 @@
 #include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn-abi/builder/qnn_backend_manager.h"
 #include "core/providers/qnn-abi/rpcmem_library.h"
-#include "test/autoep/library/example_plugin_ep_utils.h"
 
 namespace onnxruntime {
 namespace qnn {

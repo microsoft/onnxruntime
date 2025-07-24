@@ -1,25 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
 
-#pragma once
-
-#include "qnn_ep_factory.h"
-#include "qnn_ep_data_transfer.h"
+#include "core/providers/qnn-abi/qnn_ep_factory.h"
 
 #include <cassert>
-
-// #include "qnn_ep.h"
-#include "test/autoep/library/ep_data_transfer.h"
-#include "test/autoep/library/example_plugin_ep_utils.h"
-#include "test/autoep/library/ep_allocator.h"
-#include "core/framework/error_code_helper.h"
 #include <iostream>
+
+#include "core/framework/error_code_helper.h"
+#include "core/providers/qnn-abi/ort_api.h"
+#include "core/providers/qnn-abi/qnn_ep_data_transfer.h"
 
 // Global registry to store the QNN EP factory for auto EP selection
 static OrtEpFactory* g_qnn_plugin_factory = nullptr;
 
 namespace onnxruntime {
-#if !BUILD_QNN_EP_STATIC_LIB
 
 // OrtEpApi infrastructure to be able to use the QNN EP as an OrtEpFactory for auto EP selection.
 QnnEpFactory::QnnEpFactory(const char* ep_name,
@@ -166,7 +160,8 @@ OrtStatus* ORT_API_CALL QnnEpFactory::CreateDataTransferImpl(OrtEpFactory* this_
 
   return nullptr;
 }
-};
+
+}  // namespace onnxruntime
 
 extern "C" {
 //
@@ -181,7 +176,7 @@ OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase
 
   // Factory could use registration_name or define its own EP name.
   auto factory_cpu = std::make_unique<onnxruntime::QnnEpFactory>("QnnAbiTestProvider",
-                                                                 ApiPtrs{*ort_api, *ep_api, *model_editor_api},
+                                                                 onnxruntime::ApiPtrs{*ort_api, *ep_api, *model_editor_api},
                                                                  OrtHardwareDeviceType_CPU,
                                                                  "cpu");
 
@@ -205,6 +200,4 @@ OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
   return nullptr;
 }
 
-}  // namespace onnxruntime
-
-#endif  // !BUILD_QNN_EP_STATIC_LIB
+}
