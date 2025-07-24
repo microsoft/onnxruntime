@@ -293,10 +293,8 @@ struct ProviderHostImpl : ProviderHost {
   Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg, file, line); }
   void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg, file, line); }
 
-#ifdef USE_MIGRAPHX
   std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGraphX().CreateMIGraphXAllocator(device_id, name); }
   std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGraphX().CreateMIGraphXPinnedAllocator(device_id, name); }
-#endif
 
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return GetProviderInfo_CUDA().CreateGPUDataTransfer(); }
 
@@ -1805,23 +1803,25 @@ Status ProviderLibrary::Load() {
 
   try {
     std::lock_guard<std::mutex> lock{mutex_};
-    s_library_shared.Ensure();
+    if (!provider_) {
+      s_library_shared.Ensure();
 
-    if (absolute_) {
-      // If filename_ is not absolute it should not be loaded.
-      if (!std::filesystem::path{filename_}.is_absolute()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+      if (absolute_) {
+        // If filename_ is not absolute it should not be loaded.
+        if (!std::filesystem::path{filename_}.is_absolute()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+        }
+        ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
+      } else {
+        auto full_path = Env::Default().GetRuntimePath() + filename_;
+        ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
       }
-      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
-    } else {
-      auto full_path = Env::Default().GetRuntimePath() + filename_;
-      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+
+      Provider* (*PGetProvider)();
+      ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+
+      provider_ = PGetProvider();
     }
-
-    Provider* (*PGetProvider)();
-    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
-
-    provider_ = PGetProvider();
   } catch (const std::exception&) {
     Unload();  // If anything fails we unload the library and rethrow
     throw;
@@ -1838,7 +1838,9 @@ Provider& ProviderLibrary::Get() {
       }
 
       std::lock_guard<std::mutex> lock{mutex_};
-      provider_->Initialize();
+      if (!initialized_) {
+        provider_->Initialize();
+      }
       initialized_ = true;
     }
 

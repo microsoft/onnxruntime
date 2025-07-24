@@ -131,6 +131,10 @@ class OpenVINOEpPluginFactory : public OrtEpFactory, public ApiPtrs {
     return OpenVINOEpPluginFactory::vendor_id_;
   }
 
+  static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory*) noexcept {
+    return ORT_VERSION;
+  }
+
   static OrtStatus* ORT_API_CALL GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
                                                          const OrtHardwareDevice* const* devices,
                                                          size_t num_devices,
@@ -141,14 +145,41 @@ class OpenVINOEpPluginFactory : public OrtEpFactory, public ApiPtrs {
     return ApiEntry([&]() { return factory->GetSupportedDevices(devices, num_devices, ep_devices, max_ep_devices, p_num_ep_devices); });
   }
 
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
+                                                     const OrtMemoryInfo* /*memory_info*/,
+                                                     const OrtKeyValuePairs* /*allocator_options*/,
+                                                     OrtAllocator** allocator) noexcept {
+    auto* factory = static_cast<OpenVINOEpPluginFactory*>(this_ptr);
+
+    *allocator = nullptr;
+    return factory->ort_api.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "CreateAllocator should not be called as we did not add OrtMemoryInfo to our OrtEpDevice.");
+  }
+
+  static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* /*allocator*/) noexcept {
+    // should never be called as we don't implement CreateAllocator
+  }
+
   static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* /*this_ptr*/,
                                                         OrtDataTransferImpl** data_transfer) noexcept {
     *data_transfer = nullptr;  // return nullptr to indicate that this EP does not support data transfer.
     return nullptr;
   }
 
-  static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory*) noexcept {
-    return ORT_VERSION;
+  static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return false;
+  }
+
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+                                                               const OrtMemoryDevice* /*memory_device*/,
+                                                               const OrtKeyValuePairs* /*stream_options*/,
+                                                               OrtSyncStreamImpl** stream) noexcept {
+    auto* factory = static_cast<OpenVINOEpPluginFactory*>(this_ptr);
+
+    *stream = nullptr;
+    return factory->ort_api.CreateStatus(
+        ORT_INVALID_ARGUMENT, "CreateSyncStreamForDevice should not be called as IsStreamAware returned false.");
   }
 };
 

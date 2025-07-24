@@ -232,8 +232,7 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
     if (blob_filename.empty()) {
       blob_filename = session_context_.onnx_model_path_name;
     }
-    blob_filename = blob_filename.parent_path() / name;
-    blob_filename.replace_extension("blob");
+    blob_filename = blob_filename.parent_path() / (name + ".blob");
     std::ofstream blob_file(blob_filename,
                             std::ios::out | std::ios::trunc | std::ios::binary);
     if (!blob_file) {

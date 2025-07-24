@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.25)
 # Function to get NPM path from Node.js path
 function(get_npm_path_from_node result_var node_path)
   get_filename_component(NODE_DIR ${node_path} DIRECTORY)
-  if(WIN32)
+  if(CMAKE_HOST_WIN32)
     set(NPM_CLI_CANDIDATE "${NODE_DIR}/npm.cmd")
     if(NOT EXISTS ${NPM_CLI_CANDIDATE})
       set(NPM_CLI_CANDIDATE "${NODE_DIR}/npm")
