@@ -34,7 +34,7 @@ namespace perftest {
       "\t-A: Disable memory arena\n"
       "\t-I: Generate tensor input binding. Free dimensions are treated as 1 unless overridden using -f.\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai|webgpu|plugin_ep]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
+      "\t-e or --ep [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai|webgpu|plugin_ep]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
       "'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai', 'webgpu' or plugin execution provider that provided via ep library. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
@@ -161,12 +161,10 @@ namespace perftest {
       "\t-X [Enable onnxruntime-extensions custom ops]: Registers custom ops from onnxruntime-extensions. "
       "onnxruntime-extensions must have been built in to onnxruntime. This can be done with the build.py "
       "'--use_extensions' option.\n"
-#ifndef DISABLE_EXCEPTIONS
       "\t--plugin_ep_libs [registration names and libraries] Specifies a list of plugin execution provider(EP) registration names and their corresponding shared libraries to register.\n"
       "\t    [Usage]: --plugin_ep_libs 'plugin_ep_1|plugin_ep_2.dll plugin_ep_2|plugin_ep_2.dll'\n"
-      "\t--list_devices Prints all available device indices and their properties (including metadata).\n"
-      "\t--select_devices [list of device indices] A semicolon-separated list of device indices to add to the session and run with.\n"
-#endif
+      "\t--list_ep_devices Prints all available device indices and their properties (including metadata). This option makes the program exit early without performing inference.\n"
+      "\t--select_ep_devices [list of device indices] A semicolon-separated list of device indices to add to the session and run with.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -194,61 +192,55 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
   return true;
 }
 
-bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
+bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   ORT_TRY {
     cxxopts::Options options("onnxruntime_perf_test", "perf_test [options...] model_path [result_file]");
-
-    options.add_options()("f", "Free dimension override by name", cxxopts::value<std::vector<std::string> >());
-    options.add_options()("F", "Free dimension override by denotation", cxxopts::value<std::vector<std::string> >());
-    options.add_options()("m", "Test mode: duration or times", cxxopts::value<std::string>());
-    options.add_options()("e,ep", "Execution provider", cxxopts::value<std::string>());
-    options.add_options()("r", "Repeat times", cxxopts::value<size_t>());
-    options.add_options()("t", "Duration in seconds", cxxopts::value<size_t>());
-    options.add_options()("p", "Profile output file", cxxopts::value<std::string>());
-    options.add_options()("x", "Intra-op threads", cxxopts::value<int>());
-    options.add_options()("y", "Inter-op threads", cxxopts::value<int>());
-    options.add_options()("c", "Concurrent session runs", cxxopts::value<size_t>());
-    options.add_options()("d", "cuDNN conv algo", cxxopts::value<int>());
-    options.add_options()("o", "Graph optimization level", cxxopts::value<int>());
-    options.add_options()("u", "Optimized model path", cxxopts::value<std::string>());
-    options.add_options()("i", "EP runtime config string", cxxopts::value<std::string>());
-    options.add_options()("S", "Random seed", cxxopts::value<int>());
-    options.add_options()("T", "Intra-op thread affinities", cxxopts::value<std::string>());
-    options.add_options()("C", "Session config entries", cxxopts::value<std::string>());
-    options.add_options()("R", "Custom op library path", cxxopts::value<std::string>());
-    options.add_options()("A", "Disable CPU mem arena", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("M", "Disable memory pattern", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("s", "Dump statistics", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("v", "Verbose", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("I", "Generate model input binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("P", "Use ORT_PARALLEL mode", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("q", "CUDA copy in separate stream", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("z", "Set denormal as zero", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("D", "Disable spinning", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("Z", "Disable spinning between runs", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("n", "Exit after session creation", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("l", "Load model via path", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("g", "Enable CUDA IO binding", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("X", "Use extensions", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
-    options.add_options()("plugin_ep_libs", "Plugin EP names and libs", cxxopts::value<std::string>());
-    options.add_options()("list_devices", "Prints all available device indices and their properties (including metadata)");
-    options.add_options()("select_devices", "A semicolon-separated list of device indices to add to the session and run with", cxxopts::value<std::string>());
-    options.add_options()("h,help", "Print usage");
+    
+    // See ShowUsage() for detailed option descriptions.
+    options.add_options()("f", "", cxxopts::value<std::vector<std::string> >());
+    options.add_options()("F", "", cxxopts::value<std::vector<std::string> >());
+    options.add_options()("m", "", cxxopts::value<std::string>());
+    options.add_options()("e,ep", "", cxxopts::value<std::string>());
+    options.add_options()("r", "", cxxopts::value<size_t>());
+    options.add_options()("t", "", cxxopts::value<size_t>());
+    options.add_options()("p", "", cxxopts::value<std::string>());
+    options.add_options()("x", "", cxxopts::value<int>());
+    options.add_options()("y", "", cxxopts::value<int>());
+    options.add_options()("c", "", cxxopts::value<size_t>());
+    options.add_options()("d", "", cxxopts::value<int>());
+    options.add_options()("o", "", cxxopts::value<int>());
+    options.add_options()("u", "", cxxopts::value<std::string>());
+    options.add_options()("i", "", cxxopts::value<std::string>());
+    options.add_options()("S", "", cxxopts::value<int>());
+    options.add_options()("T", "", cxxopts::value<std::string>());
+    options.add_options()("C", "", cxxopts::value<std::string>());
+    options.add_options()("R", "", cxxopts::value<std::string>());
+    options.add_options()("A", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("M", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("s", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("v", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("I", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("P", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("q", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("z", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("D", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("Z", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("n", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("l", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("g", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("X", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("plugin_ep_libs", "", cxxopts::value<std::string>());
+    options.add_options()("list_ep_devices", "");
+    options.add_options()("select_ep_devices", "", cxxopts::value<std::string>());
+    options.add_options()("h,help", "");
 
 #ifdef _WIN32
     auto utf8_strings = utils::ConvertArgvToUtf8Strings(argc, argv);
-    auto utf8_argv = utils::ConvertArgvToUtf8CharPtrs(utf8_strings);
+    auto utf8_argv = utils::CStringsFromStrings(utf8_strings);
     auto result = options.parse(static_cast<int>(utf8_argv.size()), utf8_argv.data());
 #else
     auto result = options.parse(argc, argv);
 #endif
-
-    /*
-    if (result.count("help")) {
-      std::cout << options.help() << std::endl;
-      return false;
-    }
-    */
 
     if (result.count("f")) {
       std::basic_string<ORTCHAR_T> dim_name;
@@ -450,14 +442,14 @@ bool CommandLineParser::ParseArgumentsV2(PerformanceTestConfig& test_config, int
 
     if (result.count("plugin_ep_libs")) test_config.plugin_ep_names_and_libs = ToPathString(result["plugin_ep_libs"].as<std::string>());
 
-    if (result.count("select_devices")) test_config.selected_devices = result["select_devices"].as<std::string>();
+    if (result.count("select_ep_devices")) test_config.selected_devices = result["select_ep_devices"].as<std::string>();
 
     if (result.count("h")) {
       perftest::CommandLineParser::ShowUsage();
       return false;
     }
 
-    if (result.count("list_devices")) {
+    if (result.count("list_ep_devices")) {
       test_config.list_available_devices = true;
       return true;
     }

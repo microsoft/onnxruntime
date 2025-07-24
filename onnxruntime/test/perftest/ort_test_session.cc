@@ -53,19 +53,6 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
 
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - start;
-
-  for (size_t i = 0; i < outputs_.size(); i++) {
-    Ort::Value& ort_output = outputs_[i];
-    const float* output_data = ort_output.GetTensorData<float>();
-    gsl::span<const float> output_span(output_data, 6);
-    std::cout << output_span[0] << std::endl;
-    std::cout << output_span[1] << std::endl;
-    std::cout << output_span[2] << std::endl;
-    std::cout << output_span[3] << std::endl;
-    std::cout << output_span[4] << std::endl;
-    std::cout << output_span[5] << std::endl;
-  }
-
   return duration_seconds;
 }
 
@@ -100,10 +87,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           if (added_ep_device_index_set.find(index) == added_ep_device_index_set.end()) {
             added_ep_devices.push_back(device);
             added_ep_device_index_set.insert(index);
-            fprintf(stdout, "[Plugin EP] Device [Index: %d, Name: %s] has been added to session.", index, device.EpName());
+            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s] has been added to session.", index, device.EpName());
           }
         } else {
-          std::string err_msg = "[Plugin EP] [WARNING] : The device index and its corresponding OrtEpDevice is not created from " +
+          std::string err_msg = "[Plugin EP] [WARNING] : The EP device index and its corresponding OrtEpDevice is not created from " +
                                 performance_test_config.machine_config.provider_type_name + ". Will skip adding this device.\n";
           fprintf(stderr, "%s", err_msg.c_str());
         }
@@ -115,7 +102,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         Ort::ConstEpDevice& device = ep_devices[index];
         if (std::string(device.EpName()) == performance_test_config.machine_config.provider_type_name) {
           added_ep_devices.push_back(device);
-          fprintf(stdout, "Device [Index: %d, Name: %s] has been added to session.", index, device.EpName());
+          fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.", index, device.EpName());
         }
       }
     }

@@ -5,10 +5,10 @@
 
 #include <iostream>
 #include <sstream>
-#include <vector>
 
 #include "strings_helper.h"
 #include "core/common/common.h"
+#include "core/common/parse_string.h"
 
 namespace onnxruntime {
 namespace perftest {
@@ -61,7 +61,8 @@ void ParseDeviceList(const std::string& input, std::vector<int>& result) {
 
   while (std::getline(ss, item, ';')) {
     if (!item.empty()) {
-      result.push_back(std::stoi(item));
+      int value = ParseStringWithClassicLocale<int>(item);
+      result.push_back(value);
     }
   }
 }
