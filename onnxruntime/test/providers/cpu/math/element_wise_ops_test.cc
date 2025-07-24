@@ -2719,15 +2719,70 @@ TEST(MathOpTest, And_Bcast3v1d) {
   OpTester test("And");
   std::vector<int64_t> dims_a{3, 4, 5};
   std::vector<int64_t> dims_b{5};
-  test.AddInput<bool>("A", dims_a, {false, true, false, true, false, false, true, false, true, false, false, true, false, true, false,
-                                    false, true, false, true, false, false, true, false, true, false, false, true, false, true, false,
-                                    false, true, false, true, false, false, true, false, true, false, false, true, false, true, false,
-                                    false, true, false, true, false, false, true, false, true, false, false, true, false, true, false});
+  test.AddInput<bool>("A", dims_a, {false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false});
   test.AddInput<bool>("B", dims_b, {false, false, true, true, true});
-  test.AddOutput<bool>("C", dims_a, {false, false, false, true, false, false, false, false, true, false, false, false, false, true, false,
-                                     false, false, false, true, false, false, false, false, true, false, false, false, false, true, false,
-                                     false, false, false, true, false, false, false, false, true, false, false, false, false, true, false,
-                                     false, false, false, true, false, false, false, false, true, false, false, false, false, true, false,});
+  test.AddOutput<bool>("C", dims_a, {
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                    });
   test.Run();
 }
 
@@ -2735,16 +2790,70 @@ TEST(MathOpTest, And_Bcast3v2d) {
   OpTester test("And");
   std::vector<int64_t> dims_a{3, 4, 5};
   std::vector<int64_t> dims_b{4, 5};
-  test.AddInput<bool>("A", dims_a, {false, true, false, true, false, false, true, false, true, false, false, true, false, true, false,
-                                    false, true, false, true, false, false, true, false, true, false, false, true, false, true, false,
-                                    false, true, false, true, false, false, true, false, true, false, false, true, false, true, false,
-                                    false, true, false, true, false, false, true, false, true, false, false, true, false, true, false});
-  test.AddInput<bool>("B", dims_b, {false, false, true, true, true, false, false, true, true, true,
-                                    false, false, true, true, true, false, false, true, true, true});
-  test.AddOutput<bool>("C", dims_a, {false, false, false, true, false, false, false, false, true, false, false, false, false, true, false,
-                                     false, false, false, true, false, false, false, false, true, false, false, false, false, true, false,
-                                     false, false, false, true, false, false, false, false, true, false, false, false, false, true, false,
-                                     false, false, false, true, false, false, false, false, true, false, false, false, false, true, false,});
+  test.AddInput<bool>("A", dims_a, {false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, true, false});
+  test.AddInput<bool>("B", dims_b, {false, false, true, true, true, false, false, true, true, true, false, false, true, true, true, false, false, true, true, true});
+  test.AddOutput<bool>("C", dims_a, {
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                    });
   test.Run();
 }
 
@@ -2752,9 +2861,9 @@ TEST(MathOpTest, And_Bcast4v2d) {
   OpTester test("And");
   std::vector<int64_t> dims_a{3, 4, 5, 6};
   std::vector<int64_t> dims_b{5, 6};
-  bool a[3*4*5*6];
-  bool b[5*6];
-  bool c[3*4*5*6];
+  bool a[3 * 4 * 5 * 6];
+  bool b[5 * 6];
+  bool c[3 * 4 * 5 * 6];
   size_t stride1 = 4 * 5 * 6;
   size_t stride2 = 5 * 6;
   size_t stride3 = 6;
@@ -2769,27 +2878,27 @@ TEST(MathOpTest, And_Bcast4v2d) {
     }
   }
   for (size_t k = 0; k < 5; k++) {
-      for (size_t h = 0; h < 6; h++) {
-          b[k * stride3 + h] = (std::rand() % 2) == 0;
-      }
+    for (size_t h = 0; h < 6; h++) {
+      b[k * stride3 + h] = (std::rand() % 2) == 0;
+    }
   }
 
   for (size_t i = 0; i < 3; i++) {
-      for (size_t j = 0; j < 4; j++) {
-          for (size_t k = 0; k < 5; k++) {
-              for (size_t h = 0; h < 6; h++) {
-              c[i * stride1 + j * stride2 + k * stride3 + h] = (a[i * stride1 + j * stride2 + k * stride3 + h]) && (b[k * stride3 + h]);
-              }
-          }
+    for (size_t j = 0; j < 4; j++) {
+      for (size_t k = 0; k < 5; k++) {
+        for (size_t h = 0; h < 6; h++) {
+          c[i * stride1 + j * stride2 + k * stride3 + h] = (a[i * stride1 + j * stride2 + k * stride3 + h]) && (b[k * stride3 + h]);
+        }
       }
+    }
   }
-  //std::vector<bool> aVec(std::begin(a), std::end(a));
-  //std::vector<bool> bVec(std::begin(b), std::end(b));
-  //std::vector<bool> cVec(std::begin(c), std::end(c));
+  // std::vector<bool> aVec(std::begin(a), std::end(a));
+  // std::vector<bool> bVec(std::begin(b), std::end(b));
+  // std::vector<bool> cVec(std::begin(c), std::end(c));
 
-  test.AddInput<bool>("A", dims_a, a, 3*4*5*6);
-  test.AddInput<bool>("B", dims_b, b, 5*6);
-  test.AddOutput<bool>("C", dims_a, c, 3*4*5*6);
+  test.AddInput<bool>("A", dims_a, a, 3 * 4 * 5 * 6);
+  test.AddInput<bool>("B", dims_b, b, 5 * 6);
+  test.AddOutput<bool>("C", dims_a, c, 3 * 4 * 5 * 6);
   test.Run();
 }
 
