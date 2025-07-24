@@ -1,10 +1,9 @@
-FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20250714.2
+FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20250724.1
 
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
 
 ADD scripts /tmp/scripts
-RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh
-RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev

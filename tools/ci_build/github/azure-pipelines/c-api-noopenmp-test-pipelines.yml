@@ -180,7 +180,7 @@ stages:
     - name: runCodesignValidationInjection
       value: false
     - name: docker_base_image
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250724.1
     timeoutInMinutes: 60
     steps:
     - checkout: self

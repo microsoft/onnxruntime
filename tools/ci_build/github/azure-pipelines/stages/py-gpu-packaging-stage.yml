@@ -49,4 +49,4 @@ stages:
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
-          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
+          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250724.1
