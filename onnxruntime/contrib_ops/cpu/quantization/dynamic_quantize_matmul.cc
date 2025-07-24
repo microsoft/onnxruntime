@@ -291,7 +291,9 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
  private:
   bool can_use_dynamic_quant_mlas_{false};
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
   bool dynamic_quant_mlas_bias_data_was_packed_{false};
+#endif
 };
 
 class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
