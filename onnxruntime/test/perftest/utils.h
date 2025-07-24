@@ -29,9 +29,9 @@ std::vector<std::string> ConvertArgvToUtf8Strings(int argc, wchar_t* argv[]);
 std::vector<const char*> ConvertArgvToUtf8CharPtrs(std::vector<std::string>& utf8_args);
 #endif
 
-bool RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
+void RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
 
-bool UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
+void UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
 
 void ListDevices(const Ort::Env& env);
 

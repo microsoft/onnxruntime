@@ -48,9 +48,14 @@ int real_main(int argc, char* argv[]) {
     perftest::utils::RegisterExecutionProviderLibrary(env, test_config);
   }
 
+  // Unregister all registered plugin EP libraries before program exits.
+  // This is necessary because unregistering the plugin EP also unregisters any associated shared allocators.
+  // If we don't do this and program returns, the factories stored inside the environment will be destroyed when the environment goes out of scope.
+  // Later, when the shared allocator's deleter runs, it may cause a segmentation fault because it attempts to use the already-destroyed factory to call ReleaseAllocator.
+  // See "ep_device.ep_factory->ReleaseAllocator" in Environment::CreateSharedAllocatorImpl.
   auto unregister_plugin_eps_at_scope_exit = gsl::finally([&]() {
     if (!test_config.registered_plugin_eps.empty()) {
-      perftest::utils::UnregisterExecutionProviderLibrary(env, test_config);  // TODO ensure that this won't throw since it is called from the gsl::final_action destructor.
+      perftest::utils::UnregisterExecutionProviderLibrary(env, test_config);  // this won't throw
     }
   });
 
@@ -58,63 +63,26 @@ int real_main(int argc, char* argv[]) {
     perftest::utils::ListDevices(env);
     if (test_config.registered_plugin_eps.empty()) {
       fprintf(stdout, "No plugin execution provider libraries are registered. Please specify them using \"--plugin_ep_libs\"; otherwise, only CPU may be available.\n");
-    } else {
-      perftest::utils::UnregisterExecutionProviderLibrary(env, test_config);
     }
     return 0;
   }
 
-  auto status = Status::OK();
+  std::random_device rd;
+  perftest::PerformanceRunner perf_runner(env, test_config, rd);
 
-  ORT_TRY {
-    std::random_device rd;
-    perftest::PerformanceRunner perf_runner(env, test_config, rd);
-
-    // Exit if user enabled -n option so that user can measure session creation time
-    if (test_config.run_config.exit_after_session_creation) {
-      perf_runner.LogSessionCreationTime();
-      return 0;
-    }
-
-    status = perf_runner.Run();
-
-    if (!status.IsOK()) {
-      printf("Run failed:%s\n", status.ErrorMessage().c_str());
-    } else {
-      perf_runner.SerializeResult();
-    }
-  }
-  ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      fprintf(stderr, "%s\n", ex.what());
-    });
-  }
-  // The try/catch block above ensures the following:
-  // 1) Plugin EP libraries are unregistered if an exception occurs.
-  // 2) Objects are released in the correct order when running a plugin EP.
-  //
-  // Proper destruction order is critical to avoid use-after-free issues. The expected order of deleters is:
-  // session -> session allocator (accessed via EP factory) -> plugin EP -> env ->
-  // shared allocator (accessed via EP factory) -> plugin EP factory (owned by env)
-  //
-  // Without this order, the environment (`env`) might be destroyed first, and
-  // any subsequent access to the session allocator's deleter (which depends on the EP factory)
-  // can result in a segmentation fault because the factory has already been destroyed.
-
-  // Unregister all registered plugin EP libraries before program exits.
-  //
-  // This is necessary because unregistering the plugin EP also unregisters any associated shared allocators.
-  // If we don't do this first and program returns, the factories stored inside the environment will be destroyed when the environment goes out of scope.
-  // Later, when the shared allocator's deleter runs, it may cause a segmentation fault because it attempts to use the already-destroyed factory to call ReleaseAllocator.
-  //
-  // See "ep_device.ep_factory->ReleaseAllocator" in Environment::CreateSharedAllocatorImpl.
-  if (!test_config.registered_plugin_eps.empty()) {
-    perftest::utils::UnregisterExecutionProviderLibrary(env, test_config);
+  // Exit if user enabled -n option so that user can measure session creation time
+  if (test_config.run_config.exit_after_session_creation) {
+    perf_runner.LogSessionCreationTime();
+    return 0;
   }
 
+  auto status = perf_runner.Run();
   if (!status.IsOK()) {
+    printf("Run failed:%s\n", status.ErrorMessage().c_str());
     return -1;
   }
+
+  perf_runner.SerializeResult();
 
   return 0;
 }

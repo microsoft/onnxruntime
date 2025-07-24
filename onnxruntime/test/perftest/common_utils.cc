@@ -36,7 +36,7 @@ void ListDevices(const Ort::Env& env) {
   }
 }
 
-bool RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config) {
+void RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config) {
   if (!test_config.plugin_ep_names_and_libs.empty()) {
     std::unordered_map<std::string, std::string> ep_names_to_libs;
     ParseSessionConfigs(ToUTF8String(test_config.plugin_ep_names_and_libs), ep_names_to_libs);
@@ -44,20 +44,24 @@ bool RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test
       for (auto& pair : ep_names_to_libs) {
         const std::filesystem::path library_path = pair.second;
         const std::string registration_name = pair.first;
-        env.RegisterExecutionProviderLibrary(registration_name.c_str(), ToPathString(library_path.string()));
-        test_config.registered_plugin_eps.push_back(registration_name);
+        Ort::Status status(Ort::GetApi().RegisterExecutionProviderLibrary(env, registration_name.c_str(), ToPathString(library_path.string()).c_str()));
+        if (status.IsOK()) {
+          test_config.registered_plugin_eps.push_back(registration_name);
+        } else {
+          fprintf(stderr, "Can't register %s plugin library: %s", registration_name.c_str(), status.GetErrorMessage().c_str());
+        }
       }
     }
   }
-  return true;
 }
 
-bool UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config) {
+void UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config) {
   for (auto& registration_name : test_config.registered_plugin_eps) {
-    //auto status = Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str());
-    env.UnregisterExecutionProviderLibrary(registration_name.c_str());
+    Ort::Status status(Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str()));
+    if (!status.IsOK()) {
+      fprintf(stderr, "%s", status.GetErrorMessage().c_str());
+    }
   }
-  return true;
 }
 
 }  // namespace utils
