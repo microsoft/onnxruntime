@@ -50,14 +50,19 @@ Status GemmOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
 
     auto& inputC = node_unit.Inputs()[2];
     std::vector<uint32_t> inputC_shape;
-    QnnModelWrapper::GetOnnxShape(inputC.node_arg, inputC_shape);
+    QnnModelWrapper::GetOnnxShape(inputC.node_arg, inputC_shape); 
 
     auto transB = node_helper.Get("transB", static_cast<int64_t>(0));
     auto M = (transB == 0) ? inputB_shape.at(1) : inputB_shape.at(0);
     if (inputC_shape.size() == 0 || (inputC_shape.size() == 1 && inputC_shape.at(0) != M) ||
         (inputC_shape.size() == 2 && inputC_shape.at(1) != M)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support C with shape [M].");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support C with shape [N, M].");
     }
+
+    if (inputC_shape.size() == 2 && node_unit.Inputs()[2].quant_param.has_value()) {
+      bool a = node_unit.Inputs()[2].quant_param.has_value();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support unquantized C with shape [N, M].");
+}
   }
 
   return Status::OK();
@@ -215,10 +220,11 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     // If split_gemm, input and output of Gemm must at least 2d.
     const std::string& org_output_name = node_unit.Outputs()[0].node_arg.Name();
     TensorInfo input_info = {};
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_info));  
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_info));
     TensorInfo output_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
     std::vector<uint32_t> output_shape = output_info.shape;
+    QnnQuantParamsWrapper op_input_quant_param = input_info.quant_param.Copy();
     QnnQuantParamsWrapper op_output_quant_param = output_info.quant_param.Copy();
 
     const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(org_output_name);
@@ -244,14 +250,14 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 
     // Create Add Node
     Qnn_TensorType_t op_output_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-    std::string split_Add_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_Add";
+    std::string split_add_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_Add";
     QnnTensorWrapper op_output_tensor_wrapper(org_output_name, op_output_tensor_type, output_info.qnn_data_type,
                                               op_output_quant_param.Copy(), std::vector<uint32_t>(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(op_output_tensor_wrapper)),
                       "Failed to add ElementWiseAdd output tensor.");
     std::string bias_name = input_names[2];
 
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(split_Add_name,
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(split_add_name,
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       QNN_OP_ELEMENT_WISE_ADD,
                                                       {split_fully_connected_output_name, bias_name},  // FullyConnected output as input
