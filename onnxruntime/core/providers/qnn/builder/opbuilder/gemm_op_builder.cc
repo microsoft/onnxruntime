@@ -50,7 +50,7 @@ Status GemmOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
 
     auto& inputC = node_unit.Inputs()[2];
     std::vector<uint32_t> inputC_shape;
-    QnnModelWrapper::GetOnnxShape(inputC.node_arg, inputC_shape); 
+    QnnModelWrapper::GetOnnxShape(inputC.node_arg, inputC_shape);
 
     auto transB = node_helper.Get("transB", static_cast<int64_t>(0));
     auto M = (transB == 0) ? inputB_shape.at(1) : inputB_shape.at(0);
@@ -62,7 +62,7 @@ Status GemmOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
     if (inputC_shape.size() == 2 && node_unit.Inputs()[2].quant_param.has_value()) {
       bool a = node_unit.Inputs()[2].quant_param.has_value();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support unquantized C with shape [N, M].");
-}
+    }
   }
 
   return Status::OK();
@@ -236,7 +236,7 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     std::string split_fully_connected_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_FullyConnected";
     std::string split_fully_connected_output_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_split_FullyConnected_output";
     QnnTensorWrapper fully_connected_output(split_fully_connected_output_name, QNN_TENSOR_TYPE_NATIVE, input_info.qnn_data_type,
-                                                    QnnQuantParamsWrapper(), std::vector<uint32_t>(output_shape));
+                                            QnnQuantParamsWrapper(), std::vector<uint32_t>(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(fully_connected_output)),
                       "Failed to add FullyConnected output tensor.");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(split_fully_connected_name,
@@ -261,7 +261,7 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       QNN_OP_ELEMENT_WISE_ADD,
                                                       {split_fully_connected_output_name, bias_name},  // FullyConnected output as input
-                                                      {org_output_name}, // Original output as output
+                                                      {org_output_name},                               // Original output as output
                                                       {},
                                                       do_op_validation),
                       "Failed to add ElementWiseAdd node.");

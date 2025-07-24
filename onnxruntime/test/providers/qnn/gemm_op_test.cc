@@ -63,8 +63,8 @@ TEST_F(QnnCPUBackendTests, Gemm_2D_Bias) {
   RunGemmTest<float>({TestInputDef<float>({2, 3}, false, input_a_data),
                       TestInputDef<float>({3, 4}, false, input_b_data),
                       TestInputDef<float>({2, 4}, false, -1.0f, 1.0f)},
-                      {},
-                      ExpectedEPNodeAssignment::All);  // Assigned to QNN EP.
+                     {},
+                     ExpectedEPNodeAssignment::All);  // Assigned to QNN EP.
 
   // However, 2D matrix mul without a bias is supported. Input A's 0th dimension is interpreted as `batch_size`.
   RunGemmTest<float>({TestInputDef<float>({2, 3}, false, input_a_data),
