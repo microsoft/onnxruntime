@@ -203,6 +203,9 @@ static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
   return has_ep;
 }
 
+#if defined(WIN32)
+// Tests autoEP feature to automatically select an EP that supports the GPU.
+// Currently only works on Windows.
 TEST(MIGraphXExecutionProviderTest, AutoEp_PreferGpu) {
   PathString model_name = ORT_TSTR("migraphx_basic_test.onnx");
 
@@ -227,6 +230,7 @@ TEST(MIGraphXExecutionProviderTest, AutoEp_PreferGpu) {
 
   env.UnregisterExecutionProviderLibrary(kMIGraphXExecutionProvider);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
