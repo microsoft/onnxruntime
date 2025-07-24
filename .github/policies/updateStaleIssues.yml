@@ -52,14 +52,4 @@ configuration:
         then:
           - removeLabel:
               label: stale
-      - description: Re-open stale issue if closed stale issue is commented on
-        if:
-          - payloadType: Issue_Comment
-          - and:
-              - not:
-                  isOpen
-              - hasLabel:
-                  label: stale
-        then:
-          - reopenIssue
       
