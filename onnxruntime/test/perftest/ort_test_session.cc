@@ -555,7 +555,30 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   } else if (provider_name_ == onnxruntime::kWebGpuExecutionProvider) {
 #ifdef USE_WEBGPU
-    session_options.AppendExecutionProvider("WebGPU", {});
+#ifdef _MSC_VER
+    std::string webgpu_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string webgpu_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    ParseSessionConfigs(webgpu_string, provider_options,
+                        {"enableGraphCapture"});
+    for (const auto& provider_option : provider_options) {
+      const std::string& key = provider_option.first;
+      const std::string& value = provider_option.second;
+      if (key == "enableGraphCapture") {
+        std::set<std::string> webgpu_supported_values = {"1", "0"};
+        if (webgpu_supported_values.find(value) != webgpu_supported_values.end()) {
+        } else {
+          ORT_THROW(
+              "[ERROR] [WebGPU] You have selected a wrong value for the key 'enableGraphCapture'. "
+              "Select from '1' or '0' \n");
+        }
+      }
+    }
+    if (provider_options.find("enableGraphCapture") == provider_options.end()) {
+      provider_options["enableGraphCapture"] = "0";
+    }
+    session_options.AppendExecutionProvider("WebGPU", provider_options);
 #else
     ORT_THROW("WebGPU is not supported in this build\n");
 #endif
