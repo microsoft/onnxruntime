@@ -76,7 +76,6 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
                                 << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 3") << ";\n"
                                 << "let offset_a3 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
                                 << "let offset_b3 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n";
-
       // get A data
       shader.MainFunctionBody() << "let a = vec4<input_a_value_t>("
                                 << a.GetByOffset("offset_a0") << ", "
@@ -343,9 +342,8 @@ WEBGPU_BINARY_IMPL(LessOrEqual, "vec4<u32>(vec4<input_a_element_t>(a) <= vec4<in
 WEBGPU_BINARY_VERSIONED_KERNEL(LessOrEqual, 12, 15, LessOrEqual, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(LessOrEqual, 16, LessOrEqual, WebGpuSupportedNumberTypes())
 
-// And operator only supports tensor(bool), webgpu wraps 4 bool elements of input into an uint32,
-// does not need to wrap into vec4 here.
-WEBGPU_BINARY_IMPL(And, "a & b")
+// And operator only supports tensor(bool).
+WEBGPU_BINARY_IMPL(And, "(vec4<input_a_element_t>(a) & vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_KERNEL(And, 7, And, DataTypeImpl::GetTensorType<bool>())
 
 }  // namespace webgpu

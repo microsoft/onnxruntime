@@ -194,6 +194,7 @@ enum class ProgramVariableDataType {
   Uint32x4,
   Int64,
   Uint64,
+  Bool,
   Boolx4,
   Uint8x4,
   Uint8x8,

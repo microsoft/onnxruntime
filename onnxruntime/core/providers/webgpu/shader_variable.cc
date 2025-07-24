@@ -28,6 +28,7 @@ constexpr static const std::string_view STORAGE_TYPE_ARRAY[] = {
     "vec4<u32>",  // Uint32x4
     "vec2<u32>",  // Int64
     "vec2<u32>",  // Uint64
+    "u32",        // Bool
     "u32",        // Boolx4
     "u32",        // Uint8x4
     "vec2<u32>",  // Uint8x8
@@ -55,6 +56,7 @@ constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "vec4<u32>",   // Uint32x4
     "i32",         // Int64 (trancated to i32)
     "u32",         // Uint64 (trancated to u32)
+    "bool",        // Bool
     "vec4<bool>",  // Boolx4
     "u32",         // Uint8x4 (u32 as 4 elements of uint8)
     "vec2<u32>",   // Uint8x8 (vec2<u32> as 2x4 elements of uint8)
@@ -82,6 +84,7 @@ constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "u32",   // Uint32x4
     "i32",   // Int64
     "u32",   // Uint64
+    "bool",  // Bool
     "bool",  // Boolx4
     "u32",   // Uint8x4
     "u32",   // Uint8x8
@@ -292,6 +295,9 @@ std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const
          << name_ << "[" << offset << "] & 0xFF00u), bool("
          << name_ << "[" << offset << "] & 0xFF0000u), bool("
          << name_ << "[" << offset << "] & 0xFF000000u))";
+      break;
+    case onnxruntime::webgpu::ProgramVariableDataType::Bool:
+      ss << "bool(unpack4xU8(" << name_ << "[" << offset << " / 4])[" << offset << " % 4])";
       break;
     default:
       ss << name_ << "[" << offset << "]";

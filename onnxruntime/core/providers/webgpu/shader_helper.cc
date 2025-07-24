@@ -165,7 +165,8 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
                         "Unexpected program variable type ", int(var_type), " for uint64 tensor");
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Boolx4,
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Bool ||
+                        var_type == ProgramVariableDataType::Boolx4,
                         "Unexpected program variable type ", int(var_type), " for bool tensor");
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
