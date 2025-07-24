@@ -106,12 +106,7 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
                    bool trans_b,
                    IAllocatorUniquePtr<void>& packed_b,
                    size_t& packed_b_size,
-                   TensorShape& b_shape
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-                   ,
-                   bool enable_kleidi_packing
-#endif
-) {
+                   TensorShape& b_shape) {
   // Only handle the common case of a 2D weight matrix. Additional matrices
   // could be handled by stacking the packed buffers.
   if (tensor_b.Shape().NumDimensions() != 2) {
@@ -122,9 +117,6 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
   const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
 
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-  MlasGemmBatchPackUseKleidi(enable_kleidi_packing);
-#endif
   packed_b_size = MlasGemmPackBSize(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans, N, K);
   if (packed_b_size == 0) {
     return false;

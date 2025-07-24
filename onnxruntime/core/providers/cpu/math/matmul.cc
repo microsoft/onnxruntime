@@ -195,17 +195,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
     } else
 #endif
     {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-      // Workaround for Kleidi not being able to support tranpose A.
-      // If the trans_a_attr_ 1, we disable the kleidi path entirely (set enable_kleidi_packing = false).
-      if (this->trans_a_attr_ == 1) {
-        is_packed = GemmPackBFp32(alloc, tensor, false, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_, false);
-      } else {
-        is_packed = GemmPackBFp32(alloc, tensor, false, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_, true);
-      }
-#else
-      is_packed = GemmPackBFp32(alloc, tensor, false, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
-#endif
+      is_packed = GemmPackBFp32(alloc, tensor, trans_a_attr_, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
     }
 
     bool share_prepacked_weights = (prepacked_weights != nullptr);

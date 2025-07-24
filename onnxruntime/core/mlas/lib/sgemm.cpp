@@ -1554,17 +1554,6 @@ Return Value:
             DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
     }
 }
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-// variable to enable or disable kleidi pack routines.
-// work around for unsupported cases in fusedmatmul
-static std::atomic<bool> g_kleidiPackEnabled{true};
-
-void
-MLASCALL
-MlasGemmBatchPackUseKleidi(bool enable) {
-    g_kleidiPackEnabled.store(enable, std::memory_order_relaxed);
-}
-#endif
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 // Chance of arithmetic overflow could be reduced
@@ -1585,6 +1574,8 @@ MlasGemmBatch(
 {
     // Override
     if(GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
+        // TODO: Remove once KAI supports transposing for A
+        TransA != CBLAS_TRANSPOSE::CblasTrans &&
         GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
         return;
     }
@@ -1679,9 +1670,10 @@ Return Value:
     // Compute the number of bytes required to hold the packed buffer.
     //
     // KleidiAI or other override
-    #if defined(USE_KLEIDIAI) && !defined(_MSC_VER) // We have to keep this for the g_kleidiPackEnabled defined within
+    #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     if (GetMlasPlatform().MlasGemmPackBSizeOverride != nullptr &&
-        g_kleidiPackEnabled.load(std::memory_order_relaxed)) {
+        // TODO: Remove once KAI supports transposing for A
+        TransA != CBLAS_TRANSPOSE::CblasTrans) {
         size_t bytes_required;
         //TODO pass status by reference to indicate success/fail
         bytes_required = GetMlasPlatform().MlasGemmPackBSizeOverride(TransA, TransB, N, K);
@@ -1745,9 +1737,10 @@ Return Value:
 
 --*/
 {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER) // We need to keep this for the g_kleidiPackEnabled var
-    if (GetMlasPlatform().MlasGemmPackBOverride != nullptr &&
-        g_kleidiPackEnabled.load(std::memory_order_relaxed) &&
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if (GetMlasPlatform().MlasGemmPackBOverride != nullptr  &&
+        // TODO: Remove once KAI supports transposing for A
+        TransA != CBLAS_TRANSPOSE::CblasTrans    &&
         GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
          return;
     }
