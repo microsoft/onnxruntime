@@ -98,7 +98,7 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
   }
 
   ~OutputAllocator() override {
-    alloc_->Free(alloc_ ,outputPtr);
+    alloc_->Free(alloc_, outputPtr);
   }
 
  private:

@@ -686,7 +686,7 @@ std::string GetCacheSuffix(const std::string& fused_node_name, const std::string
 
 /*
  * Checks if there is a an element with value `-1` in nvinfer1::Dims
-*/
+ */
 static bool checkTrtDimIsDynamic(nvinfer1::Dims dims) {
   for (int j = 0, end = dims.nbDims; j < end; ++j) {
     if (dims.d[j] == -1) {
