@@ -17,9 +17,6 @@ Abstract:
 
 #include "mlasi.h"
 
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-#include "kleidiai/mlasi_kleidiai.h"
-#endif
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -1586,7 +1583,7 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-    //KleidiAI or other override
+    // Override
     if(GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
         GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
         return;
@@ -1686,6 +1683,7 @@ Return Value:
     if (GetMlasPlatform().MlasGemmPackBSizeOverride != nullptr &&
         g_kleidiPackEnabled.load(std::memory_order_relaxed)) {
         size_t bytes_required;
+        //TODO pass status by reference to indicate success/fail
         bytes_required = GetMlasPlatform().MlasGemmPackBSizeOverride(TransA, TransB, N, K);
         if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
             return bytes_required;

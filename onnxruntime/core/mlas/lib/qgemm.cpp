@@ -18,6 +18,7 @@ Abstract:
 #include "core/mlas/lib/mlasi.h"
 #include "qgemm.h"
 
+// TODO: When overrides are implemented, remove this
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
@@ -334,6 +335,7 @@ MlasDynamicQgemmPackBSize(
     size_t bytes = 0;
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback available
+    //TODO: Insert Override
     if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){//Still require this since no override
         bytes = ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
     }

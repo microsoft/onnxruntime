@@ -95,8 +95,8 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
         std::byte* lhs = nullptr;
         std::unique_ptr<std::byte[]> fallback;
 
-        if (DataParams->lhs_scratch && DataParams->lhs_scratch_size >= lhs_size) {
-            lhs = static_cast<std::byte*>(DataParams->lhs_scratch);
+        if (DataParams->Workspace && DataParams->WorkspaceSize >= lhs_size) {
+            lhs = static_cast<std::byte*>(DataParams->Workspace);
         } else {
             fallback = std::make_unique<std::byte[]>(lhs_size);
             lhs = fallback.get();

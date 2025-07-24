@@ -651,12 +651,12 @@ struct MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS {
  */
 struct MLAS_GEMM_DYN_QUANT_DATA_PARAMS {
     const float* A = nullptr;       /**< Pointer to input matrix A in FP32 format**/
-    size_t lda = 0;                 /**< Num of cols Matrix A (row-major)*/
+    size_t lda = 0;                 /**< Number of elements between adjecent rows in A*/
     const void* PackedB = 0;        /**< Points to packed weight matrix B */
     float *C = nullptr;             /**< Points to output Matric C */
-    size_t ldc = 0;                 /**< Num of cols Matrix C*/
-    void* lhs_scratch = nullptr;    /**< Scratch buffer for LHS Packing Allocation */
-    size_t lhs_scratch_size = 0;    /**< Scratch buffer size */
+    size_t ldc = 0;                 /**<  Number of elements between adjecent rows in Matrix C*/
+    void* Workspace = nullptr;    /**< Workspace buffer for LHS Packing Allocation */
+    size_t WorkspaceSize = 0;    /**< Workspace buffer size */
 };
 
 void

@@ -231,13 +231,6 @@ void CPUIDInfo::ArmWindowsInit() {
   // Get the ARM vendor string from the registry
   vendor_ = GetArmWindowsVendor();
   vendor_id_ = GetVendorId(vendor_);
-  // Test - Checking to determine if Windows build has access to cpuinfo_riscv_isa
-  has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
-  has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
-  has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
-  has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
-  has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
-  has_arm_sme_ = cpuinfo_has_arm_sme();
 
   // Read MIDR and ID_AA64ISAR1_EL1 register values from Windows registry
   // There should be one per CPU

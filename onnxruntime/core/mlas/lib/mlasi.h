@@ -803,6 +803,7 @@ bool
     float* Output,
     MLAS_THREADPOOL* ThreadPool
     );
+// TODO: Investigate if overridden typedefs can be removed
 typedef
 void
 (MLASCALL MLAS_CONV_PREPARE_FLOAT_FN)(
@@ -844,7 +845,7 @@ bool
     MLAS_THREADPOOL* ThreadPool
     );
 
-typedef void (MLASCALL MLAS_GEMM_BATCH_KERNEL)(
+typedef void (MLASCALL MLAS_GEMM_BATCH)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
@@ -854,7 +855,7 @@ typedef void (MLASCALL MLAS_GEMM_BATCH_KERNEL)(
     size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool);
 
-typedef bool (MLASCALL MLAS_GEMM_BATCH_KERNEL_OVERRIDE)(
+typedef bool (MLASCALL MLAS_GEMM_BATCH_OVERRIDE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
@@ -864,13 +865,13 @@ typedef bool (MLASCALL MLAS_GEMM_BATCH_KERNEL_OVERRIDE)(
     size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool);
 
-typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_KERNEL)(
+typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K);
 
-typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_KERNEL_OVERRIDE)(
+typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_OVERRIDE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
@@ -1297,11 +1298,11 @@ struct MLAS_PLATFORM {
     bool Avx2Supported_ = false;
     bool Avx512Supported_ = false;
     // Mlas overrides initialisation
-    MLAS_GEMM_BATCH_KERNEL_OVERRIDE* MlasGemmBatchOverride;
-    MLAS_GEMM_PACK_B_SIZE_KERNEL_OVERRIDE* MlasGemmPackBSizeOverride;
-    MLAS_GEMM_PACK_B_KERNEL_OVERRIDE* MlasGemmPackBOverride;
-    MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride;
-    MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride;
+    MLAS_GEMM_BATCH_OVERRIDE* MlasGemmBatchOverride = nullptr;
+    MLAS_GEMM_PACK_B_SIZE_OVERRIDE* MlasGemmPackBSizeOverride = nullptr;
+    MLAS_GEMM_PACK_B_KERNEL_OVERRIDE* MlasGemmPackBOverride = nullptr;
+    MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
+    MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;

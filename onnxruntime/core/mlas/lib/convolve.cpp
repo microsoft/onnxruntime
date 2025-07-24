@@ -16,9 +16,6 @@ Abstract:
 
 #include "mlasi.h"
 
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-#include "kleidiai/mlasi_kleidiai.h"
-#endif
 //
 // Define the number of working buffer elements required per thread.
 //
@@ -864,7 +861,7 @@ Return Value:
 
 --*/
 {
-    // KleidiAI or other override
+    // Override
     if(GetMlasPlatform().MlasConvOverride != nullptr &&
         GetMlasPlatform().MlasConvOverride(Parameters,Input,Filter,Bias,WorkingBuffer,Output,ThreadPool)){
     return;
@@ -1103,7 +1100,7 @@ Return Value:
 
 --*/
 {
-    // KleidiAI or other override
+    // Override
     if (GetMlasPlatform().MlasConvPrepareOverride != nullptr &&
         GetMlasPlatform().MlasConvPrepareOverride(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
         InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
