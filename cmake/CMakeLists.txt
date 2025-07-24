@@ -1019,7 +1019,7 @@ function(onnxruntime_set_compile_flags target_name)
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
     endif()
-
+    # TODO: Narrow scope for Kleidiai compile
     if (onnxruntime_USE_KLEIDIAI)
       target_compile_definitions(${target_name} PRIVATE USE_KLEIDIAI)
     endif()

@@ -65,13 +65,13 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
                                                bool a_is_signed,
                                                const Tensor* b_tensor,
                                                const Tensor* b_scale_tensor,
-                                               const Tensor* b_zp_tensor,
+                                               const Tensor* b_zp_constant_tensor,
                                                const Tensor* bias_tensor) const {
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a_shape,
                                      b_tensor ? b_tensor->Shape() : b_shape_,
                                      b_scale_tensor ? &b_scale_tensor->Shape() : nullptr,
-                                     b_zp_tensor ? &b_zp_tensor->Shape() : nullptr));
+                                     b_zp_constant_tensor ? &b_zp_constant_tensor->Shape() : nullptr));
   Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
@@ -85,12 +85,12 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   bool is_b_zp_per_column = false;
   uint8_t b_zp_default = 0;
   const uint8_t* b_zp_ptr = &b_zp_default;
-  if (nullptr != b_zp_tensor) {
-    ORT_ENFORCE(IsBQuantParamSupported(b_zp_tensor->Shape(), b_tensor ? b_tensor->Shape() : b_shape_),
+  if (nullptr != b_zp_constant_tensor) {
+    ORT_ENFORCE(IsBQuantParamSupported(b_zp_constant_tensor->Shape(), b_tensor ? b_tensor->Shape() : b_shape_),
                 "MatmulInteger : b zero point is not valid");
 
-    is_b_zp_per_column = !IsScalarOr1ElementVector(b_zp_tensor);
-    b_zp_ptr = static_cast<const uint8_t*>(b_zp_tensor->DataRaw());
+    is_b_zp_per_column = !IsScalarOr1ElementVector(b_zp_constant_tensor);
+    b_zp_ptr = static_cast<const uint8_t*>(b_zp_constant_tensor->DataRaw());
   }
 
   // process scale of b
@@ -166,49 +166,49 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
                  /*out*/ PrePackedWeights* prepacked_weights) override {
     // only pack Matrix B
     if (input_idx == GetBIdx()) {
-      const Tensor* b_zp_tensor{nullptr};
-      bool b_zp_present = false;
+      const Tensor* b_zp_constant_tensor{nullptr};
+      bool b_quantization_is_asymmetric = false;
 
       // zero point tensor could be provided as a direct input to the kernel and not as a constant so this
       // test is not sufficient
       const OrtValue* b_zp;
       if (Info().TryGetConstantInput(IN_B_ZERO_POINT, &b_zp)) {
-        b_zp_tensor = &b_zp->Get<Tensor>();
+        b_zp_constant_tensor = &b_zp->Get<Tensor>();
       }
 
       // MlasDynamicQgemm requires symmetric quantization for B, so no zero point should exist or it should
       // have a zero value
-      if (b_zp_tensor != nullptr) {  // Covers the case where tensor is not a constant
-        const auto& shape = b_zp_tensor->Shape();
-        const auto* zp_data = static_cast<const uint8_t*>(b_zp_tensor->DataRaw());
+      if (b_zp_constant_tensor != nullptr) {  // Covers the case where tensor is not a constant
+        const auto& shape = b_zp_constant_tensor->Shape();
+        const auto* zp_data = static_cast<const uint8_t*>(b_zp_constant_tensor->DataRaw());
         size_t zp_size = static_cast<size_t>(shape.Size());
-
         // MlasDynamicQgemm requires symmetric quantization: zp must be scalar 0 or 1D all-zero
         if ((shape.NumDimensions() == 0) && (zp_data[0] == 0)) {
-          b_zp_present = false;
+          b_quantization_is_asymmetric = false;
         } else if (shape.NumDimensions() == 1) {
-          b_zp_present = false;
+          b_quantization_is_asymmetric = false;
           for (size_t i = 0; i < zp_size; ++i) {
             if (zp_data[i] != 0) {
-              b_zp_present = true;
+              b_quantization_is_asymmetric = true;
               break;
             }
           }
         } else {
           // Unsupported higher-rank zp tensor
-          b_zp_present = true;
+          b_quantization_is_asymmetric = true;
         }
       }
 
       // MlasDynamicQgemm requires scale data to be available at packing stage
-      const OrtValue* b_scale;
-      auto b_scale_available = Info().TryGetConstantInput(IN_B_SCALE, &b_scale);
+      const Tensor* b_scale_tensor = nullptr;
+      const bool b_scale_available = Info().TryGetConstantInput(IN_B_SCALE, &b_scale_tensor);
 
-      can_use_dynamic_quant_mlas_ = (!b_zp_present && b_scale_available);
+      can_use_dynamic_quant_mlas_ = (!b_quantization_is_asymmetric && b_scale_available);
 
       // Only handle the common case of a 2D weight matrix. Additional matrices
       // could be handled by stacking the packed buffers.
       b_shape_ = tensor.Shape();
+      // TO DO: handle b_shape_.NumDimensions() > 2 and all dimension values but the last two being 1.
       if (!(b_shape_.NumDimensions() == 2 || (b_shape_.NumDimensions() == 3 && b_shape_[0] == 1))) {
         can_use_dynamic_quant_mlas_ = false;
       }
@@ -220,8 +220,6 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
       } else {
         is_packed = false;
-
-        auto b_scale_tensor = &b_scale->Get<Tensor>();
 
         // Default to all zeros for bias
         const Tensor* bias_tensor{nullptr};
@@ -328,7 +326,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
 
     const Tensor* b_scale_tensor = ctx->Input<Tensor>(IN_B_SCALE);
-    const Tensor* b_zp_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
+    const Tensor* b_zp_constant_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
 
     // calculate quantization parameter of a
     const float* a_data = a->Data<float>();
@@ -356,7 +354,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
         is_a_signed,
         b,
         is_b_scale_supported ? b_scale_tensor : nullptr,
-        b_zp_tensor,
+        b_zp_constant_tensor,
         ctx->Input<Tensor>(IN_BIAS)));
 
     if (!is_b_scale_supported) {
@@ -393,7 +391,6 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
       params.A = reinterpret_cast<const float*>(a_data + helper.LeftOffsets()[gemm_idx]);
       params.lda = gemm_shape.K;
       params.PackedB = packed_b_.get();
-      params.ldb = gemm_shape.N;
       params.C = y_data + helper.OutputOffsets()[gemm_idx];
       params.ldc = gemm_shape.N;
     }
@@ -454,7 +451,7 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
     a_zero_point = *(static_cast<const uint8_t*>(a_zero_point_tensor->DataRaw()));
   }
 
-  const Tensor* b_zp_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
+  const Tensor* b_zp_constant_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
   ORT_RETURN_IF_ERROR(ComputeCommon(
       ctx,
       static_cast<const uint8_t*>(a->DataRaw()),
@@ -464,7 +461,7 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
       a->IsDataType<int8_t>(),
       b,
       is_b_scale_supported ? b_scale_tensor : nullptr,
-      b_zp_tensor,
+      b_zp_constant_tensor,
       ctx->Input<Tensor>(IN_BIAS)));
 
   if (!is_a_scale_scalar) {
