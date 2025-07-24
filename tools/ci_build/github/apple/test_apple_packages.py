@@ -13,7 +13,7 @@ import sys
 import tempfile
 
 from c.assemble_c_pod_package import assemble_c_pod_package
-from package_assembly_utils import PackageVariant, gen_file_from_template, get_ort_version
+from package_assembly_utils import gen_file_from_template, get_ort_version
 
 SCRIPT_PATH = pathlib.Path(__file__).resolve(strict=True)
 REPO_DIR = SCRIPT_PATH.parents[4]
@@ -81,7 +81,6 @@ def _test_apple_packages(args):
             framework_info_file=args.framework_info_file,
             public_headers_dir=public_headers_dir,
             framework_dir=framework_dir,
-            package_variant=PackageVariant[args.variant],
         )
 
         # move podspec out to target_proj_path first
@@ -237,13 +236,6 @@ def parse_args():
 
     parser.add_argument(
         "--c_framework_dir", type=pathlib.Path, required=True, help="Provide the parent directory for C/C++ framework"
-    )
-
-    parser.add_argument(
-        "--variant",
-        choices=PackageVariant.all_variant_names(),
-        required=True,
-        help="Pod package variant.",
     )
 
     parser.add_argument(
