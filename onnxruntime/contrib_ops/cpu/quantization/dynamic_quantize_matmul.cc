@@ -218,7 +218,6 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
       if (!can_use_dynamic_quant_mlas_) {
         // default to piece wise mlas interface with separate int matmul, quantize and float conversion
         return MatMulIntegerToFloatBase::PrePack(tensor, input_idx, alloc, is_packed, prepacked_weights);
-
       }
       is_packed = false;
 
@@ -253,14 +252,14 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
       const auto scales = static_cast<size_t>(b_scale_tensor->Shape().Size()) == N ? std::vector<float>(&b_scale_tensor->Data<float>()[0],
                                                                                                         &b_scale_tensor->Data<float>()[N])
-                                                                                    :
-                                                                                    // Broadcast matrix scale to all channels
+                                                                                   :
+                                                                                   // Broadcast matrix scale to all channels
                               std::vector<float>(N, b_scale_tensor->Data<float>()[0]);
 
       const auto biases = bias_tensor != nullptr ? std::vector<float>(&bias_tensor->Data<float>()[0],
                                                                       &bias_tensor->Data<float>()[N])
-                                                  :
-                                                  // Broadcast zero to all channels - no bias data is available
+                                                 :
+                                                 // Broadcast zero to all channels - no bias data is available
                               std::vector<float>(N, 0.f);
 
       MlasDynamicQgemmPackB(N, K, reinterpret_cast<const int8_t*>(b_data), scales.data(), biases.data(),
