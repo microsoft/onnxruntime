@@ -37,7 +37,7 @@ struct ParameterShape {
     std::transform(ort_shape.begin(), ort_shape.end(), ov_shape.begin(), [](int64_t dim) {
       return dim == -1 ? ov::Dimension::dynamic() : ov::Dimension(dim);
     });
-    return ov::PartialShape(ov_shape);
+    return ov::PartialShape(std::move(ov_shape));
   }
 
   static ort_shape_t ToOrtShape(const ov::PartialShape& ov_shape) {

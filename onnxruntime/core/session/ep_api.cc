@@ -114,7 +114,11 @@ ORT_API_STATUS_IMPL(EpDevice_AddAllocatorInfo, _In_ OrtEpDevice* ep_device,
   const OrtDevice& info = allocator_memory_info->device;
   switch (info.MemType()) {
     case OrtDevice::MemType::DEFAULT:
-      ep_device->device_memory_info = allocator_memory_info;
+      if (allocator_memory_info->alloc_type == OrtReadOnlyAllocator) {
+        ep_device->read_only_device_memory_info = allocator_memory_info;
+      } else {
+        ep_device->device_memory_info = allocator_memory_info;
+      }
       break;
     case OrtDevice::MemType::HOST_ACCESSIBLE:
       ep_device->host_accessible_memory_info = allocator_memory_info;
@@ -130,16 +134,13 @@ ORT_API(const OrtMemoryDevice*, MemoryInfo_GetMemoryDevice, _In_ const OrtMemory
   return static_cast<const OrtMemoryDevice*>(&memory_info->device);
 }
 
-ORT_API_STATUS_IMPL(Value_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device) {
-  *device = nullptr;
+ORT_API(const OrtMemoryDevice*, Value_GetMemoryDevice, _In_ const OrtValue* value) {
   if (value == nullptr || value->IsTensor() == false) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtValue does not contain an allocated tensor.");
+    return nullptr;  // Tensor always has a device, so we don't need a more specific error here.
   }
 
   auto& tensor = value->Get<Tensor>();
-  *device = static_cast<const OrtMemoryDevice*>(&tensor.Location().device);
-
-  return nullptr;
+  return static_cast<const OrtMemoryDevice*>(&tensor.Location().device);
 }
 
 ORT_API(bool, MemoryDevice_AreEqual, _In_ const OrtMemoryDevice* a, _In_ const OrtMemoryDevice* b) {

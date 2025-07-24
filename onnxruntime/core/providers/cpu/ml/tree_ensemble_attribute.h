@@ -8,6 +8,8 @@
 #include "core/framework/op_kernel.h"
 #include "ml_common.h"
 #include "tree_ensemble_helper.h"
+#include <unordered_map>
+#include <stack>
 #include <vector>
 
 namespace onnxruntime {
@@ -21,7 +23,7 @@ inline bool _isnan_(int32_t) { return false; }
 
 template <typename ThresholdType>
 struct TreeEnsembleAttributesV3 {
-  TreeEnsembleAttributesV3() {}
+  TreeEnsembleAttributesV3() : n_targets_or_classes(0) {}
   TreeEnsembleAttributesV3(const OpKernelInfo& info, bool classifier) {
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "base_values_as_tensor", base_values_as_tensor));
@@ -111,11 +113,15 @@ struct TreeEnsembleAttributesV3 {
   std::vector<std::string> classlabels_strings;
   std::vector<int64_t> classlabels_int64s;
   std::vector<int64_t> class_labels;
+  // For categorical features, this container stores set of members for every rule
+  // MEMBERSHIP_BIGSET. The threshold or node value (stored in value_or_unique_weight)
+  // is casted into an integer, an index, corresponding to the set in `bigsets`.
+  std::vector<std::vector<ThresholdType>> bigsets;
 };
 
 template <typename ThresholdType>
 struct TreeEnsembleAttributesV5 {
-  TreeEnsembleAttributesV5() {}
+  TreeEnsembleAttributesV5() : aggregate_function(1), n_targets(0), post_transform(0) {}
   TreeEnsembleAttributesV5(const OpKernelInfo& info) {
 #if !defined(ORT_MINIMAL_BUILD)
     std::vector<uint8_t> nodes_modes_i;
@@ -228,79 +234,154 @@ struct TreeEnsembleAttributesV5 {
     }
   }
 
-  int64_t transformInputOneTree(
-      const size_t curr_id, const int64_t curr_treeid, const int64_t curr_nodeid, const size_t curr_membership_value_id,
-      const bool is_leaf, std::vector<std::vector<ThresholdType>>& membership_values_by_id,
+  void transformInputOneTree(
+      const size_t root_id,
+      const int64_t curr_treeid,
+      const int64_t root_nodeid,
+      const bool root_is_leaf,
+      std::vector<std::vector<ThresholdType>>& membership_values_by_id,
       TreeEnsembleAttributesV3<ThresholdType>& output) const {
-    output.nodes_nodeids.push_back(curr_nodeid);
-    output.nodes_treeids.push_back(curr_treeid);
+    // This function switches from V5 to V3. It replaces membership values with a chain of `BRANCH_EQ` nodes
+    // The inner implementation was recursive but it is now iterative to avoid stack overflow.
+    // It relies on a stack to keep track of the current state.
+    struct StackFrame {
+      size_t curr_id;       // current node id being processed
+      int64_t curr_nodeid;  // current node id in the tree
+      bool is_leaf;         // is a leaf node
+      int64_t placeholder_to_update;
+    };
 
-    if (is_leaf) {
-      output.nodes_modes.push_back(NODE_MODE_ONNX::LEAF);
-      output.target_class_ids.push_back(leaf_targetids[curr_id]);
-      output.target_class_nodeids.push_back(curr_nodeid);
-      output.target_class_treeids.push_back(curr_treeid);
-      output.target_class_weights_as_tensor.push_back(leaf_weights[curr_id]);
+    std::stack<StackFrame> stack;
+    std::unordered_map<int64_t, int64_t> false_nodeid_update_pos;
+    int64_t last_curr_nodeid = root_nodeid;
 
-      // the below are irrelevant for a `LEAF`
-      output.nodes_featureids.push_back(0);
-      output.nodes_truenodeids.push_back(0);
-      output.nodes_falsenodeids.push_back(0);
-      output.nodes_values_as_tensor.push_back(0);
-      if (!nodes_hitrates.empty()) {
-        output.nodes_hitrates.push_back(0);
+    stack.push({root_id, root_nodeid, root_is_leaf, -1});
+
+    while (!stack.empty()) {
+      auto& frame = stack.top();
+
+      const size_t curr_id = frame.curr_id;
+      int64_t curr_nodeid = frame.curr_nodeid;
+      const bool is_leaf = frame.is_leaf;
+      const int64_t placeholder_to_update = frame.placeholder_to_update;
+
+      stack.pop();
+      if (curr_nodeid == -1) {
+        curr_nodeid = last_curr_nodeid + 1;
       }
-      if (!nodes_missing_value_tracks_true.empty()) {
-        output.nodes_missing_value_tracks_true.push_back(0);
+      last_curr_nodeid = curr_nodeid;
+
+      if (placeholder_to_update != -1) {
+        ORT_ENFORCE(output.nodes_falsenodeids[static_cast<size_t>(placeholder_to_update)] == -1,
+                    "Placeholder for a false branch was already updated, placeholder=", placeholder_to_update,
+                    ", curr_nodeid=", curr_nodeid);
+        output.nodes_falsenodeids[static_cast<size_t>(placeholder_to_update)] = curr_nodeid;
       }
 
-      return curr_nodeid;
+      if (is_leaf) {
+        // leaf node
+        output.nodes_nodeids.push_back(curr_nodeid);
+        output.nodes_treeids.push_back(curr_treeid);
+        output.nodes_modes.push_back(NODE_MODE_ONNX::LEAF);
+        output.target_class_ids.push_back(leaf_targetids[curr_id]);
+        output.target_class_nodeids.push_back(curr_nodeid);
+        output.target_class_treeids.push_back(curr_treeid);
+        output.target_class_weights_as_tensor.push_back(leaf_weights[curr_id]);
+
+        output.nodes_featureids.push_back(0);
+        output.nodes_truenodeids.push_back(0);
+        output.nodes_falsenodeids.push_back(0);
+        output.nodes_values_as_tensor.push_back(0);
+        if (!nodes_hitrates.empty()) {
+          output.nodes_hitrates.push_back(0);
+        }
+        if (!nodes_missing_value_tracks_true.empty()) {
+          output.nodes_missing_value_tracks_true.push_back(0);
+        }
+        // If it is a leaf node, then next one is a false branch.
+      } else {
+        int64_t before = -1;
+        bool big_set = false;
+        if (nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER) {
+          if (membership_values_by_id[curr_id].size() < 31 &&
+              *std::max_element(membership_values_by_id[curr_id].begin(), membership_values_by_id[curr_id].end()) <= static_cast<ThresholdType>(30) &&
+              *std::min_element(membership_values_by_id[curr_id].begin(), membership_values_by_id[curr_id].end()) >= static_cast<ThresholdType>(0)) {
+            // If the set of membership values is small enough, we can unroll it into a chain of `BRANCH_EQ` nodes.
+            // Then when the tree is built, the chain of `BRANCH_EQ` nodes will be merged into a single `BRANCH_MEMBER` node.
+            // This optimization was implemented before ai.onnx.ml<5 and is still valid.
+            // However, for very big sets, unrolling the nodes is not efficient at all.
+            // In that case, we change the `BRANCH_MEMBER` node into a `BRANCH_MEMBER_BIGSET` node.
+            before = output.nodes_truenodeids.size();
+            for (size_t i_member = 0; i_member < membership_values_by_id[curr_id].size() - 1; ++i_member) {
+              auto member = membership_values_by_id[curr_id][i_member];
+              output.nodes_nodeids.push_back(curr_nodeid);
+              output.nodes_treeids.push_back(curr_treeid);
+              output.nodes_featureids.push_back(nodes_featureids[curr_id]);
+              if (!nodes_hitrates.empty()) {
+                output.nodes_hitrates_as_tensor.push_back(nodes_hitrates[curr_id]);
+              }
+              if (!nodes_missing_value_tracks_true.empty()) {
+                output.nodes_missing_value_tracks_true.push_back(nodes_missing_value_tracks_true[curr_id]);
+              }
+
+              output.nodes_modes.push_back(NODE_MODE_ONNX::BRANCH_EQ);
+              output.nodes_values_as_tensor.push_back(member);
+
+              output.nodes_falsenodeids.push_back(curr_nodeid + 1);  // false node is placed first
+              output.nodes_truenodeids.push_back(-1);                // placeholder, we do not know yet the true node id but it should be the same
+              ++curr_nodeid;
+            }
+          } else {
+            // This a very big set, we change the `BRANCH_MEMBER` node into a `BRANCH_MEMBER_BIGSET` node.
+            big_set = true;
+          }
+        }
+
+        // not a leaf node, not a mode `BRANCH_MEMBER` or the last value of the set
+        output.nodes_nodeids.push_back(curr_nodeid);
+        output.nodes_treeids.push_back(curr_treeid);
+        output.nodes_featureids.push_back(nodes_featureids[curr_id]);
+        if (!nodes_hitrates.empty()) {
+          output.nodes_hitrates_as_tensor.push_back(nodes_hitrates[curr_id]);
+        }
+        if (!nodes_missing_value_tracks_true.empty()) {
+          output.nodes_missing_value_tracks_true.push_back(nodes_missing_value_tracks_true[curr_id]);
+        }
+
+        output.nodes_modes.push_back(nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER
+                                         ? (big_set ? NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET : NODE_MODE_ONNX::BRANCH_EQ)
+                                         : nodes_modes[curr_id]);
+        output.nodes_values_as_tensor.push_back(nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER
+                                                    ? (big_set
+                                                           ? output.bigsets.size()
+                                                           : membership_values_by_id[curr_id][membership_values_by_id[curr_id].size() - 1])
+                                                    : (nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET
+                                                           ? output.bigsets.size()
+                                                           : nodes_splits[curr_id]));
+
+        output.nodes_falsenodeids.push_back(-1);              // false node is placed first
+        output.nodes_truenodeids.push_back(curr_nodeid + 1);  // placeholder, we do not know yet the true node id
+
+        if (before != -1) {
+          // If we unrolled the `BRANCH_MEMBER` nodes, we need to update the true node ids of the previous nodes.
+          for (size_t i = static_cast<size_t>(before); i < output.nodes_truenodeids.size() - 1; ++i) {
+            output.nodes_truenodeids[i] = curr_nodeid + 1;
+          }
+        }
+
+        if (big_set || nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET) {
+          // If it is a big set, we need to store the membership values in a separate vector.
+          output.bigsets.push_back(membership_values_by_id[curr_id]);
+        }
+
+        stack.push({onnxruntime::narrow<size_t>(nodes_falsenodeids[curr_id]), -1, nodes_falseleafs[curr_id] != 0, static_cast<int64_t>(output.nodes_falsenodeids.size()) - 1});
+        stack.push({onnxruntime::narrow<size_t>(nodes_truenodeids[curr_id]), curr_nodeid + 1, nodes_trueleafs[curr_id] != 0, -1});
+      }
     }
-
-    output.nodes_featureids.push_back(nodes_featureids[curr_id]);
-    if (!nodes_hitrates.empty()) {
-      output.nodes_hitrates_as_tensor.push_back(nodes_hitrates[curr_id]);
+    // We check no placeholder was left behind.
+    for (const auto& falsenodeid : output.nodes_falsenodeids) {
+      ORT_ENFORCE(falsenodeid >= 0, "A placeholder for a false branch was not replaced, falsenodeid=", falsenodeid);
     }
-    if (!nodes_missing_value_tracks_true.empty()) {
-      output.nodes_missing_value_tracks_true.push_back(nodes_missing_value_tracks_true[curr_id]);
-    }
-
-    // unroll `BRANCH_MEMBER` to a chain of `BRANCH_EQ`
-    if (nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER) {
-      output.nodes_modes.push_back(NODE_MODE_ONNX::BRANCH_EQ);
-      output.nodes_values_as_tensor.push_back(membership_values_by_id[curr_id][curr_membership_value_id]);
-    } else {
-      output.nodes_modes.push_back(nodes_modes[curr_id]);
-      output.nodes_values_as_tensor.push_back(nodes_splits[curr_id]);
-    }
-
-    size_t falsenodeid_id = output.nodes_falsenodeids.size();
-    output.nodes_falsenodeids.push_back(0);  // change after pushing truenode subtree
-
-    int64_t true_nodeid = curr_nodeid + 1;
-    output.nodes_truenodeids.push_back(true_nodeid);
-    true_nodeid = transformInputOneTree(onnxruntime::narrow<size_t>(nodes_truenodeids[curr_id]),
-                                        curr_treeid, true_nodeid, 0U, nodes_trueleafs[curr_id] != 0,
-                                        membership_values_by_id, output);
-
-    int64_t false_nodeid = true_nodeid + 1;
-    output.nodes_falsenodeids[falsenodeid_id] = false_nodeid;
-
-    // if node is `BRANCH_MEMBER` we are unrolling the `membership_values` for that node
-    // therefore if the value is not the last, the `falsenode_id` must be pointing to the "same" node with a different membership value
-    // so in that case we are only moving the pointer for `membership_values`
-    //
-    // otherwise, the `falsenode_id` is pointing to the real falsenode subtree
-    if (nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER &&
-        curr_membership_value_id + 1 < membership_values_by_id[curr_id].size()) {
-      false_nodeid = transformInputOneTree(curr_id, curr_treeid, false_nodeid, curr_membership_value_id + 1, false,
-                                           membership_values_by_id, output);
-    } else {
-      false_nodeid = transformInputOneTree(onnxruntime::narrow<size_t>(nodes_falsenodeids[curr_id]),
-                                           curr_treeid, false_nodeid, 0U, nodes_falseleafs[curr_id] != 0,
-                                           membership_values_by_id, output);
-    }
-    return false_nodeid;
   }
 
   void transformInputAllTrees(TreeEnsembleAttributesV3<ThresholdType>& output,
@@ -310,8 +391,9 @@ struct TreeEnsembleAttributesV5 {
       size_t tree_root_size_t = onnxruntime::narrow<size_t>(tree_root);
       bool is_leaf = (nodes_falsenodeids[tree_root_size_t] == nodes_truenodeids[tree_root_size_t] &&
                       nodes_falseleafs[tree_root_size_t] && nodes_trueleafs[tree_root_size_t]);
-      transformInputOneTree(tree_root_size_t, curr_treeid, 0, 0U,
-                            is_leaf, membership_values_by_id, output);
+      transformInputOneTree(tree_root_size_t, curr_treeid, 0,
+                            is_leaf,
+                            membership_values_by_id, output);
       curr_treeid++;
     }
   }

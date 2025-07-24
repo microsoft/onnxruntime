@@ -166,6 +166,13 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
+
+    CreateAllocator = CreateAllocatorImpl;
+    ReleaseAllocator = ReleaseAllocatorImpl;
+    CreateDataTransfer = CreateDataTransferImpl;
+
+    IsStreamAware = IsStreamAwareImpl;
+    CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   }
 
   // Returns the name for the EP. Each unique factory configuration must have a unique name.
@@ -231,6 +238,43 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
   static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* /*ep*/) noexcept {
     // no-op as we never create an EP here.
+  }
+
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
+                                                     const OrtMemoryInfo* /*memory_info*/,
+                                                     const OrtKeyValuePairs* /*allocator_options*/,
+                                                     OrtAllocator** allocator) noexcept {
+    auto* factory = static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
+
+    *allocator = nullptr;
+    return factory->ort_api.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "CreateAllocator should not be called as we did not add OrtMemoryInfo to our OrtEpDevice.");
+  }
+
+  static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* /*allocator*/) noexcept {
+    // should never be called as we don't implement CreateAllocator
+  }
+
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* /*this_ptr*/,
+                                                        OrtDataTransferImpl** data_transfer) noexcept {
+    *data_transfer = nullptr;  // not implemented
+    return nullptr;
+  }
+
+  static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return false;
+  }
+
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+                                                               const OrtMemoryDevice* /*memory_device*/,
+                                                               const OrtKeyValuePairs* /*stream_options*/,
+                                                               OrtSyncStreamImpl** stream) noexcept {
+    auto* factory = static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
+
+    *stream = nullptr;
+    return factory->ort_api.CreateStatus(
+        ORT_INVALID_ARGUMENT, "CreateSyncStreamForDevice should not be called as IsStreamAware returned false.");
   }
 
   const OrtApi& ort_api;
