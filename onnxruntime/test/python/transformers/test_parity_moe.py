@@ -1037,5 +1037,234 @@ class TestPhiMoE(unittest.TestCase):
         # phi3_moe.benchmark_ort()
 
 
+# ---------------------------------------------
+# The following test are for swiglu activation
+# ---------------------------------------------
+class SwigluMoeConfig:
+    def __init__(
+        self,
+        hidden_size=2048,
+        intermediate_size=2048,
+        num_experts_per_token=2,
+        num_local_experts=8,
+    ):
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.num_experts_per_token = num_experts_per_token
+        self.num_local_experts = num_local_experts
+
+
+class SwigluMlp(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.intermediate_size = config.intermediate_size
+        self.hidden_dim = config.hidden_size
+        self.w1 = nn.Linear(self.hidden_dim, 2 * self.intermediate_size, bias=True)
+        self.w2 = nn.Linear(self.intermediate_size, self.hidden_dim, bias=True)
+
+    def swiglu(self, x: torch.Tensor):
+        dim = x.shape[-1]
+        x = x.view(-1, dim // 2, 2)
+        x_glu, x_linear = x[..., 0], x[..., 1]
+        y = x_glu * torch.sigmoid(1.702 * x_glu) * (x_linear + 1)
+        return y
+
+    def forward(self, x):
+        y = self.swiglu(self.w1(x))
+        y = self.w2(y)
+        return y
+
+
+def create_swiglu_moe_onnx_graph(
+    num_tokens,
+    num_experts,
+    hidden_size,
+    inter_size,
+    fc1_experts_weights,
+    fc1_experts_bias,
+    fc2_experts_weights,
+    fc2_experts_bias,
+    topk,
+):
+    nodes = [
+        helper.make_node(
+            "MoE",
+            [
+                "input",
+                "router_probs",
+                "fc1_experts_weights",
+                "fc1_experts_bias",
+                "fc2_experts_weights",
+                "fc2_experts_bias",
+            ],
+            ["output"],
+            "MoE_0",
+            k=topk,
+            normalize_routing_weights=1,
+            activation_type="swiglu",
+            domain="com.microsoft",
+        ),
+    ]
+
+    fc1_weight_shape = [num_experts, hidden_size, 2 * inter_size]
+    fc1_bias_shape = [num_experts, 2 * inter_size]
+
+    fc2_weight_shape = [num_experts, inter_size, hidden_size]
+    fc2_bias_shape = [num_experts, hidden_size]
+
+    torch_type = torch.float16 if ORT_DTYPE == TensorProto.FLOAT16 else torch.float32
+
+    initializers = [
+        helper.make_tensor(
+            "fc1_experts_weights",
+            ORT_DTYPE,
+            fc1_weight_shape,
+            fc1_experts_weights.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+        helper.make_tensor(
+            "fc1_experts_bias",
+            ORT_DTYPE,
+            fc1_bias_shape,
+            fc1_experts_bias.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+        helper.make_tensor(
+            "fc2_experts_weights",
+            ORT_DTYPE,
+            fc2_weight_shape,
+            fc2_experts_weights.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+        helper.make_tensor(
+            "fc2_experts_bias",
+            ORT_DTYPE,
+            fc2_bias_shape,
+            fc2_experts_bias.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+    ]
+
+    graph_inputs = [
+        helper.make_tensor_value_info("input", ORT_DTYPE, [num_tokens, hidden_size]),
+    ]
+
+    graph_inputs.append(
+        helper.make_tensor_value_info(
+            "router_probs",
+            ORT_DTYPE,
+            [num_tokens, num_experts],
+        )
+    )
+
+    graph_outputs = [
+        helper.make_tensor_value_info("output", ORT_DTYPE, [num_tokens, hidden_size]),
+    ]
+
+    graph = helper.make_graph(
+        nodes,
+        "MoE_Graph",
+        graph_inputs,
+        graph_outputs,
+        initializers,
+    )
+
+    model = helper.make_model(graph)
+    return model.SerializeToString()
+
+
+class SwigluMoEBlock(SparseMoeBlockORTHelper):
+    def __init__(self, config: SwigluMoeConfig, batch_size: int, sequence_length: int):
+        super().__init__()
+        self.hidden_dim = config.hidden_size
+        self.ffn_dim = config.intermediate_size
+        self.num_experts = config.num_local_experts
+        self.top_k = config.num_experts_per_token
+
+        self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=True)
+
+        self.experts = nn.ModuleList([SwigluMlp(config) for _ in range(self.num_experts)])
+
+        weight_1_list = []
+        weight_2_list = []
+        bias_1_list = []
+        bias_2_list = []
+        for i in range(self.num_experts):
+            weight_1_list.append(self.experts[i].w1.weight)
+            weight_2_list.append(self.experts[i].w2.weight)
+            bias_1_list.append(self.experts[i].w1.bias)
+            bias_2_list.append(self.experts[i].w2.bias)
+
+        self.moe_experts_weight1 = torch.stack(weight_1_list, dim=0)
+        self.moe_experts_weight2 = torch.stack(weight_2_list, dim=0)
+
+        self.moe_experts_bias1 = torch.stack(bias_1_list, dim=0)
+        self.moe_experts_bias2 = torch.stack(bias_2_list, dim=0)
+
+        self.batch_size = batch_size
+        self.sequence_length = sequence_length
+        self.moe_onnx_graph = create_swiglu_moe_onnx_graph(
+            num_tokens=self.batch_size * self.sequence_length,
+            num_experts=self.num_experts,
+            hidden_size=self.hidden_dim,
+            inter_size=self.ffn_dim,
+            fc1_experts_weights=self.moe_experts_weight1,
+            fc1_experts_bias=self.moe_experts_bias1,
+            fc2_experts_weights=self.moe_experts_weight2,
+            fc2_experts_bias=self.moe_experts_bias2,
+            topk=self.top_k,
+        )
+
+        self.ort_sess = self.create_ort_session(self.moe_onnx_graph)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        """ """
+        batch_size, sequence_length, hidden_dim = hidden_states.shape
+        hidden_states = hidden_states.view(-1, hidden_dim)
+        router_logits = self.gate(hidden_states)  # router_logits shape is (batch * sequence_length, num_experts)
+        routing_weights, selected_experts = torch.topk(router_logits, self.top_k, dim=-1)
+
+        routing_weights = F.softmax(routing_weights, dim=1, dtype=torch.float)
+
+        # we cast back to the input dtype
+        routing_weights = routing_weights.to(hidden_states.dtype)
+
+        final_hidden_states = torch.zeros(
+            (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
+        )
+
+        # One hot encode the selected experts to create an expert mask
+        # this will be used to easily index which expert is going to be sollicitated
+        expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
+
+        # Loop over all available experts in the model and perform the computation on each expert
+        for expert_idx in range(self.num_experts):
+            expert_layer = self.experts[expert_idx]
+            idx, top_x = torch.where(expert_mask[expert_idx])
+
+            if top_x.shape[0] == 0:
+                continue
+
+            # Index the correct hidden states and compute the expert hidden state for
+            # the current expert. We need to make sure to multiply the output hidden
+            # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
+            current_state = hidden_states[None, top_x].reshape(-1, hidden_dim)
+            current_hidden_states = expert_layer(current_state) * routing_weights[top_x, idx, None]
+
+            # However `index_add_` only support torch tensors for indexing so we'll use
+            # the `top_x` tensor here.
+            final_hidden_states.index_add_(0, top_x, current_hidden_states.to(hidden_states.dtype))
+        final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
+        return final_hidden_states
+
+
+class TestSwigluMoE(unittest.TestCase):
+    @parameterized.expand(small_test_cases())
+    def test_swiglu_moe_parity(self, batch_size, sequence_length):
+        config = SwigluMoeConfig(hidden_size=1024, intermediate_size=1024, num_experts_per_token=1, num_local_experts=4)
+        moe = SwigluMoEBlock(config, batch_size, sequence_length)
+        moe.parity_check()
+
+
 if __name__ == "__main__":
     unittest.main()
