@@ -1,4 +1,4 @@
-name: ONNX Runtime CUDA Builds
+name: Windows GPU TensorRT CI Pipeline
 
 on:
   push:
@@ -18,7 +18,7 @@ concurrency:
 #TODO: enable  --build_nodejs
 jobs:
   build:
-    name: Windows GPU CUDA CI Pipeline
+    name: Windows GPU TensorRT CI Pipeline
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
       - uses: actions/checkout@v4
@@ -155,7 +155,7 @@ jobs:
       AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
 
   test:
-    name: Windows GPU CUDA CI Pipeline Test Job
+    name: Windows GPU TensorRT CI Pipeline Test Job
     needs: build
     timeout-minutes: 300
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
