@@ -2865,7 +2865,8 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
     if (onnx_model_path.empty()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "The ONNX model was not provided as path. "
-                             "Please use provide an ONNX bytestream to enable refitting the weightless engine.");
+                             "Please use provide an ONNX bytestream to enable refitting the weightless engine."
+                             "When providing a bytestream during session initialization, it should also be set as trt_onnx_bytes_stream");
     } else {
       // check if file path to ONNX is legal
       if (path_check && IsAbsolutePath(onnx_model_path.string())) {
