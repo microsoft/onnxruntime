@@ -135,6 +135,10 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
     if (ep_device->host_accessible_memory_info != nullptr) {
       allocator_mem_infos_.push_back(ep_device->host_accessible_memory_info);
     }
+
+    if (ep_device->read_only_device_memory_info != nullptr) {
+      allocator_mem_infos_.push_back(ep_device->read_only_device_memory_info);
+    }
   }
 }
 

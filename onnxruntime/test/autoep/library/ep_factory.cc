@@ -50,6 +50,17 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   const OrtMemoryDevice* device = ep_api.MemoryInfo_GetMemoryDevice(default_memory_info_.get());
   data_transfer_impl_ = std::make_unique<ExampleDataTransfer>(apis, device);
 
+  // create read-only allocator for use with initializers. same info as DEFAULT memory apart from the allocator type.
+  status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU readonly", OrtMemoryInfoDeviceType_GPU,
+                                       /*vendor*/ 0xBE57, /* device_id */ 0,
+                                       OrtDeviceMemoryType_DEFAULT,
+                                       /*alignment*/ 0,
+                                       OrtAllocatorType::OrtReadOnlyAllocator,
+                                       &mem_info);
+  assert(status == nullptr);  // should never fail.
+
+  readonly_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
+
   // HOST_ACCESSIBLE memory example. use the non-CPU device type so it's clear which device the memory is also
   // accessible from. we infer from the type of HOST_ACCESSIBLE that it's CPU accessible.
   mem_info = nullptr;
@@ -124,7 +135,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
 
       // register the allocator info required by the EP.
       // registering OrtMemoryInfo for host accessible memory would be done in an additional call.
+      // OrtReadOnlyAllocator + OrtDeviceMemoryType_DEFAULT allocator for use with initializers is optional.
       RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->default_memory_info_.get()));
+      RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->readonly_memory_info_.get()));
 
       ep_devices[num_ep_devices++] = ep_device;
     }
@@ -203,7 +216,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
   *allocator = nullptr;
 
-  if (memory_info != factory.default_memory_info_.get()) {
+  bool is_default_allocator = memory_info == factory.default_memory_info_.get();
+  bool is_readonly_allocator = memory_info == factory.readonly_memory_info_.get();
+
+  if (!is_default_allocator && !is_readonly_allocator) {
     return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
                                         "INTERNAL ERROR! Unknown memory info provided to CreateAllocator. "
                                         "Value did not come directly from an OrtEpDevice returned by this factory.");
