@@ -365,7 +365,25 @@ TEST(MLOpTest, TreeEnsembleBigSet) {
   member_ship_values[104] = 1000;
   member_ship_values[105] = std::numeric_limits<float>::quiet_NaN();
 
+  auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
+  auto nodes_splits_as_tensor = make_tensor(nodes_splits, "nodes_splits");
+  auto leaf_weights_as_tensor = make_tensor(leaf_weights, "leaf_weight");
   auto member_ship_values_as_tensor = make_tensor(member_ship_values, "member_ship_values");
+
+  // add attributes
+  test.AddAttribute("n_targets", n_targets);
+  test.AddAttribute("aggregate_function", aggregate_function);
+  test.AddAttribute("post_transform", post_transform);
+  test.AddAttribute("tree_roots", tree_roots);
+  test.AddAttribute("nodes_modes", nodes_modes_as_tensor);
+  test.AddAttribute("nodes_featureids", nodes_featureids);
+  test.AddAttribute("nodes_splits", nodes_splits_as_tensor);
+  test.AddAttribute("nodes_truenodeids", nodes_truenodeids);
+  test.AddAttribute("nodes_trueleafs", nodes_trueleafs);
+  test.AddAttribute("nodes_falsenodeids", nodes_falsenodeids);
+  test.AddAttribute("nodes_falseleafs", nodes_falseleafs);
+  test.AddAttribute("leaf_targetids", leaf_targetids);
+  test.AddAttribute("leaf_weights", leaf_weights_as_tensor);
   test.AddAttribute("membership_values", member_ship_values_as_tensor);
 
   // fill input data
