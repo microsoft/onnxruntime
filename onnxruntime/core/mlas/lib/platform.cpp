@@ -584,11 +584,13 @@ Return Value:
 
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions);
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    this->MlasGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
-    this->MlasGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
-    this->MlasGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
-    this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
-    this->MlasConvOverride = ArmKleidiAI::MlasConv;
+    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
+        this->MlasGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
+        this->MlasGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
+        this->MlasGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
+        this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
+        this->MlasConvOverride = ArmKleidiAI::MlasConv;
+    }
 #endif
 
 #if defined(__linux__)
