@@ -225,13 +225,6 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
                                         "Value did not come directly from an OrtEpDevice returned by this factory.");
   }
 
-  OrtDeviceMemoryType mem_type = factory.ort_api.MemoryInfoGetDeviceMemType(memory_info);
-
-  if (mem_type != OrtDeviceMemoryType_DEFAULT) {
-    // we only registered default memory with EpDevice_AddAllocatorInfo so this should never happen
-    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Unexpected OrtDeviceMemoryType.");
-  }
-
   // NOTE: The factory implementation is free to return a shared OrtAllocator* instance instead of creating a new
   //       allocator on each call. To do this have an allocator instance as an OrtEpFactory class member and make
   //       ReleaseAllocatorImpl a no-op.
@@ -240,7 +233,14 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   //       device memory. `allocator_options` can be used for arena configuration and there is a helper in ep_arena.h
   //       to convert from OrtKeyValuePairs to the same arena config settings that ORT uses.
   //       You are of course free to have completely different settings.
-  //
+
+  // the read-only allocator is used for initializers. we don't need an arena for that.
+  if (is_readonly_allocator) {
+    auto read_only_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
+    *allocator = read_only_allocator.release();
+    return;
+  }
+
   // create/use the shared arena based allocator
   std::lock_guard<std::mutex> lock{factory.mutex_};
 
