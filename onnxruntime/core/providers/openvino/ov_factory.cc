@@ -37,9 +37,16 @@ OpenVINOEpPluginFactory::OpenVINOEpPluginFactory(ApiPtrs apis, const std::string
   OrtEpFactory::GetName = GetNameImpl;
   OrtEpFactory::GetVendor = GetVendorImpl;
   OrtEpFactory::GetVendorId = GetVendorIdImpl;
-  OrtEpFactory::GetSupportedDevices = GetSupportedDevicesImpl;
   OrtEpFactory::GetVersion = GetVersionImpl;
+
+  OrtEpFactory::GetSupportedDevices = GetSupportedDevicesImpl;
+
+  OrtEpFactory::CreateAllocator = CreateAllocatorImpl;
+  OrtEpFactory::ReleaseAllocator = ReleaseAllocatorImpl;
   OrtEpFactory::CreateDataTransfer = CreateDataTransferImpl;
+
+  OrtEpFactory::IsStreamAware = IsStreamAwareImpl;
+  OrtEpFactory::CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
   ort_version_supported = ORT_API_VERSION;  // Set to the ORT version we were compiled with.
 }

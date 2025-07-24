@@ -54,6 +54,7 @@ jobs:
         ${{ inputs.use_webgpu && '--use_webgpu' || '' }}
         ${{ inputs.use_xnnpack && '--use_xnnpack' || '' }}
         ${{ inputs.use_coreml && '--use_coreml' || '' }}
+        ${{ inputs.use_coreml && '--use_coreml --skip_onnx_tests' || '' }}
         --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         --config ${{ matrix.build_config }}
       xcode_version: ${{ matrix.platform_machine == 'x86_64' && '14.3.1' || '16' }}
