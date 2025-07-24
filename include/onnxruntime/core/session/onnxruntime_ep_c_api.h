@@ -338,8 +338,14 @@ struct OrtEpApi {
    * The registered values will be used in calls to OrtEpFactory::CreateAllocator to ensure the required allocator/s
    * are available for EP usage.
    *
-   * At most one DEFAULT and one HOST_ACCESSIBLE entry can be added.
-   * Multiple calls for the same memory type will replace a previous entry.
+   * Multiple calls for the same entry type will replace a previous entry.
+   *
+   * Available entries:
+   *   - OrtDeviceAllocator with type of OrtDeviceMemoryType_DEFAULT
+   *   - OrtDeviceAllocator with type of OrtDeviceMemoryType_HOST_ACCESSIBLE
+   *   - OrtReadOnlyAllocator with type of OrtDeviceMemoryType_DEFAULT
+   *     - if provided this allocator will only be used to copy initializers to the device the EP uses.
+   *       ORT will use the OrtDeviceAllocator if not provided.
    *
    * \param[in] ep_device The OrtEpDevice instance to register the OrtMemoryInfo with.
    * \param[in] allocator_memory_info The OrtMemoryInfo information for the allocator.
