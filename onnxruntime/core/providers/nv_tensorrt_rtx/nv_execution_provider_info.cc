@@ -106,8 +106,6 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
     ORT_THROW("Invalid ", kOrtSessionOptionEpContextEmbedMode, " must 0 or 1");
   }
 
-  // info.use_external_data_initializer = true;
-
   return info;
 }
 
