@@ -133,13 +133,16 @@ pipelines:
           lastModifiedDate: 2025-04-24
         armory:
           lastModifiedDate: 2025-04-24
+        policheck:
+          lastModifiedDate: 2025-07-25
       binary:
         credscan:
           lastModifiedDate: 2025-04-25
         binskim:
-          lastModifiedDate: 2025-04-25
+          lastModifiedDate: 2025-07-25
         spotbugs:
           lastModifiedDate: 2025-04-25
+    usedBinskimScanAllExtensions: true
   1757:
     retail:
       source:
