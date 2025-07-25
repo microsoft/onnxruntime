@@ -1,122 +1,177 @@
-import os
+#!/usr/bin/env python3
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+import re
+import sys
+from pathlib import Path
+
+# --- Helper Functions for Updating Files ---
+
+def update_versioning_md(file_path: Path, new_version: str):
+    """Updates the version table in Versioning.md."""
+    print(f"Checking '{file_path.name}' for version updates...")
+    content = file_path.read_text()
+    
+    # Find the first version number in the markdown table
+    match = re.search(r"^\| ([\d.]+) \|", content, re.MULTILINE)
+    if not match:
+        print(f"Warning: Could not find current version in '{file_path.name}'. Skipping.")
+        return
+
+    current_version = match.group(1)
+    print(f"Found current version: {current_version}")
+
+    if new_version != current_version:
+        print(f"Updating version in '{file_path.name}' to {new_version}...")
+        # Prepare the new row by duplicating the header separator line's structure
+        header_separator_match = re.search(r"(\r\n?|\n)(\|---\|.*)", content)
+        if not header_separator_match:
+            print(f"Warning: Could not find table header separator in '{file_path.name}'. Skipping.")
+            return
+
+        header_separator = header_separator_match.group(2)
+        # Create a new row based on the separator, replacing dashes with spaces and adding the version
+        new_row_parts = [" " + part.replace("-", " ") + " " for part in header_separator.split('|')]
+        new_row_parts[1] = f" {new_version} " # Set the new version
+        new_row = "|".join(new_row_parts)
+
+        # Insert the new row right after the header separator line
+        insertion_point = header_separator_match.end(0)
+        new_content = content[:insertion_point] + "\n" + new_row + content[insertion_point:]
+        file_path.write_text(new_content)
+        print("Update complete.")
+    else:
+        print("Version is already up to date.")
+
+
+def update_readme_rst(file_path: Path, new_version: str):
+    """Updates the release history in the Python README.rst."""
+    print(f"Checking '{file_path.name}' for version updates...")
+    content = file_path.read_text()
+
+    # Find the first version header in the file
+    match = re.search(r"^([\d.]+)", content, re.MULTILINE)
+    if not match:
+        print(f"Warning: Could not find current version in '{file_path.name}'. Skipping.")
+        return
+
+    current_version = match.group(1)
+    print(f"Found current version: {current_version}")
+
+    if new_version != current_version:
+        print(f"Updating version in '{file_path.name}' to {new_version}...")
+        new_header = f"{new_version}\n{'^' * len(new_version)}"
+        release_notes = f"Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v{new_version}"
+        new_section = f"{new_header}\n\n{release_notes}\n\n"
+        
+        # Insert the new section before the first version header found
+        insertion_point = match.start(0)
+        new_content = content[:insertion_point] + new_section + content[insertion_point:]
+        file_path.write_text(new_content)
+        print("Update complete.")
+    else:
+        print("Version is already up to date.")
+
+
+def update_init_py(file_path: Path, new_version: str):
+    """Updates the __version__ variable in the project's __init__.py."""
+    print(f"Checking '{file_path.name}' for version updates...")
+    content = file_path.read_text()
+
+    # Find the __version__ line
+    match = re.search(r"__version__\s*=\s*[\"']([\d.]+)[\"']", content)
+    if not match:
+        print(f"Warning: Could not find __version__ in '{file_path.name}'. Skipping.")
+        return
+
+    current_version = match.group(1)
+    print(f"Found current version: {current_version}")
+
+    if new_version != current_version:
+        print(f"Updating version in '{file_path.name}' to {new_version}...")
+        new_content = re.sub(
+            r"__version__\s*=\s*[\"'][\d.]+[\"']",
+            f'__version__ = "{new_version}"',
+            content
+        )
+        file_path.write_text(new_content)
+        print("Update complete.")
+    else:
+        print("Version is already up to date.")
+
+
+def update_npm_packages(js_root: Path, new_version: str):
+    """Updates versions for all NPM packages in the js directory."""
+    print("\nUpdating NPM package versions...")
+    
+    # Nested import and function to keep it self-contained as in original script
+    from util import is_windows, run as run_command
+
+    def run_npm(args, cwd):
+        if is_windows():
+            # In modern shell environments on Windows, `cmd /c` is often not needed
+            # but we keep it for compatibility with the original script's intent.
+            run_command("cmd", "/c", *args, cwd=cwd)
+        else:
+            run_command(*args, cwd=cwd)
+
+    # Check if node and npm are installed
+    try:
+        run_npm(["node", "--version"], cwd=js_root)
+        run_npm(["npm", "--version"], cwd=js_root)
+    except (FileNotFoundError, Exception) as e:
+        print(f"Error: node or npm not found. Skipping NPM package updates. Details: {e}", file=sys.stderr)
+        return
+
+    packages = ["common", "node", "web", "react_native"]
+
+    for package in packages:
+        package_dir = js_root / package
+        print(f"\n--- Updating package: {package} ---")
+        run_npm(["npm", "version", new_version], cwd=package_dir)
+        run_npm(["npm", "install", "--package-lock-only", "--ignore-scripts"], cwd=package_dir)
+
+    print("\n--- Finalizing JS versions and formatting ---")
+    run_npm(["npm", "ci"], cwd=js_root)
+    for package in packages:
+        run_npm(["npm", "run", "update-version", package], cwd=js_root)
+    
+    run_npm(["npm", "run", "format"], cwd=js_root)
+    print("NPM package updates complete.")
 
 
 def update_version():
-    version = ""
-    cwd = os.path.dirname(os.path.realpath(__file__))
-    with open(os.path.join(cwd, "..", "..", "VERSION_NUMBER")) as f:
-        version = f.readline().strip()
-    lines = []
-    current_version = ""
-    file_path = os.path.join(cwd, "..", "..", "docs", "Versioning.md")
-    with open(file_path) as f:
-        lines = f.readlines()
-        for line in lines:
-            if line.startswith("|"):
-                sections = line.split("|")
-                if len(sections) == 8 and sections[1].strip()[0].isdigit():
-                    current_version = sections[1].strip()
-                    break
-    print("Current version of ORT seems to be: " + current_version)
-    if version != current_version:
-        with open(file_path, "w") as f:
-            for i, line in enumerate(lines):
-                f.write(line)
-                if line.startswith("|--"):
-                    sections = lines[i + 1].split("|")
-                    # Make sure there are no 'False Positive' version additions
-                    # by making sure the line we are building a new line from
-                    # contains the current_version
-                    if len(sections) > 1 and sections[1].strip() == current_version:
-                        sections[1] = " " + version + " "
-                        new_line = "|".join(sections)
-                        f.write(new_line)
-    lines = []
-    current_version = ""
-    file_path = os.path.join(cwd, "..", "..", "docs", "python", "README.rst")
-    with open(file_path) as f:
-        lines = f.readlines()
-        for line in lines:
-            sections = line.strip().split(".")
-            if len(sections) == 3 and sections[0].isdigit() and sections[1].isdigit() and sections[2].isdigit():
-                current_version = line.strip()
-                break
-    if version != current_version:
-        inserted = False
-        with open(file_path, "w") as f:
-            for line in lines:
-                sections = line.strip().split(".")
-                if (
-                    inserted is False
-                    and len(sections) == 3
-                    and sections[0].isdigit()
-                    and sections[1].isdigit()
-                    and sections[2].isdigit()
-                ):
-                    f.write(version + "\n")
-                    f.write("^" * len(version) + "\n\n")
-                    f.write(
-                        "Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v"
-                        + version.strip()
-                        + "\n\n"
-                    )
-                    inserted = True
-                f.write(line)
-    lines = []
-    current_version = ""
-    file_path = os.path.join(cwd, "..", "..", "onnxruntime", "__init__.py")
-    with open(file_path) as f:
-        lines = f.readlines()
-        for line in lines:
-            if line.startswith("__version__"):
-                current_version = line.split("=")[1].strip()[1:-1]
-                break
-    if version != current_version:
-        with open(file_path, "w") as f:
-            for line in lines:
-                if line.startswith("__version__"):
-                    f.write('__version__ = "' + version + '"\n')
-                    continue
-                f.write(line)
+    """Main function to read the new version and orchestrate updates across the project."""
+    script_dir = Path(__file__).resolve().parent
+    root_dir = script_dir.parent.parent
 
-    # update version for NPM packages
-    current_version = ""
-    js_root = os.path.join(cwd, "..", "..", "js")
+    # 1. Read and validate the new version from VERSION_NUMBER
+    version_file = root_dir / "VERSION_NUMBER"
+    print(f"Reading new version from '{version_file}'...")
+    try:
+        new_version = version_file.read_text().strip()
+    except FileNotFoundError:
+        print(f"Error: '{version_file}' not found.", file=sys.stderr)
+        sys.exit(1)
 
-    def run(args, cwd):
-        from util import is_windows, run  # noqa: PLC0415
+    # Validate that the version is in x.y.z format
+    if not re.fullmatch(r"\d+\.\d+\.\d+", new_version):
+        print(
+            f"Error: Version '{new_version}' from '{version_file.name}' is not a valid x.y.z semantic version.",
+            file=sys.stderr
+        )
+        sys.exit(1)
+    
+    print(f"Target version to set: {new_version}\n")
 
-        if is_windows():
-            args = ["cmd", "/c", *args]
-        run(*args, cwd=cwd)
+    # 2. Update files
+    update_versioning_md(root_dir / "docs" / "Versioning.md", new_version)
+    update_readme_rst(root_dir / "docs" / "python" / "README.rst", new_version)
+    update_init_py(root_dir / "onnxruntime" / "__init__.py", new_version)
 
-    # check if node and npm are installed
-    run(["node", "--version"], cwd=js_root)
-    run(["npm", "--version"], cwd=js_root)
-
-    # upgrade version for onnxruntime-common
-    run(["npm", "version", version], cwd=os.path.join(js_root, "common"))
-    run(["npm", "install", "--package-lock-only", "--ignore-scripts"], cwd=os.path.join(js_root, "common"))
-
-    # upgrade version for onnxruntime-node
-    run(["npm", "version", version], cwd=os.path.join(js_root, "node"))
-    run(["npm", "install", "--package-lock-only", "--ignore-scripts"], cwd=os.path.join(js_root, "node"))
-
-    # upgrade version for onnxruntime-web
-    run(["npm", "version", version], cwd=os.path.join(js_root, "web"))
-    run(["npm", "install", "--package-lock-only", "--ignore-scripts"], cwd=os.path.join(js_root, "web"))
-
-    # upgrade version for onnxruntime-react-native
-    run(["npm", "version", version], cwd=os.path.join(js_root, "react_native"))
-    run(["npm", "install", "--package-lock-only", "--ignore-scripts"], cwd=os.path.join(js_root, "react_native"))
-
-    # upgrade version.ts in each package
-    run(["npm", "ci"], cwd=js_root)
-    run(["npm", "run", "update-version", "common"], cwd=js_root)
-    run(["npm", "run", "update-version", "node"], cwd=js_root)
-    run(["npm", "run", "update-version", "web"], cwd=js_root)
-    run(["npm", "run", "update-version", "react_native"], cwd=js_root)
-    run(["npm", "run", "format"], cwd=js_root)
+    # 3. Update all NPM packages
+    update_npm_packages(root_dir / "js", new_version)
 
 
 if __name__ == "__main__":
