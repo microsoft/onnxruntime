@@ -109,6 +109,7 @@ struct VitisAIEpFactory : OrtEpFactory {
     GetVendorId = GetVendorIdImpl;
     GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
+    CreateDataTransfer = CreateDataTransferImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
 
@@ -166,6 +167,12 @@ struct VitisAIEpFactory : OrtEpFactory {
       }
     }
     return nullptr;
+  }
+
+  static OrtStatus* CreateDataTransferImpl(
+      OrtEpFactory* /*this_ptr*/,
+      OrtDataTransferImpl** /*data_transfer*/) noexcept {
+    return nullptr;  // TODO: Implement data transfer if needed
   }
 
   static OrtStatus* CreateEpImpl(OrtEpFactory* /*this_ptr*/,
