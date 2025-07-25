@@ -36,11 +36,7 @@ struct OrtNodeGroup {
                                    const OrtNode* redundant_clip_node,
                                    gsl::span<const OrtNode* const> dq_nodes,
                                    gsl::span<const OrtNode* const> q_nodes)  {
-                                    ORT_UNUSED_PARAMETER(graph);
-                                    ORT_UNUSED_PARAMETER(target_node);
-                                    ORT_UNUSED_PARAMETER(redundant_clip_node);
-                                    ORT_UNUSED_PARAMETER(dq_nodes);
-                                    ORT_UNUSED_PARAMETER(q_nodes);
+                                    graph; target_node; redundant_clip_node; dq_nodes; q_nodes;
   // // Within a QDQ node group, a target node input is the only consumer of each DQ.
   // // This should have been ensured by the EnsureUniqueDQForNodeUnit graph transformer, but other graph modifications
   // // may have happened since. Verify that this is still true.

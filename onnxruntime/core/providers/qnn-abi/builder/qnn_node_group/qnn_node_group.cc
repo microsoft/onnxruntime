@@ -125,27 +125,13 @@ static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeG
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
 
   OrtArrayOfConstObjects* nodes = nullptr;
-  OrtStatus* ort_status = ort_api.Graph_GetNodes(&graph, &nodes);
-  if (ort_status != nullptr) {
-    ort_api.ReleaseStatus(ort_status);
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get nodes from graph");
-  }
+  ort_api.Graph_GetNodes(&graph, &nodes);
 
   size_t num_nodes = 0;
-  ort_status = ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
-  if (ort_status != nullptr) {
-    ort_api.ReleaseStatus(ort_status);
-    ort_api.ReleaseArrayOfConstObjects(nodes);
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get size of nodes array");
-  }
+  ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
 
   const void* const* node_data = nullptr;
-  ort_status = ort_api.ArrayOfConstObjects_GetData(nodes, &node_data);
-  if (ort_status != nullptr) {
-    ort_api.ReleaseStatus(ort_status);
-    ort_api.ReleaseArrayOfConstObjects(nodes);
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get data from nodes array");
-  }
+  ort_api.ArrayOfConstObjects_GetData(nodes, &node_data);
 
   sorted_qnn_node_group_indices.reserve(num_node_units);
   qnn_node_groups.reserve(num_node_units);

@@ -143,38 +143,17 @@ Status CreateOrValidateOnQnn(
   {
     // Get input shape information
     OrtArrayOfConstObjects* transpose_head_inputs = nullptr;
-    OrtStatus* ort_status = ort_api.Node_GetInputs(&transpose_head->GetNode(), &transpose_head_inputs);
-    if (ort_status != nullptr) {
-      ort_api.ReleaseStatus(ort_status);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get inputs for transpose head node");
-    }
-
+    ort_api.Node_GetInputs(&transpose_head->GetNode(), &transpose_head_inputs);
     const void* const* transpose_head_inputs_data = nullptr;
-    ort_status = ort_api.ArrayOfConstObjects_GetData(transpose_head_inputs, &transpose_head_inputs_data);
-    if (ort_status != nullptr) {
-      ort_api.ReleaseStatus(ort_status);
-      ort_api.ReleaseArrayOfConstObjects(transpose_head_inputs);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get input data for transpose head node");
-    }
-
+    ort_api.ArrayOfConstObjects_GetData(transpose_head_inputs, &transpose_head_inputs_data);
     const OrtValueInfo* transpose_head_input_info = static_cast<const OrtValueInfo*>(transpose_head_inputs_data[0]);
     const OrtTypeInfo* transpose_head_input_type_info = transpose_head_input_info->GetTypeInfo();
     const OrtTensorTypeAndShapeInfo* transpose_head_input_tensor_info = nullptr;
-    ort_status = ort_api.CastTypeInfoToTensorInfo(transpose_head_input_type_info, &transpose_head_input_tensor_info);
-    if (ort_status != nullptr) {
-      ort_api.ReleaseStatus(ort_status);
-      ort_api.ReleaseArrayOfConstObjects(transpose_head_inputs);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to cast type info to tensor info");
-    }
+    ort_api.CastTypeInfoToTensorInfo(transpose_head_input_type_info, &transpose_head_input_tensor_info);
 
     // Get dimensions count
     size_t transpose_head_input_dims_count = 0;
-    ort_status = ort_api.GetDimensionsCount(transpose_head_input_tensor_info, &transpose_head_input_dims_count);
-    if (ort_status != nullptr) {
-      ort_api.ReleaseStatus(ort_status);
-      ort_api.ReleaseArrayOfConstObjects(transpose_head_inputs);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get dimensions count");
-    }
+    ort_api.GetDimensionsCount(transpose_head_input_tensor_info, &transpose_head_input_dims_count);
 
     // Set channel axis parameter
     const uint32_t channel_axis = static_cast<uint32_t>(transpose_head_input_dims_count - 1);
@@ -196,46 +175,19 @@ Status CreateOrValidateOnQnn(
     // Get reshape1 output shape
     const OrtNodeUnit* reshape1 = node_units[1];
     OrtArrayOfConstObjects* reshape1_outputs = nullptr;
-    OrtStatus* ort_status = ort_api.Node_GetOutputs(&reshape1->GetNode(), &reshape1_outputs);
-    if (ort_status != nullptr) {
-      ort_api.ReleaseStatus(ort_status);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get outputs for reshape1 node");
-    }
-
+    ort_api.Node_GetOutputs(&reshape1->GetNode(), &reshape1_outputs);
     const void* const* reshape1_outputs_data = nullptr;
-    ort_status = ort_api.ArrayOfConstObjects_GetData(reshape1_outputs, &reshape1_outputs_data);
-    if (ort_status != nullptr) {
-      ort_api.ReleaseStatus(ort_status);
-      ort_api.ReleaseArrayOfConstObjects(reshape1_outputs);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get output data for reshape1 node");
-    }
-
+    ort_api.ArrayOfConstObjects_GetData(reshape1_outputs, &reshape1_outputs_data);
     const OrtValueInfo* reshape1_output_info = static_cast<const OrtValueInfo*>(reshape1_outputs_data[0]);
     const OrtTypeInfo* reshape1_output_type_info = reshape1_output_info->GetTypeInfo();
     const OrtTensorTypeAndShapeInfo* reshape1_output_tensor_info = nullptr;
-    ort_status = ort_api.CastTypeInfoToTensorInfo(reshape1_output_type_info, &reshape1_output_tensor_info);
-    if (ort_status != nullptr) {
-      ort_api.ReleaseStatus(ort_status);
-      ort_api.ReleaseArrayOfConstObjects(reshape1_outputs);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to cast type info to tensor info");
-    }
+    ort_api.CastTypeInfoToTensorInfo(reshape1_output_type_info, &reshape1_output_tensor_info);
 
     // Get dimensions
     size_t reshape1_output_dims_count = 0;
-    ort_status = ort_api.GetDimensionsCount(reshape1_output_tensor_info, &reshape1_output_dims_count);
-    if (ort_status != nullptr) {
-      ort_api.ReleaseStatus(ort_status);
-      ort_api.ReleaseArrayOfConstObjects(reshape1_outputs);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get dimensions count");
-    }
-
+    ort_api.GetDimensionsCount(reshape1_output_tensor_info, &reshape1_output_dims_count);
     std::vector<int64_t> reshape1_output_dims(reshape1_output_dims_count);
-    ort_status = ort_api.GetDimensions(reshape1_output_tensor_info, reshape1_output_dims.data(), reshape1_output_dims_count);
-    if (ort_status != nullptr) {
-      ort_api.ReleaseStatus(ort_status);
-      ort_api.ReleaseArrayOfConstObjects(reshape1_outputs);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get dimensions");
-    }
+    ort_api.GetDimensions(reshape1_output_tensor_info, reshape1_output_dims.data(), reshape1_output_dims_count);
 
     // Set number of groups parameter
     Qnn_Scalar_t num_groups_scalar = QNN_SCALAR_INIT;
@@ -304,77 +256,29 @@ std::unique_ptr<IQnnNodeGroup> ChannelShuffleFusion::TryFusion(
   // Input shape to reshape1 must equal output shape of reshape2; and has rank > 2
   // Get reshape1 input shape
   OrtArrayOfConstObjects* reshape1_inputs = nullptr;
-  OrtStatus* status = ort_api.Node_GetInputs(&reshape1->GetNode(), &reshape1_inputs);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    return nullptr;
-  }
-
+  ort_api.Node_GetInputs(&reshape1->GetNode(), &reshape1_inputs);
   const void* const* reshape1_inputs_data = nullptr;
-  status = ort_api.ArrayOfConstObjects_GetData(reshape1_inputs, &reshape1_inputs_data);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    return nullptr;
-  }
-
+  ort_api.ArrayOfConstObjects_GetData(reshape1_inputs, &reshape1_inputs_data);
   const OrtValueInfo* reshape1_input_info = static_cast<const OrtValueInfo*>(reshape1_inputs_data[0]);
   const OrtTypeInfo* reshape1_input_type_info = reshape1_input_info->GetTypeInfo();
   const OrtTensorTypeAndShapeInfo* reshape1_input_tensor_info = nullptr;
-  status = ort_api.CastTypeInfoToTensorInfo(reshape1_input_type_info, &reshape1_input_tensor_info);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    return nullptr;
-  }
+  ort_api.CastTypeInfoToTensorInfo(reshape1_input_type_info, &reshape1_input_tensor_info);
 
   // Get reshape2 output shape
   OrtArrayOfConstObjects* reshape2_outputs = nullptr;
-  status = ort_api.Node_GetOutputs(&reshape2->GetNode(), &reshape2_outputs);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    return nullptr;
-  }
-
+  ort_api.Node_GetOutputs(&reshape2->GetNode(), &reshape2_outputs);
   const void* const* reshape2_outputs_data = nullptr;
-  status = ort_api.ArrayOfConstObjects_GetData(reshape2_outputs, &reshape2_outputs_data);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape2_outputs);
-    return nullptr;
-  }
-
+  ort_api.ArrayOfConstObjects_GetData(reshape2_outputs, &reshape2_outputs_data);
   const OrtValueInfo* reshape2_output_info = static_cast<const OrtValueInfo*>(reshape2_outputs_data[0]);
   const OrtTypeInfo* reshape2_output_type_info = reshape2_output_info->GetTypeInfo();
   const OrtTensorTypeAndShapeInfo* reshape2_output_tensor_info = nullptr;
-  status = ort_api.CastTypeInfoToTensorInfo(reshape2_output_type_info, &reshape2_output_tensor_info);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape2_outputs);
-    return nullptr;
-  }
+  ort_api.CastTypeInfoToTensorInfo(reshape2_output_type_info, &reshape2_output_tensor_info);
 
   // Compare dimensions
   size_t reshape1_input_dims_count = 0;
   size_t reshape2_output_dims_count = 0;
-  status = ort_api.GetDimensionsCount(reshape1_input_tensor_info, &reshape1_input_dims_count);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape2_outputs);
-    return nullptr;
-  }
-
-  status = ort_api.GetDimensionsCount(reshape2_output_tensor_info, &reshape2_output_dims_count);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape2_outputs);
-    return nullptr;
-  }
+  ort_api.GetDimensionsCount(reshape1_input_tensor_info, &reshape1_input_dims_count);
+  ort_api.GetDimensionsCount(reshape2_output_tensor_info, &reshape2_output_dims_count);
 
   if (reshape1_input_dims_count != reshape2_output_dims_count) {
     ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
@@ -384,21 +288,8 @@ std::unique_ptr<IQnnNodeGroup> ChannelShuffleFusion::TryFusion(
 
   std::vector<int64_t> reshape1_input_dims(reshape1_input_dims_count);
   std::vector<int64_t> reshape2_output_dims(reshape2_output_dims_count);
-  status = ort_api.GetDimensions(reshape1_input_tensor_info, reshape1_input_dims.data(), reshape1_input_dims_count);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape2_outputs);
-    return nullptr;
-  }
-
-  status = ort_api.GetDimensions(reshape2_output_tensor_info, reshape2_output_dims.data(), reshape2_output_dims_count);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape2_outputs);
-    return nullptr;
-  }
+  ort_api.GetDimensions(reshape1_input_tensor_info, reshape1_input_dims.data(), reshape1_input_dims_count);
+  ort_api.GetDimensions(reshape2_output_tensor_info, reshape2_output_dims.data(), reshape2_output_dims_count);
 
   // Check if reshape1 input dims equal reshape2 output dims
   if (!std::equal(reshape1_input_dims.begin(), reshape1_input_dims.end(), reshape2_output_dims.begin())) {
@@ -409,55 +300,18 @@ std::unique_ptr<IQnnNodeGroup> ChannelShuffleFusion::TryFusion(
 
   // Get reshape1 output shape
   OrtArrayOfConstObjects* reshape1_outputs = nullptr;
-  status = ort_api.Node_GetOutputs(&reshape1->GetNode(), &reshape1_outputs);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape2_outputs);
-    return nullptr;
-  }
-
+  ort_api.Node_GetOutputs(&reshape1->GetNode(), &reshape1_outputs);
   const void* const* reshape1_outputs_data = nullptr;
-  status = ort_api.ArrayOfConstObjects_GetData(reshape1_outputs, &reshape1_outputs_data);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape2_outputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_outputs);
-    return nullptr;
-  }
-
+  ort_api.ArrayOfConstObjects_GetData(reshape1_outputs, &reshape1_outputs_data);
   const OrtValueInfo* reshape1_output_info = static_cast<const OrtValueInfo*>(reshape1_outputs_data[0]);
   const OrtTypeInfo* reshape1_output_type_info = reshape1_output_info->GetTypeInfo();
   const OrtTensorTypeAndShapeInfo* reshape1_output_tensor_info = nullptr;
-  status = ort_api.CastTypeInfoToTensorInfo(reshape1_output_type_info, &reshape1_output_tensor_info);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape2_outputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_outputs);
-    return nullptr;
-  }
+  ort_api.CastTypeInfoToTensorInfo(reshape1_output_type_info, &reshape1_output_tensor_info);
 
   size_t reshape1_output_dims_count = 0;
-  status = ort_api.GetDimensionsCount(reshape1_output_tensor_info, &reshape1_output_dims_count);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape2_outputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_outputs);
-    return nullptr;
-  }
-
+  ort_api.GetDimensionsCount(reshape1_output_tensor_info, &reshape1_output_dims_count);
   std::vector<int64_t> reshape1_output_dims(reshape1_output_dims_count);
-  status = ort_api.GetDimensions(reshape1_output_tensor_info, reshape1_output_dims.data(), reshape1_output_dims_count);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_inputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape2_outputs);
-    ort_api.ReleaseArrayOfConstObjects(reshape1_outputs);
-    return nullptr;
-  }
+  ort_api.GetDimensions(reshape1_output_tensor_info, reshape1_output_dims.data(), reshape1_output_dims_count);
 
   // Intermediate shape must split channels in groups only
   if (reshape1_input_dims[0] != reshape1_output_dims[0]) {

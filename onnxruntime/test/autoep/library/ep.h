@@ -54,7 +54,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 
-  OrtStatus* SaveConstantInitializers(const OrtGraph* graph);
+  OrtStatus* ExampleEp::SaveConstantInitializers(const OrtGraph* graph);
 
   ExampleEpFactory& factory_;
   std::string name_;

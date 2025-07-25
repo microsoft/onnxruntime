@@ -35,20 +35,12 @@ Status QnnModel::SetGraphInputOutputInfo(const OrtGraph& ort_graph,
                                          const OrtNode& fused_node,
                                          const logging::Logger& logger) {
   OrtArrayOfConstObjects* input_defs;
-  OrtStatus* status = api_ptrs_.ort_api.Node_GetInputs(&fused_node, &input_defs);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get inputs from fused node");
-  }
+  api_ptrs_.ort_api.Node_GetInputs(&fused_node, &input_defs);
   ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(ort_graph, input_defs, input_names_, inputs_info_,
                                               model_input_index_map_, logger, true));
 
   OrtArrayOfConstObjects* output_defs;
-  status = api_ptrs_.ort_api.Node_GetOutputs(&fused_node, &output_defs);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get outputs from fused node");
-  }
+  api_ptrs_.ort_api.Node_GetOutputs(&fused_node, &output_defs);
   ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(ort_graph, output_defs, output_names_, outputs_info_,
                                               model_output_index_map_, logger));
 
@@ -64,28 +56,14 @@ Status QnnModel::ParseGraphInputOrOutput(const OrtGraph& ort_graph,
                                          bool is_input) {
   const OrtArrayOfConstObjects* input_output_defs_const = const_cast<OrtArrayOfConstObjects*>(input_output_defs);
   size_t input_output_defs_size;
-  OrtStatus* status = api_ptrs_.ort_api.ArrayOfConstObjects_GetSize(input_output_defs_const, &input_output_defs_size);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get size of array of objects");
-  }
-
+  api_ptrs_.ort_api.ArrayOfConstObjects_GetSize(input_output_defs_const, &input_output_defs_size);
   const void* const* input_output_defs_data = nullptr;
-  status = api_ptrs_.ort_api.ArrayOfConstObjects_GetData(input_output_defs_const, &input_output_defs_data);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get data from array of objects");
-  }
+  api_ptrs_.ort_api.ArrayOfConstObjects_GetData(input_output_defs_const, &input_output_defs_data);
 
   for (size_t i = 0, end = input_output_defs_size, index = 0; i < end; ++i) {
     const OrtValueInfo* input_output_def_data = static_cast<const OrtValueInfo*>(input_output_defs_data[i]);
     const char* input_output_def_name = nullptr;
-    status = api_ptrs_.ort_api.GetValueInfoName(input_output_def_data, &input_output_def_name);
-    if (status != nullptr) {
-      const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-      api_ptrs_.ort_api.ReleaseStatus(status);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get value info name: " + std::string(error_message));
-    }
+    api_ptrs_.ort_api.GetValueInfoName(input_output_def_data, &input_output_def_name);
     const auto name = std::string(input_output_def_name);
     // const auto& name = input_output_defs[i]->Name();
     if (is_input) {
@@ -97,52 +75,21 @@ Status QnnModel::ParseGraphInputOrOutput(const OrtGraph& ort_graph,
     LOGS(logger, VERBOSE) << (is_input ? "input " : "output ") << i << " " << name;
     input_output_index_map.emplace(name, index++);
 
-  const OrtTypeInfo* type_info = nullptr;
-  status = api_ptrs_.ort_api.GetValueInfoTypeInfo(input_output_def_data, &type_info);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get type info");
-  }
+    const OrtTypeInfo* type_info = nullptr;
+    api_ptrs_.ort_api.GetValueInfoTypeInfo(input_output_def_data, &type_info);
+    const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
+    api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
 
-  const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-  status = api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to cast type info to tensor info");
-  }
+    ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    api_ptrs_.ort_api.GetTensorElementType(type_shape, &elem_type);
 
-  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  status = api_ptrs_.ort_api.GetTensorElementType(type_shape, &elem_type);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-    api_ptrs_.ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(type_shape));
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get tensor element type");
-  }
+    size_t num_dims = 0;
+    api_ptrs_.ort_api.GetDimensionsCount(type_shape, &num_dims);
 
-  size_t num_dims = 0;
-  status = api_ptrs_.ort_api.GetDimensionsCount(type_shape, &num_dims);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-    api_ptrs_.ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(type_shape));
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get dimensions count");
-  }
-
-  std::vector<int64_t> shape;
-  shape.resize(num_dims, 0);
-  // TODO: Check what OrtApi.GetDimensions returns for dynamic shape.
-  status = api_ptrs_.ort_api.GetDimensions(type_shape, shape.data(), shape.size());
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-    api_ptrs_.ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(type_shape));
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get dimensions");
-  }
-
-  api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-  api_ptrs_.ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(type_shape));
+    std::vector<int64_t> shape;
+    shape.resize(num_dims, 0);
+    // TODO: Check what OrtApi.GetDimensions returns for dynamic shape.
+    api_ptrs_.ort_api.GetDimensions(type_shape, shape.data(), shape.size());
 
     // use index i so that for graph input, it has initializers included
     input_output_info_table.emplace(std::piecewise_construct,
@@ -301,49 +248,20 @@ Status QnnModel::ExecuteGraph(OrtKernelContext* context,
   std::cout << "DEBUG: ExecuteGraph" << std::endl;
   LOGS(logger, VERBOSE) << "QnnModel::ExecuteGraphs";
   size_t num_inputs;
-  OrtStatus* status = api_ptrs_.ort_api.KernelContext_GetInputCount(context, &num_inputs);
-  if (status != nullptr) {
-    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get input count: " + std::string(error_message));
-  }
-
+  api_ptrs_.ort_api.KernelContext_GetInputCount(context, &num_inputs);
   size_t num_outputs;
-  status = api_ptrs_.ort_api.KernelContext_GetOutputCount(context, &num_outputs);
-  if (status != nullptr) {
-    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get output count: " + std::string(error_message));
-  }
+  api_ptrs_.ort_api.KernelContext_GetOutputCount(context, &num_outputs);
   ORT_RETURN_IF_NOT(qnn_input_infos_.size() <= num_inputs, "Inconsistent input sizes");
   ORT_RETURN_IF_NOT(qnn_output_infos_.size() == num_outputs, "Inconsistent output sizes");
 
   using namespace qnn::utils;
   auto TensorDataSize = [&ort_api = api_ptrs_.ort_api](auto ort_tensor) -> size_t {
     OrtTensorTypeAndShapeInfo* tensor_type_and_shape = nullptr;
-    OrtStatus* status = ort_api.GetTensorTypeAndShape(ort_tensor, &tensor_type_and_shape);
-    if (status != nullptr) {
-      ort_api.ReleaseStatus(status);
-      return 0;
-    }
-
+    ort_api.GetTensorTypeAndShape(ort_tensor, &tensor_type_and_shape);
     size_t length;
-    status = ort_api.GetTensorShapeElementCount(tensor_type_and_shape, &length);
-    if (status != nullptr) {
-      ort_api.ReleaseStatus(status);
-      ort_api.ReleaseTensorTypeAndShapeInfo(tensor_type_and_shape);
-      return 0;
-    }
-
+    ort_api.GetTensorShapeElementCount(tensor_type_and_shape, &length);
     ONNXTensorElementDataType element_type;
-    status = ort_api.GetTensorElementType(tensor_type_and_shape, &element_type);
-    if (status != nullptr) {
-      ort_api.ReleaseStatus(status);
-      ort_api.ReleaseTensorTypeAndShapeInfo(tensor_type_and_shape);
-      return 0;
-    }
-
-    ort_api.ReleaseTensorTypeAndShapeInfo(tensor_type_and_shape);
+    ort_api.GetTensorElementType(tensor_type_and_shape, &element_type);
     size_t element_size = GetElementSizeByType(element_type);
     return element_size * length;
   };
@@ -355,12 +273,7 @@ Status QnnModel::ExecuteGraph(OrtKernelContext* context,
     LOGS(logger, VERBOSE) << "model_input = " << qnn_input_info.tensor_wrapper->GetName()
                           << " index = " << qnn_input_info.ort_index;
     const OrtValue* ort_input_tensor = nullptr;
-    status = api_ptrs_.ort_api.KernelContext_GetInput(context, qnn_input_info.ort_index, &ort_input_tensor);
-    if (status != nullptr) {
-      const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-      api_ptrs_.ort_api.ReleaseStatus(status);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get input tensor: " + std::string(error_message));
-    }
+    api_ptrs_.ort_api.KernelContext_GetInput(context, qnn_input_info.ort_index, &ort_input_tensor);
     auto ort_tensor_size = TensorDataSize(ort_input_tensor);
     LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_input_info.tensor_byte_size
                           << " Ort tensor size: " << ort_tensor_size;
@@ -370,20 +283,9 @@ Status QnnModel::ExecuteGraph(OrtKernelContext* context,
     qnn_inputs.push_back(qnn_input_info.tensor_wrapper->GetQnnTensor());
 
     const OrtMemoryInfo* input_tensor_mem_info = nullptr;
-    status = api_ptrs_.ort_api.GetTensorMemoryInfo(ort_input_tensor, &input_tensor_mem_info);
-    if (status != nullptr) {
-      const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-      api_ptrs_.ort_api.ReleaseStatus(status);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get tensor memory info: " + std::string(error_message));
-    }
-
+    api_ptrs_.ort_api.GetTensorMemoryInfo(ort_input_tensor, &input_tensor_mem_info);
     const void* raw_data;
-    status = api_ptrs_.ort_api.GetTensorData(ort_input_tensor, &raw_data);
-    if (status != nullptr) {
-      const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-      api_ptrs_.ort_api.ReleaseStatus(status);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get tensor data: " + std::string(error_message));
-    }
+    api_ptrs_.ort_api.GetTensorData(ort_input_tensor, &raw_data);
     ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValueMemory(
         logger,
         *qnn_backend_manager_,
@@ -402,16 +304,11 @@ Status QnnModel::ExecuteGraph(OrtKernelContext* context,
     const auto& ort_output_info = GetOutputInfo(model_output_name);
     const std::vector<int64_t>& output_shape = ort_output_info->shape_;
     OrtValue* ort_output_tensor = nullptr;
-    status = api_ptrs_.ort_api.KernelContext_GetOutput(context,
+    api_ptrs_.ort_api.KernelContext_GetOutput(context,
                                     qnn_output_info.ort_index,
                                     output_shape.data(),
                                     output_shape.size(),
                                     &ort_output_tensor);
-    if (status != nullptr) {
-      const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-      api_ptrs_.ort_api.ReleaseStatus(status);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get output tensor: " + std::string(error_message));
-    }
     auto ort_tensor_size = TensorDataSize(ort_output_tensor);
     LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_output_info.tensor_byte_size
                           << " Ort tensor size: " << ort_tensor_size;
@@ -421,20 +318,9 @@ Status QnnModel::ExecuteGraph(OrtKernelContext* context,
     qnn_outputs.push_back(qnn_output_info.tensor_wrapper->GetQnnTensor());
 
     const OrtMemoryInfo* output_tensor_mem_info = nullptr;
-    status = api_ptrs_.ort_api.GetTensorMemoryInfo(ort_output_tensor, &output_tensor_mem_info);
-    if (status != nullptr) {
-      const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-      api_ptrs_.ort_api.ReleaseStatus(status);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get tensor memory info: " + std::string(error_message));
-    }
-
+    api_ptrs_.ort_api.GetTensorMemoryInfo(ort_output_tensor, &output_tensor_mem_info);
     void* mutable_data;
-    status = api_ptrs_.ort_api.GetTensorMutableData(ort_output_tensor, &mutable_data);
-    if (status != nullptr) {
-      const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-      api_ptrs_.ort_api.ReleaseStatus(status);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get tensor mutable data: " + std::string(error_message));
-    }
+    api_ptrs_.ort_api.GetTensorMutableData(ort_output_tensor, &mutable_data);
     ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValueMemory(
         logger,
         *qnn_backend_manager_,

@@ -126,84 +126,37 @@ static bool IsDQQConversion(const QnnModelWrapper& qnn_model_wrapper, const OrtN
 
   // Get DQ inputs
   OrtArrayOfConstObjects* dq_inputs = nullptr;
-  OrtStatus* status = ort_api.Node_GetInputs(&dq_node, &dq_inputs);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
-    return false;
-  }
+  ort_api.Node_GetInputs(&dq_node, &dq_inputs);
 
   // Get Q inputs
   OrtArrayOfConstObjects* q_inputs = nullptr;
-  status = ort_api.Node_GetInputs(&q_node, &q_inputs);
-  if (status != nullptr) {
-    ort_api.ReleaseArrayOfConstObjects(dq_inputs);
-    ort_api.ReleaseStatus(status);
-    return false;
-  }
+  ort_api.Node_GetInputs(&q_node, &q_inputs);
 
   size_t dq_inputs_count = 0;
   size_t q_inputs_count = 0;
-  status = ort_api.ArrayOfConstObjects_GetSize(dq_inputs, &dq_inputs_count);
-  if (status != nullptr) {
-    ort_api.ReleaseArrayOfConstObjects(dq_inputs);
-    ort_api.ReleaseArrayOfConstObjects(q_inputs);
-    ort_api.ReleaseStatus(status);
-    return false;
-  }
-
-  status = ort_api.ArrayOfConstObjects_GetSize(q_inputs, &q_inputs_count);
-  if (status != nullptr) {
-    ort_api.ReleaseArrayOfConstObjects(dq_inputs);
-    ort_api.ReleaseArrayOfConstObjects(q_inputs);
-    ort_api.ReleaseStatus(status);
-    return false;
-  }
+  ort_api.ArrayOfConstObjects_GetSize(dq_inputs, &dq_inputs_count);
+  ort_api.ArrayOfConstObjects_GetSize(q_inputs, &q_inputs_count);
 
   auto is_scalar_shape = [&ort_api](const OrtValueInfo* value_info) -> bool {
-    const OrtTypeInfo* type_info = nullptr;
-    OrtStatus* status = ort_api.GetValueInfoTypeInfo(value_info, &type_info);
-    if (status != nullptr) {
-      ort_api.ReleaseStatus(status);
-      return false;
-    }
+    OrtTypeInfo* type_info = nullptr;
+    ort_api.GetValueInfoTypeInfo(value_info, &(static_cast<const OrtTypeInfo*>(type_info)));
 
-    const OrtTensorTypeAndShapeInfo* tensor_info = nullptr;
-    status = ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_info);
-    if (status != nullptr) {
-      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-      ort_api.ReleaseStatus(status);
-      return false;
-    }
+    OrtTensorTypeAndShapeInfo* tensor_info = nullptr;
+    ort_api.CastTypeInfoToTensorInfo(type_info, &(static_cast<const OrtTensorTypeAndShapeInfo*>(tensor_info)));
 
     size_t dims_count = 0;
-    status = ort_api.GetDimensionsCount(tensor_info, &dims_count);
-    if (status != nullptr) {
-      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-      ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_info));
-      ort_api.ReleaseStatus(status);
-      return false;
-    }
+    ort_api.GetDimensionsCount(tensor_info, &dims_count);
 
     if (dims_count == 0) {
-      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-      ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_info));
       return true;
     }
 
     if (dims_count == 1) {
       int64_t dim_value = 0;
-      status = ort_api.GetDimensions(tensor_info, &dim_value, 1);
-      ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-      ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_info));
-      if (status != nullptr) {
-        ort_api.ReleaseStatus(status);
-        return false;
-      }
+      ort_api.GetDimensions(tensor_info, &dim_value, 1);
       return dim_value == 1;
     }
 
-    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-    ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(tensor_info));
     return false;
   };
 
@@ -217,21 +170,8 @@ static bool IsDQQConversion(const QnnModelWrapper& qnn_model_wrapper, const OrtN
 
   const void* const* dq_inputs_data = nullptr;
   const void* const* q_inputs_data = nullptr;
-  status = ort_api.ArrayOfConstObjects_GetData(dq_inputs, &dq_inputs_data);
-  if (status != nullptr) {
-    ort_api.ReleaseArrayOfConstObjects(dq_inputs);
-    ort_api.ReleaseArrayOfConstObjects(q_inputs);
-    ort_api.ReleaseStatus(status);
-    return false;
-  }
-
-  status = ort_api.ArrayOfConstObjects_GetData(q_inputs, &q_inputs_data);
-  if (status != nullptr) {
-    ort_api.ReleaseArrayOfConstObjects(dq_inputs);
-    ort_api.ReleaseArrayOfConstObjects(q_inputs);
-    ort_api.ReleaseStatus(status);
-    return false;
-  }
+  ort_api.ArrayOfConstObjects_GetData(dq_inputs, &dq_inputs_data);
+  ort_api.ArrayOfConstObjects_GetData(q_inputs, &q_inputs_data);
 
   const OrtValueInfo* dq_scale = static_cast<const OrtValueInfo*>(dq_inputs_data[QDQ_SCALE_INPUT_IDX]);
   const OrtValueInfo* dq_zero_point = static_cast<const OrtValueInfo*>(dq_inputs_data[QDQ_ZERO_POINT_INPUT_IDX]);
@@ -251,110 +191,53 @@ static bool IsDQQConversion(const QnnModelWrapper& qnn_model_wrapper, const OrtN
   const OrtValue* q_scale_value = nullptr;
   const OrtValue* q_zero_point_value = nullptr;
 
-  Status status2 = dq_scale->GetInitializerValue(dq_scale_value);
-  if (!status2.IsOK() || dq_scale_value == nullptr) {
+  Status status = dq_scale->GetInitializerValue(dq_scale_value);
+  if (!status.IsOK() || dq_scale_value == nullptr) {
     ort_api.ReleaseArrayOfConstObjects(dq_inputs);
     ort_api.ReleaseArrayOfConstObjects(q_inputs);
     return false;
   }
 
-  status2 = dq_zero_point->GetInitializerValue(dq_zero_point_value);
-  if (!status2.IsOK() || dq_zero_point_value == nullptr) {
+  status = dq_zero_point->GetInitializerValue(dq_zero_point_value);
+  if (!status.IsOK() || dq_zero_point_value == nullptr) {
     ort_api.ReleaseArrayOfConstObjects(dq_inputs);
     ort_api.ReleaseArrayOfConstObjects(q_inputs);
     return false;
   }
 
-  status2 = q_scale->GetInitializerValue(q_scale_value);
-  if (!status2.IsOK() || q_scale_value == nullptr) {
+  status = q_scale->GetInitializerValue(q_scale_value);
+  if (!status.IsOK() || q_scale_value == nullptr) {
     ort_api.ReleaseArrayOfConstObjects(dq_inputs);
     ort_api.ReleaseArrayOfConstObjects(q_inputs);
     return false;
   }
 
-  status2 = q_zero_point->GetInitializerValue(q_zero_point_value);
-  if (!status2.IsOK() || q_zero_point_value == nullptr) {
+  status = q_zero_point->GetInitializerValue(q_zero_point_value);
+  if (!status.IsOK() || q_zero_point_value == nullptr) {
     ort_api.ReleaseArrayOfConstObjects(dq_inputs);
     ort_api.ReleaseArrayOfConstObjects(q_inputs);
     return false;
   }
 
   // Get the data types
-  const OrtTypeInfo* dq_scale_type_info = nullptr;
-  const OrtTypeInfo* q_scale_type_info = nullptr;
-  status = ort_api.GetValueInfoTypeInfo(dq_scale, &dq_scale_type_info);
-  if (status != nullptr) {
-    ort_api.ReleaseArrayOfConstObjects(dq_inputs);
-    ort_api.ReleaseArrayOfConstObjects(q_inputs);
-    ort_api.ReleaseStatus(status);
-    return false;
-  }
+  OrtTypeInfo* dq_scale_type_info = nullptr;
+  OrtTypeInfo* q_scale_type_info = nullptr;
+  ort_api.GetValueInfoTypeInfo(dq_scale, &(static_cast<const OrtTypeInfo*>(dq_scale_type_info)));
+  ort_api.GetValueInfoTypeInfo(q_scale, &(static_cast<const OrtTypeInfo*>(q_scale_type_info)));
 
-  status = ort_api.GetValueInfoTypeInfo(q_scale, &q_scale_type_info);
-  if (status != nullptr) {
-    ort_api.ReleaseArrayOfConstObjects(dq_inputs);
-    ort_api.ReleaseArrayOfConstObjects(q_inputs);
-    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(dq_scale_type_info));
-    ort_api.ReleaseStatus(status);
-    return false;
-  }
-
-  const OrtTensorTypeAndShapeInfo* dq_scale_tensor_info = nullptr;
-  const OrtTensorTypeAndShapeInfo* q_scale_tensor_info = nullptr;
-  status = ort_api.CastTypeInfoToTensorInfo(dq_scale_type_info, &dq_scale_tensor_info);
-  if (status != nullptr) {
-    ort_api.ReleaseArrayOfConstObjects(dq_inputs);
-    ort_api.ReleaseArrayOfConstObjects(q_inputs);
-    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(dq_scale_type_info));
-    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(q_scale_type_info));
-    ort_api.ReleaseStatus(status);
-    return false;
-  }
-
-  status = ort_api.CastTypeInfoToTensorInfo(q_scale_type_info, &q_scale_tensor_info);
-  if (status != nullptr) {
-    ort_api.ReleaseArrayOfConstObjects(dq_inputs);
-    ort_api.ReleaseArrayOfConstObjects(q_inputs);
-    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(dq_scale_type_info));
-    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(q_scale_type_info));
-    ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(dq_scale_tensor_info));
-    ort_api.ReleaseStatus(status);
-    return false;
-  }
+  OrtTensorTypeAndShapeInfo* dq_scale_tensor_info = nullptr;
+  OrtTensorTypeAndShapeInfo* q_scale_tensor_info = nullptr;
+  ort_api.CastTypeInfoToTensorInfo(dq_scale_type_info, &(static_cast<const OrtTensorTypeAndShapeInfo*>(dq_scale_tensor_info)));
+  ort_api.CastTypeInfoToTensorInfo(q_scale_type_info, &(static_cast<const OrtTensorTypeAndShapeInfo*>(q_scale_tensor_info)));
 
   ONNXTensorElementDataType dq_scale_data_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   ONNXTensorElementDataType q_scale_data_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  status = ort_api.GetTensorElementType(dq_scale_tensor_info, &dq_scale_data_type);
-  if (status != nullptr) {
-    ort_api.ReleaseArrayOfConstObjects(dq_inputs);
-    ort_api.ReleaseArrayOfConstObjects(q_inputs);
-    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(dq_scale_type_info));
-    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(q_scale_type_info));
-    ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(dq_scale_tensor_info));
-    ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(q_scale_tensor_info));
-    ort_api.ReleaseStatus(status);
-    return false;
-  }
-
-  status = ort_api.GetTensorElementType(q_scale_tensor_info, &q_scale_data_type);
-  if (status != nullptr) {
-    ort_api.ReleaseArrayOfConstObjects(dq_inputs);
-    ort_api.ReleaseArrayOfConstObjects(q_inputs);
-    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(dq_scale_type_info));
-    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(q_scale_type_info));
-    ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(dq_scale_tensor_info));
-    ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(q_scale_tensor_info));
-    ort_api.ReleaseStatus(status);
-    return false;
-  }
+  ort_api.GetTensorElementType(dq_scale_tensor_info, &dq_scale_data_type);
+  ort_api.GetTensorElementType(q_scale_tensor_info, &q_scale_data_type);
 
   // Clean up
   ort_api.ReleaseArrayOfConstObjects(dq_inputs);
   ort_api.ReleaseArrayOfConstObjects(q_inputs);
-  ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(dq_scale_type_info));
-  ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(q_scale_type_info));
-  ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(dq_scale_tensor_info));
-  ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(q_scale_tensor_info));
 
   // For scale, ensure that the Q/DQ have same scale type.
   return (dq_scale_data_type == q_scale_data_type);

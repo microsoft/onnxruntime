@@ -35,15 +35,15 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
   OrtMemoryInfo* mem_info = nullptr;
-  assert(ort_api.CreateMemoryInfo_V2("ExampleEP GPU", OrtMemoryInfoDeviceType_GPU,
-                                     /*vendor*/ 0xBE57, /* device_id */ 0,
-                                     OrtDeviceMemoryType_DEFAULT,
-                                     /*alignment*/ 0,
-                                     // it is invalid to use OrtArenaAllocator as that is reserved for the
-                                     // internal ORT Arena implementation
-                                     OrtAllocatorType::OrtDeviceAllocator,
-                                     &mem_info) == nullptr);  // should never fail.
-
+  auto* status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU", OrtMemoryInfoDeviceType_GPU,
+                                             /*vendor*/ 0xBE57, /* device_id */ 0,
+                                             OrtDeviceMemoryType_DEFAULT,
+                                             /*alignment*/ 0,
+                                             // it is invalid to use OrtArenaAllocator as that is reserved for the
+                                             // internal ORT Arena implementation
+                                             OrtAllocatorType::OrtDeviceAllocator,
+                                             &mem_info);
+  assert(status == nullptr);  // should never fail.
   default_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
 
   // create data transfer for the device
@@ -51,25 +51,25 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   data_transfer_impl_ = std::make_unique<ExampleDataTransfer>(apis, device);
 
   // create read-only allocator for use with initializers. same info as DEFAULT memory apart from the allocator type.
-  mem_info = nullptr;
-  assert(ort_api.CreateMemoryInfo_V2("ExampleEP GPU readonly", OrtMemoryInfoDeviceType_GPU,
-                                     /*vendor*/ 0xBE57, /* device_id */ 0,
-                                     OrtDeviceMemoryType_DEFAULT,
-                                     /*alignment*/ 0,
-                                     OrtAllocatorType::OrtReadOnlyAllocator,
-                                     &mem_info) == nullptr);  // should never fail.
+  status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU readonly", OrtMemoryInfoDeviceType_GPU,
+                                       /*vendor*/ 0xBE57, /* device_id */ 0,
+                                       OrtDeviceMemoryType_DEFAULT,
+                                       /*alignment*/ 0,
+                                       OrtAllocatorType::OrtReadOnlyAllocator,
+                                       &mem_info);
+  assert(status == nullptr);  // should never fail.
 
   readonly_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
 
   // HOST_ACCESSIBLE memory example. use the non-CPU device type so it's clear which device the memory is also
   // accessible from. we infer from the type of HOST_ACCESSIBLE that it's CPU accessible.
   mem_info = nullptr;
-  assert(ort_api.CreateMemoryInfo_V2("ExampleEP GPU pinned", OrtMemoryInfoDeviceType_GPU,
-                                     /*vendor*/ 0xBE57, /* device_id */ 0,
-                                     OrtDeviceMemoryType_HOST_ACCESSIBLE,
-                                     /*alignment*/ 0,
-                                     OrtAllocatorType::OrtDeviceAllocator,
-                                     &mem_info) == nullptr);  // should never fail.
+  status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU pinned", OrtMemoryInfoDeviceType_GPU,
+                                       /*vendor*/ 0xBE57, /* device_id */ 0,
+                                       OrtDeviceMemoryType_HOST_ACCESSIBLE,
+                                       /*alignment*/ 0,
+                                       OrtAllocatorType::OrtDeviceAllocator,
+                                       &mem_info);
   ort_api.ReleaseMemoryInfo(mem_info);
 }
 

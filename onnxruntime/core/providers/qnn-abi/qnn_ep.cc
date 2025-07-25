@@ -259,7 +259,6 @@ static bool ParseBoolOption(const OrtApi& ort_api,
   return result;
 }
 
-#ifdef _WIN32
 static qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level, const logging::Logger& logger) {
   if (level == 5) {
     LOGS(logger, INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
@@ -273,7 +272,6 @@ static qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level, co
     return qnn::ProfilingLevel::DETAILED;
   }
 }
-#endif
 
 static std::unique_ptr<qnn::QnnSerializerConfig> ParseSerializerBackendOptions(const OrtApi& ort_api,
                                                                                const OrtSessionOptions& session_options,
@@ -804,40 +802,19 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
 
   OrtArrayOfConstObjects* graph_inputs = nullptr;
   OrtArrayOfConstObjects* graph_outputs = nullptr;
-  OrtStatus* ort_status = ep->ort_api.Graph_GetInputs(graph, &graph_inputs);
-  if (ort_status != nullptr) {
-    ep->ort_api.ReleaseStatus(ort_status);
-    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get graph inputs");
-  }
-  ort_status = ep->ort_api.Graph_GetOutputs(graph, &graph_outputs);
-  if (ort_status != nullptr) {
-    ep->ort_api.ReleaseStatus(ort_status);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
-    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get graph outputs");
-  }
+  ep->ort_api.Graph_GetInputs(graph, &graph_inputs);
+  ep->ort_api.Graph_GetOutputs(graph, &graph_outputs);
 
   // Util function that initializes a table that maps a graph input or output name to its index.
   auto init_input_output_index_map = [&](std::unordered_map<std::string, size_t>& index_map,
                                          OrtArrayOfConstObjects* inouts) {
     size_t num_elements;
-    OrtStatus* ort_status = ep->ort_api.ArrayOfConstObjects_GetSize(inouts, &num_elements);
-    if (ort_status != nullptr) {
-      ep->ort_api.ReleaseStatus(ort_status);
-      return;
-    }
+    ep->ort_api.ArrayOfConstObjects_GetSize(inouts, &num_elements);
     for (size_t idx = 0; idx < num_elements; ++idx) {
       const void* inout = nullptr;
-      ort_status = ep->ort_api.ArrayOfConstObjects_GetElementAt(inouts, idx, &inout);
-      if (ort_status != nullptr) {
-        ep->ort_api.ReleaseStatus(ort_status);
-        continue;
-      }
+      ep->ort_api.ArrayOfConstObjects_GetElementAt(inouts, idx, &inout);
       const char* name = nullptr;
-      ort_status = ep->ort_api.GetValueInfoName(static_cast<const OrtValueInfo*>(inout), &name);
-      if (ort_status != nullptr) {
-        ep->ort_api.ReleaseStatus(ort_status);
-        continue;
-      }
+      ep->ort_api.GetValueInfoName(static_cast<const OrtValueInfo*>(inout), &name);
 
       index_map.emplace(name, idx);
     }
@@ -863,9 +840,9 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
   std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
   qnn_node_groups.reserve(node_unit_size);
 
-  Status qnn_status = qnn::GetQnnNodeGroups(qnn_node_groups, qnn_model_wrapper, node_unit_map, node_unit_size, logger);
-  if (!qnn_status.IsOK()) {
-    return this->ort_api.CreateStatus(ORT_EP_FAIL, qnn_status.ErrorMessage().c_str());
+  Status status = qnn::GetQnnNodeGroups(qnn_node_groups, qnn_model_wrapper, node_unit_map, node_unit_size, logger);
+  if (!status.IsOK()) {
+    return this->ort_api.CreateStatus(ORT_EP_FAIL, status.ErrorMessage().c_str());
   }
 
   for (const std::unique_ptr<qnn::IQnnNodeGroup>& qnn_node_group : qnn_node_groups) {
@@ -874,7 +851,7 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
     constexpr auto log_severity = logging::Severity::kINFO;
     constexpr auto log_data_type = logging::DataType::SYSTEM;
     if (logger.OutputIsEnabled(log_severity, log_data_type)) {
-      LogNodeSupport(logger, log_severity, log_data_type, *qnn_node_group, qnn_status);
+      LogNodeSupport(logger, log_severity, log_data_type, *qnn_node_group, status);
     }
 
     if (supported) {
@@ -927,29 +904,23 @@ void QnnEp::InitQnnHtpGraphConfigs(
   }
 }
 
-bool EpSharedContextsHasAllGraphs(const OrtGraph* graph, const OrtApi& ort_api, const logging::Logger& logger) {
-    OrtArrayOfConstObjects* graph_nodes = nullptr;
-    OrtStatus* status = ort_api.Graph_GetNodes(graph, &graph_nodes);
-    if (status != nullptr) {
-        ort_api.ReleaseStatus(status);
-        return false;
-    }
+static bool EpSharedContextsHasAllGraphs(const OrtGraph* graph, const OrtApi& ort_api, const logging::Logger& logger) {
+  OrtArrayOfConstObjects* graph_nodes = nullptr;
+  if (ort_api.Graph_GetNodes(graph, &graph_nodes) != nullptr) {
+      return false;
+  }
 
-    size_t num_nodes = 0;
-    status = ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes);
-    if (status != nullptr) {
-        ort_api.ReleaseStatus(status);
-        ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-        return false;
-    }
+  size_t num_nodes = 0;
+  if (ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes) != nullptr) {
+      ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+      return false;
+  }
 
-    const void* const* node_data = nullptr;
-    status = ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data);
-    if (status != nullptr) {
-        ort_api.ReleaseStatus(status);
-        ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-        return false;
-    }
+  const void* const* node_data = nullptr;
+  if (ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data) != nullptr) {
+      ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+      return false;
+  }
 
   bool all_graphs_found = true;
 
@@ -957,17 +928,14 @@ bool EpSharedContextsHasAllGraphs(const OrtGraph* graph, const OrtApi& ort_api, 
       const OrtNode* node = static_cast<const OrtNode*>(node_data[i]);
       const char* op_type = nullptr;
 
-      status = ort_api.Node_GetOperatorType(node, &op_type);
-      if (status == nullptr && op_type != nullptr) {
+      if (ort_api.Node_GetOperatorType(node, &op_type) == nullptr && op_type != nullptr) {
           if (std::string(op_type) == "EPContext") {
               // Check the 'source' attribute to verify it's from QNN
               const OrtOpAttr* source_attr = nullptr;
-              status = ort_api.Node_GetAttributeByName(node, "source", &source_attr);
-              if (status == nullptr && source_attr != nullptr) {
+              if (ort_api.Node_GetAttributeByName(node, "source", &source_attr) == nullptr && source_attr != nullptr) {
                   char source_buffer[256] = {0};
                   size_t source_len = 0;
-                  status = ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len);
-                  if (status == nullptr) {
+                  if (ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len) == nullptr) {
                       std::string cache_source(source_buffer, source_len);
 
                       // Convert to lowercase for comparison
@@ -977,11 +945,7 @@ bool EpSharedContextsHasAllGraphs(const OrtGraph* graph, const OrtApi& ort_api, 
                       if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
                           // Get the graph name (node name)
                           const char* node_name = nullptr;
-                          status = ort_api.Node_GetName(node, &node_name);
-                          if (status == nullptr && node_name != nullptr) {
-                              if (status != nullptr) {
-                                  ort_api.ReleaseStatus(status);
-                              }
+                          if (ort_api.Node_GetName(node, &node_name) == nullptr && node_name != nullptr) {
                               std::string graph_name(node_name);
                               bool has_shared_qnn_model = SharedContext::GetInstance().HasQnnModel(graph_name);
                               if (!has_shared_qnn_model) {
@@ -991,21 +955,11 @@ bool EpSharedContextsHasAllGraphs(const OrtGraph* graph, const OrtApi& ort_api, 
                                   all_graphs_found = false;
                                   break;
                               }
-                          } else if (status != nullptr) {
-                              ort_api.ReleaseStatus(status);
                           }
-                      } else if (status != nullptr) {
-                          ort_api.ReleaseStatus(status);
                       }
-                  } else if (status != nullptr) {
-                      ort_api.ReleaseStatus(status);
                   }
-              } else if (status != nullptr) {
-                  ort_api.ReleaseStatus(status);
               }
           }
-      } else if (status != nullptr) {
-          ort_api.ReleaseStatus(status);
       }
   }
 
@@ -1018,24 +972,18 @@ static void GetMainEPCtxNodes(const OrtGraph* graph,
                               std::unordered_set<const OrtNode*>& ep_context_nodes,
                               const logging::Logger& logger) {
     OrtArrayOfConstObjects* graph_nodes = nullptr;
-    OrtStatus* status = ort_api.Graph_GetNodes(graph, &graph_nodes);
-    if (status != nullptr) {
-        ort_api.ReleaseStatus(status);
+    if (ort_api.Graph_GetNodes(graph, &graph_nodes) != nullptr) {
         return;
     }
 
     size_t num_nodes = 0;
-    status = ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes);
-    if (status != nullptr) {
-        ort_api.ReleaseStatus(status);
+    if (ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes) != nullptr) {
         ort_api.ReleaseArrayOfConstObjects(graph_nodes);
         return;
     }
 
     const void* const* node_data = nullptr;
-    status = ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data);
-    if (status != nullptr) {
-        ort_api.ReleaseStatus(status);
+    if (ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data) != nullptr) {
         ort_api.ReleaseArrayOfConstObjects(graph_nodes);
         return;
     }
@@ -1044,25 +992,20 @@ static void GetMainEPCtxNodes(const OrtGraph* graph,
         const OrtNode* node = static_cast<const OrtNode*>(node_data[i]);
         const char* op_type = nullptr;
 
-        status = ort_api.Node_GetOperatorType(node, &op_type);
-        if (status == nullptr && op_type != nullptr) {
+        if (ort_api.Node_GetOperatorType(node, &op_type) == nullptr && op_type != nullptr) {
             if (std::string(op_type) == "EPContext") {
                 // Check main_context attribute
                 const OrtOpAttr* main_context_attr = nullptr;
-                status = ort_api.Node_GetAttributeByName(node, "main_context", &main_context_attr);
-                if (status == nullptr && main_context_attr != nullptr) {
+                if (ort_api.Node_GetAttributeByName(node, "main_context", &main_context_attr) == nullptr && main_context_attr != nullptr) {
                     int64_t is_main_context = 0;
                     size_t out_size = 0;
-                    status = ort_api.ReadOpAttr(main_context_attr, ORT_OP_ATTR_INT, &is_main_context, sizeof(is_main_context), &out_size);
-                    if (status == nullptr) {
+                    if (ort_api.ReadOpAttr(main_context_attr, ORT_OP_ATTR_INT, &is_main_context, sizeof(is_main_context), &out_size) == nullptr) {
                         // Check source attribute
                         const OrtOpAttr* source_attr = nullptr;
-                        status = ort_api.Node_GetAttributeByName(node, "source", &source_attr);
-                        if (status == nullptr && source_attr != nullptr) {
+                        if (ort_api.Node_GetAttributeByName(node, "source", &source_attr) == nullptr && source_attr != nullptr) {
                             char source_buffer[256] = {0};
                             size_t source_len = 0;
-                            status = ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len);
-                            if (status == nullptr) {
+                            if (ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len) == nullptr) {
                                 std::string cache_source(source_buffer, source_len);
 
                                 // Convert to lowercase for comparison
@@ -1073,28 +1016,16 @@ static void GetMainEPCtxNodes(const OrtGraph* graph,
                                     // Log the found EPContext node
                                     const char* node_name = nullptr;
                                     size_t node_id = 0;
-                                    OrtStatus* name_status = ort_api.Node_GetName(node, &node_name);
-                                    if (name_status != nullptr) {
-                                        ort_api.ReleaseStatus(name_status);
-                                    }
-                                    OrtStatus* id_status = ort_api.Node_GetId(node, &node_id);
-                                    if (id_status != nullptr) {
-                                        ort_api.ReleaseStatus(id_status);
-                                    }
+                                    ort_api.Node_GetName(node, &node_name);
+                                    ort_api.Node_GetId(node, &node_id);
 
                                     std::string log_message = "EPContext Node found: [1] index: [" + std::to_string(node_id) +
                                                             "] name: [" + (node_name ? node_name : "unknown") + "]";
                                     LOGS(logger, VERBOSE) << log_message;
                                     ep_context_nodes.insert(node);
-                                } else if (status != nullptr) {
-                                    ort_api.ReleaseStatus(status);
                                 }
-                            } else if (status != nullptr) {
-                                ort_api.ReleaseStatus(status);
                             }
                         }
-                    } else if (status != nullptr) {
-                        ort_api.ReleaseStatus(status);
                     }
                 }
             }
@@ -1109,25 +1040,18 @@ void QnnEp::PartitionCtxModel(const OrtGraph* graph, OrtEpGraphSupportInfo* grap
 
   // Get all nodes from the graph
   OrtArrayOfConstObjects* graph_nodes = nullptr;
-  OrtStatus* status = ort_api.Graph_GetNodes(graph, &graph_nodes);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
+  if (ort_api.Graph_GetNodes(graph, &graph_nodes) != nullptr) {
     return;
   }
 
   size_t num_nodes = 0;
-
-  status = ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
+  if (ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes) != nullptr) {
     ort_api.ReleaseArrayOfConstObjects(graph_nodes);
     return;
   }
 
   const void* const* node_data = nullptr;
-  status = ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data);
-  if (status != nullptr) {
-    ort_api.ReleaseStatus(status);
+  if (ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data) != nullptr) {
     ort_api.ReleaseArrayOfConstObjects(graph_nodes);
     return;
   }
@@ -1138,16 +1062,14 @@ void QnnEp::PartitionCtxModel(const OrtGraph* graph, OrtEpGraphSupportInfo* grap
   for (size_t i = 0; i < num_nodes; ++i) {
     const OrtNode* node = static_cast<const OrtNode*>(node_data[i]);
     const char* op_type = nullptr;
-    status = ort_api.Node_GetOperatorType(node, &op_type);
-    if (status == nullptr && op_type != nullptr) {
+
+    if (ort_api.Node_GetOperatorType(node, &op_type) && op_type != nullptr) {
       if (std::string(op_type) == "EPContext") {
         const OrtOpAttr* source_attr = nullptr;
-        status = ort_api.Node_GetAttributeByName(node, "source", &source_attr);
-        if (status == nullptr && source_attr != nullptr) {
+        if (ort_api.Node_GetAttributeByName(node, "source", &source_attr) && source_attr != nullptr) {
           char source_buffer[256] = {0};
           size_t source_len = 0;
-          status = ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len);
-          if (status == nullptr) {
+          if (ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len)) {
             std::string cache_source(source_buffer, source_len);
 
             std::transform(cache_source.begin(), cache_source.end(), cache_source.begin(),
@@ -1156,15 +1078,8 @@ void QnnEp::PartitionCtxModel(const OrtGraph* graph, OrtEpGraphSupportInfo* grap
             if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
               const char* node_name = nullptr;
               size_t node_id = 0;
-
-              OrtStatus* name_status = ort_api.Node_GetName(node, &node_name);
-              if (name_status != nullptr) {
-                ort_api.ReleaseStatus(name_status);
-              }
-              OrtStatus* id_status = ort_api.Node_GetId(node, &node_id);
-              if (id_status != nullptr) {
-                ort_api.ReleaseStatus(id_status);
-              }
+              ort_api.Node_GetName(node, &node_name);
+              ort_api.Node_GetId(node, &node_id);
 
               std::string log_message = "Node supported: [1] index: [" + std::to_string(node_id) +
                                         "] name: [" + (node_name ? node_name : "unknown") +
@@ -1176,14 +1091,8 @@ void QnnEp::PartitionCtxModel(const OrtGraph* graph, OrtEpGraphSupportInfo* grap
               std::vector<const OrtNode*> supported_group{node};
               supported_groups.emplace_back(std::move(supported_group));
             }
-          } else if (status != nullptr) {
-            ort_api.ReleaseStatus(status);
           }
-        } else if (status != nullptr) {
-          ort_api.ReleaseStatus(status);
         }
-      } else if (status != nullptr) {
-        ort_api.ReleaseStatus(status);
       }
     }
   }
@@ -1194,15 +1103,10 @@ void QnnEp::PartitionCtxModel(const OrtGraph* graph, OrtEpGraphSupportInfo* grap
       node_fusion_options.ort_version_supported = ORT_API_VERSION;
       node_fusion_options.drop_constant_initializers = false;
 
-      OrtStatus* add_nodes_status = ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
-                                                                                 supported_partition.data(),
-                                                                                 supported_partition.size(),
-                                                                                 &node_fusion_options);
-      if (add_nodes_status != nullptr) {
-        ort_api.ReleaseStatus(add_nodes_status);
-        LOGS(logger, ERROR) << "EpGraphSupportInfo_AddNodesToFuse failed in PartitionCtxModel";
-        return;
-      }
+      ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+                                                   supported_partition.data(),
+                                                   supported_partition.size(),
+                                                   &node_fusion_options);
     }
   }
 
@@ -1230,37 +1134,21 @@ static void GetContextOnnxModelFilePath(const std::string& user_context_cache_pa
 OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
                                                  const OrtGraph* graph,
                                                  OrtEpGraphSupportInfo* graph_support_info) {
-
   std::cout << "DEBUG: QnnEp::GetCapabilityImpl" << std::endl;
-  ORT_UNUSED_PARAMETER(graph_support_info);
-
   QnnEp* ep = static_cast<QnnEp*>(this_ptr);
   auto logger = *(ep->logger_.ToInternal());
 
   const OrtNode* parent_node = nullptr;
-  OrtStatus* ort_status = ep->ort_api.Graph_GetParentNode(graph, &parent_node);
-  if (ort_status != nullptr) {
-    ep->ort_api.ReleaseStatus(ort_status);
-    return nullptr;
-  }
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetParentNode(graph, &parent_node));
   if (parent_node != nullptr) {
     return nullptr;
   }
 
   OrtArrayOfConstObjects* graph_nodes = nullptr;
-  ort_status = ep->ort_api.Graph_GetNodes(graph, &graph_nodes);
-  if (ort_status != nullptr) {
-    ep->ort_api.ReleaseStatus(ort_status);
-    return nullptr;
-  }
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graph, &graph_nodes));
 
   size_t num_nodes_in_graph = 0;
-  ort_status = ep->ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes_in_graph);
-  if (ort_status != nullptr) {
-    ep->ort_api.ReleaseStatus(ort_status);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-    return nullptr;
-  }
+  RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes_in_graph));
 
   if (num_nodes_in_graph == 0) {
     ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
@@ -1275,19 +1163,8 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
 
   OrtArrayOfConstObjects* graph_inputs = nullptr;
   OrtArrayOfConstObjects* graph_outputs = nullptr;
-  ort_status = ep->ort_api.Graph_GetInputs(graph, &graph_inputs);
-  if (ort_status != nullptr) {
-    ep->ort_api.ReleaseStatus(ort_status);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-    return nullptr;
-  }
-  ort_status = ep->ort_api.Graph_GetOutputs(graph, &graph_outputs);
-  if (ort_status != nullptr) {
-    ep->ort_api.ReleaseStatus(ort_status);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
-    return nullptr;
-  }
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetInputs(graph, &graph_inputs));
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetOutputs(graph, &graph_outputs));
 
   if (is_qnn_ctx_model && ep->config_.share_ep_contexts && SharedContext::GetInstance().HasSharedQnnModels()) {
     if (EpSharedContextsHasAllGraphs(graph, ep->ort_api, logger)) {
@@ -1312,12 +1189,10 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
     for (auto& ep_ctx_node : ep_ctx_nodes) {
       // Get the ep_cache_context attribute from the node
       const OrtOpAttr* ep_cache_context_attr = nullptr;
-      ort_status = ep->ort_api.Node_GetAttributeByName(ep_ctx_node, "ep_cache_context", &ep_cache_context_attr);
-      if (ort_status == nullptr && ep_cache_context_attr != nullptr) {
+      if (ep->ort_api.Node_GetAttributeByName(ep_ctx_node, "ep_cache_context", &ep_cache_context_attr) == nullptr && ep_cache_context_attr != nullptr) {
         char context_buffer[512] = {0};
         size_t context_len = 0;
-        ort_status = ep->ort_api.ReadOpAttr(ep_cache_context_attr, ORT_OP_ATTR_STRING, context_buffer, sizeof(context_buffer) - 1, &context_len);
-        if (ort_status == nullptr) {
+        if (ep->ort_api.ReadOpAttr(ep_cache_context_attr, ORT_OP_ATTR_STRING, context_buffer, sizeof(context_buffer) - 1, &context_len) == nullptr) {
           std::string context_bin_filepath(parent_path.string());
           context_bin_filepath.append("/").append(std::string(context_buffer, context_len));
 
@@ -1329,17 +1204,10 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
 
           // Add the node name to the context bin map
           const char* node_name = nullptr;
-          ort_status = ep->ort_api.Node_GetName(ep_ctx_node, &node_name);
-          if (ort_status == nullptr && node_name != nullptr) {
+          if (ep->ort_api.Node_GetName(ep_ctx_node, &node_name) == nullptr && node_name != nullptr) {
             context_bin_map.at(context_bin_filepath)->push_back(std::string(node_name));
-          } else if (ort_status != nullptr) {
-            ep->ort_api.ReleaseStatus(ort_status);
           }
-        } else if (ort_status != nullptr) {
-          ep->ort_api.ReleaseStatus(ort_status);
         }
-      } else if (ort_status != nullptr) {
-        ep->ort_api.ReleaseStatus(ort_status);
       }
     }
   }
@@ -1393,14 +1261,7 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
 
   // Get node data for processing
   const void* const* node_data = nullptr;
-  ort_status = ep->ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data);
-  if (ort_status != nullptr) {
-    ep->ort_api.ReleaseStatus(ort_status);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_outputs);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-    return nullptr;
-  }
+  RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data));
 
   // Get node units for the ABI layer
   std::vector<std::unique_ptr<OrtNodeUnit>> node_unit_holder;
@@ -1450,15 +1311,10 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   OrtNodeFusionOptions node_fusion_options = {};
   node_fusion_options.ort_version_supported = ORT_API_VERSION;
   node_fusion_options.drop_constant_initializers = true;
-  ort_status = ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+  RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
                                                                supported_nodes.data(),
                                                                supported_nodes.size(),
-                                                               &node_fusion_options);
-  if (ort_status != nullptr) {
-    ep->ort_api.ReleaseStatus(ort_status);
-    ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-    return nullptr;
-  }
+                                                               &node_fusion_options));
 
   // Clean up
   ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
@@ -1478,35 +1334,17 @@ OrtStatus* QnnEp::CompileContextModel(const OrtGraph** graphs,
 
   for (size_t graph_idx = 0; graph_idx < count; ++graph_idx) {
     const char* graph_name = nullptr;
-    OrtStatus* status = ort_api.Node_GetName(fused_nodes[graph_idx], &graph_name);
-    if (status != nullptr) {
-      ort_api.ReleaseStatus(status);
-      return ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get node name");
-    }
+    ort_api.Node_GetName(fused_nodes[graph_idx], &graph_name);
 
     OrtArrayOfConstObjects* graph_nodes = nullptr;
-    status = ort_api.Graph_GetNodes(graphs[graph_idx], &graph_nodes);
-    if (status != nullptr) {
-      ort_api.ReleaseStatus(status);
-      return ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get graph nodes");
-    }
+    ort_api.Graph_GetNodes(graphs[graph_idx], &graph_nodes);
 
     const void* node = nullptr;
-    status = ort_api.ArrayOfConstObjects_GetElementAt(graph_nodes, 0, &node);
-    if (status != nullptr) {
-      ort_api.ReleaseStatus(status);
-      ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-      return ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get element from graph nodes");
-    }
+    ort_api.ArrayOfConstObjects_GetElementAt(graph_nodes, 0, &node);
 
     const OrtNode* ep_context_node = static_cast<const OrtNode*>(node);
     const char* ep_context_node_name = nullptr;
-    status = ort_api.Node_GetName(ep_context_node, &ep_context_node_name);
-    if (status != nullptr) {
-      ort_api.ReleaseStatus(status);
-      ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-      return ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get node name");
-    }
+    ort_api.Node_GetName(ep_context_node, &ep_context_node_name);
 
     names.push_back(std::pair<std::string, std::string>(graph_name, ep_context_node_name));
 
@@ -1635,20 +1473,15 @@ OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
     return ep->CompileContextModel(graphs, fused_nodes, count, node_compute_infos);
   }
 
-  ORT_UNUSED_PARAMETER(ep_context_nodes);
+  ep_context_nodes;
 
   for (size_t graph_idx = 0; graph_idx < count; ++graph_idx) {
     const OrtGraph* graph = graphs[graph_idx];
     const OrtNode* fused_node = fused_nodes[graph_idx];
 
-  const char* name = nullptr;
-  OrtStatus* status = ep->ort_api.Node_GetName(fused_node, &name);
-  if (status != nullptr) {
-    const char* error_message = ep->ort_api.GetErrorMessage(status);
-    ep->ort_api.ReleaseStatus(status);
-    return ep->ort_api.CreateStatus(ORT_EP_FAIL, ("Failed to get node name: " + std::string(error_message)).c_str());
-  }
-  const std::string fused_node_name{name};
+    const char* name = nullptr;
+    ep->ort_api.Node_GetName(fused_node, &name);
+    const std::string fused_node_name{name};
 
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(
         ep->qnn_backend_manager_.get(), ApiPtrs{ep->ort_api, ep->ep_api, ep->model_editor_api});
@@ -1694,23 +1527,15 @@ OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
       json_graph_filepath = path.string();
     }
 
-    onnxruntime::common::Status rt = qnn_model->ComposeGraph(*graph,
-                                                             *fused_node,
-                                                             ep->model_settings_,
-                                                             logger,
-                                                             all_graph_configs_ptr,
-                                                             json_graph_filepath);
-    if (!rt.IsOK()) {
-      return ep->ort_api.CreateStatus(static_cast<OrtErrorCode>(rt.Code()), rt.ErrorMessage().c_str());
-    }
-    rt = qnn_model->FinalizeGraphs(logger);
-    if (!rt.IsOK()) {
-      return ep->ort_api.CreateStatus(static_cast<OrtErrorCode>(rt.Code()), rt.ErrorMessage().c_str());
-    }
-    rt = qnn_model->SetupQnnInputOutput(logger);
-    if (!rt.IsOK()) {
-      return ep->ort_api.CreateStatus(static_cast<OrtErrorCode>(rt.Code()), rt.ErrorMessage().c_str());
-    }
+    RETURN_IF_NOT_OK(qnn_model->ComposeGraph(*graph,
+                                             *fused_node,
+                                             ep->model_settings_,
+                                             logger,
+                                             all_graph_configs_ptr,
+                                             json_graph_filepath),
+                     ep->ort_api);
+    RETURN_IF_NOT_OK(qnn_model->FinalizeGraphs(logger), ep->ort_api);
+    RETURN_IF_NOT_OK(qnn_model->SetupQnnInputOutput(logger), ep->ort_api);
 
     ep->qnn_models_.emplace(fused_node_name, std::move(qnn_model));
 
@@ -1741,22 +1566,14 @@ OrtStatus* ORT_API_CALL QnnEp::OnRunStartImpl(_In_ OrtEp* this_ptr, _In_ const O
   }
 
   const char* htp_perf_mode = nullptr;
-  OrtStatus* status = ep->ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnPerfMode, &htp_perf_mode);
-  if (status != nullptr) {
-    ep->ort_api.ReleaseStatus(status);
-    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get HTP performance mode from run options");
-  }
+  ep->ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnPerfMode, &htp_perf_mode);
   qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
   if (htp_perf_mode != nullptr) {
     ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode, logger);
   }
 
   const char* rpc_latency = nullptr;
-  status = ep->ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnRpcControlLatency, &rpc_latency);
-  if (status != nullptr) {
-    ep->ort_api.ReleaseStatus(status);
-    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get RPC control latency from run options");
-  }
+  ep->ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnRpcControlLatency, &rpc_latency);
   uint32_t rpc_control_latency = 0;
   if (rpc_latency != nullptr) {
     rpc_control_latency = static_cast<uint32_t>(std::stoul(rpc_latency));
@@ -1765,40 +1582,23 @@ OrtStatus* ORT_API_CALL QnnEp::OnRunStartImpl(_In_ OrtEp* this_ptr, _In_ const O
 
   if (ep->GetPerThreadContext().IsHtpPowerConfigIdValid()) {
     if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-      onnxruntime::common::Status htp_power_config_status = ep->qnn_backend_manager_->SetHtpPowerConfig(ep->GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                     htp_performance_mode);
-      if (!htp_power_config_status.IsOK()) {
-        return ep->ort_api.CreateStatus(static_cast<OrtErrorCode>(htp_power_config_status.Code()), htp_power_config_status.ErrorMessage().c_str());
-      }
-      if (status != nullptr) {
-        return status;
-      }
+      RETURN_IF_NOT_OK(ep->qnn_backend_manager_->SetHtpPowerConfig(ep->GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                   htp_performance_mode),
+                       ep->ort_api);
     }
 
     if (rpc_control_latency > 0) {
-      onnxruntime::common::Status rt_rpc = ep->qnn_backend_manager_->SetRpcControlLatency(ep->GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                                           rpc_control_latency);
-      if (!rt_rpc.IsOK()) {
-        return ep->ort_api.CreateStatus(static_cast<OrtErrorCode>(rt_rpc.Code()), rt_rpc.ErrorMessage().c_str());
-      }
+      RETURN_IF_NOT_OK(ep->qnn_backend_manager_->SetRpcControlLatency(ep->GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                      rpc_control_latency),
+                       ep->ort_api);
     }
   }
 
   const char* lora_config = nullptr;
-  OrtStatus* lora_status = ep->ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnLoraConfig, &lora_config);
-  if (lora_status != nullptr) {
-    return lora_status;
-  }
-  if (status != nullptr) {
-    ep->ort_api.ReleaseStatus(status);
-    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get LoRA config from run options");
-  }
+  ep->ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnLoraConfig, &lora_config);
   if (lora_config != nullptr) {
     LOGS(logger, VERBOSE) << "lora_config: " << lora_config;
-    onnxruntime::common::Status rt_lora = ep->qnn_backend_manager_->ParseLoraConfig(lora_config);
-    if (!rt_lora.IsOK()) {
-      return ep->ort_api.CreateStatus(static_cast<OrtErrorCode>(rt_lora.Code()), rt_lora.ErrorMessage().c_str());
-    }
+    RETURN_IF_NOT_OK(ep->qnn_backend_manager_->ParseLoraConfig(lora_config), ep->ort_api);
   }
 
   return nullptr;
@@ -1817,24 +1617,18 @@ OrtStatus* ORT_API_CALL QnnEp::OnRunEndImpl(_In_ OrtEp* this_ptr,
     return nullptr;
   }
 
-  const char* htp_perf_mode_str = nullptr;
-  OrtStatus* status = ep->ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnPerfMode, &htp_perf_mode_str);
-  if (status != nullptr) {
-    ep->ort_api.ReleaseStatus(status);
-    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get HTP performance mode from run options");
-  }
+  const char* htp_perf_mode = nullptr;
+  ep->ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnPerfMode, &htp_perf_mode);
   qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
-  if (htp_perf_mode_str != nullptr) {
-    ParseHtpPerformanceMode(htp_perf_mode_str, htp_performance_mode, logger);
+  if (htp_perf_mode != nullptr) {
+    ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode, logger);
   }
 
   if (ep->GetPerThreadContext().IsHtpPowerConfigIdValid()) {
     if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-      onnxruntime::common::Status rt_htp = ep->qnn_backend_manager_->SetHtpPowerConfig(ep->GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                                        htp_performance_mode);
-      if (!rt_htp.IsOK()) {
-        return ep->ort_api.CreateStatus(static_cast<OrtErrorCode>(rt_htp.Code()), rt_htp.ErrorMessage().c_str());
-      }
+      RETURN_IF_NOT_OK(ep->qnn_backend_manager_->SetHtpPowerConfig(ep->GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                   htp_performance_mode),
+                       ep->ort_api);
     }
   }
 
@@ -1958,11 +1752,7 @@ OrtStatus* QnnEp::QnnNodeComputeInfo::ComputeImpl(OrtNodeComputeInfo* this_ptr,
   QnnEp& ep = node_compute_info->ep;
 
   qnn::QnnModel* model = reinterpret_cast<qnn::QnnModel*>(compute_state);
-  onnxruntime::common::Status exec_status_cpp = model->ExecuteGraph(kernel_context, *ep.logger_.ToInternal());
-  if (!exec_status_cpp.IsOK()) {
-    return ep.ort_api.CreateStatus(static_cast<OrtErrorCode>(exec_status_cpp.Code()), exec_status_cpp.ErrorMessage().c_str());
-  }
-  return nullptr;
+  RETURN_IF_NOT_OK(model->ExecuteGraph(kernel_context, *ep.logger_.ToInternal()), ep.ort_api);
 
   return nullptr;
 }

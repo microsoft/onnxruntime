@@ -128,32 +128,17 @@ class QnnModelWrapper {
       return status;
     }
 
-    OrtArrayOfConstObjects* initializers = initializers_ptr.get();
+    const OrtArrayOfConstObjects* initializers = initializers_ptr.get();
     size_t num_initializers = 0;
-    OrtStatus* ort_status = api_ptrs_.ort_api.ArrayOfConstObjects_GetSize(initializers, &num_initializers);
-    if (ort_status != nullptr) {
-      api_ptrs_.ort_api.ReleaseStatus(ort_status);
-      api_ptrs_.ort_api.ReleaseArrayOfConstObjects(initializers);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Initializer not found");
-    }
+    api_ptrs_.ort_api.ArrayOfConstObjects_GetSize(initializers, &num_initializers);
 
     const void* const* initializers_data = nullptr;
-    ort_status = api_ptrs_.ort_api.ArrayOfConstObjects_GetData(initializers, &initializers_data);
-    if (ort_status != nullptr) {
-      api_ptrs_.ort_api.ReleaseStatus(ort_status);
-      api_ptrs_.ort_api.ReleaseArrayOfConstObjects(initializers);
-      return Status(common::ONNXRUNTIME, common::FAIL, "Initializer not found");
-    }
+    api_ptrs_.ort_api.ArrayOfConstObjects_GetData(initializers, &initializers_data);
 
     for (size_t i = 0; i < num_initializers; ++i) {
       const OrtValueInfo* value_info = static_cast<const OrtValueInfo*>(initializers_data[i]);
       const char* value_info_name = nullptr;
-      ort_status = api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name);
-      if (ort_status != nullptr) {
-        api_ptrs_.ort_api.ReleaseStatus(ort_status);
-        api_ptrs_.ort_api.ReleaseValueInfo(const_cast<OrtValueInfo*>(value_info));
-        return Status(common::ONNXRUNTIME, common::FAIL, "Initializer not found");
-      }
+      api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name);
 
       if (std::string(value_info_name) == tensor_name) {
         *found_value_info = value_info;
@@ -172,13 +157,7 @@ class QnnModelWrapper {
     }
 
     bool is_constant_initializer = false;
-    OrtStatus* ort_status = api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
-    if(ort_status != nullptr){
-      api_ptrs_.ort_api.ReleaseStatus(ort_status);
-      api_ptrs_.ort_api.ReleaseValueInfo(const_cast<OrtValueInfo*>(value_info));
-      return nullptr;
-    }
-    // api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
+    api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
     if (!is_constant_initializer) {
       return nullptr;
     }
@@ -196,13 +175,7 @@ class QnnModelWrapper {
     }
 
     bool is_constant_initializer = false;
-    OrtStatus* ort_status = api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
-    if(ort_status != nullptr){
-      api_ptrs_.ort_api.ReleaseStatus(ort_status);
-      api_ptrs_.ort_api.ReleaseValueInfo(const_cast<OrtValueInfo*>(value_info));
-      return false;
-    }
-    // api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
+    api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
 
     return is_constant_initializer;
   }

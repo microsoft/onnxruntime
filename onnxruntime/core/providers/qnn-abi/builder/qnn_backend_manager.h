@@ -383,7 +383,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   //           LOGS(logger_, ERROR) << "backend is not a valid handle.";
   //           break;
   //         case QNN_BACKEND_ERROR_OP_PACKAGE_DUPLICATE:
-  //           LOGS(logger_, ERROR) << "OpPackageName+OpName must be unique. Op package content information can be be obtained with QnnOpPackage interface. Indicates that an Op with the same package name and op name was already registered.";
+  //           LOGS(logger_, ERROR) << "OpPackageName+OpName must be unique. Op package content information can be be obtained with \
+  // QnnOpPackage interface. Indicates that an Op with the same package name and op name was already registered.";
   //           break;
   //         case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION:
   //           LOGS(logger_, ERROR) << "SSR occurrence (successful recovery).";
