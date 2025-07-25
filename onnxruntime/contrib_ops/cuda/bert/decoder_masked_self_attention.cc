@@ -4,6 +4,8 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/decoder_masked_self_attention.h"
 #include "contrib_ops/cuda/bert/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
 
@@ -51,7 +53,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   const Tensor* cache_indir = context->Input<Tensor>(kCacheIndirectionInputIndex);
 
   auto& device_prop = GetDeviceProp();
-  DecoderMaskedMultiHeadAttentionParams parameters;
+  DecoderMaskedMultiHeadAttentionParameters parameters;
 
   parameters.kv_data_in_flight = ParseEnvironmentVariableWithDefault<bool>(
       attention::kDecoderMaskedAttentionLoadKVDataInFlight, false);
@@ -193,30 +195,11 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   if (do_rotary_) {
     ORT_ENFORCE(parameters.head_size == 64 || parameters.head_size == 128,
                 "Current implementation of rotary embedding only supports head size of 64 or 128");
-    parameters.rotary_embedding_dim = parameters.head_size;
+    parameters.rotary_dim = parameters.head_size;
     parameters.t_step = parameters.past_sequence_length;
   }
 
-  switch (parameters.head_size) {
-    case 32:
-      mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
-      break;
-
-    case 64:
-      mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
-      break;
-
-    case 128:
-      mmha_launch_kernel<T2, 128>(parameters, cuda_stream);
-      break;
-
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "Unsupported head size in DecoderMaskedSelfAttention. "
-                             "Got head size: ",
-                             parameters.head_size);
-  }
-  return Status::OK();
+  return LaunchDecoderMaskedMultiHeadAttention<T2, CudaT>(parameters, cuda_stream, parameters.head_size);
 }
 
 }  // namespace cuda

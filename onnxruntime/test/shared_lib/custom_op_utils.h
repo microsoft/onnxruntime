@@ -8,12 +8,6 @@
 #include <cuda_runtime.h>
 #endif
 
-struct Input {
-  const char* name = nullptr;
-  std::vector<int64_t> dims;
-  std::vector<float> values;
-};
-
 struct MyCustomKernel {
   MyCustomKernel(const OrtApi& ort_api, const OrtKernelInfo* /*info*/)
       : ort_(ort_api) {
@@ -464,4 +458,63 @@ struct MulTopOpFloat16 : Ort::CustomOpBase<MulTopOpFloat16, MulTopKernelFloat16>
   OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL;
   }
+};
+
+//
+// Example overriding an operator where type inference is required for the output so kernel matching works correctly
+//
+struct CustomCastKernel {
+  CustomCastKernel(const OrtApi& /*ort_api*/, const OrtKernelInfo* /*info*/)
+  /*: ort_(ort_api)*/ {
+  }
+
+  OrtStatusPtr ComputeV2(OrtKernelContext* context);
+
+ private:
+  // const OrtApi& ort_;
+};
+
+// Custom Cast op that takes float input and converts based on 'to' attribute.
+// Example implementation only supports cast to double.
+struct CustomCast : Ort::CustomOpBase<CustomCast, CustomCastKernel, true> {
+  explicit CustomCast(const char* provider) : provider_(provider) {
+    // if overriding an ONNX op you need to set the opset versions you are overriding
+    start_ver_ = 7;  // should match minimum ONNX schema you implement
+    // end_ver_ = ...; should match maximum ONNX schema you implement or unset for unlimited.
+  }
+
+  // static method used by Ort::CustomOpBase::SetShapeInferFn
+  static OrtStatusPtr InferOutputShape(Ort::ShapeInferContext& context) {
+    auto shape = context.GetInputShape(0);
+
+    // infer output type based on 'to'.
+    auto to = context.GetAttrInt("to");
+    if (to != ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
+      return Ort::Status("Unexpected type", ORT_INVALID_ARGUMENT).release();
+    }
+
+    context.SetOutputShape(0, shape, ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE);
+    return nullptr;
+  }
+
+  OrtStatusPtr CreateKernelV2(const OrtApi& api, const OrtKernelInfo* info, void** op_kernel) const {
+    Ort::ConstKernelInfo ki(info);
+    *op_kernel = new CustomCastKernel(api, info);
+    return nullptr;
+  };
+
+  const char* GetName() const { return "Cast"; };
+  const char* GetExecutionProviderType() const { return provider_; };
+
+  size_t GetInputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const {
+    // example only accepts float input
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
+
+ private:
+  const char* provider_{"CPUExecutionProvider"};
 };

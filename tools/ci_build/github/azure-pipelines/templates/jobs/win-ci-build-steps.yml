@@ -73,7 +73,7 @@ steps:
       displayName: Cache Task
 
   - task: PythonScript@0
-    displayName: 'Generate cmake config'
+    displayName: 'Build'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
       ${{ if eq(parameters.WithCache, true) }}:

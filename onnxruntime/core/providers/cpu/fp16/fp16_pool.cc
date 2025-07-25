@@ -156,7 +156,8 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
           Xdata,
           static_cast<MLFloat16*>(transpose_input_buffer.get()),
           static_cast<size_t>(C),
-          static_cast<size_t>(input_image_size));
+          static_cast<size_t>(input_image_size),
+          thread_pool);
       input_data = static_cast<MLFloat16*>(transpose_input_buffer.get());
       output_data = static_cast<MLFloat16*>(transpose_output_buffer.get());
     }
@@ -206,7 +207,8 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
           output_data,
           Ydata,
           static_cast<size_t>(output_image_size),
-          static_cast<size_t>(C));
+          static_cast<size_t>(C),
+          thread_pool);
     }
     Xdata += input_image_size * C;
     Ydata += output_image_size * C;
@@ -224,9 +226,16 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     PoolFp16);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    MaxPool,
+    12, 21,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    PoolFp16);
+
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     MaxPool,
-    12,
+    22,
     MLFloat16,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     PoolFp16);
@@ -237,16 +246,30 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     PoolFp16);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    AveragePool,
+    19, 21,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    PoolFp16);
+
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     AveragePool,
-    19,
+    22,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    PoolFp16);
+
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    GlobalAveragePool,
+    1, 21,
     MLFloat16,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     PoolFp16);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     GlobalAveragePool,
-    1,
+    22,
     MLFloat16,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     PoolFp16);

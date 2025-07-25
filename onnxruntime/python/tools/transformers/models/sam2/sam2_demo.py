@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import os
-from typing import Union
 
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
@@ -27,7 +26,7 @@ def show_mask(mask, ax, random_color=False, borders=True):
     mask = mask.astype(np.uint8)
     mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
     if borders:
-        import cv2
+        import cv2  # noqa: PLC0415
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         # Try to smooth contours
@@ -64,7 +63,7 @@ def show_masks(
     output_image_file_prefix=None,
     image_files=None,
 ):
-    for i, (mask, score) in enumerate(zip(masks, scores)):
+    for i, (mask, score) in enumerate(zip(masks, scores, strict=False)):
         plt.figure(figsize=(10, 10))
         plt.imshow(image)
         show_mask(mask, plt.gca(), borders=borders)
@@ -76,7 +75,7 @@ def show_masks(
             show_box(box_coords, plt.gca())
 
         if len(scores) > 1:
-            plt.title(f"Mask {i+1}, Score: {score:.3f}", fontsize=18)
+            plt.title(f"Mask {i + 1}, Score: {score:.3f}", fontsize=18)
 
         plt.axis("off")
         if output_image_file_prefix:
@@ -92,7 +91,7 @@ def show_masks(
 
 def get_predictor(
     sam2_dir: str,
-    device: Union[str, torch.device],
+    device: str | torch.device,
     dtype: torch.dtype,
     model_type="sam2_hiera_large",
     engine="torch",
@@ -303,7 +302,7 @@ def run_demo(
 def show_all_images(left_images, right_images, suffix=""):
     # Show images in two rows since display screen is horizontal in most cases.
     fig, axes = plt.subplots(nrows=2, ncols=len(left_images), figsize=(19.20, 10.80))
-    for i, (left_img_path, right_img_path) in enumerate(zip(left_images, right_images)):
+    for i, (left_img_path, right_img_path) in enumerate(zip(left_images, right_images, strict=False)):
         left_img = mpimg.imread(left_img_path)
         right_img = mpimg.imread(right_img_path)
 

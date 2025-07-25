@@ -212,8 +212,8 @@ void RunFusedMatMulTest(const char* op_name, int32_t opset_version = 7, bool tra
 
     test.AddOutput<T>("Y", t.expected_dims, t.expected_vals);
 
-    // Disable TensorRT because of unsupported data type
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+    // Disable OpenVINO, TensorRT because of unsupported data type
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
   }
 }
 
@@ -222,7 +222,6 @@ TEST(FusedMatMulOpTest, FloatTypeNoTranspose) {
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)  // double support only implemented in CUDA/ROCM kernel
-
 TEST(FusedMatMulOpTest, DoubleTypeNoTranspose) {
   RunFusedMatMulTest<double>("FusedMatMul", 1);
 }

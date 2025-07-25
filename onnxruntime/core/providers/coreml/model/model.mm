@@ -25,6 +25,7 @@
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/model/objc_str_utils.h"
 #include "core/providers/coreml/shape_utils.h"
+#include "core/providers/coreml/coreml_options.h"
 
 // force the linker to create a dependency on the CoreML framework so that in MAUI usage we don't need
 // to manually do this
@@ -300,6 +301,143 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
   return Status::OK();
 }
 
+// since macos(14.4), ios(17.4), MLComputePlan is introduced in <CoreML/CoreML.h>
+// Otherwise, the compiler will complain `MLComputePlan` is not defined.
+#if __has_include(<CoreML/MLComputePlan.h>)
+#define HAS_COREMLPLAN 1
+#else
+#define HAS_COREMLPLAN 0
+#endif
+
+#if HAS_COREMLPLAN
+API_AVAILABLE(macos(14.4), ios(17.4), tvos(17.4), watchos(10.4))
+void ProfileBlock(MLComputePlan* _Nullable computePlan, MLModelStructureProgramBlock* block) {
+  for (MLModelStructureProgramOperation* operation in block.operations) {
+    for (size_t i = 0; i < operation.blocks.count; ++i) {
+      ProfileBlock(computePlan, operation.blocks[i]);
+    }
+    // Get the compute device usage for the operation.
+    MLComputePlanDeviceUsage* computeDeviceUsage = [computePlan computeDeviceUsageForMLProgramOperation:operation];
+    id<MLComputeDeviceProtocol> preferredDevice = computeDeviceUsage.preferredComputeDevice;
+    // Get the estimated cost of executing the operation.
+    MLComputePlanCost* estimatedCost = [computePlan estimatedCostOfMLProgramOperation:operation];
+    if (![operation.operatorName isEqualToString:@"const"]) {
+      NSLog(@"Operation: %@, Device Usage: %@, Estimated Cost: %f", operation.operatorName, preferredDevice, estimatedCost.weight);
+    }
+  }
+}
+#endif
+
+// since macos(14.4), ios(17.4), MLComputePlan is introduced in <CoreML/CoreML.h>
+// Otherwise, the compiler will complain `MLComputePlan` is not defined.
+API_AVAILABLE(macos(14.4), ios(17.4), tvos(17.4), watchos(10.4))
+void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
+#if HAS_COREMLPLAN
+  dispatch_semaphore_t fd_sema = dispatch_semaphore_create(0);
+  [MLComputePlan loadContentsOfURL:compileUrl
+                     configuration:config
+                 completionHandler:^(MLComputePlan* _Nullable computePlan, NSError* _Nullable error) {
+                   if (!computePlan) {
+                     NSLog(@"Error loading compute plan: %@", error);
+                     // Handle error.
+                     return;
+                   }
+                   MLModelStructureProgram* program = computePlan.modelStructure.program;
+                   if (!program) {
+                     NSLog(@"Error loading program from compute plan., this is not a mlprogram model");
+                     return;
+                   }
+
+                   [computePlan.modelStructure.program.functions enumerateKeysAndObjectsUsingBlock:^(NSString* function_name,
+                                                                                                     MLModelStructureProgramFunction* function,
+                                                                                                     BOOL* _Nonnull __unused stop) {
+                     NSLog(@"profile function : %@", function_name);
+                     ProfileBlock(computePlan, function.block);
+                     dispatch_semaphore_signal(fd_sema);
+                   }];
+                 }];
+  long status = dispatch_semaphore_wait(fd_sema, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * 60 * NSEC_PER_SEC)));
+  if (status != 0) {
+    NSLog(@"profile function : timeout");
+  }
+#endif
+}
+
+#if __has_include(<CoreML/MLOptimizationHints.h>) && CAN_BUILD_COREML8_OR_LATER
+#define HAS_COREMLOPTIMIZATIONHINT 1
+#else
+#define HAS_COREMLOPTIMIZATIONHINT 0
+#endif
+
+void ConfigureOptimizationHints(MLModelConfiguration* config, const CoreMLOptions& coreml_options) {
+#if HAS_COREMLOPTIMIZATIONHINT
+  MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
+  if (coreml_options.UseStrategy("FastPrediction")) {
+    optimizationHints.specializationStrategy = MLSpecializationStrategyFastPrediction;
+    config.optimizationHints = optimizationHints;
+  } else if (coreml_options.UseStrategy("Default")) {
+    optimizationHints.specializationStrategy = MLSpecializationStrategyDefault;
+    config.optimizationHints = optimizationHints;
+  } else {
+    // not set
+  }
+#endif
+}
+
+Status CompileOrReadCachedModel(NSURL* modelUrl, const CoreMLOptions& coreml_options,
+                                NSMutableString* compiled_model_path) {
+  NSURL* cached_model_base_url = modelUrl;
+  if (!coreml_options.CreateMLProgram()) {
+    cached_model_base_url = [cached_model_base_url URLByDeletingLastPathComponent];
+  }
+
+  NSURL* cached_model_url = [cached_model_base_url URLByAppendingPathComponent:@"compiled_model.mlmodelc"];
+  // if cached_model_url is existed, just return
+  NSError* error = nil;
+  NSString* cached_model_path = [cached_model_url path];
+  // to pass clang-tidy static analyzer
+  if (compiled_model_path == nil || cached_model_path == nil) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error creating cached model URL");
+  }
+  if ([[NSFileManager defaultManager] fileExistsAtPath:cached_model_path]) {
+    [compiled_model_path appendString:cached_model_path];
+    return Status::OK();
+  }
+
+  // TODO: Update this to version with callback handler as the API used here is deprecated.
+  // https://developer.apple.com/documentation/coreml/mlmodel/3929553-compilemodelaturl
+  // As we call loadModel during EP Compile there shouldn't be an issue letting the actual compile run in the
+  // background. We will have to check for completion in `predict` and block until it is done.
+  NSURL* compiled_model_url = [MLModel compileModelAtURL:modelUrl error:&error];
+  if (error != nil) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model: ",
+                           [[error localizedDescription] UTF8String]);
+  }
+
+  // to pass clang-tidy static analyzer
+  NSString* compiled_model_path_from_url = [compiled_model_url path];
+  if (compiled_model_url == nil || cached_model_url == nil || compiled_model_path_from_url == nil) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, " compiled_model_url is nil or cached_model_url is nil");
+  }
+  if (coreml_options.ModelCacheDirectory().empty()) {
+    [compiled_model_path appendString:compiled_model_path_from_url];
+    return Status::OK();
+  }
+
+  // save the compiled model if user has set a cache path
+  if (![[NSFileManager defaultManager] moveItemAtURL:compiled_model_url toURL:cached_model_url error:&error]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error copying compiled model to cache path: ",
+                           [[cached_model_url path] UTF8String], ", reason: ", [[error localizedDescription] UTF8String]);
+  }
+  // clang-tidy
+  NSString* cached_model_path_from_url = [cached_model_url path];
+  if (cached_model_path_from_url == nil) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cached_model_path_from_url is nil");
+  }
+  [compiled_model_path appendString:cached_model_path_from_url];
+  return Status::OK();
+}
+
 // Internal Execution class
 // This class is part of the model class and handles the calls into CoreML. Specifically, it performs
 // 1. Compile the model by given path for execution
@@ -307,7 +445,7 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
 // 3. The compiled model will be removed in dealloc or removed using cleanup function
 class Execution {
  public:
-  Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags);
+  Execution(const std::string& path, const logging::Logger& logger, const CoreMLOptions& coreml_options);
   ~Execution();
 
   Status LoadModel();
@@ -318,15 +456,15 @@ class Execution {
  private:
   void cleanup();
   NSString* coreml_model_path_{nil};
-  NSString* compiled_model_path_{nil};
+  NSURL* compiled_model_url_{nil};
   const logging::Logger& logger_;
-  uint32_t coreml_flags_{0};
+  CoreMLOptions coreml_options_;
   MLModel* model_{nil};
 };
 
-Execution::Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags)
+Execution::Execution(const std::string& path, const logging::Logger& logger, const CoreMLOptions& coreml_options)
     : logger_(logger),
-      coreml_flags_(coreml_flags) {
+      coreml_options_(coreml_options) {
   @autoreleasepool {
     coreml_model_path_ = util::Utf8StringToNSString(path.c_str());
   }
@@ -339,14 +477,18 @@ Execution::~Execution() {
 }
 
 void Execution::cleanup() {
+  // we keep the compiled model if the user has set a cache path
+  if (coreml_options_.ModelCacheDirectory().size()) {
+    return;
+  }
+  NSString* compiled_model_path = [compiled_model_url_ path];
   NSError* error = nil;
-  if (compiled_model_path_ != nil) {
-    [[NSFileManager defaultManager] removeItemAtPath:compiled_model_path_ error:&error];
+  if (compiled_model_path != nil) {
+    [[NSFileManager defaultManager] removeItemAtPath:compiled_model_path error:&error];
     if (error != nil) {
-      LOGS(logger_, ERROR) << "Failed cleaning up the compiled model: " << [compiled_model_path_ UTF8String]
+      LOGS(logger_, ERROR) << "Failed cleaning up the compiled model: " << [compiled_model_path UTF8String]
                            << ", error message: " << [[error localizedDescription] UTF8String];
     }
-    compiled_model_path_ = nil;
   }
 
 #if !defined(NDEBUG)
@@ -382,29 +524,43 @@ Status Execution::LoadModel() {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create model URL from path");
       }
 
-      // TODO: Update this to version with callback handler as the API used here is deprecated.
-      // https://developer.apple.com/documentation/coreml/mlmodel/3929553-compilemodelaturl
-      // As we call loadModel during EP Compile there shouldn't be an issue letting the actual compile run in the
-      // background. We will have to check for completion in `predict` and block until it is done.
-      NSURL* compileUrl = [MLModel compileModelAtURL:modelUrl error:&error];
-      if (error != nil) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model: ",
-                               [[error localizedDescription] UTF8String]);
-      }
-
-      compiled_model_path_ = [compileUrl path];
+      NSMutableString* compiled_model_path = [[NSMutableString alloc] init];
+      ORT_RETURN_IF_ERROR(CompileOrReadCachedModel(
+          [NSURL fileURLWithPath:coreml_model_path_], coreml_options_, compiled_model_path));
+      compiled_model_url_ = [NSURL fileURLWithPath:compiled_model_path];
 
       MLModelConfiguration* config = [[MLModelConfiguration alloc] init];
-
-      if (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY) {
+      uint32_t coreml_compute_unit = coreml_options_.ComputeUnits();
+      if (coreml_compute_unit & COREML_FLAG_USE_CPU_ONLY) {
         config.computeUnits = MLComputeUnitsCPUOnly;
-      } else if (coreml_flags_ & COREML_FLAG_USE_CPU_AND_GPU) {
+      } else if (coreml_compute_unit & COREML_FLAG_USE_CPU_AND_GPU) {
         config.computeUnits = MLComputeUnitsCPUAndGPU;
+      } else if (coreml_compute_unit & COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE) {
+        config.computeUnits = MLComputeUnitsCPUAndNeuralEngine;  // Apple Neural Engine
       } else {
         config.computeUnits = MLComputeUnitsAll;
       }
 
-      model_ = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
+      if (coreml_options_.AllowLowPrecisionAccumulationOnGPU()) {
+        config.allowLowPrecisionAccumulationOnGPU = YES;
+      }
+
+      // Set the specialization strategy to FastPrediction  for macOS 10.15+
+      if (HAS_COREML8_OR_LATER) {
+        ConfigureOptimizationHints(config, coreml_options_);
+      } else {
+        LOGS(logger_, WARNING) << "iOS 17.4+/macOS 14.4+ or later is required to ConfigureOptimizationHints";
+      }
+
+      if (coreml_options_.ProfileComputePlan()) {
+        if (@available(macOS 14.4, iOS 17.4, *)) {
+          ProfileComputePlan(compiled_model_url_, config);
+        } else {
+          LOGS(logger_, WARNING) << "iOS 17.4+/macOS 14.4+ or later is required to use the compute plan API";
+        }
+      }
+
+      model_ = [MLModel modelWithContentsOfURL:compiled_model_url_ configuration:config error:&error];
 
       if (error != nil || model_ == nil) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create MLModel",
@@ -522,8 +678,8 @@ Model::Model(const std::string& path,
              std::unordered_set<std::string>&& scalar_outputs,
              std::unordered_set<std::string>&& int64_outputs,
              const logging::Logger& logger,
-             uint32_t coreml_flags)
-    : execution_(std::make_unique<Execution>(path, logger, coreml_flags)),
+             const CoreMLOptions& coreml_options)
+    : execution_(std::make_unique<Execution>(path, logger, coreml_options)),
       model_input_names_(std::move(model_input_names)),
       model_output_names_(std::move(model_output_names)),
       input_output_info_(std::move(input_output_info)),

@@ -39,6 +39,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override;
 
+  std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                   std::string_view node_op_type,
+                                                   DataLayout target_data_layout) const override;
+
   const void* GetExecutionHandle() const noexcept override {
     // The CUDA interface does not return anything interesting.
     return nullptr;
@@ -72,7 +76,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph,
-      const IKernelLookup& kernel_lookup) const override;
+      const IKernelLookup& kernel_lookup,
+      const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+      IResourceAccountant* resource_accountant) const override;
 
   int GetDeviceId() const override { return info_.device_id; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };

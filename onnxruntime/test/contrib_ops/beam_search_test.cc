@@ -7,6 +7,10 @@
 #include <gsl/gsl>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/providers/model_tester.h"
+#include "test/util/include/current_test_name.h"
+#include "test/util/include/scoped_env_vars.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
@@ -17,7 +21,7 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 namespace test {
 
-TEST(BeamSearchTest, GptBeamSearchFp32) {
+void RunGptBeamSearchFp32() {
   std::vector<int64_t> input_ids_shape{3, 12};
   std::vector<int32_t> input_ids{
       0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
@@ -73,9 +77,6 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
   const char* const output_names[] = {"sequences"};
 
   Ort::SessionOptions session_options;
-#if defined(USE_CUDA) && defined(USE_DML)
-  SKIP_CUDA_TEST_WITH_DML;
-#endif
 #ifdef USE_CUDA
   OrtCUDAProviderOptionsV2 cuda_options;
   cuda_options.use_tf32 = false;
@@ -106,6 +107,16 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
   const auto* result_vals = sequences.GetTensorData<int32_t>();
   auto result_span = gsl::make_span(result_vals, expected_output.size());
   ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.begin(), result_span.end()));
+}
+
+TEST(BeamSearchTest, GptBeamSearchFp32) {
+  RunGptBeamSearchFp32();
+}
+
+TEST(BeamSearchTest, GptBeamSearchFp32_DisableFastTopK) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{onnxruntime::contrib::transformers::kBeamSearchUseFastTopK, "0"}}};
+  RunGptBeamSearchFp32();
 }
 
 TEST(BeamSearchTest, GptBeamSearchFp16) {
@@ -169,9 +180,6 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   if (enable_cuda || enable_rocm) {
     Ort::SessionOptions session_options;
-#if defined(USE_CUDA) && defined(USE_DML)
-    SKIP_CUDA_TEST_WITH_DML;
-#endif
 #ifdef USE_CUDA
     OrtCUDAProviderOptionsV2 cuda_options;
     cuda_options.use_tf32 = false;
@@ -392,6 +400,58 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
     auto result_span = gsl::make_span(result_vals, expected_output.size());
     ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.begin(), result_span.end()));
   }
+}
+
+TEST(BeamSearchTest, DummyT5) {
+  // dummy_t5.onnx model generated using following command:
+  // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5.onnx
+  ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5.onnx"));
+  tester.ConfigEp(DefaultCpuExecutionProvider());
+  tester.AddInput("encoder_input_ids", {1, 5}, {14, 6, 13, 9, 7});
+  tester.AddOutput("sequences", {1, 3, 10}, {2, 16, 6, 14, 1, 15, 6, 14, 1, 15, 2, 3, 4, 15, 6, 14, 1, 15, 6, 14, 2, 16, 6, 14, 1, 15, 6, 14, 1, 14});
+#ifdef USE_CUDA
+  tester.ConfigEp(DefaultCudaExecutionProvider());
+#endif
+  tester.RunWithConfig();
+}
+
+TEST(BeamSearchTest, DummyT5WithOuterScopeInitializers) {
+  // dummy_t5_with_outer_scope_initializers.onnx model generated using following command:
+  // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5_with_outer_scope_initializers.onnx --move-initializers
+  ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_with_outer_scope_initializers.onnx"));
+  tester.ConfigEp(DefaultCpuExecutionProvider());
+  tester.AddInput("encoder_input_ids", {1, 5}, {14, 6, 13, 9, 7});
+  tester.AddOutput("sequences", {1, 3, 10}, {2, 16, 6, 14, 1, 15, 6, 14, 1, 15, 2, 3, 4, 15, 6, 14, 1, 15, 6, 14, 2, 16, 6, 14, 1, 15, 6, 14, 1, 14});
+#ifdef USE_CUDA
+  tester.ConfigEp(DefaultCudaExecutionProvider());
+#endif
+  tester.RunWithConfig();
+}
+
+TEST(BeamSearchTest, DummyT5WithSequenceInputIds) {
+  // dummy_t5_with_sequence_input_ids.onnx model generated using following command:
+  // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5_with_sequence_input_ids.onnx --sequence-as-input
+  ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_with_sequence_input_ids.onnx"));
+  tester.ConfigEp(DefaultCpuExecutionProvider());
+  tester.AddInput("encoder_input_ids", {1, 5}, {16, 17, 1, 0, 8});
+  tester.AddOutput("sequences", {1, 3, 10}, {2, 19, 18, 3, 8, 8, 8, 8, 8, 8, 2, 19, 18, 3, 10, 19, 18, 3, 8, 8, 2, 19, 18, 15, 13, 13, 13, 13, 13, 13});
+#ifdef USE_CUDA
+  tester.ConfigEp(DefaultCudaExecutionProvider());
+#endif
+  tester.RunWithConfig();
+}
+
+TEST(BeamSearchTest, DummyT5PointerGenerator) {
+  // dummy_t5_pointer_generator.onnx model generated using following command:
+  // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5_pointer_generator.onnx --decoder-needs-input-ids
+  ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_pointer_generator.onnx"));
+  tester.ConfigEp(DefaultCpuExecutionProvider());
+  tester.AddInput("encoder_input_ids", {1, 5}, {14, 6, 13, 9, 7});
+  tester.AddOutput("sequences", {1, 3, 10}, {2, 3, 6, 7, 3, 6, 7, 18, 3, 6, 2, 3, 6, 7, 18, 3, 6, 7, 18, 3, 2, 3, 6, 7, 3, 6, 7, 3, 6, 7});
+#ifdef USE_CUDA
+  tester.ConfigEp(DefaultCudaExecutionProvider());
+#endif
+  tester.RunWithConfig();
 }
 
 }  // namespace test

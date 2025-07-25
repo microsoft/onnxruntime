@@ -8,8 +8,9 @@ from __future__ import annotations
 import copy
 import logging
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import onnx
 
@@ -24,6 +25,7 @@ from .quant_utils import (
     load_model_with_shape_infer,
     model_has_pre_process_metadata,
     save_and_reload_model_with_shape_infer,
+    update_opset_version,
 )
 from .registry import IntegerOpsRegistry, QDQRegistry, QLinearOpsRegistry
 from .tensor_quant_overrides import TensorQuantOverridesHelper
@@ -98,6 +100,7 @@ class StaticQuantConfig(QuantConfig):
         per_channel=False,
         reduce_range=False,
         use_external_data_format=False,
+        calibration_providers=None,
         extra_options=None,
     ):
         """
@@ -111,6 +114,8 @@ class StaticQuantConfig(QuantConfig):
             quant_format: QuantFormat{QOperator, QDQ}.
                 QOperator format quantizes the model with quantized operators directly.
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
+            calibration_providers: Execution providers to run the session during calibration. Default is None which uses
+                [ "CPUExecutionProvider" ].
             extra_options:
                 key value pair dictionary for various options in different case. Current used:
                     extra.Sigmoid.nnapi = True/False  (Default is False)
@@ -218,6 +223,7 @@ class StaticQuantConfig(QuantConfig):
         self.calibration_data_reader = calibration_data_reader
         self.calibrate_method = calibrate_method
         self.quant_format = quant_format
+        self.calibration_providers = calibration_providers
         self.extra_options = extra_options or {}
 
 
@@ -235,6 +241,8 @@ def get_qdq_config(
     keep_removable_activations: bool = False,
     min_real_range: float | None = None,
     tensor_quant_overrides: dict[str, list[dict[str, Any]]] | None = None,
+    calibration_providers: list[str] | None = None,
+    op_types_to_quantize: list[str] | None = None,
     nodes_to_exclude: list[str] | Callable[[onnx.ModelProto, onnx.NodeProto], bool] | None = None,
     extra_options: dict | None = None,
 ) -> StaticQuantConfig:
@@ -289,6 +297,10 @@ def get_qdq_config(
                 'convert["recv_nodes"] = Set : Set of node names that consume the converted activation,
                                                other nodes get the original type. If not specified,
                                                assume all consumer nodes get the converted type.
+        calibration_providers: Execution providers to run the session during calibration. Default is None which uses
+            [ "CPUExecutionProvider" ].
+        op_types_to_quantize: List of operator types to quantize. If None, all operators other than Cast, DequantizeLinear,
+            and QuantizeLinear are quantized.
         nodes_to_exclude: List of nodes names to exclude from quantization. Alternatively, can provide a function that
             accepts an onnx.ModelProto and onnx.NodeProto as arguments and returns true if the give onnx.NodeProto
             should be excluded from quantization.
@@ -319,17 +331,20 @@ def get_qdq_config(
         if onnx.external_data_helper.uses_external_data(initializer):
             model_has_external_data = True
 
-    final_nodes_to_exclude = []
-    if nodes_to_exclude is not None and isinstance(nodes_to_exclude, list):
-        final_nodes_to_exclude.extend(nodes_to_exclude)
+    op_types_to_quantize_set = set(op_types_to_quantize) if op_types_to_quantize else None
+    nodes_to_exclude_set = set(nodes_to_exclude) if isinstance(nodes_to_exclude, list) else set()
 
     # Iterate through nodes to get all operator types in the model and
     # call user's function to filter out nodes from quantization.
     for node in model.graph.node:
-        op_types.add(node.op_type)
-        if nodes_to_exclude is not None and callable(nodes_to_exclude):
-            if nodes_to_exclude(model, node):
-                final_nodes_to_exclude.append(node.name)
+        if op_types_to_quantize_set and node.op_type not in op_types_to_quantize_set:
+            continue
+        if node.name in nodes_to_exclude_set:
+            continue
+        if callable(nodes_to_exclude) and nodes_to_exclude(model, node):
+            nodes_to_exclude_set.add(node.name)
+        else:
+            op_types.add(node.op_type)
 
     final_extra_options = {
         "MinimumRealRange": min_real_range,
@@ -373,11 +388,14 @@ def get_qdq_config(
         quant_format=QuantFormat.QDQ,
         activation_type=activation_type,
         weight_type=weight_type,
-        op_types_to_quantize=list(op_types.difference(op_types_to_exclude)),
-        nodes_to_exclude=final_nodes_to_exclude,
+        op_types_to_quantize=(
+            op_types_to_quantize if op_types_to_quantize else list(op_types.difference(op_types_to_exclude))
+        ),
+        nodes_to_exclude=list(nodes_to_exclude_set),
         per_channel=per_channel,
         reduce_range=reduce_range,
         use_external_data_format=(model_has_external_data or model.ByteSize() >= MODEL_SIZE_THRESHOLD),
+        calibration_providers=calibration_providers,
         extra_options=final_extra_options,
     )
 
@@ -437,7 +455,7 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
     if activation_type != QuantType.QFLOAT8E4M3FN and weight_type == QuantType.QFLOAT8E4M3FN:
         raise ValueError(
             f"ONNXRuntime quantization doesn't support data format: activation_type={activation_type} "
-            f"!=QuantType.QFLOAT8E4M3FN, weight_type=QuantType.QFLOAT8E4M3FN."
+            "!=QuantType.QFLOAT8E4M3FN, weight_type=QuantType.QFLOAT8E4M3FN."
         )
 
     if activation_type == QuantType.QFLOAT8E4M3FN and weight_type != QuantType.QFLOAT8E4M3FN:
@@ -472,6 +490,7 @@ def quantize_static(
     nodes_to_exclude=None,
     use_external_data_format=False,
     calibrate_method=CalibrationMethod.MinMax,
+    calibration_providers=None,
     extra_options=None,
 ):
     """
@@ -519,6 +538,8 @@ def quantize_static(
             List of nodes names to exclude. The nodes in this list will be excluded from quantization
             when it is not None.
         use_external_data_format: option used for large size (>2GB) model. Set to False by default.
+        calibration_providers: Execution providers to run the session during calibration. Default is None which uses
+            [ "CPUExecutionProvider" ]
         extra_options:
             key value pair dictionary for various options in different case. Current used:
                 extra.Sigmoid.nnapi = True/False  (Default is False)
@@ -652,7 +673,7 @@ def quantize_static(
     }
 
     if extra_options.get("SmoothQuant", False):
-        import importlib
+        import importlib  # noqa: PLC0415
 
         try:
             importlib.import_module("neural_compressor.adaptor.ox_utils.smooth_quant")
@@ -660,9 +681,7 @@ def quantize_static(
             logging.error(f"{e}.")
             raise RuntimeError("neural-compressor is not correctly installed. Please check your environment.") from e
 
-        import copy
-
-        from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
+        from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant  # noqa: PLC0415
 
         def inc_dataloader():
             data_reader = copy.deepcopy(calibration_data_reader)
@@ -680,9 +699,18 @@ def quantize_static(
         nodes_to_exclude.extend([i.name for i in model.model.graph.node if i.name not in orig_nodes])
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
+    updated_model = update_opset_version(model, weight_type)
+    is_model_updated = updated_model is not model
+    if is_model_updated:
+        model = updated_model
+
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
+        if is_model_updated:
+            # Update model_input and avoid to use the original one
+            model_input = copy.deepcopy(model)
+
         if isinstance(model_input, onnx.ModelProto):
-            output_path = str(Path(quant_tmp_dir) / "model_input.onnx")
+            output_path = Path(quant_tmp_dir).joinpath("model_input.onnx").as_posix()
             onnx.save_model(
                 model_input,
                 output_path,
@@ -696,6 +724,7 @@ def quantize_static(
             augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
             calibrate_method=calibrate_method,
             use_external_data_format=use_external_data_format,
+            providers=calibration_providers,
             extra_options=calib_extra_options,
         )
 
@@ -843,6 +872,8 @@ def quantize_dynamic(
     if "MatMulConstBOnly" not in extra_options:
         extra_options["MatMulConstBOnly"] = True
 
+    model = update_opset_version(model, weight_type)
+
     quantizer = ONNXQuantizer(
         model,
         per_channel,
@@ -889,6 +920,7 @@ def quantize(
             per_channel=quant_config.per_channel,
             reduce_range=quant_config.reduce_range,
             use_external_data_format=quant_config.use_external_data_format,
+            calibration_providers=quant_config.calibration_providers,
             extra_options=quant_config.extra_options,
         )
 
@@ -907,11 +939,11 @@ def quantize(
         )
     else:
         # training package doesn't has quantize_matmul_4bits, avoid global import
-        from .matmul_4bits_quantizer import MatMul4BitsQuantizer, WeightOnlyQuantConfig
+        from .matmul_nbits_quantizer import MatMulNBitsQuantizer, WeightOnlyQuantConfig  # noqa: PLC0415
 
         if isinstance(quant_config, WeightOnlyQuantConfig):
             model = model_input if isinstance(model_input, onnx.ModelProto) else onnx.load(model_input)
-            quant = MatMul4BitsQuantizer(model, algo_config=quant_config)
+            quant = MatMulNBitsQuantizer(model, algo_config=quant_config)
             quant.process()
             quant.model.save_model_to_file(model_output, True)
         else:

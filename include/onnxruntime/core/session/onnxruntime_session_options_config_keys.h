@@ -10,10 +10,10 @@
  * "[Area][.[SubArea1].[SubArea2]...].[Keyname]"
  * Such as "ep.cuda.use_arena"
  * The Config Key cannot be empty
- * The maximum length of the Config Key is 128
+ * The maximum length of the Config Key is 1024
  *
  * The string format of a SessionOptions Config Value is defined individually for each Config.
- * The maximum length of the Config Value is 1024
+ * The maximum length of the Config Value is 2048
  */
 
 // Key for disable PrePacking,
@@ -67,6 +67,10 @@ static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enab
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
+// Enable or disable Cast chain elimination in graph optimization. "0": disable; "1": enable. The default is "0".
+// CastElimination with chain elimination has side effects which may change the inference results. It is disabled by default due to this.
+static const char* const kOrtSessionOptionsEnableCastChainElimination = "optimization.enable_cast_chain_elimination";
+
 // This setting controls whether to enable AheadOfTime function inlining.
 // AOT function inlining examines the graph and attempts to inline as many locally defined functions in the model
 // as possible with the help of enabled execution providers.
@@ -107,13 +111,46 @@ static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimiz
 // Default is an empty string which means no optimizers are disabled.
 static const char* const kOrtSessionOptionsDisableSpecifiedOptimizers = "optimization.disable_specified_optimizers";
 
+// It controls whether to run graph optimizations in loop or not.
+//
+// "0": disable. Graph Optimization Loop is disabled.
+// ```
+// Level 2 --> Level 3 --> InsertCastTransforms --> Level 4
+//   ^                                                 |
+//   |                 "No Loop"                       |
+//   |                                                 |
+//   X                xxxxxxxxxxx                      X
+// ```
+// "1": enable. Graph Optimization Loop is enabled, such that, if optimizations at Level 4 are applied then
+// the loop will check for any other valid optimization that can happen.
+// ```
+// Level 2 --> Level 3 --> InsertCastTransforms --> Level 4
+//   ^                                                 |
+//   |        "Loop only depending on Level 4"         |
+//   |                                                 |
+//   ---------------------------------------------------
+// ```
+// "2": enable. Graph Optimization Loop is enabled, such that, if optimizations at Level 2 or above are applied then
+// The loop will check for any other valid optimization that can happen.
+// ```
+// Level 2 --> Level 3 --> InsertCastTransforms --> Level 4
+//   ^                                                 |
+//   |                    "Loop"                       |
+//   |                                                 |
+//   ---------------------------------------------------
+// ```
+// Default value is set to "1".
+static const char* const kOrtSessionOptionsGraphOptimizationsLoopLevel = "session.graph_optimizations_loop_level";
+
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
 // Using device allocators means the memory allocation is made using malloc/new.
 static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
 
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
 // "0": thread will block if found no job to run
-// "1": default, thread will spin a number of times before blocking
+// "1": thread will spin a number of times before blocking
+// The default is "0" when ORT is built with "ORT_CLIENT_PACKAGE_BUILD" and "1" otherwise.
+// Thread spinning is disabled by default for client/on-device workloads to reduce cpu utilization and improve power efficiency.
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
 
@@ -250,6 +287,51 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFil
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
     "session.optimized_model_external_initializers_min_size_in_bytes";
 
+// When loading model from memory buffer and the model has external initializers
+// Use this config to set the external data file folder path
+// All external data files should be in the same folder
+static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPath =
+    "session.model_external_initializers_file_folder_path";
+
+// Use this config when saving pre-packed constant initializers to an external data file.
+// This allows you to memory map pre-packed initializers on model load and leave it to
+// to the OS the amount of memory consumed by the pre-packed initializers. Otherwise,
+// pre-packed data resides on the heap.
+//
+// - "0": Default is not save pre-packed initializers to a data file.
+// - "1": Save pre-packed constant initializers to an external data file.
+// Sample usage: sess_options.add_session_config_entry(kOrtSessionOptionsSavePrePackedConstantInitializers,  "1")
+static const char* const kOrtSessionOptionsSavePrePackedConstantInitializers =
+    "session.save_external_prepacked_constant_initializers";
+
+// Use this config when you want to collect memory stats for each node in the graph.
+// The file format is a CSV file with the following columns:
+// The file will be created if it does not exist, and will be overwritten if it does.
+//
+// The content of the file can be used to estimate memory requirements at run time including
+// the temporary allocations. This operation is preferably done on a CPU device, as the model may exceed
+// device memory limits in constrained environments. When enabling this option, it is important to disable
+// memory patterns, as they tend to allocate large blocks to avoid fragmentation and accommodate needs of multiple
+// kernels. Memory patterns may make it difficult to allocate on a device with limited memory.
+//
+// The collected stats then can be used to partition the graph among the devices in a way that only the
+// required memory is allocated on each device.
+//
+// node_name, initializers_memory, dynamic_outputs_sizes, temp_allocations_size
+//
+// - "full path to file": there is not a default for this option. If the file can not be opened for writing, an error will be returned.
+static const char* const kOrtSessionOptionsCollectNodeMemoryStatsToFile = "session.collect_node_memory_stats_to_file";
+
+/// This is a composite CSV setting formatted as "memory limit in kb,file name for collected stats"
+/// "limit > 0": enables Capacity Aware Partitioning for Cuda EP. `limit` is optional and when absent
+/// the provider may attempt to figure out the memory available automatically.
+/// The setting with no limit is expected to look like: ",file name for collected stats"
+///  The EP will place nodes on device "file name" :
+/// this file is expected to be found at the same folder with the model. The file contains
+/// pre-recorded stats collected when running with kOrtSessionOptionsCollectNodeMemoryStatsToFile enforce (see above)
+static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
+    "session.resource_cuda_partitioning_settings";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)
@@ -258,19 +340,33 @@ static const char* const kOrtSessionOptionEpContextEnable = "ep.context_enable";
 
 // Specify the file path for the Onnx model which has EP context.
 // Default to original_file_name_ctx.onnx if not specified
+// Folder is not a valid option
 static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_path";
 
 // Flag to specify whether to dump the EP context into the Onnx model.
-// "0": dump the EP context into separate file, keep the file name in the Onnx model.
-// "1": dump the EP context into the Onnx model. (default).
+// "0": dump the EP context into separate file, keep the file name in the Onnx model. (default).
+// "1": dump the EP context into the Onnx model.
 static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";
 
 // Specify the EPContext node name prefix to make it unique
 // in case user need to merge/connect multiple EPContext nodes in one model
 static const char* const kOrtSessionOptionEpContextNodeNamePrefix = "ep.context_node_name_prefix";
 
-// Share EP related resources across EPs
+// Share EP related resources across sessions
 static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_contexts";
+
+// Stop to share EP related resources across sessions from then on
+static const char* const kOrtSessionOptionStopShareEpContexts = "ep.stop_share_ep_contexts";
+
+// Used only for context model generation.
+// This configuration is used when some nodes are partitioned on the CPU EP and those nodes have external initializers.
+// When generating the EP context model, the new model should not rely on the old external data file used by the source ONNX model.
+// Use this setting when dumping the EP context model with an external initializers file.
+// If specified, all initializers will be placed inside the external data file.
+// Otherwise, all initializers will be embedded inside the generated ONNX file.
+// By default, this option is not set, meaning all initializers will be included within the ONNX file.
+static const char* const kOrtSessionOptionsEpContextModelExternalInitializersFileName =
+    "ep.context_model_external_initializers_file_name";
 
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:
@@ -289,3 +385,19 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "sessio
 // “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
 // “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
 static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";
+
+// Disables model compilation during session initialization.
+//
+// If this option is set to "1", inference session creation will fail with error code ORT_MODEL_REQUIRES_COMPILATION
+// if compilation is required to run the model on any Execution Provider added to the session.
+// Only the following kinds of models are valid when this option is set to "1":
+//   - Pre-compiled models that have EPContext nodes for the compiling Execution Providers in the session.
+//   - Non-compiled models that run only on non-compiling Execution Providers, like CPU EP.
+//
+// See \href https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for details about
+// compiled models with EPContext nodes.
+//
+// Option values:
+// - "0": EP compile is not disabled. [DEFAULT]
+// - "1": EP compile is disabled.
+static const char* const kOrtSessionOptionsDisableModelCompile = "session.disable_model_compile";

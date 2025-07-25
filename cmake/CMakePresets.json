@@ -14,6 +14,7 @@
                 "VCPKG_INSTALLED_DIR": "${sourceParentDir}/.build"
             },
             "environment": {
+                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/vcpkg-triplets",
                 "VCPKG_FEATURE_FLGAS": "manifests,versions"
             }
         },
@@ -95,6 +96,29 @@
             "installDir": "${sourceParentDir}/cmake_build/out",
             "cacheVariables": {
                 "CMAKE_OSX_ARCHITECTURES": "x86_64",
+                "onnxruntime_BUILD_SHARED_LIB": true,
+                "onnxruntime_USE_XNNPACK": false,
+                "onnxruntime_USE_COREML": true,
+                "onnxruntime_BUILD_OBJC": true,
+                "onnxruntime_BUILD_APPLE_FRAMEWORK": true,
+                "CMAKE_CONFIGURATION_TYPES": "Debug;Release"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "arm64-osx",
+            "inherits": [
+                "unit-test"
+            ],
+            "generator": "Xcode",
+            "binaryDir": "${sourceParentDir}/cmake_build/arm64-osx",
+            "installDir": "${sourceParentDir}/cmake_build/out",
+            "cacheVariables": {
+                "CMAKE_OSX_ARCHITECTURES": "arm64",
                 "onnxruntime_BUILD_SHARED_LIB": true,
                 "onnxruntime_USE_XNNPACK": false,
                 "onnxruntime_USE_COREML": true,

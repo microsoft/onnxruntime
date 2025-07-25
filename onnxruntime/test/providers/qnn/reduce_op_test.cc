@@ -82,19 +82,12 @@ static void RunReduceTest(const std::string& op_type,
                           float fp32_abs_err = 1e-5f,
                           bool enable_fp16 = false) {
   ProviderOptions provider_options;
+  provider_options["offload_graph_io_quantization"] = "0";
   if (enable_fp16) {
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnHtp.dll";
-#else
-    provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+    provider_options["backend_type"] = "htp";
     provider_options["enable_htp_fp16_precision"] = "1";
   } else {
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnCpu.dll";
-#else
-    provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+    provider_options["backend_type"] = "cpu";
   }
 
   RunQnnModelTest(BuildReduceOpTestCase<DataType>(op_type,
@@ -309,13 +302,35 @@ TEST_F(QnnCPUBackendTests, ReduceMeanOpset13) {
                        ExpectedEPNodeAssignment::All);
 }
 
+//
+// ReduceL2
+//
+TEST_F(QnnCPUBackendTests, ReduceL2Opset18) {
+  RunReduceTest<float>("ReduceL2",
+                       TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                       std::vector<int64_t>{0, 1},
+                       true,  // keepdims
+                       18,
+                       ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnCPUBackendTests, ReduceL2Opset13) {
+  RunReduceTest<float>("ReduceL2",
+                       TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                       std::vector<int64_t>{0, 1},
+                       true,  // keepdims
+                       13,
+                       ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Test creates a graph with a ReduceSum node, and checks that all nodes are supported by the QNN EP
 // HTP backend with FP16 precision, and that the inference results match the CPU EP results.
 //
 // Failed QNN Opvalidation because of 5D input. It runs OK if bypass the op validation
-TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumOpset11_5D_FP16) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, ReduceSumOpset11_5D_FP16) {
   float fp32_abs_err = 3e-2f;
   bool enable_fp16 = true;
   RunReduceTest<float>("ReduceSum",
@@ -396,11 +411,8 @@ static void RunReduceOpQDQTest(const std::string& op_type,
                                int opset,
                                ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   constexpr bool noop_with_empty_axes = false;
   const bool axes_as_input = ReduceOpHasAxesInput(op_type, opset);  // Later opsets have "axes" as an input.

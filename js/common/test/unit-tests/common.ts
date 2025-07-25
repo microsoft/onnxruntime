@@ -29,9 +29,10 @@ export const NUMBER_COMPATIBLE_NUMERICAL_TYPES = [
 export const BIGINT_TYPES = [['int64', BigInt64Array, true] as const, ['uint64', BigUint64Array, true] as const];
 
 /**
- * float16 type, data represented by Uint16Array
+ * float16 type, data represented by Uint16Array/Float16Array
  */
-export const FLOAT16_TYPE = ['float16', Uint16Array, false] as const;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const FLOAT16_TYPE = ['float16', (globalThis as any).Float16Array ?? Uint16Array, false] as const;
 
 /**
  * A list of all numerical types.

@@ -23,27 +23,50 @@ namespace logging {
 
 struct Logger final {
   bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept { return g_host->logging__Logger__OutputIsEnabled(this, severity, data_type); }
+  Severity GetSeverity() const noexcept {
+    return g_host->logging__Logger__GetSeverity(this);
+  }
 
   PROVIDER_DISALLOW_ALL(Logger)
 };
 
 struct LoggingManager final {
   static const Logger& DefaultLogger() { return g_host->logging__LoggingManager__DefaultLogger(); }
+  static bool HasDefaultLogger() { return g_host->logging__LoggingManager__HasDefaultLogger(); }
 
   PROVIDER_DISALLOW_ALL(LoggingManager)
 };
 
 struct Capture final {
   static std::unique_ptr<Capture> Create(const Logger& logger, logging::Severity severity, const char* category,
-                                         logging::DataType dataType, const CodeLocation& location) { return g_host->logging__Capture__construct(logger, severity, category, dataType, location); }
+                                         logging::DataType data_type, const CodeLocation& location) {
+    return g_host->logging__Capture__construct(logger, severity, category, data_type, location);
+  }
   static void operator delete(void* p) { g_host->logging__Capture__operator_delete(reinterpret_cast<Capture*>(p)); }
 
   std::ostream& Stream() noexcept { return g_host->logging__Capture__Stream(this); }
+  void ProcessPrintf(const char* format, va_list args) { g_host->logging__Capture__ProcessPrintf(this, format, args); }
 
   Capture() = delete;
   Capture(const Capture&) = delete;
   void operator=(const Capture&) = delete;
 };
+
+#if defined(_WIN32)
+struct EtwRegistrationManager final {
+  using EtwInternalCallback = EtwRegistrationManager_EtwInternalCallback;
+  static EtwRegistrationManager& Instance() { return g_host->logging__EtwRegistrationManager__Instance(); }
+  static bool SupportsETW() { return g_host->logging__EtwRegistrationManager__SupportsETW(); }
+  Severity MapLevelToSeverity() { return g_host->logging__EtwRegistrationManager__MapLevelToSeverity(this); }
+  void RegisterInternalCallback(const EtwInternalCallback& callback) {
+    g_host->logging__EtwRegistrationManager__RegisterInternalCallback(this, callback);
+  }
+  void UnregisterInternalCallback(const EtwInternalCallback& callback) {
+    g_host->logging__EtwRegistrationManager__UnregisterInternalCallback(this, callback);
+  }
+};
+#endif  // defined(_WIN32)
+
 }  // namespace logging
 }  // namespace onnxruntime
 
@@ -122,6 +145,7 @@ struct AttributeProto final {
   void set_name(const ::std::string& value) { return g_host->AttributeProto__set_name(this, value); }
   void set_type(AttributeProto_AttributeType value) { return g_host->AttributeProto__set_type(this, value); }
   TensorProto* add_tensors() { return g_host->AttributeProto__add_tensors(this); }
+  std::string* release_s() { return g_host->AttributeProto__release_s(this); }
 
   typedef AttributeProto_AttributeType AttributeType;
   static constexpr AttributeType UNDEFINED = AttributeProto_AttributeType_UNDEFINED;
@@ -233,6 +257,7 @@ struct TensorProto final {
   const std::string& raw_data() const { return g_host->TensorProto__raw_data(this); }
   std::string* mutable_raw_data() { return g_host->TensorProto__mutable_raw_data(this); }
 
+  bool has_data_type() const { return g_host->TensorProto__has_data_type(this); }
   int32_t data_type() const { return g_host->TensorProto__data_type(this); }
   void set_data_type(int32_t type) { return g_host->TensorProto__set_data_type(this, type); }
 
@@ -285,6 +310,7 @@ struct TensorShapeProto_Dimension final {
 struct TensorShapeProto_Dimensions final {
   IteratorHolder<TensorShapeProto_Dimension_Iterator, const TensorShapeProto_Dimension> begin() const { return g_host->TensorShapeProto_Dimensions__begin(this); }
   IteratorHolder<TensorShapeProto_Dimension_Iterator, const TensorShapeProto_Dimension> end() const { return g_host->TensorShapeProto_Dimensions__end(this); }
+  size_t size() const { return g_host->TensorShapeProto_Dimensions__size(this); }
 
   PROVIDER_DISALLOW_ALL(TensorShapeProto_Dimensions)
 };
@@ -304,6 +330,7 @@ struct TypeProto_Tensor final {
   bool has_shape() const { return g_host->TypeProto_Tensor__has_shape(this); }
   const TensorShapeProto& shape() const { return g_host->TypeProto_Tensor__shape(this); }
   TensorShapeProto* mutable_shape() { return g_host->TypeProto_Tensor__mutable_shape(this); }
+  bool has_elem_type() const { return g_host->TypeProto_Tensor__has_elem_type(this); }
   int32_t elem_type() const { return g_host->TypeProto_Tensor__elem_type(this); }
   void set_elem_type(int32_t value) { g_host->TypeProto_Tensor__set_elem_type(this, value); }
 
@@ -338,6 +365,7 @@ struct TypeProto_Sequence final {
 struct TypeProto final {
   static std::unique_ptr<TypeProto> Create() { return g_host->TypeProto__construct(); }
 
+  bool has_tensor_type() const { return g_host->TypeProto__has_tensor_type(this); }
   const TypeProto_Tensor& tensor_type() const { return g_host->TypeProto__tensor_type(this); }
   TypeProto_Tensor* mutable_tensor_type() { return g_host->TypeProto__mutable_tensor_type(this); }
 
@@ -474,6 +502,7 @@ namespace Utils {
 
 struct DataTypeUtils final {
   static const std::string* ToType(const ONNX_NAMESPACE::TypeProto& type_proto) { return g_host->Utils__DataTypeUtils__ToType(type_proto); }
+  static const std::string* ToType(const std::string& type_str) { return g_host->Utils__DataTypeUtils__ToType(type_str); }
 
   PROVIDER_DISALLOW_ALL(DataTypeUtils)
 };
@@ -489,6 +518,10 @@ struct ConfigOptions final {
     return g_host->ConfigOptions__GetConfigOrDefault(this, config_key, default_value);
   }
 
+  const std::unordered_map<std::string, std::string>& GetConfigOptionsMap() const {
+    return g_host->ConfigOptions__GetConfigOptionsMap(this);
+  }
+
   PROVIDER_DISALLOW_ALL(ConfigOptions)
 };
 
@@ -497,6 +530,9 @@ struct ComputeCapability final {
   static void operator delete(void* p) { g_host->ComputeCapability__operator_delete(reinterpret_cast<ComputeCapability*>(p)); }
 
   std::unique_ptr<IndexedSubGraph>& SubGraph() { return g_host->ComputeCapability__SubGraph(this); }
+
+  void copy_optimization_func(ComputeCapability* selection_cc) { g_host->ComputeCapability__copy_optimization_func(this, selection_cc); }
+  void add_nodes_to_optimize(std::unique_ptr<ComputeCapability> optimization_cc) { g_host->ComputeCapability__add_nodes_to_optimize(this, std::move(optimization_cc)); }
 
   ComputeCapability() = delete;
   ComputeCapability(const ComputeCapability&) = delete;
@@ -552,6 +588,7 @@ struct IndexedSubGraph final {
   static std::unique_ptr<IndexedSubGraph> Create() { return g_host->IndexedSubGraph__construct(); }
   static void operator delete(void* p) { g_host->IndexedSubGraph__operator_delete(reinterpret_cast<IndexedSubGraph*>(p)); }
 
+  gsl::span<const onnxruntime::NodeIndex> Nodes() const { return g_host->IndexedSubGraph__Nodes(this); }
   std::vector<onnxruntime::NodeIndex>& Nodes() { return g_host->IndexedSubGraph__Nodes(this); }
 
   void SetMetaDef(std::unique_ptr<IndexedSubGraph_MetaDef>&& meta_def_) { return g_host->IndexedSubGraph__SetMetaDef(this, std::move(*reinterpret_cast<std::unique_ptr<IndexedSubGraph_MetaDef>*>(&meta_def_))); }
@@ -559,6 +596,12 @@ struct IndexedSubGraph final {
 
   void SetSchemaSource(IndexedSubGraph_SourceOfSchema schema_source) { return g_host->IndexedSubGraph__SetSchemaSource(this, schema_source); }
   IndexedSubGraph_SourceOfSchema GetSchemaSource() const { return g_host->IndexedSubGraph__GetSchemaSource(this); }
+  void SetAccountant(IResourceAccountant* resource_accountant) {
+    g_host->IndexedSubGraph__SetAccountant(this, resource_accountant);
+  }
+  void AppendNodeCost(const ResourceCount& resource_count) {
+    g_host->IndexedSubGraph__AppendNodeCost(this, resource_count);
+  }
 
   IndexedSubGraph() = delete;
   IndexedSubGraph(const IndexedSubGraph&) = delete;
@@ -769,6 +812,14 @@ struct Function final {
   PROVIDER_DISALLOW_ALL(Function)
 };
 
+struct Node_EdgeEnd final {
+  const Node& GetNode() const { return g_host->Node_EdgeEnd__GetNode(this); }
+  int GetSrcArgIndex() const { return g_host->Node_EdgeEnd__GetSrcArgIndex(this); }
+  int GetDstArgIndex() const { return g_host->Node_EdgeEnd__GetDstArgIndex(this); }
+
+  PROVIDER_DISALLOW_ALL(Node_EdgeEnd)
+};
+
 struct Node final {
   enum class Type {
     Primitive = 0,
@@ -798,6 +849,12 @@ struct Node final {
 
   const NodeAttributes& GetAttributes() const noexcept { return g_host->Node__GetAttributes(this); }
   void AddAttribute(const ::std::string& attr_name, const ONNX_NAMESPACE::GraphProto& value) {
+    g_host->Node__AddAttribute(this, attr_name, value);
+  }
+  void AddAttribute(const std::string& attr_name, const std::string& value) {
+    g_host->Node__AddAttribute(this, attr_name, value);
+  }
+  void AddAttribute(const std::string& attr_name, int64_t value) {
     g_host->Node__AddAttribute(this, attr_name, value);
   }
 
@@ -831,6 +888,7 @@ struct Node final {
     }
 
     void operator++() { impl_->operator++(); }
+    const Node_EdgeEnd& operator*() { return impl_->operator*(); }
     const Node__EdgeIterator* operator->() const { return impl_.get(); }
 
     std::unique_ptr<Node__EdgeIterator> impl_;
@@ -905,6 +963,13 @@ struct NodeUnit final {
     QDQGroup,    // The NodeUnit contain a QDQ group of nodes, such as "DQ->Sigmoid->Q"
   };
 
+  NodeUnit() = delete;
+  NodeUnit(const NodeUnit&) = delete;
+  void operator=(const NodeUnit& v) = delete;
+
+  // Need delete because of APIs that return unique_ptr<NodeUnit>
+  static void operator delete(void* p) { g_host->NodeUnit__operator_delete(reinterpret_cast<NodeUnit*>(p)); }
+
   Type UnitType() const noexcept { return static_cast<Type>(g_host->NodeUnit__UnitType(this)); }
 
   const std::vector<NodeUnitIODef>& Inputs() const noexcept { return g_host->NodeUnit__Inputs(this); }
@@ -933,10 +998,16 @@ struct NodeUnit final {
   Node::EdgeConstIterator OutputEdgesEnd() const { return g_host->NodeUnit__OutputEdgesEnd(this); }
 };
 
+struct ModelSavingOptions;
+
 struct Model final {
   static std::unique_ptr<Model> Create(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                        const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
     return g_host->Model__construct(std::move(model_proto), model_path, local_registries, logger);
+  }
+  static std::unique_ptr<Model> Create(const std::string& graph_name, bool is_onnx_domain_only,
+                                       const logging::Logger& logger) {
+    return g_host->Model__construct(graph_name, is_onnx_domain_only, logger);
   }
   static void operator delete(void* p) { g_host->Model__operator_delete(reinterpret_cast<Model*>(p)); }
   static Status Load(const PathString& file_path, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) { return g_host->Model__Load(file_path, model_proto); }
@@ -944,7 +1015,12 @@ struct Model final {
   Graph& MainGraph() { return g_host->Model__MainGraph(this); }
 
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> ToProto() { return g_host->Model__ToProto(this); }
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name, const std::filesystem::path& file_path, size_t initializer_size_threshold) { return g_host->Model__ToGraphProtoWithExternalInitializers(this, external_file_name, file_path, initializer_size_threshold); }
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> ToGraphProtoWithExternalInitializers(
+      const std::filesystem::path& external_file_name,
+      const std::filesystem::path& file_path, const ModelSavingOptions& model_saving_options) {
+    return g_host->Model__ToGraphProtoWithExternalInitializers(this, external_file_name, file_path,
+                                                               model_saving_options);
+  }
   const ModelMetaData& MetaData() const noexcept { return g_host->Model__MetaData(this); }
 
   Model() = delete;
@@ -962,6 +1038,9 @@ struct Graph final {
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept { return g_host->Graph__DomainToVersionMap(this); }
   Status Resolve() { return g_host->Graph__Resolve(this); }
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor) { return g_host->Graph__AddInitializedTensor(this, tensor); }
+  Status AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor, const OrtValue& ort_value) {
+    return g_host->Graph__AddInitializedOrtValue(this, tensor, ort_value);
+  }
   Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, gsl::span<NodeArg* const> input_args, gsl::span<NodeArg* const> output_args, const NodeAttributes* attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, attributes, domain); }
   Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, gsl::span<NodeArg* const> input_args, gsl::span<NodeArg* const> output_args, NodeAttributes&& attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, std::move(attributes), domain); }
   Node& AddNode(const Node& other) { return g_host->Graph__AddNode(this, other); }
@@ -978,6 +1057,7 @@ struct Graph final {
   const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
   Graph* MutableParentGraph() { return g_host->Graph__MutableParentGraph(this); }
   const std::string& Name() const noexcept { return g_host->Graph__Name(this); }
+  void SetName(const std::string& name) noexcept { return g_host->Graph__SetName(this, name); }
   const std::filesystem::path& ModelPath() const { return g_host->Graph__ModelPath(this); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->Graph__GetInputsIncludingInitializers(this); }
   bool IsSubgraph() const { return g_host->Graph__IsSubgraph(this); }
@@ -1022,15 +1102,18 @@ struct Graph final {
   PROVIDER_DISALLOW_ALL(Graph)
 };
 
+using ModelMetaData = std::unordered_map<std::string, std::string>;
+
 class GraphViewer final {
  public:
   static void operator delete(void* p) { g_host->GraphViewer__operator_delete(reinterpret_cast<GraphViewer*>(p)); }
 
-  std::unique_ptr<Model> CreateModel(const logging::Logger& logger) const { return g_host->GraphViewer__CreateModel(this, logger); }
+  std::unique_ptr<Model> CreateModel(const logging::Logger& logger, const ModelMetaData& metadata = ModelMetaData()) const { return g_host->GraphViewer__CreateModel(this, logger, metadata); }
 
   const std::string& Name() const noexcept { return g_host->GraphViewer__Name(this); }
   const std::filesystem::path& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); }
 
+  const ConstGraphNodes& Nodes() const noexcept { return g_host->GraphViewer__Nodes(this); }
   const Node* GetNode(NodeIndex node_index) const { return g_host->GraphViewer__GetNode(this, node_index); }
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->GraphViewer__GetNodeArg(this, name); }
 
@@ -1048,6 +1131,9 @@ class GraphViewer final {
 
   const std::vector<const NodeArg*>& GetInputs() const noexcept { return g_host->GraphViewer__GetInputs(this); }
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return g_host->GraphViewer__GetOutputs(this); }
+  bool NodeProducesGraphOutput(const Node& node) const {
+    return g_host->GraphViewer__NodeProducesGraphOutput(this, node);
+  }
   const std::unordered_set<const NodeArg*>& GetValueInfo() const noexcept { return g_host->GraphViewer__GetValueInfo(this); }
 
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return g_host->GraphViewer__GetAllInitializedTensors(this); }
@@ -1064,8 +1150,9 @@ class GraphViewer final {
   void ToProto(ONNX_NAMESPACE::GraphProto& graph_proto,
                bool include_initializers,
                bool include_outer_scope_args,
-               int execution_order = 0) const {
-    g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args, execution_order);
+               int execution_order = 0,
+               bool include_initializer_data = true) const {
+    g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args, execution_order, include_initializer_data);
   }
   const Node* GetProducerNode(const std::string& node_arg_name) const { return g_host->GraphViewer__GetProducerNode(this, node_arg_name); }
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return g_host->GraphViewer__GetSchemaRegistry(this); }
@@ -1073,6 +1160,88 @@ class GraphViewer final {
   GraphViewer() = delete;
   GraphViewer(const GraphViewer&) = delete;
   void operator=(const GraphViewer&) = delete;
+};
+
+struct ConstGraphNodes final {
+  IteratorHolder<ConstGraphNodes_Iterator, const Node> begin() const {
+    return g_host->ConstGraphNodes__begin(this);
+  }
+  IteratorHolder<ConstGraphNodes_Iterator, const Node> end() const {
+    return g_host->ConstGraphNodes__end(this);
+  }
+  IteratorHolder<ConstGraphNodes_Iterator, const Node> cbegin() const {
+    return g_host->ConstGraphNodes__cbegin(this);
+  }
+  IteratorHolder<ConstGraphNodes_Iterator, const Node> cend() const {
+    return g_host->ConstGraphNodes__cend(this);
+  }
+
+  bool empty() const noexcept { return g_host->ConstGraphNodes__empty(this); }
+
+  PROVIDER_DISALLOW_ALL(ConstGraphNodes)
+};
+
+class Initializer {
+ public:
+  Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
+              std::string_view name,
+              gsl::span<const int64_t> dims) {
+    this_ptr_ = g_host->Initializer__constructor(data_type, name, dims);
+  }
+
+  Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
+              const std::filesystem::path& model_path = {},
+              bool check_outer_scope = false) {
+    this_ptr_ = g_host->Initializer__constructor(graph, tensor_proto, model_path, check_outer_scope);
+  }
+
+  ~Initializer() {
+    g_host->Initializer__destructor(this_ptr_);
+  }
+
+  PROVIDER_DISALLOW_ALL(Initializer);
+
+  void ToProto(ONNX_NAMESPACE::TensorProto& tensor_proto) const {
+    g_host->Initializer__ToProto(*this_ptr_, tensor_proto);
+  }
+
+  void ToProtoWithOrtValue(ONNX_NAMESPACE::TensorProto& tensor_proto, OrtValue& ort_value) const {
+    g_host->Initializer__ToProtoWithOrtValue(*this_ptr_, tensor_proto, ort_value);
+  }
+
+  int data_type() const {
+    return g_host->Initializer__data_type(*this_ptr_);
+  }
+
+  const std::string& name() const {
+    return g_host->Initializer__name(*this_ptr_);
+  }
+
+  gsl::span<const int64_t> dims() const {
+    return g_host->Initializer__dims(*this_ptr_);
+  }
+
+  size_t size() const {
+    return g_host->Initializer__size(*this_ptr_);
+  }
+
+  // See definition for the below templates in provider_api.h
+  template <class T>
+  const T* data() const;
+
+  template <class T>
+  T* data();
+
+  const void* data_raw() const {
+    return g_host->Initializer__data_raw(*this_ptr_);
+  }
+
+  void* mutable_data_raw() {
+    return g_host->Initializer__mutable_data_raw(*this_ptr_);
+  }
+
+ private:
+  Initializer* this_ptr_;
 };
 
 struct OpKernelContext final {
@@ -1463,8 +1632,16 @@ struct OrtRunOptions final {
 };
 
 struct OrtSessionOptions final {
-  const std::unordered_map<std::string, std::string>& GetConfigOptions() const {
+  const std::unordered_map<std::string, std::string>& GetConfigOptionsMap() const {
     return onnxruntime::g_host->SessionOptions__GetConfigOptionsMap(this);
+  }
+
+  const onnxruntime::ConfigOptions& GetConfigOptions() const {
+    return onnxruntime::g_host->SessionOptions__GetConfigOptions(this);
+  }
+
+  bool GetEnableProfiling() const {
+    return onnxruntime::g_host->SessionOptions__GetEnableProfiling(this);
   }
   PROVIDER_DISALLOW_ALL(OrtSessionOptions)
 };

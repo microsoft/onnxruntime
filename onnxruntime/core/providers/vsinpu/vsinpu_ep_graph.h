@@ -51,17 +51,18 @@ struct NodeIOInfo {
 
 class GraphEP {
  public:
-  explicit GraphEP(const GraphViewer& graph_viewer);
+  explicit GraphEP(const GraphViewer& graph_viewer, const logging::Logger& logger);
   ~GraphEP() {}
 
   bool Prepare();
 
   static bool SupportedOp(const onnxruntime::GraphViewer& graph_viewer,
-                          const NodeUnit& node_unit);
+                          const NodeUnit& node_unit, const logging::Logger& logger);
 
   // If a node is supported by VSINPU in a partition node group
   // `node_outputs_in_group` is the set of the output names of the nodes added to this group so far
-  static bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer);
+  static bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
+                                     const logging::Logger& logger);
 
   const NodeUnit& GetNodeUnit(const Node* node) const;
 
@@ -104,6 +105,7 @@ class GraphEP {
   // In the form of {input_name, [NodeUnit(s) using the input]}
   std::unordered_map<std::string, std::vector<const NodeUnit*>> all_quantized_op_inputs_;
   const GraphViewer& graph_viewer_;
+  const logging::Logger& logger_;
 
   // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
   // valid throughout the lifetime of the ModelBuilder

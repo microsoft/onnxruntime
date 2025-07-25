@@ -11,8 +11,8 @@ import argparse
 import csv
 import statistics
 import time
+from collections.abc import Mapping
 from datetime import datetime
-from typing import List, Mapping, Optional
 
 import torch
 from image_decoder import SAM2ImageDecoder
@@ -46,6 +46,7 @@ class TestConfig:
         prefer_nhwc: bool = False,
         warm_up: int = 5,
         enable_nvtx_profile: bool = False,
+        enable_ort_profile: bool = False,
         enable_torch_profile: bool = False,
         repeats: int = 1000,
         verbose: bool = False,
@@ -74,6 +75,7 @@ class TestConfig:
         self.prefer_nhwc = prefer_nhwc
         self.warm_up = warm_up
         self.enable_nvtx_profile = enable_nvtx_profile
+        self.enable_ort_profile = enable_ort_profile
         self.enable_torch_profile = enable_torch_profile
         self.repeats = repeats
         self.verbose = verbose
@@ -84,7 +86,7 @@ class TestConfig:
     def __repr__(self):
         return f"{vars(self)}"
 
-    def shape_dict(self) -> Mapping[str, List[int]]:
+    def shape_dict(self) -> Mapping[str, list[int]]:
         if self.component == "image_encoder":
             return encoder_shape_dict(self.batch_size, self.height, self.width)
         else:
@@ -188,8 +190,8 @@ def run_torch(config: TestConfig):
                 _image_features_0, _image_features_1, _image_embeddings = sam2_encoder(img)
 
             if is_cuda and config.enable_nvtx_profile:
-                import nvtx
-                from cuda import cudart
+                import nvtx  # noqa: PLC0415
+                from cuda import cudart  # noqa: PLC0415
 
                 cudart.cudaProfilerStart()
                 print("Start nvtx profiling on encoder ...")
@@ -247,8 +249,8 @@ def run_torch(config: TestConfig):
                 _masks, _iou_predictions, _low_res_masks = sam2_decoder(*torch_inputs)
 
             if is_cuda and config.enable_nvtx_profile:
-                import nvtx
-                from cuda import cudart
+                import nvtx  # noqa: PLC0415
+                from cuda import cudart  # noqa: PLC0415
 
                 cudart.cudaProfilerStart()
                 print("Start nvtx profiling on decoder...")
@@ -283,7 +285,7 @@ def run_torch(config: TestConfig):
 
 def run_test(
     args: argparse.Namespace,
-    csv_writer: Optional[csv.DictWriter] = None,
+    csv_writer: csv.DictWriter | None = None,
 ):
     use_gpu: bool = args.use_gpu
     enable_cuda_graph: bool = args.use_cuda_graph
@@ -317,6 +319,7 @@ def run_test(
         repeats=args.repeats,
         warm_up=args.warm_up,
         enable_nvtx_profile=args.enable_nvtx_profile,
+        enable_ort_profile=args.enable_ort_profile,
         enable_torch_profile=args.enable_torch_profile,
         torch_compile_mode=args.torch_compile_mode,
         verbose=False,
@@ -325,7 +328,7 @@ def run_test(
     if args.engine == "ort":
         sess_options = SessionOptions()
         sess_options.intra_op_num_threads = args.intra_op_num_threads
-        if config.enable_nvtx_profile:
+        if config.enable_ort_profile:
             sess_options.enable_profiling = True
             sess_options.log_severity_level = 4
             sess_options.log_verbosity_level = 0
@@ -342,13 +345,15 @@ def run_test(
             return
 
         if config.enable_nvtx_profile:
-            import nvtx
-            from cuda import cudart
+            import nvtx  # noqa: PLC0415
+            from cuda import cudart  # noqa: PLC0415
 
             cudart.cudaProfilerStart()
             with nvtx.annotate("one_run"):
                 _ = session.infer(input_dict)
             cudart.cudaProfilerStop()
+
+        if config.enable_ort_profile:
             session.ort_session.end_profiling()
 
         if repeats == 0:
@@ -552,6 +557,14 @@ def _parse_arguments():
         default=False,
         action="store_true",
         help="Enable nvtx profiling. It will add an extra run for profiling before performance test.",
+    )
+
+    parser.add_argument(
+        "--enable_ort_profile",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Enable ORT profiling.",
     )
 
     parser.add_argument(

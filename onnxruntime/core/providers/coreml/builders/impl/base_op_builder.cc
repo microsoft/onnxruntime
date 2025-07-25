@@ -6,44 +6,13 @@
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/model_builder.h"
+#include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/shared/utils/utils.h"
 
 using namespace CoreML::Specification;
 
 namespace onnxruntime {
 namespace coreml {
-
-// Once all ops are supportted FP16, we can remove it. Before that, we keep a set of ops to
-// filter suppported ones.
-static std::set<std::string> Float16Ops = {
-    "Add", "ArgMax", "AveragePool", "BatchNormalization", "Cast", "Clip", "Concat", "Conv", "ConvTranspose",
-    "DepthToSpace", "Div", "Gelu", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "GridSample", "GroupNormalization",
-    "InstanceNormalization", "LayerNormalization", "LeakyRelu", "MatMul", "MaxPool", "Mul", "PRelu", "Pow",
-    "Reciprocal", "Relu", "Reshape", "Resize", "Sigmoid", "Slice", "Split", "Sqrt", "Sub", "Tanh", "Transpose"};
-
-namespace {
-// TODO, move this to shared_library
-bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node& node,
-                            const logging::Logger& logger) {
-  for (const auto* node_arg : node.InputDefs()) {
-    const auto& input_name(node_arg->Name());
-    const auto initializer_it = initializers.find(input_name);
-    if (initializer_it == initializers.end()) {
-      continue;
-    }
-
-    const auto& tensor = *initializer_it->second;
-    if (tensor.has_data_location() &&
-        tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      LOGS(logger, VERBOSE) << "Initializer [" << input_name
-                            << "] with external data location are not currently supported";
-      return true;
-    }
-  }
-
-  return false;
-}
-}  // namespace
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                                         const logging::Logger& logger) const {
@@ -64,20 +33,20 @@ bool BaseOpBuilder::IsOpSupported(const Node& node, const OpBuilderInputParams& 
   }
 
   if (!HasSupportedOpSet(node, logger)) {
+    LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] does not support this opset";
     return false;
   }
 
   if (!HasSupportedInputs(node, input_params, logger)) {
+    LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] has unsupported inputs";
     return false;
   }
 
-  // We do not support external initializers for now
-  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
-  if (HasExternalInitializer(initializers, node, logger)) {
+  if (!IsOpSupportedImpl(node, input_params, logger)) {
+    LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] is not supported by the impl";
     return false;
   }
-
-  return IsOpSupportedImpl(node, input_params, logger);
+  return true;
 }
 
 bool BaseOpBuilder::HasSupportedInputs(const Node& node, const OpBuilderInputParams& input_params,
@@ -114,10 +83,10 @@ bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
     return true;
   }
 
-// only support MLProgram for FP16
-#if defined(COREML_ENABLE_MLPROGRAM)
-  if (input_params.create_mlprogram && input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
-      Float16Ops.count(node.OpType())) {
+#if CAN_BUILD_COREML6_OR_LATER
+  // only MLProgram support FP16 and INT64
+  if (input_params.create_mlprogram && (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+                                        input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64)) {
     return true;
   }
 #endif

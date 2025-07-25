@@ -933,7 +933,7 @@ TEST(ConvTransposeTest, DimWithZero) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "",
                       {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
-                       kAclExecutionProvider, kQnnExecutionProvider});
+                       kAclExecutionProvider, kQnnExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_3D) {
@@ -1068,7 +1068,7 @@ TEST(ConvTransposeTest, ConvTranspose_3D) {
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "",
                       {kTensorrtExecutionProvider, kCudaExecutionProvider,
-                       kCudaNHWCExecutionProvider, kQnnExecutionProvider});
+                       kCudaNHWCExecutionProvider, kQnnExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_1D_AsymmetricPads) {

@@ -67,13 +67,14 @@ class KernelRegistryManager {
 
   // This function assumes the node is already assigned to an execution provider
   // Don't call this function before graph partition is done
-  Status SearchKernelRegistry(const Node& node,
+  Status SearchKernelRegistry(const Node& node, const logging::Logger& logger,
                               /*out*/ const KernelCreateInfo** kernel_create_info) const;
 
   /**
    * Whether this node can be run on this provider
    */
-  static bool HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type);
+  static bool HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type,
+                                  const logging::Logger& logger);
 
   Status CreateKernel(const Node& node,
                       const IExecutionProvider& execution_provider,

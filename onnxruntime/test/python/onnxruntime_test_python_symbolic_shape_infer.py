@@ -40,7 +40,7 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 class TestSymbolicShapeInference(unittest.TestCase):
     def test_symbolic_shape_infer(self):
-        from pathlib import Path
+        from pathlib import Path  # noqa: PLC0415
 
         cwd = os.getcwd()
         test_model_dir = os.path.join(cwd, "..", "models")
@@ -110,17 +110,17 @@ class TestSymbolicShapeInference(unittest.TestCase):
 class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def _check_shapes(self, graph, inferred_graph, vis):  # type: (GraphProto, GraphProto, List[ValueInfoProto]) -> None
         names_in_vis = {x.name for x in vis}
-        vis = list(x for x in graph.value_info if x.name not in names_in_vis) + vis
+        vis = [x for x in graph.value_info if x.name not in names_in_vis] + vis
         inferred_vis = list(inferred_graph.value_info)
-        vis = list(sorted(vis, key=lambda x: x.name))
-        inferred_vis = list(sorted(inferred_vis, key=lambda x: x.name))
+        vis = sorted(vis, key=lambda x: x.name)
+        inferred_vis = sorted(inferred_vis, key=lambda x: x.name)
         if vis == inferred_vis:
             return
         # otherwise some custom logic to give a nicer diff
         vis_names = {x.name for x in vis}
         inferred_vis_names = {x.name for x in inferred_vis}
         assert vis_names == inferred_vis_names, (vis_names, inferred_vis_names)
-        for vi, inferred_vi in zip(vis, inferred_vis):
+        for vi, inferred_vi in zip(vis, inferred_vis, strict=False):
             assert vi == inferred_vi, f"\n{vi}\n{inferred_vi}\n"
         raise AssertionError()
 
@@ -641,6 +641,87 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
 
         expected_shapes = [
             helper.make_tensor_value_info("output_f32", TensorProto.FLOAT, ["x", 2, 3, 4]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_qlinear_binary(self):
+        """
+        Test ONNX QLinearAdd op ('com.microsoft' domain). .
+        Check that the output shape is propagated from the inputs to the op with broadcasting.
+        """
+        initializers = [
+            helper.make_tensor(
+                "A_scale",
+                TensorProto.FLOAT,
+                [],
+                [0.7],
+            ),
+            helper.make_tensor(
+                "A_zero_point",
+                TensorProto.UINT8,
+                [],
+                [158],
+            ),
+            helper.make_tensor(
+                "B_scale",
+                TensorProto.FLOAT,
+                [],
+                [0.02],
+            ),
+            helper.make_tensor(
+                "B_zero_point",
+                TensorProto.UINT8,
+                [],
+                [5],
+            ),
+            helper.make_tensor(
+                "C_scale",
+                TensorProto.FLOAT,
+                [],
+                [0.26],
+            ),
+            helper.make_tensor(
+                "C_zero_point",
+                TensorProto.UINT8,
+                [],
+                [0],
+            ),
+        ]
+
+        nodes = [
+            helper.make_node(
+                "QLinearAdd",
+                inputs=[
+                    "A",
+                    "A_scale",
+                    "A_zero_point",
+                    "B",
+                    "B_scale",
+                    "B_zero_point",
+                    "C_scale",
+                    "C_zero_point",
+                ],
+                outputs=["C"],
+                domain="com.microsoft",
+            ),
+        ]
+
+        inputs = [
+            helper.make_tensor_value_info("A", TensorProto.UINT8, ["b", 4, 128]),
+            helper.make_tensor_value_info("B", TensorProto.UINT8, ["b", 1, 4, 1, 128]),
+        ]
+
+        outputs = [
+            helper.make_tensor_value_info("C", TensorProto.UNDEFINED, None),
+        ]
+
+        graph = helper.make_graph(nodes, "QLinearAdd_Test", inputs, outputs, initializers)
+        model = helper.make_model(graph)
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
+        expected_shapes = [
+            helper.make_tensor_value_info("C", TensorProto.UINT8, ["b", 1, 4, 4, 128]),
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 

@@ -42,8 +42,9 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
   }
 #endif
 
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model("test", false, ModelMetaData(), ORT_TSTR(""), IOnnxRuntimeOpSchemaRegistryList(),
-              {{domain_, opset_version_}}, {}, DefaultLoggingManager().DefaultLogger());
+              {{domain_, opset_version_}}, {}, logger);
 
   std::vector<NodeArg*> input_args;
   std::unordered_map<std::string, OrtValue> initializer_map;
@@ -89,8 +90,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
   ASSERT_STATUS_OK(graph.Resolve());
 
   node.SetExecutionProviderType(ep_type);
-  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_providers.Get(ep_type),
-                                     [](std::string const&) { return false; });
+  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_providers.Get(ep_type), [](std::string const&) { return false; }, logger);
   const KernelCreateInfo* kernel_create_info = nullptr;
   ASSERT_STATUS_OK(info.TryFindKernel(&node, &kernel_create_info));
   ASSERT_TRUE(kernel_create_info);
@@ -139,7 +139,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
 #pragma warning(disable : 6387)
 #endif
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs, outputs);
-  OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, nullptr, DefaultLoggingManager().DefaultLogger());
+  OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, nullptr, logger);
 #ifdef _WIN32
 #pragma warning(pop)
 #endif

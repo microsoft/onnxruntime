@@ -5,29 +5,8 @@ set(JS_ROOT ${REPO_ROOT}/js)
 set(JS_COMMON_ROOT ${JS_ROOT}/common)
 set(JS_NODE_ROOT ${JS_ROOT}/node)
 
-find_program(NPM_CLI
-  NAMES "npm.cmd" "npm"
-  DOC "NPM command line client"
-  REQUIRED
-)
-
-# verify Node.js and NPM
-execute_process(COMMAND node --version
-    WORKING_DIRECTORY ${JS_NODE_ROOT}
-    OUTPUT_VARIABLE node_version
-    RESULT_VARIABLE had_error
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-if(had_error)
-    message(FATAL_ERROR "Failed to find Node.js: " ${had_error})
-endif()
-execute_process(COMMAND ${NPM_CLI} --version
-    WORKING_DIRECTORY ${JS_NODE_ROOT}
-    OUTPUT_VARIABLE npm_version
-    RESULT_VARIABLE had_error
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-if(had_error)
-    message(FATAL_ERROR "Failed to find NPM: " ${had_error})
-endif()
+# Include the Node.js helper for finding and validating Node.js and NPM
+include(node_helper.cmake)
 
 # setup ARCH
 if (APPLE)
@@ -60,15 +39,35 @@ else()
     endif()
 endif()
 
+# a list of DLLs that the Node.js binding depends on
+set(NODEJS_DLL_DEPS)
+
 # setup providers
 if (onnxruntime_USE_CUDA)
     set(NODEJS_BINDING_USE_CUDA "--use_cuda")
 endif()
 if (onnxruntime_USE_DML)
     set(NODEJS_BINDING_USE_DML "--use_dml")
+    list(APPEND NODEJS_DLL_DEPS "$<TARGET_FILE_DIR:onnxruntime>/DirectML.dll")
 endif()
 if (onnxruntime_USE_WEBGPU)
     set(NODEJS_BINDING_USE_WEBGPU "--use_webgpu")
+    if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+        # TODO: the following code is used to disable building Dawn using vcpkg temporarily
+        # until we figure out how to resolve the packaging pipeline failures
+        #
+        # if (onnxruntime_USE_VCPKG)
+        if (FALSE)
+            list(APPEND NODEJS_DLL_DEPS "$<TARGET_FILE:Microsoft::DXIL>")
+            list(APPEND NODEJS_DLL_DEPS "$<TARGET_FILE:Microsoft::DirectXShaderCompiler>")
+        else()
+            list(APPEND NODEJS_DLL_DEPS "$<TARGET_FILE_DIR:dxcompiler>/dxil.dll")
+            list(APPEND NODEJS_DLL_DEPS "$<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll")
+        endif()
+    endif()
+    if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+        list(APPEND NODEJS_DLL_DEPS "$<TARGET_FILE:dawn::webgpu_dawn>")
+    endif()
 endif()
 if (onnxruntime_USE_TENSORRT)
     set(NODEJS_BINDING_USE_TENSORRT "--use_tensorrt")
@@ -94,9 +93,12 @@ add_custom_target(js_common_npm_ci ALL
 
 add_custom_target(nodejs_binding_wrapper ALL
     COMMAND ${NPM_CLI} ci
-    COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE} --onnxruntime-generator=${CMAKE_GENERATOR}
-        --arch=${NODEJS_BINDING_ARCH} ${NODEJS_BINDING_USE_CUDA} ${NODEJS_BINDING_USE_DML} ${NODEJS_BINDING_USE_WEBGPU} ${NODEJS_BINDING_USE_TENSORRT}
-        ${NODEJS_BINDING_USE_COREML} ${NODEJS_BINDING_USE_QNN}
+    COMMAND ${NPM_CLI} run build -- "--onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR}"
+        --config=${CMAKE_BUILD_TYPE}
+        "--onnxruntime-generator=${CMAKE_GENERATOR}"
+        "--dll_deps=${NODEJS_DLL_DEPS}"
+        --arch=${NODEJS_BINDING_ARCH} ${NODEJS_BINDING_USE_CUDA} ${NODEJS_BINDING_USE_DML} ${NODEJS_BINDING_USE_WEBGPU}
+        ${NODEJS_BINDING_USE_TENSORRT} ${NODEJS_BINDING_USE_COREML} ${NODEJS_BINDING_USE_QNN}
     WORKING_DIRECTORY ${JS_NODE_ROOT}
     COMMENT "Using cmake-js to build OnnxRuntime Node.js binding")
 

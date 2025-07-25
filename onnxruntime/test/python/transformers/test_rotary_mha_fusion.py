@@ -6,7 +6,6 @@
 import os
 import sys
 import unittest
-from typing import List
 
 import numpy as np
 import onnx
@@ -23,7 +22,7 @@ else:
     from onnxruntime.transformers.optimizer import optimize_model
 
 
-def float_tensor(name: str, shape: List[int], random=False):
+def float_tensor(name: str, shape: list[int], random=False):
     low = 0.0
     high = 1.0
     total_elements = 1
@@ -157,8 +156,8 @@ class TestRotaryAttentionFusion(unittest.TestCase):
         is_fused: bool,
         model_type: str,
         interleaved: bool,
-        inputs: List[TensorProto],
-        initializers: List[TensorProto],
+        inputs: list[TensorProto],
+        initializers: list[TensorProto],
     ):
         def get_first_rope_input(node_type: str):
             if is_fused or model_type == "llama2_msft":
@@ -974,7 +973,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
 
         return qkv_nodes + [transpose_qkv_node, reshape_qkv_2_node]  # noqa: RUF005
 
-    def create_concat_unsqueeze_paths(self, model_type: str, reshape_nodes: List[NodeProto]):
+    def create_concat_unsqueeze_paths(self, model_type: str, reshape_nodes: list[NodeProto]):
         # Create initial shape paths
         shape_0_node = helper.make_node(
             "Shape",
@@ -1026,14 +1025,14 @@ class TestRotaryAttentionFusion(unittest.TestCase):
             unsqueeze_0_node = helper.make_node(
                 "Unsqueeze",
                 inputs=[gather_0_node.output[0] if not use_mul_and_add_nodes_0 else "mul_extra_out", "zero"],
-                outputs=[f"unsqueeze_extra_{2*i}"],
-                name=f"Unsqueeze_extra_{2*i}",
+                outputs=[f"unsqueeze_extra_{2 * i}"],
+                name=f"Unsqueeze_extra_{2 * i}",
             )
             unsqueeze_1_node = helper.make_node(
                 "Unsqueeze",
                 inputs=[gather_1_node.output[0] if not use_mul_and_add_nodes_1 else "add_extra_out", "zero"],
-                outputs=[f"unsqueeze_extra_{2*i + 1}"],
-                name=f"Unsqueeze_extra_{2*i + 1}",
+                outputs=[f"unsqueeze_extra_{2 * i + 1}"],
+                name=f"Unsqueeze_extra_{2 * i + 1}",
             )
 
             reshape_name = reshape_node.name
@@ -1097,7 +1096,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
         )
         return [matmul_o_node, end_node]
 
-    def create_fused_model(self, model_type: str, interleaved: bool, initializers: List[TensorProto]):
+    def create_fused_model(self, model_type: str, interleaved: bool, initializers: list[TensorProto]):
         inputs, outputs = self.create_inputs_and_outputs(model_type)
         matmul_nodes = self.create_matmul_nodes(True, model_type=model_type)
         rope_nodes = self.create_rotary_embeddings(True, model_type, interleaved, inputs, initializers)
@@ -1134,7 +1133,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[opset_import])
         return model
 
-    def create_test_model(self, model_type: str, interleaved: bool, initializers: List[TensorProto]):
+    def create_test_model(self, model_type: str, interleaved: bool, initializers: list[TensorProto]):
         inputs, outputs = self.create_inputs_and_outputs(model_type)
         matmul_nodes = self.create_matmul_nodes(False, model_type)
         rope_nodes = self.create_rotary_embeddings(False, model_type, interleaved, inputs, initializers)

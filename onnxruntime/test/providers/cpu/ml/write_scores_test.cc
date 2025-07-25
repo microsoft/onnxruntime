@@ -64,7 +64,7 @@ TEST_F(WriteScores, single_score_transform_none) {
   write_scores<float>(v1, POST_EVAL_TRANSFORM::NONE, 0, &t, -1);
   const float* output_data = t.Data<float>();
   for (size_t i = 0; i != v2.size(); ++i) {
-    EXPECT_FLOAT_EQ(v1[i], output_data[i]);
+    EXPECT_FLOAT_EQ(v2[i], output_data[i]);
   }
 }
 

@@ -88,7 +88,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         super().__init__(optimizer)
 
     def can_be_modified(self):
-        import deepspeed
+        import deepspeed  # noqa: PLC0415
 
         # Note 1:
         # This modifier relies on the implementation of has_overflow_serial, get_grad_norm_direct,
@@ -121,7 +121,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
             return False
 
         try:
-            from deepspeed.accelerator import get_accelerator
+            from deepspeed.accelerator import get_accelerator  # noqa: PLC0415
         except ImportError:
             warnings.warn("Unable to import get_accelerator from deepspeed.accelerator", UserWarning)
         else:
@@ -143,7 +143,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         warnings.warn("DeepSpeed fp16_optimizer functions are overridden with faster implementation.", UserWarning)
 
         def get_grad_norm_direct(target, gradients, params, norm_type=2):
-            from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
+            from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops  # noqa: PLC0415
 
             def is_model_parallel_parameter(p):
                 return hasattr(p, "model_parallel") and p.model_parallel
@@ -178,7 +178,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
 
                 #### THIS IS THE FASTER IMPLEMENTATION ####
                 grads_for_norm = []
-                for g, p in zip(gradients, params):
+                for g, p in zip(gradients, params, strict=False):
                     if is_model_parallel_parameter(p) or (target.model_parallel_rank == 0):
                         # BE NOTED: deepspeed original give a double type conversion here, not sure whether this is impacting some models.
                         # https://github.com/microsoft/DeepSpeed/blob/9e5c0c5c3ecabb68b7e9dffac0e9b8d167e3cab8/deepspeed/runtime/zero/stage2.py#L1501

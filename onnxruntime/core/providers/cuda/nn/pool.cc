@@ -287,13 +287,14 @@ Status Pool<T, MaxPool<8>, Layout>::ComputeInternal(OpKernelContext* context) co
   }
 
   Tensor* I = context->Output(1, TensorShape(i_dims));
+  constexpr bool pool_template_arg = Layout == LAYOUT_NHWC;
   if (nullptr != I || !this->pool_attrs_.default_dilations) {
     auto i_data = nullptr == I ? nullptr : I->MutableData<int64_t>();
-    MaxPoolWithIndex<CudaT, Layout == LAYOUT_NHWC>(this->Stream(context), x_shape, TensorShape(y_dims), kernel_shape,
-                                                   strides, pads, this->pool_attrs_.dilations,
-                                                   this->pool_attrs_.storage_order, x_data, y_data, i_data);
+    MaxPoolWithIndex<CudaT, pool_template_arg>(this->Stream(context), x_shape, TensorShape(y_dims), kernel_shape,
+                                               strides, pads, this->pool_attrs_.dilations,
+                                               this->pool_attrs_.storage_order, x_data, y_data, i_data);
   } else {
-    ORT_RETURN_IF_ERROR((Pool<T, MaxPool<1>, Layout == LAYOUT_NHWC>::ComputeInternal(context)));
+    ORT_RETURN_IF_ERROR((Pool<T, MaxPool<1>, pool_template_arg>::ComputeInternal(context)));
   }
   return Status::OK();
 }

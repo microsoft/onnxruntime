@@ -45,7 +45,7 @@ std::vector<std::vector<NodeIndex>> IdenticalChildrenConsolidation::DivideIdenti
     const Graph& graph,
     Node* node,
     const string_view& op) {
-  unordered_map<string_view, std::vector<NodeIndex>> identical_children_map;
+  unordered_map<std::string, std::vector<NodeIndex>> identical_children_map;
   for (auto i = node->OutputEdgesBegin(); i != node->OutputEdgesEnd(); ++i) {
     if (i->GetNode().OpType() == op) {
       identical_children_map[IdentityBuilder(graph, i->GetNode())].push_back(i->GetNode().Index());
@@ -69,7 +69,7 @@ std::string IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, 
         if (optimizer_utils::IsScalar(*input_def)) {
           const auto* data = graph_utils::GetConstantInitializer(graph, name);
           identity << constant_prefix;
-          Initializer value{*data, graph.ModelPath()};
+          Initializer value{graph, *data, graph.ModelPath()};
           switch (static_cast<TensorProto::DataType>(data->data_type())) {
             case TensorProto::DataType::TensorProto_DataType_INT8:
               identity << *value.data<int8_t>();

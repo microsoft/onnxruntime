@@ -18,23 +18,21 @@
 
 #include "gemm/kernel/quant_b4_gemm.h"
 
-
 namespace mickey {
 namespace gemm {
 namespace device {
 /**
  * @brief Kernel launcher for quantized GEMM with B matrix quantized to 4bits.
-*/
+ */
 template <
-  typename QuantBlocking_,              ///! Shape of the quantization block, either 1xb or bx1
-  bool has_quant_offset,                ///! Whether to use quantization offset
-  typename WarpShape_,                  ///! Warp-scoped matrix multiply-accumulate
-  int SplitKSerial_ = 1,                ///! How many warps to split the K dimension in the same MxN block
-  int Stages_ = 3                       ///! Stages of the pipelined mainloop
->
+    typename QuantBlocking_,  ///! Shape of the quantization block, either 1xb or bx1
+    bool has_quant_offset,    ///! Whether to use quantization offset
+    typename WarpShape_,      ///! Warp-scoped matrix multiply-accumulate
+    int SplitKSerial_ = 1,    ///! How many warps to split the K dimension in the same MxN block
+    int Stages_ = 3           ///! Stages of the pipelined mainloop
+    >
 class QuantB4Gemm {
-public:
-
+ public:
   using QuantBlocking = QuantBlocking_;
   using WarpShape = WarpShape_;
   static const int kSplitK = SplitKSerial_;
@@ -44,19 +42,18 @@ public:
   using Args = typename Kernel::Params;
 
   static cutlass::Status run(
-    cudaStream_t stream,
-    cutlass::gemm::GemmCoord const & problem_size,
-    void* ptr_output,
-    size_t output_byte_stride,
-    void const *ptr_a,
-    size_t a_byte_stride,
-    void const *ptr_packed_b,
-    size_t b_byte_stride,
-    void const *ptr_scales,
-    size_t scales_byte_stride,
-    void const *ptr_zp = nullptr,
-    size_t zp_byte_stride = 0) {
-
+      cudaStream_t stream,
+      cutlass::gemm::GemmCoord const& problem_size,
+      void* ptr_output,
+      size_t output_byte_stride,
+      void const* ptr_a,
+      size_t a_byte_stride,
+      void const* ptr_packed_b,
+      size_t b_byte_stride,
+      void const* ptr_scales,
+      size_t scales_byte_stride,
+      void const* ptr_zp = nullptr,
+      size_t zp_byte_stride = 0) {
     Args args(problem_size, ptr_output, output_byte_stride,
               ptr_a, a_byte_stride, ptr_packed_b, b_byte_stride,
               ptr_scales, scales_byte_stride,
@@ -89,9 +86,7 @@ public:
 
     return cutlass::Status::kSuccess;
   }
-
 };
-
 
 }  // namespace device
 }  // namespace gemm

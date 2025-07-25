@@ -1,0 +1,108 @@
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+
+parameters:
+- name: DoEsrp
+  displayName: Run code sign tasks? Must be true if you are doing an ONNX Runtime release
+  type: boolean
+  default: true
+
+- name: IsReleaseBuild
+  displayName: Is a release build? Set it to true if you are doing an ONNX Runtime release.
+  type: boolean
+  default: false
+
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+  default: none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+  default: 0
+
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    sdl:
+      featureFlags:
+        binskimScanAllExtensions: true
+      binskim:
+        enabled: true
+        scanOutputDirectoryOnly: true
+      sourceAnalysisPool: "Onnxruntime-Win-CPU-2022"
+      componentgovernance:
+        ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
+      sourceRepositoriesToScan:
+        exclude:
+        - repository: onnxruntime-inference-examples
+      spotBugs:
+        enabled: false
+        justificationForDisabling: "Getting ##[error]1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
+      codeql:
+        compiled:
+          enabled: false
+          justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
+    stages:
+    - template: stages/set_packaging_variables_stage.yml
+      parameters:
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+    - template: nuget/templates/dml-vs-2022.yml
+      parameters:
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        ArtifactName: 'drop-nuget-dml'
+        StageName: 'Windows_CI_GPU_DML_Dev'
+        BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --enable_generic_interface --build_nodejs --cmake_generator "Visual Studio 17 2022" --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+        BuildArch: 'x64'
+        msbuildArchitecture: 'amd64'
+        EnvSetupScript: 'setup_env.bat'
+        sln_platform: 'x64'
+        DoDebugBuild: 'false'
+        DoNugetPack: 'true'
+        DoEsrp: ${{ parameters.DoEsrp }}
+        NuPackScript: |
+          msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentData=$(BuildDate) /p:CurrentTime=$(BuildTime)
+          copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+          copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+          mkdir $(Build.ArtifactStagingDirectory)\testdata
+          copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+
+    - template: nuget/templates/dml-vs-2022.yml
+      parameters:
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        ArtifactName: 'drop-win-dml-arm64-zip'
+        StageName: 'Windows_CI_GPU_DML_Dev_arm64'
+        BuildCommand: --build_dir $(Build.BinariesDirectory) --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --enable_generic_interface --build_nodejs --cmake_generator "Visual Studio 17 2022" --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+        BuildArch: 'x64'
+        EnvSetupScript: 'setup_env.bat'
+        sln_platform: 'arm64'
+        DoDebugBuild: 'false'
+        DoNugetPack: 'true'
+        DoEsrp: ${{ parameters.DoEsrp }}
+        RunTests: 'false'
+        NuPackScript: |
+          msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+          cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
+          ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-arm64.zip
+          copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-arm64.zip $(Build.ArtifactStagingDirectory)
+          mkdir $(Build.ArtifactStagingDirectory)\testdata
+          copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+
+    - template: stages/nuget_dml_packaging_stage.yml
+      parameters:
+        DoEsrp: ${{ parameters.DoEsrp }}

@@ -11,6 +11,11 @@
 #include <wrl/client.h>
 #include <wrl/implements.h>
 
+namespace onnxruntime {
+class IResourceAccountant;
+class GraphOptimizerRegistry;
+}
+
 namespace WRL {
 template <typename... TInterfaces>
 using Base = Microsoft::WRL::RuntimeClass<
@@ -88,8 +93,10 @@ namespace Dml
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
         GetCapability(
             const onnxruntime::GraphViewer& graph,
-            const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup
-            ) const;
+            const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+            const onnxruntime::GraphOptimizerRegistry& graph_optimizer_registry,
+            onnxruntime::IResourceAccountant* resource_accountant,
+            const onnxruntime::logging::Logger& logger) const;
 
         uint32_t GetSupportedDeviceDataTypeMask() const;
 
@@ -242,8 +249,8 @@ namespace Dml
 
         bool CanCopy(const OrtDevice& srcDevice, const OrtDevice& dstDevice) const final
         {
-          return (srcDevice.Type() == OrtDevice::DML) ||
-                 (dstDevice.Type() == OrtDevice::DML);
+          return ((srcDevice.Type() == OrtDevice::GPU && srcDevice.Vendor() == OrtDevice::VendorIds::MICROSOFT) ||
+                  (dstDevice.Type() == OrtDevice::GPU && dstDevice.Vendor() == OrtDevice::VendorIds::MICROSOFT));
         }
 
     private:
@@ -282,7 +289,9 @@ namespace Dml
 
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
             GetCapability(const onnxruntime::GraphViewer& graph,
-                const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const final override;
+                const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+                const onnxruntime::GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                onnxruntime::IResourceAccountant* resource_accountant) const final override;
 
         onnxruntime::common::Status OnSessionInitializationEnd() override
         {

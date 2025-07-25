@@ -7,6 +7,25 @@
 #include "tensorrt_execution_provider_custom_ops.h"
 #include "tensorrt_execution_provider.h"
 
+// The filename extension for a shared library is different per platform
+#ifdef _WIN32
+#define LIBRARY_PREFIX
+#define LIBRARY_EXTENSION ORT_TSTR(".dll")
+#elif defined(__APPLE__)
+#define LIBRARY_PREFIX "lib"
+#define LIBRARY_EXTENSION ".dylib"
+#else
+#define LIBRARY_PREFIX "lib"
+#define LIBRARY_EXTENSION ".so"
+#endif
+
+#ifdef _WIN32
+#define ORT_DEF2STR_HELPER(x) L#x
+#else
+#define ORT_DEF2STR_HELPER(X) #X
+#endif
+#define ORT_DEF2STR(x) ORT_DEF2STR_HELPER(x)
+
 namespace onnxruntime {
 extern TensorrtLogger& GetTensorrtLogger(bool verbose);
 
@@ -58,21 +77,56 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     // Get all registered TRT plugins from registry
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Getting all registered TRT plugins from TRT plugin registry ...";
     TensorrtLogger trt_logger = GetTensorrtLogger(false);
-    initLibNvInferPlugins(&trt_logger, "");
-
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::*' was declared deprecated
+    try {
+      void* library_handle = nullptr;
+      const auto& env = onnxruntime::GetDefaultEnv();
+#if NV_TENSORRT_MAJOR < 10
+      auto full_path = env.GetRuntimePath() +
+                       PathString(LIBRARY_PREFIX ORT_TSTR("nvinfer_plugin") LIBRARY_EXTENSION);
+#else
+#ifdef _WIN32
+      auto full_path = PathString(LIBRARY_PREFIX ORT_TSTR("nvinfer_plugin_" ORT_DEF2STR(NV_TENSORRT_MAJOR)) LIBRARY_EXTENSION);
+#else
+      auto full_path = PathString(LIBRARY_PREFIX ORT_TSTR("nvinfer_plugin") LIBRARY_EXTENSION ORT_TSTR("." ORT_DEF2STR(NV_TENSORRT_MAJOR)));
+#endif
 #endif
 
+      ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(full_path, false, &library_handle));
+
+      bool (*dyn_initLibNvInferPlugins)(void* logger, char const* libNamespace);
+      ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(library_handle, "initLibNvInferPlugins", (void**)&dyn_initLibNvInferPlugins));
+      if (!dyn_initLibNvInferPlugins(&trt_logger, "")) {
+        LOGS_DEFAULT(INFO) << "[TensorRT EP] Default plugin library was found but was not able to initialize default plugins.";
+      }
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Default plugins successfully loaded.";
+    } catch (const std::exception&) {
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Default plugin library is not on the path and is therefore ignored";
+    }
     int num_plugin_creator = 0;
-    auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
+    auto plugin_creators = getPluginRegistry()->getAllCreators(&num_plugin_creator);
     std::unordered_set<std::string> registered_plugin_names;
 
     for (int i = 0; i < num_plugin_creator; i++) {
       auto plugin_creator = plugin_creators[i];
-      std::string plugin_name(plugin_creator->getPluginName());
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
+      nvinfer1::AsciiChar const* plugin_name = nullptr;
+      if (std::strcmp(plugin_creators[i]->getInterfaceInfo().kind, "PLUGIN CREATOR_V1") == 0) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::*' was declared deprecated
+#endif
+        auto plugin_creator_v1 = static_cast<nvinfer1::IPluginCreator const*>(plugin_creator);
+        plugin_name = plugin_creator_v1->getPluginName();
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator_v1->getPluginVersion();
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+      } else if (std::strcmp(plugin_creators[i]->getInterfaceInfo().kind, "PLUGIN CREATOR_V3ONE") == 0) {
+        auto plugin_creator_v3 = static_cast<nvinfer1::IPluginCreatorV3One const*>(plugin_creator);
+        plugin_name = plugin_creator_v3->getPluginName();
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP][V3ONE] " << plugin_name << ", version : " << plugin_creator_v3->getPluginVersion();
+      } else {
+        ORT_THROW("Unknown plugin creator type");
+      }
 
       // plugin has different versions and we only register once
       if (registered_plugin_names.find(plugin_name) != registered_plugin_names.end()) {
@@ -80,14 +134,10 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
       }
 
       created_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr));  // Make sure TensorRTCustomOp object won't be cleaned up
-      created_custom_op_list.back().get()->SetName(plugin_creator->getPluginName());
+      created_custom_op_list.back().get()->SetName(plugin_name);
       custom_op_domain->custom_ops_.push_back(created_custom_op_list.back().get());
       registered_plugin_names.insert(plugin_name);
     }
-
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
 
     custom_op_domain->domain_ = "trt.plugins";
     domain_list.push_back(custom_op_domain.get());

@@ -22,9 +22,9 @@ class ApexAMPModifier(FP16OptimizerModifier):
         )
 
     def override_function(m_self):  # noqa: N805
-        from apex import amp as apex_amp
+        from apex import amp as apex_amp  # noqa: PLC0415
 
-        from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
+        from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops  # noqa: PLC0415
 
         warnings.warn("Apex AMP fp16_optimizer functions are overridden with faster implementation.", UserWarning)
 
@@ -99,7 +99,7 @@ class ApexAMPModifier(FP16OptimizerModifier):
                 scaler, stash.all_fp32_from_fp32_params, stash.all_fp32_from_fp32_grad_stash
             )
 
-        from apex.optimizers import FusedSGD
+        from apex.optimizers import FusedSGD  # noqa: PLC0415
 
         if not isinstance(m_self._optimizer, FusedSGD):
             m_self._optimizer._post_amp_backward = types.MethodType(

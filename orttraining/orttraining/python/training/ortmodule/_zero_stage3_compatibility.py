@@ -5,7 +5,6 @@
 
 
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from onnx import ModelProto, NodeProto, TensorProto, ValueInfoProto, helper
@@ -31,8 +30,8 @@ DEEPSPEED_LINEAR_FUNCTION_NAME = "deepspeed.runtime.zero.linear.LinearFunctionFo
 
 def post_processing_enable_zero_stage3_compat(
     exported_model: ModelProto,
-    zero_stage3_named_params: Dict[str, torch.nn.parameter.Parameter],
-    all_param_names: List[str],
+    zero_stage3_named_params: dict[str, torch.nn.parameter.Parameter],
+    all_param_names: list[str],
 ) -> ModelProto:
     """This function is used to enable zero stage3 compatibility.
 
@@ -62,7 +61,7 @@ def post_processing_enable_zero_stage3_compat(
     def _get_param_pull_trigger_name(param_name: str) -> str:
         return f"pull_{param_name}"
 
-    def _get_func_name(node: NodeProto) -> Optional[str]:
+    def _get_func_name(node: NodeProto) -> str | None:
         for attr in node.attribute:
             if attr.name == "func_name":
                 return attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
@@ -78,7 +77,7 @@ def post_processing_enable_zero_stage3_compat(
         STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
     )
 
-    from onnxruntime.training.utils.hooks._zero_offload_subscriber import (
+    from onnxruntime.training.utils.hooks._zero_offload_subscriber import (  # noqa: PLC0415
         ORTZeROOffloadPostForwardFunction,
         ORTZeROOffloadPreForwardFunction,
     )
@@ -102,9 +101,9 @@ def post_processing_enable_zero_stage3_compat(
 
             func_name = _get_func_name(c)
             if func_name == pre_forward_function_name:
-                assert (
-                    pre_forward_pythonop_node is None
-                ), "Multiple ORTZeROOffloadPreForwardFunction nodes found, it should not happen"
+                assert pre_forward_pythonop_node is None, (
+                    "Multiple ORTZeROOffloadPreForwardFunction nodes found, it should not happen"
+                )
                 pre_forward_pythonop_node = c
 
         if pre_forward_pythonop_node is None:
@@ -141,7 +140,7 @@ def post_processing_enable_zero_stage3_compat(
 
         # Update consumer's input to use the full-sized parameter output of ORTZeROOffloadPreForwardFunction.
         for c in consumers:
-            new_inputs = [c_input for c_input in c.input]
+            new_inputs = list(c.input)
             for c_input_index in range(len(c.input)):
                 if c.input[c_input_index] == graph_input.name:
                     new_inputs[c_input_index] = ready_weight_name
@@ -179,7 +178,7 @@ def post_processing_enable_zero_stage3_compat(
     exported_model.graph.node.insert(0, weight_pull_node)
 
     # Update safe_run_mode attribute for PythonOp.
-    from onnxruntime.training.utils.hooks._subscriber_manager import _IncrementStep
+    from onnxruntime.training.utils.hooks._subscriber_manager import _IncrementStep  # noqa: PLC0415
 
     _allowed_unsafe_run_python_op_names = [
         get_fully_qualified_class_name(ORTZeROOffloadPreForwardFunction),
@@ -210,7 +209,7 @@ def post_processing_enable_zero_stage3_compat(
 
 
 def _create_weight_retrieval_function(
-    zero_stage3_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]]
+    zero_stage3_named_params: dict[str, torch.nn.parameter.Parameter] | None,
 ) -> str:
     """This function is used to create a weight retrieving function using zero_stage3_named_params."""
 
@@ -231,9 +230,9 @@ def _create_weight_retrieval_function(
         @staticmethod
         def infer_shape(
             node: NodeProto,
-            tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-            tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-        ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+            tensor_input_shapes: list[list[int | str] | None],
+            tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
+        ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
             param_count = len(zero_stage3_named_params.values())
             tensor_output_shapes = [
                 tensor_input_shapes[0],
@@ -258,9 +257,9 @@ def _register_symbolic_shape_infer_functions():
 
     def _simple_pass_through_infer_shape(
         node: NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        tensor_input_shapes: list[list[int | str] | None],
+        tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
+    ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
         return tensor_input_shapes, tensor_input_dtypes
 
     register_shape_inference_function(DEEPSPEED_PRE_BACKWARD_FUNCTION_NAME, _simple_pass_through_infer_shape)
@@ -268,9 +267,9 @@ def _register_symbolic_shape_infer_functions():
 
     def _linear_infer_shape(
         node: NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        tensor_input_shapes: list[list[int | str] | None],
+        tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
+    ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
         # output = input.matmul(weight.t())
         tensor_input_shapes[0]  # input
         shape2 = tensor_input_shapes[1]  # weight
@@ -311,13 +310,13 @@ def _register_alias_input_functions():
 
 
 def _create_weight_retrieval_pythonop(
-    zero_stage3_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]],
+    zero_stage3_named_params: dict[str, torch.nn.parameter.Parameter] | None,
     func_full_qual_name: str,
     input_name: str,
-    output_names: List[str],
+    output_names: list[str],
     pull_weight_trigger_output_dtype: int,
-    pull_weight_trigger_output_shape: List[int],
-) -> Tuple[ValueInfoProto, NodeProto]:
+    pull_weight_trigger_output_shape: list[int],
+) -> tuple[ValueInfoProto, NodeProto]:
     """This function is used to create a weight retrieving PythonOp."""
     offload_param_count = 0 if zero_stage3_named_params is None else len(zero_stage3_named_params)
     new_input = helper.make_tensor_value_info(
@@ -407,23 +406,23 @@ def stage3_export_context(enable: bool, stage3_param_handle, flattened_module):
 
     else:
         original_func = torch.onnx.symbolic_helper._get_tensor_rank
-        from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_all_zero_stage3_params
+        from onnxruntime.training.utils.hooks._zero_offload_subscriber import (  # noqa: PLC0415
+            _get_all_zero_stage3_params,
+        )
 
         # Delay collecting stage3 parameters here instead of in the graph execution manager,
         # to make sure DeepSpeed initialization is done, so that the parameters ds_status are correct.
         stage3_param_handle._zero_stage3_param_map = _get_all_zero_stage3_params(flattened_module)
 
         try:
-            from torch.onnx._internal import _beartype
 
-            @_beartype.beartype
-            def _get_tensor_rank(x) -> Optional[int]:
+            def _get_tensor_rank(x) -> int | None:
                 ### Adapted from https://github.com/pytorch/pytorch/blob/185515368bcd7d94ac06ab1634f22b747b03c6d9/torch/onnx/symbolic_helper.py#L561
                 # Retrieve the real rank for the stage3 weights, because stage3 weights are all (0).
-                from typing import cast as typing_cast
+                from typing import cast as typing_cast  # noqa: PLC0415
 
-                from torch import _C
-                from torch.onnx.symbolic_helper import _is_tensor
+                from torch import _C  # noqa: PLC0415
+                from torch.onnx.symbolic_helper import _is_tensor  # noqa: PLC0415
 
                 input_name = x.debugName()
                 if input_name in stage3_param_handle._zero_stage3_param_map:

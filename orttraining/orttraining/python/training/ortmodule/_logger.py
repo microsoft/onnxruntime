@@ -9,10 +9,10 @@ import sys
 import tempfile
 import textwrap
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from enum import IntEnum
 from functools import partial
-from typing import Callable, Dict, List, Optional
 
 from onnxruntime.capi._pybind_state import Severity
 
@@ -28,7 +28,7 @@ class LogLevel(IntEnum):
     FATAL = 5
 
 
-ORTMODULE_LOG_LEVEL_MAP: Dict[LogLevel, List[int]] = {
+ORTMODULE_LOG_LEVEL_MAP: dict[LogLevel, list[int]] = {
     LogLevel.VERBOSE: [Severity.VERBOSE, logging.DEBUG],
     LogLevel.DEVINFO: [Severity.INFO, logging.INFO],
     # ONNX Runtime has too many INFO logs, so we map it to WARNING for a better user experience.
@@ -107,8 +107,8 @@ class TimeTracker:
     def __init__(
         self,
     ):
-        self.starts_: List[float] = [TimeTracker.NOT_RECORD] * len(ORTModuleInitPhase)
-        self.ends_: List[float] = [TimeTracker.NOT_RECORD] * len(ORTModuleInitPhase)
+        self.starts_: list[float] = [TimeTracker.NOT_RECORD] * len(ORTModuleInitPhase)
+        self.ends_: list[float] = [TimeTracker.NOT_RECORD] * len(ORTModuleInitPhase)
 
     def start(self, phase: ORTModuleInitPhase):
         self.starts_[phase] = time.time()
@@ -184,7 +184,7 @@ class TrackTimeForStaticFunction:
 
 
 @contextmanager
-def _suppress_os_stream_output(enable=True, on_exit: Optional[Callable] = None):
+def _suppress_os_stream_output(enable=True, on_exit: Callable | None = None):
     """Suppress output from being printed to stdout and stderr.
 
     If on_exit is not None, it will be called when the context manager exits.
@@ -224,7 +224,7 @@ def _suppress_os_stream_output(enable=True, on_exit: Optional[Callable] = None):
         yield
 
 
-def _log_with_filter(logger: logging.Logger, record_filters: Optional[List[str]], name: Optional[str], fo):
+def _log_with_filter(logger: logging.Logger, record_filters: list[str] | None, name: str | None, fo):
     """Log the content by filtering with list of string patterns.
     Args:
         logger: The logger to log the content.

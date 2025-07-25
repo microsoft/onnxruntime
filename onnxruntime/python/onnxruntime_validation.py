@@ -5,6 +5,7 @@
 """
 Check OS requirements for ONNX Runtime Python Bindings.
 """
+
 import linecache
 import platform
 import warnings
@@ -56,7 +57,7 @@ def check_distro_info():
                 f"Unsupported macOS version ({__my_distro_ver__}). ONNX Runtime supports macOS 11.0 or later."
             )
     elif __my_system__ == "aix":
-        import subprocess
+        import subprocess  # noqa: PLC0415
 
         returned_output = subprocess.check_output("oslevel")
         __my_distro_ver__str = returned_output.decode("utf-8")
@@ -67,12 +68,33 @@ def check_distro_info():
         )
 
 
-def validate_build_package_info():
+def get_package_name_and_version_info():
+    package_name = ""
+    version = ""
+    cuda_version = ""
+
+    try:
+        from .build_and_package_info import __version__ as version  # noqa: PLC0415
+        from .build_and_package_info import package_name  # noqa: PLC0415
+
+        try:  # noqa: SIM105
+            from .build_and_package_info import cuda_version  # noqa: PLC0415
+        except ImportError:
+            # cuda_version is optional. For example, cpu only package does not have the attribute.
+            pass
+    except Exception as e:
+        warnings.warn("WARNING: failed to collect package name and version info")
+        print(e)
+
+    return package_name, version, cuda_version
+
+
+def check_training_module():
     import_ortmodule_exception = None
 
     has_ortmodule = False
     try:
-        from onnxruntime.training.ortmodule import ORTModule  # noqa: F401
+        from onnxruntime.training.ortmodule import ORTModule  # noqa: F401, PLC0415
 
         has_ortmodule = True
     except ImportError:
@@ -83,7 +105,7 @@ def validate_build_package_info():
         # for any exception other than not having ortmodule, we want to continue
         # device version validation and raise the exception after.
         try:
-            from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
+            from onnxruntime.training.ortmodule._fallback import ORTModuleInitException  # noqa: PLC0415
 
             if isinstance(e, ORTModuleInitException):
                 # ORTModule is present but not ready to run yet
@@ -95,48 +117,33 @@ def validate_build_package_info():
         if not has_ortmodule:
             import_ortmodule_exception = e
 
-    package_name = ""
-    version = ""
-    cuda_version = ""
+    # collect onnxruntime package name, version, and cuda version
+    package_name, version, cuda_version = get_package_name_and_version_info()
 
-    if has_ortmodule:
+    if has_ortmodule and cuda_version:
         try:
-            # collect onnxruntime package name, version, and cuda version
-            from .build_and_package_info import __version__ as version
-            from .build_and_package_info import package_name
+            # collect cuda library build info. the library info may not be available
+            # when the build environment has none or multiple libraries installed
+            try:
+                from .build_and_package_info import cudart_version  # noqa: PLC0415
+            except ImportError:
+                warnings.warn("WARNING: failed to get cudart_version from onnxruntime build info.")
+                cudart_version = None
 
-            try:  # noqa: SIM105
-                from .build_and_package_info import cuda_version
-            except Exception:
-                pass
+            def print_build_package_info():
+                warnings.warn(f"onnxruntime training package info: package_name: {package_name}")
+                warnings.warn(f"onnxruntime training package info: __version__: {version}")
+                warnings.warn(f"onnxruntime training package info: cuda_version: {cuda_version}")
+                warnings.warn(f"onnxruntime build info: cudart_version: {cudart_version}")
 
-            if cuda_version:
-                # collect cuda library build info. the library info may not be available
-                # when the build environment has none or multiple libraries installed
-                try:
-                    from .build_and_package_info import cudart_version
-                except Exception:
-                    warnings.warn("WARNING: failed to get cudart_version from onnxruntime build info.")
-                    cudart_version = None
+            # collection cuda library info from current environment.
+            from onnxruntime.capi.onnxruntime_collect_build_info import find_cudart_versions  # noqa: PLC0415
 
-                def print_build_package_info():
-                    warnings.warn(f"onnxruntime training package info: package_name: {package_name}")
-                    warnings.warn(f"onnxruntime training package info: __version__: {version}")
-                    warnings.warn(f"onnxruntime training package info: cuda_version: {cuda_version}")
-                    warnings.warn(f"onnxruntime build info: cudart_version: {cudart_version}")
-
-                # collection cuda library info from current environment.
-                from onnxruntime.capi.onnxruntime_collect_build_info import find_cudart_versions
-
-                local_cudart_versions = find_cudart_versions(build_env=False, build_cuda_version=cuda_version)
-                if cudart_version and local_cudart_versions and cudart_version not in local_cudart_versions:
-                    print_build_package_info()
-                    warnings.warn("WARNING: failed to find cudart version that matches onnxruntime build info")
-                    warnings.warn(f"WARNING: found cudart versions: {local_cudart_versions}")
-            else:
-                # TODO: rcom
-                pass
-
+            local_cudart_versions = find_cudart_versions(build_env=False, build_cuda_version=cuda_version)
+            if cudart_version and local_cudart_versions and cudart_version not in local_cudart_versions:
+                print_build_package_info()
+                warnings.warn("WARNING: failed to find cudart version that matches onnxruntime build info")
+                warnings.warn(f"WARNING: found cudart versions: {local_cudart_versions}")
         except Exception as e:
             warnings.warn("WARNING: failed to collect onnxruntime version and build info")
             print(e)
@@ -145,6 +152,3 @@ def validate_build_package_info():
         raise import_ortmodule_exception
 
     return has_ortmodule, package_name, version, cuda_version
-
-
-has_ortmodule, package_name, version, cuda_version = validate_build_package_info()

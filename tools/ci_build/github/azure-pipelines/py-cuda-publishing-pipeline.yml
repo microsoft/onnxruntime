@@ -1,13 +1,17 @@
 resources:
   pipelines:
   - pipeline: build
-    source: 'Python-CUDA-Packaging-Pipeline'
+    source: 'Python CUDA Package Test Pipeline'
     trigger:
       branches:
         include:
         - main
     branch: main
-
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
 parameters:
   - name: isReleaseBuild
     type: boolean
@@ -20,7 +24,17 @@ variables:
     ${{ else }}:
       value: onnxruntime-cuda-12
 
-stages:
-- template: stages/py-cuda-publishing-stage.yml
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    artifact_feed: $(ArtifactFeed)
+    sdl:
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows
+    stages:
+    - template: stages/py-cuda-publishing-stage.yml
+      parameters:
+        artifact_feed: $(ArtifactFeed)

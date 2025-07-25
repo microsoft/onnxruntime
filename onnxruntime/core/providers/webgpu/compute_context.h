@@ -3,11 +3,7 @@
 
 #pragma once
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
-#endif
-
-#include <webgpu/webgpu_cpp.h>
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 #include <utility>
 
@@ -20,14 +16,16 @@
 namespace onnxruntime {
 
 class Tensor;
+class WebGpuExecutionProvider;
 
 namespace webgpu {
 
 class WebGpuContext;
+class BufferManager;
 
 class ComputeContext {
  public:
-  ComputeContext(OpKernelContext& kernel_context);
+  ComputeContext(OpKernelContext& kernel_context, const WebGpuExecutionProvider& ep);
 
   virtual ~ComputeContext() = default;
 
@@ -41,6 +39,14 @@ class ComputeContext {
   inline const wgpu::Limits& DeviceLimits() const {
     return webgpu_context_.DeviceLimits();
   }
+  inline bool HasFeature(wgpu::FeatureName feature) const {
+    return webgpu_context_.DeviceHasFeature(feature);
+  }
+#if !defined(__wasm__)
+  inline const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const {
+    return webgpu_context_.SubgroupMatrixConfigs();
+  }
+#endif
 
   //
   // Get the kernel context.
@@ -89,6 +95,9 @@ class ComputeContext {
   //
   // Create CPU tensor.
   //
+  // This method creates a tensor of the given data type and shape, using the CPU allocator.
+  // The tensor owns the underlying CPU memory buffer.
+  //
   template <typename TensorShapeType>
   Tensor CreateCPUTensor(MLDataType data_type, TensorShapeType&& shape) {
     AllocatorPtr allocator;
@@ -99,19 +108,26 @@ class ComputeContext {
   //
   // Create GPU tensor.
   //
+  // This method creates a tensor of the given data type and shape, using the WebGPU allocator.
+  // The tensor owns the underlying WebGPU storage buffer.
+  //
   template <typename TensorShapeType>
   Tensor CreateGPUTensor(MLDataType data_type, TensorShapeType&& shape) {
     AllocatorPtr allocator;
     ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
     return {data_type, std::forward<TensorShapeType>(shape), allocator};
   }
-
   //
   // Run a compute shader program.
   //
   inline Status RunProgram(const ProgramBase& program) {
     return webgpu_context_.Run(*this, program);
   }
+
+  //
+  // Get the buffer manager from the GPU allocator.
+  //
+  const webgpu::BufferManager& BufferManager() const;
 
   //
   // Push error scope.
@@ -130,6 +146,7 @@ class ComputeContext {
  protected:
   WebGpuContext& webgpu_context_;
   OpKernelContext& kernel_context_;
+  const WebGpuExecutionProvider& ep_;
 };
 
 }  // namespace webgpu

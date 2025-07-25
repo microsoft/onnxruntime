@@ -37,9 +37,10 @@ class OnnxRuntimeTestSession : public TestSession {
   Ort::Session session_{nullptr};
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
-  std::vector<std::vector<Ort::Value>> test_inputs_;
   OrtAllocator* allocator_ = Ort::AllocatorWithDefaultOptions();
-  std::unique_ptr<Ort::Allocator> custom_allocator_;
+  // Note: custom_allocator_, if used, must outlive the `Ort::Value`s allocated with it in test_inputs_ and outputs_.
+  Ort::Allocator custom_allocator_{nullptr};
+  std::vector<std::vector<Ort::Value>> test_inputs_;
   std::vector<Ort::Value> outputs_;
   std::vector<std::string> output_names_;
   // The same size with output_names_.

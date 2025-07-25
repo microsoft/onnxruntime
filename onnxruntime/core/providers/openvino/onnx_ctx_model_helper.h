@@ -22,22 +22,23 @@ static const char SOURCE[] = "source";
 
 class EPCtxHandler {
  public:
-  EPCtxHandler() = default;
-  EPCtxHandler(const EPCtxHandler&) = default;
-  Status ExportEPCtxModel(const GraphViewer& graph_viewer,
-                          const std::string& graph_name,
-                          const logging::Logger& logger,
-                          const bool& ep_context_embed_mode,
-                          std::string&& model_blob_str,
-                          const std::string& openvino_sdk_version) const;
-  Status ImportBlobFromEPCtxModel(const GraphViewer& graph_viewer, bool& ep_context_embed_mode);
-  bool CheckForOVEPCtxNode(const GraphViewer& graph_viewer, std::string openvino_sdk_version) const;
-  bool IsValidOVEPCtxGraph() const { return is_valid_ep_ctx_graph_; }
-  [[nodiscard]] const std::shared_ptr<std::istringstream> GetModelBlobStream() const { return model_stream_; }
+  EPCtxHandler(std::string ov_sdk_version, const logging::Logger& logger);
+  EPCtxHandler(const EPCtxHandler&) = delete;  // No copy constructor
+  Status ExportEPCtxModel(const std::string& model_name);
+  bool CheckForOVEPCtxNodeInGraph(const GraphViewer& graph_viewer) const;
+  bool CheckForOVEPCtxNode(const Node& node) const;
+  Status AddOVEPCtxNodeToGraph(const GraphViewer& graph_viewer,
+                               const std::string& graph_name,
+                               const bool embed_mode,
+                               std::string&& model_blob_str) const;
+  std::unique_ptr<std::istream> GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) const;
+  InlinedVector<const Node*> GetEPCtxNodes() const;
+  bool CheckEPCacheContextAttribute(const GraphViewer& graph_viewer, const std::string& target_attr_extn) const;
 
  private:
-  bool is_valid_ep_ctx_graph_{false};
-  std::shared_ptr<std::istringstream> model_stream_;
+  const std::string openvino_sdk_version_;
+  std::unique_ptr<Model> epctx_model_;
+  const logging::Logger& logger_;
 };
 
 }  // namespace openvino_ep

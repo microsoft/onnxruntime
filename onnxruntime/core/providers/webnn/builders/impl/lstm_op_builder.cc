@@ -23,16 +23,16 @@ class LstmOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /*device_type*/, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                const logging::Logger& logger) const override;
 };
 
 void LstmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
-  if (node.InputDefs().size() > 4 && node.InputDefs()[4]->Exists()) {
+  if (TensorExists(node.InputDefs(), 4)) {
     model_builder.AddInitializerToSkip(node.InputDefs()[4]->Name());  // sequence_lens
     model_builder.AddInputToSkip(node.InputDefs()[4]->Name());
   }
@@ -56,7 +56,7 @@ Status LstmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   options.set("label", node.Name());
   options.set("layout", emscripten::val("iofg"));
 
-  if (input_defs.size() > 3 && input_defs[3]->Exists()) {
+  if (TensorExists(input_defs, 3)) {
     emscripten::val bias = model_builder.GetOperand(input_defs[3]->Name());
     emscripten::val split_options = emscripten::val::object();
     split_options.set("axis", 1);
@@ -67,13 +67,13 @@ Status LstmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     options.set("bias", splitted_biases[0]);
     options.set("recurrentBias", splitted_biases[1]);
   }
-  if (input_defs.size() > 5 && input_defs[5]->Exists()) {
+  if (TensorExists(input_defs, 5)) {
     options.set("initialHiddenState", model_builder.GetOperand(input_defs[5]->Name()));
   }
-  if (input_defs.size() > 6 && input_defs[6]->Exists()) {
+  if (TensorExists(input_defs, 6)) {
     options.set("initialCellState", model_builder.GetOperand(input_defs[6]->Name()));
   }
-  if (input_defs.size() > 7 && input_defs[7]->Exists()) {
+  if (TensorExists(input_defs, 7)) {
     options.set("peepholeWeight", model_builder.GetOperand(input_defs[7]->Name()));
   }
 
@@ -87,9 +87,9 @@ Status LstmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   const auto& output_defs = node.OutputDefs();
-  bool has_Y = output_defs.size() > 0 && output_defs[0]->Exists();
-  bool has_Y_h = output_defs.size() > 1 && output_defs[1]->Exists();
-  bool has_Y_c = output_defs.size() > 2 && output_defs[2]->Exists();
+  bool has_Y = TensorExists(output_defs, 0);
+  bool has_Y_h = TensorExists(output_defs, 1);
+  bool has_Y_c = TensorExists(output_defs, 2);
   options.set("returnSequence", has_Y);
 
   if (helper.HasAttr("activations")) {
@@ -125,7 +125,7 @@ Status LstmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   return Status::OK();
 }
 
-bool LstmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool LstmOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                                       const WebnnDeviceType /*device_type*/, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 3) {
@@ -140,16 +140,16 @@ bool LstmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
   }
   int32_t steps = static_cast<int32_t>(input_shape[0]);
 
-  if (input_defs.size() > 4 && input_defs[4]->Exists()) {
-    if (!Contains(initializers, input_defs[4]->Name())) {
+  if (TensorExists(input_defs, 4)) {
+    const auto* sequence_lens_init = graph_viewer.GetConstantInitializer(input_defs[4]->Name());
+    if (!sequence_lens_init) {
       LOGS(logger, ERROR) << "LSTM: sequence_lens must be constant";
       return false;
     }
 
-    const auto& sequence_lens_tensor = *initializers.at(input_defs[4]->Name());
+    const auto& sequence_lens_tensor = *sequence_lens_init;
     std::vector<int32_t> sequence_lens;
-    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, logger)) {
-      LOGS(logger, ERROR) << "Cannot read sequence lens tensor";
+    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, graph_viewer, logger)) {
       return false;
     }
     if (std::any_of(sequence_lens.begin(), sequence_lens.end(),
@@ -198,10 +198,10 @@ bool LstmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
   return true;
 }
 
-bool LstmOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                           const logging::Logger& logger) const {
+bool LstmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type = 0;  // input data type
   int32_t input1_type = 0;  // weight data type
   int32_t input2_type = 0;  // recurrentWeight data type
@@ -210,10 +210,10 @@ bool LstmOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::v
   int32_t input5_type = 0;  // initialHiddenState data type
   int32_t input6_type = 0;  // initialCellState data type
   int32_t input7_type = 0;  // peepholeWeight data type
-  bool has_input3 = input_defs.size() > 3 && input_defs[3]->Exists();
-  bool has_input5 = input_defs.size() > 5 && input_defs[5]->Exists();
-  bool has_input6 = input_defs.size() > 6 && input_defs[6]->Exists();
-  bool has_input7 = input_defs.size() > 7 && input_defs[7]->Exists();
+  bool has_input3 = TensorExists(input_defs, 3);
+  bool has_input5 = TensorExists(input_defs, 5);
+  bool has_input6 = TensorExists(input_defs, 6);
+  bool has_input7 = TensorExists(input_defs, 7);
 
   if (!GetType(*input_defs[0], input0_type, logger) ||
       !GetType(*input_defs[1], input1_type, logger) ||
@@ -238,11 +238,12 @@ bool LstmOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::v
   if (has_input7) {
     input_types.push_back(input7_type);
   }
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 bool LstmOpBuilder::HasSupportedOutputsImpl(const Node& node,
@@ -253,9 +254,9 @@ bool LstmOpBuilder::HasSupportedOutputsImpl(const Node& node,
   int32_t Y_type = 0;
   int32_t Y_h_type = 0;
   int32_t Y_c_type = 0;
-  bool has_Y = output_defs.size() > 0 && output_defs[0]->Exists();
-  bool has_Y_h = output_defs.size() > 1 && output_defs[1]->Exists();
-  bool has_Y_c = output_defs.size() > 2 && output_defs[2]->Exists();
+  bool has_Y = TensorExists(output_defs, 0);
+  bool has_Y_h = TensorExists(output_defs, 1);
+  bool has_Y_c = TensorExists(output_defs, 2);
 
   if (has_Y && GetType(*output_defs[0], Y_type, logger)) {
     return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "outputs", "Y", logger);

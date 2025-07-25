@@ -8,12 +8,12 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T, int RANK>
-__global__ void _UpampleNearestKernel(const TArray<int64_t> input_pitches,
-                                      const TArray<fast_divmod> output_div_pitches,
-                                      const TArray<fast_divmod> scales_div,
-                                      const T* __restrict__ input_data,
-                                      T* __restrict__ output_data,
-                                      const size_t N) {
+__global__ void _UpsampleNearestKernel(const TArray<int64_t> input_pitches,
+                                       const TArray<fast_divmod> output_div_pitches,
+                                       const TArray<fast_divmod> scales_div,
+                                       const T* __restrict__ input_data,
+                                       T* __restrict__ output_data,
+                                       const size_t N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_index = 0;
   CUDA_LONG output_index = id;
@@ -36,13 +36,13 @@ __global__ void _UpampleNearestKernel(const TArray<int64_t> input_pitches,
 // This is the common use-case where the 4-D input (batched multi-channel images)
 // is usually of shape [N, C, H, W] and the scales are [1.0, 1.0, height_scale, width_scale]
 template <typename T>
-__global__ void _UpampleBilinear4DInputKernel(const int64_t input_dim2,
-                                              const TArray<int64_t> input_pitches,
-                                              const TArray<fast_divmod> output_div_pitches,
-                                              const TArray<fast_divmod> scales_div,
-                                              const T* __restrict__ input_data,
-                                              T* __restrict__ output_data,
-                                              const size_t N) {
+__global__ void _UpsampleBilinear4DInputKernel(const int64_t input_dim2,
+                                               const TArray<int64_t> input_pitches,
+                                               const TArray<fast_divmod> output_div_pitches,
+                                               const TArray<fast_divmod> scales_div,
+                                               const T* __restrict__ input_data,
+                                               T* __restrict__ output_data,
+                                               const size_t N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_index = 0;
 
@@ -95,13 +95,13 @@ __global__ void _UpampleBilinear4DInputKernel(const int64_t input_dim2,
 
 // The following method supports a 2-D input in 'Linear mode'
 template <typename T>
-__global__ void _UpampleBilinear2DInputKernel(const int64_t input_dim0,
-                                              const TArray<int64_t> input_pitches,
-                                              const TArray<fast_divmod> output_div_pitches,
-                                              const TArray<fast_divmod> scales_div,
-                                              const T* __restrict__ input_data,
-                                              T* __restrict__ output_data,
-                                              const size_t N) {
+__global__ void _UpsampleBilinear2DInputKernel(const int64_t input_dim0,
+                                               const TArray<int64_t> input_pitches,
+                                               const TArray<fast_divmod> output_div_pitches,
+                                               const TArray<fast_divmod> scales_div,
+                                               const T* __restrict__ input_data,
+                                               T* __restrict__ output_data,
+                                               const size_t N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_index = 0;
 
@@ -147,32 +147,32 @@ __global__ void _UpampleBilinear2DInputKernel(const int64_t input_dim0,
 }
 
 template <typename T>
-void UpampleImpl(cudaStream_t stream,
-                 const onnxruntime::UpsampleMode upsample_mode,
-                 const size_t rank,
-                 const int64_t input_dim2,
-                 const TArray<int64_t>& input_pitches,
-                 const TArray<fast_divmod>& output_div_pitches,
-                 const TArray<fast_divmod>& scales_div,
-                 const T* input_data,
-                 T* output_data,
-                 const size_t N) {
+void UpsampleImpl(cudaStream_t stream,
+                  const onnxruntime::UpsampleMode upsample_mode,
+                  const size_t rank,
+                  const int64_t input_dim2,
+                  const TArray<int64_t>& input_pitches,
+                  const TArray<fast_divmod>& output_div_pitches,
+                  const TArray<fast_divmod>& scales_div,
+                  const T* input_data,
+                  T* output_data,
+                  const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   if (onnxruntime::UpsampleMode::NN == upsample_mode) {
     if (rank == 4) {
-      _UpampleNearestKernel<T, 4><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      _UpsampleNearestKernel<T, 4><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input_pitches, output_div_pitches, scales_div,
           input_data, output_data, N);
     } else if (rank == 3) {
-      _UpampleNearestKernel<T, 3><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      _UpsampleNearestKernel<T, 3><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input_pitches, output_div_pitches, scales_div,
           input_data, output_data, N);
     } else if (rank == 2) {
-      _UpampleNearestKernel<T, 2><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      _UpsampleNearestKernel<T, 2><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input_pitches, output_div_pitches, scales_div,
           input_data, output_data, N);
     } else if (rank == 1) {
-      _UpampleNearestKernel<T, 1><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      _UpsampleNearestKernel<T, 1><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input_pitches, output_div_pitches, scales_div,
           input_data, output_data, N);
     } else {
@@ -180,11 +180,11 @@ void UpampleImpl(cudaStream_t stream,
     }
   } else if (onnxruntime::UpsampleMode::LINEAR == upsample_mode) {
     if (rank == 4) {
-      _UpampleBilinear4DInputKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      _UpsampleBilinear4DInputKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input_dim2, input_pitches, output_div_pitches, scales_div,
           input_data, output_data, N);
     } else if (rank == 2) {
-      _UpampleBilinear2DInputKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      _UpsampleBilinear2DInputKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input_dim2, input_pitches, output_div_pitches, scales_div,
           input_data, output_data, N);
     } else {
@@ -197,17 +197,17 @@ void UpampleImpl(cudaStream_t stream,
   }
 }
 
-#define SPECIALIZED_IMPL(T)                                                   \
-  template void UpampleImpl<T>(cudaStream_t stream,                           \
-                               const onnxruntime::UpsampleMode upsample_mode, \
-                               const size_t rank,                             \
-                               const int64_t input_dim2,                      \
-                               const TArray<int64_t>& input_pitches,          \
-                               const TArray<fast_divmod>& output_div_pitches, \
-                               const TArray<fast_divmod>& scales_div,         \
-                               const T* input_data,                           \
-                               T* output_data,                                \
-                               const size_t N);
+#define SPECIALIZED_IMPL(T)                                                    \
+  template void UpsampleImpl<T>(cudaStream_t stream,                           \
+                                const onnxruntime::UpsampleMode upsample_mode, \
+                                const size_t rank,                             \
+                                const int64_t input_dim2,                      \
+                                const TArray<int64_t>& input_pitches,          \
+                                const TArray<fast_divmod>& output_div_pitches, \
+                                const TArray<fast_divmod>& scales_div,         \
+                                const T* input_data,                           \
+                                T* output_data,                                \
+                                const size_t N);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

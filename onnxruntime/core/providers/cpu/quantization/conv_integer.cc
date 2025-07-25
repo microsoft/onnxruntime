@@ -34,17 +34,18 @@ ONNX_OPERATOR_KERNEL_EX(
     ConvInteger);
 
 Status ConvInteger::Compute(OpKernelContext* context) const {
-  size_t num_inputs = OpKernel::Node().InputDefs().size();
+  const auto input_defs = Node().InputDefs();
+  size_t num_inputs = input_defs.size();
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
   uint8_t input_offset = 0;
   uint8_t filter_offset = 0;
-  if (num_inputs >= 3) {
+  if (num_inputs >= 3 && input_defs[2]->Exists()) {
     const auto* X_Zero_Point = context->Input<Tensor>(2);
     ORT_ENFORCE(IsScalarOr1ElementVector(X_Zero_Point), "Must be a scalar or 1D tensor or size 1.");
     input_offset = *(X_Zero_Point->Data<uint8_t>());
   }
-  if (num_inputs >= 4) {
+  if (num_inputs >= 4 && input_defs[3]->Exists()) {
     const auto* W_Zero_Point = context->Input<Tensor>(3);
     ORT_ENFORCE(IsScalarOr1ElementVector(W_Zero_Point), "Non per-tensor quantization is not supported now.");
     filter_offset = *(W_Zero_Point->Data<uint8_t>());

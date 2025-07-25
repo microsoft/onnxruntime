@@ -33,10 +33,10 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.28.2.241116
+  default: 2.36.1.250708
 
 jobs:
-- job: 'build'
+- job: 'BUILD_QNN_EP'
   pool: 'onnxruntime-qnn-windows-vs-2022-arm64'
   variables:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -46,6 +46,20 @@ jobs:
   timeoutInMinutes: 240
   workspace:
     clean: all
+  strategy:
+    matrix:
+      SHARED_LIB:
+        QnnLibKind: 'shared_lib'
+        ExtraQnnBuildArgs: '--client_package_build'
+      STATIC_LIB:
+        QnnLibKind: 'static_lib'
+        ExtraQnnBuildArgs: ''
+      SHARED_LIB_GENERIC_INTERFACE:
+        QnnLibKind: 'shared_lib'
+        # Note: Building ORT with generic ep interface which only builds the provider-bridge APIs for
+        # various EPs, but does not build the actual EPs. We enable --build_wheel for additional code coverage
+        # because the python bindings also use the USE_<EP>_PROVIDER_INTERFACE preprocessor macros.
+        ExtraQnnBuildArgs: '--enable_generic_interface --build_wheel'
   steps:
 
   - script: |
@@ -79,18 +93,20 @@ jobs:
         --config $(BuildConfig)
         --build_dir $(Build.BinariesDirectory)
         --cmake_generator "Visual Studio 17 2022"
-        --use_qnn
+        --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache 
+        --use_qnn $(QnnLibKind)
         --qnn_home $(QnnSDKRootDir)
-        --update --build --parallel
+        --update --build --parallel $(ExtraQnnBuildArgs)
 
   - script: |
       python $(Build.SourcesDirectory)\tools\ci_build\build.py ^
         --config $(BuildConfig) ^
         --build_dir $(Build.BinariesDirectory) ^
         --cmake_generator "Visual Studio 17 2022" ^
-        --use_qnn ^
+        --build_shared_lib ^
+        --use_qnn $(QnnLibKind) ^
         --qnn_home $(QnnSDKRootDir) ^
-        --test --enable_onnx_tests
+        --test --enable_onnx_tests $(ExtraQnnBuildArgs)
     displayName: 'Run unit tests'
 
   - script: |
@@ -121,7 +137,7 @@ jobs:
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
       CleanTargetFolder: true
       OverWrite: true
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'shared_lib')))
 
   - task: PublishBuildArtifacts@1
     displayName: 'Publish Artifact'
@@ -129,4 +145,4 @@ jobs:
       PathtoPublish: '$(Build.ArtifactStagingDirectory)'
       ArtifactName: 'internal_release'
       publishLocation: 'Container'
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'shared_lib')))

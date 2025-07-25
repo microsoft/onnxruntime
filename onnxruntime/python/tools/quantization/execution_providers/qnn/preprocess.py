@@ -10,14 +10,19 @@ from pathlib import Path
 
 import onnx
 
+from ....tools.onnx_model_utils import fix_output_shapes, make_input_shape_fixed
+from ....tools.remove_initializer_from_input import remove_initializer_from_input
 from ...fusions import FusionGelu, FusionLayerNormalization
 from ...onnx_model import ONNXModel
+from ...quant_utils import save_and_reload_model_with_shape_infer
 from .fusion_lpnorm import FusionLpNormalization
+from .fusion_spacetodepth import FusionSpaceToDepth
 
 
 def qnn_preprocess_model(
     model_input: str | Path | onnx.ModelProto,
     model_output: str | Path,
+    exclude_initializer_from_input: bool = False,
     fuse_layernorm: bool = False,
     save_as_external_data: bool = False,
     all_tensors_to_one_file: bool = False,
@@ -26,6 +31,7 @@ def qnn_preprocess_model(
     external_data_convert_attribute: bool = False,
     inputs_to_make_channel_last: list[str] | None = None,
     outputs_to_make_channel_last: list[str] | None = None,
+    dynamic_input_shapes: list[tuple[str, str]] | None = None,
 ) -> bool:
     """
     If necessary, this method creates a new "pre-processed" model in preparation for
@@ -39,6 +45,8 @@ def qnn_preprocess_model(
     Args:
         model_input: Path to the input model file or ModelProto.
         model_output: Path the output model file, which is only created if this method returns True.
+        exclude_initializer_from_input: A bool specifying whether to exclude initializer from input.
+            Defaults to False.
         fuse_layernorm: True if ReduceMean sequences should be fused into LayerNormalization nodes.
             Defaults to False.
         save_as_external_data: True if output model should be saved with external data. Defaults to false.
@@ -80,10 +88,25 @@ def qnn_preprocess_model(
             This can potentially improve inference latency for QDQ models running on QNN EP because the
             additional transpose node may allow other transpose nodes inserted during ORT layout transformation
             to cancel out.
+        dynamic_input_shapes: A list of tuples specifying model input name to and its static shape in comma seprated
+            format, for example: [('input', '1,3,256,256')]. Defaults to None.
     """
     modified = False
     model = model_input if isinstance(model_input, onnx.ModelProto) else onnx.load_model(model_input)
+    model = save_and_reload_model_with_shape_infer(model)
     onnx_model = ONNXModel(model)
+
+    # Optionally, fix the dynamic input shapes.
+    if dynamic_input_shapes:
+        for input_name, input_shape_str in dynamic_input_shapes:
+            input_shape = [int(i) for i in input_shape_str.split(",")]
+            make_input_shape_fixed(onnx_model.graph(), input_name, input_shape)
+        fix_output_shapes(onnx_model.model)
+        modified = True
+
+    # Exclude initializer from input if model.ir_version >= 4
+    if exclude_initializer_from_input:
+        modified |= remove_initializer_from_input(onnx_model.model)
 
     # Fuse Erf sequence into a single Gelu
     fusion_gelu = FusionGelu(onnx_model)
@@ -93,6 +116,11 @@ def qnn_preprocess_model(
     # Fuse ReduceL2 sequence into a single LpNormalization node with p == 2.
     fusion_lpnorm = FusionLpNormalization(onnx_model)
     if fusion_lpnorm.apply():
+        modified = True
+
+    # Fuse Reshape/Transpose sequence into a single SpaceToDepth.
+    fusion_s2d = FusionSpaceToDepth(onnx_model)
+    if fusion_s2d.apply():
         modified = True
 
     # Optionally, fuse ReduceMean sequence into a single LayerNormalization node.

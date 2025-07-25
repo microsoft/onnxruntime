@@ -9,7 +9,6 @@ import os
 import re
 import sys
 from types import ModuleType
-from typing import List, Tuple, Union
 
 import onnx
 from onnx import ModelProto
@@ -25,11 +24,11 @@ from ._utils import gen_unique_name, next_power_of_2
 
 _DEBUG_MODE = "ORTMODULE_TRITON_DEBUG" in os.environ and int(os.getenv("ORTMODULE_TRITON_DEBUG")) == 1
 
-_CUSTOM_KERNELS = dict()
+_CUSTOM_KERNELS = {}
 
 
 @functools.lru_cache(None)
-def _gen_module_internal(sorted_graph: SortedGraph) -> Tuple[str, str, ModuleType]:
+def _gen_module_internal(sorted_graph: SortedGraph) -> tuple[str, str, ModuleType]:
     func_name = gen_unique_name("func")
     src_code = codegen(func_name, sorted_graph)
     return func_name, src_code, PyCodeCache().load(src_code)
@@ -42,7 +41,7 @@ class _ShapeCache:
     For those dimensions that the concrete shape is changed between different steps, we use a symbolic shape.
     """
 
-    cache = dict()  # noqa: RUF012
+    cache = {}  # noqa: RUF012
     symbolic_shape_hint = None
     min_symbolic_shape = 0
     clear = staticmethod(cache.clear)
@@ -54,11 +53,11 @@ class _ShapeCache:
                 cls.min_symbolic_shape = v
             else:
                 if cls.symbolic_shape_hint is None:
-                    cls.symbolic_shape_hint = dict()
+                    cls.symbolic_shape_hint = {}
                 cls.symbolic_shape_hint[k] = v
 
     @classmethod
-    def get_shape(cls, onnx_key: int, model: ModelProto, shapes: List[List[int]]) -> List[List[Union[int, str]]]:
+    def get_shape(cls, onnx_key: int, model: ModelProto, shapes: list[list[int]]) -> list[list[int | str]]:
         if onnx_key not in cls.cache:
             if cls.symbolic_shape_hint is not None:
                 for i, input in enumerate(model.graph.input):
@@ -90,12 +89,12 @@ class _ShapeCache:
         return cls.cache[onnx_key]
 
 
-def _gen_key(onnx_key: int, model: ModelProto, shapes: List[List[Union[int, str]]]) -> int:
+def _gen_key(onnx_key: int, model: ModelProto, shapes: list[list[int | str]]) -> int:
     # pylint: disable=unused-argument
     return hash(f"{onnx_key}|{str(shapes).replace(' ', '')}")
 
 
-def _gen_module(onnx_key: int, model: ModelProto, shapes: List[List[Union[int, str]]]) -> Tuple[str, ModuleType]:
+def _gen_module(onnx_key: int, model: ModelProto, shapes: list[list[int | str]]) -> tuple[str, ModuleType]:
     sorted_graph = SortedGraph(model, [parse_shape(shape) for shape in shapes])
     if _DEBUG_MODE:
         os.makedirs(os.path.dirname("triton_debug/"), exist_ok=True)
@@ -123,7 +122,7 @@ def get_config() -> str:
     shape. Each dim_param will be replaced by i{input_index}_dim{dim_index}_{power_of_2} in the symbolic shape.
     """
 
-    config = dict()
+    config = {}
     config_file = os.getenv("ORTMODULE_TRITON_CONFIG_FILE", "")
     if config_file and os.path.exists(config_file):
         with open(config_file, encoding="UTF-8") as f:

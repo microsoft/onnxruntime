@@ -395,7 +395,7 @@ static Status DoTransposeInt4(const gsl::span<const size_t>& permutations, const
                     "Expected to transpose int4 tensor");
 
   // Convert to Tensor<Int8Type>, transpose, and then repack back to Tensor<Int4Type>.
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
   Tensor input_unpacked;
   Tensor output_unpacked(DataTypeImpl::GetType<Int8Type>(), output.Shape(), cpu_allocator);
 
@@ -469,9 +469,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 
 // Opset 21 added support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
 // TODO(adrianlizarraga): Implement support for float8e4m3fnuz, float8e5m2, and float8e5m2fnuz.
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     21,
+    22,
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesOpset21>()),
+    Transpose);
+
+// Opset 23 added support for float4e2m1.
+// TODO(titaiwang): Implement support for float4e2m1.
+ONNX_CPU_OPERATOR_KERNEL(
+    Transpose,
+    23,
     KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesOpset21>()),
     Transpose);
 

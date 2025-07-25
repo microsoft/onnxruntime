@@ -3,7 +3,7 @@
 
 #include "core/mlas/inc/mlas.h"
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML) || defined(USE_XNNPACK) || defined(USE_WEBGPU)
 
 #include "core/providers/cpu/nn/pool.h"
 #include "gtest/gtest.h"
@@ -280,7 +280,10 @@ TEST(PoolFp16Test, MaxPool_Dilation_Ceil1_2d) {
 
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider});
+
+  // TODO: Enable the case for WebGPU once ceil is supported.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_DilationPadding_3d) {
@@ -484,7 +487,10 @@ TEST(PoolFp16Test, AveragePool_10_ceil1_2d) {
 
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider});
+
+  // TODO: Enable the case for WebGPU once ceil is supported.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(PoolFp16Test, GlobalAveragePool) {

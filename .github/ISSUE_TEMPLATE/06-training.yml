@@ -72,6 +72,6 @@ body:
     id: ep-version
     attributes:
       label: Execution Provider Library Version
-      placeholder: ex. CUDA 11.6 or ROCm 5.1.1
+      placeholder: ex. CUDA 12.2 or ROCm 5.1.1
     validations:
       required: false

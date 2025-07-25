@@ -58,11 +58,8 @@ static void RunQDQGatherOpTest(const TestInputDef<float>& input_def,
                                ExpectedEPNodeAssignment expected_ep_assignment,
                                bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float, IndicesType>("Gather", {input_def}, {indices_def}, attrs);
   auto qdq_model_builder = BuildQDQGatherTestCase<QuantType, IndicesType>(input_def, indices_def, attrs,
@@ -119,6 +116,15 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_Axis0) {
                                        ExpectedEPNodeAssignment::All);
 }
 
+// negative indices
+TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_NegativeIndices) {
+  RunQDQGatherOpTest<uint8_t, int32_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
+                                       TestInputDef<int32_t>({2, 2}, true, {-1, 1, 1, 2}),
+                                       {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                                       13,
+                                       ExpectedEPNodeAssignment::All);
+}
+
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results are as accurate as CPU EP.
 //
@@ -140,12 +146,47 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesDynamicInt32_Axis0) {
 // nodes are supported by the QNN EP, and that the inference results are as accurate as CPU EP.
 //
 // Static int32 indices with axis = 1
-TEST_F(QnnHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt32_Axis1) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_Axis1) {
   RunQDQGatherOpTest<uint8_t, int32_t>(TestInputDef<float>({3, 3}, false, {1.0f, 1.2f, 1.9f, 2.3f, 3.4f, 3.9f, 4.5f, 5.7f, 5.9f}),
                                        TestInputDef<int32_t>({1, 2}, true, {0, 2}),
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
                                        13,
                                        ExpectedEPNodeAssignment::All);
+}
+
+// Runs a non-QDQ model on HTP and compares output to CPU EP.
+template <typename InputType1 = float, typename InputType2 = float>
+static void RunOpTest(const std::string& op_type,
+                      const TestInputDef<InputType1>& input_def_1,
+                      const TestInputDef<InputType2>& input_defs_2,
+                      const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                      int opset_version,
+                      ExpectedEPNodeAssignment expected_ep_assignment,
+                      const std::string& op_domain = kOnnxDomain,
+                      float fp32_abs_err = 1e-3f) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
+  RunQnnModelTest(BuildOpTestCase<InputType1, InputType2>(op_type, {input_def_1}, {input_defs_2}, attrs, op_domain),
+                  provider_options,
+                  opset_version,
+                  expected_ep_assignment,
+                  fp32_abs_err);
+}
+
+// Non-QDQ model, Gather with static input and dynamic int64 indices
+// Fails with QNN SDK 2.35.0:
+// Failed to finalize QNN graph. Error code: 1002
+TEST_F(QnnHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt64) {
+  RunOpTest<float, int64_t>("Gather",
+                            TestInputDef<float>({3, 2}, true, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
+                            TestInputDef<int64_t>({2, 2}, false, {0, 1, 1, 2}),
+                            {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                            13,
+                            ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

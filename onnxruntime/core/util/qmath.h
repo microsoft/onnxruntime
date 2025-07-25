@@ -64,7 +64,7 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
     block_size = onnxruntime::narrow<std::ptrdiff_t>(num_of_elements);
   }
 
-  for (int i = 0; i < num_blocks; i++) {
+  for (int i = 0; i < narrow<int>(num_blocks); i++) {
     aggregate[i].min = std::numeric_limits<float>::max();
     aggregate[i].max = std::numeric_limits<float>::lowest();
   }
@@ -79,7 +79,7 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
 
   float& min = aggregate[0].min;
   float& max = aggregate[0].max;
-  for (int i = 1; i < num_blocks; i++) {
+  for (int i = 1; i < narrow<int>(num_blocks); i++) {
     min = std::min(min, aggregate[i].min);
     max = std::max(max, aggregate[i].max);
   }
@@ -1000,5 +1000,54 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 1> {
 };
 
 #endif
+
+/**
+ * @brief Run MlasDequantizeLinear in parallel, with provided thread pool
+ */
+
+template <typename InputQuantType>
+void ParDequantizeLinearStd(const InputQuantType* input,
+                            float* output,
+                            size_t num_elems,
+                            float scale,
+                            InputQuantType zero_point,
+                            concurrency::ThreadPool* thread_pool) {
+  constexpr std::ptrdiff_t block_size = 128;
+  const std::ptrdiff_t num_blocks = (num_elems + block_size - 1) / block_size;
+  const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(InputQuantType)),
+                               static_cast<double>(block_size * sizeof(float)),
+                               static_cast<double>(block_size) * 2.0};
+  concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    auto begin_idx = begin * block_size;
+    auto end_idx = std::min(static_cast<std::ptrdiff_t>(num_elems), end * block_size);
+    MlasDequantizeLinear(&(input[begin_idx]), &(output[begin_idx]), end_idx - begin_idx, scale, zero_point);
+  });
+}
+
+// Note: this doesn't use MLAS kernel. There are currently no MLAS kernels for fp16 QuantizeLinear or DequantizeLinear.
+template <typename InputQuantType>
+void ParDequantizeLinearStd(const InputQuantType* input,
+                            MLFloat16* output,
+                            size_t num_elems,
+                            MLFloat16 scale,
+                            InputQuantType zero_point,
+                            concurrency::ThreadPool* thread_pool) {
+  constexpr std::ptrdiff_t block_size = 128;
+  const std::ptrdiff_t num_blocks = (num_elems + block_size - 1) / block_size;
+  const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(InputQuantType)),
+                               static_cast<double>(block_size * sizeof(MLFloat16)),
+                               static_cast<double>(block_size) * 2.0};
+
+  const int32_t zp_s32 = static_cast<int32_t>(zero_point);
+  const float sc_f32 = scale.ToFloat();
+
+  concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    auto begin_idx = begin * block_size;
+    auto end_idx = std::min(static_cast<std::ptrdiff_t>(num_elems), end * block_size);
+    for (; begin_idx != end_idx; ++begin_idx) {
+      output[begin_idx] = MLFloat16(static_cast<float>(static_cast<int32_t>(input[begin_idx]) - zp_s32) * sc_f32);
+    }
+  });
+}
 
 }  // namespace onnxruntime

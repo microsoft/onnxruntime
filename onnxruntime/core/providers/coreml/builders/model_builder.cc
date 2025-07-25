@@ -2,12 +2,14 @@
 // Licensed under the MIT License.
 
 #include <fstream>
+#include <optional>
 
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/model_builder.h"
+#include "core/providers/coreml/coreml_execution_provider.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
@@ -16,20 +18,17 @@
 #include "core/providers/coreml/shape_utils.h"
 #include "core/optimizer/initializer.h"
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 // includes from coremltools-src in _deps
 #include "modelpackage/src/ModelPackage.hpp"
 #include "mlmodel/src/MILBlob/Blob/StorageWriter.hpp"
 using MILBlob::Blob::StorageWriter;
-#endif
-
 using namespace CoreML::Specification;
 
 namespace onnxruntime {
 namespace coreml {
 
 namespace {
-#if defined(COREML_ENABLE_MLPROGRAM)
+
 // Should the initializer be written to file or kept as an immediate value
 bool ShouldWriteInitializerToWeightsFile(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   // https://github.com/apple/coremltools/blob/dbb0094fd0cb936469e35320bf37e866ef7a1da4/coremltools/converters/mil/backend/mil/load.py#L51-L57
@@ -73,9 +72,36 @@ void CopyRawDataToRepeatedField(const ONNX_NAMESPACE::TensorProto& tensor_proto,
   }
 }
 
+template <>
+void CopyRawDataToRepeatedField<int64_t, int32_t>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                  google::protobuf::RepeatedField<int32_t>& repeated_field) {
+  const auto& raw_data = tensor_proto.raw_data();
+  const int64_t* data = reinterpret_cast<const int64_t*>(raw_data.data());
+  const size_t element_count = raw_data.size() / sizeof(int64_t);
+
+  // Reserve space to avoid multiple reallocations
+  repeated_field.Reserve(narrow<int>(element_count));
+
+  // Use std::transform with proper iterators
+  std::transform(data, data + element_count,
+                 google::protobuf::RepeatedFieldBackInserter(&repeated_field),
+                 [](int64_t v) {
+                   return narrow<int32_t>(v);
+                 });
+}
+
+void CopyInt64DataToInt32(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue& tensor_value) {
+  const int num_entries = tensor_proto.int64_data_size();
+  auto& int32_out = *tensor_value.mutable_ints()->mutable_values();
+  int32_out.Reserve(num_entries);
+  for (int i = 0; i < num_entries; ++i) {
+    int32_out.AddAlreadyReserved(narrow<int32_t>(tensor_proto.int64_data(i)));
+  }
+}
+
 // copy T data from the TensorProto.int32_t field to TensorValue.bytes
 template <typename T>
-void CopyInt32DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue tensor_value) {
+void CopyInt32DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue& tensor_value) {
   const int num_entries = tensor_proto.int32_data_size();
   std::string& bytes = *tensor_value.mutable_bytes()->mutable_values();
   bytes.resize(num_entries * sizeof(T));
@@ -89,7 +115,7 @@ void CopyInt32DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSp
 
 // copy T data from the TensorProto.uint64_data field to TensorValue.bytes
 template <typename T>
-void CopyUInt64DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue tensor_value) {
+void CopyUInt64DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue& tensor_value) {
   const int num_entries = tensor_proto.uint64_data_size();
   std::string& bytes = *tensor_value.mutable_bytes()->mutable_values();
   bytes.resize(num_entries * sizeof(T));
@@ -145,18 +171,16 @@ void CopyOnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tensor_prot
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-      // enable when this is proven to not be the case
-      ORT_THROW(
-          "INT64 is unexpected as CoreML uses 32-bit int for indices. "
-          "Most likely an initializer that should have been skipped was not.");
-      //// from: int64_data/raw, to: longints
-      // if (has_raw_data) {
-      //   CopyRawDataToRepeatedField<int64_t>(tensor_proto, *tensor_value.mutable_longints()->mutable_values());
+      // from: int64_data/raw, to: ints (use narrow to convert to int32)
+      // CoreML tensors have a longints field, but the CoreML op definitions only use int32,
+      // so we convert any int64 to int32
+      if (has_raw_data) {
+        CopyRawDataToRepeatedField<int64_t, int32_t>(tensor_proto, *tensor_value.mutable_ints()->mutable_values());
 
-      //} else {
-      //  tensor_value.mutable_longints()->mutable_values()->CopyFrom(tensor_proto.int64_data());
-      //}
-      // break;
+      } else {
+        CopyInt64DataToInt32(tensor_proto, tensor_value);
+      }
+      break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
       // from: int32_data/raw, to: bytes
@@ -358,7 +382,8 @@ MILSpec::Value OnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tenso
   // populate ValueType with tensor data type, dims and rank
   MILSpec::ValueType& value_type = *value.mutable_type();
   MILSpec::TensorType& tensor_type = *value_type.mutable_tensortype();
-  tensor_type.set_datatype(OnnxDataTypeToMILSpec(tensor_proto.data_type()));
+  MILSpec::DataType data_type = OnnxDataTypeToMILSpec(tensor_proto.data_type());
+  tensor_type.set_datatype(data_type);
 
   tensor_type.set_rank(tensor_proto.dims().size());
   for (const auto& dim : tensor_proto.dims()) {
@@ -387,34 +412,95 @@ void CreateEmptyFile(const std::string& filename) {
   ORT_ENFORCE(file.is_open(), "Failed to open file ", filename);
 }
 
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
+std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
+                               const GraphViewer& graph_viewer,
+                               const logging::Logger& logger) {
+  const std::string& subgraph_name = graph_viewer.Name();
+  std::string path;
+  if (coreml_options.ModelCacheDirectory().empty()) {
+    // path is used to create the ML Package directory for ML Program, and for the model directly otherwise.
+    path = util::GetTemporaryFilePath();
+    if (!coreml_options.CreateMLProgram()) {
+      path += ".model.mlmodel";
+    }
+  } else {
+    // subgraph_name is uniquely generated by
+    // onnxruntime/core/providers/coreml/coreml_execution_provider.cc::gen_metadef_name
+    // int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
+    // MakeString(user_provide_key, "_", COREML, "_", model_hash, "_", metadef_id);
+    std::string_view cache_key = std::string_view(subgraph_name)
+                                     .substr(0, subgraph_name.find_first_of("_"));
+    // subgraph_short_name is metadef_id
+    std::string_view subgraph_short_name = std::string_view(subgraph_name)
+                                               .substr(subgraph_name.find_last_of("_") + 1);
+    path = MakeString(std::string(coreml_options.ModelCacheDirectory()), "/", cache_key);
 
-std::string GetModelOutputPath(bool create_ml_program) {
-  // path is used to create the ML Package directory for ML Program, and for the model directly otherwise.
-  auto path = util::GetTemporaryFilePath();
-  if (!create_ml_program) {
-    path += ".model.mlmodel";
+    std::string model_file_path = path + "/model.txt";
+
+    path = MakeString(path, "/", subgraph_short_name);
+    // Set the model cache path with setting of RequireStaticShape and ModelFormat
+    if (coreml_options.RequireStaticShape()) {
+      path += "_static";
+    } else {
+      path += "_dynamic";
+    }
+
+    if (coreml_options.CreateMLProgram()) {
+      path += "_mlprogram";
+    } else {
+      path += "_nn";
+    }
+    if (!Env::Default().CreateFolder(path).IsOK()) {
+      LOGS(logger, ERROR) << "Failed to create cache directory `" << path << "`. Model caching is disabled.";
+      coreml_options.DisableModelCache();
+      return GetModelOutputPath(coreml_options, graph_viewer, logger);
+    }
+    path += "/model";
+    // Write the model path to a file in the cache directory.
+    // This is for developers to know what the cached model is as we used a hash for the directory name.
+    if (!Env::Default().FileExists(ToPathString(model_file_path))) {
+      const Graph* main_graph = &graph_viewer.GetGraph();
+      while (main_graph->IsSubgraph()) {
+        main_graph = main_graph->ParentGraph();
+      }
+      std::ofstream file(model_file_path);
+      if (!file.is_open()) {
+        LOGS(logger, ERROR) << "Failed to open file " << model_file_path;
+      } else {
+        file << main_graph->ModelPath().string();
+        file.close();
+      }
+    }
   }
-
   return path;
 }
 }  // namespace
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
-                           int32_t coreml_version, uint32_t coreml_flags,
+                           int32_t coreml_version, const CoreMLOptions& coreml_options,
                            std::vector<std::string>&& onnx_input_names,
                            std::vector<std::string>&& onnx_output_names)
     : graph_viewer_(graph_viewer),
       logger_(logger),
       coreml_version_(coreml_version),
-      coreml_flags_(coreml_flags),
-      create_ml_program_((coreml_flags_ & COREML_FLAG_CREATE_MLPROGRAM) != 0),
-      model_output_path_(GetModelOutputPath(create_ml_program_)),
+      coreml_options_(coreml_options),
+      create_ml_program_(coreml_options.CreateMLProgram()),
+      model_output_path_(GetModelOutputPath(coreml_options_, graph_viewer, logger)),  // coreml_options_ must be set before this
       onnx_input_names_(std::move(onnx_input_names)),
       onnx_output_names_(std::move(onnx_output_names)),
       coreml_model_(std::make_unique<CoreML::Specification::Model>()) {
+  // GetTemporaryFilePath() always produce a unique path for the model and this is not existed
+  // Mlprogram will create a folder while NN create a file
+  if (Env::Default().FolderExists(ToPathString(model_output_path_)) ||
+      Env::Default().FileExists(ToPathString(model_output_path_))) {
+    is_model_cached_ = true;
+    LOGS(logger, INFO) << "Model is already cached in " << model_output_path_
+                       << " and will be reused. If you want to update the model or hit other issues, "
+                       << "please consider to clear the cache and retry.";
+    return;
+  }
+
   if (create_ml_program_) {
-#if defined(COREML_ENABLE_MLPROGRAM)
     coreml_model_->set_specificationversion(CoreMLSpecVersion());
     MILSpec::Program& mlprogram = *coreml_model_->mutable_mlprogram();
     mlprogram.set_version(1);
@@ -438,12 +524,6 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
                                                  "CoreML Model Weights");
     auto weights_info = mlpackage_->findItem(weights_id);
     weights_file_writer_ = std::make_unique<StorageWriter>(weights_info->path() + "/weight.bin");
-#else
-    // should never happen due to handling in coreml_execution_provider.cc
-    // throw here so all other code in this class can assume create_ml_program_ is only ever true in a build
-    // where ML Program support is enabled.
-    ORT_THROW("ML Program is not enabled in this build");
-#endif
   } else {
     // We support CorelML Specification Version 4 (Core ML 3)
     coreml_model_->set_specificationversion(4);
@@ -496,7 +576,6 @@ void ModelBuilder::AddLayer(std::unique_ptr<NeuralNetworkLayer> layer) {
 /*
  * ML Program related helpers
  */
-#if defined(COREML_ENABLE_MLPROGRAM)
 const std::string& ModelBuilder::GetSafeName(const std::string& name) {
   // Check the name is valid according to the MILSpec rules
   // `Identifiers, generally used for names and keys, must match the regular expression [A-Za-z\_][A-Za-z0-9\_@]*.`
@@ -672,8 +751,6 @@ std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::st
   return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
 
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
-
 /*
  * General implementation
  */
@@ -700,23 +777,28 @@ void ModelBuilder::PreprocessInitializers() {
 }
 
 Status ModelBuilder::RegisterInitializers() {
-  for (const auto& pair : GetInitializerTensors()) {
-    const auto& tensor = *pair.second;
-    const auto& name = tensor.name();
-
+  for (const auto& [name, tensor_proto] : GetInitializerTensors()) {
     // skip initializer if there is no remaining usage
     auto usage_count = initializer_usage_[name];
     if (usage_count == 0) {
       continue;
     }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
+    const bool has_external_data = utils::HasExternalData(*tensor_proto);
+    std::optional<ONNX_NAMESPACE::TensorProto> tensor_proto_inline;
+    if (has_external_data) {
+      tensor_proto_inline.emplace();
+      ORT_RETURN_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(*tensor_proto, graph_viewer_.ModelPath(),
+                                                                          *tensor_proto_inline));
+    }
+
+    const ONNX_NAMESPACE::TensorProto& tensor =
+        has_external_data ? *tensor_proto_inline : *tensor_proto;
+
     if (create_ml_program_) {
       MILSpec::Value coreml_tensor = OnnxTensorToCoreMLTensor(tensor, *weights_file_writer_);
       ORT_IGNORE_RETURN_VALUE(AddConstantOperation(name, std::move(coreml_tensor)));
-    } else
-#endif
-    {
+    } else {
       std::unique_ptr<NeuralNetworkLayer> layer = std::make_unique<NeuralNetworkLayer>();
       layer->set_name(GetUniqueName("initializer_" + name));
 
@@ -846,17 +928,18 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
 
   input_output_info_.emplace(name, OnnxTensorInfo{data_type, shape});
 
-#if defined(COREML_ENABLE_MLPROGRAM)
+  if (IsModelCached()) {
+    return Status::OK();
+  }
+
   if (create_ml_program_) {
     if (is_input) {
       // the model inputs need to be wired up as args to the 'main' function.
       auto tensor_value_type = CreateNamedTensorValueType(node_arg, /*convert_scalar*/ true);
 
-      // we need to convert int64 to int32 here as well
-      if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-        tensor_value_type.mutable_type()->mutable_tensortype()->set_datatype(
-            OnnxDataTypeToMILSpec(ONNX_NAMESPACE::TensorProto_DataType_INT32));
-      }
+      // Handle conversion from int64 to int32
+      tensor_value_type.mutable_type()->mutable_tensortype()->set_datatype(
+          OnnxDataTypeToMILSpec(data_type));
 
       tensor_value_type.set_name(name);
 
@@ -866,7 +949,6 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       *mlprogram_main_block_->mutable_outputs()->Add() = name;
     }
   }
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
 
   return Status::OK();
 }
@@ -911,11 +993,9 @@ Status ModelBuilder::CreateModel() {
   ORT_RETURN_IF_ERROR(ProcessNodes());
   ORT_RETURN_IF_ERROR(RegisterModelOutputs());
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (create_ml_program_) {
     SanitizeNames();
   }
-#endif
 
   return Status::OK();
 }
@@ -923,7 +1003,6 @@ Status ModelBuilder::CreateModel() {
 Status ModelBuilder::SaveModel() {
   std::string output_path = model_output_path_;
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (create_ml_program_) {
     // we need to jump through some hoops to get the model path the ML Program load wants.
     std::string tmp_model_path = model_output_path_ + "/tmp/model.mlmodel";
@@ -934,7 +1013,6 @@ Status ModelBuilder::SaveModel() {
     auto model_info = mlpackage_->findItem(model_id);
     output_path = model_info->path();
   }
-#endif
 
   // scope this so the stream is closed and flushed by the ofstream dtor
   {
@@ -943,19 +1021,16 @@ Status ModelBuilder::SaveModel() {
     ORT_RETURN_IF_NOT(coreml_model_->SerializeToOstream(&stream), "Saving the CoreML model failed. Path=", output_path);
   }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   // need to delete the ModelPackage instance for it to write out the manifest. clear out the other ML Program
   // related types as well.
   mlprogram_main_block_ = nullptr;
   mlpackage_.reset();
   weights_file_writer_.reset();
-#endif
 
   return Status::OK();
 }
 
 Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (create_ml_program_) {
     // we need to provide the sanitized names for model inputs/outputs so that info is captured.
     // the input/output matching when we execute the model from the CoreML EP is based on order, so the change
@@ -988,23 +1063,20 @@ Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
                                     get_sanitized_io_info(std::move(input_output_info_)),
                                     std::move(scalar_outputs_),
                                     std::move(int64_outputs_),
-                                    logger_, coreml_flags_);
-  } else
-#endif
-  {
+                                    logger_, coreml_options_);
+  } else {
     model = std::make_unique<Model>(model_output_path_,
                                     std::move(onnx_input_names_),
                                     std::move(onnx_output_names_),
                                     std::move(input_output_info_),
                                     std::move(scalar_outputs_),
                                     std::move(int64_outputs_),
-                                    logger_, coreml_flags_);
+                                    logger_, coreml_options_);
   }
 
   return model->LoadModel();  // load using CoreML API, including compilation
 }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 std::string_view ModelBuilder::AddConstant(std::string_view op_type, std::string_view value_type,
                                            const ONNX_NAMESPACE::TensorProto& tensor,
                                            std::optional<gsl::span<const int64_t>> shape) {
@@ -1045,18 +1117,23 @@ std::string_view ModelBuilder::AddConstant(std::string_view op_type, std::string
 
   return ret;
 }
-#endif
 // static
 Status ModelBuilder::Build(const GraphViewer& graph_viewer, const logging::Logger& logger,
-                           int32_t coreml_version, uint32_t coreml_flags,
+                           int32_t coreml_version, const CoreMLOptions& coreml_options,
                            std::vector<std::string>&& onnx_input_names,
                            std::vector<std::string>&& onnx_output_names,
                            std::unique_ptr<Model>& model) {
-  ModelBuilder builder(graph_viewer, logger, coreml_version, coreml_flags,
+  ModelBuilder builder(graph_viewer, logger, coreml_version, coreml_options,
                        std::move(onnx_input_names), std::move(onnx_output_names));
 
-  ORT_RETURN_IF_ERROR(builder.CreateModel());
-  ORT_RETURN_IF_ERROR(builder.SaveModel());
+  if (!builder.IsModelCached()) {
+    ORT_RETURN_IF_ERROR(builder.CreateModel());
+    ORT_RETURN_IF_ERROR(builder.SaveModel());
+  } else {
+    // runtime requires the input/output names to be passed
+    ORT_RETURN_IF_ERROR(builder.RegisterModelInputs());
+    ORT_RETURN_IF_ERROR(builder.RegisterModelOutputs());
+  }
 
   return builder.LoadModel(model);
 }

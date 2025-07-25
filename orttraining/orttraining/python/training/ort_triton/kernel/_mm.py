@@ -6,7 +6,6 @@
 import math
 import os
 from types import ModuleType
-from typing import Tuple
 
 import torch
 
@@ -287,21 +286,21 @@ def _mm_configs(dtype, m, n, k, trans_a, trans_b, alpha, func_name):
         if alpha != 1.0:
             post_process = f"({post_process})"
         post_process = f"{post_process}.to(tl.float16)"
-    return dict(
-        autotune_configs=autotune_configs,
-        kernel_name=f"kernel_{func_name}",
-        M=m,
-        N=n,
-        K=k,
-        stride_am=(1 if trans_a else k),
-        stride_ak=(m if trans_a else 1),
-        stride_bk=(1 if trans_b else n),
-        stride_bn=(k if trans_b else 1),
-        even_k=(k % max_bk == 0),
-        allow_tf32=torch.backends.cuda.matmul.allow_tf32,
-        post_process=post_process,
-        func_name=func_name,
-    )
+    return {
+        "autotune_configs": autotune_configs,
+        "kernel_name": f"kernel_{func_name}",
+        "M": m,
+        "N": n,
+        "K": k,
+        "stride_am": (1 if trans_a else k),
+        "stride_ak": (m if trans_a else 1),
+        "stride_bk": (1 if trans_b else n),
+        "stride_bn": (k if trans_b else 1),
+        "even_k": (k % max_bk == 0),
+        "allow_tf32": torch.backends.cuda.matmul.allow_tf32,
+        "post_process": post_process,
+        "func_name": func_name,
+    }
 
 
 def _gen_mm_key(dtype: torch.dtype, m: int, n: int, k: int, trans_a: bool, trans_b: bool, alpha: float) -> int:
@@ -310,7 +309,7 @@ def _gen_mm_key(dtype: torch.dtype, m: int, n: int, k: int, trans_a: bool, trans
 
 def _gen_mm_module(
     dtype: torch.dtype, m: int, n: int, k: int, trans_a: bool, trans_b: bool, alpha: float
-) -> Tuple[str, ModuleType]:
+) -> tuple[str, ModuleType]:
     func_name = gen_unique_name("mm")
     kwargs = _mm_configs(dtype, m, n, k, trans_a, trans_b, alpha, func_name)
     src_code = _MM_TEMPLATE.format(**kwargs)
@@ -347,7 +346,7 @@ def _gen_gemm_module(
     trans_b: bool,
     alpha: float,
     beta: float,
-) -> Tuple[str, ModuleType]:
+) -> tuple[str, ModuleType]:
     func_name = gen_unique_name("gemm")
     kwargs = _mm_configs(dtype, m, n, k, trans_a, trans_b, alpha, func_name)
     kwargs["stride_cm"] = stride_cm
@@ -369,7 +368,7 @@ def _gen_bmm_key(
 
 def _gen_bmm_module(
     dtype: torch.dtype, m: int, n: int, k: int, batch_a: int, batch_b: int, trans_a: bool, trans_b: bool, alpha: float
-) -> Tuple[str, ModuleType]:
+) -> tuple[str, ModuleType]:
     func_name = gen_unique_name("bmm")
     kwargs = _mm_configs(dtype, m, n, k, trans_a, trans_b, alpha, func_name)
     batch = max(batch_a, batch_b)

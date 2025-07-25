@@ -24,6 +24,7 @@
 #include <core/optimizer/graph_transformer_level.h>
 
 #include "test_configuration.h"
+#include "strings_helper.h"
 
 namespace onnxruntime {
 namespace perftest {
@@ -39,7 +40,7 @@ namespace perftest {
       "\t-I: Generate tensor input binding. Free dimensions are treated as 1 unless overridden using -f.\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
       "\t-e [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai|webgpu]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'. "
+      "'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -55,11 +56,12 @@ namespace perftest {
       "\t-F [free_dimension_override]: Specifies a free dimension by denotation to override to a specific value for performance optimization. "
       "Syntax is [dimension_denotation:override_value]. override_value must > 0\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
-      "\t-o [optimization level]: Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t-o [optimization level]: Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 3 (layout), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels.\n"
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
       "\t-d [CUDA only][cudnn_conv_algorithm]: Specify CUDNN convolution algorithms: 0(benchmark), 1(heuristic), 2(default). \n"
       "\t-q [CUDA only] use separate stream for copy. \n"
+      "\t-g [TensorRT RTX | TensorRT | CUDA] Enable tensor input and output bindings on CUDA before session run \n"
       "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
       "\t-C: Specify session configuration entries as key-value pairs: -C \"<key1>|<value1> <key2>|<value2>\" \n"
       "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
@@ -81,13 +83,16 @@ namespace perftest {
       "\t    [OpenVINO only] [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU device(Reduces the CPU Utilization while using GPU) \n"
       "\t    [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU num_of_threads|5 enable_opencl_throttling|true cache_dir|\"<path>\"\"\n"
       "\n"
-      "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
+      "\t    [QNN only] [backend_type]: QNN backend type. E.g., 'cpu', 'htp'. Mutually exclusive with 'backend_path'.\n"
+      "\t    [QNN only] [backend_path]: QNN backend path. E.g., '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. Mutually exclusive with 'backend_type'.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options: 'basic', 'detailed', default 'off'.\n"
-      "\t    [profiling_file_path] : QNN profiling file path if ETW not enabled.\n"
+      "\t    [QNN only] [profiling_file_path] : QNN profiling file path if ETW not enabled.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
       "\t    'high_power_saver', 'low_balanced', 'extreme_power_saver', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
+      "\t    [QNN only] [op_packages]: QNN UDO package, allowed format: \n"
+      "\t    op_packages|<op_type>:<op_package_path>:<interface_symbol_name>[:<target>],<op_type2>:<op_package_path2>:<interface_symbol_name2>[:<target2>]. \n"
       "\t    [QNN only] [qnn_context_priority]: QNN context priority, options: 'low', 'normal', 'normal_high', 'high'. Default to 'normal'. \n"
       "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
       "\t    [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: \n"
@@ -100,7 +105,10 @@ namespace perftest {
       "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
       "\t    [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
       "\t    Defaults to '0' (QNN EP handles the graph I/O quantization and dequantization). \n"
-      "\t    [Example] [For QNN EP] -e qnn -i \"backend_path|/folderpath/libQnnCpu.so\" \n"
+      "\t    [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill fill buffer, used while generating QNN context binary.\n"
+      "\t    [QNN only] [enable_htp_shared_memory_allocator]: Enable the QNN HTP shared memory allocator and use it for inputs and outputs. Requires libcdsprpc.so/dll to be available.\n"
+      "\t    Defaults to '0' (disabled).\n"
+      "\t    [Example] [For QNN EP] -e qnn -i \"backend_type|cpu\" \n"
       "\n"
       "\t    [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
       "\t    [TensorRT only] [trt_min_subgraph_size]: Minimum size of TensorRT subgraphs.\n"
@@ -129,8 +137,15 @@ namespace perftest {
       "\t    [NNAPI only] [NNAPI_FLAG_CPU_ONLY]: Using CPU only in NNAPI EP.\n"
       "\t    [Example] [For NNAPI EP] -e nnapi -i \"NNAPI_FLAG_USE_FP16 NNAPI_FLAG_USE_NCHW NNAPI_FLAG_CPU_DISABLED\"\n"
       "\n"
-      "\t    [CoreML only] [COREML_FLAG_CREATE_MLPROGRAM COREML_FLAG_USE_CPU_ONLY COREML_FLAG_USE_CPU_AND_GPU]: Create an ML Program model instead of Neural Network.\n"
-      "\t    [Example] [For CoreML EP] -e coreml -i \"COREML_FLAG_CREATE_MLPROGRAM\"\n"
+      "\t    [CoreML only] [ModelFormat]:[MLProgram, NeuralNetwork] Create an ML Program model or Neural Network. Default is NeuralNetwork.\n"
+      "\t    [CoreML only] [MLComputeUnits]:[CPUAndNeuralEngine CPUAndGPU ALL CPUOnly] Specify to limit the backend device used to run the model.\n"
+      "\t    [CoreML only] [AllowStaticInputShapes]:[0 1].\n"
+      "\t    [CoreML only] [EnableOnSubgraphs]:[0 1].\n"
+      "\t    [CoreML only] [SpecializationStrategy]:[Default FastPrediction].\n"
+      "\t    [CoreML only] [ProfileComputePlan]:[0 1].\n"
+      "\t    [CoreML only] [AllowLowPrecisionAccumulationOnGPU]:[0 1].\n"
+      "\t    [CoreML only] [ModelCacheDirectory]:[path../a/b/c].\n"
+      "\t    [Example] [For CoreML EP] -e coreml -i \"ModelFormat|MLProgram MLComputeUnits|CPUAndGPU\"\n"
       "\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
@@ -148,6 +163,9 @@ namespace perftest {
       "\t-n [Exit after session creation]: allow user to measure session creation time to measure impact of enabling any initialization optimizations.\n"
       "\t-l Provide file as binary in memory by using fopen before session creation.\n"
       "\t-R [Register custom op]: allow user to register custom op by .so or .dll file.\n"
+      "\t-X [Enable onnxruntime-extensions custom ops]: Registers custom ops from onnxruntime-extensions. "
+      "onnxruntime-extensions must have been built in to onnxruntime. This can be done with the build.py "
+      "'--use_extensions' option.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -175,42 +193,9 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
   return true;
 }
 
-static bool ParseSessionConfigs(const std::string& configs_string,
-                                std::unordered_map<std::string, std::string>& session_configs) {
-  std::istringstream ss(configs_string);
-  std::string token;
-
-  while (ss >> token) {
-    if (token == "") {
-      continue;
-    }
-
-    std::string_view token_sv(token);
-
-    auto pos = token_sv.find("|");
-    if (pos == std::string_view::npos || pos == 0 || pos == token_sv.length()) {
-      // Error: must use a '|' to separate the key and value for session configuration entries.
-      return false;
-    }
-
-    std::string key(token_sv.substr(0, pos));
-    std::string value(token_sv.substr(pos + 1));
-
-    auto it = session_configs.find(key);
-    if (it != session_configs.end()) {
-      // Error: specified duplicate session configuration entry: {key}
-      return false;
-    }
-
-    session_configs.insert(std::make_pair(std::move(key), std::move(value)));
-  }
-
-  return true;
-}
-
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlR:"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlgR:X"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -285,6 +270,8 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("webgpu"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kWebGpuExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("nvtensorrtrtx"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kNvTensorRTRTXExecutionProvider;
         } else {
           return false;
         }
@@ -347,6 +334,9 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           case ORT_ENABLE_EXTENDED:
             test_config.run_config.optimization_level = ORT_ENABLE_EXTENDED;
             break;
+          case ORT_ENABLE_LAYOUT:
+            test_config.run_config.optimization_level = ORT_ENABLE_LAYOUT;
+            break;
           case ORT_ENABLE_ALL:
             test_config.run_config.optimization_level = ORT_ENABLE_ALL;
             break;
@@ -382,7 +372,13 @@ static bool ParseSessionConfigs(const std::string& configs_string,
         test_config.run_config.intra_op_thread_affinities = ToUTF8String(optarg);
         break;
       case 'C': {
-        if (!ParseSessionConfigs(ToUTF8String(optarg), test_config.run_config.session_config_entries)) {
+        ORT_TRY {
+          ParseSessionConfigs(ToUTF8String(optarg), test_config.run_config.session_config_entries);
+        }
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            fprintf(stderr, "Error parsing session configuration entries: %s\n", ex.what());
+          });
           return false;
         }
         break;
@@ -401,6 +397,12 @@ static bool ParseSessionConfigs(const std::string& configs_string,
         break;
       case 'R':
         test_config.run_config.register_custom_op_path = optarg;
+        break;
+      case 'g':
+        test_config.run_config.enable_cuda_io_binding = true;
+        break;
+      case 'X':
+        test_config.run_config.use_extensions = true;
         break;
       case '?':
       case 'h':

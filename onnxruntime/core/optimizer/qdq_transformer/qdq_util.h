@@ -15,6 +15,7 @@ namespace onnxruntime {
 
 class Node;
 class Path;
+class Graph;
 
 namespace QDQ {
 
@@ -35,6 +36,7 @@ using GetConstantInitializerFn = std::function<const ONNX_NAMESPACE::TensorProto
 // 2. scale and zero point is constant scalar
 // 3. Q and DQ have same scale and zero point
 bool IsQDQPairSupported(
+    const Graph& graph,
     const Node& q_node, const Node& dq_node,
     const GetConstantInitializerFn& get_const_initializer,
     const std::filesystem::path& model_path,
@@ -48,6 +50,7 @@ bool IsQDQPairSupported(
 // 2. scale and zero-point are constant scalars.
 // 3. Q and DQ have the same scale *type* and different zero-point *types*.
 bool IsDQQConversion(
+    const Graph& graph,
     const Node& dq_node, const Node& q_node,
     const GetConstantInitializerFn& get_const_initializer,
     const std::filesystem::path& model_path);
@@ -66,7 +69,8 @@ bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
     bool& zero_point_exists);
 
 // Checks that the y_scale/x_scale input to the QuantizeLinear/DequantizeLinear node is a positive scalar.
-bool IsQOrDQScalePositiveConstantScalar(const Node& q_or_dq_node, const GetConstantInitializerFn& get_const_initializer,
+bool IsQOrDQScalePositiveConstantScalar(const Graph& graph,
+                                        const Node& q_or_dq_node, const GetConstantInitializerFn& get_const_initializer,
                                         const std::filesystem::path& model_path);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -76,5 +80,9 @@ bool MatchQNode(const Node& node);
 // Check DQ node op type, version, and domain.
 bool MatchDQNode(const Node& node);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+// Check if an clip node is made redundant by Q node.
+bool IsClipMadeRedundantByQ(const Graph& graph, const Node& clip_node, const Node& q_node);
+
 }  // namespace QDQ
 }  // namespace onnxruntime

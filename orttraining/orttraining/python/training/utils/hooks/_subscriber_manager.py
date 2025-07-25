@@ -6,7 +6,6 @@
 
 import inspect
 from contextlib import contextmanager
-from typing import List, Optional, Set, Tuple, Union
 
 import onnx
 import torch
@@ -40,7 +39,7 @@ class _IncrementStep(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, run_ctx: RuntimeStates, *input_tensor_list: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]:
+    def forward(ctx, run_ctx: RuntimeStates, *input_tensor_list: tuple[torch.Tensor, ...]) -> tuple[torch.Tensor, ...]:
         """Make sure there is the same number of `tensor` inputs and outputs.
         This is enforced by ORT's PythonOp's schema check.
         """
@@ -57,15 +56,15 @@ class _IncrementStep(torch.autograd.Function):
         return tuple(t.detach().requires_grad_(t.requires_grad) for t in input_tensor_list)
 
     @staticmethod
-    def backward(ctx, *grad_output: Tuple[Optional[torch.Tensor], ...]) -> Tuple[Optional[torch.Tensor], ...]:
+    def backward(ctx, *grad_output: tuple[torch.Tensor | None, ...]) -> tuple[torch.Tensor | None, ...]:
         return (None, *tuple(g for g in grad_output))
 
     @staticmethod
     def infer_shape(
         node: onnx.NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        tensor_input_shapes: list[list[int | str] | None],
+        tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
+    ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
         return tensor_input_shapes, tensor_input_dtypes
 
     @staticmethod
@@ -104,11 +103,11 @@ class SubscriberManager:
 
     def __init__(self):
         self._run_ctx = RuntimeStates()
-        self._subscribers: Set[SubscriberBase] = set()
+        self._subscribers: set[SubscriberBase] = set()
         self._pre_forward_hooks = []
         self._post_forward_hooks = []
 
-    def subscribe(self, module: torch.nn.Module, subscribers: List[SubscriberBase]):
+    def subscribe(self, module: torch.nn.Module, subscribers: list[SubscriberBase]):
         """
         The API is called externally to register hooks that are implicitly defined by subscribers.
         Each time all global states will be cleaned up once called.
@@ -121,7 +120,7 @@ class SubscriberManager:
 
         try:
             # Put the import here to avoid the module level dependency on onnxruntime.training.ortmodule
-            from onnxruntime.training.ortmodule import ORTModule
+            from onnxruntime.training.ortmodule import ORTModule  # noqa: PLC0415
 
             if isinstance(module, ORTModule):
                 module = module.module
@@ -162,7 +161,7 @@ class SubscriberManager:
 
             # Be noted, the first run anyway will run in PyTorch.
             if module not in self._run_ctx.global_states.module_to_module_index:
-                import warnings
+                import warnings  # noqa: PLC0415
 
                 warnings.warn(
                     "Initialize global states for the first time, this should only happen once for each outmost module."
@@ -192,7 +191,7 @@ class SubscriberManager:
         module.register_forward_hook(_post_forward_outmost_module_hook)
 
     def _initialize_one_time_global_states(self, module: torch.nn.Module):
-        def _reset_recursively(module: torch.nn.Module, depth: int, next_module_index: List[int]):
+        def _reset_recursively(module: torch.nn.Module, depth: int, next_module_index: list[int]):
             """
             Called to register hooks for every `torch.nn.Module`. Due to `Module` can contain child `Module`s,
             this function is called recursively by passing in `next_module_index` - a list of int to maintain a
@@ -219,7 +218,7 @@ class SubscriberManager:
         next_module_index = [0]
         _reset_recursively(module, 1, next_module_index)
 
-    def _register_hooks_recursively(self, module: torch.nn.Module, depth: int, next_module_index: List[int]):
+    def _register_hooks_recursively(self, module: torch.nn.Module, depth: int, next_module_index: list[int]):
         """Register hooks for every `torch.nn.Module`. Due to `Module` can contain child `Module`s,
         this function is called recursively by passing in `next_module_index` - a list of int to maintain a
         global incremental unique module id.

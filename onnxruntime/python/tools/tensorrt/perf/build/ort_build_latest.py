@@ -44,9 +44,8 @@ def main():
     cmake_tar = "cmake-3.28.3-linux-x86_64.tar.gz"
     if not os.path.exists(cmake_tar):
         subprocess.run(["wget", "-c", "https://cmake.org/files/v3.28/" + cmake_tar], check=True)
-    tar = tarfile.open(cmake_tar)
-    tar.extractall()
-    tar.close()
+    with tarfile.open(cmake_tar) as tar:
+        tar.extractall()
 
     os.environ["PATH"] = os.path.join(os.path.abspath("cmake-3.28.3-linux-x86_64"), "bin") + ":" + os.environ["PATH"]
     os.environ["CUDACXX"] = os.path.join(args.cuda_home, "bin", "nvcc")

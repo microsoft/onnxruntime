@@ -273,9 +273,9 @@ class PolyWarmupLRScheduler(_LRScheduler):
         self._num_warmup_steps = warmup * total_steps
 
     def _warmup_poly(self, train_step_info):
-        assert (
-            train_step_info.optimizer_config.lr > self.lr_end
-        ), f"lr_end ({lr_end}) must be be smaller than initial lr ({train_step_info.optimizer_config.lr})"  # noqa: F821
+        assert train_step_info.optimizer_config.lr > self.lr_end, (
+            f"lr_end ({self.lr_end}) must be be smaller than initial lr ({train_step_info.optimizer_config.lr})"
+        )
 
         if train_step_info.optimization_step < self._num_warmup_steps:
             return float(train_step_info.optimization_step) / float(max(1, self._num_warmup_steps))

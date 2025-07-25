@@ -52,7 +52,6 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   NodeAttrHelper helper(node);
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -89,9 +88,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     AddOperationOutput(*conv_op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(conv_op));
-  } else
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
     auto strides = helper.Get("strides", std::vector<int64_t>{1, 1});
@@ -225,14 +222,11 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   const auto& weight_name = input_defs[1]->Name();
   const auto* weight = input_params.graph_viewer.GetConstantInitializer(weight_name);
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
     // ML Program supports non-const weight, 1D, 2D and 3D.
     // keep to 1D and 2D for consistency with the NeuralNetwork implementation for now.
     // add 3D support as/when needed.
-  } else
-#endif  // defined (COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     if (!weight) {
       LOGS(logger, VERBOSE) << "The weight of Conv [" << name << "] must be a constant initializer";
       return false;
@@ -242,6 +236,32 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   // use the weight for the shape as it should always be known
   const auto* weight_shape = input_defs[1]->Shape();
   int64_t num_dims = weight_shape ? weight_shape->dim_size() : -1;
+  const auto& output = *node.OutputDefs()[0];
+
+  std::vector<int64_t> weight_shape_vec;
+  std::vector<int64_t> x_shape_vec;
+  std::vector<int64_t> output_shape_vec;
+
+  if (!GetShape(*input_defs[1], weight_shape_vec, logger)) {
+    LOGS(logger, VERBOSE) << "Unable to get the shape of 'W' input, which is necessary to check for valid convolutions.";
+    return false;
+  }
+
+  if (!GetShape(*input_defs[0], x_shape_vec, logger)) {
+    LOGS(logger, VERBOSE) << "Unable to get the shape of 'X' input, which is necessary to check for valid convolutions.";
+    return false;
+  }
+
+  if (!GetShape(output, output_shape_vec, logger)) {
+    LOGS(logger, VERBOSE) << "Unable to get the shape of the output, which is necessary to check for valid convolutions.";
+    return false;
+  }
+
+  if (!CheckShapeForConvMemoryLimit(weight_shape_vec, logger) ||
+      !CheckShapeForConvMemoryLimit(x_shape_vec, logger) ||
+      !CheckShapeForConvMemoryLimit(output_shape_vec, logger)) {
+    return false;
+  }
 
   // ONNX spec requires N and C as first 2 dims
   if (num_dims != 3 && num_dims != 4) {
@@ -257,7 +277,6 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
 
   NodeAttrHelper helper(node);
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   // spec says same_lower is supported in CoreML 5. it lies. CoreML 6 is required otherwise you get
   //   `Unexpected value for parameter pad_type[0] "same_lower" not in ("custom", "same", "valid").`
   // We _could_ manually calculate the pads, but not implementing that until we have a real use case to justify
@@ -269,7 +288,6 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
       return false;
     }
   }
-#endif
 
   // there's no equivalent to allow a manual kernel shape in CoreML.
   // it's OK if a specified kernel_shape matches kH and kW dims of the weight input.

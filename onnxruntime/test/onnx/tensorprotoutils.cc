@@ -3,21 +3,22 @@
 
 #include "tensorprotoutils.h"
 
-#include <memory>
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <utility>
 
-#include "mem_buffer.h"
+#include "callback.h"
+#include "core/common/make_string.h"
 #include "core/common/safeint.h"
 #include "core/common/status.h"
-#include "core/common/make_string.h"
+#include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
 #include "core/framework/endian.h"
-#include "core/framework/allocator.h"
-#include "core/session/onnxruntime_cxx_api.h"
+#include "core/framework/endian_utils.h"
 #include "core/graph/onnx_protobuf.h"
-#include "callback.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "mem_buffer.h"
 
 struct OrtStatus {
   OrtErrorCode code;
@@ -69,21 +70,13 @@ static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length
     ORT_CXX_API_THROW(MakeString("UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
                                  expected_size_in_bytes, ", got ", raw_data_length),
                       OrtErrorCode::ORT_FAIL);
-  memcpy(p_data, raw_data, raw_data_length);
-  if constexpr (endian::native != endian::little) {
-    /* Convert Endianness */
-    char* bytes = reinterpret_cast<char*>(p_data);
-    size_t element_size = sizeof(T);
-    size_t num_elements = raw_data_length / element_size;
 
-    for (size_t i = 0; i < num_elements; ++i) {
-      char* start_byte = bytes + i * element_size;
-      char* end_byte = start_byte + element_size - 1;
-      /* keep swapping */
-      for (size_t count = 0; count < element_size / 2; ++count) {
-        std::swap(*start_byte++, *end_byte--);
-      }
-    }
+  /* Convert Endianness */
+  if constexpr (endian::native != endian::little && sizeof(T) > 1) {
+    utils::SwapByteOrderCopy(sizeof(T), gsl::make_span(reinterpret_cast<const unsigned char*>(raw_data), raw_data_length),
+                             gsl::make_span(reinterpret_cast<unsigned char*>(p_data), raw_data_length));
+  } else {
+    memcpy(p_data, raw_data, raw_data_length);
   }
 }
 
@@ -583,6 +576,124 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
   std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
   value = Ort::Value::CreateTensor(&allocator, tensor_data, m.GetLen(), tensor_shape_vec.data(), tensor_shape_vec.size(), (ONNXTensorElementDataType)tensor_proto.data_type());
+  return Status::OK();
+}
+
+Status MLValueToTensorProto(Ort::Value& value, onnx::TensorProto& tensor_proto) {
+  Ort::TensorTypeAndShapeInfo tensor_info = value.GetTensorTypeAndShapeInfo();
+  size_t out_dims = tensor_info.GetDimensionsCount();
+  std::vector<int64_t> out_shape = tensor_info.GetShape();
+  for (size_t j = 0; j != out_dims; ++j) {
+    if (out_shape[j] < 0) return Status(common::ONNXRUNTIME, common::FAIL, "Tensor can't contain negative dims");
+    tensor_proto.add_dims(out_shape[j]);
+  }
+  size_t tensor_size = tensor_info.GetElementCount();
+  if (static_cast<uint64_t>(tensor_size) > SIZE_MAX) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Size overflow");
+  }
+
+  ONNXTensorElementDataType tensor_elem_data_type = tensor_info.GetElementType();
+  int tensor_elem_bytes;
+  int tensor_proto_dtype;
+  switch (tensor_elem_data_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
+      tensor_elem_bytes = sizeof(float);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8;
+      tensor_elem_bytes = sizeof(uint8_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8;
+      tensor_elem_bytes = sizeof(int8_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16;
+      tensor_elem_bytes = sizeof(uint16_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16;
+      tensor_elem_bytes = sizeof(int16_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
+      tensor_elem_bytes = sizeof(int32_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64;
+      tensor_elem_bytes = sizeof(int64_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL;
+      tensor_elem_bytes = sizeof(bool);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
+      tensor_elem_bytes = 2;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE;
+      tensor_elem_bytes = sizeof(double);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32;
+      tensor_elem_bytes = sizeof(uint32_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64;
+      tensor_elem_bytes = sizeof(uint64_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_COMPLEX64;
+      tensor_elem_bytes = 8;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_COMPLEX128;
+      tensor_elem_bytes = 16;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16;
+      tensor_elem_bytes = 2;
+      break;
+#if !defined(DISABLE_FLOAT8_TYPES)
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN;
+      tensor_elem_bytes = 1;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FNUZ;
+      tensor_elem_bytes = 1;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2;
+      tensor_elem_bytes = 1;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2FNUZ;
+      tensor_elem_bytes = 1;
+      break;
+#endif
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4;
+      tensor_elem_bytes = 1;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4;
+      tensor_elem_bytes = 1;
+      break;
+    default: {
+      // In this function, we do not support
+      // ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING and ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED
+      std::ostringstream ostr;
+      ostr << "Initialized tensor with unexpected type: " << tensor_elem_data_type;
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
+    }
+  }
+  tensor_proto.set_data_type(tensor_proto_dtype);
+  void* output_buffer = value.GetTensorMutableRawData();
+  tensor_proto.set_raw_data(
+      output_buffer, tensor_size * tensor_elem_bytes);
   return Status::OK();
 }
 

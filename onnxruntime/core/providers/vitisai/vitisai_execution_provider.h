@@ -28,7 +28,9 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   ~VitisAIExecutionProvider() = default;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                                const IKernelLookup& /*kernel_lookup*/) const override;
+                                                                const IKernelLookup& /*kernel_lookup*/,
+                                                                const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                                                IResourceAccountant* /* resource_accountant */) const override;
 
   int GetDeviceId() const { return 0; }
   common::Status OnRunStart(const onnxruntime::RunOptions& /*run_options*/) override;
@@ -36,11 +38,15 @@ class VitisAIExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
+
   // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
   // This timing is required to work with both compliation-based EPs and non-compilation-based EPs.
   const InlinedVector<const Node*> GetEpContextNodes() const override;
   virtual common::Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
                                              gsl::span<const char* const> /*values*/) override;
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   using my_ep_t = vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>;
@@ -52,7 +58,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> registry_;
   // EP context related.
   bool ep_ctx_enabled_ = false;
-  bool ep_ctx_embed_mode_ = true;
+  bool ep_ctx_embed_mode_ = false;
   std::string ep_ctx_model_path_cfg_{""};
   mutable PathString ep_ctx_model_file_loc_{};
   // It might need to be called before loading

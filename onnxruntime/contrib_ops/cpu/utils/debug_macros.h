@@ -15,11 +15,13 @@
 #if DUMP_CPU_TENSOR_LEVEL > 0
 #define DUMP_CPU_TENSOR_INIT() onnxruntime::contrib::CpuTensorConsoleDumper cpu_dumper
 #define DUMP_CPU_TENSOR(...) cpu_dumper.Print(__VA_ARGS__)
-#define DUMP_STRING(...) cpu_dumper.Print(::onnxruntime::MakeString(__VA_ARGS__))
+#define DUMP_CPU_STRING_INIT() DUMP_CPU_TENSOR_INIT()
+#define DUMP_CPU_STRING(...) cpu_dumper.Print(::onnxruntime::MakeString(__VA_ARGS__))
 #else
-#define DUMP_CPU_TENSOR_INIT()
+#define DUMP_CPU_TENSOR_INIT(...)
 #define DUMP_CPU_TENSOR(...)
-#define DUMP_STRING(...)
+#define DUMP_CPU_STRING_INIT(...)
+#define DUMP_CPU_STRING(...)
 #endif
 
 #if DUMP_CPU_TENSOR_LEVEL > 1
@@ -32,9 +34,13 @@
 #if DUMP_TENSOR_LEVEL > 0
 #define DUMP_TENSOR_INIT() onnxruntime::contrib::cuda::CudaTensorConsoleDumper dumper
 #define DUMP_TENSOR(...) dumper.Print(__VA_ARGS__)
+#define DUMP_STRING_INIT() DUMP_TENSOR_INIT()
+#define DUMP_STRING(...) dumper.Print(::onnxruntime::MakeString(__VA_ARGS__))
 #else
-#define DUMP_TENSOR_INIT()
+#define DUMP_TENSOR_INIT(...)
 #define DUMP_TENSOR(...)
+#define DUMP_STRING_INIT(...)
+#define DUMP_STRING(...)
 #endif
 
 #if DUMP_TENSOR_LEVEL > 1

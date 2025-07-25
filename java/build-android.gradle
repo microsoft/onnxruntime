@@ -82,7 +82,7 @@ allprojects {
 }
 
 android {
-	compileSdkVersion 32
+	compileSdkVersion 34
 
 	defaultConfig {
 		minSdkVersion minSdkVer
@@ -108,8 +108,8 @@ android {
 	}
 
 	compileOptions {
-		sourceCompatibility = JavaVersion.VERSION_1_8
-		targetCompatibility = JavaVersion.VERSION_1_8
+		sourceCompatibility = JavaVersion.VERSION_17
+		targetCompatibility = JavaVersion.VERSION_17
 	}
 
 	sourceSets {
@@ -147,7 +147,7 @@ artifacts {
 dependencies {
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
-	testImplementation 'com.google.protobuf:protobuf-java:3.21.7'
+	testImplementation 'com.google.protobuf:protobuf-java:3.25.5'
 }
 
 publishing {

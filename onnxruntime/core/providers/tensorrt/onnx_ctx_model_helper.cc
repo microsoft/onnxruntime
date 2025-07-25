@@ -128,7 +128,8 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
 
   // Serialize modelproto to string
   auto new_graph_viewer = graph_build.CreateGraphViewer();
-  auto model = new_graph_viewer->CreateModel(*logger);
+  auto& metadata = graph_viewer.GetGraph().GetModel().MetaData();
+  auto model = new_graph_viewer->CreateModel(*logger, metadata);
   auto model_proto = model->ToProto();
   new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -297,6 +298,8 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                                                            make_secure_path_checks,
                                                            onnx_model_bytestream_,
                                                            onnx_model_bytestream_size_,
+                                                           onnx_external_data_bytestream_,
+                                                           onnx_external_data_bytestream_size_,
                                                            (*trt_engine_).get(),
                                                            false /* serialize refitted engine to disk */,
                                                            detailed_build_log_);
@@ -366,6 +369,8 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                                                            make_secure_path_checks,
                                                            onnx_model_bytestream_,
                                                            onnx_model_bytestream_size_,
+                                                           onnx_external_data_bytestream_,
+                                                           onnx_external_data_bytestream_size_,
                                                            (*trt_engine_).get(),
                                                            true /* serialize refitted engine to disk */,
                                                            detailed_build_log_);

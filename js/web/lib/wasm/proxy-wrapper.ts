@@ -12,7 +12,11 @@ import {
 } from './proxy-messages';
 import * as core from './wasm-core-impl';
 import { initializeWebAssembly } from './wasm-factory';
-import { importProxyWorker } from './wasm-utils-import';
+import {
+  importProxyWorker,
+  inferWasmPathPrefixFromScriptSrc,
+  isEsmImportMetaUrlHardcodedAsFileUri,
+} from './wasm-utils-import';
 
 const isProxy = (): boolean => !!env.wasm.proxy && typeof document !== 'undefined';
 let proxyWorker: Worker | undefined;
@@ -98,6 +102,42 @@ export const initializeWebAssemblyAndOrtRuntime = async (): Promise<void> => {
           proxyWorker.onmessage = onProxyWorkerMessage;
           initWasmCallbacks = [resolve, reject];
           const message: OrtWasmMessage = { type: 'init-wasm', in: env };
+
+          // if the proxy worker is loaded from a blob URL, we need to make sure the path information is not lost.
+          //
+          // when `env.wasm.wasmPaths` is not set, we need to pass the path information to the worker.
+          //
+          if (!BUILD_DEFS.ENABLE_BUNDLE_WASM_JS && !message.in!.wasm.wasmPaths && objectUrl) {
+            // for a build not bundled the wasm JS, we need to pass the path prefix to the worker.
+            // the path prefix will be used to resolve the path to both the wasm JS and the wasm file.
+            const inferredWasmPathPrefix = inferWasmPathPrefixFromScriptSrc();
+            if (inferredWasmPathPrefix) {
+              message.in!.wasm.wasmPaths = inferredWasmPathPrefix;
+            }
+          }
+
+          if (
+            BUILD_DEFS.IS_ESM &&
+            BUILD_DEFS.ENABLE_BUNDLE_WASM_JS &&
+            !message.in!.wasm.wasmPaths &&
+            (objectUrl || isEsmImportMetaUrlHardcodedAsFileUri)
+          ) {
+            // for a build bundled the wasm JS, if either of the following conditions is met:
+            // - the proxy worker is loaded from a blob URL
+            // - `import.meta.url` is a file URL, it means it is overwritten by the bundler.
+            //
+            // in either case, the path information is lost, we need to pass the path of the .wasm file to the worker.
+            // we need to use the bundler preferred URL format:
+            // new URL('filename', import.meta.url)
+            // so that the bundler can handle the file using corresponding loaders.
+            message.in!.wasm.wasmPaths = {
+              wasm: !BUILD_DEFS.DISABLE_JSEP
+                ? new URL('ort-wasm-simd-threaded.jsep.wasm', BUILD_DEFS.ESM_IMPORT_META_URL).href
+                : !BUILD_DEFS.DISABLE_WEBGPU
+                  ? new URL('ort-wasm-simd-threaded.asyncify.wasm', BUILD_DEFS.ESM_IMPORT_META_URL).href
+                  : new URL('ort-wasm-simd-threaded.wasm', BUILD_DEFS.ESM_IMPORT_META_URL).href,
+            };
+          }
           proxyWorker.postMessage(message);
           temporaryObjectUrl = objectUrl;
         } catch (e) {

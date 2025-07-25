@@ -28,6 +28,9 @@ class BatchNormHelper {
     // NHWC dependent shape: X
     // All other shapes are assumed to be in NCHW layout?
     const auto& x_dims = X->Shape().GetDims();
+    if (x_dims.size() < 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input X: NumDimensions() < 1");
+    }
 
     // If x_dims size < 2, num_channels defaults to 1.
     int64_t num_channels;

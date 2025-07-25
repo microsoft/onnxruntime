@@ -52,9 +52,6 @@ jobs:
   workspace:
     clean: all
   steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
   - checkout: self
   - task: DownloadPipelineArtifact@2
     inputs:
@@ -81,15 +78,7 @@ jobs:
       architecture: $(buildArch)
   - task: NodeTool@0
     inputs:
-      versionSpec: '20.x'
-  - template: download-deps.yml
-
-  - task: PythonScript@0
-    displayName: 'Update deps.txt'
-    inputs:
-      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-      arguments: --new_dir $(Build.BinariesDirectory)/deps
-      workingDirectory: $(Build.BinariesDirectory)
+      versionSpec: '22.x'
 
   - task: PythonScript@0
     displayName: 'Build and test (node)'
@@ -165,6 +154,3 @@ jobs:
       searchFolder: '$(Build.BinariesDirectory)'
       testRunTitle: 'Unit Test Run'
     condition: and(succeededOrFailed(), eq('${{ parameters.BuildConfig }}', 'Debug'))
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'

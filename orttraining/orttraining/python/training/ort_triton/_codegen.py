@@ -12,8 +12,6 @@ Mostly, Nodes are classified into two categories:
 
 """
 
-from typing import Tuple
-
 import sympy
 import torch
 from sympy.codegen.rewriting import create_expand_pow_optimization
@@ -49,7 +47,7 @@ class TritonCodegen(NodeVisitor):
         assert func is not None, f"unimplemented node: {node.__class__.__name__}"
         func(node, context, code_buffer, indent)
 
-    def _get_elementwise_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> Tuple[str, str]:
+    def _get_elementwise_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> tuple[str, str]:
         if offset_calc.is_x_reduced(arg_name):
             # Scalar.
             return "tl.full([1], 0, tl.int32)", ""
@@ -61,7 +59,7 @@ class TritonCodegen(NodeVisitor):
         offset_str = str(expand_opt(sympy_dot(parse_shape(idx_var), strides)))
         return offset_str, "xmask" if offset_calc.requires_x_mask else ""
 
-    def _get_reduce_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> Tuple[str, str]:
+    def _get_reduce_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> tuple[str, str]:
         offset_strs = []
         mask_strs = []
         if not offset_calc.is_x_reduced(arg_name):
@@ -93,7 +91,7 @@ class TritonCodegen(NodeVisitor):
             offset_strs.append("tl.full([1, 1], 0, tl.int32)")
         return " + ".join(offset_strs), " & ".join(mask_strs)
 
-    def _get_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> Tuple[str, str]:
+    def _get_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> tuple[str, str]:
         return (
             self._get_reduce_offset_mask(offset_calc, arg_name)
             if offset_calc.is_reduction
@@ -105,9 +103,9 @@ class TritonCodegen(NodeVisitor):
         name = node.tensor_arg.name
         var_name = context.get_variable_name(name)
         internal_var_name = context.get_internal_variable_name(name)
-        assert (
-            var_name != internal_var_name
-        ), f"variable name {var_name} and its internal variable name should not be the same."
+        assert var_name != internal_var_name, (
+            f"variable name {var_name} and its internal variable name should not be the same."
+        )
 
         offset_str, mask_str = self._get_offset_mask(node.offset_calc, node.tensor_arg.name)
         if offset_str:
@@ -359,8 +357,7 @@ class TritonCodegen(NodeVisitor):
         for reduce_node in node.reduce_nodes:
             tmp_var_name = "tmp_" + context.get_internal_variable_name(reduce_node.outputs[0].name)
             code_buffer += (
-                f"{space_indent}{tmp_var_name} = "
-                f"tl.zeros([XBLOCK, RBLOCK], tl.float32) + {reduce_node.default_value}\n"
+                f"{space_indent}{tmp_var_name} = tl.zeros([XBLOCK, RBLOCK], tl.float32) + {reduce_node.default_value}\n"
             )
         code_buffer += (
             f"{space_indent}for roffset in range(0, rnumel, RBLOCK):\n{space_indent}    rindex = rbase + roffset\n"
@@ -440,9 +437,7 @@ class TritonCodegen(NodeVisitor):
     def ModuleNode(self, node: ModuleNode, context: CodegenContext, code_buffer: CodeBuffer, indent: int):  # noqa: N802
         space_indent = " " * indent
         code_buffer += (
-            f"{space_indent}import triton\n"
-            f"{space_indent}import triton.language as tl\n"
-            f"{space_indent}import torch\n"
+            f"{space_indent}import triton\n{space_indent}import triton.language as tl\n{space_indent}import torch\n"
         )
 
         for kernel_node in node.kernels:

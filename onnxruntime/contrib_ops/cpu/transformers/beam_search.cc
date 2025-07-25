@@ -68,6 +68,10 @@ REGISTER_KERNEL_TYPED(float)
 
 namespace transformers {
 
+constexpr const char* kBeamSearchNotSupportFp16InCpu =
+    "BeamSearch does not support float16 model on CPU execution provider. "
+    "Use float32 model or CUDA execution provider instead.";
+
 void BeamSearch::Init(const OpKernelInfo& info) {
   parameters_->ParseFromAttributes(info);
 
@@ -139,13 +143,19 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       ORT_RETURN_IF_ERROR(t5_encoder_subgraph_->Setup(session_state, subgraph_session_state));
       encoder_feeds_fetches_manager_ = t5_encoder_subgraph_->GetFeedsFetchesManager();
 
-      if (parameters_->decoder_start_token_id < 0) {
-        ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 2,
-                      "Encoder subgraph shall have 2 inputs when decoder_start_token_id attribute is empty");
+      if (!t5_encoder_subgraph_->HasLogitsOutput()) {
+        // New format requires start token id.
+        ORT_ENFORCE(parameters_->decoder_start_token_id >= 0);
       } else {
-        ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 3,
-                      "Encoder subgraph shall have 3 inputs when decoder_start_token_id attribute is available");
+        if (parameters_->decoder_start_token_id < 0) {
+          ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 2,
+                        "Encoder subgraph shall have 2 inputs when decoder_start_token_id attribute is empty");
+        } else {
+          ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 3,
+                        "Encoder subgraph shall have 3 inputs when decoder_start_token_id attribute is available");
+        }
       }
+
     } else if (attribute_name == "decoder") {
       ORT_ENFORCE(t5_decoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
@@ -209,6 +219,8 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   // Make a copy of parameters since we will update it based on inputs later
   BeamSearchParameters parameters = *parameters_;
 
+  const bool is_cpu_provider = ctx->GetComputeStream() == nullptr;
+
   if (parameters.model_type == IGenerationParameters::kModelTypeGpt) {
     if (!gpt_subgraph_->IsOutputFloat16()) {  // Output float32
       BeamSearchGpt<float> impl{
@@ -234,6 +246,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
     } else {  // Output float16
+      if (is_cpu_provider) {
+        ORT_THROW(kBeamSearchNotSupportFp16InCpu);
+      }
+
       BeamSearchGpt<MLFloat16> impl{
           *ctx_internal,
           has_init_decoder_ ? init_run_decoder_session_state : nullptr,
@@ -250,6 +266,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           device_copy_int32_func_,
           update_gpt_feeds_fp16_func_,
           create_beam_scorer_func_};
+
 #ifdef USE_CUDA
       ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, cuda_device_prop_, cuda_device_arch_));
 #endif
@@ -288,6 +305,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
 
       return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
     } else {
+      if (is_cpu_provider) {
+        ORT_THROW(kBeamSearchNotSupportFp16InCpu);
+      }
+
       BeamSearchT5<MLFloat16> impl{
           *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
           *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
@@ -303,6 +324,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           expand_buffer_float_func_,
           expand_buffer_float16_func_,
           create_beam_scorer_func_};
+
 #ifdef USE_CUDA
       ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, init_cache_indir_func_, cuda_device_prop_, cuda_device_arch_));
 #endif
@@ -340,6 +362,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
 
       return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
     } else {
+      if (is_cpu_provider) {
+        ORT_THROW(kBeamSearchNotSupportFp16InCpu);
+      }
+
       BeamSearchWhisper<MLFloat16> impl{
           *ctx_internal, *encoder_session_state, *decoder_session_state, *whisper_encoder_subgraph_,
           *whisper_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,

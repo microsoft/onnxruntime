@@ -5,7 +5,6 @@
 import hashlib
 import os
 from enum import Enum
-from typing import Optional
 
 import torch
 from diffusion_models import CLIP, VAE, CLIPWithProj, PipelineInfo, UNet, UNetXL
@@ -144,7 +143,7 @@ class EngineBuilder:
 
     def load_pipeline_with_lora(self):
         """Load text encoders and UNet with diffusers pipeline"""
-        from diffusers import DiffusionPipeline
+        from diffusers import DiffusionPipeline  # noqa: PLC0415
 
         pipeline = DiffusionPipeline.from_pretrained(
             self.pipeline_info.name(),
@@ -275,7 +274,7 @@ class EngineBuilder:
 
 
 def get_engine_paths(
-    work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, framework_model_dir: Optional[str] = None
+    work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, framework_model_dir: str | None = None
 ):
     root_dir = work_dir or "."
     short_name = pipeline_info.short_name()

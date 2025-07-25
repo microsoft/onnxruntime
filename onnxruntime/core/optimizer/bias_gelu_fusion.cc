@@ -61,7 +61,10 @@ Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     }
 
     const Node& next_node = (*next_node_itr);
-    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Gelu", {1}, kMSDomain) ||
+
+    bool is_onnx_gelu = graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Gelu", {20}, kOnnxDomain);
+    if (!(is_onnx_gelu ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Gelu", {1}, kMSDomain) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "FastGelu", {1}, kMSDomain)) ||
         next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;
@@ -72,6 +75,12 @@ Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       continue;
     }
 
+    bool is_approximate = is_fast_gelu;
+    if (is_onnx_gelu) {
+      const ONNX_NAMESPACE::AttributeProto* attribute = graph_utils::GetNodeAttribute(next_node, "approximate");
+      is_approximate = (attribute != nullptr) && utils::HasString(*attribute) && (attribute->s() == "tanh");
+    }
+
     if (graph.NodeProducesGraphOutput(node)) {
       continue;
     }
@@ -79,7 +88,7 @@ Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     Node& add_node = node;
     Node& gelu_node = const_cast<Node&>(next_node);
     std::string op_type = "BiasGelu";
-    if (is_fast_gelu) op_type = "FastGelu";
+    if (is_approximate) op_type = "FastGelu";
 
     Node& gelu_add_fusion_node = graph.AddNode(graph.GenerateNodeName(op_type),
                                                op_type,

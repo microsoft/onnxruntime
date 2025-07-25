@@ -1,10 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers.h"
+#include "core/common/parse_string.h"
+#include "core/framework/prepacked_weights.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/util/include/asserts.h"
 #include "file_util.h"
+
+#include <cstdint>
+#include <limits>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -18,6 +25,144 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
+
+// if `expected_error_message_substring` is nullptr, parsing is expected to be successful
+static void TestExternalDataInfoParsingOffsetAndLengthWithStrings(
+    std::string_view offset_str,
+    std::string_view length_str,
+    const char* expected_error_message_substring = nullptr) {
+  SCOPED_TRACE(MakeString("offset: \"", offset_str, "\", length: \"", length_str, "\""));
+
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  const std::filesystem::path kExternalDataPath("test.bin");
+
+  tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+
+  auto* location_entry = tensor_proto.add_external_data();
+  location_entry->set_key("location");
+  location_entry->set_value(ToUTF8String(kExternalDataPath.native()));
+
+  auto* offset_entry = tensor_proto.add_external_data();
+  offset_entry->set_key("offset");
+  offset_entry->set_value(offset_str.data(), offset_str.size());
+
+  auto* length_entry = tensor_proto.add_external_data();
+  length_entry->set_key("length");
+  length_entry->set_value(length_str.data(), length_str.size());
+
+  std::unique_ptr<ExternalDataInfo> external_data_info{};
+  const auto create_status = ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info);
+  if (expected_error_message_substring) {
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(create_status, expected_error_message_substring);
+    return;
+  }
+  ASSERT_STATUS_OK(create_status);
+
+  // if we got this far, assume that offset_str and length_str are able to be parsed.
+  const auto expected_offset = ParseStringWithClassicLocale<ExternalDataInfo::OFFSET_TYPE>(offset_str);
+  const auto expected_length = ParseStringWithClassicLocale<size_t>(length_str);
+
+  ASSERT_EQ(external_data_info->GetOffset(), expected_offset);
+  ASSERT_EQ(external_data_info->GetLength(), expected_length);
+}
+
+// if `expected_error_message_substring` is nullptr, parsing is expected to be successful
+static void TestExternalDataInfoParsingOffsetAndLength(intmax_t offset,
+                                                       uintmax_t length,
+                                                       const char* expected_error_message_substring = nullptr) {
+  TestExternalDataInfoParsingOffsetAndLengthWithStrings(std::to_string(offset), std::to_string(length),
+                                                        expected_error_message_substring);
+}
+
+TEST(TensorProtoUtilsTest, ParseExternalDataInfoOffsetAndLength) {
+  TestExternalDataInfoParsingOffsetAndLength(0, 0);
+
+  TestExternalDataInfoParsingOffsetAndLength(0, 1024);
+  TestExternalDataInfoParsingOffsetAndLength(0, std::numeric_limits<size_t>::max());
+
+  TestExternalDataInfoParsingOffsetAndLength(1024, 1024);
+  TestExternalDataInfoParsingOffsetAndLength(std::numeric_limits<ExternalDataInfo::OFFSET_TYPE>::max(), 1024);
+
+  {
+    // assuming that this value is too large to fit in either size_t or ExternalDataInfo::OFFSET_TYPE
+    const std::string_view two_to_the_65th_power = "36893488147419103232";
+    const std::string_view zero = "0";
+    TestExternalDataInfoParsingOffsetAndLengthWithStrings(two_to_the_65th_power, zero, "Failed to parse value");
+    TestExternalDataInfoParsingOffsetAndLengthWithStrings(zero, two_to_the_65th_power, "Failed to parse value");
+  }
+
+  // TODO should ExternalDataInfo::Create() also reject negative offset values?
+}
+
+// Test ExternalData functionality
+TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  const std::filesystem::path kExternalDataPath("test.bin");
+  constexpr const int64_t init_offset = 100;
+  constexpr const size_t init_length = 200;
+
+  ExternalDataInfo::SetExternalLocationToProto(kExternalDataPath, init_offset, init_length, tensor_proto);
+
+  ASSERT_EQ(tensor_proto.data_location(), ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  ASSERT_EQ(tensor_proto.external_data_size(), 3);
+  ASSERT_EQ(tensor_proto.external_data(0).key(), "location");
+  ASSERT_EQ(tensor_proto.external_data(0).value(), ToUTF8String(kExternalDataPath.native()));
+  ASSERT_EQ(tensor_proto.external_data(1).key(), "offset");
+  ASSERT_EQ(tensor_proto.external_data(1).value(), std::to_string(init_offset));
+  ASSERT_EQ(tensor_proto.external_data(2).key(), "length");
+  ASSERT_EQ(tensor_proto.external_data(2).value(), std::to_string(init_length));
+
+  PrepackedKeyToBlobMap key_to_blob;
+  constexpr bool save_mode_on = true;
+  PrepackedWeightsForGraph prepacked_for_graph(key_to_blob, save_mode_on);
+  PrePackedWeights prepacked_weights;
+  const std::string init_name = "test_initializer";
+  const std::string blob_key = "test_key";
+
+  std::array<float, 2> kData = {1.2345f, 2.4690f};
+  const size_t buffer_size = kData.size() * sizeof(float);
+
+  prepacked_weights.buffers_.push_back(BufferUniquePtr(kData.data(), BufferDeleter(nullptr)));
+  prepacked_weights.buffer_sizes_.push_back(buffer_size);
+  // Write a second entry like this
+  prepacked_weights.buffers_.push_back(BufferUniquePtr(kData.data(), BufferDeleter(nullptr)));
+  prepacked_weights.buffer_sizes_.push_back(buffer_size);
+
+  prepacked_for_graph.WritePackedMaybeForSave(init_name, blob_key, std::move(prepacked_weights));
+
+  constexpr const int64_t starting_offset = 300;
+  int64_t external_offset = starting_offset;
+  std::stringstream ss;
+  const auto* blobs_for_weight = prepacked_for_graph.GetKeysForWeightForSaving(init_name);
+  ASSERT_TRUE(blobs_for_weight != nullptr);
+  InlinedHashSet<std::string> blob_keys{blobs_for_weight->begin(), blobs_for_weight->end()};
+  ASSERT_TRUE(ExternalDataInfo::WritePrepackedToFileAndAddToProto(prepacked_for_graph,
+                                                                  blob_keys,
+                                                                  true, 1024 * 1024, 0,
+                                                                  ss, external_offset,
+                                                                  tensor_proto));
+
+  auto external_data_info = std::make_unique<ExternalDataInfo>();
+  ASSERT_STATUS_OK(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+
+  // This should have prepacked_data entry with two blobs for a single key.
+  ASSERT_TRUE(external_data_info->HasPrepackedInfo());
+  auto prepacked_infos = external_data_info->TakePrepackedInfos();
+  ASSERT_EQ(prepacked_infos.size(), 1U);
+  ASSERT_TRUE(prepacked_infos.count(blob_key) > 0);
+
+  int64_t final_offset = starting_offset;
+  for (const auto& blob_info : prepacked_infos[blob_key]) {
+    int64_t offset = std::get<0>(blob_info);
+    ASSERT_EQ(offset, final_offset);
+    size_t length = std::get<1>(blob_info);
+    std::string checksum = std::get<2>(blob_info);  // currently "0"
+    final_offset = offset + length;
+    ASSERT_EQ(length, buffer_size);
+    ASSERT_EQ(checksum, "0");
+  }
+  ASSERT_EQ(final_offset, external_offset);
+}
 
 // T must be float for double, and it must match with the 'type' argument
 template <typename T>

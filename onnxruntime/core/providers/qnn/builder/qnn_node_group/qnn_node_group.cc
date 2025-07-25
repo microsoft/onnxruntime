@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/qnn/builder/qnn_node_group.h"
-
 #include <gsl/gsl>
 #include <limits>
 #include <memory>
@@ -10,14 +8,20 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include "core/graph/graph_utils.h"
-#include "core/framework/node_unit.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
+
 #include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/qnn/builder/qnn_node_group/conv_activation_fusion.h"
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_node_group/dq_q_fusion.h"
 #include "core/providers/qnn/builder/qnn_node_group/hardsigmoid_mul_fusion.h"
+#include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
+#include "core/providers/qnn/builder/qnn_node_group/reshape_gemm_fusion.h"
+#include "core/providers/qnn/builder/qnn_node_group/scale_softmax_fusion.h"
+#include "core/providers/qnn/builder/qnn_node_group/channel_shuffle_fusion.h"
+#include "core/providers/qnn/builder/qnn_node_group/udo_fusion.h"
+#include "core/providers/qnn/builder/qnn_node_group/lpbqgemm_fusion.h"
+
+#include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -62,13 +66,36 @@ class QnnNodeUnitWrapper : public IQnnNodeGroup {
 /// <summary>
 /// The type of a function that tries to fuse NodeUnits into a IQnnNodeGroup.
 /// </summary>
-using FusionFunc = std::unique_ptr<IQnnNodeGroup> (*)(
-    QnnModelWrapper&,
-    const NodeUnit&,
-    const std::unordered_map<const Node*, const NodeUnit*>&,
-    const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>&,
-    const logging::Logger&);
+using FusionFunc = std::function<std::unique_ptr<IQnnNodeGroup>(QnnModelWrapper& qnn_model_wrapper,
+                                                                const NodeUnit& udo_node_unit,
+                                                                const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+                                                                const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
+                                                                const logging::Logger& logger)>;
 
+// Maps a starting operator type to the fusion function.
+static std::unordered_map<std::string, std::vector<FusionFunc>> fusions = {
+    {"DequantizeLinear", {DQQFusion::TryFusion}},
+    {"HardSigmoid", {HardSigmoidMulFusion::TryFusion}},
+    {"Gemm", {LowPowerBlockQuantizedGemmFusion::TryFusion, ReshapeGemmFusion::TryFusion}},
+    {"Mul", {ScaleSoftmaxFusion::TryFusion}},
+    {"Transpose", {ChannelShuffleFusion::TryFusion}}};
+
+void registerUDO(const std::string& node_type, const std::string& op_package) {
+  std::function<std::unique_ptr<IQnnNodeGroup>(QnnModelWrapper & qnn_model_wrapper,
+                                               const NodeUnit& udo_node_unit,
+                                               const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+                                               const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
+                                               const logging::Logger& logger)>
+      boundFunction = std::bind(&UDOQDQFusion::TryFusion,
+                                node_type,
+                                op_package,
+                                /*qnn_model_wrapper=*/std::placeholders::_1,
+                                /*udo_node_unit=*/std::placeholders::_2,
+                                /*node_to_node_unit=*/std::placeholders::_3,
+                                /*node_unit_to_qnn_node_group=*/std::placeholders::_4,
+                                /*logger=*/std::placeholders::_5);
+  fusions[node_type] = {boundFunction};
+}
 /// <summary>
 /// Given a starting NodeUnit, this function tries all possible fusions that start with that NodeUnit.
 /// If successful, returns a IQnnNodeGroup object that represents the fusion of various NodeUnits.
@@ -86,14 +113,6 @@ static std::unique_ptr<IQnnNodeGroup> TryQnnFusions(
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
     const logging::Logger& logger) {
-  // Maps a starting operator type to the fusion function.
-  static std::unordered_map<std::string, FusionFunc> fusions = {
-      {"DequantizeLinear", DQQFusion::TryFusion},
-      {"HardSigmoid", HardSigmoidMulFusion::TryFusion},
-      {"Conv", ConvActivationFusion::TryFusion},
-      {"ConvTranspose", ConvActivationFusion::TryFusion},
-  };
-
   // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).
   if (starting_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
     return nullptr;
@@ -101,9 +120,13 @@ static std::unique_ptr<IQnnNodeGroup> TryQnnFusions(
 
   auto iter = fusions.find(starting_node_unit.OpType());
   if (iter != fusions.end()) {
-    FusionFunc fusion_func = iter->second;
-    return fusion_func(qnn_model_wrapper, starting_node_unit, node_to_node_unit,
-                       node_unit_to_qnn_node_group, logger);
+    for (auto& fusion_func : iter->second) {
+      std::unique_ptr<IQnnNodeGroup> fused_node_group = fusion_func(qnn_model_wrapper, starting_node_unit, node_to_node_unit,
+                                                                    node_unit_to_qnn_node_group, logger);
+      if (fused_node_group) {
+        return fused_node_group;
+      }
+    }
   }
   return nullptr;
 }
@@ -118,7 +141,7 @@ static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeG
                                    const size_t num_node_units,
                                    const logging::Logger& logger) {
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
-  const std::vector<NodeIndex> sorted_node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  const std::vector<NodeIndex>& sorted_node_indices = graph_viewer.GetNodesInTopologicalOrder();
 
   sorted_qnn_node_group_indices.reserve(num_node_units);
   qnn_node_groups.reserve(num_node_units);

@@ -98,7 +98,6 @@ def main():
         )
 
     if use_container_registry:
-        run(args.docker_path, "buildx", "create", "--driver=docker-container", "--name=container_builder")
         run(
             args.docker_path,
             "--log-level",
@@ -109,8 +108,6 @@ def main():
             "--tag",
             full_image_name,
             "--cache-from=type=registry,ref=" + full_image_name,
-            "--builder",
-            "container_builder",
             "--build-arg",
             "BUILDKIT_INLINE_CACHE=1",
             *shlex.split(args.docker_build_args),

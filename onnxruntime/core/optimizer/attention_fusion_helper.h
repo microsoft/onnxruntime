@@ -272,17 +272,17 @@ struct MatchUnidirMaskResult {
   std::vector<NodeIndex> node_indices;  // id of all nodes in the subgraph for removing later.
 };
 
-// Return true when mask is unidirectionl (lower trigular) or all elements are 1.
+// Return true when mask is unidirectional (lower triangular) or all elements are 1.
 template <class T>
-bool ValidateUnidirMask(std::vector<T> mask_data, int64_t w, bool& is_undirectional) {
+bool ValidateUnidirMask(gsl::span<const T> mask_data, int64_t w, bool& is_undirectional) {
   // The mask data has shape 1x1xWxW
   if (mask_data.size() == static_cast<size_t>(w * w)) {
     bool is_one = true;
     is_undirectional = true;
 
     const T* p = mask_data.data();
-    for (int i = 0; i < w; i++) {
-      for (int j = 0; j < w; j++) {
+    for (int64_t i = 0; i < w; i++) {
+      for (int64_t j = 0; j < w; j++) {
         if (*p != static_cast<T>(1)) {
           is_one = false;
         }
@@ -310,7 +310,16 @@ bool ValidateUnidirMask(const Graph& graph, const NodeArg& mask, bool& is_unidir
 
   // Check that the mask shape is 1x1xWxW
   auto shape = mask.Shape();
-  if (shape == nullptr || static_cast<size_t>(shape->dim_size()) != 4 || !utils::HasDimValue(shape->dim(0)) || static_cast<int64_t>(1) != shape->dim(0).dim_value() || !utils::HasDimValue(shape->dim(1)) || static_cast<int64_t>(1) != shape->dim(1).dim_value() || !utils::HasDimValue(shape->dim(2)) || !utils::HasDimValue(shape->dim(3)) || shape->dim(2).dim_value() != shape->dim(3).dim_value()) {
+  if (
+      shape == nullptr ||
+      static_cast<size_t>(shape->dim_size()) != 4 ||
+      !utils::HasDimValue(shape->dim(0)) ||
+      static_cast<int64_t>(1) != shape->dim(0).dim_value() ||
+      !utils::HasDimValue(shape->dim(1)) ||
+      static_cast<int64_t>(1) != shape->dim(1).dim_value() ||
+      !utils::HasDimValue(shape->dim(2)) ||
+      !utils::HasDimValue(shape->dim(3)) ||
+      shape->dim(2).dim_value() != shape->dim(3).dim_value()) {
     DEBUG_LOG("unidir mask shape not expected");
     return false;
   }
@@ -320,35 +329,16 @@ bool ValidateUnidirMask(const Graph& graph, const NodeArg& mask, bool& is_unidir
     return false;
   }
 
-  if (tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-    DEBUG_LOG("This optimizer does not support external data for unidirectional mask right now");
-    return false;
-  }
+  // Make sure that external data and data in memory are taken care of
+  Initializer initializer(graph, *tensor_proto, graph.ModelPath(), /*check_outer_scope=*/false);
 
-  if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    size_t bytes;
-    if (!utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &bytes).IsOK()) {
-      return false;
-    }
-    auto data = std::make_unique<uint8_t[]>(bytes);
-    uint8_t* p = data.get();
-    if (!utils::UnpackTensor<uint8_t>(
-             *tensor_proto,
-             tensor_proto->raw_data().size() ? tensor_proto->raw_data().data() : nullptr,
-             tensor_proto->raw_data().size(),
-             p,
-             bytes)
-             .IsOK()) {
-      return false;
-    }
-    std::vector<uint8_t> mask_data(p, p + bytes);
-    if (!ValidateUnidirMask(mask_data, shape->dim(2).dim_value(), is_unidirectional)) {
+  if (initializer.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    if (!ValidateUnidirMask<uint8_t>(initializer.DataAsSpan<uint8_t>(), shape->dim(2).dim_value(), is_unidirectional)) {
       DEBUG_LOG("Mask is neither unidirectional nor all ones");
       return false;
     }
-  } else if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    std::vector<float> float_data = ONNX_NAMESPACE::ParseData<float>(tensor_proto);
-    if (!ValidateUnidirMask(float_data, shape->dim(2).dim_value(), is_unidirectional)) {
+  } else if (initializer.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (!ValidateUnidirMask<float>(initializer.DataAsSpan<float>(), shape->dim(2).dim_value(), is_unidirectional)) {
       DEBUG_LOG("Mask is neither unidirectional nor all ones");
       return false;
     }

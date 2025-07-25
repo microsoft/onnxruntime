@@ -24,6 +24,7 @@
 #include <unordered_map>
 #include <string>
 #include <unordered_set>
+
 #include "core/framework/compute_capability.h"
 #include "core/providers/vsinpu/vsinpu_execution_provider.h"
 #include "core/providers/vsinpu/vsinpu_ep_graph.h"
@@ -38,42 +39,32 @@
 
 namespace onnxruntime {
 VSINPUExecutionProvider::VSINPUExecutionProvider(const VSINPUExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kVSINPUExecutionProvider},
+    : IExecutionProvider{onnxruntime::kVSINPUExecutionProvider,
+                         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT,
+                                   DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtDevice::VendorIds::NONE,
+                                   kAlloc4KAlignment)},
       device_id_(info.device_id) {
-  AllocatorCreationInfo default_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo("VSINPU", OrtAllocatorType::OrtDeviceAllocator));
-      }};
-
-  CreateAllocator(default_memory_info);
-
-  AllocatorCreationInfo cpu_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo("VSINPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      }};
-
-  CreateAllocator(cpu_memory_info);
 }
 
 VSINPUExecutionProvider::~VSINPUExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 VSINPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                       const IKernelLookup& /*kernel_lookup*/) const {
+                                       const IKernelLookup& /*kernel_lookup*/,
+                                       const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                       IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
-
+  const auto& logger = *GetLogger();
   if (graph_viewer.IsSubgraph()) {
     return result;
   }
 
   for (const auto& tensor : graph_viewer.GetAllInitializedTensors()) {
     if (tensor.second->has_data_location()) {
-      LOGS_DEFAULT(VERBOSE) << "location:" << tensor.second->data_location();
+      LOGS(logger, VERBOSE) << "location:" << tensor.second->data_location();
       if (tensor.second->data_location() ==
           ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-        LOGS_DEFAULT(WARNING) << "VSINPU: Initializers with external data location are not "
+        LOGS(logger, WARNING) << "VSINPU: Initializers with external data location are not "
                                  "currently supported";
         return result;
       }
@@ -82,7 +73,7 @@ VSINPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   // Get all the NodeUnits in the graph_viewer
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer, logger);
 
   // This holds the result of whether a NodeUnit is supported or not,
   // to prevent nodes in a NodeUnit to be checked for multiple times
@@ -100,11 +91,11 @@ VSINPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       supported = it->second;
     } else {
       // We only check the target node of the node unit
-      supported = vsi::npu::GraphEP::IsNodeSupportedInGroup(*node_unit, graph_viewer);
+      supported = vsi::npu::GraphEP::IsNodeSupportedInGroup(*node_unit, graph_viewer, logger);
       node_unit_supported_result[node_unit] = supported;
     }
 
-    LOGS_DEFAULT(VERBOSE) << "Node supported: [" << supported
+    LOGS(logger, VERBOSE) << "Node supported: [" << supported
                           << "] Operator type: [" << node.OpType()
                           << "] index: [" << node.Index()
                           << "] name: [" << node.Name()
@@ -165,16 +156,17 @@ VSINPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   // If the graph is partitioned in multiple subgraphs, and this may impact performance,
   // we want to give users a summary message at warning level.
   if (num_of_partitions > 1) {
-    LOGS_DEFAULT(WARNING) << summary_msg;
+    LOGS(logger, WARNING) << summary_msg;
   } else {
-    LOGS_DEFAULT(INFO) << summary_msg;
+    LOGS(logger, INFO) << summary_msg;
   }
 
   return result;
 }
 
 Status ComputeStateFunc(vsi::npu::GraphEP* graph_ep,
-                        OrtKernelContext* context) {
+                        OrtKernelContext* context,
+                        const logging::Logger& logger) {
   Ort::KernelContext ctx(context);
   size_t num_in = ctx.GetInputCount();
   const size_t num_inputs = graph_ep->GetGraphInputs().size();
@@ -192,7 +184,7 @@ Status ComputeStateFunc(vsi::npu::GraphEP* graph_ep,
   }
 
   if (!graph_ep->GetGraph()->Run()) {
-    LOGS_DEFAULT(ERROR) << "Failed to run graph.";
+    LOGS(logger, ERROR) << "Failed to run graph.";
   }
   for (size_t i = 0; i < ctx.GetOutputCount(); i++) {
     auto timvx_tensor = graph_ep->GetGraphOutputs()[i]->tensor;
@@ -207,12 +199,14 @@ Status ComputeStateFunc(vsi::npu::GraphEP* graph_ep,
 
 Status VSINPUExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
+  const auto& logger = *GetLogger();
+
   for (const auto& fused_node_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_viewer = fused_node_graph.filtered_graph;
-    std::shared_ptr<vsi::npu::GraphEP> graph_ep = std::make_shared<vsi::npu::GraphEP>(graph_viewer);
+    std::shared_ptr<vsi::npu::GraphEP> graph_ep = std::make_shared<vsi::npu::GraphEP>(graph_viewer, logger);
 
     for (auto tensor : graph_viewer.GetInputsIncludingInitializers()) {
-      LOGS_DEFAULT(VERBOSE) << "subgraph input init:" << vsi::npu::util::PrintNode(*tensor) << "#"
+      LOGS(logger, VERBOSE) << "subgraph input init:" << vsi::npu::util::PrintNode(*tensor) << "#"
                             << graph_viewer.IsInitializedTensor(tensor->Name());
       auto input = std::make_shared<vsi::npu::GraphIOInfo>();
       input->name = tensor->Name();
@@ -220,7 +214,7 @@ Status VSINPUExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
       graph_ep->GetGraphInputs().push_back(input);
     }
     for (auto tensor : graph_viewer.GetOutputs()) {
-      LOGS_DEFAULT(VERBOSE) << "subgraph output:" << vsi::npu::util::PrintNode(*tensor);
+      LOGS(logger, VERBOSE) << "subgraph output:" << vsi::npu::util::PrintNode(*tensor);
       auto output = std::make_shared<vsi::npu::GraphIOInfo>();
       output->name = tensor->Name();
       output->is_initializer = false;
@@ -236,16 +230,16 @@ Status VSINPUExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
       if (node != &node_unit.GetNode()) {
         continue;
       }
-      LOGS_DEFAULT(VERBOSE) << "Adding node: [" << node->OpType() << "]";
+      LOGS(logger, VERBOSE) << "Adding node: [" << node->OpType() << "]";
       vsi::npu::SupportedBuiltinOps().at(node->OpType())->BuildOp(graph_ep.get(), graph_viewer, node_unit);
     }
 
-    LOGS_DEFAULT(INFO) << "Verifying graph";
+    LOGS(logger, INFO) << "Verifying graph";
     graph_ep->GetCompiled() = graph_ep->GetGraph()->Compile();
     if (!graph_ep->GetCompiled()) {
-      LOGS_DEFAULT(ERROR) << "Failed to verify graph.";
+      LOGS(logger, ERROR) << "Failed to verify graph.";
     } else {
-      LOGS_DEFAULT(INFO) << "Graph has been verified successfully.";
+      LOGS(logger, INFO) << "Graph has been verified successfully.";
     }
 
     NodeComputeInfo compute_info;
@@ -259,7 +253,7 @@ Status VSINPUExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
         [graph_ep, this](FunctionState /*state*/, const OrtApi* /* api */,
                          OrtKernelContext* context) {
           std::lock_guard<std::mutex> lock(this->GetMutex());
-          Status res = ComputeStateFunc(graph_ep.get(), context);
+          Status res = ComputeStateFunc(graph_ep.get(), context, *GetLogger());
           return res;
         };
 
@@ -274,6 +268,24 @@ Status VSINPUExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
 std::shared_ptr<KernelRegistry> VSINPUExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
   return kernel_registry;
+}
+
+std::vector<AllocatorPtr> VSINPUExecutionProvider::CreatePreferredAllocators() {
+  std::vector<AllocatorPtr> result;
+  // We do not want arena for this, as it would not respect alignment.
+  constexpr const bool use_arena_false = false;
+  AllocatorCreationInfo device_info_cpu_aligned_4k{
+      [](OrtDevice::DeviceId device_id) {
+        return std::make_unique<CPUAllocator>(
+            OrtMemoryInfo(
+                onnxruntime::CPU_ALIGNED_4K, OrtAllocatorType::OrtDeviceAllocator,
+                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE,
+                          device_id, kAlloc4KAlignment)));
+      },
+      device_id_, use_arena_false};
+
+  result.push_back(CreateAllocator(device_info_cpu_aligned_4k));
+  return result;
 }
 
 }  // namespace onnxruntime

@@ -41,7 +41,7 @@ import timeit
 import traceback
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 import benchmark_helper
 import numpy as np
@@ -63,7 +63,7 @@ def test_torch_latency(
     global_lengths,
     test_times,
     num_threads,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     if num_threads > 0:
         torch.set_num_threads(num_threads)
 
@@ -143,14 +143,14 @@ def test_ort_latency(
     use_compact_memory=False,
     use_half4=False,
     disable_parity=False,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     results = []
     for batch_size in batch_sizes:
         for sequence_length in sequence_lengths:
             for global_length in global_lengths:
-                assert (
-                    global_length <= model.config.attention_window[0]
-                ), "Limitation of current implementation: number of global token <= attention_window"
+                assert global_length <= model.config.attention_window[0], (
+                    "Limitation of current implementation: number of global token <= attention_window"
+                )
 
                 logger.info(
                     f"Testing batch_size={batch_size} sequence_length={sequence_length} global_length={global_length} "
@@ -250,7 +250,7 @@ def test_ort_memory(
     global_length,
     test_times,
     num_threads,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     logger.info(
         f"Testing memory for model={onnx_model_path}, batch_size={batch_size}, sequence_length={sequence_length}, "
         f"global_length={global_length}, test_times={test_times}, num_threads={num_threads}"
@@ -307,7 +307,7 @@ def find_onnx_model(model_name, onnx_dir="."):
     return onnx_model_path
 
 
-def test_memory(args, device) -> Dict[str, Any]:
+def test_memory(args, device) -> dict[str, Any]:
     if len(args.batch_sizes) > 1:
         raise RuntimeError("For memory test, only one batch_size (-b) is allowed.")
     if len(args.sequence_lengths) > 1:
@@ -330,7 +330,7 @@ def test_memory(args, device) -> Dict[str, Any]:
     )
 
 
-def test_ort(args, device) -> List[Dict[str, Any]]:
+def test_ort(args, device) -> list[dict[str, Any]]:
     model_name = args.model
 
     onnx_model_path = find_onnx_model(model_name) if not args.onnx else args.onnx
@@ -385,7 +385,7 @@ def test_ort(args, device) -> List[Dict[str, Any]]:
     )
 
 
-def test_torch(args, device) -> List[Dict[str, Any]]:
+def test_torch(args, device) -> list[dict[str, Any]]:
     model = load_torch_model(args.model, device)
     return test_torch_latency(
         device,
@@ -399,7 +399,7 @@ def test_torch(args, device) -> List[Dict[str, Any]]:
     )
 
 
-def test_latency(args, device) -> List[Dict[str, Any]]:
+def test_latency(args, device) -> list[dict[str, Any]]:
     if args.engine == "onnxruntime":
         return test_ort(args, device)
 
@@ -550,7 +550,7 @@ def output_details(results, csv_filename):
     print(f"Detail results are saved to csv file: {csv_filename}")
 
 
-def run(args) -> List[Dict[str, Any]]:
+def run(args) -> list[dict[str, Any]]:
     torch.set_grad_enabled(False)
 
     # set random seed manually to get deterministic results
@@ -565,7 +565,7 @@ def run(args) -> List[Dict[str, Any]]:
     return test_latency(args, device)
 
 
-def launch_test(arguments) -> List[Dict[str, Any]]:
+def launch_test(arguments) -> list[dict[str, Any]]:
     if not torch.cuda.is_available():
         raise RuntimeError("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
 
@@ -692,10 +692,10 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
             row = {}
 
             sum_latency = {}
-            sum_latency.update({k: 0 for k in data_names})
+            sum_latency.update(dict.fromkeys(data_names, 0))
 
             count_latency = {}
-            count_latency.update({k: 0 for k in data_names})
+            count_latency.update(dict.fromkeys(data_names, 0))
 
             for result in results:
                 if result["description"] == description and result[data_field]:

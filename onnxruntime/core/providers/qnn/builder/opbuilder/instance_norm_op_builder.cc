@@ -1,16 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
-#include "core/framework/tensorprotoutils.h"
+#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/common/safeint.h"
-#include "onnx/defs/data_type_utils.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -30,6 +24,11 @@ class InstanceNormOpBuilder : public BaseOpBuilder {
                        const logging::Logger& logger,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
+
+  Status ProcessScale(QnnModelWrapper& qnn_model_wrapper,
+                      const NodeUnitIODef& input,
+                      const logging::Logger& logger,
+                      std::vector<std::string>& input_names) const;
 
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
@@ -149,8 +148,45 @@ Status InstanceNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));  // Input 0
   }
 
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[1], logger, input_names));  // Scale
+  ORT_RETURN_IF_ERROR(ProcessScale(qnn_model_wrapper, inputs[1], logger, input_names));  // Scale
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, input_names));  // Bias
+
+  return Status::OK();
+}
+
+Status InstanceNormOpBuilder::ProcessScale(QnnModelWrapper& qnn_model_wrapper,
+                                           const NodeUnitIODef& input,
+                                           const logging::Logger& logger,
+                                           std::vector<std::string>& input_names) const {
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, input, logger, input_names));
+
+  // Turn SFIXED scale of InstanceNorm into UFIXED when it is constant
+  const auto& input_name = input.node_arg.Name();
+  bool is_const = qnn_model_wrapper.IsConstantInput(input_name);
+  bool is_npu = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
+  if (is_npu && is_const) {
+    TensorInfo tensor_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, tensor_info));
+    const Qnn_QuantizeParams_t& quant_param = tensor_info.quant_param.Get();
+    if (tensor_info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_8) {
+      std::string convert_input_name = input_names.back();
+      std::string convert_output_name = convert_input_name + "_convert_s8_to_u8";
+      Status status = utils::InsertConvertOp(
+          qnn_model_wrapper,
+          convert_input_name,
+          convert_output_name,
+          QNN_DATATYPE_SFIXED_POINT_8,
+          QNN_DATATYPE_UFIXED_POINT_8,
+          quant_param.scaleOffsetEncoding.offset,
+          quant_param.scaleOffsetEncoding.scale,
+          tensor_info.shape,
+          false,  // asymmetric
+          false   // do_op_validation
+      );
+      input_names.pop_back();
+      input_names.push_back(convert_output_name);
+    }
+  }
 
   return Status::OK();
 }

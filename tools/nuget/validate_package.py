@@ -106,7 +106,7 @@ def check_if_dlls_are_present(
 ):
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
-        file_list_in_package = list()
+        file_list_in_package = []
         for dirpath, _dirnames, filenames in os.walk(package_path):
             file_list_in_package += [os.path.join(dirpath, file) for file in filenames]
     else:

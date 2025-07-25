@@ -285,6 +285,8 @@ Return Value:
     this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
     this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
     this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
+    this->DequantizeLinearS8Kernel = MlasDequantizeLinearS8Kernel;
+    this->DequantizeLinearU8Kernel = MlasDequantizeLinearU8Kernel;
 #ifndef __APPLE__
 #ifndef FORCE_GENERIC_ALGORITHMS
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelSse;
@@ -374,6 +376,8 @@ Return Value:
 
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
+                this->Avx2Supported_ = true;
+
                 this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAvx2;
                 this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx2;
                 this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx2;
@@ -401,6 +405,7 @@ Return Value:
                 this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
                 this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx2;
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
+                this->RopeDispatch = &MlasRopeDispatchAvx2;
 
 
                 //
@@ -463,6 +468,8 @@ Return Value:
                     //
 
                     if ((Cpuid7[1] & 0xC0020000) == 0xC0020000) {
+
+                        this->Avx512Supported_ = true;
 
                         this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Core;
                         this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Core;
@@ -542,28 +549,25 @@ Return Value:
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
-    this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
+    this->RopeDispatch = &MlasRopeDispatchNeon;
+    this->HGemmDispatch = &MlasHGemmDispatchNeon;
+    this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
+    this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
     //
 
-    bool HasDotProductInstructions;
-
-#if defined(_WIN32)
-    HasDotProductInstructions = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
-#else
-    // Use the cpuinfo value which is read from sysctl and has some additional special cases.
-    // https://github.com/pytorch/cpuinfo/blob/959002f82d7962a473d8bf301845f2af720e0aa4/src/arm/mach/init.c#L369-L379
+    // Note:
     // Do NOT use ID_AA64ISAR0_EL1. It causes illegal instruction errors on Mac M1 and ARMv8-A chips
     // as well as failing on other ARM chips as it is an EL1 level register that requires extra
     // privileges to read.
     //
     // uint64_t isar0_el1;
     // asm("mrs %[reg], ID_AA64ISAR0_EL1\n" : [reg] "=r"(isar0_el1) : :);
-    // HasDotProductInstructions = ((isar0_el1 >> 44) & 0xfu) == 0x1u;
-    HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
-#endif
+    // const bool HasDotProductInstructions = ((isar0_el1 >> 44) & 0xfu) == 0x1u;
+
+    const bool HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 
     if (HasDotProductInstructions) {
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUdot;
@@ -573,6 +577,8 @@ Return Value:
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
+
+    this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions);
 
 #if defined(__linux__)
     //
@@ -607,6 +613,11 @@ Return Value:
     bool HasP9Instructions = hwcap2 & PPC_FEATURE2_ARCH_3_00;
 #elif defined(_AIX)
     bool HasP9Instructions = __power_9_andup();
+#elif defined(__FreeBSD__)
+    unsigned long hwcap2;
+    elf_aux_info(AT_HWCAP2, &hwcap2, sizeof(hwcap2));
+
+    bool HasP9Instructions = hwcap2 & PPC_FEATURE2_ARCH_3_00;
 #endif // __linux__
     if (HasP9Instructions) {
         this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelVSX;
@@ -616,7 +627,7 @@ Return Value:
 #if defined(POWER10)
 #if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
     (defined(__clang__) && (__clang_major__ >= 12))
-#if defined(__linux__)
+#if defined(__linux__) || defined(__FreeBSD__)
     bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
 #elif defined(_AIX)
     bool HasP10Instructions = (__power_10_andup() && __power_mma_version() == MMA_V31);

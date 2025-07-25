@@ -1,0 +1,50 @@
+# .github/workflows/build_x64_asan.yml
+name: windows_x64_asan
+
+on:
+  push:
+    branches: [main, 'rel-*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build_x64:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    timeout-minutes: 300
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env # Use the composite action
+        with:
+          architecture: x64
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Build and Test (Combined)
+        shell: cmd
+        run: |
+          @echo off
+          echo %PATH%
+          python -m pip install -r "%GITHUB_WORKSPACE%\tools\ci_build/github/windows\python\requirements.txt"
+          python "%GITHUB_WORKSPACE%\tools\ci_build\build.py" --config Debug --build_dir "%RUNNER_TEMP%\build" --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer

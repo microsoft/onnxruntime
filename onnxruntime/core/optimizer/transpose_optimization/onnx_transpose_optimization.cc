@@ -1085,7 +1085,8 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
     if (perm.has_value()) {
       auto perm_inv = InvertPerm(*perm);
       std::vector<size_t> indices = {0};
-      HandlerArgs args{ctx, *inp_node, unsqueeze, *perm, perm_inv, indices};
+      std::unordered_set<std::string> dummy_outputs_leading_to_transpose;
+      HandlerArgs args{ctx, *inp_node, unsqueeze, *perm, perm_inv, indices, dummy_outputs_leading_to_transpose};
       const auto new_input = HelpHandleUnsqueeze(args, axes);
       // Use output from optimization (likely from pushed transpose)
       node.SetInput(i, new_input);
@@ -2391,7 +2392,7 @@ static bool FinalizeReshapeShape(const std::vector<int64_t>& input_shape,      /
   return true;
 }
 
-static bool HandleReshape(HandlerArgs& args) {
+bool HandleReshape(HandlerArgs& args) {
   // A Reshape can be logically equivalent to a Transpose if all dims with a value > 1 remain in the same order
   // and do not change size. If so, we can use HandleTransposeImpl to merge them.
   //  e.g. Reshape(input {1, 512, 4, 1}, shape {1, 1, 512, 4}) is equivalent to Transpose with perms { 0, 3, 1, 2 }
@@ -2487,6 +2488,7 @@ constexpr HandlerInfo reshape_handler = {&FirstInput, &HandleReshape, /*transpos
 static const std::unordered_map<std::string_view, const HandlerInfo&> handler_map{
     {"Cast", simple_node_handler},
     {"Exp", simple_node_handler},
+    {"Gelu", simple_node_handler},
     {"Identity", simple_node_handler},
     {"LeakyRelu", simple_node_handler},
     {"Log", simple_node_handler},
@@ -2699,7 +2701,7 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
   }
 
   std::vector<int64_t> perm_inv = InvertPerm(perm);
-  HandlerArgs args = {ctx, transpose, node, perm, perm_inv, input_indices};
+  HandlerArgs args = {ctx, transpose, node, perm, perm_inv, input_indices, outputs_leading_to_transpose};
   return info->handler_fn(args);
 }
 
@@ -3307,7 +3309,7 @@ const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
       "BatchNormalization", "InstanceNormalization",
 
       // convolutions
-      "Conv", "QLinearConv", "ConvTranspose",
+      "Conv", "ConvInteger", "QLinearConv", "ConvTranspose",
 
       // pooling
       "AveragePool", "LpPool", "MaxPool", "MaxUnpool",

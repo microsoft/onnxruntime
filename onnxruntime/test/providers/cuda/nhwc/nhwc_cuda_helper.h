@@ -46,7 +46,7 @@
   } else if (std::is_same<T, double>::value) {      \
     MAKE_PROVIDERS_EPS_EXT(2e-4, pad_to_nc1d)       \
   } else {                                          \
-    MAKE_PROVIDERS_EPS_EXT(2e-3, pad_to_nc1d)       \
+    MAKE_PROVIDERS_EPS_EXT(4e-3, pad_to_nc1d)       \
   }
 
 #define MAKE_PROVIDERS_EPS_TYPE(T) \

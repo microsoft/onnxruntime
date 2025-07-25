@@ -5,6 +5,7 @@
 #include "core/common/optional.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
+#include "core/framework/config_options.h"
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
@@ -44,6 +45,7 @@ std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider();
 std::unique_ptr<IExecutionProvider> DnnlExecutionProviderWithOptions(const OrtDnnlProviderOptions* provider_options);
 // std::unique_ptr<IExecutionProvider> DefaultTvmExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultNvTensorRTRTXExecutionProvider();
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params);
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptionsV2* params);
 std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider();
@@ -62,7 +64,8 @@ std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider();
 std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const ProviderOptions& options,
                                                                     const SessionOptions* session_options = nullptr);
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider();
-std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc = true);
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options);
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider();
 

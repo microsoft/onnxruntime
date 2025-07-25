@@ -64,7 +64,6 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   bool has_min = min != std::numeric_limits<float>::lowest();
   bool has_max = max != std::numeric_limits<float>::max();
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -98,34 +97,30 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         const bool min_max_attribs = node.SinceVersion() < 11;
         std::string_view min_name;
         if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-          min_name = min_max_attribs ? model_builder.AddScalarConstant(clip_op.type(), "min", min)
-                                     : node.InputDefs()[1]->Name();
+          min_name = (min_max_attribs || !has_min) ? model_builder.AddScalarConstant(clip_op.type(), "min", min)
+                                                   : node.InputDefs()[1]->Name();
         } else {
-          min_name = min_max_attribs ? model_builder.AddScalarConstant(clip_op.type(), "min", MLFloat16(min))
-                                     : node.InputDefs()[1]->Name();
+          min_name = (min_max_attribs || !has_min) ? model_builder.AddScalarConstant(clip_op.type(), "min", MLFloat16(min))
+                                                   : node.InputDefs()[1]->Name();
         }
 
         AddOperationInput(clip_op, "alpha", min_name);
 
-        if (has_max) {
-          std::string_view max_name;
-          if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-            max_name = min_max_attribs ? model_builder.AddScalarConstant(clip_op.type(), "max", max)
-                                       : node.InputDefs()[2]->Name();
-          } else {
-            max_name = min_max_attribs ? model_builder.AddScalarConstant(clip_op.type(), "max", MLFloat16(max))
-                                       : node.InputDefs()[2]->Name();
-          }
-          AddOperationInput(clip_op, "beta", max_name);
+        std::string_view max_name;
+        if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+          max_name = (min_max_attribs || !has_max) ? model_builder.AddScalarConstant(clip_op.type(), "max", max)
+                                                   : node.InputDefs()[2]->Name();
+        } else {
+          max_name = (min_max_attribs || !has_max) ? model_builder.AddScalarConstant(clip_op.type(), "max", MLFloat16(max))
+                                                   : node.InputDefs()[2]->Name();
         }
+        AddOperationInput(clip_op, "beta", max_name);
       }
     }
 
     AddOperationOutput(*op, output);
     model_builder.AddOperation(std::move(op));
-  } else
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     // TODO: CoreML has a Clip layer for NeuralNetwork. Added in CoreML 4. We could potentially use that if available
     // to simplify.
     // https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#cliplayerparams
@@ -200,7 +195,9 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 bool ClipOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
   float min, max;
-  return GetClipMinMax(input_params.graph_viewer, node, min, max, logger);
+  bool ret = GetClipMinMax(input_params.graph_viewer, node, min, max, logger);
+  // what does it mean if min == max?
+  return ret && (min != max);
 }
 
 void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -20,10 +20,8 @@ class MaxMinOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -68,29 +66,10 @@ Status MaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool MaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
-                                        const Node& node,
-                                        WebnnDeviceType /* device_type */,
-                                        const logging::Logger& logger) const {
+bool MaxMinOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                                             const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
-
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-
-  if (input_defs.size() < 1) {
-    LOGS(logger, VERBOSE) << op_type << " requires at least one input (data)";
-    return false;
-  }
-
-  return true;
-}
-
-bool MaxMinOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                             const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type;
 
   if (!GetType(*input_defs[0], input0_type, logger))
@@ -103,12 +82,13 @@ bool MaxMinOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten:
     }
 
     std::array<int32_t, 2> input_types{input0_type, input_type};
-    if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+    if (!AreDataTypesSame(op_type, input_types, logger)) {
       return false;
     }
   }
 
-  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "data_0", logger);
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "data_0", logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 void CreateMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

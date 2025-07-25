@@ -27,7 +27,7 @@ Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
   if (size == 0) {
     return Status::OK();
   }
-  uint32_t vec_size = gsl::narrow<uint32_t>((size + 3) / 4);
+  uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
   UnaryElementwiseProgram program{kernel_name_, expression_, additional_impl_, additional_usage_};
   program
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4}})
@@ -194,6 +194,10 @@ class Clip final : public UnaryElementwise {
                          "Clip",
                          std::is_same_v<T, MLFloat16> ? ClipF16Impl : ClipImpl,
                          "", ShaderUsage::UseElementTypeAlias} {}
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
 
   Status ConfigureProgram(const ComputeContext& context, UnaryElementwiseProgram& program) const override {
     const auto* clip_min_tensor = context.Input<Tensor>(1);
@@ -214,6 +218,9 @@ class Clip final : public UnaryElementwise {
     }
     return Status::OK();
   }
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
   // uniforms.attr is a f32 value. It is encoded as a float for 2 f16 values.
   // bitcast<vec2<f16>>(uniforms.attr)[0] is clip_min, bitcast<vec2<f16>>(uniforms.attr)[1] is clip_max
@@ -249,26 +256,6 @@ WEBGPU_CLIP_KERNEL(MLFloat16)
 // activation
 //
 
-class LinearUnit : public UnaryElementwise {
- public:
-  LinearUnit(const OpKernelInfo& info,
-             const std::string& kernel_name,
-             const std::string& expression,
-             const std::string& additional_impl,
-             float default_alpha)
-      : UnaryElementwise{info, kernel_name, expression, additional_impl, ShaderUsage::UseElementTypeAlias} {
-    info.GetAttrOrDefault("alpha", &alpha_, default_alpha);
-  }
-
-  Status ConfigureProgram(const ComputeContext& /*context*/, UnaryElementwiseProgram& program) const override {
-    program.AddUniformVariables({alpha_});
-    return Status::OK();
-  }
-
- protected:
-  float alpha_;
-};
-
 #define WEBGPU_LU_IMPL(OP_TYPE, ...)                                               \
   class OP_TYPE final : public LinearUnit {                                        \
    public:                                                                         \
@@ -278,17 +265,17 @@ class LinearUnit : public UnaryElementwise {
 WEBGPU_LU_IMPL(Elu, "elu_v(a)", EluImpl, 1.0)
 WEBGPU_ELEMENTWISE_KERNEL(Elu, 6, WebGpuSupportedFloatTypes())
 
-class Gelu : public UnaryElementwise {
- public:
-  Gelu(const OpKernelInfo& info)
-      : UnaryElementwise{info,
-                         "Gelu",
-                         info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? FastGeluExpr : GeluExpr,
-                         info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? TanhImpl : ErfImpl,
-                         ShaderUsage::UseValueTypeAlias} {
-    cache_hint = info.GetAttrOrDefault<std::string>("approximate", "none");
-  }
-};
+Gelu::Gelu(const OpKernelInfo& info)
+    : UnaryElementwise{info,
+                       "Gelu",
+                       info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? FastGeluExpr : GeluExpr,
+                       info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? TanhImpl : ErfImpl,
+                       ShaderUsage::UseValueTypeAlias} {
+  cache_hint = info.GetAttrOrDefault<std::string>("approximate", "none");
+}
+
+QuickGelu::QuickGelu(const OpKernelInfo& info)
+    : LinearUnit{info, "QuickGelu", "quick_gelu_v(a)", QuickGeluImpl, 1.702f} {}
 
 WEBGPU_ELEMENTWISE_KERNEL(Gelu, 20, WebGpuSupportedFloatTypes())
 

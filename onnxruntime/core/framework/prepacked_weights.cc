@@ -11,14 +11,14 @@ HashValue PrePackedWeights::GetHash() const {
 
   uint32_t hash[4] = {0, 0, 0, 0};
 
-  auto hash_int8_t_buffer = [&hash](void* data, int len) { MurmurHash3::x86_128(data, len, hash[0], &hash); };
+  auto hash_int8_t_buffer = [&hash](void* data, size_t len) { MurmurHash3::x86_128(data, len, hash[0], &hash); };
 
   ORT_ENFORCE(buffers_.size() == buffer_sizes_.size());
   for (size_t iter = 0; iter < buffers_.size(); ++iter) {
     // some pre-packed buffers may be null if they were just "place-holders" occupying an index
     // in the "buffers_" vector
     if (buffers_[iter].get() != nullptr) {
-      hash_int8_t_buffer(buffers_[iter].get(), static_cast<int>(buffer_sizes_[iter]));
+      hash_int8_t_buffer(buffers_[iter].get(), buffer_sizes_[iter]);
     }
   }
 

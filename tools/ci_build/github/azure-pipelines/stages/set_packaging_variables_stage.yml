@@ -1,18 +1,41 @@
 parameters:
-  IsReleaseBuild: false
-  PreReleaseVersionSuffixString: 'none'
-  PreReleaseVersionSuffixNumber: 0
+- name: IsReleaseBuild
+  displayName: Is a release build? Set it to true if you are doing an ONNX Runtime release.
+  type: boolean
+  default: false
+
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+  default: none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+  default: 0
+
 stages:
 - stage: Setup
   jobs:
   - job: Set_Variables
     pool:
       name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: 'linux'
+    templateContext:
+      sdl:
+        tsa:
+          enabled: false #No source checkout
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: 'parameters_artifact'
     steps:
     - checkout: none
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
     - bash: |
         # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
         set +x
@@ -41,28 +64,16 @@ stages:
         echo "##vso[task.setvariable variable=BuildTime;isOutput=true]$hhmm"
       displayName: 'Set Start Time as Variable'
       name: Set_Build_Time
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
 
-- stage: Debug
-  dependsOn: Setup
-  jobs:
-  - job: D1
-    pool:
-      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
-    variables:
-      MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
-      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
-    steps:
-    - checkout: none
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
-    - bash: echo $(MyVar)
-    - bash: echo $(BuildTime)
-    - bash: echo $(BuildDate)
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+    - bash: |
+        echo "Recording pipeline parameters to a file..."
+        # Create the file with the first parameter
+        echo "IsReleaseBuild=${{ parameters.IsReleaseBuild }}" > $(Build.ArtifactStagingDirectory)/parameters.txt
+
+        # Append the rest of the parameters
+        echo "PreReleaseVersionSuffixString=${{ parameters.PreReleaseVersionSuffixString }}" >> $(Build.ArtifactStagingDirectory)/parameters.txt
+        echo "PreReleaseVersionSuffixNumber=${{ parameters.PreReleaseVersionSuffixNumber }}" >> $(Build.ArtifactStagingDirectory)/parameters.txt
+
+        echo "Parameters file content:"
+        cat $(Build.ArtifactStagingDirectory)/parameters.txt
+      displayName: 'Record Parameters to File'

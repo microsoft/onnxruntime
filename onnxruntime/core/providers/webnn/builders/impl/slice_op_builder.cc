@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
@@ -25,8 +24,10 @@ class SliceOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const GraphViewer& graph_viewer, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
   // TODO: Support Slice opset < 10, which uses attributes for starts and ends.
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 10; }
 };
@@ -40,8 +41,7 @@ void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const No
   }
 }
 
-Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                             const Node& node,
+Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                              const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
@@ -49,10 +49,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   auto rank = input_shape.size();
   NodeAttrHelper helper(node);
 
-  emscripten::val inputs = model_builder.GetOperand(input_defs[0]->Name());
-  std::vector<int32_t> starts(rank);
-  std::vector<int32_t> sizes(rank);
-  std::vector<int32_t> steps(rank);
+  emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
 
   // Copy the data from the starts/ends/axes/steps initializers.
   std::vector<int64_t> input_starts;
@@ -75,10 +72,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     input_name = input_defs[input_idx]->Name();
     const auto& initializers(model_builder.GetInitializerTensors());
     const auto& tensor = *initializers.at(input_name);
-    if (!ReadIntArrayFrom1DTensor(tensor, data, logger)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Data type for starts and ends inputs is not supported in this build.");
-    }
+    ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(tensor, data, model_builder.GetGraphViewer(), logger),
+                      "Data type for starts or ends inputs is not supported in this build.");
 
     return Status::OK();
   };
@@ -89,38 +84,58 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   ORT_RETURN_IF_ERROR(
       SliceOp::PrepareForComputeHelper(input_starts, input_ends, input_axes, input_steps, compute_metadata));
 
-  std::transform(compute_metadata.starts_.cbegin(), compute_metadata.starts_.cend(),
-                 starts.begin(),
-                 [](int64_t i) { return SafeInt<uint32_t>(i); });
-  std::transform(compute_metadata.ends_.cbegin(), compute_metadata.ends_.cend(), compute_metadata.starts_.cbegin(),
-                 sizes.begin(),
-                 [](int64_t i, int64_t j) { return SafeInt<uint32_t>(i - j); });
-  std::transform(compute_metadata.steps_.cbegin(), compute_metadata.steps_.cend(), steps.begin(),
-                 [](int64_t i) { return SafeInt<uint32_t>(i); });
+  // Check if reverse op is needed.
+  std::vector<uint32_t> reverse_axes;
+  emscripten::val reverse_output = input;
+  for (size_t i = 0; i < rank; ++i) {
+    if (compute_metadata.steps_[i] < 0) {
+      reverse_axes.push_back(SafeInt<uint32_t>(i));
+      compute_metadata.steps_[i] = -compute_metadata.steps_[i];
+      compute_metadata.starts_[i] = input_shape[i] - 1 - compute_metadata.starts_[i];
+      compute_metadata.ends_[i] = input_shape[i] - 1 - compute_metadata.ends_[i];
+    }
+  }
+  if (!reverse_axes.empty()) {
+    emscripten::val reverse_options = emscripten::val::object();
+    reverse_options.set("axes", emscripten::val::array(reverse_axes));
+    reverse_options.set("label", node.Name() + "_reverse");
+    reverse_output = model_builder.GetBuilder().call<emscripten::val>("reverse", input, reverse_options);
+  }
 
-  emscripten::val options = emscripten::val::object();
-  options.set("strides", emscripten::val::array(steps));
-  options.set("label", node.Name());
-  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("slice", inputs,
-                                                                            emscripten::val::array(starts),
-                                                                            emscripten::val::array(sizes),
-                                                                            options);
+  // Check if slice op is needed.
+  bool is_slice_required = false;
+  for (size_t i = 0; i < rank; ++i) {
+    if (compute_metadata.steps_[i] != 1 || compute_metadata.starts_[i] != 0 ||
+        compute_metadata.ends_[i] != input_shape[i]) {
+      is_slice_required = true;
+      break;
+    }
+  }
+
+  emscripten::val output = reverse_output;
+  if (is_slice_required) {
+    std::vector<uint32_t> starts = GetNarrowedIntFromInt64<uint32_t>(compute_metadata.starts_);
+    std::vector<uint32_t> steps = GetNarrowedIntFromInt64<uint32_t>(compute_metadata.steps_);
+    std::vector<uint32_t> sizes(rank);
+    std::transform(compute_metadata.ends_.cbegin(), compute_metadata.ends_.cend(), compute_metadata.starts_.cbegin(),
+                   sizes.begin(), [](int64_t i, int64_t j) { return SafeInt<uint32_t>(i - j); });
+
+    emscripten::val options = emscripten::val::object();
+    options.set("strides", emscripten::val::array(steps));
+    options.set("label", node.Name());
+    output = model_builder.GetBuilder().call<emscripten::val>("slice", reverse_output, emscripten::val::array(starts),
+                                                              emscripten::val::array(sizes), options);
+  }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }
 
-bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
-                                       const Node& node,
-                                       const WebnnDeviceType /* device_type */,
-                                       const logging::Logger& logger) const {
+bool SliceOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
+                                       const WebnnDeviceType /* device_type */, const logging::Logger& logger) const {
   const auto& name = node.Name();
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger)) {
-    return false;
-  }
 
   if (input_defs.size() < 3) {
     LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires at least 3 inputs (data, starts, ends) but got "
@@ -132,41 +147,49 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   for (size_t i = 1; i < input_defs.size(); i++) {
     // Optional tensors (axes, steps) can be indicated by an empty name, just ignore it.
     const std::string input_name = GetTensorName(input_defs, i);
-    if (!input_name.empty() && !Contains(initializers, input_name)) {
-      LOGS(logger, VERBOSE) << "Input [" << input_name << "] of " << op_type
-                            << " [" << name << "] must be known as initializer";
+    const auto* init = graph_viewer.GetConstantInitializer(input_name);
+    if (!input_name.empty() && !init) {
+      LOGS(logger, VERBOSE) << "Input [" << input_name << "] of " << op_type << " [" << name
+                            << "] must be known as initializer";
       return false;
-    }
-  }
-
-  if (input_defs.size() == 5) {  // Check steps.
-    const auto& steps_tensor = *initializers.at(input_defs[4]->Name());
-    std::vector<uint8_t> unpacked_tensor;
-    auto status = onnxruntime::utils::UnpackInitializerData(steps_tensor, unpacked_tensor);
-    if (!status.IsOK()) {
-      LOGS(logger, ERROR) << "Error while unpacking steps_tensor: " << status.ErrorMessage();
-      return false;
-    }
-    const auto data_type = steps_tensor.data_type();
-    // WebNN doesn't support steps less than 1.
-    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-      if (std::any_of(reinterpret_cast<int64_t*>(unpacked_tensor.data()),
-                      reinterpret_cast<int64_t*>(unpacked_tensor.data() + unpacked_tensor.size()),
-                      [](int64_t i) { return i < 1; })) {
-        LOGS(logger, VERBOSE) << "WebNN slice doesn't support steps less than 1";
-        return false;
-      }
-    } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-      if (std::any_of(reinterpret_cast<int32_t*>(unpacked_tensor.data()),
-                      reinterpret_cast<int32_t*>(unpacked_tensor.data()) + unpacked_tensor.size() / sizeof(int32_t),
-                      [](int32_t i) { return i < 1; })) {
-        LOGS(logger, VERBOSE) << "WebNN slice doesn't support steps less than 1";
-        return false;
-      }
     }
   }
 
   return true;
+}
+
+bool SliceOpBuilder::HasSupportedInputsImpl(const GraphViewer& graph_viewer, const Node& node,
+                                            const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& input = *input_defs[0];
+  std::vector<int64_t> input_shape;
+  if (!GetShape(*input_defs[0], input_shape, logger)) {
+    return false;
+  }
+
+  int32_t input_type;
+  if (!GetType(input, input_type, logger)) {
+    return false;
+  }
+
+  const std::string_view op_type = node.OpType();
+
+  // If there is step < 0, check data type support of reverse.
+  if (TensorExists(input_defs, 4)) {
+    std::vector<int64_t> steps;
+    const auto* init = graph_viewer.GetConstantInitializer(input_defs[4]->Name());
+    if (!init || !ReadIntArrayFrom1DTensor(*init, steps, graph_viewer, logger))
+      return false;
+    if (std::any_of(steps.begin(), steps.end(), [](int64_t step) { return step < 0; })) {
+      if (!IsDataTypeSupportedByWebNNOp(op_type, "reverse", input_type, wnn_limits, "input", "data", logger) ||
+          !IsInputRankSupported(wnn_limits, "reverse", "input", input_shape.size(), node.Name(), logger)) {
+        return false;
+      }
+    }
+  }
+
+  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 void CreateSliceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

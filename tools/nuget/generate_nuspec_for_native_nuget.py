@@ -182,6 +182,8 @@ def generate_description(line_list, package_name):
         description = "This package contains Linux native shared library artifacts for ONNX Runtime with CUDA."
     elif "Microsoft.ML.OnnxRuntime.Gpu.Windows" in package_name:
         description = "This package contains Windows native shared library artifacts for ONNX Runtime with CUDA."
+    elif "Intel.ML.OnnxRuntime" in package_name:
+        description = "This package contains native shared library artifacts for ONNX Runtime with OpenVINO."
     elif "Microsoft.ML.OnnxRuntime" in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
         description = (
             "This package contains native shared library artifacts for all supported platforms of ONNX Runtime."
@@ -266,6 +268,7 @@ def generate_dependencies(xml_text, package_name, version):
             xml_text.append(dml_dependency)
         xml_text.append("</group>")
         if package_name == "Microsoft.ML.OnnxRuntime":
+            xml_text.append('<group targetFramework="native" />')
             # Support net8.0-android
             xml_text.append('<group targetFramework="net8.0-android31.0">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
@@ -380,6 +383,7 @@ def generate_files(line_list, args):
             "tensorrt_ep_shared_lib": "onnxruntime_providers_tensorrt.dll",
             "openvino_ep_shared_lib": "onnxruntime_providers_openvino.dll",
             "cuda_ep_shared_lib": "onnxruntime_providers_cuda.dll",
+            "qnn_ep_shared_lib": "onnxruntime_providers_qnn.dll",
             "onnxruntime_perf_test": "onnxruntime_perf_test.exe",
             "onnx_test_runner": "onnx_test_runner.exe",
         }
@@ -539,19 +543,13 @@ def generate_files(line_list, args):
                 + '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.pdb" />'
             )
 
-    if args.package_name == "Microsoft.ML.OnnxRuntime.Snpe" or args.package_name == "Microsoft.ML.OnnxRuntime.QNN":
-        files_list.append(
-            "<file src=" + '"' + os.path.join(args.native_build_path, "onnx_test_runner.exe") + runtimes + " />"
-        )
-        files_list.append(
-            "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime_perf_test.exe") + runtimes + " />"
-        )
-
     if is_qnn_package:
         files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnCpu.dll") + runtimes + " />")
         files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtp.dll") + runtimes + " />")
-        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnSaver.dll") + runtimes + " />")
         if args.target_architecture != "x64":
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnGpu.dll") + runtimes + " />"
+            )
             files_list.append(
                 "<file src=" + '"' + os.path.join(args.native_build_path, "QnnSystem.dll") + runtimes + " />"
             )
@@ -566,12 +564,6 @@ def generate_files(line_list, args):
             )
             files_list.append(
                 "<file src=" + '"' + os.path.join(args.native_build_path, "libqnnhtpv73.cat") + runtimes + " />"
-            )
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpV68Stub.dll") + runtimes + " />"
-            )
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "libQnnHtpV68Skel.so") + runtimes + " />"
             )
 
     is_ado_packaging_build = False
@@ -696,7 +688,7 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
-    if args.execution_provider == "rocm" or is_rocm_gpu_package and not is_ado_packaging_build:
+    if args.execution_provider == "rocm" or (is_rocm_gpu_package and not is_ado_packaging_build):
         files_list.append(
             "<file src="
             + '"'
@@ -715,7 +707,7 @@ def generate_files(line_list, args):
         )
 
     if args.execution_provider == "openvino":
-        get_env_var("INTEL_OPENVINO_DIR")
+        openvino_path = get_env_var("INTEL_OPENVINO_DIR")
         files_list.append(
             "<file src="
             + '"'
@@ -733,7 +725,31 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
-    if args.execution_provider == "cuda" or is_cuda_gpu_win_sub_package and not is_ado_packaging_build:
+        if is_windows():
+            dll_list_path = os.path.join(openvino_path, "runtime\\bin\\intel64\\Release\\")
+            tbb_list_path = os.path.join(openvino_path, "runtime\\3rdparty\\tbb\\bin\\")
+            for dll_element in os.listdir(dll_list_path):
+                if dll_element.endswith("dll"):
+                    files_list.append(
+                        "<file src="
+                        + '"'
+                        + os.path.join(dll_list_path, dll_element)
+                        + runtimes_target
+                        + args.target_architecture
+                        + '\\native" />'
+                    )
+            for tbb_element in os.listdir(tbb_list_path):
+                if tbb_element.endswith("dll"):
+                    files_list.append(
+                        "<file src="
+                        + '"'
+                        + os.path.join(tbb_list_path, tbb_element)
+                        + runtimes_target
+                        + args.target_architecture
+                        + '\\native" />'
+                    )
+
+    if args.execution_provider == "cuda" or (is_cuda_gpu_win_sub_package and not is_ado_packaging_build):
         files_list.append(
             "<file src="
             + '"'
@@ -746,6 +762,34 @@ def generate_files(line_list, args):
             "<file src="
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["cuda_ep_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+
+    if args.execution_provider == "qnn" or (is_qnn_package and not is_ado_packaging_build):
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["qnn_ep_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+
+    if is_dml_package:
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
             + runtimes_target
             + args.target_architecture
             + '\\native" />'
@@ -861,9 +905,20 @@ def generate_files(line_list, args):
         or is_qnn_package
     ):
         # Process props file
-        source_props = os.path.join(
-            args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "props.xml"
-        )
+        if is_qnn_package:
+            source_props = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "netstandard",
+                "props_qnn.xml",
+            )
+        else:
+            source_props = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "props.xml"
+            )
         target_props = os.path.join(
             args.sources_path,
             "csharp",
@@ -1026,8 +1081,8 @@ def generate_files(line_list, args):
         files_list.append(
             "<file src="
             + '"'
-            + os.path.join(args.native_build_path, "Qualcomm AI Hub Proprietary License.pdf")
-            + '" target="Qualcomm AI Hub Proprietary License.pdf" />'
+            + os.path.join(args.native_build_path, "Qualcomm_LICENSE.pdf")
+            + '" target="Qualcomm_LICENSE.pdf" />'
         )
     files_list.append("</files>")
 

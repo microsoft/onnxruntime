@@ -3,7 +3,7 @@ parameters:
 stages:
 - stage: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
   dependsOn:
-  - Nodejs_Packaging
+  - Setup
   condition: succeeded()
   jobs:
   - job: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
@@ -11,7 +11,9 @@ stages:
       clean: all
     timeoutInMinutes:  120
     pool:
-      vmImage: 'macOS-13'
+      name: 'Azure Pipelines'
+      image: 'macOS-14'
+      os: 'macOS'
 
     variables:
     - name: OnnxRuntimeBuildDirectory

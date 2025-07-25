@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <onnx/onnx_pb.h>
+#include "core/graph/onnx_protobuf.h"
 
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
@@ -80,7 +80,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto* pads_initializer = model_builder.GetConstantInitializer(pads);
   ORT_RETURN_IF_NOT(pads_initializer, "pads must be a constant");
 
-  Initializer pads_initializer_raw_data(*pads_initializer);
+  Initializer pads_initializer_raw_data(model_builder.GetGraphViewer().GetGraph(), *pads_initializer);
   // assume pads_initializer has int64 data, per ONNX spec
   std::vector<int32_t> converted_pads_data{};
   converted_pads_data.reserve(2 * data_rank);
@@ -102,7 +102,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
     const auto& constant_value = inputs[2].node_arg.Name();
     const auto* constant_value_initializer = model_builder.GetConstantInitializer(constant_value);
     ORT_RETURN_IF_NOT(constant_value_initializer, "constant_value must be a constant");
-    Initializer pad_value_raw_data_init(*constant_value_initializer);
+    Initializer pad_value_raw_data_init(model_builder.GetGraphViewer().GetGraph(), *constant_value_initializer);
     pad_value = pad_value_raw_data_init.DataAsSpan<float>()[0];
   }
 
@@ -158,7 +158,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node
       return false;
     }
 
-    Initializer unpacked_tensor(*pads_initializer);
+    Initializer unpacked_tensor(graph_viewer.GetGraph(), *pads_initializer);
     auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
     for (size_t i = 0; i < unpacked_tensor.size(); i++) {
       if (tensor_data[i] < 0) {

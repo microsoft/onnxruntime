@@ -12,9 +12,14 @@ import torch
 import wget
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
-from transformers import AdamW  # noqa: F401
-from transformers import BertConfig  # noqa: F401
-from transformers import AutoConfig, BertForSequenceClassification, BertTokenizer, get_linear_schedule_with_warmup
+from transformers import (
+    AdamW,  # noqa: F401
+    AutoConfig,
+    BertConfig,  # noqa: F401
+    BertForSequenceClassification,
+    BertTokenizer,
+    get_linear_schedule_with_warmup,
+)
 
 import onnxruntime
 from onnxruntime.training.ortmodule import DebugOptions, ORTModule
@@ -91,7 +96,7 @@ def train(model, optimizer, scaler, scheduler, train_dataloader, epoch, device, 
             start_time = curr_time
 
         if args.view_graphs:
-            import torchviz
+            import torchviz  # noqa: PLC0415
 
             pytorch_backward_graph = torchviz.make_dot(outputs[0], params=dict(list(model.named_parameters())))
             pytorch_backward_graph.view()
@@ -317,7 +322,7 @@ def flat_accuracy(preds, labels):
 def format_time(elapsed):
     """Takes a time in seconds and returns a string hh:mm:ss"""
     # Round to the nearest second.
-    elapsed_rounded = int(round(elapsed))
+    elapsed_rounded = int(round(elapsed))  # noqa: RUF046
 
     # Format as hh:mm:ss
     return str(datetime.timedelta(seconds=elapsed_rounded))
@@ -376,7 +381,7 @@ def main():
     # Device (CPU vs CUDA)
     if torch.cuda.is_available() and not args.no_cuda:
         device = torch.device("cuda")
-        print("There are %d GPU(s) available." % torch.cuda.device_count())
+        print(f"There are {torch.cuda.device_count()} GPU(s) available.")
         print("We will use the GPU:", torch.cuda.get_device_name(0))
     else:
         print("No GPU available, using the CPU instead.")
@@ -432,7 +437,9 @@ def main():
 
     # Create the learning rate scheduler.
     scheduler = get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=0, num_training_steps=total_steps  # Default value in run_glue.py
+        optimizer,
+        num_warmup_steps=0,
+        num_training_steps=total_steps,  # Default value in run_glue.py
     )
     scaler = torch.cuda.amp.GradScaler()
 

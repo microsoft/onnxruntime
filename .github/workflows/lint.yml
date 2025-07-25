@@ -6,9 +6,10 @@ on:
       - main
       - rel-*
   pull_request:
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -26,7 +27,7 @@ jobs:
           level: info
           filter_mode: diff_context
       - name: shellcheck # Static check shell scripts
-        uses: reviewdog/action-shellcheck@v1
+        uses: reviewdog/action-shellcheck@v1.30.0
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
@@ -45,7 +46,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          # Version range or exact version of Python to use, using SemVer's version range syntax. Reads from .python-version if unset.
+          # Use the version configured in target-version of [tool.black] section in pyproject.toml.
           python-version: "3.10"
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
@@ -55,12 +56,10 @@ jobs:
       - name: Update PATH
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
       - name: Install dependencies
         run: |
           set -e -x
           python -m pip install --user -r requirements-dev.txt
-          python -m pip install --user lintrunner lintrunner-adapters
           lintrunner init
       - name: Run lintrunner on all files
         run: |
@@ -110,18 +109,7 @@ jobs:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: info
-          flags: --linelength=120
-            --exclude=java/src/main/native/*.c
-            --exclude=onnxruntime/core/mlas/inc/*
-            --exclude=onnxruntime/core/mlas/lib/*
-            --exclude=onnxruntime/contrib_ops/cuda/bert/flash_attention/*
-            --exclude=build/Debug/*
-            --exclude=cmake/*
-            --exclude=csharp/test/*
-            --exclude=onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/GeneratedShaders/*
-            --exclude=orttraining/orttraining/test/*
-            --exclude=onnxruntime/test/*
-            --exclude=winml/*
+          flags: --linelength=120 --exclude=java/src/main/native/*.c --exclude=onnxruntime/core/mlas/inc/* --exclude=onnxruntime/core/mlas/lib/* --exclude=onnxruntime/contrib_ops/cuda/bert/flash_attention/* --exclude=build/Debug/* --exclude=cmake/* --exclude=csharp/test/* --exclude=onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/GeneratedShaders/* --exclude=orttraining/orttraining/test/* --exclude=onnxruntime/test/* --exclude=winml/*
           filter: "-runtime/references"
 
   lint-js:

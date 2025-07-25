@@ -150,6 +150,11 @@ enum class ProgramTensorMetadataDependency : int {
 };
 std::ostream& operator<<(std::ostream& os, ProgramTensorMetadataDependency);
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+
 inline ProgramTensorMetadataDependency operator|(ProgramTensorMetadataDependency a, ProgramTensorMetadataDependency b) {
   return (ProgramTensorMetadataDependency)((int&)a | (int&)b);
 }
@@ -162,6 +167,10 @@ inline ProgramTensorMetadataDependency& operator|=(ProgramTensorMetadataDependen
 inline ProgramTensorMetadataDependency& operator&=(ProgramTensorMetadataDependency& a, ProgramTensorMetadataDependency b) {
   return (ProgramTensorMetadataDependency&)((int&)a &= (int&)b);
 }
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 constexpr SafeInt<uint32_t> WORKGROUP_SIZE = 64;
 
@@ -188,7 +197,13 @@ enum class ProgramVariableDataType {
   Boolx4,
   Uint8x4,
   Uint8x8,
-  Uint8x16
+  Uint8x16,
+  Int8x4,
+  Int8x8,
+  Int8x16,
+  Uint4x8,
+  Int4x8,
+  // if you add a new type here, you also need to update ProgramVariableDataTypeName
 };
 #ifndef NDEBUG
 std::ostream& operator<<(std::ostream& os, ProgramVariableDataType);
@@ -199,8 +214,15 @@ int NumberOfComponents(ProgramVariableDataType type);
 ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int component = 1);
 
 struct ProgramInput {
+ private:
+  struct FlattenTag {};
+
+ public:
+  constexpr static const FlattenTag Flatten{};
+
   ProgramInput(const Tensor* tensor);
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, FlattenTag, int component = 1);
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   const Tensor* tensor;
@@ -211,13 +233,21 @@ struct ProgramInput {
 };
 
 struct ProgramOutput {
+ private:
+  struct AtomicTag {};
+
+ public:
+  constexpr static const AtomicTag Atomic{};
+
   ProgramOutput(Tensor* tensor);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, AtomicTag);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
+  bool is_atomic;
   bool use_override_shape;
   TensorShape override_shape;
 };
@@ -228,6 +258,7 @@ enum class ValidationMode {
   Basic,
   Full
 };
+std::ostream& operator<<(std::ostream& os, ValidationMode mode);
 
 namespace details {
 class ProgramWrapper;
@@ -261,9 +292,11 @@ class ProgramBase {
   // add multiple program outputs
   ProgramBase& AddOutputs(std::initializer_list<ProgramOutput> outputs);
   // add a program variable for indices
-  ProgramBase& AddIndices(const TensorShape& shape);
-  // add a program variable for indices
-  ProgramBase& AddIndices(TensorShape&& shape);
+  template <typename... Args>
+  ProgramBase& AddIndices(Args&&... args) {
+    indices_.emplace_back(std::forward<Args>(args)...);
+    return *this;
+  }
 
   // set the size of dispatch groups. Y and Z are 1 if not specified.
   ProgramBase& SetDispatchGroupSize(uint32_t x);
@@ -368,18 +401,18 @@ class ProgramWrapper : public ProgramBase {
 #define ORT_WEBGPU_REGISTER_DERIVED_PROGRAM_CLASS_TYPE_CHECK(identifier, element_type)                                                   \
  private:                                                                                                                                \
   template <typename U>                                                                                                                  \
-  static auto test_has_##identifier(int)->decltype(U::identifier, std::true_type{}); /* checks if member exists */                       \
+  static auto test_has_##identifier(int) -> decltype(U::identifier, std::true_type{}); /* checks if member exists */                     \
   template <typename...>                                                                                                                 \
-  static auto test_has_##identifier(...)->std::false_type;                                                                               \
+  static auto test_has_##identifier(...) -> std::false_type;                                                                             \
                                                                                                                                          \
   template <typename U,                                                                       /* The following type check uses SFINAE */ \
             typename = std::enable_if_t<                                                      /* to ensure the specific member:       */ \
                                         is_const_std_array<decltype(U::identifier)>::value && /*  - is a const std::array             */ \
                                         std::is_const_v<decltype(U::identifier)> &&           /*  - has "const" modifier              */ \
                                         !std::is_member_pointer_v<decltype(&U::identifier)>>> /*  - is static                         */ \
-  static auto test_has_##identifier##_with_correct_type(int)->std::true_type;                                                            \
+  static auto test_has_##identifier##_with_correct_type(int) -> std::true_type;                                                          \
   template <typename...>                                                                                                                 \
-  static auto test_has_##identifier##_with_correct_type(...)->std::false_type;                                                           \
+  static auto test_has_##identifier##_with_correct_type(...) -> std::false_type;                                                         \
                                                                                                                                          \
  public:                                                                                                                                 \
   static constexpr bool has_##identifier = decltype(test_has_##identifier<T>(0))::value;                                                 \

@@ -3,13 +3,12 @@ beartype==0.15.0
 flatbuffers
 cerberus
 h5py
-onnx==1.16.1
+onnx==1.18.0
 # Python dependencies required for pytorch development
 astunparse
 expecttest!=0.2.0
 hypothesis
-numpy==1.21.6 ; python_version < '3.9'
-numpy==2.1.2 ; python_version >= '3.9'
+numpy==2.2.6
 psutil
 pyyaml
 requests

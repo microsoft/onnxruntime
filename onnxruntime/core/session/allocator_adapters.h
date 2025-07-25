@@ -6,6 +6,8 @@
 #include "core/framework/allocator.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
+#include <string>
+
 namespace onnxruntime {
 
 // Since all allocators are of type 'OrtAllocator' and there is a single
@@ -23,11 +25,12 @@ struct OrtAllocatorImplWrappingIAllocator final : public OrtAllocatorImpl {
   ~OrtAllocatorImplWrappingIAllocator() override = default;
 
   void* Alloc(size_t size);
-
   void Free(void* p);
+  void* Reserve(size_t size);
 
   const OrtMemoryInfo* Info() const;
-  void* Reserve(size_t size);
+
+  std::unordered_map<std::string, std::string> Stats() const;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtAllocatorImplWrappingIAllocator);
 
@@ -37,21 +40,32 @@ struct OrtAllocatorImplWrappingIAllocator final : public OrtAllocatorImpl {
   onnxruntime::AllocatorPtr i_allocator_;
 };
 
+using OrtAllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
+
 class IAllocatorImplWrappingOrtAllocator final : public IAllocator {
  public:
+  // ctor for OrtAllocator we do not own
   explicit IAllocatorImplWrappingOrtAllocator(OrtAllocator* ort_allocator);
 
-  ~IAllocatorImplWrappingOrtAllocator() override = default;
+  // ctor for OrtAllocator we own.
+  explicit IAllocatorImplWrappingOrtAllocator(OrtAllocatorUniquePtr ort_allocator);
+
+  // ~IAllocatorImplWrappingOrtAllocator() override = default;
 
   void* Alloc(size_t size) override;
+  void Free(void* p) override;
   void* Reserve(size_t size) override;
 
-  void Free(void* p) override;
+  const OrtAllocator* GetWrappedOrtAllocator() const {
+    return ort_allocator_.get();
+  }
+
+  void GetStats(AllocatorStats* stats) override;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(IAllocatorImplWrappingOrtAllocator);
 
  private:
-  OrtAllocator* ort_allocator_ = nullptr;
+  OrtAllocatorUniquePtr ort_allocator_ = nullptr;
 };
 
 }  // namespace onnxruntime

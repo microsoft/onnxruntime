@@ -84,16 +84,15 @@ def update_version():
     js_root = os.path.join(cwd, "..", "..", "js")
 
     def run(args, cwd):
-        from util import is_windows, run
+        from util import is_windows, run  # noqa: PLC0415
 
         if is_windows():
             args = ["cmd", "/c", *args]
         run(*args, cwd=cwd)
 
-    # check if node, npm and yarn are installed
+    # check if node and npm are installed
     run(["node", "--version"], cwd=js_root)
     run(["npm", "--version"], cwd=js_root)
-    run(["yarn", "--version"], cwd=js_root)
 
     # upgrade version for onnxruntime-common
     run(["npm", "version", version], cwd=os.path.join(js_root, "common"))
@@ -109,7 +108,7 @@ def update_version():
 
     # upgrade version for onnxruntime-react-native
     run(["npm", "version", version], cwd=os.path.join(js_root, "react_native"))
-    run(["yarn", "upgrade", "onnxruntime-common"], cwd=os.path.join(js_root, "react_native"))
+    run(["npm", "install", "--package-lock-only", "--ignore-scripts"], cwd=os.path.join(js_root, "react_native"))
 
     # upgrade version.ts in each package
     run(["npm", "ci"], cwd=js_root)

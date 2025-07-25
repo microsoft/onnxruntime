@@ -46,7 +46,7 @@ with open(args.output, "w") as file:
 
     for symbol in symbols:
         if args.style == "vc":
-            file.write(" %s @%d\n" % (symbol, symbol_index))
+            file.write(f" {symbol} @{symbol_index}\n")
         elif args.style == "xcode":
             file.write(f"_{symbol}\n")
         else:
@@ -81,6 +81,7 @@ with open(args.output_source, "w") as file:
             "tensorrt",
             "azure",
             "webgpu",
+            "nv_tensorrt_rtx",
         ):
             file.write(f"#include <core/providers/{c}/{c}_provider_factory.h>\n")
     file.write("void* GetFunctionEntryByName(const char* name){\n")

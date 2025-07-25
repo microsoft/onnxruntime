@@ -11,13 +11,16 @@ from onnx import TensorProto, helper
 
 
 class QnnTensorStruct:
-    def __init__(self):
-        self.name = ""
-        self.onnx_data_type = TensorProto.FLOAT
-        self.is_quantized = False
-        self.scale = 0.0
-        self.offset = 0
-        self.dim = []
+    def __init__(
+        self, name="", onnx_data_type=TensorProto.FLOAT, is_quantized=False, scale=0.0, offset=0, dim=None, id=None
+    ):
+        self.name = name
+        self.onnx_data_type = onnx_data_type
+        self.is_quantized = is_quantized
+        self.scale = scale
+        self.offset = offset
+        self.dim = [] if dim is None else dim
+        self.id = id
 
 
 def is_quantized_data_type(qnn_data_type, is_converter_json):
@@ -113,46 +116,41 @@ def parse_qnn_converter_json_file(qnn_convert_json, qnn_input_tensor_dic, qnn_ou
     for qnn_tensor_name, qnn_tensor_attribute in qnn_convert_json["graph"]["tensors"].items():
         # type:0 - QNN input tensor, type:1 - QNN output tensor
         assert (
-            "type" in qnn_tensor_attribute and "data_type" in qnn_tensor_attribute and "dims" in qnn_tensor_attribute
+            "type" in qnn_tensor_attribute
+            and "data_type" in qnn_tensor_attribute
+            and "dims" in qnn_tensor_attribute
+            and "id" in qnn_tensor_attribute
+            and "quant_params" in qnn_tensor_attribute
         ), "QNN converted json file not valid. Can't find some keys from tensors"
 
-        # Get all graph inputs
-        if qnn_tensor_attribute["type"] == 0:
-            qnn_tensor = QnnTensorStruct()
-            qnn_tensor.name = qnn_tensor_name
-            qnn_tensor.onnx_data_type = qnn_data_type_to_onnx_data_type(
-                qnn_tensor_attribute["data_type"], is_qnn_converter_json
-            )
-            qnn_tensor.is_quantized = is_quantized_data_type(qnn_tensor_attribute["data_type"], is_qnn_converter_json)
-            qnn_tensor.dim = qnn_tensor_attribute["dims"]
-            if (
-                qnn_tensor_attribute["quant_params"]["definition"] == 1
-                and qnn_tensor_attribute["quant_params"]["encoding"] == 0
-            ):
-                qnn_tensor.scale = qnn_tensor_attribute["quant_params"]["scale_offset"]["scale"]
-                qnn_tensor.offset = 0 - qnn_tensor_attribute["quant_params"]["scale_offset"]["offset"]
-            qnn_input_tensor_dic[qnn_tensor_name] = qnn_tensor
+        # If tensor is not IO, ignore it
+        if qnn_tensor_attribute["type"] not in [0, 1]:
+            continue
 
-        # Get all graph outputs
-        if qnn_tensor_attribute["type"] == 1:
-            qnn_tensor = QnnTensorStruct()
-            qnn_tensor.name = qnn_tensor_name
-            qnn_tensor.onnx_data_type = qnn_data_type_to_onnx_data_type(
-                qnn_tensor_attribute["data_type"], is_qnn_converter_json
-            )
-            qnn_tensor.is_quantized = is_quantized_data_type(qnn_tensor_attribute["data_type"], is_qnn_converter_json)
-            qnn_tensor.dim = qnn_tensor_attribute["dims"]
-            if (
-                qnn_tensor_attribute["quant_params"]["definition"] == 1
-                and qnn_tensor_attribute["quant_params"]["encoding"] == 0
-            ):
-                qnn_tensor.scale = qnn_tensor_attribute["quant_params"]["scale_offset"]["scale"]
-                qnn_tensor.offset = 0 - qnn_tensor_attribute["quant_params"]["scale_offset"]["offset"]
+        # Get all graph inputs & output
+        qnn_tensor = QnnTensorStruct(
+            name=qnn_tensor_name,
+            onnx_data_type=qnn_data_type_to_onnx_data_type(qnn_tensor_attribute["data_type"], is_qnn_converter_json),
+            is_quantized=is_quantized_data_type(qnn_tensor_attribute["data_type"], is_qnn_converter_json),
+            dim=qnn_tensor_attribute["dims"],
+            id=qnn_tensor_attribute["id"],
+        )
+
+        if (
+            qnn_tensor_attribute["quant_params"]["definition"] == 1
+            and qnn_tensor_attribute["quant_params"]["encoding"] == 0
+        ):
+            qnn_tensor.scale = qnn_tensor_attribute["quant_params"]["scale_offset"]["scale"]
+            qnn_tensor.offset = -qnn_tensor_attribute["quant_params"]["scale_offset"]["offset"]
+
+        if qnn_tensor_attribute["type"] == 0:
+            qnn_input_tensor_dic[qnn_tensor_name] = qnn_tensor
+        else:
             qnn_output_tensor_dic[qnn_tensor_name] = qnn_tensor
 
-    assert (
-        len(qnn_input_tensor_dic) >= 1 and len(qnn_output_tensor_dic) >= 1
-    ), "Converted QNN model not valid. It should have at least 1 input & 1 output."
+    assert len(qnn_input_tensor_dic) >= 1 and len(qnn_output_tensor_dic) >= 1, (
+        "Converted QNN model not valid. It should have at least 1 input & 1 output."
+    )
 
 
 def generate_wrapper_onnx_file(
@@ -170,7 +168,7 @@ def generate_wrapper_onnx_file(
     value_infos = []
 
     model_inputs = []
-    for qnn_input in qnn_input_tensor_dic.values():
+    for qnn_input in sorted(qnn_input_tensor_dic.values(), key=lambda inp: inp.id):
         if qnn_input.is_quantized and not quantized_IO:
             q_scale_input_name = qnn_input.name + "_scale"
             q_offset_input_name = qnn_input.name + "_zp"
@@ -215,7 +213,7 @@ def generate_wrapper_onnx_file(
     graph_nodes.append(qnn_ep_context_node)
 
     model_outputs = []
-    for qnn_output in qnn_output_tensor_dic.values():
+    for qnn_output in sorted(qnn_output_tensor_dic.values(), key=lambda out: out.id):
         if qnn_output.is_quantized and not quantized_IO:
             dq_scale_input_name = qnn_output.name + "_scale"
             dq_offset_input_name = qnn_output.name + "_zp"
@@ -286,9 +284,9 @@ def parse_qnn_graph(qnn_graph, qnn_input_tensor_dic, qnn_output_tensor_dic):
             qnn_tensor.offset = 0 - tensor_info["quantizeParams"]["scaleOffset"]["offset"]
         qnn_output_tensor_dic[qnn_tensor.name] = qnn_tensor
 
-    assert (
-        len(qnn_input_tensor_dic) >= 1 and len(qnn_output_tensor_dic) >= 1
-    ), "Converted QNN model not valid. It should have at least 1 input & 1 output."
+    assert len(qnn_input_tensor_dic) >= 1 and len(qnn_output_tensor_dic) >= 1, (
+        "Converted QNN model not valid. It should have at least 1 input & 1 output."
+    )
 
     return graph_name
 

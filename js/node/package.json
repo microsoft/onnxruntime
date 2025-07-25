@@ -7,16 +7,15 @@
   },
   "author": "fs-eire",
   "binary": {
-    "module_path": "./bin",
-    "host": "https://onnxruntimetestdata.blob.core.windows.net/onnxruntime-node-prebuild/",
     "napi_versions": [
-      3
+      6
     ]
   },
-  "version": "1.21.0",
+  "version": "1.23.0",
   "dependencies": {
-    "onnxruntime-common": "file:../common",
-    "tar": "^7.0.1"
+    "adm-zip": "^0.5.16",
+    "global-agent": "^3.0.0",
+    "onnxruntime-common": "file:../common"
   },
   "scripts": {
     "postinstall": "node ./script/install",

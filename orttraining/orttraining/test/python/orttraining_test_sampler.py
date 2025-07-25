@@ -54,7 +54,7 @@ def test_load_balancing_data_sampler_shuffles_and_balances_load():
     random.shuffle(complexities)
 
     samples = [torch.FloatTensor([val]) for val in range(100)]
-    samples_and_complexities = list(zip(samples, complexities))
+    samples_and_complexities = list(zip(samples, complexities, strict=False))
     dataset = MyDataset(samples_and_complexities)
 
     def complexity_fn(sample):
@@ -67,7 +67,7 @@ def test_load_balancing_data_sampler_shuffles_and_balances_load():
         dataset, complexity_fn=complexity_fn, world_size=2, rank=1, shuffle=True
     )
 
-    for index0, index1 in zip(data_sampler0, data_sampler1):
+    for index0, index1 in zip(data_sampler0, data_sampler1, strict=False):
         assert samples_and_complexities[index0][1] == samples_and_complexities[index1][1]
 
 
@@ -90,7 +90,7 @@ def test_load_balancing_data_sampler_sorts_in_groups():
         dataset, complexity_fn=complexity_fn, world_size=1, rank=0, shuffle=False, group_size=8
     )
 
-    for index, sorted_sample in zip(data_sampler, samples_and_complexities_sorted):
+    for index, sorted_sample in zip(data_sampler, samples_and_complexities_sorted, strict=False):
         assert samples_and_complexities[index][1] == sorted_sample[1]
 
 
@@ -127,7 +127,9 @@ def test_load_balancing_data_sampler_sorts_and_shuffles_in_groups():
         dataset, complexity_fn=complexity_fn, world_size=1, rank=0, shuffle=True, group_size=8
     )
 
-    for index, sorted_and_shuffled_sample in zip(data_sampler, samples_and_complexities_sorted_and_shuffled):
+    for index, sorted_and_shuffled_sample in zip(
+        data_sampler, samples_and_complexities_sorted_and_shuffled, strict=False
+    ):
         assert samples_and_complexities[index][1] == sorted_and_shuffled_sample[1]
 
 

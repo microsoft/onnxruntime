@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import tempfile
@@ -196,9 +197,9 @@ def _check_type(*args, zero_point_index=-1):
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert (
-        qType in ONNX_TYPE_TO_NP_TYPE
-    ), f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
+    assert qType in ONNX_TYPE_TO_NP_TYPE, (
+        f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
+    )
     if qType in (
         onnx_proto.TensorProto.FLOAT8E4M3FN,
         onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
@@ -289,7 +290,7 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
     dr = numpy.array(rmax - rmin, dtype=numpy.float64)
     dq = numpy.array(qmax, dtype=numpy.float64) - numpy.array(qmin, dtype=numpy.float64)
     scale = numpy.array(dr / dq)
-    assert scale >= 0, "scale isse"
+    assert scale >= 0, "scale issue"
     if scale < numpy.finfo(rmax.dtype).tiny:
         scale = numpy.array(1.0, dtype=rmax.dtype)
         zero_point = numpy.array(0, dtype=qmin.dtype)
@@ -323,8 +324,8 @@ def compute_scale_zp_float8(element_type, std):
     zp_dtype = None
     if element_type not in FLOAT8_DISTRIBUTIONS:
         if element_type == TensorProto.FLOAT8E4M3FN:
-            from onnx.numpy_helper import float8e4m3_to_float32
-            from onnx.reference.custom_element_types import float8e4m3fn
+            from onnx.numpy_helper import float8e4m3_to_float32  # noqa: PLC0415
+            from onnx.reference.custom_element_types import float8e4m3fn  # noqa: PLC0415
 
             zp_dtype = float8e4m3fn
             all_values = [float8e4m3_to_float32(i) for i in range(256)]
@@ -335,7 +336,7 @@ def compute_scale_zp_float8(element_type, std):
             raise ValueError(f"Quantization to element_type={element_type} not implemented.")
         FLOAT8_DISTRIBUTIONS[element_type] = values
     elif element_type == TensorProto.FLOAT8E4M3FN:
-        from onnx.reference.custom_element_types import float8e4m3fn
+        from onnx.reference.custom_element_types import float8e4m3fn  # noqa: PLC0415
 
         zp_dtype = float8e4m3fn
 
@@ -781,10 +782,10 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
 
 
 def apply_plot(hist, hist_edges):
-    import sys
+    import sys  # noqa: PLC0415
 
-    import matplotlib.pyplot as plt
-    import numpy
+    import matplotlib.pyplot as plt  # noqa: PLC0415
+    import numpy  # noqa: PLC0415
 
     numpy.set_printoptions(threshold=sys.maxsize)
     print("Histogram:")
@@ -803,14 +804,14 @@ def write_calibration_table(calibration_cache, dir="."):
     Helper function to write calibration table to files.
     """
 
-    import json
+    import json  # noqa: PLC0415
 
-    import flatbuffers
-    import numpy as np
+    import flatbuffers  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
 
-    import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
-    import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
-    from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
+    import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue  # noqa: PLC0415
+    import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable  # noqa: PLC0415
+    from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData  # noqa: PLC0415
 
     logging.info(f"calibration cache: {calibration_cache}")
 
@@ -868,7 +869,7 @@ def write_calibration_table(calibration_cache, dir="."):
         file.write(buf)
 
     # Deserialize data (for validation)
-    if os.environ.get("QUANTIZATION_DEBUG", 0) in (1, "1"):
+    if os.environ.get("QUANTIZATION_DEBUG", "0") in (1, "1"):
         cal_table = TrtTable.TrtTable.GetRootAsTrtTable(buf, 0)
         dict_len = cal_table.DictLength()
         for i in range(dict_len):
@@ -906,11 +907,7 @@ def smooth_distribution(p, eps=0.0001):
         # raise ValueError('The discrete probability distribution is malformed. All entries are 0.')
         return None
     eps1 = eps * float(n_zeros) / float(n_nonzeros)
-    assert eps1 < 1.0, "n_zeros=%d, n_nonzeros=%d, eps1=%f" % (
-        n_zeros,
-        n_nonzeros,
-        eps1,
-    )
+    assert eps1 < 1.0, f"n_zeros={n_zeros}, n_nonzeros={n_nonzeros}, eps1={eps1}"
 
     hist = p.astype(numpy.float32)
     hist += eps * is_zeros + (-eps1) * is_nonzeros
@@ -921,10 +918,7 @@ def smooth_distribution(p, eps=0.0001):
 
 def model_has_external_data(model_path: Path):
     model = onnx.load(model_path.as_posix(), load_external_data=False)
-    for intializer in model.graph.initializer:
-        if external_data_helper.uses_external_data(intializer):
-            return True
-    return False
+    return any(external_data_helper.uses_external_data(intializer) for intializer in model.graph.initializer)
 
 
 def optimize_model(model_path: Path, opt_model_path: Path):
@@ -977,6 +971,51 @@ def model_has_infer_metadata(model: ModelProto) -> bool:
     return False
 
 
+def get_opset_version(model: ModelProto) -> int:
+    ai_onnx_domain = [opset for opset in model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
+    if len(ai_onnx_domain) != 1:
+        raise ValueError("Failed to find proper ai.onnx domain")
+    opset_version = ai_onnx_domain[0].version
+
+    return opset_version
+
+
+def update_opset_version(model: ModelProto, weight_type: QuantType) -> ModelProto:
+    opset_version = get_opset_version(model)
+    target_opset_version = opset_version
+    weight_quant_type = getattr(weight_type, "tensor_type", weight_type)
+
+    if opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN:
+        logging.warning(
+            f"The original model opset version is {opset_version}, which does not support quantization to float 8. "
+            "Please update the model to opset >= 19. Automatically update the model to opset 19. "
+            "Please verify the quantized model."
+        )
+        target_opset_version = 19
+
+    elif opset_version == 10:
+        logging.warning(
+            f"The original model opset version is {opset_version}, which does not support node fusions. "
+            "Please update the model to opset >= 11 for better performance."
+        )
+
+    elif opset_version < 10:
+        logging.warning(
+            f"The original model opset version is {opset_version}, which does not support quantization. "
+            "Please update the model to opset >= 11. Automatically update the model to opset 11. "
+            "Please verify the quantized model."
+        )
+        target_opset_version = 11
+
+    if target_opset_version != opset_version:
+        model = onnx.version_converter.convert_version(model, target_opset_version)
+        # Additional nodes may be added to the model during the opset version conversion. Run shape inference
+        # to ensure all nodes are included in model.graph.value_info.
+        model = save_and_reload_model_with_shape_infer(model)
+
+    return model
+
+
 def load_model_with_shape_infer(model_path: Path) -> ModelProto:
     inferred_model_path = generate_identified_filename(model_path, "-inferred")
     onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
@@ -988,8 +1027,9 @@ def load_model_with_shape_infer(model_path: Path) -> ModelProto:
 
 def save_and_reload_model_with_shape_infer(model: ModelProto) -> ModelProto:
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
+        model_copy = copy.deepcopy(model)
         model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-        onnx.save_model(model, model_path.as_posix(), save_as_external_data=True)
+        onnx.save_model(model_copy, model_path.as_posix(), save_as_external_data=True)
         return load_model_with_shape_infer(model_path)
 
 

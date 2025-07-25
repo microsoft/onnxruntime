@@ -1,14 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/common/safeint.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -108,22 +104,20 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");
 
     std::vector<uint8_t> unpacked_tensor;
-    bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
-    if (is_initializer_input) {
-      const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
+    bool is_constant_input = qnn_model_wrapper.IsConstantInput(input_name);
+    if (is_constant_input) {
+      const auto& input_tensor = qnn_model_wrapper.GetConstantTensor(input_name);
       if (1 == input_trans_flag.at(input_i)) {
         ORT_RETURN_IF_ERROR(quantize_param.HandleTranspose<size_t>(std::vector<size_t>({1, 0})));
-        ORT_RETURN_IF_ERROR(TwoDimensionTranspose(qnn_model_wrapper,
-                                                  input_shape,
-                                                  *input_tensor,
-                                                  unpacked_tensor));
+        ORT_RETURN_IF_ERROR(
+            utils::TwoDimensionTranspose(qnn_model_wrapper, input_shape, *input_tensor, unpacked_tensor));
       } else {
         ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
       }
     }
 
     std::string input_tensor_name = input_name;
-    if (1 == input_trans_flag.at(input_i) && !is_initializer_input) {
+    if (1 == input_trans_flag.at(input_i) && !is_constant_input) {
       ORT_RETURN_IF(quantize_param.IsPerChannel(), "Non-constant Gemm inputs only support per-tensor quantization");
 
       // Add Transpose node
@@ -149,6 +143,52 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     QnnTensorWrapper input_tensorwrapper(input_tensor_name, tensor_type, qnn_data_type, std::move(quantize_param),
                                          std::move(input_shape), std::move(unpacked_tensor));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+
+    if (1 == input_i) {
+      // Workaround that inserts a QNN Convert op before input[1] (converts from quantized uint16 to signed symmetric int16)
+      // to avoid a QNN validation failure.
+      //
+      // QNN graph WITHOUT workaround (fails validation):
+      //     input_0_uint16 ---> FC ---> output_uint16
+      //                         ^
+      //                         |
+      //     input_1_uint16 -----+
+      //
+      // QNN graph WITH workaround (passes validation):
+      //     input_0_uint16 ----------------------> FC ---> output_uint16
+      //                                            ^
+      //                                            |
+      //     input_1_uint16 --> Convert(to int16) --+
+
+      std::string weight_input_name = input_tensor_name;
+      const auto& weight_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(weight_input_name);
+
+      if (weight_tensor_wrapper.GetTensorDataType() == QNN_DATATYPE_UFIXED_POINT_16) {
+        const auto& quant_param_wrapper = weight_tensor_wrapper.GetQnnQuantParams();
+        const Qnn_QuantizeParams_t& quant_param = quant_param_wrapper.Get();
+        const auto& transformed_input1_shape = weight_tensor_wrapper.GetTensorDims();
+
+        ORT_RETURN_IF_NOT(quant_param_wrapper.IsPerTensor(),
+                          "FC's INT16 weight inputs only support INT16 per-tensor quantization");
+
+        // Pop FC weight. Insert Convert op after Weight
+        input_names.pop_back();
+        const std::string& fc_output_name = node_unit.Outputs()[0].node_arg.Name();
+        std::string convert_output_name = weight_input_name + "_convert_" + fc_output_name;
+
+        ORT_RETURN_IF_ERROR(utils::InsertConvertOp(qnn_model_wrapper,
+                                                   weight_input_name,
+                                                   convert_output_name,
+                                                   QNN_DATATYPE_UFIXED_POINT_16,
+                                                   QNN_DATATYPE_SFIXED_POINT_16,
+                                                   quant_param.scaleOffsetEncoding.offset,
+                                                   quant_param.scaleOffsetEncoding.scale,
+                                                   transformed_input1_shape,
+                                                   true,  // Symmetric
+                                                   do_op_validation));
+        input_names.push_back(convert_output_name);
+      }
+    }
   }
 
   return Status::OK();

@@ -4,11 +4,6 @@ parameters:
   type: string
   default: ''
 
-- name: job_name_suffix
-  displayName: job name
-  type: string
-  default: ''
-
 - name: packageName
   displayName: Package Name
   type: string
@@ -19,32 +14,35 @@ parameters:
   type: string
   default: ''
 
+# Do not update this to a version that does not exist for the qnn-runtime Maven package:
+# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.28.0.241029'
+  default: '2.36.1.250708'
+
+- name: enableWebGpu
+  displayName: Enable WebGPU test
+  type: boolean
+  default: true
 
 jobs:
-- job: Final_AAR_Testing_Android_${{ parameters.job_name_suffix }}
+- job: Final_AAR_Testing_Android
+  pool:
+    name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    os: linux
   workspace:
     clean: all
-  pool:
-    vmImage: 'macOS-13'
   variables:
-  - name: runCodesignValidationInjection
-    value: false
+    runCodesignValidationInjection: false
+    ANDROID_AVD_HOME: $(Agent.TempDirectory)
   timeoutInMinutes: 90
-  dependsOn:
-    - Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
   steps:
   - template: set-version-number-variables-step.yml
 
-  - task: DownloadPipelineArtifact@2
+  - download: build
     displayName: 'Download Final Android AAR'
-    inputs:
-      buildType: 'current'
-      artifactName: '${{parameters.artifactName}}'
-      targetPath: '$(Build.BinariesDirectory)/final-android-aar'
+    artifact: '${{parameters.artifactName}}'
 
   - task: JavaToolInstaller@0
     displayName: Use jdk 17
@@ -60,29 +58,42 @@ jobs:
         mkdir -p android_test/android/app/libs
         cd android_test/android
         cp -av $(Build.SourcesDirectory)/java/src/test/android/* ./
-        cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
+        cp $(Pipeline.Workspace)/build/onnxruntime-android-full-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
     displayName: Copy Android test files and AAR to android_test directory
     workingDirectory: $(Build.BinariesDirectory)
 
   # skip emulator tests for qnn package as there are no arm64-v8a emulators and no qnn libraries for x86
-  - ${{ if not(contains(parameters.packageName, 'qnn')) }}:
+  # skip emulator tests for webgpu package as software rendering with swiftshader does not work without host GPU
+  - script: |
+        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+        set -e
+        if [[ "${{ parameters.packageName }}" == *"qnn"*  || "${{ parameters.enableWebGpu }}" == "true" ]]; then
+          echo "##vso[task.setvariable variable=useEmulator]false"
+          echo "WebGPU is enabled or it's a  QNN package. Emulator tests will be skipped."
+        else
+          echo "##vso[task.setvariable variable=useEmulator]true"
+          echo "Emulator tests will be executed."
+        fi
+
+    displayName: Determine if emulator tests should be skipped
+
+  - ${{ if eq(variables['useEmulator'], 'true')}}:
     - template: use-android-emulator.yml
       parameters:
         create: true
         start: true
 
     - script: |
-        set -e -x
-        cd android_test/android
         $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
       displayName: Run E2E test using Emulator
-      workingDirectory: $(Build.BinariesDirectory)
+      workingDirectory: $(Build.BinariesDirectory)/android_test/android
 
     - template: use-android-emulator.yml
       parameters:
         stop: true
 
   - ${{ else }}:
+
     - script: |
         # QNN SDK version string, expected format: 2.28.0.241029
         # Extract the first three parts of the version string to get the Maven package version (e.g., 2.28.0)
@@ -90,37 +101,15 @@ jobs:
         echo "QnnMavenPackageVersion: $QnnMavenPackageVersion"
         echo "##vso[task.setvariable variable=QnnMavenPackageVersion]$QnnMavenPackageVersion"
       displayName: Trim QNN SDK version to major.minor.patch
+      condition: contains('${{ parameters.packageName }}', 'qnn')
 
     - script: |
-          set -e -x
-          # build apks for qnn package as they are not built in the emulator test step
-          $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest -DqnnVersion=$(QnnMavenPackageVersion) --stacktrace
-      displayName: Build QNN APK
+        set -e -x
+        # build apks for qnn package and webgpu as they are not built in the emulator test step
+        if [[ "${{ parameters.packageName }}" == *"qnn"* ]]; then
+          $(Build.SourcesDirectory)/java/gradlew --no-daemon clean assembleDebug assembleAndroidTest -DqnnVersion=$(QnnMavenPackageVersion) --stacktrace
+        else
+          $(Build.SourcesDirectory)/java/gradlew --no-daemon clean assembleDebug assembleAndroidTest --stacktrace
+        fi
+      displayName: Build APK for QNN and WebGPU package
       workingDirectory: $(Build.BinariesDirectory)/android_test/android
-
-  # we run e2e tests on one older device (Pixel 3) and one newer device (Galaxy 23)
-  - script: |
-      set -e -x
-      pip install requests
-
-      python $(Build.SourcesDirectory)/tools/python/upload_and_run_browserstack_tests.py \
-        --test_platform espresso \
-        --app_path "debug/app-debug.apk" \
-        --test_path "androidTest/debug/app-debug-androidTest.apk" \
-        --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0" \
-        --build_tag "${{ parameters.packageName }}"
-
-    displayName: Run E2E tests using Browserstack
-    workingDirectory: $(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk
-    timeoutInMinutes: 15
-    env:
-      BROWSERSTACK_ID: $(browserstack_username)
-      BROWSERSTACK_TOKEN: $(browserstack_access_key)
-
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
-
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()

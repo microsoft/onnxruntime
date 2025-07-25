@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Tuple, Union
 
 import numpy as np
 from fusion_base import Fusion
@@ -27,7 +26,7 @@ class FusionAttentionVae(Fusion):
         self.num_heads_warning = True
         self.hidden_size_warning = True
 
-    def get_num_heads_and_hidden_size(self, reshape_q: NodeProto, add_q: NodeProto) -> Tuple[int, int]:
+    def get_num_heads_and_hidden_size(self, reshape_q: NodeProto, add_q: NodeProto) -> tuple[int, int]:
         """Detect num_heads and hidden_size from a reshape node.
 
         Args:
@@ -80,7 +79,7 @@ class FusionAttentionVae(Fusion):
         hidden_size: int,
         input_name: str,
         output_name: str,
-    ) -> Union[NodeProto, None]:
+    ) -> NodeProto | None:
         """Create an Attention node.
 
         Args:

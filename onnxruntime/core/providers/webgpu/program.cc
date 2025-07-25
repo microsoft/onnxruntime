@@ -102,7 +102,13 @@ constexpr std::string_view ProgramVariableDataTypeName[] = {
     "u8x4",    // Uint8x4
     "u8x8",    // Uint8x8
     "u8x16",   // Uint8x16
+    "i8x4",    // Int8x4
+    "i8x8",    // Int8x8
+    "i8x16",   // Int8x16
+    "u4x8",    // Uint4x8
+    "i4x8",    // Int4x8
 };
+
 std::ostream& operator<<(std::ostream& os, ProgramVariableDataType type) {
   os << ProgramVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
   return os;
@@ -129,10 +135,15 @@ int NumberOfComponents(ProgramVariableDataType type) {
     case ProgramVariableDataType::Float16x4:
     case ProgramVariableDataType::Boolx4:
     case ProgramVariableDataType::Uint8x4:
+    case ProgramVariableDataType::Int8x4:
       return 4;
     case ProgramVariableDataType::Uint8x8:
+    case ProgramVariableDataType::Int8x8:
+    case ProgramVariableDataType::Uint4x8:
+    case ProgramVariableDataType::Int4x8:
       return 8;
     case ProgramVariableDataType::Uint8x16:
+    case ProgramVariableDataType::Int8x16:
       return 16;
     default:
       return -1;
@@ -174,6 +185,8 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
     switch (element_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
         return ProgramVariableDataType::Uint8x4;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+        return ProgramVariableDataType::Int8x4;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
         return ProgramVariableDataType::Float32x4;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
@@ -191,6 +204,10 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
     switch (element_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
         return ProgramVariableDataType::Uint8x8;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4:
+        return ProgramVariableDataType::Uint4x8;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
+        return ProgramVariableDataType::Int4x8;
       default:
         return ProgramVariableDataType::InvalidType;
     }
@@ -204,6 +221,26 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
   } else {
     return ProgramVariableDataType::InvalidType;
   }
+}
+
+std::ostream& operator<<(std::ostream& os, ValidationMode mode) {
+  switch (mode) {
+    case ValidationMode::Disabled:
+      os << "Disabled";
+      break;
+    case ValidationMode::WGPUOnly:
+      os << "WGPUOnly";
+      break;
+    case ValidationMode::Basic:
+      os << "Basic";
+      break;
+    case ValidationMode::Full:
+      os << "Full";
+      break;
+    default:
+      os << "Unknown(" << static_cast<int>(mode) << ")";
+  }
+  return os;
 }
 
 namespace {
@@ -229,6 +266,15 @@ ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency
   }
 }
 
+ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, ProgramInput::FlattenTag, int component)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      use_override_shape{true},
+      override_shape{} {
+  override_shape = {(tensor->Shape().Size() + component - 1) / component};
+}
+
 ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
     : tensor{tensor},
       dependency{dependency},
@@ -243,6 +289,7 @@ ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dep
     : tensor{tensor},
       dependency{dependency},
       var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      is_atomic{false},
       use_override_shape{component > 1},
       override_shape{} {
   if (use_override_shape) {
@@ -250,10 +297,19 @@ ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dep
   }
 }
 
+ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, ProgramOutput::AtomicTag)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType())},
+      is_atomic{true},
+      use_override_shape{false},
+      override_shape{} {}
+
 ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
     : tensor{tensor},
       dependency{dependency},
       var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      is_atomic{false},
       use_override_shape{true},
       override_shape{override_shape} {}
 
@@ -269,7 +325,7 @@ ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
 }
 
 ProgramBase& ProgramBase::AddInput(ProgramInput&& input) {
-  inputs_.emplace_back(input);
+  inputs_.emplace_back(std::move(input));
   return *this;
 }
 
@@ -279,22 +335,12 @@ ProgramBase& ProgramBase::AddInputs(std::initializer_list<ProgramInput> inputs) 
 }
 
 ProgramBase& ProgramBase::AddOutput(ProgramOutput&& output) {
-  outputs_.emplace_back(output);
+  outputs_.emplace_back(std::move(output));
   return *this;
 }
 
 ProgramBase& ProgramBase::AddOutputs(std::initializer_list<ProgramOutput> outputs) {
   outputs_.insert(outputs_.end(), outputs.begin(), outputs.end());
-  return *this;
-}
-
-ProgramBase& ProgramBase::AddIndices(const TensorShape& shape) {
-  indices_.emplace_back(shape);
-  return *this;
-}
-
-ProgramBase& ProgramBase::AddIndices(TensorShape&& shape) {
-  indices_.emplace_back(shape);
   return *this;
 }
 

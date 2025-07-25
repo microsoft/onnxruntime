@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
@@ -25,10 +24,12 @@ class EinsumOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+  bool HasSupportedOutputsImpl(const Node& /* node */, const emscripten::val& /* wnn_limits */,
+                               const logging::Logger& /* logger */) const override;
 };
 
 // Helper functions, thanks for DML EP's OperatorHelper.
@@ -41,12 +42,6 @@ enum class RecognizedOperatorType {
   Multiply,
   Pairwise,
   Total,
-};
-
-struct RecognizedOperatorInfo {
-  RecognizedOperatorType recognized_operator_type;
-  std::initializer_list<uint32_t> component_ranks;
-  std::initializer_list<uint32_t> label_indices;
 };
 
 struct Component {
@@ -599,7 +594,7 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         }
       }
 
-      // tranpose input
+      // transpose input
       std::vector<uint32_t> permutation(input_labels.size());
       for (uint32_t idx = 0; idx < input_labels.size(); idx++) {
         if (idx != diagonal_idx_1 && idx != diagonal_idx_2) {
@@ -621,7 +616,7 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       options_trilu.set("upper", false);
       output = model_builder.GetBuilder().call<emscripten::val>("triangular", output, options_trilu);  // tril
 
-      // reducesum to achieve the diagonal values
+      // reduceSum to achieve the diagonal values
       std::vector<int64_t> input_shape;
       std::vector<uint32_t> reduced_axes;
       ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
@@ -695,17 +690,11 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 
-bool EinsumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool EinsumOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                         const Node& node,
                                         const WebnnDeviceType device_type,
                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-
-  if (input_defs.size() > 2) {
-    // TODO: Support more than two inputs.
-    LOGS(logger, VERBOSE) << "EinSum only supports up to two inputs.";
-    return false;
-  }
 
   NodeAttrHelper helper(node);
   const auto equation = helper.Get("equation", std::string(" "));
@@ -725,24 +714,22 @@ bool EinsumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
     return false;
   }
 
-  RecognizedOperatorType recognized_operator_type = DetermineRecognizedOperatorType(label_indices, components,
-                                                                                    output_dimensions);
-  if (recognized_operator_type == RecognizedOperatorType::None) {
-    LOGS(logger, VERBOSE) << "The equation is not supported in Einsum.";
-    return false;
-  }
-
   return true;
 }
 
-bool EinsumOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                             const logging::Logger& logger) const {
+bool EinsumOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                                             const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
-  const auto& op_type = node.OpType();
-  int32_t input0_type;
-  int32_t input1_type;
-  bool has_input1 = input_defs.size() > 1 && input_defs[1]->Exists();
+  if (input_defs.size() > 2) {
+    // TODO: Support more than two inputs.
+    LOGS(logger, VERBOSE) << "EinSum only supports up to two inputs.";
+    return false;
+  }
+
+  const std::string_view op_type = node.OpType();
+  int32_t input0_type, input1_type;
+  bool has_input1 = TensorExists(input_defs, 1);
 
   if (!GetType(*input_defs[0], input0_type, logger) ||
       (has_input1 && !GetType(*input_defs[1], input1_type, logger))) {
@@ -752,6 +739,13 @@ bool EinsumOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten:
   if (has_input1 && input0_type != input1_type) {
     LOGS(logger, VERBOSE) << "[" << op_type
                           << "] Input data types should be the same.";
+    return false;
+  }
+
+  std::vector<int64_t> input0_shape;
+  std::vector<int64_t> input1_shape;
+  if (!GetShape(*input_defs[0], input0_shape, logger) ||
+      (has_input1 && !GetShape(*input_defs[1], input1_shape, logger))) {
     return false;
   }
 
@@ -771,17 +765,54 @@ bool EinsumOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten:
   RecognizedOperatorType recognized_operator_type = DetermineRecognizedOperatorType(label_indices, components,
                                                                                     output_dimensions);
 
+  std::string_view decomposed_op_type;
   if (recognized_operator_type == RecognizedOperatorType::None) {
     LOGS(logger, VERBOSE) << "The equation is not supported in Einsum.";
     return false;
-  } else if (recognized_operator_type == RecognizedOperatorType::Pairwise) {
-    // Map to WebNN's gemm or matmul
-    return IsDataTypeSupportedByOp("MatMul", input0_type, wnn_limits, "a", "inputs", logger);
+  } else if (recognized_operator_type == RecognizedOperatorType::Multiply) {
+    decomposed_op_type = "Mul";
   } else if (recognized_operator_type == RecognizedOperatorType::ReduceSum) {
-    return IsDataTypeSupportedByOp("ReduceSum", input0_type, wnn_limits, "input", "inputs", logger);
-  } else {
-    return IsDataTypeSupportedByOp("Identity", input0_type, wnn_limits, "input", "inputs", logger);
+    decomposed_op_type = "ReduceSum";
+  } else if (recognized_operator_type == RecognizedOperatorType::Diagonal) {
+    decomposed_op_type = "Trilu";
+  } else if (recognized_operator_type == RecognizedOperatorType::Transpose) {
+    decomposed_op_type = "Transpose";
+  } else if (recognized_operator_type == RecognizedOperatorType::Pairwise) {
+    decomposed_op_type = "MatMul";
+  } else {  // Identity
+    // For the Identity case, we simply forward the input to the output without any modification.
+    return true;
   }
+
+  const std::string_view wnn_input0_name = GetWebNNInputName(decomposed_op_type, 0);
+  const std::string_view decompose_wnn_op_type = GetWebNNOpType(decomposed_op_type);
+  if (decompose_wnn_op_type.empty() ||
+      !IsDataTypeSupportedByWebNNOp(op_type, decompose_wnn_op_type, input0_type,
+                                    wnn_limits, wnn_input0_name, "inputs", logger) ||
+      !IsInputRankSupported(wnn_limits, decompose_wnn_op_type, wnn_input0_name,
+                            input0_shape.size(), node.Name(), logger)) {
+    return false;
+  }
+
+  if (has_input1) {
+    const std::string_view wnn_input1_name = GetWebNNInputName(decomposed_op_type, 1);
+    return IsDataTypeSupportedByWebNNOp(op_type, decompose_wnn_op_type, input1_type,
+                                        wnn_limits, wnn_input1_name, "inputs", logger) &&
+           IsInputRankSupported(wnn_limits, decompose_wnn_op_type, wnn_input1_name,
+                                input1_shape.size(), node.Name(), logger);
+  }
+
+  return true;
+}
+
+bool EinsumOpBuilder::HasSupportedOutputsImpl(const Node& /* node */,
+                                              const emscripten::val& /* wnn_limits */,
+                                              const logging::Logger& /* logger */) const {
+  // The Einsum op produces output with the same data type as its input.
+  // Therefore, checking the output data type is unnecessary.
+  // This override prevents calling the base class implementation, as the base implementation
+  // would return false due to Einsum being a decomposed op.
+  return true;
 }
 
 void CreateEinsumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
