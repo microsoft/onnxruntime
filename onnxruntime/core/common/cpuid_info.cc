@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/common/cpuid_info.h"
 
+#include <iostream>
 #include <optional>
 
 #include "core/common/logging/logging.h"
@@ -86,6 +87,21 @@ void decodeMIDR(uint32_t midr, uint32_t uarch[1]);
 #endif  // defined(CPUIDINFO_ARCH_X86)
 
 namespace onnxruntime {
+
+namespace {
+
+// Log function that uses ORT logging if available or writes to stderr.
+// This enables us to log even before ORT logging has been initialized.
+[[maybe_unused]]
+void LogWarning(std::string_view message) {
+  if (logging::LoggingManager::HasDefaultLogger()) {
+    LOGS_DEFAULT(WARNING) << message;
+  } else {
+    std::cerr << "onnxruntime cpuid_info warning: " << message << "\n";
+  }
+}
+
+}  // namespace
 
 #if defined(CPUIDINFO_ARCH_X86)
 
@@ -247,7 +263,7 @@ std::string CPUIDInfo::GetArmLinuxVendor() {
   CpuInfo cpu_info{};
   Status parse_status = ParseCpuInfoFile(cpu_info);
   if (!parse_status.IsOK()) {
-    LOGS_DEFAULT(WARNING) << "Failed to parse /proc/cpuinfo file. Error: " << parse_status;
+    LogWarning(MakeString("Failed to parse /proc/cpuinfo file. Error: ", parse_status));
   }
 
   if (cpu_info.size() > 0) {
@@ -397,10 +413,9 @@ std::string CPUIDInfo::GetArmAppleVendor() {
     if (sysctlbyname(key, nullptr, &value_length, nullptr, 0) != 0) {
       const auto error = errno;
       if (error == ENOENT) {
-        LOGS_DEFAULT(INFO) << "sysctlbyname() key not found: '" << key << "'";
+        // key not found
       } else {
-        LOGS_DEFAULT(WARNING) << "Failed to get '" << key << "' value length with sysctlbyname(). "
-                              << "Error: " << error;
+        LogWarning(MakeString("Failed to get '", key, "' value length with sysctlbyname(). Error: ", error));
       }
       return std::nullopt;
     }
@@ -409,8 +424,7 @@ std::string CPUIDInfo::GetArmAppleVendor() {
     value.resize(value_length);
     if (sysctlbyname(key, value.data(), &value_length, nullptr, 0) != 0) {
       const auto error = errno;
-      LOGS_DEFAULT(WARNING) << "Failed to get '" << key << "' value with sysctlbyname(). "
-                            << "Error: " << error;
+      LogWarning(MakeString("Failed to get '", key, "' value with sysctlbyname(). Error: ", error));
     }
 
     return value;
@@ -428,7 +442,7 @@ std::string CPUIDInfo::GetArmAppleVendor() {
     }
   }
 
-  LOGS_DEFAULT(WARNING) << "Unable to determine CPU vendor.";
+  LogWarning("Unable to determine CPU vendor.");
   return "";
 }
 
