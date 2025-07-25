@@ -84,7 +84,7 @@ inline std::string GetTensorName(const ConstPointerContainer<std::vector<NodeArg
 }
 
 template <typename T>
-inline std::vector<T> GetNarrowedIntfromInt64(gsl::span<const int64_t> int64_vec) {
+inline std::vector<T> GetNarrowedIntFromInt64(gsl::span<const int64_t> int64_vec) {
   std::vector<T> vec;
   vec.reserve(int64_vec.size());
   std::transform(int64_vec.begin(), int64_vec.end(),

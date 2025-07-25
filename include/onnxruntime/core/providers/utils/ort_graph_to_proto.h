@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// DO NOT include ORT header files as this is meant to be a header-only utility that can be copied
+// to other projects.
+
 /*
  SUMMARY:
    Utilities to serialize an OrtGraph into an ONNX GraphProto or ModelProto. Can be used by execution provider
@@ -73,6 +76,44 @@
      OrtEpUtils::OrtGraphToProto(*ort_graph, graph_proto, handle_initializer_data);
 
      // graph_proto stores large initializers in an external file
+   }
+   ```
+
+ EXAMPLE SNIPPET (external initializers that point to data in memory, not officially supported by ONNX spec):
+
+   This example stores initializers externally. However, instead of storing the initializers in a separate
+   file, the onnx::TensorProto objects point directly to memory addresses. This requires setting the initializer's
+   location to a special tag like "_MEM_ADDR_" (instead of a file path). The offset is set to the pointer to the
+   initializer's data in memory (instead of an offset into a file).
+
+   Because this is not standard ONNX, such a onnx::GraphProto should not be saved as an ONNX file.
+   However, it allows custom tools that operate directly on a onnx::GraphProto to get the initializer data
+   if it has already been loaded into memory.
+
+   ```C++
+   #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
+   #include "ort_graph_to_proto.h"
+
+   OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* ort_graph,
+                                             OrtEpGraphSupportInfo* graph_support_info) {
+     auto handle_initializer_data = [](const OrtValueInfo* value_info,
+                                       const void* data, size_t bytes,
+                                       bool& is_external, std::string& location,
+                                       int64_t& offset) -> Ort::Status {
+       (void)value_info;
+       (void)bytes;
+
+       offset = reinterpret_cast<int64_t>(data);
+       location = "_MEM_ADDR_";  // Some special location tag that indicates the offset is a pointer.
+       is_external = true;  // True if is external initializer
+       return Ort::Status{nullptr};
+     }
+
+     ONNX_NAMESPACE::GraphProto graph_proto;
+     OrtEpUtils::OrtGraphToProto(*ort_graph, graph_proto, handle_initializer_data);
+
+     // graph_proto has initializers that look like they are stored in an external file,
+     // but they are actually pointing to the data in memory.
    }
    ```
 */
@@ -325,11 +366,16 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
       for (const OrtOpAttr* ort_attr : ort_attrs) {
         OrtOpAttrType attr_type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
 
-        Ort::Status status{ort_api.OpAttr_GetType(ort_attr, &attr_type)};
-        if (!status.IsOK()) {
-          // This is an attribute type that ORT does not support via ReadOpAttr(), like subgraphs, so skip it.
+        Ort::Status attr_type_status{ort_api.OpAttr_GetType(ort_attr, &attr_type)};
+        if (attr_type == OrtOpAttrType::ORT_OP_ATTR_GRAPH) {
+          // ORT does not support reading subgraphs via ReadOpAttr(), so skip it.
           // Can use Node_GetSubgraphs to get subgraphs.
           continue;
+        }
+
+        if (!attr_type_status.IsOK()) {
+          // Unsupported attribute type.
+          return attr_type_status;
         }
 
         onnx::AttributeProto* attr_proto = node_proto->add_attribute();
@@ -456,11 +502,14 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
       auto* ext_data_entries = tensor_proto->mutable_external_data();
       onnx::StringStringEntryProto* location_entry = ext_data_entries->Add();
       onnx::StringStringEntryProto* offset_entry = ext_data_entries->Add();
+      onnx::StringStringEntryProto* length_entry = ext_data_entries->Add();
 
       location_entry->set_key("location");
       location_entry->set_value(ext_location);
       offset_entry->set_key("offset");
       offset_entry->set_value(std::to_string(ext_offset));
+      length_entry->set_key("length");
+      length_entry->set_value(std::to_string(data_bytes));
     } else {
       // User wants to store data inline the TensorProto's raw_data
       tensor_proto->set_data_location(onnx::TensorProto_DataLocation_DEFAULT);
@@ -578,20 +627,24 @@ static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info,
   onnx::TypeProto_Tensor* type_proto_tensor = value_info_proto.mutable_type()->mutable_tensor_type();
   type_proto_tensor->set_elem_type(ort_elem_type);
 
-  onnx::TensorShapeProto* shape_proto = type_proto_tensor->mutable_shape();
+  // If there are no dimensions in the shape, do not set a TensorShapeProto. Otherwise, it always looks
+  // like a scalar value.
+  if (!ort_dims.empty()) {
+    onnx::TensorShapeProto* shape_proto = type_proto_tensor->mutable_shape();
 
-  for (size_t dim_idx = 0; dim_idx < ort_dims.size(); dim_idx++) {
-    onnx::TensorShapeProto_Dimension* dim_proto = shape_proto->add_dim();
+    for (size_t dim_idx = 0; dim_idx < ort_dims.size(); dim_idx++) {
+      onnx::TensorShapeProto_Dimension* dim_proto = shape_proto->add_dim();
 
-    if (ort_dims[dim_idx] >= 0) {
-      dim_proto->set_dim_value(ort_dims[dim_idx]);
-    } else {
-      const std::string& dim_param = ort_dim_syms[dim_idx];
+      if (ort_dims[dim_idx] >= 0) {
+        dim_proto->set_dim_value(ort_dims[dim_idx]);
+      } else {
+        const std::string& dim_param = ort_dim_syms[dim_idx];
 
-      // If dim_param is empty, leave dim_proto with neither the dim_value or dim_param set,
-      // which represents an unknown dimension.
-      if (!dim_param.empty()) {
-        dim_proto->set_dim_param(dim_param);
+        // If dim_param is empty, leave dim_proto with neither the dim_value or dim_param set,
+        // which represents an unknown dimension.
+        if (!dim_param.empty()) {
+          dim_proto->set_dim_param(dim_param);
+        }
       }
     }
   }
@@ -665,11 +718,11 @@ static Ort::Status OrtOpAttrToProto(const OrtOpAttr& ort_attr, onnx::AttributePr
       Ort::Status status{ort_api.ReadOpAttr(&ort_attr, attr_type, nullptr, 0, &total_attr_bytes)};
       std::string* str = attr_proto.mutable_s();
 
-      str->resize(total_attr_bytes, '\0');
+      str->resize(total_attr_bytes);
       ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ReadOpAttr(&ort_attr, attr_type, str->data(), total_attr_bytes,
                                                         &total_attr_bytes));
 
-      str->resize(total_attr_bytes - 1);  // remove extra ending terminating '\0' character.
+      str->resize(total_attr_bytes);
       break;
     }
     case OrtOpAttrType::ORT_OP_ATTR_STRINGS: {

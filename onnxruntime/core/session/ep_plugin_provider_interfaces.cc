@@ -12,6 +12,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/framework/plugin_data_transfer.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
@@ -134,6 +135,10 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
     if (ep_device->host_accessible_memory_info != nullptr) {
       allocator_mem_infos_.push_back(ep_device->host_accessible_memory_info);
     }
+
+    if (ep_device->read_only_device_memory_info != nullptr) {
+      allocator_mem_infos_.push_back(ep_device->read_only_device_memory_info);
+    }
   }
 }
 
@@ -244,11 +249,12 @@ Status PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_n
 /// Note that the EP plugin uses the model editor API to create the OrtNode instances.
 /// </summary>
 /// <param name="ep_name">Name of the plugin EP.</param>
+/// <param name="fused_nodes">fused nodes provided by ORT.</param>
 /// <param name="plugin_ep_context_nodes">EPContext nodes provided by the plugin EP.</param>
 /// <param name="result_nodes">Output parameter set to the resulting array of EPContext nodes.</param>
 /// <param name="result_node_args">Output parameter that stores the NodeArgs used by the EPContext nodes.</param>
 /// <returns>A status indicating success or an error.</returns>
-static Status ConvertEpContextNodes(const std::string& ep_name, const std::vector<OrtNode*> plugin_ep_context_nodes,
+static Status ConvertEpContextNodes(const std::string& ep_name, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes, const std::vector<OrtNode*> plugin_ep_context_nodes,
                                     /*out*/ std::vector<std::unique_ptr<Node>>& result_nodes,
                                     /*out*/ std::vector<std::unique_ptr<NodeArg>>& result_node_args) {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
@@ -260,8 +266,10 @@ static Status ConvertEpContextNodes(const std::string& ep_name, const std::vecto
   std::vector<std::unique_ptr<NodeArg>> ep_context_node_args_holder;
 
   ep_context_nodes_holder.reserve(plugin_ep_context_nodes.size());
-
+  int index = -1;
   for (const OrtNode* ort_node : plugin_ep_context_nodes) {
+    ++index;
+    auto& fused_node_filtered_graph = fused_nodes[index].filtered_graph;
     ORT_RETURN_IF_NOT(ort_node != nullptr, ep_name, ": OrtEp::Compile() returned a NULL EPContext node.");
 
     const ModelEditorNode* editor_node = ModelEditorNode::ToInternal(ort_node);
@@ -276,13 +284,17 @@ static Status ConvertEpContextNodes(const std::string& ep_name, const std::vecto
     output_node_args.reserve(editor_node->output_names.size());
 
     for (const std::string& input_name : editor_node->input_names) {
-      auto node_arg = std::make_unique<NodeArg>(input_name, /*p_arg_type*/ nullptr);  // Graph.Resolve() sets type.
+      auto node_arg_on_fused_graph = fused_node_filtered_graph.get().GetNodeArg(input_name);
+      const ONNX_NAMESPACE::TypeProto* p_arg_type = node_arg_on_fused_graph ? node_arg_on_fused_graph->TypeAsProto() : nullptr;
+      auto node_arg = std::make_unique<NodeArg>(input_name, p_arg_type);  // Graph.Resolve() cannot set type because EP Context OP does not have proper shape inference function available.
       input_node_args.push_back(node_arg.get());
       ep_context_node_args_holder.push_back(std::move(node_arg));
     }
 
     for (const std::string& output_name : editor_node->output_names) {
-      auto node_arg = std::make_unique<NodeArg>(output_name, /*p_arg_type*/ nullptr);  // Graph.Resolve() sets type.
+      auto node_arg_on_fused_graph = fused_node_filtered_graph.get().GetNodeArg(output_name);
+      const ONNX_NAMESPACE::TypeProto* p_arg_type = node_arg_on_fused_graph ? node_arg_on_fused_graph->TypeAsProto() : nullptr;
+      auto node_arg = std::make_unique<NodeArg>(output_name, p_arg_type);  // Graph.Resolve() cannot set type because EP Context OP does not have proper shape inference function available.
       output_node_args.push_back(node_arg.get());
       ep_context_node_args_holder.push_back(std::move(node_arg));
     }
@@ -422,7 +434,7 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   // We store the converted Node and NodeArg instances as members to ensure they can be returned to the ORT graph
   // partitioner via a call to IExecutionProvider::GetEpContextNodes().
   if (generate_ep_ctx_model_) {
-    ORT_RETURN_IF_ERROR(ConvertEpContextNodes(Type(), plugin_ep_context_nodes,
+    ORT_RETURN_IF_ERROR(ConvertEpContextNodes(Type(), fused_nodes_and_graphs, plugin_ep_context_nodes,
                                               /*out*/ ep_context_nodes_, /*out*/ ep_context_node_args_));
   }
 
@@ -538,9 +550,12 @@ Status PluginExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const>
 }
 std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTransfer() const {
   OrtDataTransferImpl* data_transfer_impl = nullptr;
-  OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
-  if (status != nullptr) {
-    ORT_THROW("Error creating data transfer: ", ToStatusAndRelease(status).ToString());
+
+  if (ep_factory_.CreateDataTransfer != nullptr) {
+    OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
+    if (status != nullptr) {
+      ORT_THROW("Error creating data transfer: ", ToStatusAndRelease(status).ToString());
+    }
   }
 
   if (data_transfer_impl == nullptr) {
@@ -556,11 +571,27 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
 
   for (const auto* memory_info : allocator_mem_infos_) {
     OrtAllocator* ort_allocator_ptr = nullptr;
-    OrtStatus* ort_status = ep_factory_.CreateAllocator(&ep_factory_, memory_info, nullptr, &ort_allocator_ptr);
+
+    if (!ort_ep_->CreateAllocator && !ep_factory_.CreateAllocator) {
+      ORT_THROW("The OrtEpDevice requires the EP library to implement an allocator, but none were found.");
+    }
+
+    // prefer OrtEp function if available, otherwise fall back to using the OrtEpFactory implementation.
+    OrtStatus* ort_status = ort_ep_->CreateAllocator
+                                ? ort_ep_->CreateAllocator(ort_ep_.get(), memory_info, &ort_allocator_ptr)
+                                : ep_factory_.CreateAllocator(&ep_factory_, memory_info, /*options*/ nullptr,
+                                                              &ort_allocator_ptr);
 
     // throw or log? start with throw
     if (ort_status != nullptr) {
       ORT_THROW("Error creating allocator: ", ToStatusAndRelease(ort_status).ToString());
+    }
+
+    if (ort_allocator_ptr->Info(ort_allocator_ptr)->alloc_type == OrtAllocatorType::OrtArenaAllocator) {
+      ORT_THROW(
+          "OrtEpFactory returned an allocator with OrtAllocatorType of OrtArenaAllocator. "
+          "This type is reserved for ONNX Runtime internal usage only, as any arena usage by the "
+          "EP library should be opaque to ORT");
     }
 
     auto ort_allocator = OrtAllocatorUniquePtr(
@@ -574,4 +605,43 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
   return allocators;
 }
 
+void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& registry,
+                                                     AllocatorMap& /*allocators*/) const {
+  if (ep_factory_.IsStreamAware == nullptr || !ep_factory_.IsStreamAware(&ep_factory_)) {
+    return;
+  }
+
+  for (const auto* mem_info : allocator_mem_infos_) {
+    if (mem_info->device.UsesCpuMemory()) {
+      // CPU memory does not need a stream
+      continue;
+    }
+
+    if (!ort_ep_->CreateSyncStreamForDevice && !ep_factory_.CreateSyncStreamForDevice) {
+      ORT_THROW("The OrtEpFactory is stream aware, but did not provide CreateSyncStreamForDevice.");
+    }
+
+    auto device_type = mem_info->device.Type();
+
+    registry.RegisterCreateStreamFn(
+        device_type,
+        [mem_info, this](const OrtDevice& device) {
+          OrtSyncStreamImpl* stream = nullptr;
+          const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&mem_info->device);
+
+          // prefer OrtEp function if available, otherwise fall back to using the OrtEpFactory implementation.
+          OrtStatus* status = ort_ep_->CreateSyncStreamForDevice
+                                  ? ort_ep_->CreateSyncStreamForDevice(ort_ep_.get(), memory_device, &stream)
+                                  : ep_factory_.CreateSyncStreamForDevice(&ep_factory_, memory_device,
+                                                                          /*stream_options*/ nullptr, &stream);
+
+          ORT_ENFORCE(status == nullptr && stream != nullptr,
+                      "Error creating sync stream for device: ", ToStatusAndRelease(status).ToString());
+          return std::make_unique<plugin_ep::Stream>(device, *stream, *GetLogger());
+        });
+
+    registry.RegisterWaitFn(device_type, device_type, plugin_ep::Notification::WaitNotificationOnDevice);
+    registry.RegisterWaitFn(device_type, OrtDevice::CPU, plugin_ep::Notification::WaitNotificationOnHost);
+  }
+}
 }  // namespace onnxruntime

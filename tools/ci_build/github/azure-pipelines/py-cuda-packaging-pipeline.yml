@@ -7,14 +7,6 @@ resources:
     name: 1ESPipelineTemplates/1ESPipelineTemplates
     ref: refs/tags/release
 parameters:
-  - name: enable_linux_cuda
-    type: boolean
-    default: true
-
-  - name: enable_windows_cuda
-    type: boolean
-    default: true
-
   - name: cmake_build_type
     type: string
     default: 'Release'
@@ -23,7 +15,6 @@ parameters:
       - Release
       - RelWithDebInfo
       - MinSizeRel
-
 
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
@@ -57,7 +48,5 @@ extends:
     stages:
       - template: stages/py-gpu-packaging-stage.yml
         parameters:
-          enable_linux_cuda: ${{ parameters.enable_linux_cuda }}
-          enable_windows_cuda: ${{ parameters.enable_windows_cuda }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: '12.2'

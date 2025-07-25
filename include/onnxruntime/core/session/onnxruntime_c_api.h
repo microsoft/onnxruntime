@@ -64,6 +64,7 @@ extern "C" {
 #define _Outptr_result_maybenull_
 #define _Outptr_result_maybenull_z_
 #define _In_reads_(X)
+#define _In_reads_opt_
 #define _Inout_updates_(X)
 #define _Out_writes_(X)
 #define _Out_writes_opt_(X)
@@ -273,6 +274,7 @@ typedef enum OrtOpAttrType {
   ORT_OP_ATTR_FLOATS,
   ORT_OP_ATTR_STRING,
   ORT_OP_ATTR_STRINGS,
+  ORT_OP_ATTR_GRAPH,
 } OrtOpAttrType;
 
 //! @}
@@ -322,6 +324,8 @@ ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
+ORT_RUNTIME_CLASS(SyncStream);  // Opaque class to create an onnxruntime::Stream.
+ORT_RUNTIME_CLASS(ExternalInitializerInfo);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -349,16 +353,22 @@ typedef struct OrtAllocator {
   /**
    * @brief Optional allocation function to use for memory allocations made during session initialization.
    * Use this function if you want to separate allocations made by ORT during Run() calls from
-   * those made during session initialization. This allows for separate memory management strategies for these allocations.
+   * those made during session initialization. This allows for separate memory management strategies for these
+   * allocations.
+   *
+   * \return pointer to an allocated block of `size` bytes. nullptr if size was 0 or allocation failed.
+   *
+   * \since 1.18
    */
-  void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);  ///< Returns a pointer to an allocated block of `size` bytes
+  void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);
 
   /**
    * @brief Function used to get the statistics of the allocator.
    *
-   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator
-   * and the user should call OrtApi::ReleaseKeyValuePairs.
-   * Supported keys are:
+   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator.
+   * The user should call OrtApi::ReleaseKeyValuePairs when done.
+   *
+   * Current known keys are:
    * - Limit: Bytes limit of the allocator. -1 if no limit is set.
    * - InUse: Number of bytes in use.
    * - TotalAllocated: The total number of allocated bytes by the allocator.
@@ -369,9 +379,32 @@ typedef struct OrtAllocator {
    * - NumArenaShrinkages: Number of arena shrinkages (Relevant only for arena based allocators)
    * - MaxAllocSize: The max single allocation seen.
    *
-   * NOTE: If the allocator does not implement this function, the OrtKeyValuePairs instance will be empty.
+   * The allocator is free to add other entries as appropriate.
+   *
+   * \note Implementation of this function is optional and GetStats may be set to a nullptr.
+   *       If the OrtAllocator is wrapping an internal ORT allocator that does not implement GetStats
+   *       the returned OrtKeyValuePairs instance will be empty.
+   *
+   * \since 1.23
    */
   ORT_API2_STATUS(GetStats, _In_ const struct OrtAllocator* this_, _Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Allocate using a stream.
+   *
+   * If the allocator is stream aware this performs allocation using a stream.
+   *
+   * Alloc will be used if this is nullptr.
+   *
+   * \param[in] this_ OrtAllocator instance
+   * \param[in] size Size of the allocation in bytes. nullptr if size was 0 or allocation failed.
+   * \param[in] stream The stream to allocate on.
+   *
+   * \return pointer to an allocated block of `size` bytes
+   *
+   * \note Implementation of this function is optional and AllocOnStream may be set to a nullptr.
+   * \since 1.23
+   */
+  void*(ORT_API_CALL* AllocOnStream)(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -419,17 +452,22 @@ typedef struct OrtCustomOp OrtCustomOp;
 typedef enum OrtAllocatorType {
   OrtInvalidAllocator = -1,
   OrtDeviceAllocator = 0,
-  OrtArenaAllocator = 1
+  OrtArenaAllocator = 1,
+  OrtReadOnlyAllocator = 2,
 } OrtAllocatorType;
 
 /** \brief Memory types for allocated memory, execution provider specific types should be extended in each provider.
  */
 // Whenever this struct is updated, please also update the MakeKey function in onnxruntime / core / framework / execution_provider.cc
 typedef enum OrtMemType {
-  OrtMemTypeCPUInput = -2,              ///< Any CPU memory used by non-CPU execution provider
-  OrtMemTypeCPUOutput = -1,             ///< CPU accessible memory outputted by non-CPU execution provider, i.e. CUDA_PINNED
-  OrtMemTypeCPU = OrtMemTypeCPUOutput,  ///< Temporary CPU accessible memory allocated by non-CPU execution provider, i.e. CUDA_PINNED
-  OrtMemTypeDefault = 0,                ///< The default allocator for execution provider
+  /// Any CPU memory used by non-CPU execution provider
+  OrtMemTypeCPUInput = -2,
+  /// CPU accessible memory outputted by non-CPU execution provider, i.e. HOST_ACCESSIBLE
+  OrtMemTypeCPUOutput = -1,
+  /// CPU accessible memory allocated by non-CPU execution provider, i.e. HOST_ACCESSIBLE
+  OrtMemTypeCPU = OrtMemTypeCPUOutput,
+  /// The default allocator for execution provider
+  OrtMemTypeDefault = 0,
 } OrtMemType;
 
 /** \brief This matches OrtDevice::MemoryType values */
@@ -1743,7 +1781,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(MemoryInfoGetName, _In_ const OrtMemoryInfo* ptr, _Out_ const char** out);
 
-  /** \brief Get the id from ::OrtMemoryInfo
+  /** \brief Get the device id from ::OrtMemoryInfo
    */
   ORT_API2_STATUS(MemoryInfoGetId, _In_ const OrtMemoryInfo* ptr, _Out_ int* out);
 
@@ -3667,7 +3705,8 @@ struct OrtApi {
    *
    * \param[in] name Name of the attribute
    * \param[in] data Data content of the attribute
-   * \param[in] len Number of elements if data represents an array (e.g., ORT_OP_ATTR_INTS). Otherwise, set to 1.
+   * \param[in] len Number of bytes stored in data for ORT_OP_ATTR_STRING.
+                    Number of elements if data represents an array (e.g., ORT_OP_ATTR_INTS). Otherwise, set to 1.
    * \param[in] type Data type
    * \param[out] op_attr Attribute that has been created, which must be released by OrtApi::ReleaseOpAttr
    *
@@ -5383,9 +5422,27 @@ struct OrtApi {
    * \since Version 1.23
    */
   ORT_API2_STATUS(CreateMemoryInfo_V2, _In_ const char* name, _In_ enum OrtMemoryInfoDeviceType device_type,
-                  _In_ uint32_t vendor_id, _In_ int16_t device_id, _In_ enum OrtDeviceMemoryType mem_type,
+                  _In_ uint32_t vendor_id, _In_ int32_t device_id, _In_ enum OrtDeviceMemoryType mem_type,
                   _In_ size_t alignment, enum OrtAllocatorType allocator_type,
                   _Outptr_ OrtMemoryInfo** out);
+
+  /** \brief Get the device memory type from ::OrtMemoryInfo
+   *
+   * \param[in] ptr The OrtMemoryInfo instance to query.
+   * \return The device memory type.
+   *
+   * \since Version 1.23
+   */
+  ORT_API_T(OrtDeviceMemoryType, MemoryInfoGetDeviceMemType, _In_ const OrtMemoryInfo* ptr);
+
+  /** \brief Get the vendor id from ::OrtMemoryInfo
+   *
+   * \param[in] ptr The OrtMemoryInfo instance to query.
+   * \return The vendor id.
+   *
+   * \since Version 1.23
+   */
+  ORT_API_T(uint32_t, MemoryInfoGetVendorId, _In_ const OrtMemoryInfo* ptr);
 
   /// \name OrtValueInfo
   /// @{
@@ -5458,14 +5515,38 @@ struct OrtApi {
    *
    * Supports initializers defined in an outer scope (i.e., a parent graph).
    *
+   * Supports initializers stored in an external file. For external initializers, ORT memory maps
+   * the initializer data on the first call to this function. If caller needs custom memory mapping,
+   * use ValueInfo_GetExternalInitializerInfo to get the location of the initializer data.
+   *
    * \param[in] value_info The OrtValueInfo instance.
-   * \param[out] initializer_value Output parameter set to the initializer value or NULL.
+   * \param[out] initializer_value Output parameter set to the initializer value or NULL. Do not cache the OrtValue
+   *                               as it is released when the owning OrtGraph is released.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(ValueInfo_GetInitializerValue, _In_ const OrtValueInfo* value_info,
                   _Outptr_ const OrtValue** initializer_value);
+
+  /** \brief Get information about an external initializer (e.g., filepath, file offset, byte size).
+   *
+   * Sets the output parameter `info` to NULL if the given OrtValueInfo does not represent an initializer
+   * with external data. In this case, a NULL status (non-error) is returned.
+   *
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] info Output parameter set to an OrtExternalInitializerInfo instance that can be used to query
+   *                  file path, file offset, etc. ORT sets this to NULL if the OrtValueInfo does not represent
+   *                  an external initializer.
+   *                  Must release with ReleaseExternalInitializerInfo.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValueInfo_GetExternalInitializerInfo, _In_ const OrtValueInfo* value_info,
+                  _Outptr_result_maybenull_ OrtExternalInitializerInfo** info);
 
   /** \brief Returns a boolean indicating if the given value is a required graph input.
    *
@@ -5559,6 +5640,21 @@ struct OrtApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Graph_GetName, _In_ const OrtGraph* graph, _Outptr_ const char** graph_name);
+
+  /** \brief Get the filepath to the model from which an OrtGraph is constructed.
+   *
+   * \note The model's filepath is empty if the filepath is unknown, such as when the model is loaded from bytes
+   * via CreateSessionFromArray.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] model_path Output parameter set to the model's null-terminated filepath.
+   *                        Set to an empty path string if unknown.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetModelPath, _In_ const OrtGraph* graph, _Outptr_ const ORTCHAR_T** model_path);
 
   /** \brief Returns the ONNX IR version.
    *
@@ -6041,6 +6137,50 @@ struct OrtApi {
 
   /// @}
 
+  /// \name OrtExternalInitializerInfo
+  /// @{
+
+  /** \brief Release an OrtExternalInitializerInfo instance.
+   *
+   * \param[in] input OrtExternalInitializerInfo instance to be released.
+   *
+   * \since Version 1.23.
+   */
+  ORT_CLASS_RELEASE(ExternalInitializerInfo);
+
+  /** \brief Get the relative path to the file that stores the initializer's data.
+   *
+   * \note The path is relative to the filesystem directory where the ONNX model was stored.
+   * Caller can use Graph_GetModelPath to get the model's full path and construct the absolute path to the
+   * external initializer file if necessary.
+   *
+   * \param[in] info The OrtExternalInitializerInfo instance.
+   * \return The relative path to the file that stores the initializer's data. Do NOT free this pointer.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(const ORTCHAR_T*, ExternalInitializerInfo_GetFilePath, _In_ const OrtExternalInitializerInfo* info);
+
+  /** \brief Get the byte offset within the file where the initializer's data is stored.
+   *
+   * \param[in] info The OrtExternalInitializerInfo instance.
+   * \return The byte offset where the initializer's data is stored within the file.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(int64_t, ExternalInitializerInfo_GetFileOffset, _In_ const OrtExternalInitializerInfo* info);
+
+  /** \brief Get the size in bytes of the initializer's data within the file.
+   *
+   * \param[in] info The OrtExternalInitializerInfo instance.
+   * \return The size in bytes of the initializer's data within the file.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(size_t, ExternalInitializerInfo_GetByteSize, _In_ const OrtExternalInitializerInfo* info);
+
+  /// @}
+
   /// \name OrtRunOptions
   /// @{
 
@@ -6052,26 +6192,28 @@ struct OrtApi {
    *
    * \param[in] options The OrtRunOptions instance.
    * \param[in] config_key The configuration entry key. A null-terminated string.
-   * \param[out] config_value Output parameter set to the configuration entry value. Either a null-terminated string if
-   *                          a configuration entry exists or NULL otherwise.
-   *                          Do not free this value. It is owned by `options` and will be invalidated if another call
-   *                          to `AddRunConfigEntry()` overwrites it.
+   * \return The configuration entry value. Either a null-terminated string if the entry was found. nullptr otherwise.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
    */
-  ORT_API2_STATUS(GetRunConfigEntry, _In_ const OrtRunOptions* options,
-                  _In_z_ const char* config_key, _Outptr_result_maybenull_z_ const char** config_value);
+  ORT_API_T(const char*, GetRunConfigEntry, _In_ const OrtRunOptions* options,
+            _In_z_ const char* config_key);
 
   /// @}
 
   /** \brief Get the OrtMemoryInfo for the device.
    *
    * \param[in] ep_device The OrtEpDevice instance to query.
-   * \return A pointer to the OrtMemoryInfo for the device.
+   * \param[in] memory_type The memory type to return.
+   * \return A pointer to the OrtMemoryInfo for the device. This may be nullptr if not set.
+   *         If memory_type is OrtDeviceMemoryType_DEFAULT and nullptr is returned the EP uses CPU memory.
    *
    * \since Version 1.23
    */
-  ORT_API_T(const OrtMemoryInfo*, EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device);
+  ORT_API_T(const OrtMemoryInfo*, EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device,
+            _In_ OrtDeviceMemoryType memory_type);
 
   /** \brief Create/replace a shared allocator for the OrtEpDevice in the OrtEnv.
    *
@@ -6086,7 +6228,7 @@ struct OrtApi {
    * \param[in] env The OrtEnv instance to create the shared allocator in.
    * \param[in] ep_device The OrtEpDevice instance to create the shared allocator for.
    * \param[in] mem_type The memory type to use for the shared allocator.
-   * \param[in] allocator_type The type of allocator to create (e.g. OrtAllocatorType::OrtArenaAllocator).
+   * \param[in] allocator_type The type of allocator to create. Only OrtDeviceAllocator is valid currently.
    * \param[in] allocator_options Optional key-value pairs to configure the allocator. If arena based, see
    *                              include/onnxruntime/core/framework/allocator.h for the keys and values that can be
    *                              used.
@@ -6141,7 +6283,7 @@ struct OrtApi {
   /** \brief Get a const pointer to the raw data inside a tensor
    *
    * Used to read the internal tensor data directly.
-   * \note The returned pointer is valid until the \p value is destroyed.
+   * \note The returned pointer is valid until the OrtValue is destroyed.
    *
    * \param[in] value A tensor type (string tensors are not supported)
    * \param[out] out Filled in with a pointer to the internal storage
@@ -6163,6 +6305,141 @@ struct OrtApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(GetSessionOptionsConfigEntries, _In_ const OrtSessionOptions* options, _Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Get the OrtMemoryInfo for each input of the session.
+   *
+   * The memory info can be used to determine where the input tensors are required.
+   *
+   * The session must be fully initialized before calling this function as the input locations are not known until
+   * this has occurred.
+   *
+   * \param[in] session The OrtSession instance.
+   * \param[out] inputs_memory_info Pre-allocated array of size `num_inputs` that will be filled with the
+   *                                OrtMemoryInfo* value for each input.
+   *                                The order is the same as returned by SessionGetInputName.
+   * \param[in] num_inputs The number of inputs in the session. Must match SessionGetInputCount.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(SessionGetMemoryInfoForInputs, _In_ const OrtSession* session,
+                  _Out_writes_(num_inputs) const OrtMemoryInfo** inputs_memory_info,
+                  _In_ size_t num_inputs);
+
+  /** \brief Get the OrtMemoryInfo for each output of the session.
+   *
+   * The memory info can be used to determine the device the output tensors are produced on.
+   * The user can pre-allocate an OrtValue using this information or use IOBinding to keep the data on the device.
+   * ORT will copy the output to CPU otherwise.
+   *
+   * The session must be fully initialized before calling this function as the output locations are not known until
+   * this has occurred.
+   *
+   * \param[in] session The OrtSession instance.
+   * \param[out] outputs_memory_info Pre-allocated array of size `num_outputs` that will be filled with
+   *                                 OrtMemoryInfo* values for each output.
+   *                                 The order is the same as returned by SessionGetOutputName.
+   * \param[in] num_outputs The number of outputs in the session. Must match SessionGetOutputCount.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(SessionGetMemoryInfoForOutputs, _In_ const OrtSession* session,
+                  _Out_writes_(num_outputs) const OrtMemoryInfo** outputs_memory_info,
+                  _In_ size_t num_outputs);
+
+  /** \brief Get the OrtEpDevice (if available) for each input of the session.
+   *
+   * An OrtEpDevice will be available if auto EP selection is enabled by calling
+   * SessionOptionsSetEpSelectionPolicy or SessionOptionsSetEpSelectionPolicyDelegate,
+   * or if the OrtEpDevice was manually added to the session using SessionOptionsAppendExecutionProvider_V2.
+   *
+   * If an OrtEpDevice is not available for the input a nullptr is returned.
+   *
+   * The returned OrtEpDevice can be used to create an OrtSyncStream via CreateSyncStreamForEpDevice to asynchronously
+   * provide input to the inference session Run.
+   *
+   * The session must be fully initialized before calling this function as the assigned EPs are not known until
+   * this has occurred.
+   *
+   * \param[in] session The OrtSession instance.
+   * \param[out] inputs_ep_devices Pre-allocated array of size `num_inputs` that will be filled with
+   *                               OrtEpDevice* values for each input.
+   *                               The order is the same as returned by SessionGetInputName.
+   * \param[in] num_inputs The number of inputs in the session. Must match SessionGetInputCount.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(SessionGetEpDeviceForInputs, _In_ const OrtSession* session,
+                  _Out_writes_(num_inputs) const OrtEpDevice** inputs_ep_devices,
+                  _In_ size_t num_inputs);
+
+  /** \brief Create an OrtSyncStream for the given OrtEpDevice.
+   *
+   * The OrtSyncStream can be used to enable asynchronous operations.
+   * e.g. async usage of CopyTensors to provide input to an OrtSession Run call.
+   *
+   * An error code of ORT_NOT_IMPLEMENTED will be returned if the EP does not support OrtSyncStream.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to create the sync stream for.
+   * \param[in] stream_options Options for OrtSyncStream creation. May be nullptr.
+   * \param[out] stream Output parameter set to the created OrtSyncStream instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
+                  _In_opt_ const OrtKeyValuePairs* stream_options,
+                  _Outptr_ OrtSyncStream** stream);
+
+  /** \brief Get the native handle of the sync stream.
+   *
+   * This returns the native handle for the stream. e.g. cudaStream_t for CUDA streams.
+   *
+   * \param[in] stream The OrtSyncStream instance to get the handle from.
+   *
+   * \returns The native handle of the stream.
+   *
+   * \since Version 1.23
+   */
+  ORT_API_T(void*, SyncStream_GetHandle, _In_ OrtSyncStream* stream);
+
+  ORT_CLASS_RELEASE(SyncStream);
+
+  /** \brief Copy OrtValue instances containing Tensors between devices.
+   *
+   * The overall copy must be between a single source device and a single destination device. i.e.
+   *   - all src_tensors must have matching OrtMemoryInfo,
+   *   - all dst_tensors must have matching OrtMemoryInfo.
+   *
+   * OrtValue instances can be created by:
+   *   - Use GetSharedAllocator to get the shared allocator for the OrtMemoryInfo if you need to allocate memory
+   *     on the device.
+   *   - Use CreateTensorAsOrtValue, CreateTensorWithDataAsOrtValue or CreateTensorWithDataAndDeleterAsOrtValue
+   *     to create an OrtValue containing a tensor depending on whether you have existing data or not, and whether
+   *     you want ORT to free the existing data once it is done with the OrtValue.
+   *
+   * \param[in] env The OrtEnv instance to use. The data transfer implementation is provided by an execution provider
+   *                that is registered in this OrtEnv.
+   * \param[in] src_tensors Array of OrtValue instances containing the source tensors to copy.
+   * \param[in] dst_tensors Array of OrtValue instances to copy the source tensors to.
+   * \param[in] stream Optional OrtSyncStream that can be used to perform the copy asynchronously. May be nullptr.
+   * \param[in] num_tensors The number of tensors to copy. The size of `src_tensors` and `dst_tensors` must match.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(CopyTensors, _In_ const OrtEnv* env,
+                  _In_reads_(num_tensors) const OrtValue* const* src_tensors,
+                  _In_reads_(num_tensors) OrtValue* const* dst_tensors,
+                  _In_opt_ OrtSyncStream* stream,
+                  _In_ size_t num_tensors);
 };
 
 /*

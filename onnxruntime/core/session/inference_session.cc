@@ -1349,7 +1349,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(ensure_unique_dq_for_node_unit, *session_logger_, graph));
   }
 
-  // apply execution provider independent level 1 graph optimizations.
+  // apply execution provider independent level 0 and 1 graph optimizations.
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Default, *session_logger_));
   ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
   // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
@@ -3325,6 +3326,92 @@ std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutput
   return std::make_pair(common::Status::OK(), &model_->MainGraph().GetOutputs());
 }
 
+common::Status InferenceSession::GetInputOutputMemoryInfo(SessionInputOutputType type,
+                                                          InlinedVector<const OrtMemoryInfo*>& memory_info) const {
+  memory_info.clear();
+
+  if (!is_inited_) {
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Session has not been initialized.");
+  }
+
+  std::pair<common::Status, const OutputDefList*> result;
+  switch (type) {
+    case SessionInputOutputType::kInput:
+      result = GetModelInputs();
+      break;
+    case SessionInputOutputType::kOutput:
+      result = GetModelOutputs();
+      break;
+    case SessionInputOutputType::kOverridableInitializer:
+      // add if/when needed
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                            "GetInputOutputMemoryInfo for kOverridableInitializer is not implemented.");
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Unexpected SessionInputOutputType of ", static_cast<uint8_t>(type));
+  }
+
+  ORT_RETURN_IF_ERROR(result.first);
+
+  const auto& def_list = *result.second;
+  memory_info.reserve(def_list.size());
+
+  for (const auto* def : def_list) {
+    InlinedVector<SessionState::NodeInfo> node_info_vec;
+    if (type == SessionInputOutputType::kOutput) {
+      ORT_RETURN_IF_ERROR(session_state_->GetOutputNodeInfo(def->Name(), node_info_vec));
+    } else {
+      ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(def->Name(), node_info_vec));
+    }
+
+    // all entries are for the same OrtDevice so use the first one.
+    // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
+    // from the session state and use its OrtMemoryInfo.
+    auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
+    memory_info.push_back(&allocator->Info());
+  }
+
+  return Status::OK();
+}
+
+common::Status InferenceSession::GetEpDeviceForInputs(InlinedVector<const OrtEpDevice*>& ep_devices) const {
+  ep_devices.clear();
+
+#if defined(ORT_MINIMAL_BUILD)
+  return common::Status(common::ONNXRUNTIME, common::FAIL,
+                        "GetEpDeviceForInputs is not available in a minimal build.");
+#else
+  if (!is_inited_) {
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Session has not been initialized.");
+  }
+
+  std::pair<common::Status, const OutputDefList*> inputs = GetModelInputs();
+
+  ORT_RETURN_IF_ERROR(inputs.first);
+
+  const auto& def_list = *inputs.second;
+  ep_devices.reserve(def_list.size());
+
+  const auto& available_eps = environment_.GetOrtEpDevices();
+
+  for (const auto* def : def_list) {
+    InlinedVector<SessionState::NodeInfo> node_info_vec;
+    ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(def->Name(), node_info_vec));
+
+    // if we have a lot of inputs or there are a lot of execution providers it may be worth creating a map
+    // instead of doing a linear search each time.
+    const auto& ep_name = node_info_vec.front().p_node->GetExecutionProviderType();
+    auto it = std::find_if(available_eps.begin(), available_eps.end(), [&ep_name](const OrtEpDevice* entry) {
+      return entry->ep_name == ep_name;
+    });
+
+    ep_devices.push_back(it != available_eps.end() ? *it : nullptr);
+  }
+
+  return Status::OK();
+#endif
+}
+
 common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
   {
     std::lock_guard<std::mutex> l(session_mutex_);
@@ -3484,7 +3571,7 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
       ++iter;
     }
 
-    // Shrink if it is an arena based allocator
+    // Shrink if it is a BFCArena allocator
     // Iterate through the registered allocators as we could have multiple allocators for the device+type
     // if they differ by vendor_id.
     for (const auto& [device, allocator_ptr] : session_state_->GetAllocators()) {
@@ -3645,34 +3732,50 @@ common::Status InferenceSession::AddPredefinedTransformers(
     RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
     const logging::Logger& logger) const {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+  for (int i = static_cast<int>(TransformerLevel::Default); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
-    if (graph_optimization_level >= level) {
-      // Generate and register transformers for level
-      auto transformers_to_register = [&]() {
-        const bool use_full_build_optimizations =
-            level == TransformerLevel::Level1 ||
-            minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations;
+    std::function<onnxruntime::InlinedVector<std::unique_ptr<GraphTransformer>>()> transformers_to_register;
 
-        if (use_full_build_optimizations) {
+    // Enable free dimension override even when the graph optimization level is 0.
+    // If the optimization level is above 0, the override will be applied during level 1 optimization.
+    if (level == TransformerLevel::Default) {
+      if (graph_optimization_level == TransformerLevel::Default) {
+        transformers_to_register = [&]() {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
                                                        GetIntraOpThreadPoolToUse());
-        } else {
-          const auto sat_context =
-              minimal_build_optimization_handling ==
-                      MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations
-                  ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{
-                        record_runtime_optimization_produced_op_schema_fn}}
-                  : SatApplyContextVariant{SatDirectApplicationContext{}};
-          return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
-                                                                      logger,
-                                                                      optimizers_to_disable_,
-                                                                      GetIntraOpThreadPoolToUse());
-        }
-      }();
+        };
+      }
+    } else {
+      if (graph_optimization_level >= level) {
+        // Generate and register transformers for level
+        transformers_to_register = [&]() {
+          const bool use_full_build_optimizations =
+              level == TransformerLevel::Level1 ||
+              minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations;
 
-      for (auto& entry : transformers_to_register) {
+          if (use_full_build_optimizations) {
+            return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
+                                                         optimizers_to_disable_,
+                                                         GetIntraOpThreadPoolToUse());
+          } else {
+            const auto sat_context =
+                minimal_build_optimization_handling ==
+                        MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations
+                    ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{
+                          record_runtime_optimization_produced_op_schema_fn}}
+                    : SatApplyContextVariant{SatDirectApplicationContext{}};
+            return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
+                                                                        logger,
+                                                                        optimizers_to_disable_,
+                                                                        GetIntraOpThreadPoolToUse());
+          }
+        };
+      }
+    }
+
+    if (transformers_to_register) {  // Ensure the lambda is initialized before invoking it
+      for (auto& entry : transformers_to_register()) {
         ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
       }
     }
