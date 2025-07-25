@@ -19,6 +19,7 @@
 #include "core/providers/qnn/builder/qnn_node_group/channel_shuffle_fusion.h"
 #include "core/providers/qnn/builder/qnn_node_group/udo_fusion.h"
 #include "core/providers/qnn/builder/qnn_node_group/lpbqgemm_fusion.h"
+#include "core/providers/qnn/builder/qnn_node_group/lpbqmatmul_fusion.h"
 
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/ort_api.h"
@@ -76,6 +77,7 @@ using FusionFunc = std::function<std::unique_ptr<IQnnNodeGroup>(QnnModelWrapper&
 static std::unordered_map<std::string, std::vector<FusionFunc>> fusions = {
     {"DequantizeLinear", {DQQFusion::TryFusion}},
     {"HardSigmoid", {HardSigmoidMulFusion::TryFusion}},
+    {"MatMul", {LowPowerBlockQuantizedMatMulFusion::TryFusion}},
     {"Gemm", {LowPowerBlockQuantizedGemmFusion::TryFusion, ReshapeGemmFusion::TryFusion}},
     {"Mul", {ScaleSoftmaxFusion::TryFusion}},
     {"Transpose", {ChannelShuffleFusion::TryFusion}}};
@@ -113,8 +115,8 @@ static std::unique_ptr<IQnnNodeGroup> TryQnnFusions(
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
     const logging::Logger& logger) {
-  // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).
-  if (starting_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
+  // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes) except MatMul w/ LPBQ encodings
+  if (starting_node_unit.UnitType() != NodeUnit::Type::SingleNode && starting_node_unit.OpType() != "MatMul") {
     return nullptr;
   }
 
