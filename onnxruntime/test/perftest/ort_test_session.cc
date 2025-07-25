@@ -62,19 +62,21 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
 
-  bool is_plugin_ep_available = false;
-
-  // Add devices created from plugin EP
+  // Add EP devices if any (created by plugin EP)
   if (!performance_test_config.registered_plugin_eps.empty()) {
     std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
-    std::vector<Ort::ConstEpDevice> added_ep_devices;
+    // EP -> associated EP devices (All OrtEpDevice instances must be from the same execution provider)
+    std::unordered_map<std::string, std::vector<Ort::ConstEpDevice>> added_ep_devices;
     std::unordered_set<int> added_ep_device_index_set;
 
-    // Select devices by provided device index
+    auto& ep_list = performance_test_config.machine_config.plugin_provider_type_list;
+    std::unordered_set<std::string> ep_set(ep_list.begin(), ep_list.end());
+
+    // Select EP devices by provided device index
     if (!performance_test_config.selected_devices.empty()) {
       std::vector<int> device_list;
       device_list.reserve(performance_test_config.selected_devices.size());
-      ParseDeviceList(performance_test_config.selected_devices, device_list);
+      ParseEpDeviceList(performance_test_config.selected_devices, device_list);
       for (auto index : device_list) {
         if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
           fprintf(stderr, "%s", "The device index provided is not correct. Will skip this device id.");
@@ -82,10 +84,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         }
 
         Ort::ConstEpDevice& device = ep_devices[index];
-
-        if (std::string(device.EpName()) == performance_test_config.machine_config.provider_type_name) {
+        if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
           if (added_ep_device_index_set.find(index) == added_ep_device_index_set.end()) {
-            added_ep_devices.push_back(device);
+            added_ep_devices[device.EpName()].push_back(device);
             added_ep_device_index_set.insert(index);
             fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s] has been added to session.\n", index, device.EpName());
           }
@@ -96,26 +97,37 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         }
       }
     } else {
-      // All OrtEpDevice instances must be from the same execution provider.
-      // Find and select the OrtEpDevice associated with the execution provider provided via "-e" argument.
-      for (int index = 0; static_cast<size_t>(index) < ep_devices.size(); ++index) {
+      // Find and select the OrtEpDevice associated with the EP in "--plugin_eps".
+      for (size_t index = 0; index < ep_devices.size(); ++index) {
         Ort::ConstEpDevice& device = ep_devices[index];
-        if (std::string(device.EpName()) == performance_test_config.machine_config.provider_type_name) {
-          added_ep_devices.push_back(device);
+        if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
+          added_ep_devices[device.EpName()].push_back(device);
           fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.\n", index, device.EpName());
         }
       }
     }
 
     if (added_ep_devices.empty()) {
-      ORT_THROW("[ERROR] [plugin EP]: No matching devices found.");
+      ORT_THROW("[ERROR] [Plugin EP]: No matching EP devices found.");
     }
 
-    std::string provider_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-    std::unordered_map<std::string, std::string> provider_options;
-    ParseSessionConfigs(provider_option_string, provider_options);
-    session_options.AppendExecutionProvider_V2(env, added_ep_devices, provider_options);
-    is_plugin_ep_available = true;
+    std::string ep_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+
+    // A list of EP's associated options
+    std::vector<std::unordered_map<std::string, std::string>> ep_options;
+    ParseEpOptions(ep_option_string, ep_options);
+
+    // EP -> associated EP options
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> ep_options_map;
+    for (size_t i = 0; i < ep_list.size(); ++i) {
+      ep_options_map.emplace(ep_list[i], ep_options[i]);
+    }
+
+    for (auto& ep_and_devices : added_ep_devices) {
+      auto& ep = ep_and_devices.first;
+      auto& devices = ep_and_devices.second;
+      session_options.AppendExecutionProvider_V2(env, devices, ep_options_map[ep]);
+    }
   }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
@@ -630,8 +642,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   } else if (!provider_name_.empty() &&
              provider_name_ != onnxruntime::kCpuExecutionProvider &&
-             provider_name_ != onnxruntime::kOpenVINOExecutionProvider &&
-             !is_plugin_ep_available) {
+             provider_name_ != onnxruntime::kOpenVINOExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
 

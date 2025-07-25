@@ -34,8 +34,8 @@ namespace perftest {
       "\t-A: Disable memory arena\n"
       "\t-I: Generate tensor input binding. Free dimensions are treated as 1 unless overridden using -f.\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e or --ep [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai|webgpu|plugin_ep]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai', 'webgpu' or plugin execution provider that provided via ep library. "
+      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai|webgpu|plugin_ep]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
+      "'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' and 'webgpu'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -161,10 +161,18 @@ namespace perftest {
       "\t-X [Enable onnxruntime-extensions custom ops]: Registers custom ops from onnxruntime-extensions. "
       "onnxruntime-extensions must have been built in to onnxruntime. This can be done with the build.py "
       "'--use_extensions' option.\n"
-      "\t--plugin_ep_libs [registration names and libraries] Specifies a list of plugin execution provider(EP) registration names and their corresponding shared libraries to register.\n"
-      "\t    [Usage]: --plugin_ep_libs 'plugin_ep_1|plugin_ep_2.dll plugin_ep_2|plugin_ep_2.dll'\n"
-      "\t--list_ep_devices Prints all available device indices and their properties (including metadata). This option makes the program exit early without performing inference.\n"
-      "\t--select_ep_devices [list of device indices] A semicolon-separated list of device indices to add to the session and run with.\n"
+      "\n"
+      "\t--plugin_ep_libs      [registration names and libraries] Specifies a list of plugin execution provider (EP) registration names and their corresponding shared libraries to register.\n"
+      "\t                      [Usage]: --plugin_ep_libs \"plugin_ep_name_1|plugin_ep_1.dll plugin_ep_name_2|plugin_ep_2.dll ... \"\n"
+      "\n"
+      "\t--plugin_eps          [Plugin EPs] Specifies a semicolon-separated list of plugin execution providers (EPs) to use.\n"
+      "\t                      [Usage]: --plugin_eps \"plugin_ep_1;plugin_ep_2;... \"\n"
+      "\n"
+      "\t--plugin_ep_options   [EP options] Specifies provider options for each EP listed in --plugin_eps. Options (key-value pairs) for each EP are separated by space and EPs are separated by semicolons.\n"
+      "\t                      [Usage]: --plugin_ep_options \"ep_1_option_1_key|ep_1_option_1_value ...;ep_2_option_1_key|ep_2_option_1_value ...;... \"\n"
+      "\n"
+      "\t--list_ep_devices     Prints all available device indices and their properties (including metadata). This option makes the program exit early without performing inference.\n"
+      "\t--select_ep_devices   [list of device indices] A semicolon-separated list of device indices to add to the session and run with.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -200,7 +208,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
     options.add_options()("f", "", cxxopts::value<std::vector<std::string> >());
     options.add_options()("F", "", cxxopts::value<std::vector<std::string> >());
     options.add_options()("m", "", cxxopts::value<std::string>());
-    options.add_options()("e,ep", "", cxxopts::value<std::string>());
+    options.add_options()("e", "", cxxopts::value<std::string>());
     options.add_options()("r", "", cxxopts::value<size_t>());
     options.add_options()("t", "", cxxopts::value<size_t>());
     options.add_options()("p", "", cxxopts::value<std::string>());
@@ -230,6 +238,8 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
     options.add_options()("g", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
     options.add_options()("X", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
     options.add_options()("plugin_ep_libs", "", cxxopts::value<std::string>());
+    options.add_options()("plugin_eps", "", cxxopts::value<std::string>());
+    options.add_options()("plugin_ep_options", "", cxxopts::value<std::string>());
     options.add_options()("list_ep_devices", "");
     options.add_options()("select_ep_devices", "", cxxopts::value<std::string>());
     options.add_options()("h,help", "");
@@ -318,8 +328,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
       } else if (!CompareCString(optarg, "nvtensorrtrtx")) {
         test_config.machine_config.provider_type_name = onnxruntime::kNvTensorRTRTXExecutionProvider;
       } else {
-        // Could be plugin EP, save it first and handle later.
-        test_config.machine_config.provider_type_name = optarg;
+        return false;
       }
     }
 
@@ -441,6 +450,10 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
     if (result.count("X")) test_config.run_config.use_extensions = true;
 
     if (result.count("plugin_ep_libs")) test_config.plugin_ep_names_and_libs = ToPathString(result["plugin_ep_libs"].as<std::string>());
+
+    if (result.count("plugin_eps")) ParseEpList(result["plugin_eps"].as<std::string>(), test_config.machine_config.plugin_provider_type_list);
+
+    if (result.count("plugin_ep_options")) test_config.run_config.ep_runtime_config_string = ToPathString(result["plugin_ep_options"].as<std::string>());
 
     if (result.count("select_ep_devices")) test_config.selected_devices = result["select_ep_devices"].as<std::string>();
 

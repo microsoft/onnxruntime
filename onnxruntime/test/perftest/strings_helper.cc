@@ -55,7 +55,57 @@ void ParseSessionConfigs(const std::string& configs_string,
   }
 }
 
-void ParseDeviceList(const std::string& input, std::vector<int>& result) {
+/**
+ * @brief Splits a string by a given delimiter while preserving empty tokens.
+ *
+ * This function splits the input string into substrings separated by the specified delimiter.
+ * Unlike std::getline, it preserves empty tokens that result from leading, trailing, or consecutive delimiters.
+ *
+ * @param input The input string to split.
+ * @param delim The delimiter character to split on.
+ * @param out   The output vector to store the resulting substrings. It will be appended to, not cleared.
+ *
+ * @example
+ *   std::vector<std::string> tokens;
+ *   SplitAndHandleEmptyTokens(";a|b;;x|y;", ';', tokens);
+ *   // tokens = ["", "a|b", "", "x|y", ""]
+ */
+void SplitAndHandleEmptyTokens(const std::string& input, char delim, std::vector<std::string>& out) {
+  std::string::size_type start = 0;
+  auto end = input.find(delim);
+  while (end != std::string::npos) {
+    out.emplace_back(input.substr(start, end - start));  // preserves empty
+    start = end + 1;
+    end = input.find(delim, start);
+  }
+  out.emplace_back(input.substr(start));  // last token
+}
+
+void ParseEpOptions(const std::string& input, std::vector<std::unordered_map<std::string, std::string>>& result) {
+  std::vector<std::string> tokens;
+  SplitAndHandleEmptyTokens(input, ';', tokens);
+
+  for (const auto& token : tokens) {
+    result.emplace_back();  // Adds a new empty map
+    if (!token.empty()) {
+      ParseSessionConfigs(token, result.back());  // only parse non-empty
+    }
+    // if token is empty, we still get an empty map in `result`
+  }
+}
+
+void ParseEpList(const std::string& input, std::vector<std::string>& result) {
+  std::stringstream ss(input);
+  std::string token;
+
+  while (std::getline(ss, token, ';')) {
+    if (!token.empty()) {
+      result.push_back(token);
+    }
+  }
+}
+
+void ParseEpDeviceList(const std::string& input, std::vector<int>& result) {
   std::stringstream ss(input);
   std::string item;
 

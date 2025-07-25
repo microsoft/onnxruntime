@@ -1254,11 +1254,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
 
     if(onnxruntime_MINIMAL_BUILD)
-      add_definitions(-DCXXOPTS_NO_RTTI)
+      target_compile_definitions(onnxruntime_perf_test PRIVATE CXXOPTS_NO_RTTI)
     endif()
 
     if(onnxruntime_DISABLE_EXCEPTIONS)
-     add_definitions(-DCXXOPTS_NO_EXCEPTIONS)
+     target_compile_definitions(onnxruntime_perf_test PRIVATE CXXOPTS_NO_EXCEPTIONS)
     endif()
 
     if (onnxruntime_BUILD_SHARED_LIB)

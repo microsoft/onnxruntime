@@ -48,7 +48,7 @@ void RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test
         if (status.IsOK()) {
           test_config.registered_plugin_eps.push_back(registration_name);
         } else {
-          fprintf(stderr, "Can't register %s plugin library: %s", registration_name.c_str(), status.GetErrorMessage().c_str());
+          fprintf(stderr, "Can't register %s plugin library: %s\n", registration_name.c_str(), status.GetErrorMessage().c_str());
         }
       }
     }
