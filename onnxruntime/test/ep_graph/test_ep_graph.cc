@@ -20,6 +20,9 @@
 #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
 #include "core/providers/utils/ort_graph_to_proto.h"
 
+#define ORT_EP_UTILS_QDQ_UTILS_IMPL
+#include "core/providers/utils/qdq_utils.h"
+
 #include "test/ep_graph/test_ep_graph_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
