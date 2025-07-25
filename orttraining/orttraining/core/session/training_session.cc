@@ -1390,11 +1390,11 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   auto add_trainable_initializers = [&](const Node* node) {
     for (const auto& input : node->InputDefs()) {
       const std::string& initializer_name = input->Name();
-      if (initialized_tensors.count(initializer_name) == 0)
-        continue;
 
       const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-      graph.GetInitializedTensor(initializer_name, tensor_proto);
+      if (!graph.GetInitializedTensor(initializer_name, tensor_proto))
+        continue;
+
       if (IsUntrainable(node, initializer_name, session_logger_) ||
           IsImmutableWeight(immutable_weights, node, tensor_proto, session_logger_))
         continue;

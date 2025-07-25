@@ -4354,7 +4354,7 @@ Status Graph::ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_gr
     for (auto& initializer : *output_graph_proto.mutable_initializer()) {
       if (utils::HasExternalDataInMemory(initializer)) {
         // If the initializer has external data in memory, we need to inline it.
-        ORT_RETURN_IF_ERROR(InlineOrCopyInitializerToGraphProto(*this, initializer, initializer));
+        ORT_RETURN_IF_ERROR(InlineOrCopyInitializer(*this, initializer, initializer));
       }
     }
 #endif

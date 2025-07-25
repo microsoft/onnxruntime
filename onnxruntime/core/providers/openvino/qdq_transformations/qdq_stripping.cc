@@ -62,22 +62,19 @@ static NodeArg& ProcessNodeUnitIO(onnxruntime::Graph& dst_graph,
   // Handle quantized input or output. Convert to float type.
   if (io_def.quant_param.has_value()) {
     // Copy the original quantized type proto, but update the type to be the type of scale param.
-    const auto src_initializers = src_graph.GetAllInitializersNames();
     const std::string& scale_initializer_name = io_def.quant_param->scale.Name();
-    const bool tensor_proto_contain = src_initializers.contains(scale_initializer_name);
-
-    ORT_ENFORCE(tensor_proto_contain, "Unable to find scale initializer ", scale_initializer_name);
 
     const ONNX_NAMESPACE::TensorProto* scale_tensor_proto = nullptr;
-    src_initializers.GetInitializedTensor(scale_initializer_name, scale_tensor_proto);
+    ORT_ENFORCE(src_graph.GetInitializedTensor(scale_initializer_name, scale_tensor_proto),
+                "Unable to find scale initializer ", scale_initializer_name);
     int32_t float_type = scale_tensor_proto->data_type();
 
-    // Noe set the arg type to the float type of scale. Could be one of float/float16/bfloat16
+    // Now set the arg type to the float type of scale. Could be one of float/float16/bfloat16
     auto type_proto = ONNX_NAMESPACE::TypeProto::Create();
     type_proto->copy_from(orig_type_proto);
     type_proto->mutable_tensor_type()->set_elem_type(float_type);
 
-    if (src_initializers.count(name)) {
+    if (src_graph.GetAllInitializersNames().count(name)) {
       initializers_to_keep.insert({name});
     }
 

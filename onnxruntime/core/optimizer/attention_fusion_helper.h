@@ -3,7 +3,6 @@
 #include <limits>
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
-#include "core/common/span_utils.h"
 #include "core/framework/tensorprotoutils.h"
 
 #pragma once

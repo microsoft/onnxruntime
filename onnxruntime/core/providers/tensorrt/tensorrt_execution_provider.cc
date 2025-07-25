@@ -3096,7 +3096,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     for (const auto& name : allInitializers) {
       const ONNX_NAMESPACE::TensorProto* tp = nullptr;
-      graph_body_viewer.GetInitialize if (tp->has_raw_data()) {
+      if (graph_body_viewer.GetInitializedTensor(name, tp) && tp->has_raw_data()) {
         userWeights->push_back(
             TensorrtUserWeights{tp->name(), tp->raw_data(), (int64_t)tp->raw_data().size()});
       }

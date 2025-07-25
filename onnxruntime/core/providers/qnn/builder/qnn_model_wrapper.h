@@ -113,7 +113,16 @@ class QnnModelWrapper {
     return std::move(model_output_tensor_wrappers_);
   }
 
-  const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
+  InitializedTensorSet GetInitializerTensors() const {
+    InitializedTensorSet result;
+    for (const auto& tensor_name : graph_viewer_.GetAllInitializersNames()) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+      if (graph_viewer_.GetConstantInitializer(tensor_name, tensor_proto)) {
+        result.emplace(tensor_name, tensor_proto);
+      }
+    }
+    return result;
+  }
 
   InitializersNames GetAllInitializersNames() const { return graph_viewer_.GetAllInitializersNames(); }
 
