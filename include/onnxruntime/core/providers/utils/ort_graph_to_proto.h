@@ -619,23 +619,27 @@ static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info,
   ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetValueInfoName(&ort_value_info, &value_name));
   value_info_proto.set_name(value_name);
 
-  onnx::TypeProto_Tensor* type_proto_tensor = value_info_proto.mutable_type()->mutable_tensor_type();
-  type_proto_tensor->set_elem_type(ort_elem_type);
+  // If we don't have any dims in the shape, do not set any type information. Otherwise, it looks
+  // like a scalar value.
+  if (!ort_dims.empty()) {
+    onnx::TypeProto_Tensor* type_proto_tensor = value_info_proto.mutable_type()->mutable_tensor_type();
+    type_proto_tensor->set_elem_type(ort_elem_type);
 
-  onnx::TensorShapeProto* shape_proto = type_proto_tensor->mutable_shape();
+    onnx::TensorShapeProto* shape_proto = type_proto_tensor->mutable_shape();
 
-  for (size_t dim_idx = 0; dim_idx < ort_dims.size(); dim_idx++) {
-    onnx::TensorShapeProto_Dimension* dim_proto = shape_proto->add_dim();
+    for (size_t dim_idx = 0; dim_idx < ort_dims.size(); dim_idx++) {
+      onnx::TensorShapeProto_Dimension* dim_proto = shape_proto->add_dim();
 
-    if (ort_dims[dim_idx] >= 0) {
-      dim_proto->set_dim_value(ort_dims[dim_idx]);
-    } else {
-      const std::string& dim_param = ort_dim_syms[dim_idx];
+      if (ort_dims[dim_idx] >= 0) {
+        dim_proto->set_dim_value(ort_dims[dim_idx]);
+      } else {
+        const std::string& dim_param = ort_dim_syms[dim_idx];
 
-      // If dim_param is empty, leave dim_proto with neither the dim_value or dim_param set,
-      // which represents an unknown dimension.
-      if (!dim_param.empty()) {
-        dim_proto->set_dim_param(dim_param);
+        // If dim_param is empty, leave dim_proto with neither the dim_value or dim_param set,
+        // which represents an unknown dimension.
+        if (!dim_param.empty()) {
+          dim_proto->set_dim_param(dim_param);
+        }
       }
     }
   }
