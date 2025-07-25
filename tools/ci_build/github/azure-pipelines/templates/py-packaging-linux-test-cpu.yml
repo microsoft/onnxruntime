@@ -19,10 +19,10 @@ parameters:
   type: string
   default: 'Release'
   values:
-   - Debug
-   - Release
-   - RelWithDebInfo
-   - MinSizeRel
+  - Debug
+  - Release
+  - RelWithDebInfo
+  - MinSizeRel
 
 - name: timeout
   type: number
@@ -44,49 +44,17 @@ jobs:
   - checkout: self
     clean: true
     submodules: none
-  # The public ADO project
-  - ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
-    - download: current   # pipeline resource identifier.
-      artifact: 'drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}'
+  - download: build   # pipeline resource identifier.
+    artifact: 'drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}'
 
-    - download: current   # pipeline resource identifier.
-      artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}-${{ parameters.ep }}'
+  - download: build   # pipeline resource identifier.
+    artifact: 'onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}'
 
-    - bash: |
-        set -e -x
-        mv "$(Pipeline.Workspace)/drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
-        mv "$(Pipeline.Workspace)/onnxruntime${{ parameters.python_wheel_suffix }}-${{parameters.ep}}" "$(Build.BinariesDirectory)/whl"
-        cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
-        find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
-  # The private ADO project
-  - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
-    - download: build   # pipeline resource identifier.
-      artifact: 'drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}'
-
-    - download: build   # pipeline resource identifier.
-      artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}-${{ parameters.ep }}'
-
-    - bash: |
-        set -e -x
-        ls $(Pipeline.Workspace)/build
-        mv "$(Pipeline.Workspace)/build/drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
-        mv "$(Pipeline.Workspace)/build/onnxruntime${{ parameters.python_wheel_suffix }}-${{parameters.ep}}" "$(Build.BinariesDirectory)/whl"
-        cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
-        find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
-
-  # The BinSkim task uses a dotnet program which doesn't support ARM CPUs yet
-  - ${{ if eq(parameters.arch, 'x86_64') }}:
-    - task: BinSkim@4
-      displayName: 'Run BinSkim'
-      inputs:
-        AnalyzeTargetGlob: '$(Build.BinariesDirectory)/tmp/**/*.so'
-        continueOnError: true
-
-    #- task: PostAnalysis@2
-    #  inputs:
-    #    GdnBreakAllTools: true
-    #    GdnBreakPolicy: M365
-    #    GdnBreakPolicyMinSev: Error
+  - bash: |
+      set -e -x
+      ls $(Pipeline.Workspace)/build
+      mv "$(Pipeline.Workspace)/build/drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
+      mv "$(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}" "$(Build.BinariesDirectory)/whl"
 
   - template: get-docker-image-steps.yml
     parameters:
@@ -94,8 +62,6 @@ jobs:
       Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuildpython${{ parameters.arch }}
-      ${{ if eq(parameters.arch, 'aarch64') }}:
-        UpdateDepsTxt: false
 
   - task: Bash@3
     displayName: 'Bash Script'
@@ -103,7 +69,3 @@ jobs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockertest.sh
       arguments: -d CPU -c ${{parameters.cmake_build_type}} -i onnxruntimecpubuildpython${{ parameters.arch }}
-
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()

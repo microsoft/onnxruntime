@@ -23,7 +23,6 @@ import timeit
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import psutil
@@ -55,8 +54,8 @@ class ModelSetting:
     segment_ids_name: str
     input_mask_name: str
     opt_level: int
-    input_tuning_results: Optional[str]
-    output_tuning_results: Optional[str]
+    input_tuning_results: str | None
+    output_tuning_results: str | None
     mask_type: int
 
 
@@ -69,7 +68,7 @@ def create_session(
     log_severity=2,
     tuning_results_path=None,
 ):
-    import onnxruntime
+    import onnxruntime  # noqa: PLC0415
 
     onnxruntime.set_default_logger_severity(log_severity)
 
@@ -114,6 +113,8 @@ def create_session(
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
     elif graph_optimization_level == 2:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+    elif graph_optimization_level == 3:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_LAYOUT
     elif graph_optimization_level == 99:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
     else:
@@ -423,9 +424,9 @@ def parse_arguments():
         "--opt_level",
         required=False,
         type=int,
-        choices=[0, 1, 2, 99],
+        choices=[0, 1, 2, 3, 99],
         default=99,
-        help="onnxruntime optimization level: 0 - disable all, 1 - basic, 2 - extended, 99 - enable all.",
+        help="onnxruntime optimization level: 0 - disable all, 1 - basic, 2 - extended, 3 - layout, 99 - enable all.",
     )
 
     parser.add_argument(
@@ -597,7 +598,7 @@ def main():
         Path(args.model).parent,
         "perf_results_{}_B{}_S{}_{}.txt".format(
             "GPU" if args.use_gpu else "CPU",
-            "-".join([str(x) for x in sorted(list(batch_size_set))]),
+            "-".join([str(x) for x in sorted(batch_size_set)]),
             args.sequence_length,
             datetime.now().strftime("%Y%m%d-%H%M%S"),
         ),

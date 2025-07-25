@@ -11,7 +11,7 @@ void ORTSaveCodeAndDescriptionToError(int code, const char* descriptionCstr, NSE
   if (!error) return;
 
   NSString* description = [NSString stringWithCString:descriptionCstr
-                                             encoding:NSASCIIStringEncoding];
+                                             encoding:NSUTF8StringEncoding];
 
   *error = [NSError errorWithDomain:kOrtErrorDomain
                                code:code

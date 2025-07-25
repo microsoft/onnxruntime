@@ -16,6 +16,7 @@ Train a pipeline
 
 The first step consists in creating a dummy datasets.
 """
+
 import pandas
 from sklearn.datasets import make_regression
 from sklearn.model_selection import train_test_split
@@ -94,4 +95,4 @@ print(r2_score(pred, pred_onx))
 
 #########################
 # Very similar. *ONNX Runtime* uses floats instead of doubles,
-# that explains the small discrepencies.
+# that explains the small discrepancies.

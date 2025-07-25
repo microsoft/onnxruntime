@@ -21,10 +21,10 @@ def save(model_path, nodes, inputs, outputs, initializers, opsets=opsets):
     onnx.save(model, model_path)
 
 
-def gen(model_path, use_transpose_matmul, scale_input_0, scale_input_1, scale_output):
-    matmul_op = "FusedMatMul" if use_transpose_matmul else "MatMul"
-    matmul_domain = "com.microsoft" if use_transpose_matmul else ""
-    matmul_attrs = {"alpha": scale_value} if use_transpose_matmul else {}
+def gen(model_path: str, use_fused_matmul: bool, scale_input_0: bool, scale_input_1: bool, scale_output: bool):
+    matmul_op = "FusedMatMul" if use_fused_matmul else "MatMul"
+    matmul_domain = "com.microsoft" if use_fused_matmul else ""
+    matmul_attrs = {"alpha": scale_value} if use_fused_matmul else {}
 
     nodes = []
 
@@ -85,7 +85,7 @@ UNFUSABLE_SCALE_NOT_SCALAR = 1
 UNFUSABLE_SCALE_NOT_CONSTANT = 2
 
 
-def gen_unfusable(model_path, unfusable_type):
+def gen_unfusable(model_path: str, unfusable_type: int):
     matmul_op = "MatMul"
 
     if unfusable_type == UNFUSABLE_DIV_NOT_SCALE:
@@ -122,7 +122,33 @@ gen_unfusable("matmul_scale_unfusable_scale_not_scalar.onnx", UNFUSABLE_SCALE_NO
 gen_unfusable("matmul_scale_unfusable_scale_not_constant.onnx", UNFUSABLE_SCALE_NOT_CONSTANT)
 
 
-def gen_reused_input_scale(model_path):
+def gen_unfusable_scale_broadcast_changes_shape(model_path: str):
+    matmul_op = "MatMul"
+    scale_node = helper.make_node("Mul", ["scale_with_leading_dims", "input_0"], ["scaled_input_0"], "scale input_0")
+
+    nodes = [
+        scale_node,
+        helper.make_node(matmul_op, ["scaled_input_0", "input_1"], ["output"], matmul_op),
+    ]
+
+    initializers = [
+        helper.make_tensor("scale_with_leading_dims", TensorProto.FLOAT, [1, 1, 1], [scale_value]),
+    ]
+
+    inputs = [
+        helper.make_tensor_value_info("input_0", TensorProto.FLOAT, ["M", "K"]),
+        helper.make_tensor_value_info("input_1", TensorProto.FLOAT, [1, "K", "N"]),
+    ]
+
+    outputs = [helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, "M", "N"])]
+
+    save(model_path, nodes, inputs, outputs, initializers)
+
+
+gen_unfusable_scale_broadcast_changes_shape("matmul_scale_unfusable_scale_broadcasting_changes_shape.onnx")
+
+
+def gen_reused_input_scale(model_path: str):
     matmul_op = "MatMul"
 
     nodes = [
@@ -160,7 +186,7 @@ def gen_reused_input_scale(model_path):
 gen_reused_input_scale("matmul_scale_reused_input_scale.onnx")
 
 
-def gen_int32(model_path):
+def gen_int32(model_path: str):
     matmul_op = "MatMul"
 
     nodes = [
@@ -190,7 +216,7 @@ def gen_int32(model_path):
 gen_int32("matmul_scale_int32.onnx")
 
 
-def gen_scale_input(model_path):
+def gen_scale_input(model_path: str):
     nodes = [
         helper.make_node("Mul", ["input_0", "scale"], ["scaled_input_0"], "scale input_0"),
         helper.make_node(

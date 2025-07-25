@@ -9,6 +9,11 @@
 #pragma once
 #define SHARED_PROVIDER 1
 
+#ifdef _WIN32
+#include <Windows.h>
+#include <evntrace.h>
+#endif  // defined(_WIN32)
+
 #include <vector>
 #include <string>
 #include <map>
@@ -136,6 +141,17 @@ enum class DataType {
   USER = 1     ///< Contains potentially sensitive user data.
 };
 
+enum class ORTTraceLoggingKeyword : uint64_t {
+  Session = 0x1,    // ORT Session TraceLoggingWrite
+  Logs = 0x2,       // LOGS() Macro ORT logs. Pair with an appropriate level depending on detail required
+  Reserved1 = 0x4,  // Reserved if we want to add some specific sub-categories instead of just LOGS() or other uses
+  Reserved2 = 0x8,
+  Reserved3 = 0x10,
+  Reserved4 = 0x20,
+  Reserved5 = 0x40,
+  Reserved6 = 0x80,
+  Profiling = 0x100  // Enables profiling. At higher levels >5 can impact inference performance
+};
 }  // namespace logging
 
 // OnnxRuntime Types (these are the internal types)
@@ -143,6 +159,13 @@ struct CPUIDInfo;
 namespace logging {
 struct Logger;
 struct Capture;
+#ifdef _WIN32
+struct EtwRegistrationManager;
+using EtwRegistrationManager_EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
+                                                                      ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
+                                                                      PEVENT_FILTER_DESCRIPTOR FilterData,
+                                                                      PVOID CallbackContext)>;
+#endif
 }  // namespace logging
 struct ComputeCapability;
 struct ConfigOptions;
@@ -157,10 +180,12 @@ struct KernelRegistry;
 struct Function;
 struct Graph;
 class GraphViewer;
+struct ConstGraphNodes;
 enum class DataLayout;
 struct Model;
 struct Path;
 struct Node;
+struct Node_EdgeEnd;
 struct NodeArg;
 struct NodeAttributes;
 struct NodeUnitIODef;
@@ -175,6 +200,7 @@ struct SparseTensor;
 class TensorSeq;
 class SessionState;
 class ModelMetadefIdGenerator;
+class GraphOptimizerRegistry;
 
 class If;
 class Loop;
@@ -215,6 +241,7 @@ using DeleteFunc = void (*)(void*);
 using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
 
 using NameMLValMap = std::unordered_map<std::string, OrtValue>;
+
 }  // namespace onnxruntime
 
 #include "core/platform/threadpool.h"
@@ -270,6 +297,7 @@ constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
+constexpr const char* kNvTensorRTRTXExecutionProvider = "NvTensorRTRTXExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kQnnExecutionProvider = "QNNExecutionProvider";
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
@@ -282,19 +310,20 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes);
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const logging::Logger& logger);
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
@@ -367,18 +396,81 @@ template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
 }
+
+inline std::vector<std::unique_ptr<ComputeCapability>>
+CreateSupportedPartitions(const GraphViewer& graph_viewer,
+                          const std::unordered_set<const Node*>& supported_nodes,
+                          const std::unordered_set<std::string>& stop_ops,
+                          const std::function<std::string()>& generate_metadef_name,
+                          const std::string& execution_provider_name,
+                          const std::string& execution_provider_type,
+                          const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
+                          bool drop_constant_initializers = false) {
+  return g_host->Utils__CreateSupportedPartitions(graph_viewer, supported_nodes, stop_ops, generate_metadef_name,
+                                                  execution_provider_name, execution_provider_type, node_unit_map,
+                                                  drop_constant_initializers);
+}
+inline std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& graph_viewer,
+                                                                const std::vector<const Node*>& group,
+                                                                const std::function<std::string()>& generate_metadef_name,
+                                                                const std::string& execution_provider_name,
+                                                                bool drop_constant_initializers) {
+  return g_host->Utils__MakeComputeCapability(graph_viewer, group, generate_metadef_name,
+                                              execution_provider_name, drop_constant_initializers);
+}
+
+inline Status GetTensorProtoWithDataIfInMemory(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto, std::unique_ptr<ONNX_NAMESPACE::TensorProto>& result) {
+  return g_host->Utils__GetTensorProtoWithDataIfInMemory(tensor_proto, result);
+}
+
+inline bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
+  return g_host->Utils__HasExternalDataInMemory(ten_proto);
+}
+
 }  // namespace utils
+
+namespace graph_utils {
+inline NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  return g_host->GraphUtils__AddInitializerWithExternalData(graph, new_initializer);
+}
+inline void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
+                                          bool load_inline = false) {
+  g_host->GraphUtils__MakeInitializerCopyIfNotExist(src_graph, dst_graph, name, load_inline);
+}
+
+inline Status ConvertInMemoryDataToInline(Graph& graph, const std::string& name) {
+  return g_host->GraphUtils__ConvertInMemoryDataToInline(graph, name);
+}
+}  // namespace graph_utils
 
 namespace QDQ {
 inline std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-GetAllNodeUnits(const GraphViewer* graph_viewer) {
-  return g_host->QDQ__GetAllNodeUnits(graph_viewer);
+GetAllNodeUnits(const GraphViewer* graph_viewer, const logging::Logger& logger) {
+  return g_host->QDQ__GetAllNodeUnits(graph_viewer, logger);
 }
 }  // namespace QDQ
 
 // This is a replacement for Ort::InitApi() to be called before any other onnxruntime API calls.
 // So the C API (and C++) becomes available when ORT_API_MANUAL_INIT is used.
 void InitProviderOrtApi();
+
+// This is a replacement for Env::Default(). Returns a reference to the default ORT Environment.
+inline Env& GetDefaultEnv() {
+  return g_host->Env__Default();
+}
+
+template <class T>
+inline const T* Initializer::data() const {
+  constexpr const int data_type = static_cast<int>(utils::GetONNXTensorElementDataType<T>());
+  return reinterpret_cast<const T*>(g_host->Initializer__data(*this_ptr_, data_type));
+}
+
+template <class T>
+inline T* Initializer::data() {
+  constexpr const int data_type = static_cast<int>(utils::GetONNXTensorElementDataType<T>());
+  return reinterpret_cast<T*>(g_host->Initializer__mutable_data(*this_ptr_, data_type));
+}
 
 }  // namespace onnxruntime
 

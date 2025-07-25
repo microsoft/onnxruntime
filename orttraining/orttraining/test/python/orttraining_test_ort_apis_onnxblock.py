@@ -605,7 +605,7 @@ def test_retrieve_parameters():
 
     # Then
     assert not non_trainable_params
-    for ort_param, (pt_param_name, pt_param) in zip(trainable_params, pt_model.named_parameters()):
+    for ort_param, (pt_param_name, pt_param) in zip(trainable_params, pt_model.named_parameters(), strict=False):
         assert ort_param.name == pt_param_name
         assert np.allclose(
             np.frombuffer(ort_param.raw_data, dtype=np.float32).reshape(pt_param.shape),
@@ -853,7 +853,7 @@ def test_grad_clipping_execution():
         ort_outs = ort_session.run([ort_output_names], ort_inputs)
 
         # assert all the gradients are close
-        for ort_grad, pt_param in zip(ort_outs[0], pt_model.parameters()):
+        for ort_grad, pt_param in zip(ort_outs[0], pt_model.parameters(), strict=False):
             assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
 
 
@@ -1102,7 +1102,6 @@ def test_custom_optimizer_block():
 
 
 def test_generate_artifacts_path():
-
     with tempfile.TemporaryDirectory() as temp_dir:
         _, simple_net = _get_models("cpu", 32, 28, 10, 10)
 
@@ -1159,7 +1158,7 @@ def test_generate_artifacts_external_data_one_file():
         assert os.path.exists(os.path.join(temp_dir, "checkpoint"))
 
 
-@pytest.mark.parametrize("loss", [loss_t for loss_t in artifacts.LossType])
+@pytest.mark.parametrize("loss", list(artifacts.LossType))
 def test_generate_artifacts_external_data_separate_files(loss):
     with tempfile.TemporaryDirectory() as temp_dir:
         _, simple_net = _get_models("cpu", 32, 28, 10, 10)

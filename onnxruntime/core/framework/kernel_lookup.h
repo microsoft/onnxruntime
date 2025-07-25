@@ -21,17 +21,19 @@ class KernelLookup final : public IExecutionProvider::IKernelLookup {
  public:
   KernelLookup(ProviderType provider_type,
                gsl::span<const gsl::not_null<const KernelRegistry*>> kernel_registries,
-               const IKernelTypeStrResolver& kernel_type_str_resolver)
+               const IKernelTypeStrResolver& kernel_type_str_resolver,
+               const logging::Logger& logger)
       : provider_type_{provider_type},
         kernel_registries_{kernel_registries},
-        kernel_type_str_resolver_{kernel_type_str_resolver} {
+        kernel_type_str_resolver_{kernel_type_str_resolver},
+        logger_{logger} {
     ORT_ENFORCE(!provider_type_.empty(), "provider_type must be specified.");
   }
 
   const KernelCreateInfo* LookUpKernel(const Node& node) const override {
     const KernelCreateInfo* kernel_create_info{};
     for (const auto& registry : kernel_registries_) {
-      const auto lookup_status = registry->TryFindKernel(node, provider_type_, kernel_type_str_resolver_,
+      const auto lookup_status = registry->TryFindKernel(node, provider_type_, kernel_type_str_resolver_, logger_,
                                                          &kernel_create_info);
       if (lookup_status.IsOK() && kernel_create_info != nullptr) {
         return kernel_create_info;
@@ -45,6 +47,7 @@ class KernelLookup final : public IExecutionProvider::IKernelLookup {
   ProviderType provider_type_;
   const gsl::span<const gsl::not_null<const KernelRegistry*>> kernel_registries_;
   const IKernelTypeStrResolver& kernel_type_str_resolver_;
+  const logging::Logger& logger_;
 };
 
 }  // namespace onnxruntime

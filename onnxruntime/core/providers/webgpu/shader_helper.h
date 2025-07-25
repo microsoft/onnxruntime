@@ -5,17 +5,15 @@
 
 #include <sstream>
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
-#endif
-
-#include <webgpu/webgpu_cpp.h>
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/framework/tensor_shape.h"
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_variable.h"
 #include "core/providers/webgpu/string_utils.h"
+
+#include "core/providers/webgpu/wgsl_templates/wgsl_gen.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -90,7 +88,7 @@ class ShaderHelper final {
                                         ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
 
   // Add an indices variable to the shader.
-  const ShaderIndicesHelper& AddIndices(const std::string& name, bool use_uniform = true);
+  const ShaderIndicesHelper& AddIndices(const std::string& name, ShaderUsage usage = ShaderUsage::UseUniform);
 
   // Get the string stream for additional implementation code to the shader.
   inline OStringStream& AdditionalImplementation() {

@@ -4,12 +4,13 @@
 #pragma once
 
 #include "contrib_ops/cpu/bert/attention_helper.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 
 #include "core/common/common.h"
-#include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
-#include "contrib_ops/cpu/utils/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -66,7 +67,10 @@ class SparseAttentionBase {
     int present_buffer_sequence_length = static_cast<int>(present_key->Shape().GetDims()[2]);
 
     // Allocate a buffer to store Softmax(QK)
-    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * parameters.total_sequence_length * sizeof(T);
+    bool attention_mlas_supported = MlasGQASupported<T>(CblasNoTrans, CblasTrans) &&
+                                    MlasGQASupported<T>(CblasNoTrans, CblasNoTrans);
+    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * parameters.total_sequence_length *
+                   (attention_mlas_supported ? sizeof(T) : sizeof(float));
     auto attention_probs = allocator->Alloc(bytes);
     BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
 
@@ -76,21 +80,37 @@ class SparseAttentionBase {
     auto* tp = context->GetOperatorThreadPool();
 
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
-    ComputeAttentionProbs<T>(
-        static_cast<T*>(attention_probs), Q, k, total_key_lengths->Data<int32_t>(),
-        batch_size, sequence_length, parameters.total_sequence_length,
-        past_buffer_sequence_length, present_buffer_sequence_length, head_size,
-        past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv,
-        block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp);
-
-    // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
-    ComputeVxAttentionScore<T>(
-        output->MutableData<T>(), static_cast<T*>(attention_probs), v,
-        total_key_lengths->Data<int32_t>(),
-        batch_size, sequence_length, parameters.total_sequence_length,
-        past_buffer_sequence_length, present_buffer_sequence_length, head_size, parameters.hidden_size,
-        past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp);
+
+    if (attention_mlas_supported) {
+      ComputeAttentionProbs(
+          static_cast<T*>(attention_probs), Q, k, total_key_lengths->Data<int32_t>(),
+          batch_size, sequence_length, parameters.total_sequence_length,
+          past_buffer_sequence_length, present_buffer_sequence_length, head_size,
+          past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv,
+          block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp, allocator);
+
+      ComputeVxAttentionScore(
+          output->MutableData<T>(), static_cast<T*>(attention_probs), v,
+          total_key_lengths->Data<int32_t>(),
+          batch_size, sequence_length, parameters.total_sequence_length,
+          past_buffer_sequence_length, present_buffer_sequence_length, head_size, parameters.hidden_size,
+          past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp, allocator);
+    } else {
+      ComputeAttentionProbs(
+          static_cast<float*>(attention_probs), Q, k, total_key_lengths->Data<int32_t>(),
+          batch_size, sequence_length, parameters.total_sequence_length,
+          past_buffer_sequence_length, present_buffer_sequence_length, head_size,
+          past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv,
+          block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp, allocator);
+
+      ComputeVxAttentionScore(
+          output->MutableData<T>(), static_cast<float*>(attention_probs), v,
+          total_key_lengths->Data<int32_t>(),
+          batch_size, sequence_length, parameters.total_sequence_length,
+          past_buffer_sequence_length, present_buffer_sequence_length, head_size, parameters.hidden_size,
+          past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp, allocator);
+    }
 
     return Status::OK();
   }
@@ -99,9 +119,9 @@ class SparseAttentionBase {
   // Helper function to compute the attention probs. It does 2 things:
   //  attention_probs(B, N, S, T) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, T, H -> B, N, H, T)
   //  attention_probs(B, N, S, T) = Softmax(attention_probs)
-  template <typename T>
+  template <typename T, typename U>
   void ComputeAttentionProbs(
-      T* attention_probs,                     // output buffer with size BxNxSxT
+      U* attention_probs,                     // output buffer with size BxNxSxT
       const T* Q,                             // query start pointer
       const T* K,                             // key start pointer
       const int32_t* total_key_lengths,       // total key sequence lengths (past + new)
@@ -118,7 +138,8 @@ class SparseAttentionBase {
       const int32_t* block_row_indices,       // block row indices
       const int32_t* block_col_indices,       // block column indices
       SparseAttentionParameters& parameters,  // parameters
-      ThreadPool* tp) const {                 // thread pool
+      ThreadPool* tp,                         // thread pool
+      AllocatorPtr allocator) const {
     const bool is_prompt = (total_sequence_length == sequence_length);
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
@@ -159,11 +180,11 @@ class SparseAttentionBase {
       int nonzero_elements = block_row_indices[(layout_index + 1) * parameters.stride_row_indices - 1];
       int dense_nonzero = (parameters.stride_row_indices * (parameters.stride_row_indices - 1)) / 2;
       layout_has_sparse[layout_index] = nonzero_elements < dense_nonzero;
-      DUMP_STRING("layout_has_sparse[", layout_index, "]=", layout_has_sparse[layout_index]);
+      DUMP_CPU_STRING("layout_has_sparse[", layout_index, "]=", layout_has_sparse[layout_index]);
     }
 
     ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-      DUMP_STRING("batch_size=", batch_size, ",num_heads=", num_heads_, ",loop_len=", loop_len, ",begin=", begin, ",end=", end);
+      DUMP_CPU_STRING("batch_size=", batch_size, ",num_heads=", num_heads_, ",loop_len=", loop_len, ",begin=", begin, ",end=", end);
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const int batch_index = static_cast<int>(i) / num_heads_;
         const int head_index = static_cast<int>(i) % num_heads_;
@@ -172,7 +193,7 @@ class SparseAttentionBase {
         const int total_seq_len = total_key_lengths[batch_index];
 
         const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * sequence_length * total_sequence_length;
-        T* output = attention_probs + output_offset;
+        U* output = attention_probs + output_offset;
 
         const T* k;
         if (packed_qkv) {
@@ -199,31 +220,55 @@ class SparseAttentionBase {
           q = Q + q_input_chunk_length * i;
         }
 
-        DUMP_STRING("i=", i, ",batch_index=", batch_index, ",head_index=", head_index,
-                    ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
+        DUMP_CPU_STRING("i=", i, ",batch_index=", batch_index, ",head_index=", head_index,
+                        ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
         DUMP_CPU_TENSOR("Q", q, sequence_length, head_size);
         DUMP_CPU_TENSOR("K", k, total_seq_len, head_size);
 
-        math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seq_len, head_size, alpha, q,
-                                    head_size, k, head_size, 0.0f /*bata*/, output, total_seq_len,
-                                    nullptr);
+        if constexpr (std::is_same<T, float>::value) {
+          math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seq_len, head_size, alpha, q,
+                                      head_size, k, head_size, 0.0f /*bata*/, output, total_seq_len,
+                                      nullptr);
+        } else if constexpr (std::is_same<U, MLFloat16>::value) {
+          MlasGemm(CblasNoTrans, CblasTrans, sequence_length, total_seq_len, head_size,
+                   q, head_size, k, head_size, output, total_seq_len,
+                   MLFloat16(alpha).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
+        } else {
+          size_t bytes = static_cast<size_t>(head_size) * (sequence_length + total_seq_len) * sizeof(float);
+          auto q_k_fp32 = allocator->Alloc(bytes);
+          BufferUniquePtr scratch_buffer(q_k_fp32, BufferDeleter(allocator));
+
+          float* q_fp32 = static_cast<float*>(q_k_fp32);
+          MlasConvertHalfToFloatBuffer(q, q_fp32, static_cast<size_t>(head_size) * sequence_length);
+
+          float* k_fp32 = q_fp32 + head_size * sequence_length;
+          MlasConvertHalfToFloatBuffer(k, k_fp32, static_cast<size_t>(head_size) * total_seq_len);
+
+          math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seq_len, head_size,
+                                          alpha, q_fp32, head_size, k_fp32, head_size, 0.0f /*bata*/,
+                                          output, total_seq_len, nullptr);
+        }
 
         DUMP_CPU_TENSOR("QK", output, sequence_length, total_seq_len);
 
         // Compute Softmax for causal and output result in place.
-        T* output_softmax = output;
+        U* output_softmax = output;
 
         int layout_id = head_index % parameters.num_sparse_layout;
         bool is_sparse_layout = layout_has_sparse[layout_id];
 
-        DUMP_STRING("layout_id=", layout_id, ",is_sparse_layout=", is_sparse_layout);
+        DUMP_CPU_STRING("layout_id=", layout_id, ",is_sparse_layout=", is_sparse_layout);
 
         if (!is_sparse_layout) {  // dense
           for (int q_id = 0; q_id < sequence_length; q_id++) {
             int causal_length = past_seq_len + q_id + 1;
             ComputeAttentionSoftmaxInplace(output_softmax, 1, causal_length, nullptr);
             for (int remain_seq_id = causal_length; remain_seq_id < total_seq_len; remain_seq_id++) {
-              output_softmax[remain_seq_id] = 0.f;
+              if constexpr (std::is_same<U, float>::value) {
+                output_softmax[remain_seq_id] = 0.f;
+              } else {
+                output_softmax[remain_seq_id] = MLFloat16::FromBits(static_cast<uint16_t>(0));
+              }
             }
             output_softmax += total_seq_len;
           }
@@ -246,19 +291,19 @@ class SparseAttentionBase {
               int nonzero_blocks = end_in_col_indices - start_in_col_indices;
               has_sparse = (nonzero_blocks != row_in_sparse_layout + 1);
 
-              DUMP_STRING("q_id=", q_id,
-                          ",q_abs_position=", q_abs_position,
-                          ",sparse_block_size=", parameters.sparse_block_size,
-                          ",row_in_sparse_layout=", row_in_sparse_layout,
-                          ",start_in_col_indices=", start_in_col_indices,
-                          ",end_in_col_indices=", end_in_col_indices,
-                          ",nonzero_blocks=", nonzero_blocks,
-                          ",has_sparse=", has_sparse);
+              DUMP_CPU_STRING("q_id=", q_id,
+                              ",q_abs_position=", q_abs_position,
+                              ",sparse_block_size=", parameters.sparse_block_size,
+                              ",row_in_sparse_layout=", row_in_sparse_layout,
+                              ",start_in_col_indices=", start_in_col_indices,
+                              ",end_in_col_indices=", end_in_col_indices,
+                              ",nonzero_blocks=", nonzero_blocks,
+                              ",has_sparse=", has_sparse);
 
               // Expand attention mask for current row of q_id
               if (has_sparse) {
                 int block_aligned_length = q_abs_position / parameters.sparse_block_size * parameters.sparse_block_size + parameters.sparse_block_size;
-                DUMP_STRING("block_aligned_length=", block_aligned_length);
+                DUMP_CPU_STRING("block_aligned_length=", block_aligned_length);
 
                 std::fill_n(mask.begin(), block_aligned_length, 0);
                 for (int j = start_in_col_indices; j < end_in_col_indices; j++) {
@@ -277,14 +322,23 @@ class SparseAttentionBase {
             // Update inline according to attention mask.
             if (has_sparse) {
               for (int s = 0; s < causal_length; s++) {
-                if (mask[s] == 0)
-                  output_softmax[s] = std::numeric_limits<T>::lowest();
+                if (mask[s] == 0) {
+                  if constexpr (std::is_same<U, float>::value) {
+                    output_softmax[s] = std::numeric_limits<T>::lowest();
+                  } else {
+                    output_softmax[s] = MLFloat16::FromBits(static_cast<uint16_t>(0xFBFF));
+                  }
+                }
               }
             }
             ComputeAttentionSoftmaxInplace(output_softmax, 1, causal_length, nullptr);
 
             for (int remain_seq_id = causal_length; remain_seq_id < total_seq_len; remain_seq_id++) {
-              output_softmax[remain_seq_id] = 0.f;
+              if constexpr (std::is_same<U, float>::value) {
+                output_softmax[remain_seq_id] = 0.f;
+              } else {
+                output_softmax[remain_seq_id] = MLFloat16::FromBits(static_cast<uint16_t>(0));
+              }
             }
 
             output_softmax += total_seq_len;
@@ -298,9 +352,9 @@ class SparseAttentionBase {
     });
   }
 
-  template <typename T>
+  template <typename T, typename U>
   void ComputeVxAttentionScore(T* output,                           // buffer for the result with size BxSxNxH
-                               const T* attention_probs,            // Softmax of Q*K' with size BxNxSxT
+                               const U* attention_probs,            // Softmax of Q*K' with size BxNxSxT
                                const T* V,                          // v value with size BxN_kvxSxH
                                const int32_t* total_key_lengths,    // total sequence lengths
                                int batch_size,                      // batch size
@@ -314,7 +368,8 @@ class SparseAttentionBase {
                                T* present_value,                    // present value only
                                bool past_present_share_buffer,      // whether past_key and present_key share the buffer
                                bool packed_qkv,                     // whether Q, K, V are packed
-                               ThreadPool* tp) const {
+                               ThreadPool* tp,
+                               AllocatorPtr allocator) const {
     const bool is_prompt = sequence_length == total_sequence_length;
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
@@ -340,11 +395,18 @@ class SparseAttentionBase {
       unit_cost.bytes_stored += bytes_to_copy_value;
     }
 
+    size_t output_fp32_bytes = 0;
+    if constexpr (std::is_same<T, MLFloat16>::value && std::is_same<U, float>::value) {
+      output_fp32_bytes = SafeInt<size_t>(sequence_length) * batch_size * num_heads_ * head_size * sizeof(float);
+    }
+    auto output_fp32 = allocator->Alloc(output_fp32_bytes);
+    BufferUniquePtr scratch_buffer(output_fp32, BufferDeleter(allocator));
+
     DUMP_CPU_TENSOR_INIT();
 
     ThreadPool::TryParallelFor(
         tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-          DUMP_STRING("batch_size=", batch_size, ",num_heads=", num_heads_, ",begin=", begin, ",end=", end);
+          DUMP_CPU_STRING("batch_size=", batch_size, ",num_heads=", num_heads_, ",begin=", begin, ",end=", end);
 
           for (std::ptrdiff_t i = begin; i != end; ++i) {
             const int batch_index = static_cast<int>(i / num_heads_);
@@ -353,8 +415,8 @@ class SparseAttentionBase {
             const size_t past_chunk_length = static_cast<size_t>(past_seq_len) * head_size;
             const int total_seq_len = total_key_lengths[batch_index];
 
-            DUMP_STRING("i=", i, ",batch_index=", batch_index, ",head_index=", head_index,
-                        ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
+            DUMP_CPU_STRING("i=", i, ",batch_index=", batch_index, ",head_index=", head_index,
+                            ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
 
             const T* v;
             if (packed_qkv) {
@@ -375,14 +437,42 @@ class SparseAttentionBase {
 
             DUMP_CPU_TENSOR("attention_probs", attention_probs + attention_probs_offset, sequence_length, total_seq_len);
 
-            math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seq_len,
-                                        1.f, /*alpha*/
-                                        attention_probs + attention_probs_offset, total_seq_len, v,
-                                        head_size, 0.0f /*beta*/, output_current, hidden_size, nullptr);
+            if constexpr (std::is_same<T, float>::value) {
+              math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seq_len,
+                                          1.f, /*alpha*/
+                                          attention_probs + attention_probs_offset, total_seq_len, v,
+                                          head_size, 0.0f /*beta*/, output_current, hidden_size, nullptr);
+            } else if constexpr (std::is_same<U, MLFloat16>::value) {
+              MlasGemm(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seq_len,
+                       attention_probs + attention_probs_offset, total_seq_len,
+                       v, head_size, output_current, hidden_size,
+                       MLFloat16(1.0f).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
+            } else {
+              size_t bytes = static_cast<size_t>(head_size) * total_seq_len * sizeof(float);
+              auto v_fp32 = allocator->Alloc(bytes);
+              BufferUniquePtr scratch_buffer(v_fp32, BufferDeleter(allocator));
+
+              float* v_fp32_ptr = static_cast<float*>(v_fp32);
+              MlasConvertHalfToFloatBuffer(v, v_fp32_ptr, static_cast<size_t>(head_size) * total_seq_len);
+
+              float* output_fp32_current = static_cast<float*>(output_fp32) +
+                                           (batch_index * sequence_length * num_heads_ + head_index) * head_size;
+              math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seq_len,
+                                              1.f, /*alpha*/ attention_probs + attention_probs_offset,
+                                              total_seq_len, v_fp32_ptr,
+                                              head_size, 0.0f /*beta*/, output_fp32_current,
+                                              hidden_size, nullptr);
+            }
 
             DUMP_CPU_TENSOR("out", attention_probs + attention_probs_offset, sequence_length, head_size);
           }
         });
+
+    if constexpr (std::is_same<T, MLFloat16>::value && std::is_same<U, float>::value) {
+      MlasConvertFloatToHalfBuffer(static_cast<float*>(output_fp32),
+                                   output,
+                                   SafeInt<size_t>(sequence_length) * batch_size * num_heads_ * head_size);
+    }
   }
 };
 

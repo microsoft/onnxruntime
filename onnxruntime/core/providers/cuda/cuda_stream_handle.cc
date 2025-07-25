@@ -228,11 +228,12 @@ void* CudaStream::GetResource(int version, int id) const {
 }
 
 // CPU Stream command handles
-void WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
-  static_cast<CudaNotification*>(&notification)->wait_on_device(stream);
+void WaitCudaNotificationOnDevice(Stream* stream, synchronize::Notification& notification) {
+  assert(stream != nullptr);  // should never happen
+  static_cast<CudaNotification*>(&notification)->wait_on_device(*stream);
 }
 
-void WaitCudaNotificationOnHost(Stream& /*stream*/, synchronize::Notification& notification) {
+void WaitCudaNotificationOnHost(Stream* /*stream*/, synchronize::Notification& notification) {
   static_cast<CudaNotification*>(&notification)->wait_on_host();
 }
 
@@ -266,6 +267,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
                                                                 ep_info](const OrtDevice& device) {
       return std::make_unique<CudaStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, false, external_cudnn_handle, external_cublas_handle, ep_info);
     });
+  stream_handle_registry.RegisterSetDeviceFn(device_type, [](OrtDevice::DeviceId id) { CUDA_CALL_THROW(cudaSetDevice(id)); });
 }
 
 }  // namespace onnxruntime

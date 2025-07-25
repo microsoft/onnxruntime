@@ -17,6 +17,7 @@ namespace Microsoft.ML.OnnxRuntime
         ORT_DISABLE_ALL = 0,
         ORT_ENABLE_BASIC = 1,
         ORT_ENABLE_EXTENDED = 2,
+        ORT_ENABLE_LAYOUT = 3,
         ORT_ENABLE_ALL = 99
     }
 
@@ -30,6 +31,21 @@ namespace Microsoft.ML.OnnxRuntime
     {
         ORT_SEQUENTIAL = 0,
         ORT_PARALLEL = 1,
+    }
+
+    /// <summary>
+    /// Controls the execution provider selection when using automatic EP selection.
+    /// Execution providers must be registered with the OrtEnv to be available for selection.
+    /// </summary>
+    public enum ExecutionProviderDevicePolicy
+    {
+        DEFAULT = 0,
+        PREFER_CPU = 1,
+        PREFER_NPU,
+        PREFER_GPU,
+        MAX_PERFORMANCE,
+        MAX_EFFICIENCY,
+        MIN_OVERALL_POWER,
     }
 
     /// <summary>
@@ -395,16 +411,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Append QNN, SNPE or XNNPACK execution provider
         /// </summary>
-        /// <param name="providerName">Execution provider to add. 'QNN', 'SNPE' or 'XNNPACK' are currently supported.</param>
+        /// <param name="providerName">Execution provider to add. 'QNN', 'SNPE' 'XNNPACK', 'CoreML and 'AZURE are currently supported.</param>
         /// <param name="providerOptions">Optional key/value pairs to specify execution provider options.</param>
         public void AppendExecutionProvider(string providerName, Dictionary<string, string> providerOptions = null)
         {
-            if (providerName != "SNPE" && providerName != "XNNPACK" && providerName != "QNN" && providerName != "AZURE")
-            {
-                throw new NotSupportedException(
-                    "Only QNN, SNPE, XNNPACK and AZURE execution providers can be enabled by this method.");
-            }
-
             if (providerOptions == null)
             {
                 providerOptions = new Dictionary<string, string>();
@@ -414,6 +424,82 @@ namespace Microsoft.ML.OnnxRuntime
             var appender = new ExecutionProviderAppender(utf8ProviderName);
             ProviderOptionsUpdater.Update(providerOptions, handle, appender.Appender);
         }
+
+        /// <summary>
+        /// Select execution providers from the list of available execution providers and devices returned by 
+        /// GetEpDevices.
+        /// 
+        /// One or more OrtEpDevice instances may be provided in epDevices, but must all be for the same 
+        /// execution provider.
+        /// 
+        /// Make multiple calls to AppendExecutionProvider if you wish to use multiple execution providers.
+        /// 
+        /// e.g. 
+        ///   - if execution provider 'A' has an OrtEpDevice for NPU and one for GPU and you wish to use it for
+        ///     both devices, pass the two OrtEpDevice instances in the epDevices list in one call.
+        ///   - if you wish to use execution provider 'B' for GPU and execution provider 'C' for CPU, 
+        ///     make two calls to AppendExecutionProvider, with one OrtEpDevice in the epDevices list in each call.
+        ///     
+        /// The priority of the execution providers is set by the order in which they are appended.
+        /// Highest priority is first.
+        /// </summary>
+        /// <param name="env">OrtEnv that provided the OrtEpDevice instances via a call to GetEpDevices.</param>
+        /// <param name="epDevices">One or more OrtEpDevice instances to append.
+        ///                         These must all have the save EpName value.</param>
+        /// <param name="epOptions">Optional options to configure the execution provider. May be null.</param>
+        /// <exception cref="ArgumentException">epDevices was empty.</exception>
+        /// <see cref="OrtEnv.GetEpDevices" />
+        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices, 
+                                            IReadOnlyDictionary<string, string> epOptions)
+        {
+            if (epDevices == null || epDevices.Count == 0)
+            {
+                throw new ArgumentException("No execution provider devices were specified.");
+            }
+
+            // Convert EpDevices to native pointers
+            IntPtr[] epDevicePtrs = new IntPtr[epDevices.Count];
+            for (int i = 0; i < epDevices.Count; i++)
+            {
+                epDevicePtrs[i] = epDevices[i].Handle;
+            }
+
+            if (epOptions != null && epOptions.Count > 0)
+            {
+                // this creates an OrtKeyValuePairs instance with a backing native instance
+                using var kvps = new OrtKeyValuePairs(epOptions);
+
+                // get the native key/value handles so we can pass those straight through to the C API
+                // and not have to do any special marshaling here.
+                IntPtr epOptionsKeys, epOptionsValues;
+                UIntPtr epOptionsCount;
+                kvps.GetKeyValuePairHandles(out epOptionsKeys, out epOptionsValues, out epOptionsCount);
+
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtSessionOptionsAppendExecutionProvider_V2(
+                        handle,
+                        env.Handle,
+                        epDevicePtrs,
+                        (UIntPtr)epDevices.Count,
+                        epOptionsKeys,  
+                        epOptionsValues,
+                        epOptionsCount));
+            }
+            else
+            {
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtSessionOptionsAppendExecutionProvider_V2(
+                        handle,
+                        env.Handle,
+                        epDevicePtrs,
+                        (UIntPtr)epDevices.Count,
+                        IntPtr.Zero,    // EP options keys
+                        IntPtr.Zero,    // EP options values
+                        UIntPtr.Zero)); // EP options count
+            }
+
+        }
+
         #endregion //ExecutionProviderAppends
 
         #region Public Methods
@@ -458,8 +544,8 @@ namespace Microsoft.ML.OnnxRuntime
             // End result of that is
             //   SessionOptions.RegisterCustomOpLibrary calls NativeMethods.OrtRegisterCustomOpsLibrary_V2
             //   SessionOptions.RegisterCustomOpLibraryV2 calls NativeMethods.OrtRegisterCustomOpsLibrary
-            var utf8Path = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath);
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, utf8Path,
+            var platformPath = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, platformPath,
                                                                                     out libraryHandle));
         }
 
@@ -541,6 +627,41 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimName);
             NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, utf8, dimValue));
+        }
+
+        /// <summary>
+        /// Set the execution provider selection policy if using automatic execution provider selection.
+        /// Execution providers must be registered with the OrtEnv to be available for selection.
+        /// </summary>
+        /// <param name="policy">Policy to use.</param>
+        public void SetEpSelectionPolicy(ExecutionProviderDevicePolicy policy)
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtSessionOptionsSetEpSelectionPolicy(handle, (int)policy));
+        }
+
+        /// <summary>
+        /// Set the execution provider selection policy if using automatic execution provider selection.
+        /// Execution providers must be registered with the OrtEnv to be available for selection.
+        /// </summary>
+        /// <param name="selectionDelegate">Delegate that implements the custom selection policy.</param>
+        public void SetEpSelectionPolicyDelegate(EpSelectionDelegate selectionDelegate = null)
+        {
+            _epSelectionPolicyConnector = new EpSelectionPolicyConnector(selectionDelegate);
+            _epSelectionPolicyDelegate = new NativeMethods.DOrtEpSelectionDelegate(
+                EpSelectionPolicyConnector.EpSelectionPolicyWrapper);
+
+            // make sure these stay alive. not sure if this is necessary when they're class members though
+            _epSelectionPolicyConnectorHandle = GCHandle.Alloc(_epSelectionPolicyConnector);
+            _epSelectionPolicyDelegateHandle = GCHandle.Alloc(_epSelectionPolicyDelegate);
+
+            IntPtr funcPtr = Marshal.GetFunctionPointerForDelegate(_epSelectionPolicyDelegate);
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtSessionOptionsSetEpSelectionPolicyDelegate(
+                    handle, 
+                    funcPtr,
+                    GCHandle.ToIntPtr(_epSelectionPolicyConnectorHandle)));
         }
         #endregion
 
@@ -808,6 +929,129 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
 
+        /// <summary>
+        /// Sets the load cancellation flag for the session. Default is set to false.
+        /// Provides an opportunity for the user to cancel model loading.
+        /// </summary>
+        /// <param name="value">true to request cancellation, false to proceed</param>
+        public void SetLoadCancellationFlag(bool value)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsSetLoadCancellationFlag(handle, value));
+        }
+        #endregion
+
+        #region Selection Policy Delegate helpers
+        /// <summary>
+        /// Delegate to select execution provider devices from a list of available devices.
+        /// </summary>
+        /// <param name="epDevices">OrtEpDevices to select from.</param>
+        /// <param name="modelMetadata">Model metadata.</param>
+        /// <param name="runtimeMetadata">Runtime metadata.</param>
+        /// <param name="maxSelections">Maximum number of devices that can be selected.</param>
+        /// <returns>Selected devices. Ordered by priority. Highest priority first.</returns>
+        public delegate List<OrtEpDevice> EpSelectionDelegate(IReadOnlyList<OrtEpDevice> epDevices,
+                                                              OrtKeyValuePairs modelMetadata,
+                                                              OrtKeyValuePairs runtimeMetadata,
+                                                              uint maxSelections);
+
+        /// <summary>
+        /// Class to bridge the C# and native worlds for the EP selection policy delegate
+        /// </summary>
+        internal class EpSelectionPolicyConnector
+        {
+            private readonly EpSelectionDelegate _csharpDelegate;
+
+            internal EpSelectionPolicyConnector(EpSelectionDelegate selectionDelegate)
+            {
+                _csharpDelegate = selectionDelegate;
+            }
+
+            /// <summary>
+            /// Delegate to convert between the C and C# worlds
+            /// </summary>
+            /// <param name="epDevicesIn">OrtEpDevices to select from.</param>
+            /// <param name="numDevices">Number of OrtEpDevices.</param>
+            /// <param name="modelMetadataIn">Model metadata.</param>
+            /// <param name="runtimeMetadataIn">Runtime metadata.</param>
+            /// <param name="selectedOut">Pre-allocated OrtEpDevice buffer to update with selected devices.</param>
+            /// <param name="maxSelected">Number of entries in selectedOut.</param>
+            /// <param name="numSelected">Number of OrtEpDevies that were selected.</param>
+            /// <param name="state">Opaque state.</param>
+            /// <returns>nullptr for OrtStatus* to indicate success.</returns>
+            /// <remarks>Currently we don't have a way to create an OrtStatus instance from the C# bindings.
+            /// Can add if we need to return an explicit error message.
+            /// </remarks>
+            public static IntPtr EpSelectionPolicyWrapper(IntPtr /* OrtEpDevice** */ epDevicesIn,
+                                                          uint numDevices,
+                                                          IntPtr /* OrtKeyValuePairs* */ modelMetadataIn,
+                                                          IntPtr /* OrtKeyValuePairs* */ runtimeMetadataIn,
+                                                          IntPtr /* OrtEpDevice** */ selectedOut,
+                                                          uint maxSelected,
+                                                          out UIntPtr numSelected,
+                                                          IntPtr state)
+            {
+                numSelected = UIntPtr.Zero;
+
+                try
+                {
+
+                    Span<IntPtr> epDevicesIntPtrs;
+                    Span<IntPtr> selectedDevicesIntPtrs;
+                    EpSelectionPolicyConnector connector = (EpSelectionPolicyConnector)GCHandle.FromIntPtr(state).Target;
+
+                    unsafe
+                    {
+                        void* ptr = epDevicesIn.ToPointer();
+                        epDevicesIntPtrs = new Span<IntPtr>(ptr, checked((int)numDevices));
+                    }
+
+                    List<OrtEpDevice> epDevices = new List<OrtEpDevice>();
+                    for (int i = 0; i < numDevices; i++)
+                    {
+
+                        epDevices.Add(new OrtEpDevice(epDevicesIntPtrs[i]));
+                    }
+
+                    OrtKeyValuePairs modelMetadata = new OrtKeyValuePairs(modelMetadataIn);
+                    OrtKeyValuePairs runtimeMetadata = new OrtKeyValuePairs(runtimeMetadataIn);
+
+                    var selected = connector._csharpDelegate(epDevices, modelMetadata, runtimeMetadata, maxSelected);
+
+                    if (selected.Count > maxSelected)
+                    {
+                        var error = $"The number of selected devices ({selected.Count}) returned by " +
+                                    $"the C# selection delegate exceeds the maximum ({maxSelected}).";
+                        IntPtr status = NativeMethods.OrtCreateStatus((uint)ErrorCode.Fail,
+                                            NativeOnnxValueHelper.StringToZeroTerminatedUtf8(error));
+                        return status;
+                    }
+
+                    numSelected = (UIntPtr)selected.Count;
+
+                    unsafe
+                    {
+                        void* ptr = selectedOut.ToPointer();
+                        selectedDevicesIntPtrs = new Span<IntPtr>(ptr, (int)maxSelected);
+                    }
+
+                    int idx = 0;
+                    foreach (var epDevice in selected)
+                    {
+                        selectedDevicesIntPtrs[idx] = epDevice.Handle;
+                        idx++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    var error = $"The C# selection delegate threw an exception: {ex.Message}";
+                    IntPtr status = NativeMethods.OrtCreateStatus((uint)ErrorCode.Fail,
+                                            NativeOnnxValueHelper.StringToZeroTerminatedUtf8(error));
+                    return status;
+                }
+
+                return IntPtr.Zero;
+            }
+        }
         #endregion
 
         #region Private Methods
@@ -893,8 +1137,43 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeMethods.OrtReleaseSessionOptions(handle);
             handle = IntPtr.Zero;
+
+            if (_epSelectionPolicyConnectorHandle.IsAllocated)
+            {
+                _epSelectionPolicyConnectorHandle.Free();
+                _epSelectionPolicyConnector = null;
+            }
+
+            if (_epSelectionPolicyDelegateHandle.IsAllocated)
+            {
+                _epSelectionPolicyDelegateHandle.Free();
+                _epSelectionPolicyDelegate = null;
+            }
+
+
             return true;
         }
         #endregion
+
+        /// <summary>
+        /// Helper class to connect C and C# usage of the EP selection policy delegate.
+        /// </summary>
+        EpSelectionPolicyConnector _epSelectionPolicyConnector = null;
+
+        /// <summary>
+        /// Handle to the EP selection policy connector that is passed to the C API as state for the 
+        /// EP selection policy delegate.
+        /// </summary>
+        GCHandle _epSelectionPolicyConnectorHandle = default;
+
+        /// <summary>
+        /// Delegate instance that is provided to the C API.
+        /// </summary>
+        NativeMethods.DOrtEpSelectionDelegate _epSelectionPolicyDelegate = null;
+
+        /// <summary>
+        /// Handle to the EP selection policy delegate that is passed to the C API.
+        /// </summary>
+        GCHandle _epSelectionPolicyDelegateHandle = default;
     }
 }

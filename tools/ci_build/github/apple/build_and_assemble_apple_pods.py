@@ -5,14 +5,18 @@
 
 import argparse
 import logging
+import os
 import pathlib
+import shlex
 import shutil
+import subprocess
 import sys
 import tempfile
 
 from c.assemble_c_pod_package import assemble_c_pod_package
-from objectivec.assemble_objc_pod_package import assemble_objc_pod_package
 from package_assembly_utils import PackageVariant, get_ort_version
+
+from objectivec.assemble_objc_pod_package import assemble_objc_pod_package
 
 SCRIPT_PATH = pathlib.Path(__file__).resolve()
 SCRIPT_DIR = SCRIPT_PATH.parent
@@ -87,10 +91,6 @@ def parse_args():
 
 
 def run(arg_list, cwd=None):
-    import os
-    import shlex
-    import subprocess
-
     log.info("Running subprocess in '%s'\n  %s", cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in arg_list]))
 
     return subprocess.run(arg_list, check=True, cwd=cwd)

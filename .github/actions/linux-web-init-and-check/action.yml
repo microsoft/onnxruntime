@@ -1,0 +1,71 @@
+name: "Web Build Initialize and Check on Linux"
+description: "Initializes and checks the ONNX Runtime Web build on Linux."
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: "22.x"
+
+    - name: npm ci /js/
+      run: npm ci
+      shell: bash
+      working-directory: ${{ github.workspace }}/js
+
+    - name: npm ci /js/common/
+      run: npm ci
+      shell: bash
+      working-directory: ${{ github.workspace }}/js/common
+
+    - name: run onnxruntime-common tests
+      run: npm test
+      shell: bash
+      working-directory: ${{ github.workspace }}/js/common
+
+    - name: run onnxruntime-common tests (enable Float16Array)
+      run: npm run test:f16
+      shell: bash
+      working-directory: ${{ github.workspace }}/js/common
+
+    - name: npm ci /js/web/
+      run: npm ci
+      shell: bash
+      working-directory: ${{ github.workspace }}/js/web
+
+    - name: run TypeScript type check in /js/web/
+      run: npm run prebuild
+      shell: bash
+      working-directory: ${{ github.workspace }}/js/web
+
+    - name: run ESLint
+      run: npm run lint
+      shell: bash
+      working-directory: ${{ github.workspace }}/js
+
+    - name: Format code
+      run: npm run format
+      shell: bash
+      working-directory: ${{ github.workspace }}/js
+
+    - name: Check unformatted files
+      run: |
+        node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
+      shell: bash
+      working-directory: ${{ github.workspace }}/js
+
+    - name: TypeDoc Validation
+      run: npx typedoc --emit none --treatWarningsAsErrors
+      shell: bash
+      working-directory: ${{ github.workspace }}/js/common
+
+    - name: Generating documents
+      run: npm run build:doc
+      shell: bash
+      working-directory: ${{ github.workspace }}/js/web
+
+    - name: Check out of dated documents
+      run: |
+        node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
+      shell: bash
+      working-directory: ${{ github.workspace }}/js/web

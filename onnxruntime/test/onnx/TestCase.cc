@@ -306,6 +306,10 @@ class OnnxTestCase : public ITestCase {
                        bool is_input, size_t i,
                        std::unordered_map<std::string, Ort::Value>& out) const;
 
+  void ConvertResult(Ort::Value& out_value,
+                     size_t i,
+                     ONNX_NAMESPACE::TensorProto& result_pb) const;
+
   void ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_data_pb,
                        onnxruntime::test::HeapBuffer& b,
                        bool is_input, size_t i,
@@ -349,6 +353,7 @@ class OnnxTestCase : public ITestCase {
 
   void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, Ort::Value>&,
                     bool is_input) const override;
+  void SaveResult(size_t id, std::vector<Ort::Value>& out_values) const override;
 };
 
 std::unique_ptr<ITestCase> CreateOnnxTestCase(const std::string& test_case_name,
@@ -439,6 +444,21 @@ static void LoadTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorPr
   f.SetCloseOnDelete(true);
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
     ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
+  }
+}
+
+// save tensors to disk
+template <typename PATH_STRING_TYPE>
+static void SaveTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorProto& result_pb) {
+  int tensor_fd;
+  auto st = Env::Default().FileOpenWr(pb_file, tensor_fd);
+  if (!st.IsOK()) {
+    ORT_THROW("open file '", ToUTF8String(pb_file), "' failed:", st.ErrorMessage());
+  }
+  google::protobuf::io::FileOutputStream f(tensor_fd, protobuf_block_size_in_bytes);
+  f.SetCloseOnDelete(true);
+  if (!result_pb.SerializeToZeroCopyStream(&f)) {
+    ORT_THROW("serialize file '", ToUTF8String(pb_file), "' failed");
   }
 }
 
@@ -559,6 +579,41 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
   }
 }
 
+void OnnxTestCase::SaveResult(size_t id, std::vector<Ort::Value>& out_values) const {
+  if (id >= test_data_dirs_.size()) {
+    ORT_THROW("index out of bound");
+  }
+  std::vector<PATH_STRING_TYPE> result_pb_files;
+
+  std::filesystem::path dir_fs_path = test_data_dirs_[id];
+  if (!std::filesystem::exists(dir_fs_path)) return;
+
+  for (size_t idx = 0; idx < out_values.size(); idx++) {
+    auto onnx_type = out_values[idx].GetConst().GetTypeInfo().GetConst().GetONNXType();
+    if (onnx_type == ONNXType::ONNX_TYPE_TENSOR) {
+      ONNX_NAMESPACE::TensorProto result_pb;
+      ConvertResult(out_values[idx], idx, result_pb);
+      std::cout << "[SaveResult] " << result_pb.dims_size() << std::endl;
+#ifdef _WIN32
+      std::wstring actual_output = std::wstring(L"actual_output_") + std::to_wstring(idx) + std::wstring(L".pb");
+#else
+      std::string actual_output = std::string("actual_output_") + std::to_string(idx) + std::string(".pb");
+#endif
+      result_pb_files.push_back(actual_output);
+      SaveTensor(dir_fs_path / result_pb_files[idx], result_pb);
+    } else if (onnx_type == ONNXType::ONNX_TYPE_SEQUENCE) {
+      // TODO: Support SequenceProto
+      ORT_THROW("ONNX_TYPE_SEQUENCE type for the output ", idx, " is not yet supported in test runner SaveResult");
+    } else if (onnx_type == ONNXType::ONNX_TYPE_OPTIONAL) {
+      // TODO: Support OptionalProto
+      ORT_THROW("ONNX_TYPE_OPTIONAL type for the output ", idx, " is not yet supported in test runner SaveResult");
+    } else {
+      ORT_THROW("Unsupported type for the output ", idx, " in test runner SaveResult");
+    }
+  }
+  return;
+}
+
 void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_pb,
                                    onnxruntime::test::HeapBuffer& b,
                                    bool is_input, size_t i,
@@ -577,7 +632,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_
   void* p = len == 0 ? nullptr : b.AllocMemory(len);
   Ort::Value v1{nullptr};
   onnxruntime::test::OrtCallback d;
-  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
   status = onnxruntime::test::TensorProtoToMLValue(test_data_pb, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                    v1, d);
   if (!status.IsOK()) {
@@ -587,6 +642,18 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_
     b.AddDeleter(d);
   }
   out.emplace(name_finalized, std::move(v1));
+}
+
+void OnnxTestCase::ConvertResult(Ort::Value& out_value,
+                                 size_t i,
+                                 ONNX_NAMESPACE::TensorProto& result_pb) const {
+  // Convert output Ort::Value to TensorProto
+  std::string out_name = model_info_->GetOutputName(i);
+  auto status = onnxruntime::test::MLValueToTensorProto(out_value, result_pb);
+  if (!status.IsOK()) {
+    ORT_THROW("Output ", i, " ", out_name, ": ", status.ToString());
+  }
+  return;
 }
 
 void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_data_pb,
@@ -616,7 +683,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
     void* p = len == 0 ? nullptr : b.AllocMemory(len);
     Ort::Value v1{nullptr};
     onnxruntime::test::OrtCallback d;
-    OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+    OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
     status = onnxruntime::test::TensorProtoToMLValue(*it, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                      v1, d);
     if (!status.IsOK()) {
@@ -881,6 +948,16 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"slice_neg_steps",
        "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
       {"cast_BFLOAT16_to_FLOAT", "Unexpected input data type"},
+      {"cast_FLOAT16_to_INT4", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_FLOAT16_to_UINT4", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_FLOAT_to_INT4", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_FLOAT_to_UINT4", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_INT4_to_FLOAT", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_INT4_to_FLOAT16", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_INT4_to_INT8", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_UINT4_to_FLOAT", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_UINT4_to_FLOAT16", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_UINT4_to_UINT8", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
       {"loop13_seq", "Creation of empty sequences is currently not supported in the test runner"},
       {"sequence_insert_at_front", "shape mismatch, expect {4} got {3}"},
       {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
@@ -961,6 +1038,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"reduce_prod_empty_set", "unknown version", {}},
       {"reduce_sum_empty_set", "unknown version", {}},
       {"reduce_sum_square_empty_set_expanded", "unknown version", {}},
+      {"averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_True", "TODO(titaiwang): enable this in the next ONNX release."},
 #ifdef ENABLE_TRAINING_CORE
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -1325,77 +1403,32 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
   }
 
   if (provider_name == "qnn") {
-    broken_tests->insert({"gemm_default_no_bias", "result differs"});
     broken_tests->insert({"resize_downsample_scales_linear", "result differs"});
-    broken_tests->insert({"resize_downsample_scales_linear_antialias", "result differs"});
-    broken_tests->insert({"resize_downsample_sizes_linear_antialias", "result differs"});
-    broken_tests->insert({"sce_NCd1_mean_weight_negative_ii", "result differs"});
-    broken_tests->insert({"sce_NCd1_mean_weight_negative_ii_expanded", "result differs"});
-    broken_tests->insert({"sce_NCd1_mean_weight_negative_ii_log_prob", "result differs"});
-    broken_tests->insert({"sce_NCd1_mean_weight_negative_ii_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean", "result differs"});
-    broken_tests->insert({"sce_mean_3d", "result differs"});
-    broken_tests->insert({"sce_mean_3d_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_3d_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_3d_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_3d", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_3d_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_3d_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_3d_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_4d", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_4d_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_4d_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_4d_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight", "result differs"});
-    broken_tests->insert({"sce_mean_weight_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_3d", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_3d_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_3d_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_3d_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_4d", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_4d_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_4d_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_4d_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_weight_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_none", "result differs"});
-    broken_tests->insert({"sce_none_expanded", "result differs"});
-    broken_tests->insert({"sce_none_log_prob", "result differs"});
-    broken_tests->insert({"sce_none_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_sum", "result differs"});
-    broken_tests->insert({"sce_sum_expanded", "result differs"});
-    broken_tests->insert({"sce_sum_log_prob", "result differs"});
-    broken_tests->insert({"sce_sum_log_prob_expanded", "result differs"});
-    broken_tests->insert({"gridsample_reflection_padding", "result differs"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_0", "unknown version"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "unknown version"});
-    broken_tests->insert({"spacetodepth", "result differs"});
-    broken_tests->insert({"reduce_sum_square_empty_set_expanded", "unknown version"});
-    // Fails with QNN SDK 2.17.0:
+    broken_tests->insert({"rotary_embedding_no_position_ids_expanded", "unknown version"});
+    broken_tests->insert({"rotary_embedding_no_position_ids_interleaved_expanded", "unknown version"});
+    // Fails since QNN SDK 2.17.0:
     // expected 7.70947 (40f6b3f3), got 7.84096 (40fae920), diff: 0.131491, tol=0.00870947 idx=419. 100 of 1715 differ
     broken_tests->insert({"facedetection_op8_qdq", "result differs"});
+    // Fails with QNN SDK 2.34.0:
+    // expected 2.18661 (400bf164), got 1.48898 (3fbe96ce), diff: 0.697631, tol=0.00318661 idx=0. 8 of 8 differ
+    broken_tests->insert({"gemm_default_vector_bias", "result differs with 2.34"});
+    // expected 0.0505495 (3d4f0d00), got 0.0506369 (3d4f68ae), diff: 8.74326e-05, tol=6.05495e-05 idx=448
+    broken_tests->insert({"mobilenetv2-1.0", "result differs with 2.34"});
 
-#if defined(_WIN32) && defined(_M_AMD64)
-    // Fails with QNN SDK 2.17.0 on Windows x64:
-    // expected 13.5 (41580000), got 0 (0), diff: 13.5, tol=0.0145 idx=3. 3 of 4 differ
-    broken_tests->insert({"averagepool_2d_ceil", "result differs"});
-#endif
     // These next 3 Resize tests fail on CPU backend with QNN SDK 2.22.0 due to inaccuracy.
     // output=Y:expected 1 (3f800000), got 3 (40400000), diff: 2, tol=0.002 idx=24. 8 of 56 differ
     broken_tests->insert({"resize_upsample_sizes_nearest", "result differs"});
     broken_tests->insert({"resize_upsample_sizes_nearest_axes_2_3", "result differs"});
     broken_tests->insert({"resize_upsample_sizes_nearest_axes_3_2", "result differs"});
+    broken_tests->insert({"resize_upsample_sizes_nearest_not_larger",
+                          "output=Y:expected 1 (3f800000), got 4 (40800000), diff: 3, tol=0.002 idx=24. 13 of 49 differ. CPU test passed."});
+    broken_tests->insert({"convtranspose_group_2", "Segmentation fault (core dumped). CPU test passed."});
+    broken_tests->insert({"convtranspose_group_2_image_3", "Segmentation fault (core dumped). CPU test passed."});
+    // Fails with QNN 2.31 on Windows x64 for CPU
+    broken_tests->insert({"gelu_tanh_2", "y:expected -0.0131778 (bc57e7d5), got -0.0136333 (bc5f5e38), diff: 0.000455472, tol=2.31778e-05."});
+    broken_tests->insert({"averagepool_2d_ceil", "result differs. expected 13.5 (41580000), got 0 (0)"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS

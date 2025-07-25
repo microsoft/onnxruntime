@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 import re
-from typing import Any, List
+from typing import Any
 
 import sympy
 
@@ -15,12 +15,12 @@ def extract_shape_from_symbol(symbol: str) -> int:
     return int(match.group(3))
 
 
-def sympy_dot(seq1: List[sympy.Expr], seq2: List[sympy.Expr]) -> sympy.Expr:
+def sympy_dot(seq1: list[sympy.Expr], seq2: list[sympy.Expr]) -> sympy.Expr:
     assert len(seq1) == len(seq2)
-    return sympy.expand(sum(a * b for a, b in zip(seq1, seq2)))
+    return sympy.expand(sum(a * b for a, b in zip(seq1, seq2, strict=False)))
 
 
-def parse_shape(shape: List[Any]) -> List[sympy.Expr]:
+def parse_shape(shape: list[Any]) -> list[sympy.Expr]:
     symbol_shapes = []
     for dim in shape:
         symbol_dim = dim

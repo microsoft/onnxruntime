@@ -32,7 +32,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.28.2.241116
+  default: 2.36.1.250708
 
 jobs:
 - job: Build_QNN_EP
@@ -42,11 +42,6 @@ jobs:
     clean: all
 
   steps:
-  - task: UsePythonVersion@0
-    displayName: Use Python $(pythonVersion)
-    inputs:
-      versionSpec: $(pythonVersion)
-
   - script: |
       env | grep ANDROID
     displayName: View Android ENVs
@@ -57,7 +52,7 @@ jobs:
   - script: sudo chmod go+rw /dev/kvm
     displayName: Update permissions to KVM
 
-  - template: templates/jobs/download_linux_qnn_sdk.yml
+  - template: templates/jobs/init_linux_qnn_sdk_x64.yml
     parameters:
       QnnSDKVersion: ${{ parameters.QnnSdk }}
 
@@ -71,8 +66,9 @@ jobs:
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
         --android_api=31 \
-        --parallel \
-        --use_qnn \
+        --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+        --build_shared_lib \
+        --use_qnn static_lib \
         --qnn_home $(QnnSDKRootDir) \
         --cmake_generator=Ninja \
         --skip_tests

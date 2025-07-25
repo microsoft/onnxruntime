@@ -1,7 +1,7 @@
 ARG UBUNTU_VERSION=22.04
 FROM ubuntu:${UBUNTU_VERSION}
 
-ARG OPENVINO_VERSION=2024.4.0
+ARG OPENVINO_VERSION=2025.1.0
 ARG PYTHON_VERSION=3.10
 
 ADD scripts /tmp/scripts
@@ -19,9 +19,9 @@ ENV IE_PLUGINS_PATH=$INTEL_OPENVINO_DIR/runtime/lib/intel64
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN cd /opt && mkdir -p intel && cd intel && \
-    wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2024.4/linux/l_openvino_toolkit_ubuntu22_2024.4.0.16579.c3152d32c9c_x86_64.tgz && \
-    tar xzf l_openvino_toolkit_ubuntu22_2024.4.0.16579.c3152d32c9c_x86_64.tgz && rm -rf l_openvino_toolkit_ubuntu22_2024.4.0.16579.c3152d32c9c_x86_64.tgz && \
-    mv l_openvino_toolkit_ubuntu22_2024.4.0.16579.c3152d32c9c_x86_64 openvino_2024.4.0 && \
+    wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.1/linux/openvino_toolkit_ubuntu22_2025.1.0.18503.6fec06580ab_x86_64.tgz && \
+    tar xzf openvino_toolkit_ubuntu22_2025.1.0.18503.6fec06580ab_x86_64.tgz && rm -rf openvino_toolkit_ubuntu22_2025.1.0.18503.6fec06580ab_x86_64.tgz && \
+    mv openvino_toolkit_ubuntu22_2025.1.0.18503.6fec06580ab_x86_64 openvino_2025.1.0 && \
     cd $INTEL_OPENVINO_DIR/install_dependencies && ./install_openvino_dependencies.sh -y
 
 WORKDIR /root
@@ -34,13 +34,13 @@ RUN wget "https://github.com/intel/compute-runtime/releases/download/21.48.21782
     sudo dpkg -i *.deb && rm -rf *.deb
 
 RUN mkdir -p /opt/cmake/bin && \
-    wget https://github.com/Kitware/CMake/releases/download/v3.30.1/cmake-3.30.1-linux-x86_64.tar.gz && \
-    tar -xf cmake-3.30.1-linux-x86_64.tar.gz --strip 1 -C /opt/cmake && rm -rf /cmake-3.30.1-linux-x86_64.tar.gz && \
+    wget https://github.com/Kitware/CMake/releases/download/v3.31.5/cmake-3.31.5-linux-x86_64.tar.gz && \
+    tar -xf cmake-3.31.5-linux-x86_64.tar.gz --strip 1 -C /opt/cmake && rm -rf /cmake-3.31.5-linux-x86_64.tar.gz && \
     ln -sf /opt/cmake/bin/* /usr/bin
 
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev
-WORKDIR /home/$BUILD_USER
 RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
 RUN adduser $BUILD_USER video
 USER $BUILD_USER
+WORKDIR /home/$BUILD_USER

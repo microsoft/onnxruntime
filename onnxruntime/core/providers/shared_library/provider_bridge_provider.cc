@@ -26,6 +26,7 @@
 #include "core/providers/cpu/tensor/unsqueeze.h"
 #include "core/providers/cpu/tensor/upsamplebase.h"
 #include "core/providers/cpu/tensor/tile.h"
+#include "core/providers/providers.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/bert/attention_base.h"
@@ -330,22 +331,29 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
+std::unique_ptr<IExecutionProvider> IExecutionProviderFactory::CreateProvider(
+    const OrtSessionOptions& session_options, const OrtLogger& session_logger) {
+  return g_host->IExecutionProviderFactory__CreateProvider(this, session_options, session_logger);
+}
+
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                                                  const IKernelLookup& kernel_lookup) const {
-  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup);
+                                                                                  const IKernelLookup& kernel_lookup,
+                                                                                  const GraphOptimizerRegistry& graph_optimizer_registry,
+                                                                                  IResourceAccountant* resource_accountant) const {
+  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
 }
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
 
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT)
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) {
-  return g_host->CreateCUDAPinnedAllocator(name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateCUDAPinnedAllocator(device_id, name);
 }
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
@@ -353,7 +361,6 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 }
 #endif
 
-#ifdef USE_MIGRAPHX
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXAllocator(device_id, name);
 }
@@ -361,7 +368,6 @@ std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const cha
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXPinnedAllocator(device_id, name);
 }
-#endif
 
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
@@ -369,8 +375,9 @@ std::string GetEnvironmentVar(const std::string& var_name) {
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes) {
-  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const logging::Logger& logger) {
+  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, logger);
 }
 
 namespace profiling {
@@ -504,6 +511,9 @@ Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const st
                              /*out*/ std::vector<uint8_t>& unpacked_tensor) {
   return g_host->UnpackInitializerData(tensor, model_path, unpacked_tensor);
 }
+Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, /*out*/ std::vector<uint8_t>& unpacked_tensor) {
+  return g_host->UnpackInitializerData(tensor, std::filesystem::path(), unpacked_tensor);
+}
 
 }  // namespace utils
 
@@ -513,7 +523,7 @@ Status NonMaxSuppressionBase::GetThresholdsFromInputs(const PrepareContext& pc, 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, GatherBase::Prepare& p) const { return g_host_cpu.GatherBase__PrepareForCompute(this, context, reinterpret_cast<GatherBase__Prepare&>(p)); }
 Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, UnsqueezeBase::Prepare& p) const { return g_host_cpu.UnsqueezeBase__PrepareCompute(this, ctx, reinterpret_cast<UnsqueezeBase__Prepare&>(p)); }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) || defined(USE_ROCM)
 bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats, size_t rank, bool& is_batched_memcpy, size_t& num_of_elements_per_batch, size_t& num_of_copies_per_batch, size_t& num_of_batch_copies) {
   return g_host_cpu.TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
 }
@@ -769,7 +779,7 @@ std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const loggin
 }  // namespace cann
 #endif
 
-void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
+void MurmurHash3::x86_128(const void* key, size_t len, uint32_t seed, void* out) {
   return g_host->MurmurHash3__x86_128(key, len, seed, out);
 }
 
@@ -787,5 +797,5 @@ std::string ToUTF8String(const std::wstring& s) {
 std::wstring ToWideString(const std::string& s) {
   return g_host->ToWideString(s);
 }
-#endif
+#endif  // _WIN32
 }  // namespace onnxruntime

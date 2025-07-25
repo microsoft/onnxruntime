@@ -413,7 +413,7 @@ with tf.Session() as sess:
     sess.run(tf.Print(attention, [attention], "====Final Attention Context(bw)", summarize=10000))
 
     for t in tensors:
-        shape_str = "[" + ",".join(list(map(lambda x: str(x.__int__()), t.get_shape()))) + "]"
+        shape_str = "[" + ",".join([str(x.__int__()) for x in t.get_shape()]) + "]"
         sess.run(
             tf.Print(
                 t,

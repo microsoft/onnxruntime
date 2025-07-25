@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 """This file is used to generate test data for Adam optimizer tests in
-   orttraining/orttraining/test/training_ops/cuda/optimizer/adamw_test.cc."""
+orttraining/orttraining/test/training_ops/cuda/optimizer/adamw_test.cc."""
 
 import torch
 
@@ -72,7 +72,7 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
     if adam_mode == 0:
         adamw_optimizer = torch.optim.AdamW(pt_model.parameters(), lr=1e-3)
     elif adam_mode == 1:
-        from transformers import AdamW
+        from transformers import AdamW  # noqa: PLC0415
 
         adamw_optimizer = AdamW(pt_model.parameters(), lr=1e-3)
     else:
@@ -138,8 +138,8 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
         "Momentum1s": m1_dict,
         "Momentum2s": m2_dict,
     }
-    import json
-    import os
+    import json  # noqa: PLC0415
+    import os  # noqa: PLC0415
 
     directory = device
     if not os.path.exists(directory):

@@ -384,6 +384,14 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
   }
   inline void update(const T& v) { this->accumulator_ = v > this->accumulator_ ? v : this->accumulator_; }
 
+  static void fill_for_empty_set(Tensor& output) {
+    if constexpr (std::is_same_v<bool, T>) { /* bool specific impl */
+      ORT_NOT_IMPLEMENTED();
+    } else {
+      EigenMap<T>(output).array() = -std::numeric_limits<T>::infinity();
+    }
+  }
+
   // Fast reduction
   static inline FastReduceKind WhichFastReduce() {
     return FastReduceKind::kKR | FastReduceKind::kRK | FastReduceKind::kKRK | FastReduceKind::kRKR;

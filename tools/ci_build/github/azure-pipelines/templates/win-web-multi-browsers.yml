@@ -12,9 +12,6 @@ jobs:
   workspace:
     clean: all
   steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
   - checkout: self
     submodules: false
   - task: DownloadPipelineArtifact@2
@@ -37,7 +34,7 @@ jobs:
     displayName: 'Checkout submodule onnx'
   - task: NodeTool@0
     inputs:
-      versionSpec: '20.x'
+      versionSpec: '22.x'
   - task: DownloadPipelineArtifact@2
     inputs:
       patterns: 'Release_*/**/*'
@@ -47,10 +44,18 @@ jobs:
     inputs:
       sourceFolder: $(Pipeline.Workspace)\artifacts
       contents: |
-        **\*.*
+        **\ort-*.wasm
       targetFolder: $(Build.SourcesDirectory)\js\web\dist
       flattenFolders: true
-    displayName: 'Binplace dist files'
+    displayName: 'Binplace dist files (.wasm)'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Pipeline.Workspace)\artifacts
+      contents: |
+        **\ort-*.mjs
+      targetFolder: $(Build.SourcesDirectory)\js\web\dist
+      flattenFolders: true
+    displayName: 'Binplace dist files (.mjs)'
   - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js'

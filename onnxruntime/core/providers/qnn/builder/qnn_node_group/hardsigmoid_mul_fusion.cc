@@ -6,9 +6,8 @@
 #include <limits>
 #include <optional>
 #include <utility>
-#include "core/graph/graph_utils.h"
-#include "core/framework/node_unit.h"
-#include "core/providers/shared/utils/utils.h"
+
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"

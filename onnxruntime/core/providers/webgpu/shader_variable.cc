@@ -32,6 +32,11 @@ constexpr static const std::string_view STORAGE_TYPE_ARRAY[] = {
     "u32",        // Uint8x4
     "vec2<u32>",  // Uint8x8
     "vec4<u32>",  // Uint8x16
+    "u32",        // Int8x4
+    "vec2<u32>",  // Int8x8
+    "vec4<u32>",  // Int8x16
+    "u32",        // Uint4x8
+    "u32",        // Int4x8
 };
 constexpr static const auto STORAGE_TYPE = details::_to_std_array(STORAGE_TYPE_ARRAY);
 
@@ -54,6 +59,11 @@ constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "u32",         // Uint8x4 (u32 as 4 elements of uint8)
     "vec2<u32>",   // Uint8x8 (vec2<u32> as 2x4 elements of uint8)
     "vec4<u32>",   // Uint8x16 (vec4<u32> as 4x4 elements of uint8)
+    "u32",         // Int8x4 (u32 as 4 elements of int8)
+    "vec2<u32>",   // Int8x8 (vec2<i32> as 2x4 elements of int8)
+    "vec4<u32>",   // Int8x16 (vec4<i32> as 4x4 elements of int8)
+    "u32",         // Uint4x8
+    "u32",         // Int4x8
 };
 constexpr static const auto VALUE_TYPE = details::_to_std_array(VALUE_TYPE_ARRAY);
 
@@ -76,6 +86,11 @@ constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "u32",   // Uint8x4
     "u32",   // Uint8x8
     "u32",   // Uint8x16
+    "i32",   // Int8x4
+    "i32",   // Int8x8
+    "i32",   // Int8x16
+    "u32",   // Uint4x8
+    "i32",   // Int4x8
 };
 constexpr static const auto ELEMENT_TYPE = details::_to_std_array(ELEMENT_TYPE_ARRAY);
 
@@ -91,7 +106,7 @@ ShaderIndicesHelper::ShaderIndicesHelper(std::string_view name, ProgramVariableD
     : name_(name),
       type_(type),
       num_components_{NumberOfComponents(type)},
-      rank_{gsl::narrow<int>(dims.NumDimensions())},
+      rank_{static_cast<int>(dims.NumDimensions())},
       dims_{dims},
       usage_(usage),
       indices_type_{GetIndicesType(rank_)},
@@ -159,10 +174,8 @@ void ShaderIndicesHelper::Impl(std::ostream& ss) const {
       SS_APPEND(ss, "  var current = offset;\n");
       for (int i = 0; i < rank_ - 1; i++) {
         auto current_stride = GetElementAt(stride, i, rank_ - 1);
-        SS_APPEND(ss, "  let dim", i, " = current / ", current_stride, ";\n");
-        SS_APPEND(ss, "  let rest", i, " = current % ", current_stride, ";\n");
-        SS_APPEND(ss, "  indices[", i, "] = dim", i, ";\n");
-        SS_APPEND(ss, "  current = rest", i, ";\n");
+        SS_APPEND(ss, "  indices[", i, "] = current / ", current_stride, ";\n");
+        SS_APPEND(ss, "  current = current % ", current_stride, ";\n");
       }
       SS_APPEND(ss, "  indices[", rank_ - 1, "] = current;\n");
       SS_APPEND(ss, "  return indices;\n");
@@ -255,8 +268,8 @@ void ShaderVariableHelper::Impl(std::ostream& ss) const {
   // Implementation of "fn get_{name}_by_indices"
   if (usage_ & ShaderUsage::UseGetByIndices) {
     if (rank_ >= 2) {
-      SS_APPEND(ss, "fn get_", name_, "_by_indices(indices: ", IndicesType(), ")->", ValueType(), " {\n");
-      SS_APPEND(ss, "  return ", GetByOffset("i2o_" + name_ + "(indices)"), ";\n");
+      SS_APPEND(ss, "fn get_", name_, "_by_indices(indices_fnarg: ", IndicesType(), ")->", ValueType(), " {\n");
+      SS_APPEND(ss, "  return ", GetByOffset("i2o_" + name_ + "(indices_fnarg)"), ";\n");
       SS_APPEND(ss, "}\n");
     }
   }

@@ -5,8 +5,8 @@
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
 # Build base image with required system packages
-ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
-ARG TRT_VERSION=10.6.0.26-1+cuda11.8
+ARG BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
+ARG TRT_VERSION=10.9.0.34-1+cuda12.8
 ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64:/usr/local/cuda/lib64
 FROM $BASEIMAGE AS base
 ARG TRT_VERSION
@@ -28,7 +28,7 @@ RUN apt-get install -y --no-install-recommends \
 RUN pip install --upgrade pip
 
 # Install TensorRT
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/7fa2af80.pub &&\
     apt-get update &&\
     apt-get install -y \
     libnvinfer-dev=${TRT_VERSION} \
@@ -56,6 +56,9 @@ RUN if [ -n "/tmp/ompffmpeg" ]; then \
         chmod +x /tmp/ompffmpeg/ffmpeg && chmod +x /tmp/ompffmpeg/ffprobe; \
         ln -s /tmp/ompffmpeg/ffmpeg /usr/local/bin/ffmpeg; ln -s /tmp/ompffmpeg/ffprobe /usr/local/bin/ffprobe; \
     fi
+
+# Install ninja
+RUN apt-get update && apt-get install -y ninja-build
 
 # Build final image from base.
 FROM base as final

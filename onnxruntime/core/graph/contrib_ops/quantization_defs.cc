@@ -9,7 +9,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/shape_inference_functions.h"
-#include "onnx/onnx-ml.pb.h" // ?
+#include "core/graph/onnx_protobuf.h"
 
 // Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
 // ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
@@ -23,7 +23,7 @@ void convTransposeShapeInference(InferenceContext& ctx);
 void convPoolShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool use_dilation, bool require_kernel_shape,
                             int input1Idx, int input2Idx);
 namespace defs::math::utils {
-  void MatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx);
+void MatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx);
 }
 
 }  // namespace ONNX_NAMESPACE
@@ -822,10 +822,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             }
           }
 
-        if (all_lengths_known) {
-          output_shape->mutable_dim(axis)->set_dim_value(total_length);
-        }
-      }));
+          if (all_lengths_known) {
+            output_shape->mutable_dim(axis)->set_dim_value(total_length);
+          }
+        }));
 
   ONNX_MS_OPERATOR_SET_SCHEMA(QLinearWhere, 1, OpSchema()
     .SetDoc("Return elements, either from X or Y, depending on condition.")
@@ -955,7 +955,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("do_rotary", "Whether to use rotary position embedding. Default value is 0.",
               AttributeProto::INT, OPTIONAL_VALUE)
-        .Attr("past_present_share_buffer", "Corresponding past and present are same tensor, its shape is "
+        .Attr("past_present_share_buffer",
+              "Corresponding past and present are same tensor, its shape is "
               "(2, batch_size, num_heads, max_sequence_length, head_size)",
               AttributeProto::INT, OPTIONAL_VALUE)
         .Attr("mask_filter_value",

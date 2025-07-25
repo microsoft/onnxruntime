@@ -38,14 +38,6 @@ mkdir -p /tmp/src
 
 cd /tmp/src
 
-echo "Installing Ninja"
-GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz
-tar -zxf ninja-linux.tar.gz
-pushd ninja-1.10.0
-cmake -Bbuild-cmake -H.
-cmake --build build-cmake
-mv ./build-cmake/ninja /usr/bin
-popd
 
 echo "Installing Node.js"
 CPU_ARCH=`uname -m`
@@ -56,9 +48,8 @@ elif [[ "$CPU_ARCH" = "aarch64" ]]; then
 else
   NODEJS_ARCH=$CPU_ARCH
 fi
-# The EOL for nodejs v18.17.1 LTS is April 2025
-GetFile https://nodejs.org/dist/v18.17.1/node-v18.17.1-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v18.17.1-linux-${NODEJS_ARCH}.tar.gz
-tar --strip 1 -xf /tmp/src/node-v18.17.1-linux-${NODEJS_ARCH}.tar.gz -C /usr
+GetFile https://nodejs.org/dist/v22.17.1/node-v22.17.1-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v22.17.1-linux-${NODEJS_ARCH}.tar.gz
+tar --strip 1 -xf /tmp/src/node-v22.17.1-linux-${NODEJS_ARCH}.tar.gz -C /usr
 
 cd /
 rm -rf /tmp/src

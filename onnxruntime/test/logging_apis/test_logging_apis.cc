@@ -322,7 +322,7 @@ TEST_F(MockCAPITestsFixture, CppLogMacroBypassCApiCall) {
   // Set the mock OrtApi object for use in the C++ API.
   Ort::InitApi(&mock_ort_api);
 
-  Ort::Logger cpp_ort_logger{reinterpret_cast<const OrtLogger*>(logger.get())};
+  Ort::Logger cpp_ort_logger{logger.get()->ToExternal()};
 
   // The ORT_CXX_LOG* macros will bypass calling the C API if the cached severity level in the Ort::Logger exceeds the
   // message's severity level. Thus, the following two macro calls will not call the mock C API, and nothing

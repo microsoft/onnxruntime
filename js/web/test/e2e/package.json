@@ -16,8 +16,10 @@
     "mocha": "^10.4.0",
     "parcel": "^2.12.0",
     "parcel-reporter-static-files-copy": "^1.5.3",
+    "puppeteer-core": "23.11.0",
     "rollup": "^4.13.2",
     "rollup-plugin-copy": "^3.5.0",
+    "tree-kill": "^1.2.2",
     "webpack-cli": "^5.1.4"
   },
   "scripts": {

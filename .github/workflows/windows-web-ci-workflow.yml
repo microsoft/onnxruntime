@@ -1,0 +1,221 @@
+name: "Windows Web CI Workflow"
+description: "Windows Web CI pipeline for building and testing ONNX Runtime Web"
+
+on:
+  workflow_call:
+    inputs:
+      commit_override:
+        type: string
+        default: ""
+      build_config:
+        type: string
+        default: "Debug"
+      npm_packaging_mode:
+        type: string
+        default: "dev"
+      package_name:
+        type: string
+        default: "NPM_packages"
+
+jobs:
+  build_onnxruntime_web:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-WEBGPU-A10"]
+
+    env:
+      webgpu_commandline_extra_flags: "--chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de"
+      CHROME_BIN: 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Read commit SHA and checkout
+        if: ${{ inputs.commit_override != '' }}
+        shell: cmd
+        run: |
+          git fetch origin +${{ inputs.commit_override }}:refs/remotes/origin/${{ inputs.commit_override }}
+          git checkout --force ${{ inputs.commit_override }}
+
+      - name: Write commit SHA to __commit.txt
+        if: ${{ inputs.commit_override == '' }}
+        shell: cmd
+        run: |
+          echo.${{ github.sha }}>${{ github.workspace }}/__commit.txt
+
+      - name: Checkout submodule onnx
+        shell: cmd
+        run: |
+          git submodule sync -- cmake\external\onnx
+          git submodule update --init -- cmake\external\onnx
+
+      - name: Force EOL to LF on windows for /js/**
+        shell: cmd
+        run: |
+          echo.>>.gitattributes
+          echo /js/** text=auto eol=lf>>.gitattributes
+          rd /s /q js
+          git checkout -- js/**
+          git checkout -- .gitattributes
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Download WebAssembly artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.build_config }}_wasm
+          path: ${{ github.workspace }}/artifacts_wasm
+
+      - name: Binplace dist files (.wasm)
+        shell: cmd
+        run: |
+          mkdir ${{ github.workspace }}\js\web\dist
+          copy ${{ github.workspace }}\artifacts_wasm\ort-*.wasm ${{ github.workspace }}\js\web\dist\
+
+      - name: Binplace dist files (.mjs)
+        shell: cmd
+        run: |
+          copy ${{ github.workspace }}\artifacts_wasm\ort-*.mjs ${{ github.workspace }}\js\web\dist\
+
+      - name: npm ci for /js/
+        run: npm ci
+        working-directory: ${{ github.workspace }}/js
+
+      - name: npm ci for /js/common/
+        run: npm ci
+        working-directory: ${{ github.workspace }}/js/common
+
+      - name: npm ci for /js/web/
+        run: npm ci
+        working-directory: ${{ github.workspace }}/js/web
+
+      - uses: actions/cache@v4
+        id: onnx-node-tests-cache
+        with:
+          path: ${{ github.workspace }}/js/test/
+          key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
+
+      - name: Pack NPM packages
+        shell: pwsh
+        run: |
+          . ${{ github.workspace }}\tools\ci_build\github\js\pack-npm-packages.ps1 ${{ inputs.npm_packaging_mode }} ${{ github.workspace }} web
+
+      - name: Check active Chrome processes (before test)
+        if: ${{ runner.debug == '1' }}
+        shell: pwsh
+        run: |
+          Get-WmiObject Win32_Process -Filter "name = 'chrome.exe'" | Format-List CommandLine
+
+      - name: Run ort-web tests (ALL backends)
+        shell: cmd
+        run: |
+          mkdir ${{ runner.temp }}\web\test\02
+          dir ${{ runner.temp }}\web\test\02
+          npm test -- -e=chrome -b=webgl,wasm,webgpu ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\02 --chromium-flags=--enable-logging --chromium-flags=--v=1
+        working-directory: ${{ github.workspace }}\js\web
+
+      - name: Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)
+        shell: cmd
+        run: |
+          mkdir ${{ runner.temp }}\web\test\03
+          dir ${{ runner.temp }}\web\test\03
+          npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\03 --chromium-flags=--enable-logging --chromium-flags=--v=1
+        working-directory: ${{ github.workspace }}\js\web
+
+      - name: Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)
+        shell: cmd
+        run: |
+          mkdir ${{ runner.temp }}\web\test\04
+          dir ${{ runner.temp }}\web\test\04
+          npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\04 --chromium-flags=--enable-logging --chromium-flags=--v=1
+        working-directory: ${{ github.workspace }}\js\web
+
+      - name: Run ort-web tests - WebGL packed mode
+        shell: cmd
+        run: |
+          mkdir ${{ runner.temp }}\web\test\05
+          dir ${{ runner.temp }}\web\test\05
+          npm test -- --webgl.pack -b=webgl -e=chrome --user-data-dir=${{ runner.temp }}\web\test\05 --chromium-flags=--enable-logging --chromium-flags=--v=1
+        working-directory: ${{ github.workspace }}\js\web
+
+      - name: Run ort-web tests - WebAssembly proxy
+        if: ${{ inputs.build_config == 'Release' }}
+        shell: cmd
+        run: |
+          mkdir ${{ runner.temp }}\web\test\06
+          dir ${{ runner.temp }}\web\test\06
+          npm test -- --wasm.proxy -b=wasm -e=chrome --user-data-dir=${{ runner.temp }}\web\test\06 --chromium-flags=--enable-logging --chromium-flags=--v=1
+        working-directory: ${{ github.workspace }}\js\web
+
+      # WebGPU EP tests
+      - name: Run ort-web tests - WebGPU EP
+        continue-on-error: true
+        shell: cmd
+        run: |
+          mkdir ${{ runner.temp }}\web\test\07
+          dir ${{ runner.temp }}\web\test\07
+          npm test --webgpu-ep -- suite1 ${{ inputs.build_config == 'Debug' && '--log-verbose' || '' }} -b=webgpu -e=chrome ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\07 --chromium-flags=--enable-logging --chromium-flags=--v=1
+        working-directory: ${{ github.workspace }}\js\web
+
+      - name: Validate shader keys - WebGPU EP
+        if: ${{ inputs.build_config == 'Debug' }}
+        uses: ./.github/actions/webgpu-validate-shader-key
+        with:
+          log_file_path: ${{ runner.temp }}\web\test\07\chrome_debug.log
+          is_chromium_log: true
+
+      # this step is added to help investigate the shader validation failure which is hard to reproduce
+      - name: Upload WebGPU shader validation log on failure
+        if: ${{ failure() && inputs.build_config == 'Debug' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: webgpu-shader-validation-logs
+          path: ${{ runner.temp }}\web\test\07\chrome_debug.log
+
+      - name: E2E package consuming test
+        if: ${{ inputs.build_config == 'Release' }}
+        run: npm run test:e2e -- --browser=Chrome_default
+        working-directory: ${{ github.workspace }}\js\web
+
+      - name: Create artifacts directory
+        if: ${{ inputs.build_config == 'Release' }}
+        shell: cmd
+        run: mkdir ${{ github.workspace }}\artifacts_npm
+
+      - name: Copy onnxruntime-common artifacts
+        if: ${{ inputs.build_config == 'Release' }}
+        shell: cmd
+        run: |
+          if exist ${{ github.workspace }}\js\common\onnxruntime-common-*.tgz (
+            copy ${{ github.workspace }}\js\common\onnxruntime-common-*.tgz ${{ github.workspace }}\artifacts_npm\
+          )
+
+      - name: Copy onnxruntime-web artifacts
+        if: ${{ inputs.build_config == 'Release' }}
+        shell: cmd
+        run: copy ${{ github.workspace }}\js\web\onnxruntime-web-*.tgz ${{ github.workspace }}\artifacts_npm\
+
+      - name: Upload NPM packages
+        if: ${{ inputs.build_config == 'Release' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.package_name }}
+          path: ${{ github.workspace }}\artifacts_npm
+
+      - name: Log Chrome processes (after test)
+        if: ${{ always() && runner.debug == '1' }}
+        shell: cmd
+        run: |
+          for %%i in (01 02 03 04 05 06 07) do (
+            if exist ${{ runner.temp }}\web\test\%%i (
+              echo ------------------- BEGIN %%i -------------------
+              type ${{ runner.temp }}\web\test\%%i\chrome_debug.log
+              echo ------------------- END %%i -------------------
+            )
+          )

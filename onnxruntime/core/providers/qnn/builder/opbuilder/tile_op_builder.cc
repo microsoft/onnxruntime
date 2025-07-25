@@ -1,16 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/common/safeint.h"
-
-#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -47,10 +42,10 @@ Status TileOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     std::vector<std::string>& input_names,
                                     bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
-  // QNN Tile only support 1 input, the 2nd input need to be initialier and set as Qnn node parameter
+  // QNN Tile only support 1 input, the 2nd input need to be initializer and set as Qnn node parameter
   if (do_op_validation) {
     auto& repeats_input_name = inputs[1].node_arg.Name();
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsInitializerInput(repeats_input_name),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsConstantInput(repeats_input_name),
                       "Qnn doesn't support dynamic repeats input");
   }
 
@@ -65,11 +60,11 @@ Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const logging::Logger& logger,
                                                   bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
-  // Already confirmed repeats input is initailizer in ProcessInputs()
+  // Already confirmed repeats input is initializer in ProcessInputs()
   const auto& repeats_input_name = node_unit.Inputs()[1].node_arg.Name();
 
   std::vector<uint8_t> unpacked_tensor;
-  const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(repeats_input_name);
+  const auto& input_tensor = qnn_model_wrapper.GetConstantTensor(repeats_input_name);
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
   // Onnx repeats are int64, Qnn use uint32
   const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());

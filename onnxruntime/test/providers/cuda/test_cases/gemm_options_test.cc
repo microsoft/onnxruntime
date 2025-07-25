@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace cuda {
 namespace test {
 
-TEST(CudaEpGemmOptions, TestDefaultOptions) {
+TEST(CudaGemmOptions, TestDefaultOptions) {
   HalfGemmOptions gemm_options;
   ASSERT_FALSE(gemm_options.IsCompute16F());
 #if defined(USE_CUDA)
@@ -22,7 +22,7 @@ TEST(CudaEpGemmOptions, TestDefaultOptions) {
 #endif
 }
 
-TEST(CudaEpGemmOptions, TestCompute16F) {
+TEST(CudaGemmOptions, TestCompute16F) {
   HalfGemmOptions gemm_options;
   gemm_options.Initialize(1);
   ASSERT_TRUE(gemm_options.IsCompute16F());
@@ -35,7 +35,7 @@ TEST(CudaEpGemmOptions, TestCompute16F) {
 #endif
 }
 
-TEST(CudaEpGemmOptions, NoReducedPrecision) {
+TEST(CudaGemmOptions, NoReducedPrecision) {
   HalfGemmOptions gemm_options;
   gemm_options.Initialize(2);
   ASSERT_FALSE(gemm_options.IsCompute16F());
@@ -48,7 +48,7 @@ TEST(CudaEpGemmOptions, NoReducedPrecision) {
 #endif
 }
 
-TEST(CudaEpGemmOptions, Pedantic) {
+TEST(CudaGemmOptions, Pedantic) {
   HalfGemmOptions gemm_options;
   gemm_options.Initialize(4);
   ASSERT_FALSE(gemm_options.IsCompute16F());
@@ -61,7 +61,7 @@ TEST(CudaEpGemmOptions, Pedantic) {
 #endif
 }
 
-TEST(CudaEpGemmOptions, Compute16F_Pedantic) {
+TEST(CudaGemmOptions, Compute16F_Pedantic) {
   HalfGemmOptions gemm_options;
   gemm_options.Initialize(5);
   ASSERT_TRUE(gemm_options.IsCompute16F());
@@ -74,7 +74,7 @@ TEST(CudaEpGemmOptions, Compute16F_Pedantic) {
 #endif
 }
 
-TEST(CudaEpGemmOptions, Compute16F_NoReducedPrecision) {
+TEST(CudaGemmOptions, Compute16F_NoReducedPrecision) {
   HalfGemmOptions gemm_options;
   gemm_options.Initialize(3);
   ASSERT_TRUE(gemm_options.IsCompute16F());

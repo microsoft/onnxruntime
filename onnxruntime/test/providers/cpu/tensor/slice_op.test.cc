@@ -352,6 +352,9 @@ TEST(SliceTest, Slice1D_WithNegativeSteps_EndOutOfBounds_1) {
 }
 
 TEST(SliceTest, Slice1D_WithNegativeSteps_EndOutOfBounds_2) {
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
   RunSliceTest<float>({6},
                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
                       {0},

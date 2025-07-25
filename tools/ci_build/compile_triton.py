@@ -93,9 +93,9 @@ def convert_and_save(metadata, header_file, out_dir, out_obj_file):
 
         lib_name = m["lib_file"].replace(".", "_")
         meta_ele.append(f'"_binary_{lib_name}_start"')
-        meta_ele.append(f"\"{m['func_name']}\"")
-        meta_ele.append(f"\"{m['group']}\"")
-        meta_ele.append(f"\"{m['name']}\"")
+        meta_ele.append(f'"{m["func_name"]}"')
+        meta_ele.append(f'"{m["group"]}"')
+        meta_ele.append(f'"{m["name"]}"')
         meta_ele.append(str(m["num_warps"]))
         meta_ele.append(str(m["shared"]))
 
@@ -103,9 +103,9 @@ def convert_and_save(metadata, header_file, out_dir, out_obj_file):
         constants = []
         for k, v in m["constants"].items():
             constants.append(f'{{ "{k}", {v!s}}}')
-        meta_ele.append(f"{{ { ', '.join(constants) } }}")
+        meta_ele.append(f"{{ {', '.join(constants)} }}")
 
-        c_metadata.append(f"{{ { ', '.join(meta_ele) } }}")
+        c_metadata.append(f"{{ {', '.join(meta_ele)} }}")
 
     archive_obj_files(binary_files, out_dir, out_obj_file)
 
@@ -123,7 +123,7 @@ struct _TritonKernelInfo {{
 }};
 
 const _TritonKernelInfo kernel_infos[] = {{
-  { ', '.join(c_metadata) },
+  {", ".join(c_metadata)},
 }};
     """
 

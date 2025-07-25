@@ -5,8 +5,6 @@
 #include <unordered_map>
 #include <string>
 
-#include <core/graph/graph.h>
-
 #include "op_builder_factory.h"
 
 namespace onnxruntime {
@@ -45,13 +43,14 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Elu", *this);
     CreateSimpleOpBuilder("Round", *this);
     CreateSimpleOpBuilder("Where", *this);
+    CreateSimpleOpBuilder("ScatterND", *this);
     CreateSimpleOpBuilder("Sigmoid", *this);
     CreateSimpleOpBuilder("Sin", *this);
     CreateSimpleOpBuilder("Sqrt", *this);
     CreateSimpleOpBuilder("Sub", *this);
+    CreateSimpleOpBuilder("Sum", *this);
     CreateSimpleOpBuilder("Tanh", *this);
 
-    CreateSimpleOpBuilder("MatMul", *this);
     CreateSimpleOpBuilder("Concat", *this);
 
     CreateSimpleOpBuilder("QuantizeLinear", *this);
@@ -83,6 +82,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateReduceOpBuilder("ReduceMin", *this);
     CreateReduceOpBuilder("ReduceProd", *this);
     CreateReduceOpBuilder("ReduceSum", *this);
+    CreateReduceOpBuilder("ReduceL2", *this);
   }
 
   {
@@ -135,6 +135,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateUpsampleOpBuilder("Upsample", *this);
+  }
+
+  {
     CreateTopKOpBuilder("TopK", *this);
   }
 
@@ -163,11 +167,35 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateReciprocalOpBuilder("Reciprocal", *this);
+  }
+
+  {
     CreatePadOpBuilder("Pad", *this);
   }
 
   {
     CreateExpandOpBuilder("Expand", *this);
+  }
+
+  {
+    CreateEinsumOpBuilder("Einsum", *this);
+  }
+
+  {
+    CreateMatMulOpBuilder("MatMul", *this);
+  }
+
+  {
+    CreateMeanOpBuilder("Mean", *this);
+  }
+
+  {
+    CreateLSTMOpBuilder("LSTM", *this);
+  }
+
+  {
+    CreateCumSumOpBuilder("CumSum", *this);
   }
 }
 

@@ -84,10 +84,10 @@ static Status ConcatenateGpuOutput(void* stream, std::vector<OrtValue>& per_iter
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cur_output, iteration_data.DataRaw(), bytes_per_iteration,
                                          cudaMemcpyDeviceToDevice, static_cast<cudaStream_t>(stream)));
 
-    cur_output = static_cast<void*>((static_cast<gsl::byte*>(cur_output) + bytes_per_iteration));
+    cur_output = static_cast<void*>((static_cast<std::byte*>(cur_output) + bytes_per_iteration));
   }
 
-  ORT_ENFORCE(static_cast<gsl::byte*>(cur_output) - static_cast<gsl::byte*>(output) == output_size_in_bytes,
+  ORT_ENFORCE(static_cast<std::byte*>(cur_output) - static_cast<std::byte*>(output) == output_size_in_bytes,
               "Concatenation did not fill output buffer as expected.");
 
   return Status::OK();

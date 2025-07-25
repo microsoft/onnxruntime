@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 """This file is used to generate test data for ort format model tests in
-   orttraining/orttraining/test/training_api/core/training_capi_tests.cc."""
+orttraining/orttraining/test/training_api/core/training_capi_tests.cc."""
 
 import onnx
 import torch

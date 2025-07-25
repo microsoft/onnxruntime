@@ -32,7 +32,11 @@ enum versionNum {
   V_2024_2,
   V_2024_3,
   V_2024_4,
-  V_2024_5
+  V_2024_5,
+  V_2024_6,
+  V_2025_0,
+  V_2025_1,
+  V_2025_2
 };
 
 using VersionNum = enum versionNum;
@@ -81,7 +85,7 @@ class DataOps {
           const std::string dev_id, const bool npu_qdq_optimizer_enabled)
       : graph_viewer_(graph_viewer_param),
         version_id_(ver),
-        device_id_(dev_id),
+        device_id_(std::move(dev_id)),
         npu_qdq_optimizer_enabled_(npu_qdq_optimizer_enabled) {
     populate_op_mode_supported();
     populate_types_supported();

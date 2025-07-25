@@ -4,9 +4,13 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/decoder_masked_multihead_attention.h"
 #include "contrib_ops/cuda/bert/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -25,26 +29,29 @@ static constexpr int kPresentOutputIndex = 1;
 static constexpr int kQKOutputIndex = 3;
 static constexpr int kBiasIndex = 10;
 
-#define REGISTER_KERNEL_TYPED(T1, T2)                                         \
+#define REGISTER_KERNEL_TYPED(T, QK)                                          \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
       DecoderMaskedMultiHeadAttention,                                        \
       kMSDomain,                                                              \
       1,                                                                      \
-      T1,                                                                     \
+      T##_##QK,                                                               \
       kCudaExecutionProvider,                                                 \
       (*KernelDefBuilder::Create())                                           \
           .MayInplace(kPastInputIndex, kPresentOutputIndex)                   \
           .MayInplace(kPastInputIndex + 1, kPresentOutputIndex + 1)           \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())             \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
+          .TypeConstraint("QK", DataTypeImpl::GetTensorType<QK>())            \
           .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex) \
           .InputMemoryType(OrtMemTypeCPUInput, kBeamWidthInputIndex),         \
-      DecoderMaskedMultiHeadAttention<T1, T2>);
+      DecoderMaskedMultiHeadAttention<T, QK>);
 
 REGISTER_KERNEL_TYPED(float, float)
-REGISTER_KERNEL_TYPED(MLFloat16, uint16_t)
+REGISTER_KERNEL_TYPED(float, MLFloat16)
+REGISTER_KERNEL_TYPED(MLFloat16, float)
+REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16)
 
-template <typename T1, typename T2>
-DecoderMaskedMultiHeadAttention<T1, T2>::DecoderMaskedMultiHeadAttention(const OpKernelInfo& info) : CudaKernel(info) {
+template <typename T, typename QK>
+DecoderMaskedMultiHeadAttention<T, QK>::DecoderMaskedMultiHeadAttention(const OpKernelInfo& info) : CudaKernel(info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
@@ -54,8 +61,8 @@ DecoderMaskedMultiHeadAttention<T1, T2>::DecoderMaskedMultiHeadAttention(const O
   output_qk_ = info.GetAttrOrDefault<int64_t>("output_qk", 0LL);
 }
 
-template <typename T1, typename T2>
-Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext* context) const {
+template <typename T, typename QK>
+Status DecoderMaskedMultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -69,7 +76,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   const Tensor* bias = context->Input<Tensor>(kBiasIndex);
 
   auto& device_prop = GetDeviceProp();
-  DecoderMaskedMultiHeadAttentionParams parameters;
+  DecoderMaskedMultiHeadAttentionParameters parameters;
 
   parameters.kv_data_in_flight = ParseEnvironmentVariableWithDefault<bool>(
       attention::kDecoderMaskedAttentionLoadKVDataInFlight, false);
@@ -83,6 +90,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                                                       attention_bias,
                                                                       past_key,
                                                                       past_value,
+                                                                      cache_indir,
                                                                       past_seq_len,
                                                                       &parameters,
                                                                       num_heads_,
@@ -93,11 +101,24 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                                                       kDecoderMaskedMultiHeadAttention,
                                                                       device_prop.maxThreadsPerBlock));
 
+  DUMP_STRING_INIT();
+  DUMP_STRING("Batch size = ", parameters.batch_size);
+  DUMP_STRING("Sequence length = ", parameters.sequence_length);
+  DUMP_STRING("Past sequence length = ", parameters.past_sequence_length);
+  DUMP_STRING("KV sequence length = ", parameters.kv_sequence_length);
+  DUMP_STRING("Total sequence length = ", parameters.total_sequence_length);
+  DUMP_STRING("Max sequence length = ", parameters.max_sequence_length);
+  DUMP_STRING("Hidden size = ", parameters.hidden_size);
+  DUMP_STRING("Head size = ", parameters.head_size);
+  DUMP_STRING("Num heads = ", parameters.num_heads);
+  DUMP_STRING("Buffer sharing = ", (parameters.past_present_share_buffer == true));
+  DUMP_STRING("QKV format = ", parameters.qkv_format);
+
   if (bias) {
-    const T1* bias_data = bias->Data<T1>();
-    parameters.q_bias = const_cast<T1*>(bias_data);
-    parameters.k_bias = const_cast<T1*>(bias_data + parameters.hidden_size);
-    parameters.v_bias = const_cast<T1*>(bias_data + 2LL * parameters.hidden_size);
+    const T* bias_data = bias->Data<T>();
+    parameters.q_bias = const_cast<T*>(bias_data);
+    parameters.k_bias = const_cast<T*>(bias_data + parameters.hidden_size);
+    parameters.v_bias = const_cast<T*>(bias_data + 2LL * parameters.hidden_size);
   }
 
   int batch_size = parameters.batch_size;
@@ -125,10 +146,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> present_dims{
-      parameters.batch_size, parameters.num_heads,
-      past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
-      parameters.head_size};
+  std::vector<int64_t> present_dims{parameters.batch_size, parameters.num_heads, parameters.max_sequence_length, parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(kPresentOutputIndex, present_shape);
   Tensor* present_value = context->Output(kPresentOutputIndex + 1, present_shape);
@@ -139,11 +157,11 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   parameters.is_mha = true;
 
   // Update the q buffers
-  parameters.q = const_cast<T1*>(query->Data<T1>());
+  parameters.q = const_cast<T*>(query->Data<T>());
 
   // Update the attention bias for self attention
   if (attention_bias != nullptr) {
-    parameters.attention_bias = const_cast<T1*>(attention_bias->Data<T1>());
+    parameters.attention_bias = const_cast<T*>(attention_bias->Data<T>());
   }
 
   // Decoder cross-attention
@@ -157,8 +175,8 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     parameters.total_sequence_length = parameters.kv_sequence_length;
     parameters.max_sequence_length = parameters.kv_sequence_length;
     // parameters.k and parameters.v are nullptr
-    parameters.k_cache = const_cast<T1*>(key->Data<T1>());
-    parameters.v_cache = const_cast<T1*>(value->Data<T1>());
+    parameters.k_cache = const_cast<T*>(key->Data<T>());
+    parameters.v_cache = const_cast<T*>(value->Data<T>());
     parameters.k_bias = nullptr;
     parameters.v_bias = nullptr;
 
@@ -167,10 +185,10 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     ORT_ENFORCE(past_present_share_buffer_);
     ORT_ENFORCE(past_key != nullptr && past_value != nullptr);
 
-    auto* present_key_data = present_key->MutableData<T1>();
-    auto* present_value_data = present_value->MutableData<T1>();
-    auto* past_key_data = past_key->Data<T1>();
-    auto* past_value_data = past_value->Data<T1>();
+    auto* present_key_data = present_key->MutableData<T>();
+    auto* present_value_data = present_value->MutableData<T>();
+    auto* past_key_data = past_key->Data<T>();
+    auto* past_value_data = past_value->Data<T>();
 
     // No production use-case will incur this copy cost as the implementation of
     // GreedySearch/BeamSearch is written in such a way that the past and present buffers
@@ -192,11 +210,11 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     parameters.is_packed_qkv = is_packed_qkv;
 
     parameters.k = is_packed_qkv
-                       ? const_cast<T1*>(query->Data<T1>() + parameters.hidden_size)
-                       : const_cast<T1*>(key->Data<T1>());
+                       ? const_cast<T*>(query->Data<T>() + parameters.hidden_size)
+                       : const_cast<T*>(key->Data<T>());
     parameters.v = is_packed_qkv
-                       ? const_cast<T1*>(query->Data<T1>() + 2 * static_cast<size_t>(parameters.hidden_size))
-                       : const_cast<T1*>(value->Data<T1>());
+                       ? const_cast<T*>(query->Data<T>() + 2 * static_cast<size_t>(parameters.hidden_size))
+                       : const_cast<T*>(value->Data<T>());
     parameters.k_cache = present_key_data;
     parameters.v_cache = present_value_data;
   }
@@ -205,7 +223,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     int64_t qk_dims[] = {parameters.batch_size, parameters.num_heads, 1, parameters.total_sequence_length};
     TensorShape qk_shape(&qk_dims[0], sizeof(qk_dims) / sizeof(qk_dims[0]));
     cross_qk = context->Output(kQKOutputIndex, qk_shape);
-    parameters.out_qk = cross_qk->MutableData<float>();
+    parameters.out_qk = cross_qk->MutableData<QK>();
   }
 
   parameters.out = output->MutableDataRaw();
@@ -237,26 +255,19 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     parameters.cache_indir = cache_indir->Data<int32_t>();
   }
 
-  switch (parameters.head_size) {
-    case 32:
-      mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
-      break;
-
-    case 64:
-      mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
-      break;
-
-    case 128:
-      mmha_launch_kernel<T2, 128>(parameters, cuda_stream);
-      break;
-
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "Unsupported head size in DecoderMaskedMultiHeadAttention. "
-                             "Got head size: ",
-                             parameters.head_size);
+  // DecoderMaskedMultiHeadAttention(T, QK) is defined for:
+  // T = float, QK = float
+  // T = float, QK = half
+  // T = uint16_t, QK = float
+  // T = uint16_t, QK = half
+  typedef typename ToCudaType<QK>::MappedType CudaQK;
+  if (std::is_same<T, float>::value) {
+    return LaunchDecoderMaskedMultiHeadAttention<float, CudaQK>(parameters, cuda_stream, parameters.head_size);
   }
-  return Status::OK();
+  if (std::is_same<T, MLFloat16>::value) {
+    return LaunchDecoderMaskedMultiHeadAttention<uint16_t, CudaQK>(parameters, cuda_stream, parameters.head_size);
+  }
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DecoderMaskedMultiHeadAttention is only implemented for float32 and float16.");
 }
 
 }  // namespace cuda

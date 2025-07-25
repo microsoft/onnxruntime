@@ -93,18 +93,35 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, opt.GraphOptimizationLevel);
 
-                Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
+                AssertUtils.AssertThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; },
+                    "Set an invalid Graph Optimization Level.");
 
                 opt.AddSessionConfigEntry("key", "value");
 
-                var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
-                Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
+                AssertUtils.AssertThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.AddSessionConfigEntry("", "invalid key"); },
+                    "Added an invalid config entry.",
+                    "[ErrorCode:InvalidArgument] Config key is empty");
 
                 // SessionOptions.RegisterOrtExtensions can be manually tested by referencing the
                 // Microsoft.ML.OnnxRuntime.Extensions nuget package. After that is done, this should not throw.
-                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.RegisterOrtExtensions(); });
-                Assert.Contains("Microsoft.ML.OnnxRuntime.Extensions NuGet package must be referenced", ex.Message);
+                AssertUtils.AssertThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.RegisterOrtExtensions(); },
+                    "RegisterOrtExtensions should throw if the Extensions package is not referenced",
+                    "Microsoft.ML.OnnxRuntime.Extensions NuGet package must be referenced");
 
+                // The below tests what happens when various execution providers are added
+                // to the session options.
+
+                // We can only check what EPs the package was built with for the
+                // Microsoft.ML.OnnxRuntime.Managed package because the managed package defines
+                // the C# preprocessor symbols (such as USE_CUDA) for the EPs that it was built with.
+
+                // The Microsoft.ML.OnnxRuntime package will use the appropriate platform bindings
+                // (ie the native Android bindings) where the C# preprocessor symbols
+                // identifying the EPs included in the build may not be available, so we use
+                // IfThrowsCheckException instead of using ifdefs.
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
@@ -157,24 +174,25 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_TENSORRT
                 opt.AppendExecutionProvider_Tensorrt(0);
 #endif
-#if USE_XNNPACK
-                opt.AppendExecutionProvider("XNNPACK");
-#else
-                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("XNNPACK"); });
-                Assert.Contains("XNNPACK execution provider is not supported in this build", ex.Message);
-#endif
-#if USE_SNPE
-                opt.AppendExecutionProvider("SNPE");
-#else
-                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("SNPE"); });
-                Assert.Contains("SNPE execution provider is not supported in this build", ex.Message);
-#endif
-#if USE_QNN
-                opt.AppendExecutionProvider("QNN");
-#else
-                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("QNN"); });
-                Assert.Contains("QNN execution provider is not supported in this build", ex.Message);
-#endif
+                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.AppendExecutionProvider("CoreML"); },
+                    "Appending CoreML EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
+                    "CoreML execution provider is not supported in this build");
+
+                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.AppendExecutionProvider("XNNPACK"); },
+                    "Appending XNNPACK EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
+                    "XNNPACK execution provider is not supported in this build");
+
+                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.AppendExecutionProvider("SNPE"); },
+                    "Appending SNPE EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
+                    "SNPE execution provider is not supported in this build");
+
+                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.AppendExecutionProvider("QNN"); },
+                    "Appending QNN EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
+                    "QNN execution provider is not supported in this build");
 
                 opt.AppendExecutionProvider_CPU(1);
             }
@@ -2037,7 +2055,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         // Test hangs on mobile.
-#if !(ANDROID || IOS)  
+#if !(ANDROID || IOS)
         [Fact(DisplayName = "TestModelRunAsyncTask")]
         private async Task TestModelRunAsyncTask()
         {

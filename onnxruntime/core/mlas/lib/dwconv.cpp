@@ -43,7 +43,7 @@ MlasConvDepthwiseKernel(
                 MLAS_FLOAT16X8 InputVector = MlasLoadFloat16x8(&Input[k][ChannelOffset]);
                 MLAS_FLOAT16X8 FilterVector = MlasLoadFloat16x8(&Filter[ChannelKernelOffset]);
 
-                Accumulator = MlasMultiplyAddFloat16x8(InputVector, FilterVector, Accumulator);
+                Accumulator = MlasMultiplyAddFloat16(InputVector, FilterVector, Accumulator);
                 ChannelKernelOffset += Channels;
             }
             MlasStoreFloat16x8(Output, Accumulator);
@@ -61,7 +61,7 @@ MlasConvDepthwiseKernel(
                 MLAS_FLOAT16X4 InputVector = MlasLoadFloat16x4(&Input[k][ChannelOffset]);
                 MLAS_FLOAT16X4 FilterVector = MlasLoadFloat16x4(&Filter[ChannelKernelOffset]);
 
-                Accumulator = MlasMultiplyAddFloat16x4(InputVector, FilterVector, Accumulator);
+                Accumulator = MlasMultiplyAddFloat16(InputVector, FilterVector, Accumulator);
                 ChannelKernelOffset += Channels;
             }
             MlasStoreFloat16x4(Output, Accumulator);
@@ -80,7 +80,7 @@ MlasConvDepthwiseKernel(
                 MLAS_FLOAT16X4 InputValue = MlasLoadFloat16x4(&Input[k][ChannelOffset]);
                 MLAS_FLOAT16X4 FilterValue = MlasLoadFloat16x4(&Filter[ChannelKernelOffset]);
 
-                Accumulator = MlasMultiplyAddFloat16x4(InputValue, FilterValue, Accumulator);
+                Accumulator = MlasMultiplyAddFloat16(InputValue, FilterValue, Accumulator);
                 ChannelKernelOffset += Channels;
             }
             MlasStorePartialFloat16x4(Output, Accumulator, c);

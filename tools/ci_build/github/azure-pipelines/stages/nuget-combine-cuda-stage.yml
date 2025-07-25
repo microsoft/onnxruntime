@@ -1,7 +1,4 @@
 parameters:
-- name: DoCompliance
-  type: boolean
-
 - name: DoEsrp
   type: boolean
 
@@ -42,6 +39,11 @@ stages:
     buildJava: ${{ parameters.buildJava }}
     buildNodejs: ${{ parameters.buildNodejs }}
 
+- ${{ if eq(parameters.buildNodejs, 'true') }}:
+  - template: nodejs-linux-packaging-stage.yml
+    parameters:
+      CudaVersion: ${{ parameters.CudaVersion }}
+
 - template: nuget-win-cuda-packaging-stage.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
@@ -50,57 +52,10 @@ stages:
     win_trt_home: ${{ parameters.win_trt_home }}
     win_cuda_home: ${{ parameters.win_cuda_home }}
     buildJava: ${{ parameters.buildJava }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
 
 - template: nuget-cuda-packaging-stage.yml
   parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: ../nuget/templates/test_win.yml
-  parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-A10'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
-    ArtifactSuffix: 'GPU'
-    StageSuffix: 'GPU'
-    Skipx86Tests: 'true'
-    CudaVersion: ${{ parameters.CudaVersion }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: ../nuget/templates/test_win.yml
-  parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-A10'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
-    ArtifactSuffix: 'GPU'
-    StageSuffix: 'GPU'
-    MoreSuffix: '_Windows'
-    Skipx86Tests: 'true'
-    CudaVersion: ${{ parameters.CudaVersion }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: ../nuget/templates/test_linux.yml
-  parameters:
-    AgentPool : Onnxruntime-Linux-GPU-A10
-    ArtifactSuffix: 'GPU'
-    StageSuffix: 'GPU'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
-    CudaVersion: ${{ parameters.CudaVersion }}
-    SpecificArtifact: ${{ parameters.specificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: ../nuget/templates/test_linux.yml
-  parameters:
-    AgentPool : Onnxruntime-Linux-GPU-A10
-    ArtifactSuffix: 'GPU'
-    StageSuffix: 'GPU'
-    MoreSuffix: '_Linux'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
-    CudaVersion: ${{ parameters.CudaVersion }}
-    SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}

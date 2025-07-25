@@ -82,7 +82,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // CumSum
-    CreateConcatOpBuilder("CumSum", op_registrations);
+    CreateCumSumOpBuilder("CumSum", op_registrations);
   }
 
   {  // Dropout
@@ -113,6 +113,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // GatherND
     CreateGatherNDOpBuilder("GatherND", op_registrations);
+  }
+
+  {  // GroupQueryAttention
+    CreateGroupQueryAttentionOpBuilder("GroupQueryAttention", op_registrations);
   }
 
   {  // Flatten
@@ -149,9 +153,17 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLstmOpBuilder("LSTM", op_registrations);
   }
 
+  {  // MatMulNBits
+    CreateMatMulNBitsOpBuilder("MatMulNBits", op_registrations);
+  }
+
   {  // Max/Min
     CreateMaxMinOpBuilder("Max", op_registrations);
     CreateMaxMinOpBuilder("Min", op_registrations);
+  }
+
+  {  // MultiHeadAttention
+    CreateMultiHeadAttentionOpBuilder("MultiHeadAttention", op_registrations);
   }
 
   {  // Normalization
@@ -159,6 +171,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
     CreateNormalizationOpBuilder("SimplifiedLayerNormalization", op_registrations);
+    CreateNormalizationOpBuilder("SkipSimplifiedLayerNormalization", op_registrations);
   }
 
   {  // Pad
@@ -193,6 +206,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Resize
     CreateResizeOpBuilder("Resize", op_registrations);
+  }
+
+  {  // RotaryEmbedding
+    CreateRotaryEmbeddingOpBuilder("RotaryEmbedding", op_registrations);
   }
 
   {  // ScatterElements

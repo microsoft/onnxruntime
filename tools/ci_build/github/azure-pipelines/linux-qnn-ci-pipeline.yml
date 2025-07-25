@@ -33,7 +33,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.28.2.241116
+  default: 2.36.1.250708
 
 jobs:
   - job: Build_QNN_EP
@@ -41,16 +41,16 @@ jobs:
     timeoutInMinutes: 60
     workspace:
       clean: all
-
+    strategy:
+      matrix:
+        SHARED_LIB:
+          QnnLibKind: 'shared_lib'
+        STATIC_LIB:
+          QnnLibKind: 'static_lib'
     steps:
       - script: |
           ls -R /data/qnn_test_data
         displayName: Check QNN test data
-
-      - task: UsePythonVersion@0
-        displayName: Use Python $(pythonVersion)
-        inputs:
-          versionSpec: $(pythonVersion)
 
       - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
         displayName: Install coreutils and ninja
@@ -65,10 +65,11 @@ jobs:
             --config Release \
             --use_binskim_compliant_compile_flags \
             --build_java \
-            --use_qnn \
+            --build_shared_lib \
+            --use_qnn $(QnnLibKind) \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
-            --update --build --parallel
+            --update --build --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         displayName: Build QNN EP
 
       - script: |
@@ -77,10 +78,11 @@ jobs:
             --config Release \
             --use_binskim_compliant_compile_flags \
             --build_java \
-            --use_qnn \
+            --build_shared_lib \
+            --use_qnn $(QnnLibKind) \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
-            --test
+            --test --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         displayName: Run unit tests
 
       - task: CmdLine@2
@@ -88,7 +90,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnCpu.so" \
+              -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnCpu.so" \
               cmake/external/onnx/onnx/backend/test/data/node
 
       - task: CmdLine@2
@@ -96,7 +98,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnCpu.so" \
+              -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnCpu.so" \
               /data/float32_models
 
       - task: CmdLine@2
@@ -104,7 +106,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnHtp.so" \
+              -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnHtp.so" \
               /data/qdq_models
 
       - task: CmdLine@2
@@ -112,5 +114,5 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -f -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnHtp.so" \
+              -f -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnHtp.so" \
               /data/qdq_models/mobilenetv2-1.0_add_transpose_quant

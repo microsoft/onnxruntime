@@ -24,7 +24,7 @@ def verify_inputs(beam_inputs, graph_inputs):
     # Verify that ONNX graph's inputs match beam search op's inputs
     beam_required_inputs = list(filter(lambda beam_input: beam_input, beam_inputs))
     assert len(graph_inputs) == len(beam_required_inputs)
-    for graph_input, beam_input in zip(graph_inputs, beam_required_inputs):
+    for graph_input, beam_input in zip(graph_inputs, beam_required_inputs, strict=False):
         # Check if graph_input is in beam_input to handle beam_input names with the "_fp16" suffix
         assert graph_input.name in beam_input
 
@@ -312,13 +312,15 @@ def chain_model(args):
     # Save WhisperBeamSearch graph and external data
     if os.path.isfile(args.beam_model_output_dir):
         logger.info(f"Overwriting {args.beam_model_output_dir} and {args.beam_model_output_dir + '.data'}")
-        os.remove(args.beam_model_output_dir)
-        os.remove(args.beam_model_output_dir + ".data")
+        if os.path.exists(args.beam_model_output_dir):
+            os.remove(args.beam_model_output_dir)
+        if os.path.exists(args.beam_model_output_dir + ".data"):
+            os.remove(args.beam_model_output_dir + ".data")
 
     onnx.save(
         beam_model,
         args.beam_model_output_dir,
-        save_as_external_data=True,
+        save_as_external_data=args.use_external_data_format,
         all_tensors_to_one_file=True,
         convert_attribute=True,
         location=f"{os.path.basename(args.beam_model_output_dir)}.data",

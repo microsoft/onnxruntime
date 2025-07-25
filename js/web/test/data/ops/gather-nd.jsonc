@@ -1,0 +1,147 @@
+[
+  {
+    "name": "GatherND int32",
+    "operator": "GatherND",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "data[4] indices[]",
+        "inputs": [
+          {
+            "data": [100, 101, 102, 777, 778, 779, 1000, 1001, 1002],
+            "dims": [9],
+            "type": "int32"
+          },
+          {
+            "data": [0, 4, 8],
+            "dims": [3, 1],
+            "type": "int64"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [100, 778, 1002],
+            "dims": [3],
+            "type": "int32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "GatherND float32",
+    "operator": "GatherND",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "data[4] indices[]",
+        "inputs": [
+          {
+            "data": [100.1, 101.2, 102.3, 777.4, 778.5, 779.6, 1000.7, 1001.8, 1002.9],
+            "dims": [9],
+            "type": "float32"
+          },
+          {
+            "data": [0, 4, 8],
+            "dims": [3, 1],
+            "type": "int64"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [100.0999984741211, 778.5, 1002.9000244140625],
+            "dims": [3],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "GatherND int32 [2 2 2], batch_dims",
+    "operator": "GatherND",
+    "attributes": [{ "name": "batch_dims", "data": 1, "type": "int" }],
+    "cases": [
+      {
+        "name": "data[4] indices[]",
+        "inputs": [
+          {
+            "data": [0, 1, 2, 3, 4, 5, 6, 7],
+            "dims": [2, 2, 2],
+            "type": "int32"
+          },
+          {
+            "data": [1, 0],
+            "dims": [2, 1],
+            "type": "int64"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [2, 3, 4, 5],
+            "dims": [2, 2],
+            "type": "int32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "GatherND float16",
+    "operator": "GatherND",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "data[4] indices[]",
+        "inputs": [
+          {
+            "data": [100.1, 101.2, 102.3, 777.4, 778.5, 779.6, 1000.7, 1001.8, 1002.9],
+            "dims": [9],
+            "type": "float16"
+          },
+          {
+            "data": [0, 4, 8],
+            "dims": [3, 1],
+            "type": "int64"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [100.0999984741211, 778.5, 1002.9000244140625],
+            "dims": [3],
+            "type": "float16"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "GatherND uint32 [2 2 2], batch_dims",
+    "operator": "GatherND",
+    "attributes": [{ "name": "batch_dims", "data": 1, "type": "int" }],
+    "cases": [
+      {
+        "name": "data[4] indices[]",
+        "inputs": [
+          {
+            "data": [0, 1, 2, 3, 4, 5, 6, 7],
+            "dims": [2, 2, 2],
+            "type": "uint32"
+          },
+          {
+            "data": [1, 0],
+            "dims": [2, 1],
+            "type": "int64"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [2, 3, 4, 5],
+            "dims": [2, 2],
+            "type": "uint32"
+          }
+        ]
+      }
+    ]
+  }
+]

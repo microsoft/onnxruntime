@@ -4,12 +4,12 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
-from typing import List, Optional
 
 from convert_to_packing_mode import PackingMode
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_bart_attention import FusionBartAttention
 from fusion_biasgelu import FusionBiasGelu
+from fusion_constant_fold import FusionConstantFold
 from fusion_embedlayer import FusionEmbedLayerNormalization
 from fusion_fastgelu import FusionFastGelu
 from fusion_gelu import FusionGelu
@@ -55,6 +55,10 @@ class BertOnnxModel(OnnxModel):
             self, self.hidden_size, self.num_heads, self.attention_mask
         )
         self.utils = FusionUtils(self)
+
+    def fuse_constant_fold(self):
+        fusion = FusionConstantFold(self)
+        fusion.apply()
 
     def fuse_attention(self):
         self.attention_fusion.apply()
@@ -133,7 +137,7 @@ class BertOnnxModel(OnnxModel):
                 self.model.graph.node,
             )
         )
-        non_ms_domains_to_keep = set(map(lambda node: node.domain, rot_emb_nodes))
+        non_ms_domains_to_keep = {node.domain for node in rot_emb_nodes}
         i = 0
         while i < len(self.model.functions):
             fn = self.model.functions[i]
@@ -147,7 +151,7 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionQOrderedMatMul(self)
         fusion.apply()
 
-    def get_graph_inputs_from_node_type(self, op_type: str, input_indices: List[int], casted: bool):
+    def get_graph_inputs_from_node_type(self, op_type: str, input_indices: list[int], casted: bool):
         """
         Get graph inputs that feed into node type (like EmbedLayerNormalization or Attention).
         Returns a list of the graph input names based on the filter whether it is casted or not.
@@ -323,7 +327,7 @@ class BertOnnxModel(OnnxModel):
         self.clean_graph()
         self.prune_graph()
 
-    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+    def optimize(self, options: FusionOptions | None = None, add_dynamic_axes: bool = False):
         if (options is not None) and not options.enable_shape_inference:
             self.disable_shape_inference()
 
@@ -331,6 +335,9 @@ class BertOnnxModel(OnnxModel):
 
         # Remove cast nodes that having same data type of input and output based on symbolic shape inference.
         self.utils.remove_useless_cast_nodes()
+
+        # Apply any missed constant-folding model optimizations (e.g. for Dynamo-exported models)
+        self.fuse_constant_fold()
 
         if (options is None) or options.enable_layer_norm:
             self.fuse_layer_norm()

@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
@@ -29,7 +28,7 @@ class ReductionOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -124,21 +123,15 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool ReductionOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                            const Node& node,
                                            const WebnnDeviceType /* device_type */,
                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-
-  const auto& op_type = node.OpType();
   const std::string axes_name = GetTensorName(input_defs, 1);
   // If the optional input 'axes' is provided, it must be an initializer.
-  if (!axes_name.empty() && !Contains(initializers, axes_name)) {
-    LOGS(logger, VERBOSE) << "Input axes of " << op_type << " must be a constant";
+  if (!axes_name.empty() && !graph_viewer.GetConstantInitializer(axes_name)) {
+    LOGS(logger, VERBOSE) << "Input axes of " << node.OpType() << " must be a constant";
     return false;
   }
 

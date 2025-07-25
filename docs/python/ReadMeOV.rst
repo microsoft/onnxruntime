@@ -7,7 +7,7 @@ OpenVINO™ Execution Provider for ONNX Runtime accelerates inference across man
  - Intel® CPUs
  - Intel® integrated GPUs
  - Intel® discrete GPUs
- - Intel® integrated NPUs (Windows only)
+ - Intel® integrated NPUs
 
 Installation
 ------------
@@ -15,28 +15,28 @@ Installation
 Requirements
 ^^^^^^^^^^^^
 
-- Ubuntu 18.04, 20.04, RHEL(CPU only) or Windows 10 - 64 bit
-- Python 3.9 or 3.10 or 3.11 for Linux and Python 3.10, 3.11 for Windows
+- Ubuntu 18.04, 20.04 or Windows 10 - 64 bit
+- Python 3.10, 3.11, 3.12 and 3.13 for Windows and Linux
 
 This package supports:
  - Intel® CPUs
  - Intel® integrated GPUs
  - Intel® discrete GPUs
- - Intel® integrated NPUs (Windows only)
+ - Intel® integrated NPUs
 
 ``pip3 install onnxruntime-openvino``
 
 Please install OpenVINO™ PyPi Package separately for Windows.
 For installation instructions on Windows please refer to  `OpenVINO™ Execution Provider for ONNX Runtime for Windows <https://github.com/intel/onnxruntime/releases/>`_.
 
-**OpenVINO™ Execution Provider for ONNX Runtime** Linux Wheels comes with pre-built libraries of OpenVINO™ version 2024.1.0 eliminating the need to install OpenVINO™ separately.
+**OpenVINO™ Execution Provider for ONNX Runtime** Linux Wheels comes with pre-built libraries of OpenVINO™ version 2025.1.0 eliminating the need to install OpenVINO™ separately.
 
 For more details on build and installation please refer to `Build <https://onnxruntime.ai/docs/build/eps.html#openvino>`_.
 
 Usage
 ^^^^^
 
-By default, Intel® CPU is used to run inference. However, you can change the default option to either Intel® integrated GPU, discrete GPU, integrated NPU (Windows only).
+By default, Intel® CPU is used to run inference. However, you can change the default option to either Intel® integrated GPU, discrete GPU, integrated NPU.
 Invoke `the provider config device type argument <https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#summary-of-options>`_ to change the hardware on which inferencing is done.
 
 For more API calls and environment variables, see  `Usage <https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#configuration-options>`_.

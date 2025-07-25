@@ -12,6 +12,7 @@ namespace test {
 
 struct BaseAttentionTestData {
   bool is_static_kv = true;
+  bool buffer_share = false;
   int hidden_size;
   int v_hidden_size;
   int num_heads;
@@ -33,11 +34,19 @@ struct BaseAttentionTestData {
   std::vector<float> past_key_data;
   std::vector<float> past_value_data;
 
+  std::vector<int32_t> past_seq_len_data;
+  std::vector<int32_t> cache_indir_data;
+  int num_beams;
+  int max_sequence_length;
+
   std::vector<float> fp32_output_data;
   std::vector<float> fp16_output_data;
 
   std::vector<float> present_key_data;
   std::vector<float> present_value_data;
+
+  std::vector<float> fp32_output_qk_data;
+  std::vector<float> fp16_output_qk_data;
 
   std::vector<AttentionKernelType> skip_kernel_types;  // skip some kernels if they do not supported this test case.
 };
@@ -85,6 +94,9 @@ void GetSelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias(AttentionTestData
 void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias(AttentionTestData& data);
 void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias_NoBias(AttentionTestData& data);
 void GetCrossAttentionData_WithPastPassedInDirectly_NoMask(AttentionTestData& data);
+
+void GetSelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA(AttentionTestData& data);
+void GetCrossAttention_DiffSequenceLengths_UsingDMMHAInsideMHA(AttentionTestData& data);
 
 void GetCausal_EmptyPastState(std::vector<float>& input, std::vector<float>& output, std::vector<float>& present);
 

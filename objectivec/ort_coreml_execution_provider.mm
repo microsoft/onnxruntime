@@ -43,6 +43,21 @@ BOOL ORTIsCoreMLExecutionProviderAvailable() {
 #endif
 }
 
+- (BOOL)appendCoreMLExecutionProviderWithOptionsV2:(NSDictionary*)provider_options
+                                             error:(NSError**)error {
+#if ORT_OBJC_API_COREML_EP_AVAILABLE
+  try {
+    return [self appendExecutionProvider:@"CoreML" providerOptions:provider_options error:error];
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error);
+
+#else  // !ORT_OBJC_API_COREML_EP_AVAILABLE
+  static_cast<void>(provider_options);
+  ORTSaveCodeAndDescriptionToError(ORT_FAIL, "CoreML execution provider is not enabled.", error);
+  return NO;
+#endif
+}
+
 @end
 
 NS_ASSUME_NONNULL_END

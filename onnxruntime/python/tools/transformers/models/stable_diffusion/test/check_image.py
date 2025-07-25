@@ -1,6 +1,5 @@
 import argparse
 import os
-from typing import Optional
 
 import cv2
 import open_clip
@@ -19,7 +18,7 @@ def arg_parser():
     return args
 
 
-def image_encoder(img: Image.Image, cache_dir: Optional[str] = None):  # -> torch.Tensor:
+def image_encoder(img: Image.Image, cache_dir: str | None = None):  # -> torch.Tensor:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model, _, preprocess = open_clip.create_model_and_transforms(
         "ViT-B-16-plus-240", pretrained="laion400m_e32", cache_dir=cache_dir
@@ -46,7 +45,7 @@ def load_image(image_path: str):  # -> Image.Image:
     return img
 
 
-def generate_score(image1: str, image2: str, cache_dir: Optional[str] = None):  # -> float:
+def generate_score(image1: str, image2: str, cache_dir: str | None = None):  # -> float:
     test_img = load_image(image1)
     data_img = load_image(image2)
     img1 = image_encoder(test_img, cache_dir)

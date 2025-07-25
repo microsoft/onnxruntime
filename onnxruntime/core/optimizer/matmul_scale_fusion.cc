@@ -26,7 +26,22 @@ struct ExtractScalarAsFloatDispatchTarget {
   }
 };
 
-std::optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& node_arg) {
+std::optional<TensorShape> GetTensorShape(const NodeArg& node_arg) {
+  const auto* shape_proto = node_arg.Shape();
+  if (!shape_proto) {
+    return std::nullopt;
+  }
+
+  return utils::GetTensorShapeFromTensorShapeProto(*shape_proto);
+}
+
+// Note: In this context, we consider a scalar to be a single element tensor with rank up to `max_rank`.
+// The stricter definition of a scalar having an empty shape would work too, but we can accept a bit more than that.
+// In the case where `node_arg` has a non-empty shape, i.e., any dimensions with length 1, we only consider it a scalar
+// if it does not have any broadcasting effect on the Mul or Div output shape.
+// Because the dimension lengths can only be 1, we only need to consider additional leading dimensions being prepended.
+// `max_rank` should be set to the rank of the other Mul or Div input to avoid that.
+std::optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& node_arg, size_t max_rank) {
   const auto* initializer = graph_utils::GetConstantInitializer(graph, node_arg.Name());
 
   if (!initializer) {
@@ -34,12 +49,12 @@ std::optional<float> GetScalarConstantInitializer(const Graph& graph, const Node
     return {};
   }
 
-  const auto* shape = node_arg.Shape();
+  const auto shape = GetTensorShape(node_arg);
   ORT_ENFORCE(
-      shape,
+      shape.has_value(),
       "Constant initializer NodeArg shape should not be null. NodeArg: ", node_arg.Name());
 
-  if (utils::GetTensorShapeFromTensorShapeProto(*shape).Size() != 1) {
+  if (shape->Size() != 1 || shape->NumDimensions() > max_rank) {
     // not a scalar
     return {};
   }
@@ -73,7 +88,10 @@ std::optional<std::pair<float, int>> GetScaleFromNode(
 
     if (is_excluded_initializer(scale_reciprocal_node_arg)) return std::nullopt;
 
-    const auto divisor = GetScalarConstantInitializer(graph, scale_reciprocal_node_arg);
+    const NodeArg& other_node_arg = *div_inputs[1 - scale_reciprocal_arg_index];
+    const auto max_rank = GetTensorShape(other_node_arg).value_or(TensorShape{}).NumDimensions();
+
+    const auto divisor = GetScalarConstantInitializer(graph, scale_reciprocal_node_arg, max_rank);
 
     if (!divisor.has_value()) return std::nullopt;
 
@@ -90,7 +108,10 @@ std::optional<std::pair<float, int>> GetScaleFromNode(
 
       if (is_excluded_initializer(scale_node_arg)) continue;
 
-      const auto multiplier = GetScalarConstantInitializer(graph, scale_node_arg);
+      const NodeArg& other_node_arg = *mul_inputs[1 - scale_arg_index];
+      const auto max_rank = GetTensorShape(other_node_arg).value_or(TensorShape{}).NumDimensions();
+
+      const auto multiplier = GetScalarConstantInitializer(graph, scale_node_arg, max_rank);
 
       if (!multiplier.has_value()) continue;
 
@@ -255,14 +276,6 @@ Status ProcessNode(
       kMSDomain);
 
   matmul_scale_node.SetExecutionProviderType(node.GetExecutionProviderType());
-#ifdef USE_ROCM
-  // forward the __backwardpass, if present
-  auto& attrs = node.GetAttributes();
-  if (attrs.count("__backwardpass")) {
-    matmul_scale_node.AddAttribute("__backwardpass", static_cast<int64_t>(attrs.at("__backwardpass").i()));
-  }
-#endif
-
   {
     InlinedVector<std::reference_wrapper<Node>> nodes_to_remove{node};
 

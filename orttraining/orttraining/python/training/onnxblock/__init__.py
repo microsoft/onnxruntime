@@ -12,15 +12,15 @@ from onnxruntime.training.onnxblock.model_accessor import base, custom_op_librar
 from onnxruntime.training.onnxblock.onnxblock import ForwardBlock, TrainingBlock
 
 __all__ = [
-    "blocks",
-    "loss",
-    "optim",
     "Block",
     "ForwardBlock",
     "TrainingBlock",
-    "load_checkpoint_to_model",
-    "save_checkpoint",
     "base",
+    "blocks",
     "custom_op_library",
     "empty_base",
+    "load_checkpoint_to_model",
+    "loss",
+    "optim",
+    "save_checkpoint",
 ]

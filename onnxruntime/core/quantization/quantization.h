@@ -195,7 +195,7 @@ inline uint8_t* TransPoseInputData(const uint8_t* input,
   TensorShape outputshape{static_cast<int64_t>(M), static_cast<int64_t>(N)};
   buffer_holder.emplace(DataTypeImpl::GetType<uint8_t>(), outputshape, allocator);
   uint8_t* output = buffer_holder->MutableData<uint8_t>();
-  MlasTranspose(input, output, M, N);
+  MlasTranspose(input, output, M, N, nullptr);
   return output;
 }
 

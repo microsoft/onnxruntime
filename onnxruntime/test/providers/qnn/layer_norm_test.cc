@@ -23,11 +23,8 @@ static void RunLayerNormCpuTest(const TestInputDef<float>& input_def,
                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                 ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<float>("LayerNormalization", {input_def, scale_def}, {}, attrs),
                   provider_options,
@@ -35,13 +32,7 @@ static void RunLayerNormCpuTest(const TestInputDef<float>& input_def,
                   expected_ep_assignment);
 }
 
-#ifdef __linux__
-// This CPU test fails on Linux, QNN SDK 2.17
-// the value pair (-1.75661933, 0) at index #1 don't match, which is 1.75662 from -1.75662
-TEST_F(QnnCPUBackendTests, DISABLED_LayerNorm) {
-#else
 TEST_F(QnnCPUBackendTests, LayerNorm) {
-#endif
   RunLayerNormCpuTest(TestInputDef<float>({2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
                       TestInputDef<float>({2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
                       {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
@@ -147,11 +138,8 @@ static void RunLayerNormQDQTest(const TestInputDef<float>& input_def,
                                 ExpectedEPNodeAssignment expected_ep_assignment,
                                 bool use_contrib_qdq_ops = false) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildOpTestCase<float>("LayerNormalization", {input_def, scale_def}, {}, attrs),
                        BuildQDQLayerNormTestCase<InputQType, ScaleQType>(input_def, scale_def, bias_def, attrs,
@@ -216,7 +204,7 @@ TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale_AU16_WU8) {
 
 // Test accuracy of 8-bit QDQ LayerNorm with a dynamic scale input.
 //
-// TODO(adrianlizarraga): Fails to finalize with QNN SDK 2.22. Still fails on QNN SDK 2.28.2.
+// TODO(adrianlizarraga): Fails to finalize with QNN SDK 2.22. Still fails on QNN SDK 2.36.1.
 // Verbose logs:
 // Starting stage: Graph Transformations and Optimizations
 // C:\...\QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:203:ERROR:could not create op: q::flat_to_vtcm

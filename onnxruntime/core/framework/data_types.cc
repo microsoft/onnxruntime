@@ -1301,6 +1301,12 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorTypesIRv9() {
   return all_tensor_types;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllTensorTypesIRv10() {
+  static std::vector<MLDataType> all_tensor_types =
+      GetTensorTypesFromTypeList<element_type_lists::AllIRv10>();
+  return all_tensor_types;
+}
+
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeSequenceTensorTypes() {
   return AllFixedSizeSequenceTensorTypesIRv4();
 }

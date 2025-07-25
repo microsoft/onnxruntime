@@ -10,20 +10,7 @@ steps:
     script: |
       version = "$(PythonVersion)"
 
-
-      if version == "3.7":
-        variables = {
-          "PythonManylinuxDir": "/opt/python/cp37-cp37m"
-        }
-      elif version == "3.8":
-        variables = {
-          "PythonManylinuxDir": "/opt/python/cp38-cp38"
-        }
-      elif version == "3.9":
-        variables = {
-          "PythonManylinuxDir": "/opt/python/cp39-cp39"
-        }
-      elif version == "3.10":
+      if version == "3.10":
         variables = {
           "PythonManylinuxDir": "/opt/python/cp310-cp310"
         }

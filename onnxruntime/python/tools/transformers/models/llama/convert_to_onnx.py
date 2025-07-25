@@ -22,13 +22,22 @@ from dist_settings import barrier, get_rank, get_size, init_dist
 from llama_inputs import get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from llama_parity import main as parity_check
 from llama_torch import setup_torch_model
+
+# to patch transformers before exporting for transformers >= 4.45
+from models.torch_export_patches import bypass_export_some_errors
+from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from packaging import version
 from transformers import AutoConfig, AutoModelForCausalLM
 
+from onnxruntime import __version__ as ort_version
 from onnxruntime import quantization as ort_quantization
-from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
+
+if version.parse(ort_version) < version.parse("1.22.0"):
+    from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer as MatMulNBitsQuantizer
+else:
+    from onnxruntime.quantization.matmul_nbits_quantizer import MatMulNBitsQuantizer
 
 torch_export_onnx_opset_version = 14
 logger = logging.getLogger("")
@@ -117,12 +126,12 @@ def save_onnx_model(onnx_model: onnx.ModelProto, output_path: str, data_path: st
 def run_dynamo_export(
     args: argparse.Namespace, l_config: AutoConfig, llama: AutoModelForCausalLM, rank: int = 0, world_size: int = 1
 ):
-    from torch._dynamo import config
+    from torch._dynamo import config  # noqa: PLC0415
 
     config.capture_scalar_outputs = True
 
     # Dummy values for export
-    batch_size, sequence_length, past_sequence_length = 2, 8, 0
+    batch_size, sequence_length, past_sequence_length = 2, 8, 3
     device = llama.device if args.model_name == "Llama-2-70b-hf" else torch.device("cpu")
 
     temp_name = args.model_name.lower().replace("-", "").replace("_", "")
@@ -141,9 +150,32 @@ def run_dynamo_export(
     )
     temp_dir = tempfile.TemporaryDirectory()
     temp_path = os.path.join(temp_dir.name, "temp.onnx")
-    torch.onnx.dynamo_export(
-        llama, input_ids, attn_mask, pos_ids, past_kv, export_options=torch.onnx.ExportOptions(dynamic_shapes=True)
-    ).save(temp_path)
+
+    input_names = ["input_ids", "attention_mask", "position_ids"]
+    output_names = [
+        "logits",
+        *list(
+            chain.from_iterable((f"present.{i}.key", f"present.{i}.value") for i in range(l_config.num_hidden_layers))
+        ),
+    ]
+    dynamic_axes = get_model_dynamic_axes(input_names, output_names)
+
+    model_args = (input_ids, attn_mask, pos_ids, past_kv)
+    model_args, model_kwargs, dynamic_shapes = convert_dynamic_axes_into_dynamic_shapes(
+        llama, args=model_args, dynamic_axes=dynamic_axes, prefix_mapping={"present": "past_key_values"}
+    )
+
+    with bypass_export_some_errors(patch_transformers=True):
+        torch.onnx.export(
+            llama,
+            (),
+            temp_path,
+            kwargs=model_kwargs,
+            dynamic_shapes=dynamic_shapes,
+            dynamo=True,
+            verbose=args.verbose,
+            optimize=True,
+        )
 
     # Check decoder_with_past_model.onnx and save all external data to one file
     onnx.checker.check_model(temp_path)
@@ -330,6 +362,7 @@ def run_torchscript_merged_export(
     temp_dir = f"./temp_{rank}"
     _prepare_dir(temp_dir)
     temp_path = os.path.join(temp_dir, "temp.onnx")
+
     torch.onnx.export(
         llama,
         args=decoder_merged_inputs,
@@ -341,6 +374,7 @@ def run_torchscript_merged_export(
         opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
+        dynamo=False,
     )
 
     # Check decoder_merged_model.onnx and save all external data to one file
@@ -370,7 +404,7 @@ def optimize_export(
     world_size: int = 1,
     window_size: int = -1,
 ):
-    from fusion_options import FusionOptions
+    from fusion_options import FusionOptions  # noqa: PLC0415
 
     optimization_options = FusionOptions("gpt2")
 
@@ -427,7 +461,7 @@ def convert_to_float16(args: argparse.Namespace, old_paths: list[str], rank: int
     new_paths = [decoder_model_fp16_path, decoder_with_past_model_fp16_path, decoder_merged_model_fp16_path]
 
     logger.info("Converting to float16...")
-    for fp32_path, fp16_path in zip(old_paths, new_paths):
+    for fp32_path, fp16_path in zip(old_paths, new_paths, strict=False):
         if os.path.exists(fp32_path):
             model = OnnxModel(onnx.load_model(fp32_path, load_external_data=True))
             model.convert_float_to_float16(keep_io_types=False)
@@ -455,11 +489,10 @@ def smooth_quant(
     decoder_model_int8_path: str,
     decoder_with_past_model_int8_path: str,
 ):
-    from neural_compressor import PostTrainingQuantConfig
-    from neural_compressor import quantization as intel_quantization
-    from neural_compressor import set_workspace
-    from onnx.external_data_helper import load_external_data_for_model
-    from quant_kv_dataloader import QuantKVDataLoader
+    from neural_compressor import PostTrainingQuantConfig, set_workspace  # noqa: PLC0415
+    from neural_compressor import quantization as intel_quantization  # noqa: PLC0415
+    from onnx.external_data_helper import load_external_data_for_model  # noqa: PLC0415
+    from quant_kv_dataloader import QuantKVDataLoader  # noqa: PLC0415
 
     set_workspace(args.nc_workspace)
     quantization_config = PostTrainingQuantConfig(
@@ -642,7 +675,7 @@ def get_args():
         required=False,
         default=32,
         type=int,
-        help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_4bits_quantizer.py for details.",
+        help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_nbits_quantizer.py for details.",
     )
 
     blockwise_group.add_argument(
@@ -863,12 +896,9 @@ def main():
                 decoder_merged_model_fp32_opt_path,
             ]
 
-            if args.use_dynamo_export:
-                continue
-
             # Run the optimizer script.
             logger.info("Optimizing models...")
-            for orig_path, opt_path in zip(old_paths, new_paths):
+            for orig_path, opt_path in zip(old_paths, new_paths, strict=False):
                 if os.path.exists(orig_path):
                     optimize_export(args, l_config, input_path=orig_path, output_path=opt_path, world_size=world_size)
 
@@ -913,7 +943,7 @@ def main():
                     )
 
                     logger.info("Quantizing to int8...")
-                    for fp32_path, int8_path in zip(old_paths, new_paths):
+                    for fp32_path, int8_path in zip(old_paths, new_paths, strict=False):
                         if os.path.exists(fp32_path):
                             ort_quantization.quantize_dynamic(
                                 fp32_path,
@@ -953,10 +983,10 @@ def main():
                 )
                 new_paths = [decoder_model_int4_path, decoder_with_past_model_int4_path, decoder_merged_model_int4_path]
 
-                for fp_path, int4_path in zip(old_paths, new_paths):
+                for fp_path, int4_path in zip(old_paths, new_paths, strict=False):
                     if os.path.exists(fp_path):
                         model = onnx.load_model(fp_path, load_external_data=True)
-                        quant = MatMul4BitsQuantizer(
+                        quant = MatMulNBitsQuantizer(
                             model=model,
                             block_size=args.block_size,
                             is_symmetric=True,
@@ -970,9 +1000,6 @@ def main():
                         logger.info(f"The ONNX model at {fp_path} has been quantized to int4 and saved at {int4_path}!")
                         remove_existing_model(fp_path)
         barrier()
-
-    if args.use_dynamo_export:
-        return
 
     logger.info("Verifying parity on all ONNX models created")
 

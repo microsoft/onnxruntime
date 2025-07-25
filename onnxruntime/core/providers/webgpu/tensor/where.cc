@@ -127,16 +127,16 @@ Status Where::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(ComputeOutputShape(cond_shape, x_shape, y_shape, output_shape));
   auto* output_tensor = context.Output(0, output_shape);
   constexpr int component = 4;
-  uint32_t vec_size = gsl::narrow_cast<uint32_t>((output_shape.Size() + 3) / component);
+  uint32_t vec_size = onnxruntime::narrow<uint32_t>((output_shape.Size() + 3) / component);
   const auto is_broadcast = !(x_shape == y_shape &&
                               y_shape == cond_shape);
   WhereProgram program{is_broadcast};
   program
       .CacheHint(is_broadcast)
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddInputs({{cond_tensor, ProgramTensorMetadataDependency::Rank, {(cond_shape.Size() + 3) / 4}, 4},
-                  {x_tensor, ProgramTensorMetadataDependency::Rank, {(x_shape.Size() + 3) / 4}, 4},
-                  {y_tensor, ProgramTensorMetadataDependency::Rank, {(y_shape.Size() + 3) / 4}, 4}})
+      .AddInputs({{cond_tensor, ProgramTensorMetadataDependency::Type, {(cond_shape.Size() + 3) / 4}, 4},
+                  {x_tensor, ProgramTensorMetadataDependency::Type, {(x_shape.Size() + 3) / 4}, 4},
+                  {y_tensor, ProgramTensorMetadataDependency::Type, {(y_shape.Size() + 3) / 4}, 4}})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},

@@ -116,6 +116,19 @@ OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device) {
     mem_info = GetCudaAllocator(ort_device.Id())->Info();
   }
 #endif
+#if USE_ROCM
+  else if (ort_device.Type() == OrtDevice::GPU) {
+    if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), ort_device.Id())) {
+      ORT_THROW("The provided device id doesn't match any available GPUs on the machine: ", ort_device.Id());
+    }
+    mem_info = GetRocmAllocator(ort_device.Id())->Info();
+  }
+#endif
+#if USE_MIGRAPHX
+  else if (ort_device.Type() == OrtDevice::GPU) {
+    mem_info = GetMIGraphXAllocator(ort_device.Id())->Info();
+  }
+#endif
   else {
     ORT_THROW("Unsupported OrtDevice type: ", ort_device.Type());
   }
@@ -189,6 +202,38 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
 std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
   // Using default stream
   return GetProviderInfo_CUDA().CreateGPUDataTransfer();
+}
+
+#endif
+
+#ifdef USE_MIGRAPHX
+void CpuToMIGraphXMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_MIGraphX().MIGraphXMemcpy_HostToDevice(dst, src, num_bytes);
+}
+
+void MIGraphXToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_MIGraphX().MIGraphXMemcpy_DeviceToHost(dst, src, num_bytes);
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetMIGraphXToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, MIGraphXToCpuMemCpy}};
+
+  return &map;
+}
+
+AllocatorPtr GetMIGraphXAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded MIGraphX allocation work we need to maintain a per-thread MIGraphX allocator
+
+  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+
+  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
+    id_to_allocator_map->insert({id, GetProviderInfo_MIGraphX().CreateMIGraphXAllocator(id, gpu_mem_limit, arena_extend_strategy, migx_external_allocator_info, nullptr)});
+  }
+
+  return (*id_to_allocator_map)[id];
 }
 
 #endif
@@ -280,7 +325,7 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   uint32_t readback_heap_size = gsl::narrow_cast<uint32_t>(sizeof(readback_heap));
   ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(dml_readback_heap_guid, &readback_heap_size, &readback_heap));
 
-  // ReadbackFromGpu already syncs with the CPU and waits for the copy to be completed, so we don't need to sync after
+  // ReadbackFromGpu already syncs with the CPU and waits for the copy to be completed, so we dont need to sync after
   // this call
   readback_heap->ReadbackFromGpu(
       gsl::make_span(static_cast<std::byte*>(dst), num_bytes),
@@ -291,7 +336,7 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
 
 const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction() {
   static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::DML, DmlToCpuMemCpy}};
+      {OrtDevice::GPU, DmlToCpuMemCpy}};
 
   return &map;
 }
@@ -428,7 +473,7 @@ MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type) {
       // Special, not a C type expands to enum value of 16
       {NPY_FLOAT16, DataTypeImpl::GetType<MLFloat16>()},
       {NPY_DOUBLE, DataTypeImpl::GetType<double>()},
-      // We don't want to use size specific types such
+      // We dont want to use size specific types such
       // as NPY_INT32 bc they are not enums but hash defines
       // which may map into other enums and may conflict with other entries here
       // also NPY docs define these sizes as platform specific, thus we
@@ -581,6 +626,7 @@ static void CopyDataToTensor(PyArrayObject* darray, int npy_type, Tensor& tensor
     for (int i = 0; i < total_items; ++i, src += item_size) {
       // Python unicode strings are assumed to be USC-4. Strings are stored as UTF-8.
       PyObject* item = PyArray_GETITEM(darray, src);
+      UniqueDecRefPtr<PyObject> itemGuard(item, DecRefFn<PyObject>());
       PyObject* pStr = PyObject_Str(item);
       UniqueDecRefPtr<PyObject> strGuard(pStr, DecRefFn<PyObject>());
       dst[i] = py::reinterpret_borrow<py::str>(pStr);

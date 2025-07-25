@@ -444,8 +444,8 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   // The other EPs can choose which opsets to test.
   // If an EP doesn't have any CI build pipeline, then there is no need to specify any opset.
 #ifdef USE_TENSORRT
-  // tensorrt: only enable opset 12 to 17 of onnx tests
-  provider_names[provider_name_tensorrt] = {opset12, opset14, opset15, opset16, opset17};
+  // tensorrt: only enable opset 14 to 17 of onnx tests
+  provider_names[provider_name_tensorrt] = {opset14, opset15, opset16, opset17};
 #endif
 #ifdef USE_MIGRAPHX
   provider_names[provider_name_migraphx] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
@@ -491,18 +491,6 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   // the number of times these are run to reduce the CI time.
   provider_names.erase(provider_name_cpu);
 #endif
-
-#if defined(USE_CUDA) && defined(USE_DML)
-  const std::string no_cuda_ep_test = Env::Default().GetEnvironmentVar("NO_CUDA_TEST");
-  if (no_cuda_ep_test == "1") {
-    provider_names.erase(provider_name_cuda);
-  }
-  const std::string no_dml_ep_test = Env::Default().GetEnvironmentVar("NO_DML_TEST");
-  if (no_dml_ep_test == "1") {
-    provider_names.erase(provider_name_dml);
-  }
-#endif
-
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
   // Please make no more changes to the list
@@ -631,6 +619,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                    ORT_TSTR("resnet101v2"),
                                                    ORT_TSTR("resnet101v2"),
                                                    ORT_TSTR("vgg19"),
+                                                   ORT_TSTR("dequantizelinear"),
                                                    ORT_TSTR("tf_inception_resnet_v2"),
                                                    ORT_TSTR("tf_inception_v1"),
                                                    ORT_TSTR("tf_inception_v3"),

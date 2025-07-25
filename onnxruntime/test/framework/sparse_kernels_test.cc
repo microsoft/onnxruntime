@@ -706,7 +706,7 @@ struct InsertIndices {
       std::vector<T> indices(indices_data.cbegin(), indices_data.cend());
       indices_tp.mutable_raw_data()->assign(reinterpret_cast<const char*>(indices.data()), indices.size() * sizeof(T));
       if constexpr (endian::native != endian::little) {
-        utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&indices_tp);
+        utils::ConvertRawDataInTensorProto(indices_tp);
       }
     }
   }
@@ -1457,9 +1457,6 @@ TEST(SparseTensorConversionTests, CsrConversion) {
 
 #ifdef USE_CUDA
   auto cuda_provider = DefaultCudaExecutionProvider();
-  if (cuda_provider == nullptr) {
-    return;
-  }
   auto cuda_allocator = cuda_provider->CreatePreferredAllocators()[0];
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
@@ -1687,9 +1684,6 @@ TEST(SparseTensorConversionTests, CooConversion) {
 
 #ifdef USE_CUDA
   auto cuda_provider = DefaultCudaExecutionProvider();
-  if (cuda_provider == nullptr) {
-    return;
-  }
   auto cuda_allocator = cuda_provider->CreatePreferredAllocators()[0];
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();

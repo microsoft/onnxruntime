@@ -3,14 +3,10 @@
 
 #pragma once
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
-#endif
-
 #include <string>
 #include <unordered_map>
 
-#include <webgpu/webgpu_cpp.h>
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
 

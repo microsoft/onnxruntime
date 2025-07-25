@@ -11,23 +11,29 @@
 
 namespace onnxruntime {
 
-#define REGISTER_KERNEL_TYPED(T)                                                                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(GridSample, kOnnxDomain, 16, 19, T, kCpuExecutionProvider,   \
-                                          KernelDefBuilder()                                           \
-                                              .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
-                                              .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
-                                          GridSample<T>);
+#define REGISTER_VERSIONED_KERNEL_TYPED(START_VER, END_VER, T)                                          \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(GridSample, START_VER, END_VER, T,                           \
+                                           KernelDefBuilder()                                           \
+                                               .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+                                               .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
+                                           GridSample<T>);
 
-#define REGISTER_KERNEL_TYPED_20(T)                                                          \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(GridSample, kOnnxDomain, 20, T, kCpuExecutionProvider,       \
-                                KernelDefBuilder()                                           \
-                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
-                                    .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
-                                GridSample<T>);
+#define REGISTER_KERNEL_TYPED(VER, T)                                                         \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(GridSample, VER, T,                                          \
+                                 KernelDefBuilder()                                           \
+                                     .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
+                                 GridSample<T>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED_20(float)
-REGISTER_KERNEL_TYPED_20(double)
+REGISTER_VERSIONED_KERNEL_TYPED(16, 19, float)
+REGISTER_VERSIONED_KERNEL_TYPED(16, 19, double)
+
+REGISTER_VERSIONED_KERNEL_TYPED(20, 21, float)
+REGISTER_VERSIONED_KERNEL_TYPED(20, 21, double)
+
+// Opset 22 supports BFloat16
+REGISTER_KERNEL_TYPED(22, float)
+REGISTER_KERNEL_TYPED(22, double)
 
 // Restore normalized location to actual image location
 //   When align_corners is true:

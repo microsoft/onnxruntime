@@ -1,15 +1,15 @@
 parameters:
   - name: QnnSDKVersion
     type: string
-    default: '2.28.2.241116'
+    default: '2.36.1.250708'
 
 steps:
   - powershell: |
-      azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v${{ parameters.QnnSDKVersion }}_win $(Agent.TempDirectory)
+      azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v${{ parameters.QnnSDKVersion }} $(Agent.TempDirectory)
     displayName: 'Download QNN SDK v${{ parameters.QnnSDKVersion }}'
 
   - powershell: |
-      echo "##vso[task.setvariable variable=QnnSDKRootDir]$(Agent.TempDirectory)\qnn-v${{ parameters.QnnSDKVersion }}_win"
+      echo "##vso[task.setvariable variable=QnnSDKRootDir]$(Agent.TempDirectory)\qnn-v${{ parameters.QnnSDKVersion }}"
     displayName: Set QnnSDKRootDir
 
   - task: CmdLine@2
@@ -17,10 +17,6 @@ steps:
       script: |
         echo $(QnnSDKRootDir)
     displayName: 'Print QnnSDKRootDir after downloading QNN SDK'
-
-  - powershell: |
-      azcopy.exe cp --recursive 'https://lotusscus.blob.core.windows.net/models/qnnsdk/Qualcomm AI Hub Proprietary License.pdf' $(QnnSDKRootDir)
-    displayName: 'Download Qualcomm AI Hub license'
 
   - task: CmdLine@2
     displayName: 'Print contents of QNN SDK'

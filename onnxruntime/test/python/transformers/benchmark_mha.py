@@ -23,10 +23,10 @@ import statistics
 import sys
 import threading
 import time
+from collections.abc import Callable
 from contextlib import nullcontext
 from datetime import datetime
 from enum import IntEnum
-from typing import Callable, Dict, List, Optional, Tuple
 
 import torch
 import torch.utils.benchmark as benchmark
@@ -56,7 +56,7 @@ class InputFormats:
         return names.index(format_str)
 
     @staticmethod
-    def get_name_list() -> List[str]:
+    def get_name_list() -> list[str]:
         return ["Q,K,V", "QKV", "Q,KV", "Q,K',V'"]
 
 
@@ -95,7 +95,7 @@ class MultiHeadAttentionConfig:
         max_cache_sequence_length=None,
         scale: float = 0.0,
         provider="CPUExecutionProvider",
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         enable_cuda_graph: bool = False,
         dtype=torch.float,
         use_kv_cache: bool = False,
@@ -205,7 +205,7 @@ class MultiHeadAttentionConfig:
         )
 
     def shape_dict(self, input_format=None):
-        shapes: Dict[str, Tuple] = {
+        shapes: dict[str, tuple] = {
             "output": (self.batch_size, self.sequence_length, self.num_heads * self.head_size),
         }
 
@@ -272,7 +272,7 @@ class MultiHeadAttentionConfig:
         return shapes
 
     def symbolic_shape_dict(self, input_format=None):
-        shapes: Dict[str, Tuple] = {
+        shapes: dict[str, tuple] = {
             "output": ("batch_size", "sequence_length", self.num_heads * self.head_size),
         }
 
@@ -346,7 +346,7 @@ class MultiHeadAttentionConfig:
         )
 
         if self.mask_format != AttentionMaskFormat.Mask_None:
-            for i, (m, n) in enumerate(zip(self.mask_index_q, self.mask_index_kv)):
+            for i, (m, n) in enumerate(zip(self.mask_index_q, self.mask_index_kv, strict=False)):
                 q_mask[i, :, m:, :] = False
                 k_mask[i, :, n:, :] = False
                 mask[i, :, m:, :] = False
@@ -660,7 +660,7 @@ def run_torch_sdpa(
     has_mask: bool = False,
     mask_dim: int = 2,
     mask_dtype=torch.bool,
-    backend: Optional[int] = None,
+    backend: int | None = None,
     repeats: int = 100,
 ):
     q_shape = (batch_size, num_heads, q_seq_len, head_size)
@@ -1172,7 +1172,7 @@ def plot_prompt_performance(
     head_size: int,
     max_seq_len: int,
 ):
-    import triton
+    import triton  # noqa: PLC0415
 
     formats = InputFormats.get_name_list()
 

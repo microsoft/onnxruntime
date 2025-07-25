@@ -5,7 +5,6 @@ import { Backend, env, InferenceSession, InferenceSessionHandler } from 'onnxrun
 
 import { initializeOrtEp, initializeWebAssemblyAndOrtRuntime } from './wasm/proxy-wrapper';
 import { OnnxruntimeWebAssemblySessionHandler } from './wasm/session-handler-inference';
-import { scriptSrc } from './wasm/wasm-utils-import';
 
 /**
  * This function initializes all flags for WebAssembly.
@@ -18,12 +17,13 @@ export const initializeFlags = (): void => {
     env.wasm.initTimeout = 0;
   }
 
-  if (env.wasm.simd === false) {
+  const simd = env.wasm.simd;
+  if (typeof simd !== 'boolean' && simd !== undefined && simd !== 'fixed' && simd !== 'relaxed') {
     // eslint-disable-next-line no-console
     console.warn(
-      'Deprecated property "env.wasm.simd" is set to false. ' +
-        'non-SIMD build is no longer provided, and this setting will be ignored.',
+      `Property "env.wasm.simd" is set to unknown value "${simd}". Reset it to \`false\` and ignore SIMD feature checking.`,
     );
+    env.wasm.simd = false;
   }
 
   if (typeof env.wasm.proxy !== 'boolean') {
@@ -52,13 +52,6 @@ export const initializeFlags = (): void => {
       const numCpuLogicalCores =
         typeof navigator === 'undefined' ? require('node:os').cpus().length : navigator.hardwareConcurrency;
       env.wasm.numThreads = Math.min(4, Math.ceil((numCpuLogicalCores || 1) / 2));
-    }
-  }
-
-  if (!BUILD_DEFS.DISABLE_DYNAMIC_IMPORT) {
-    // overwrite wasm paths override if not set
-    if (env.wasm.wasmPaths === undefined && scriptSrc && scriptSrc.indexOf('blob:') !== 0) {
-      env.wasm.wasmPaths = scriptSrc.substring(0, scriptSrc.lastIndexOf('/') + 1);
     }
   }
 };
@@ -96,7 +89,7 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
   ): Promise<InferenceSessionHandler> {
     const handler = new OnnxruntimeWebAssemblySessionHandler();
     await handler.loadModel(pathOrBuffer, options);
-    return Promise.resolve(handler);
+    return handler;
   }
 }
 

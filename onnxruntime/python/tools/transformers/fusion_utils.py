@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Optional, Tuple
 
 import numpy
 from numpy import array_equal, ndarray
@@ -18,7 +17,7 @@ class FusionUtils:
     def __init__(self, model: OnnxModel):
         self.model: OnnxModel = model
 
-    def cast_graph_input_to_int32(self, input_name: str) -> Tuple[bool, str]:
+    def cast_graph_input_to_int32(self, input_name: str) -> tuple[bool, str]:
         graph_input = self.model.find_graph_input(input_name)
         if graph_input is not None and graph_input.type.tensor_type.elem_type != TensorProto.INT32:
             cast_output, cast_node = self.cast_input_to_int32(input_name)
@@ -48,9 +47,9 @@ class FusionUtils:
         self,
         input_name: str,
         to_type: int,
-        output_name: Optional[str] = None,
+        output_name: str | None = None,
         output_name_to_node=None,
-        graph_name: Optional[str] = None,
+        graph_name: str | None = None,
     ):
         if output_name is None:
             output_name = input_name + f"_cast_to_{to_type}"
@@ -126,6 +125,19 @@ class FusionUtils:
         parent_can_be_removed = (old_input_reference == 0) and not model.find_graph_output(old_input_name)
 
         return parent_can_be_removed
+
+    def get_squeeze_or_unsqueeze_axes(self, node: NodeProto) -> ndarray | None:
+        assert node.op_type in ["Squeeze", "Unsqueeze"]
+
+        # For opset >= 13, axes is an input instead of an attribute.
+        if len(node.input) > 1:
+            return self.model.get_constant_value(node.input[1])
+
+        axes = None
+        for attr in node.attribute:
+            if attr.name == "axes":
+                axes = helper.get_attribute_value(attr)
+        return axes
 
     @staticmethod
     def check_node_attribute(node, attribute_name: str, expected_value, default_value=None):
@@ -297,11 +309,9 @@ class NumpyHelper:
         # When weights are in external data format but not presented, we can still test the optimizer with two changes:
         # (1) set fill_zeros = True  (2) change load_external_data=False in optimizer.py
         if fill_zeros:
-            from onnx import mapping
-
             return ndarray(
                 shape=tensor.dims,
-                dtype=mapping.TENSOR_TYPE_TO_NP_TYPE[tensor.data_type],
+                dtype=helper.tensor_dtype_to_np_dtype(tensor.data_type),
             )
 
         return numpy_helper.to_array(tensor)

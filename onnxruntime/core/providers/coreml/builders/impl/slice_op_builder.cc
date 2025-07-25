@@ -59,7 +59,7 @@ Status PrepareSliceComputeMetadata(const Node& slice_node,
 
     const auto* tensor_proto = graph_viewer.GetConstantInitializer(input_defs[input_idx]->Name());
     ORT_RETURN_IF_NOT(tensor_proto, "Failed to get constant initializer.");
-    Initializer unpacked_tensor(*tensor_proto, graph_viewer.ModelPath());
+    Initializer unpacked_tensor(graph_viewer.GetGraph(), *tensor_proto, graph_viewer.ModelPath());
     const auto data_type = unpacked_tensor.data_type();
     if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
@@ -127,7 +127,6 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   SliceOp::PrepareForComputeMetadata compute_metadata{data_shape};
   ORT_RETURN_IF_ERROR(PrepareSliceComputeMetadata(node, model_builder.GetGraphViewer(), compute_metadata));
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;  // NOLINT
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.slice_by_index
@@ -142,21 +141,6 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       if (compute_metadata.steps_[i] < 0 && compute_metadata.ends_[i] == -1) {
         end_mask_values[i] = true;
       }
-    }
-
-    // Int32, float and float16 are supported by CoreML slice_by_index.
-    // We convert any int64 model input to int32 when running the CoreML model for the partition.
-    // Any other integer data created at runtime is the output from CoreML operations, and should int32 not int64.
-    // Based on that, we assume that the actual input when running will be int32, so we override the output data
-    // type to reflect this.
-    // If we were to leave it as TensorProto_DataType_INT64 the CoreML model would be invalid.
-    std::optional<int32_t> output_datatype;
-
-    int32_t input_type;
-    ORT_RETURN_IF_NOT(GetType(*node.InputDefs()[0], input_type, logger), "Failed to get input type");
-
-    if (input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-      output_datatype = ONNX_NAMESPACE::TensorProto_DataType_INT32;
     }
 
     auto op = model_builder.CreateOperation(node, "slice_by_index");
@@ -174,13 +158,11 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     AddOperationInput(*op, "begin_mask", begin_mask);
     AddOperationInput(*op, "end_mask", end_mask);
 
-    AddOperationOutput(*op, *output_defs[0], output_datatype);
+    AddOperationOutput(*op, *output_defs[0]);
 
     model_builder.AddOperation(std::move(op));
 
-  } else  // NOLINT
-#endif    // defined(COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     auto layer = model_builder.CreateNNLayer(node);
     *layer->mutable_input()->Add() = input_defs[0]->Name();
     *layer->mutable_output()->Add() = output_defs[0]->Name();
@@ -222,7 +204,6 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const Node& node,
     return false;
   }
 
-#ifdef COREML_ENABLE_MLPROGRAM
   // The [Doc](https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.slice_by_index)
   // says ML Program slice_by_index supports fp16 in CoreML 5 (iOS 15).
   // It's incorrect and CoreML 6+ (iOS16, CoreML spec version >= 7) is required otherwise only float is supported.
@@ -230,13 +211,11 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const Node& node,
   // CoreML 6:https://github.com/apple/coremltools/blob/c3ea4cf56fef1176417246c1b85363417f3e713d/coremltools/converters/mil/mil/ops/defs/iOS15/tensor_transformation.py#L495
   if (input_params.create_mlprogram && input_params.coreml_version >= 6 &&
       input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-  } else
-#endif  // nolint
-    if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-        input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-      LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not supported";
-      return false;
-    }
+  } else if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+             input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not supported";
+    return false;
+  }
 
   return true;
 }

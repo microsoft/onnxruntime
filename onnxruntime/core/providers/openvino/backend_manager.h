@@ -19,18 +19,18 @@ namespace openvino_ep {
 // Singleton class that manages all the backends
 class BackendManager {
  public:
-  BackendManager(const GlobalContext& global_context,
+  BackendManager(SessionContext& session_context,
+                 SharedContext& shared_context,
                  const onnxruntime::Node& fused_node,
                  const onnxruntime::GraphViewer& subgraph,
                  const logging::Logger& logger,
                  EPCtxHandler& ctx_handle);
   void Compute(OrtKernelContext* context);
   void ShutdownBackendManager();
-  void SetGlobalCotext(const GlobalContext& global_context);
-  GlobalContext& GetGlobalContext();
-  Status ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph,
-                                       const logging::Logger& logger);
-  ov::CompiledModel& GetOVCompiledModel();
+  SessionContext& GetSessionContext();
+  Status ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph);
+  ov::CompiledModel GetOVCompiledModel();
+  void RewindKVCache(size_t index);
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> GetModelProtoFromFusedNode(
@@ -39,7 +39,11 @@ class BackendManager {
       const logging::Logger& logger) const;
 
   bool ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const;
+  std::unordered_set<std::string> IdentifyDynamicInputs(const onnxruntime::GraphViewer& subgraph,
+                                                        const std::vector<const NodeArg*>& graph_inputs) const;
   bool ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const;
+  void ValidateInputShapes(const reshape_t& shapes,
+                           const std::vector<const NodeArg*>& graph_inputs) const;
 
   std::shared_ptr<ONNX_NAMESPACE::ModelProto>
   ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_proto);
@@ -50,11 +54,12 @@ class BackendManager {
 
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
   std::shared_ptr<IBackend> concrete_backend_;
+  std::mutex mutex_;
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
   SubGraphContext subgraph_context_;
-  GlobalContext global_context_;
-  EPCtxHandler ep_ctx_handle_{};
-  std::string openvino_sdk_version_{};
+  EPCtxHandler& ep_ctx_handle_;
+  SessionContext& session_context_;
+  SharedContext& shared_context_;
 };
 
 }  // namespace openvino_ep

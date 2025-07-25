@@ -34,7 +34,6 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     ORT_RETURN_IF_NOT(perm.size() == input_dims, "Perm and input should have same dimension");
   }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -44,9 +43,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
 
-  } else
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
     *layer->mutable_transpose()->mutable_axes() = {perm.cbegin(), perm.cend()};
 

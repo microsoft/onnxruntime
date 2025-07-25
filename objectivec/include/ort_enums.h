@@ -50,6 +50,7 @@ typedef NS_ENUM(int32_t, ORTGraphOptimizationLevel) {
   ORTGraphOptimizationLevelNone,
   ORTGraphOptimizationLevelBasic,
   ORTGraphOptimizationLevelExtended,
+  ORTGraphOptimizationLevelLayout,
   ORTGraphOptimizationLevelAll,
 };
 

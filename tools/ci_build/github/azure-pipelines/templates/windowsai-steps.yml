@@ -47,7 +47,7 @@ jobs:
         ${{ if eq(parameters.BuildArch, 'x64') }}:
           restoreSolution: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\x64\packages.config
         ${{ if eq(parameters.BuildArch, 'x86') }}:
-          restoreSolution: $(Build.SourcesDirectory)\.tools\ci_build\github\azure-pipelines\nuget\nuget_config\x86\packages.config
+          restoreSolution: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\x86\packages.config
         ${{ if eq(parameters.BuildArch, 'arm') }}:
           restoreSolution: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\x64\packages.config
         ${{ if eq(parameters.BuildArch, 'arm64') }}:
@@ -89,7 +89,7 @@ jobs:
     # must call vsdevcmd first to add cmake to PATH
     - script: |
         python --version
-        python "$(Build.SourcesDirectory)\tools\ci_build\build.py" --build_dir $(Build.BinariesDirectory) --parallel --use_binskim_compliant_compile_flags --build_shared_lib --enable_onnx_tests --ms_experimental --use_dml --use_winml --cmake_generator "Visual Studio 17 2022" --update --config RelWithDebInfo --enable_lto --use_telemetry --disable_rtti --enable_wcos --windows_sdk_version "10.0.22621.0" $(BuildFlags) --cmake_extra_defines "CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO=/PROFILE" "CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO=/PROFILE"
+        python "$(Build.SourcesDirectory)\tools\ci_build\build.py" --build_dir $(Build.BinariesDirectory) --parallel --use_binskim_compliant_compile_flags --build_shared_lib --enable_onnx_tests --ms_experimental --use_dml --use_winml --cmake_generator "Visual Studio 17 2022" --update --config RelWithDebInfo --enable_lto --use_telemetry --disable_rtti --enable_wcos --use_vcpkg --use_vcpkg_ms_internal_asset_cache --windows_sdk_version "10.0.22621.0" $(BuildFlags) --cmake_extra_defines "CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO=/PROFILE" "CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO=/PROFILE"
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Generate cmake config'
 

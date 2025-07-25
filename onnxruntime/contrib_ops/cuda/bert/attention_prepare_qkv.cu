@@ -12,10 +12,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if DEBUG_TENSOR_LEVEL > 1
+#if DUMP_TENSOR_LEVEL > 1
 // Dump the workspace for Q, K, V after processing QKV data.
 template <typename T>
-void DumpQkv(AttentionData<T>& data) {
+void DumpQkv(contrib::AttentionParameters& parameters, AttentionData<T>& data) {
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
@@ -33,7 +33,7 @@ void DumpQkv(AttentionData<T>& data) {
     DUMP_TENSOR_D("k(BSNH)", data.k, batch_size, kv_sequence_length, num_heads, qk_head_size);
     DUMP_TENSOR_D("v(BSNH)", data.v, batch_size, kv_sequence_length, num_heads, v_head_size);
   } else if (data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH) {
-    DUMP_TENSOR_D("q(BNSH)", data.q, batch_size, num_heads, sequence_length, qk_head_size);
+    DUMP_TENSOR_D("q(BSNH)", data.q, batch_size, sequence_length, num_heads, qk_head_size);
     DUMP_TENSOR_D("k(BNSH)", data.k, batch_size, num_heads, kv_sequence_length, qk_head_size);
     DUMP_TENSOR_D("v(BNSH)", data.v, batch_size, num_heads, kv_sequence_length, v_head_size);
   } else if (data.qkv_format == AttentionQkvFormat::QKV_BSN3H) {
@@ -52,23 +52,25 @@ void DumpInputs(contrib::AttentionParameters& parameters, AttentionData<T>& data
   const int v_head_size = parameters.v_head_size;
 
   DUMP_TENSOR_INIT();
-  if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH) {
-    DUMP_TENSOR_D("Query(BNSH)", data.query, batch_size, num_heads, sequence_length, qk_head_size);
-    DUMP_TENSOR_D("Key(BNSH)", data.key, batch_size, num_heads, kv_sequence_length, qk_head_size);
-    DUMP_TENSOR_D("Value(BNSH)", data.value, batch_size, num_heads, kv_sequence_length, v_head_size);
-  } else if (data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH) {
-    DUMP_TENSOR_D("Query(BSNH)", data.query, batch_size, sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("Key(BSNH)", data.key, batch_size, kv_sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("Value(BSNH)", data.value, batch_size, kv_sequence_length, num_heads, v_head_size);
-  } else if (data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH) {
-    DUMP_TENSOR_D("Query(BNSH)", data.query, batch_size, num_heads, sequence_length, qk_head_size);
-    DUMP_TENSOR_D("Key(BNSH)", data.key, batch_size, num_heads, kv_sequence_length, qk_head_size);
-    DUMP_TENSOR_D("Value(BNSH)", data.value, batch_size, num_heads, kv_sequence_length, v_head_size);
-  } else if (data.qkv_format == AttentionQkvFormat::QKV_BSN3H) {
-    DUMP_TENSOR_D("Query(BSN3H)", data.query, batch_size, sequence_length, num_heads * 3, qk_head_size);
-  } else if (data.qkv_format == AttentionQkvFormat::Q_KV_BSNH_BSN2H) {
-    DUMP_TENSOR_D("Query(BNSH)", data.query, batch_size, num_heads, sequence_length, qk_head_size);
-    DUMP_TENSOR_D("Value(BSN2H)", data.value, batch_size, sequence_length, num_heads * 2, qk_head_size);
+  if (data.gemm_buffer == nullptr) {  // MultiHeadAttention
+    if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BNSH) {
+      DUMP_TENSOR_D("Query(BNSH)", data.query, batch_size, num_heads, sequence_length, qk_head_size);
+      DUMP_TENSOR_D("Key(BNSH)", data.key, batch_size, num_heads, kv_sequence_length, qk_head_size);
+      DUMP_TENSOR_D("Value(BNSH)", data.value, batch_size, num_heads, kv_sequence_length, v_head_size);
+    } else if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH) {
+      DUMP_TENSOR_D("Query(BSNH)", data.query, batch_size, sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("Key(BSNH)", data.key, batch_size, kv_sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("Value(BSNH)", data.value, batch_size, kv_sequence_length, num_heads, v_head_size);
+    } else if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH) {
+      DUMP_TENSOR_D("Query(BSNH)", data.query, batch_size, sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("Key(BNSH)", data.key, batch_size, num_heads, kv_sequence_length, qk_head_size);
+      DUMP_TENSOR_D("Value(BNSH)", data.value, batch_size, num_heads, kv_sequence_length, v_head_size);
+    } else if (parameters.qkv_format == AttentionQkvFormat::QKV_BSN3H) {
+      DUMP_TENSOR_D("Query(BSN3H)", data.query, batch_size, sequence_length, num_heads * 3, qk_head_size);
+    } else if (parameters.qkv_format == AttentionQkvFormat::Q_KV_BSNH_BSN2H) {
+      DUMP_TENSOR_D("Query(BSNH)", data.query, batch_size, sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("Key(BSN2H)", data.key, batch_size, sequence_length, num_heads * 2, qk_head_size);
+    }
   }
 
   if (data.bias != nullptr) {
@@ -99,7 +101,7 @@ void DumpInputs(contrib::AttentionParameters& parameters, AttentionData<T>& data
 
 // Dump the kernel outputs
 template <typename T>
-void DumpOutputs(AttentionData<T>& data) {
+void DumpOutputs(contrib::AttentionParameters& parameters, AttentionData<T>& data) {
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("output", data.output,
               parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.v_head_size);
@@ -125,42 +127,31 @@ Status PrepareQkv_Attention(contrib::AttentionParameters& parameters,
   bool use_fused_kernel = (nullptr != fused_runner && !parameters.is_unidirectional);
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
-  if (data.bias == nullptr) {
-    assert(nullptr == fused_runner);
-    // For quantized attention, bias has been added so only need transpose here.
-    // gemm_buffer should be BxSx3xNxH => qkv: 3xBxNxSxH
-    assert(qk_head_size == v_head_size);
-    int matrix_to_trans = (past_present_share_buffer ? 1 : 3);
-    ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, matrix_to_trans, sequence_length, batch_size, qk_head_size, num_heads,
-                                       max_threads_per_block, false, data.gemm_buffer, qkv, 3));
-    data.qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
-  } else {
-    // For fused TRT attention, transpose qkv to BxSxNx3xH (format 2)
-    // For flash or memory efficient attention, transpose to 3xBxSxNxH (format 3)
-    // For unfused kernel, transpose to 3xBxNxSxH (format 1)
-    // For fused causal kernel, use format 1 since we need have K and V to update present state,
-    //   at the same time, we update gemm_buffer BxSx3xNxH with bias which is used as input for fused causal kernel.
-    const int format = (use_fused_kernel ? 2 : (use_flash_or_efficient_attention ? 3 : 1));
-    data.qkv_format = use_fused_kernel
-                          ? AttentionQkvFormat::QKV_BSN3H
-                          : (use_flash_or_efficient_attention
-                                 ? AttentionQkvFormat::Q_K_V_BSNH
-                                 : (use_fused_causal
-                                        ? AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH
-                                        : AttentionQkvFormat::Q_K_V_BNSH));
+  // For fused TRT attention, transpose qkv to BxSxNx3xH (format 2)
+  // For flash or memory efficient attention, transpose to 3xBxSxNxH (format 3)
+  // For unfused kernel, transpose to 3xBxNxSxH (format 1)
+  // For fused causal kernel, use format 1 since we need have K and V to update present state,
+  //   at the same time, we update gemm_buffer BxSx3xNxH with bias which is used as input for fused causal kernel.
+  const int format = (use_fused_kernel ? 2 : (use_flash_or_efficient_attention ? 3 : 1));
+  data.qkv_format = use_fused_kernel
+                        ? AttentionQkvFormat::QKV_BSN3H
+                        : (use_flash_or_efficient_attention
+                               ? AttentionQkvFormat::Q_K_V_BSNH
+                               : (use_fused_causal
+                                      ? AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH
+                                      : AttentionQkvFormat::Q_K_V_BNSH));
 
-    // For fused causal, we will update gemm_buffer with bias directly.
-    T* qkv_add_bias = use_fused_causal ? data.gemm_buffer : nullptr;
+  // For fused causal, we will update gemm_buffer with bias directly.
+  T* qkv_add_bias = use_fused_causal ? data.gemm_buffer : nullptr;
 
-    int matrix_to_transpose = ((format == AttentionQkvFormat::Q_K_V_BNSH && past_present_share_buffer) ? 1 : 3);
-    // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
-    // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
-    LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
-                           batch_size, sequence_length, num_heads, qk_head_size,
-                           data.gemm_buffer, data.bias, qkv, true, v_head_size, qkv_add_bias,
-                           3, parameters.do_rotary, parameters.rotary_embedding,
-                           parameters.past_sequence_length);
-  }
+  int matrix_to_transpose = ((format == AttentionQkvFormat::Q_K_V_BNSH && past_present_share_buffer) ? 1 : 3);
+  // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
+  // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
+  LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
+                         batch_size, sequence_length, num_heads, qk_head_size,
+                         data.gemm_buffer, data.bias, qkv, true, v_head_size, qkv_add_bias,
+                         3, parameters.do_rotary, parameters.rotary_dim,
+                         parameters.past_sequence_length);
   return Status::OK();
 }
 
@@ -204,9 +195,22 @@ Status PrepareQkv_MHA_Cross(contrib::AttentionParameters& parameters,
       data.q = const_cast<T*>(data.query);
     }
 
-    // Here we have assumption that there is no bias for key and value when they are in BNSH format.
+    // Here we assume that there is no bias for key and value when they are in BNSH format.
     data.k = const_cast<T*>(data.key);
     data.v = const_cast<T*>(data.value);
+    data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
+  } else if (data.use_decoder_masked_multihead_attention) {
+    assert(data.attention_bias == nullptr);
+
+    data.q = const_cast<T*>(data.query);
+    data.k = const_cast<T*>(data.key);
+    data.v = const_cast<T*>(data.value);
+
+    // Here we assume that there is no bias for key and value when they are in BNSH format.
+    data.q_bias = const_cast<T*>(data.bias);
+    data.k_bias = nullptr;
+    data.v_bias = nullptr;
+
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
   } else {  // unfused kernel
     assert(data.IsUnfused());
@@ -466,6 +470,16 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
         data.value, data.bias + 2 * num_heads * qk_head_size, data.v, true, -1);
 
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
+  } else if (data.use_decoder_masked_multihead_attention) {
+    data.q = const_cast<T*>(data.query);
+    data.k = const_cast<T*>(data.key);
+    data.v = const_cast<T*>(data.value);
+
+    data.q_bias = const_cast<T*>(data.bias);
+    data.k_bias = const_cast<T*>(data.bias + parameters.hidden_size);
+    data.v_bias = const_cast<T*>(data.bias + 2LL * parameters.hidden_size);
+
+    data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
   } else {  // unfused kernel
     assert(data.IsUnfused());
 
@@ -639,24 +653,31 @@ Status PrepareQkv_MultiHeadAttention(contrib::AttentionParameters& parameters,
                                      AttentionData<T>& data,
                                      cudaStream_t stream,
                                      int max_threads_per_block) {
+  DUMP_STRING_INIT();
   switch (parameters.qkv_format) {
     case AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH:
+      DUMP_STRING("PrepareQkv_MHA_Cross");
       ORT_RETURN_IF_ERROR(PrepareQkv_MHA_Cross(parameters, data, stream, max_threads_per_block));
       break;
     case AttentionQkvFormat::Q_KV_BSNH_BSN2H:
+      DUMP_STRING("PrepareQkv_MHA_PackedKV");
       ORT_RETURN_IF_ERROR(PrepareQkv_MHA_PackedKV(parameters, data, stream, max_threads_per_block));
       break;
     case AttentionQkvFormat::QKV_BSN3H:
+      DUMP_STRING("PrepareQkv_MHA_PackedQKV");
       ORT_RETURN_IF_ERROR(PrepareQkv_MHA_PackedQKV(parameters, data, stream, max_threads_per_block));
       break;
     case AttentionQkvFormat::Q_K_V_BSNH:
       if (data.past_key != nullptr || data.present_key != nullptr) {
         if (data.bias == nullptr) {
+          DUMP_STRING("PrepareQkv_MHA_WithPast_NoBias");
           ORT_RETURN_IF_ERROR(PrepareQkv_MHA_WithPast_NoBias(parameters, data, stream, max_threads_per_block));
         } else {
+          DUMP_STRING("PrepareQkv_MHA_WithPast_Bias");
           ORT_RETURN_IF_ERROR(PrepareQkv_MHA_WithPast_Bias(parameters, data, stream, max_threads_per_block));
         }
       } else {  // no past state
+        DUMP_STRING("PrepareQkv_MHA_NoPast");
         ORT_RETURN_IF_ERROR(PrepareQkv_MHA_NoPast(parameters, data, stream, max_threads_per_block));
       }
       break;
@@ -716,7 +737,9 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
     data.scratch = data.workspace;
   }
 
-#if DEBUG_TENSOR_LEVEL > 1
+#if DUMP_TENSOR_LEVEL > 1
+  DUMP_STRING_INIT();
+  DUMP_STRING("Dump Inputs Before PrepareQkv...");
   DumpInputs(parameters, data);
 #endif
 
@@ -728,8 +751,9 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 
   assert(data.qkv_format != AttentionQkvFormat::UNKNOWN);
 
-#if DEBUG_TENSOR_LEVEL > 1
-  DumpQkv(data);
+#if DUMP_TENSOR_LEVEL > 1
+  DUMP_STRING("Dump Inputs After PrepareQkv...");
+  DumpQkv(parameters, data);
 #endif
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());

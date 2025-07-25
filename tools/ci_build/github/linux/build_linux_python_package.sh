@@ -40,32 +40,13 @@ done
 
 
 
-BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel")
+BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
 
 if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")
 fi
 if [ "$ENABLE_CACHE" = true ] ; then
     BUILD_ARGS+=("--use_cache")
-    # No release binary for ccache aarch64, so we need to build it from source.
-    if ! [ -x "$(command -v ccache)" ]; then
-        ccache_url="https://github.com/ccache/ccache/archive/refs/tags/v4.8.tar.gz"
-        cd /build
-        curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o ccache_src.tar.gz $ccache_url
-        mkdir ccache_main
-        cd ccache_main
-        tar -zxf ../ccache_src.tar.gz --strip=1
-
-        mkdir build
-        cd build
-        cmake -DCMAKE_INSTALL_PREFIX=/build -DCMAKE_BUILD_TYPE=Release ..
-        make -j$(nproc)
-        make install
-        export PATH=/build/bin:$PATH
-        which ccache
-        rm -f ccache_src.tar.gz
-        rm -rf ccache_src
-    fi
     ccache -s;
 fi
 
@@ -89,12 +70,12 @@ fi
 if [ "$BUILD_DEVICE" == "GPU" ]; then
     SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
     #Enable CUDA and TRT EPs.
-    BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80")
+    BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=60-real;70-real;75-real;80-real;86-real;90a-real;90a-virtual")
 fi
 
 if [ "$BUILD_DEVICE" == "NPU" ]; then
     #Enable QNN EP
-    BUILD_ARGS+=("--use_qnn" "--qnn_home=/qnn_sdk")
+    BUILD_ARGS+=("--build_shared_lib" "--use_qnn" "--qnn_home=/qnn_sdk")
 fi
 
 export ONNX_ML=1

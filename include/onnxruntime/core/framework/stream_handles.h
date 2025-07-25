@@ -3,6 +3,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <unordered_map>
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
@@ -25,7 +26,9 @@ class Notification;
 // i.e. different cuda stream on different GPU.
 class Stream {
  public:
-  Stream(StreamHandle h, const OrtDevice& d) : handle_(h), device_(d) {}
+  Stream(StreamHandle h, const OrtDevice& d)
+      : handle_(h), device_(d) {
+  }
 
   virtual ~Stream() = default;
   virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) {
@@ -154,6 +157,12 @@ class Notification {
 // TODO: use a better way to dispatch handles.
 using CreateStreamFn = std::function<std::unique_ptr<Stream>(const OrtDevice&)>;
 
+// This SetDevice function is used by TRT EP or CUDA EP to handle the case where ExecutionMode::ORT_PARALLEL is enabled.
+// In that case, ORT retrieves a thread from the thread pool to run kernels for a given session.
+// Since new threads default to using device 0, but the session may be tightly bound to a device > 0,
+// This SetDevice function will be called in RunSince to ensure running kernels on a correct GPU device.
+using SetDeviceFn = std::function<void(OrtDevice::DeviceId)>;
+
 // an interface of a simple registry which hold the handles EP registered.
 // make it interface so we can pass it through shared library based execution providers
 class IStreamCommandHandleRegistry {
@@ -161,16 +170,34 @@ class IStreamCommandHandleRegistry {
   virtual ~IStreamCommandHandleRegistry() = default;
   // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  [[nodiscard]] virtual WaitNotificationFn GetWaitHandle(OrtDevice::DeviceType notification_ower_device_type,
-                                                         OrtDevice::DeviceType executor_device_type) const = 0;
-  // Get the stream creation function registered on the given device type.
+  [[nodiscard]] virtual WaitNotificationFn GetWaitHandle(const OrtDevice& notification_owner_device,
+                                                         const OrtDevice& executor_device) const = 0;
+
+  // Get the stream creation function registered for the given device type.
   [[nodiscard]] virtual CreateStreamFn GetCreateStreamFn(OrtDevice::DeviceType execution_device_type) const = 0;
-  // register a wait methond which will be invoked when we wait a notification (created by 'notification_device_type' device) on a stream at 'device_type' device.
+
+  // register a wait method which will be invoked to await a notification that is
+  // created by 'notification_device_type' device on a stream at 'device_type' device.
   virtual void RegisterWaitFn(OrtDevice::DeviceType notification_device_type,
                               OrtDevice::DeviceType device_type,
                               WaitNotificationFn fn) = 0;
+
   // register a handle about how to create stream on given device type.
   virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
+
+  // Register a SetDevice function.
+  // This interface is currently used by TRT EP or CUDA EP only.
+  virtual void RegisterSetDeviceFn(OrtDevice::DeviceType device_type, SetDeviceFn f) {
+    ORT_UNUSED_PARAMETER(device_type);
+    ORT_UNUSED_PARAMETER(f);
+  };
+
+  // Get a SetDevice function.
+  // This interface is currently used by TRT EP or CUDA EP only and is called in RunSince from stream execution.
+  virtual std::optional<SetDeviceFn> GetSetDeviceFn(OrtDevice::DeviceType device_type) const {
+    ORT_UNUSED_PARAMETER(device_type);
+    return std::nullopt;
+  };
 };
 
 }  // namespace onnxruntime

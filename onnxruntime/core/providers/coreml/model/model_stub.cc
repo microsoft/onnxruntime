@@ -4,6 +4,7 @@
 #include "core/providers/coreml/model/model.h"
 
 namespace onnxruntime {
+class CoreMLOptions;
 namespace coreml {
 
 class Execution {};
@@ -15,7 +16,7 @@ Model::Model(const std::string& /*path*/,
              std::unordered_set<std::string>&& scalar_outputs,
              std::unordered_set<std::string>&& int64_outputs,
              const logging::Logger& /*logger*/,
-             uint32_t /*coreml_flags*/)
+             const CoreMLOptions& /*coreml_flags*/)
     : execution_(std::make_unique<Execution>()),
       model_input_names_(std::move(model_input_names)),
       model_output_names_(std::move(model_output_names)),

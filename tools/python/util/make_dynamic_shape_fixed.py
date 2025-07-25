@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import argparse
 import os
@@ -49,7 +50,7 @@ def make_dynamic_shape_fixed_helper():
         (args.dim_param and args.input_name)
         or (not args.dim_param and not args.input_name)
         or (args.dim_param and (not args.dim_value or args.dim_value < 1))
-        or (args.input_name and (not args.input_shape or any([value < 1 for value in args.input_shape])))
+        or (args.input_name and (not args.input_shape or any(value < 1 for value in args.input_shape)))
     ):
         print("Invalid usage.")
         parser.print_help()

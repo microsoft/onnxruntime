@@ -36,11 +36,14 @@ void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 void CreateGatherElementsOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGatherNDOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateGroupQueryAttentionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGruOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLogicalOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLstmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateMatMulNBitsOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateMultiHeadAttentionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -48,6 +51,7 @@ void CreateQDQOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_r
 void CreateReductionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateRotaryEmbeddingOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateScatterElementsOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateScatterNDOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateShapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

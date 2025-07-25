@@ -50,30 +50,63 @@ parameters:
   displayName: 'Linux packages cmake build type. Linux Only.'
   default: 'Release'
   values:
-   - Debug
-   - Release
-   - RelWithDebInfo
-   - MinSizeRel
+  - Debug
+  - Release
+  - RelWithDebInfo
+  - MinSizeRel
 
 # Only applies to QNN packages.
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.28.2.241116
+  default: 2.36.1.250708
 
 trigger: none
 
-stages:
-- template: stages/py-cpu-packaging-stage.yml
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    enable_linux_cpu: ${{ parameters.enable_linux_cpu }}
-    enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
-    enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
-    enable_linux_arm: ${{ parameters.enable_linux_arm }}
-    enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
-    enable_windows_arm64ec_qnn: ${{ parameters.enable_windows_arm64ec_qnn }}
-    enable_windows_x64_qnn: ${{ parameters.enable_windows_x64_qnn }}
-    enable_linux_x64_qnn: ${{ parameters.enable_linux_x64_qnn }}
-    build_py_parameters: ${{ parameters.build_py_parameters }}
-    cmake_build_type: ${{ parameters.cmake_build_type }}
-    qnn_sdk_version: ${{ parameters.qnn_sdk_version }}
+    featureFlags:
+      binskimScanAllExtensions: true
+    sdl:
+      binskim:
+        enabled: true
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows
+      componentgovernance:
+        ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
+      spotBugs:
+        enabled: false
+        justificationForDisabling: "Getting ##[error]1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
+      tsa:
+        enabled: true
+      codeSignValidation:
+        enabled: true
+        break: true
+      policheck:
+        enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
+    stages:
+    - template: stages/py-cpu-packaging-stage.yml
+      parameters:
+        enable_linux_cpu: ${{ parameters.enable_linux_cpu }}
+        enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
+        enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
+        enable_linux_arm: ${{ parameters.enable_linux_arm }}
+        enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
+        enable_windows_arm64ec_qnn: ${{ parameters.enable_windows_arm64ec_qnn }}
+        enable_windows_x64_qnn: ${{ parameters.enable_windows_x64_qnn }}
+        enable_linux_x64_qnn: ${{ parameters.enable_linux_x64_qnn }}
+        build_py_parameters: ${{ parameters.build_py_parameters }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+        qnn_sdk_version: ${{ parameters.qnn_sdk_version }}

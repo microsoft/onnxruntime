@@ -9,10 +9,10 @@ parameters:
   type: string
   default: 'Release'
   values:
-   - Debug
-   - Release
-   - RelWithDebInfo
-   - MinSizeRel
+  - Debug
+  - Release
+  - RelWithDebInfo
+  - MinSizeRel
 
 - name: device
   type: string
@@ -34,81 +34,59 @@ parameters:
   type: string
   default: ''
 
+- name: is1ES
+  displayName: 'Whether the pipeline is running in 1ES'
+  type: boolean
+  default: false
+
 jobs:
 - job: Linux_py_Wheels_${{ parameters.arch }}_${{parameters.ep}}
   timeoutInMinutes: 240
   workspace:
     clean: all
-  pool: ${{ parameters.machine_pool }}
+  pool:
+    name: ${{ parameters.machine_pool }}
+    os: 'linux'
+    ${{ if eq(parameters.arch, 'aarch64') }}:
+      hostArchitecture: Arm64
+  templateContext:
+    outputs:
+    - output: pipelineArtifact
+      targetPath: $(Build.BinariesDirectory)/dist
+      artifactName: onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}
+    - output: pipelineArtifact
+      targetPath: $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}
+      artifactName: drop-linux-cpu-${{ parameters.arch }}-${{ parameters.ep }}
+
   variables:
-    # The build machine pool doesn't have dotnet, so it can't run CG.
-    - name: skipComponentGovernanceDetection
-      value: true
-    - name: ORT_CACHE_DIR
-      value: $(Agent.TempDirectory)/ort_ccache
-    - name: TODAY
-      value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-    - name: extra_build_args
-      ${{ if ne(parameters.extra_build_arg, '') }}:
-        value: '-x ${{ parameters.extra_build_arg }}'
-      ${{ if eq(parameters.extra_build_arg, '') }}:
-        value: ''
-    - name: python_exe_path
-      ${{ if ne(parameters.python_exe_path, '') }}:
-        value: '-p ${{ parameters.python_exe_path }}'
-      ${{ if eq(parameters.python_exe_path, '') }}:
-        value: ''
+  - name: extra_build_args
+    ${{ if ne(parameters.extra_build_arg, '') }}:
+      value: '-x ${{ parameters.extra_build_arg }}'
+    ${{ if eq(parameters.extra_build_arg, '') }}:
+      value: ''
+  - name: python_exe_path
+    ${{ if ne(parameters.python_exe_path, '') }}:
+      value: '-p ${{ parameters.python_exe_path }}'
+    ${{ if eq(parameters.python_exe_path, '') }}:
+      value: ''
 
   steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
+  - checkout: self
+    clean: true
+    submodules: none
 
-    - checkout: self
-      clean: true
-      submodules: none
+  - template: set-nightly-build-option-variable-step.yml
 
-    - template: set-nightly-build-option-variable-step.yml
+  - template: get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu/Dockerfile
+      Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuildpython${{ parameters.arch }}
 
-    - template: get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecpubuildpython${{ parameters.arch }}
-        ${{ if eq(parameters.arch, 'aarch64') }}:
-            UpdateDepsTxt: false
-
-    - template: linux-build-step-with-cache.yml
-      parameters:
-        WithCache: ${{parameters.with_cache}}
-        Today: $(TODAY)
-        AdditionalKey: Linux_py_Wheels_${{ parameters.arch }}
-        CacheDir: $(ORT_CACHE_DIR)
-        ChangeEveryCommit: true
-        BuildStep:
-          - task: Bash@3
-            displayName: 'Build Python Wheel'
-            inputs:
-              targetType: filePath
-              filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-              arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args) $(python_exe_path)
-            ${{ if eq(parameters.with_cache, 'true') }}:
-              env:
-                ADDITIONAL_DOCKER_PARAMETER: "--volume $(ORT_CACHE_DIR):/cache -e CCACHE_DIR=/cache -e ORT_BUILD_WITH_CACHE=1"
-
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish Artifact: ONNXRuntime python wheel'
-      inputs:
-        PathtoPublish: '$(Build.BinariesDirectory)/dist'
-        ArtifactName: onnxruntime-${{ parameters.ep }}
-
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Test Binaries'
-      inputs:
-        artifactName: 'drop-linux-cpu-${{ parameters.arch }}-${{ parameters.ep }}'
-        targetPath: '$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}'
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+  - task: Bash@3
+    displayName: 'Build Python Wheel'
+    inputs:
+      targetType: filePath
+      filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
+      arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args) $(python_exe_path)

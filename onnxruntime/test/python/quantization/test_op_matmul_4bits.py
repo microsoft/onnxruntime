@@ -9,7 +9,6 @@ import tempfile
 import unittest
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Dict, Tuple, Union
 
 import numpy as np
 import onnx
@@ -28,7 +27,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
 
-    def fill_int4_data(self, shape: Union[int, Tuple[int, ...]], symmetric: bool) -> np.ndarray:
+    def fill_int4_data(self, shape: int | tuple[int, ...], symmetric: bool) -> np.ndarray:
         line = np.zeros(shape)
         line = line.reshape(-1)
 
@@ -54,7 +53,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
     def input_feeds(
         self,
         n: int,
-        name2shape: Dict[str, Union[int, Tuple[int, ...]]],
+        name2shape: dict[str, int | tuple[int, ...]],
         low: int = -1,
         high: int = 2,
         dtype: type = np.float32,
@@ -79,7 +78,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         initializers = []
 
         def make_matmul(
-            input_name, weight_shape: Union[int, Tuple[int, ...]], weight_name: str, output_name: str, node_name: str
+            input_name, weight_shape: int | tuple[int, ...], weight_name: str, output_name: str, node_name: str
         ):
             weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
@@ -137,7 +136,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         initializers = []
 
         def make_gather(
-            indices_name, data_shape: Union[int, Tuple[int, ...]], data_name: str, output_name: str, node_name: str
+            indices_name, data_shape: int | tuple[int, ...], data_name: str, output_name: str, node_name: str
         ):
             weight_data = self.fill_int4_data(data_shape, symmetric).astype(
                 np.float32 if tdata == TensorProto.FLOAT else np.float16
@@ -184,8 +183,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         block_size: int,
         is_symmetric: bool,
         quant_format: quant_utils.QuantFormat = quant_utils.QuantFormat.QOperator,
-        op_types_to_quantize: Tuple[str, ...] = ("MatMul",),
-        quant_axes: Tuple[Tuple[str, int], ...] = (("MatMul", 0), ("Gather", 1)),
+        op_types_to_quantize: tuple[str, ...] = ("MatMul",),
+        quant_axes: tuple[tuple[str, int], ...] = (("MatMul", 0), ("Gather", 1)),
         rtol: float = 0.01,
         atol: float = 0.05,
     ):
@@ -196,17 +195,17 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         # Quantize fp32 model to int4 model
-        from onnxruntime.quantization import matmul_4bits_quantizer
+        from onnxruntime.quantization import matmul_nbits_quantizer  # noqa: PLC0415
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
-        quant_config = matmul_4bits_quantizer.DefaultWeightOnlyQuantConfig(
+        quant_config = matmul_nbits_quantizer.DefaultWeightOnlyQuantConfig(
             block_size=block_size,
             is_symmetric=is_symmetric,
             quant_format=quant_format,
             op_types_to_quantize=op_types_to_quantize,
             quant_axes=quant_axes,
         )
-        quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, algo_config=quant_config)
+        quant = matmul_nbits_quantizer.MatMulNBitsQuantizer(model, algo_config=quant_config)
         quant.process()
         quant.model.save_model_to_file(model_int4_path, False)
 
@@ -261,21 +260,21 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         # Quantize fp32 model to int4 model
-        from onnxruntime.quantization import matmul_4bits_quantizer
+        from onnxruntime.quantization import matmul_nbits_quantizer  # noqa: PLC0415
 
         algo_config = None
         if algorithm == "RTN":
             # test RTN algorithm
-            algo_config = matmul_4bits_quantizer.RTNWeightOnlyQuantConfig()
+            algo_config = matmul_nbits_quantizer.RTNWeightOnlyQuantConfig()
         elif algorithm == "GPTQ":
             # test GPTQ algorithm
-            algo_config = matmul_4bits_quantizer.GPTQWeightOnlyQuantConfig(calibration_data_reader=data_reader)
+            algo_config = matmul_nbits_quantizer.GPTQWeightOnlyQuantConfig(calibration_data_reader=data_reader)
         elif algorithm == "HQQ":
             # test HQQ algorithm
-            algo_config = matmul_4bits_quantizer.HQQWeightOnlyQuantConfig(block_size=block_size)
+            algo_config = matmul_nbits_quantizer.HQQWeightOnlyQuantConfig(block_size=block_size)
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
-        quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, block_size, is_symmetric, algo_config=algo_config)
+        quant = matmul_nbits_quantizer.MatMulNBitsQuantizer(model, block_size, is_symmetric, algo_config=algo_config)
         quant.process()
         quant.model.save_model_to_file(model_int4_path, False)
 
@@ -361,6 +360,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
     def test_quantize_matmul_int4_using_rtn_algo(self):
         if not find_spec("neural_compressor"):
             self.skipTest("skip test_smooth_quant since neural_compressor is not installed")
+        if not find_spec("torch"):
+            self.skipTest("skip test_quantize_matmul_int4_using_rtn_algo since torch is not installed")
         model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
         self.construct_model_matmul(model_fp32_path, symmetric=False)
         data_reader = self.input_feeds(1, {"input": (100, 52)})
@@ -372,6 +373,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
     def test_quantize_matmul_int4_using_gptq_algo(self):
         if not find_spec("neural_compressor"):
             self.skipTest("skip test_smooth_quant since neural_compressor is not installed")
+        if not find_spec("torch"):
+            self.skipTest("skip test_quantize_matmul_int4_using_gptq_algo since torch is not installed")
         model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
         self.construct_model_matmul(model_fp32_path, symmetric=False)
         data_reader = self.input_feeds(1, {"input": (100, 52)})
@@ -391,3 +394,4 @@ class TestOpMatMul4Bits(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+    # TODO(fajin): add 8bit quantization test after enabling kenrels

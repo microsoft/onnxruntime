@@ -82,6 +82,7 @@ struct Tensorrt_Provider : Provider {
     info.min_subgraph_size = options.trt_min_subgraph_size;
     info.max_workspace_size = options.trt_max_workspace_size;
     info.fp16_enable = options.trt_fp16_enable != 0;
+    info.bf16_enable = options.trt_bf16_enable != 0;
     info.int8_enable = options.trt_int8_enable != 0;
     info.int8_calibration_table_name = options.trt_int8_calibration_table_name == nullptr ? "" : options.trt_int8_calibration_table_name;
     info.int8_use_native_calibration_table = options.trt_int8_use_native_calibration_table != 0;
@@ -118,6 +119,11 @@ struct Tensorrt_Provider : Provider {
     info.engine_hw_compatible = options.trt_engine_hw_compatible != 0;
     info.onnx_bytestream = options.trt_onnx_bytestream;
     info.onnx_bytestream_size = options.trt_onnx_bytestream_size;
+    info.external_data_bytestream = options.trt_external_data_bytestream;
+    info.external_data_bytestream_size = options.trt_external_data_bytestream_size;
+    info.op_types_to_exclude = options.trt_op_types_to_exclude == nullptr ? "" : options.trt_op_types_to_exclude;
+    info.preview_features = options.trt_preview_features == nullptr ? "" : options.trt_preview_features;
+    info.load_user_initializer = options.trt_load_user_initializer != 0;
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }

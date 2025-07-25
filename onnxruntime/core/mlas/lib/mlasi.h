@@ -18,6 +18,7 @@ Abstract:
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -260,6 +261,22 @@ struct MLFloat16 {
     MLFloat16() = default;
     explicit constexpr MLFloat16(uint16_t x) : val(x) {}
     explicit MLFloat16(float ff) : val(MLAS_Float2Half(ff)) {}
+    constexpr static MLFloat16 FromBits(uint16_t x) noexcept { return MLFloat16(x); }
+
+    MLFloat16 Abs() const noexcept {
+        return MLFloat16(static_cast<uint16_t>(val & ~kSignMask));
+    }
+    bool IsNaN() const noexcept {
+        return Abs().val > kPositiveInfinityBits;
+    }
+    bool IsNegative() const noexcept {
+        return static_cast<int16_t>(val) < 0;
+    }
+    MLFloat16 Negate() const {
+        return MLFloat16(IsNaN() ? val : static_cast<uint16_t>(val ^ kSignMask));
+    }
+    static constexpr uint16_t kSignMask = 0x8000U;
+    static constexpr uint16_t kPositiveInfinityBits = 0x7C00U;
 
     float ToFloat() const { return MLAS_Half2Float(val); }
 
@@ -301,6 +318,8 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 // Define the default strides to step through slices of the input matrices.
 //
 
+#define MLAS_HGEMM_STRIDEN                          128
+#define MLAS_HGEMM_STRIDEK                          128
 #define MLAS_SGEMM_STRIDEN                          128
 #define MLAS_SGEMM_STRIDEK                          128
 #define MLAS_SGEMM_PACKED_STRIDEN                   128
@@ -317,6 +336,7 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 // the effort at this time.
 //
 
+#define MLAS_HGEMM_STRIDEN_THREAD_ALIGN             32
 #define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
 #define MLAS_DGEMM_STRIDEN_THREAD_ALIGN             8
 #define MLAS_QGEMM_STRIDEN_THREAD_ALIGN             16
@@ -727,6 +747,24 @@ void
     float Scale,
     int8_t ZeroPoint);
 
+typedef
+void
+(MLASCALL MLAS_DEQUANTIZE_LINEAR_U8_KERNEL)(
+    const uint8_t* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint);
+
+typedef
+void
+(MLASCALL MLAS_DEQUANTIZE_LINEAR_S8_KERNEL)(
+    const int8_t* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint);
+
 template<typename InputType, typename FilterType>
 struct MLAS_QUANT_KERNEL
 {
@@ -883,6 +921,8 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_S4_KERNEL MlasQuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL MlasQuantizeLinearU4Kernel;
 #if defined(MLAS_TARGET_AMD64)
+    MLAS_DEQUANTIZE_LINEAR_S8_KERNEL MlasDequantizeLinearS8Kernel;
+    MLAS_DEQUANTIZE_LINEAR_U8_KERNEL MlasDequantizeLinearU8Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelAvx512F;
@@ -944,6 +984,7 @@ extern "C" {
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 #define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 #define MLAS_QGEMM_THREAD_COMPLEXITY                65536
+#define MLAS_HGEMM_THREAD_COMPLEXITY                65536
 
 #if defined(__aarch64__) && defined(__linux__)
 #define MLAS_SBGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
@@ -992,8 +1033,13 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmRelaxedSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10;
+
+#if defined(MLAS_TARGET_WASM_RELAXED_SIMD)
+extern bool HasUSDot();
+#endif
 
 //
 // Symmetric quantized qgemm dispatch structure
@@ -1039,7 +1085,10 @@ extern const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchAvx512;
 
 struct MLAS_QNBIT_GEMM_DISPATCH;
 
-extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon;
+const MLAS_QNBIT_GEMM_DISPATCH&
+GetMlasQNBitGemmDispatchNeon(
+    bool InitializeWithDotSupport
+);
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2;
 
@@ -1048,6 +1097,27 @@ extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni;
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512;
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
+
+//
+// Rotary embedding dispatch structure.
+//
+struct MLAS_ROPE_DISPATCH;
+extern const MLAS_ROPE_DISPATCH MlasRopeDispatchNeon;
+extern const MLAS_ROPE_DISPATCH MlasRopeDispatchAvx2;
+
+//
+// half gemm dispatch structure
+//
+struct MLAS_HGEMM_DISPATCH;
+extern const MLAS_HGEMM_DISPATCH MlasHGemmDispatchNeon;
+
+// softmax dispatch structure
+struct MLAS_SOFTMAX_DISPATCH;
+extern const MLAS_SOFTMAX_DISPATCH MlasSoftmaxDispatchNeon;
+
+// eltwise dispatch structure
+struct MLAS_ELTWISE_DISPATCH;
+extern const MLAS_ELTWISE_DISPATCH MlasEltwiseDispatchNeon;
 
 //
 // Quantized depthwise convolution kernels.
@@ -1110,6 +1180,10 @@ enum MlasCoreType { mlas_core_unknown = 0, mlas_core_little = 2, mlas_core_big =
 struct MLAS_PLATFORM {
 
     MLAS_PLATFORM(void);
+
+    // TODO: move to cpuinfo
+    bool Avx2Supported_ = false;
+    bool Avx512Supported_ = false;
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
@@ -1192,6 +1266,8 @@ struct MLAS_PLATFORM {
     MLAS_QUANTIZE_LINEAR_U16_KERNEL* QuantizeLinearU16Kernel;
     MLAS_QUANTIZE_LINEAR_S4_KERNEL* QuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL* QuantizeLinearU4Kernel;
+    MLAS_DEQUANTIZE_LINEAR_S8_KERNEL* DequantizeLinearS8Kernel;
+    MLAS_DEQUANTIZE_LINEAR_U8_KERNEL* DequantizeLinearU8Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     int32_t MaximumThreadCount;
@@ -1208,6 +1284,11 @@ struct MLAS_PLATFORM {
 
     MLAS_CAST_F16_TO_F32_KERNEL* CastF16ToF32Kernel;
     MLAS_CAST_F32_TO_F16_KERNEL* CastF32ToF16Kernel;
+
+    const MLAS_ROPE_DISPATCH* RopeDispatch{nullptr};
+    const MLAS_HGEMM_DISPATCH* HGemmDispatch{nullptr};
+    const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
+    const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
 };
 
 inline
@@ -1417,6 +1498,9 @@ MlasConvDepthwiseFloat_CHW(
 #endif
 #elif defined(MLAS_TARGET_WASM_SIMD)
 #define MLAS_WASM_SIMD_INTRINSICS
+#if defined(MLAS_TARGET_WASM_RELAXED_SIMD)
+#define MLAS_WASM_RELAXED_SIMD_INTRINSICS
+#endif
 #elif defined(MLAS_TARGET_LARCH64)
 #define MLAS_LSX_INTRINSICS
 #endif
@@ -2227,6 +2311,8 @@ MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_VSX_INTRINSICS)
     // Don't use vec_max to avoid undefined behavior if NAN
     return vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2));
+#elif defined(MLAS_WASM_RELAXED_SIMD_INTRINSICS)
+    return wasm_f32x4_relaxed_max(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_max(Vector1, Vector2);
 #elif defined(MLAS_LSX_INTRINSICS)
@@ -2247,6 +2333,8 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_VSX_INTRINSICS)
     // Don't use vec_min to avoid undefined behavior if NAN
     return vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1));
+#elif defined(MLAS_WASM_RELAXED_SIMD_INTRINSICS)
+    return wasm_f32x4_relaxed_min(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_min(Vector1, Vector2);
 #elif defined(MLAS_LSX_INTRINSICS)

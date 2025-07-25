@@ -7,9 +7,10 @@ import ctypes
 import inspect
 import warnings
 from collections import OrderedDict
+from collections.abc import Callable
 from datetime import timedelta
 from types import CodeType, FunctionType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import onnx
 import torch
@@ -41,8 +42,14 @@ def _get_ort_compatible_zero_stage3_hook_function(debug, stats_output_dir, stats
     def _setup_zero_stage3_ort_compatible_hooks(self):
         self.hierarchy = 0
 
-        from onnxruntime.training.utils.hooks import StatisticsSubscriber, SubscriberManager, ZeROOffloadSubscriber
-        from onnxruntime.training.utils.hooks._zero_offload_subscriber import _zero_offload_one_time_initializer
+        from onnxruntime.training.utils.hooks import (  # noqa: PLC0415
+            StatisticsSubscriber,
+            SubscriberManager,
+            ZeROOffloadSubscriber,
+        )
+        from onnxruntime.training.utils.hooks._zero_offload_subscriber import (  # noqa: PLC0415
+            _zero_offload_one_time_initializer,
+        )
 
         subscribers = [ZeROOffloadSubscriber(self, _zero_offload_one_time_initializer)]
         if debug is True:
@@ -80,7 +87,7 @@ class DummyWork(torch.distributed.distributed_c10d.Work):
     def _source_rank(self) -> int:
         return 0
 
-    def result(self) -> List[torch.Tensor]:
+    def result(self) -> list[torch.Tensor]:
         return []
 
     def synchronize(self):
@@ -88,7 +95,7 @@ class DummyWork(torch.distributed.distributed_c10d.Work):
 
 
 def _get_ort_compatible_allgather_fn():
-    from deepspeed.utils import get_caller_func
+    from deepspeed.utils import get_caller_func  # noqa: PLC0415
 
     original_allgather_fn = deepspeed.comm.allgather_fn
     output_get_caller_func = get_caller_func()
@@ -110,7 +117,7 @@ def _get_ort_compatible_allgather_fn():
 # In the original logic, if bias is None, after export to ONNX, None becomes a constant, so backward op complains
 # output count more than needed.
 def _zero3_linear_wrap_ort_compatible(input, weight, bias=None):
-    from deepspeed.runtime.zero.linear import LinearFunctionForZeroStage3
+    from deepspeed.runtime.zero.linear import LinearFunctionForZeroStage3  # noqa: PLC0415
 
     return LinearFunctionForZeroStage3.apply(input, weight, bias)
 
@@ -164,7 +171,7 @@ try:
         # Only need to define it once
         deepspeed.comm.allgather_fn = _get_ort_compatible_allgather_fn()
 
-        from deepspeed.runtime.zero.linear import zero3_linear_wrap
+        from deepspeed.runtime.zero.linear import zero3_linear_wrap  # noqa: PLC0415
 
         if torch.nn.functional.linear is zero3_linear_wrap:
             torch.nn.functional.linear = _zero3_linear_wrap_ort_compatible
@@ -177,24 +184,24 @@ except ImportError as e:
 
 
 @nvtx_function_decorator
-def _get_params_for_current_module(module: torch.nn.Module) -> List[torch.nn.parameter.Parameter]:
+def _get_params_for_current_module(module: torch.nn.Module) -> list[torch.nn.parameter.Parameter]:
     """Retrieve the parameters for this module.
 
     Logic adapted from
     https://github.com/microsoft/DeepSpeed/blob/9d79cfd1e90cae9306dc1b5837d374b2c9489ac8/deepspeed/runtime/zero/partitioned_param_coordinator.py#L267
     """
-    from deepspeed.runtime.zero.partitioned_param_coordinator import iter_params
+    from deepspeed.runtime.zero.partitioned_param_coordinator import iter_params  # noqa: PLC0415
 
     # Retrieve all parameters for this module.
-    partitioned_params = [param for param in iter_params(module)]
+    partitioned_params = list(iter_params(module))
 
     return partitioned_params
 
 
 @nvtx_function_decorator
-def _get_all_zero_stage3_params(module: torch.nn.Module) -> Dict[str, torch.nn.parameter.Parameter]:
+def _get_all_zero_stage3_params(module: torch.nn.Module) -> dict[str, torch.nn.parameter.Parameter]:
     """Retrieve all the parameters that are offloaded."""
-    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus  # noqa: PLC0415
 
     all_offloaed_params = OrderedDict()
     for name, param in module.named_parameters():
@@ -205,7 +212,7 @@ def _get_all_zero_stage3_params(module: torch.nn.Module) -> Dict[str, torch.nn.p
 
 
 # Used to cache the map avoid repeated loop up (X us) overhead during training.
-_ModuleToParametersRefs: Dict[torch.nn.Module, List[torch.nn.parameter.Parameter]] = OrderedDict()
+_ModuleToParametersRefs: dict[torch.nn.Module, list[torch.nn.parameter.Parameter]] = OrderedDict()
 
 
 class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
@@ -295,7 +302,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         # completing the full backward propagation, will not affect parameter updates.
         passed_in_param_grad = [
             torch.zeros(shape, dtype=dtype, device=device)
-            for shape, dtype, device in zip(ctx.shapes, ctx.dtypes, ctx.devices)
+            for shape, dtype, device in zip(ctx.shapes, ctx.dtypes, ctx.devices, strict=False)
         ]
 
         zero_grads = updated_grads[:input_count] + tuple(passed_in_param_grad)
@@ -306,9 +313,9 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
     @staticmethod
     def infer_shape(
         node: onnx.NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        tensor_input_shapes: list[list[int | str] | None],
+        tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
+    ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
         input_pointer_scalars_attr_name = "input_pointer_scalars"
         found = [attr for attr in node.attribute if attr.name == input_pointer_scalars_attr_name]
         assert len(found) == 1
@@ -414,9 +421,9 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
     @staticmethod
     def infer_shape(
         node: onnx.NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        tensor_input_shapes: list[list[int | str] | None],
+        tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
+    ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
         return tensor_input_shapes, tensor_input_dtypes
 
     @staticmethod
@@ -480,7 +487,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         kwargs: ORTModelInputOutputType,
-    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         """This function is a dispatcher to call DeepSpeed stage3 pre forward hooks in sequence.
 
         All hook functions can be retrieved from the function store, due to exporter only supports a list of tensors as
@@ -556,7 +563,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
-    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         """This function is a dispatcher to call DeepSpeed stage3 post forward hooks in sequence.
 
         All hook functions can be retrieved from function store, due to exporter only supports a list of tensors as
@@ -571,7 +578,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
         @nvtx_function_decorator
         def _wrap_post_forward_module_hook(module, input, outputs):
             # STAGE3WARN#6: _post_forward_module_hook applied this for each tensor output, so we do a simple wrap here.
-            from deepspeed.runtime.zero.partition_parameters import is_zero_param
+            from deepspeed.runtime.zero.partition_parameters import is_zero_param  # noqa: PLC0415
 
             updated_outputs = _post_forward_module_hook(module, input, outputs)
             if updated_outputs:
@@ -615,7 +622,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
-    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         outputs_tensors, outputs_schema = extract_data_and_schema(outputs)
 
         _end_of_forward_hook = self._functions.get("_end_of_forward_hook")
@@ -636,7 +643,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
         return args, updated_outputs
 
     @nvtx_function_decorator
-    def _check_all_tensor(self, tensor_list: Tuple[torch.Tensor], module: torch.nn.Module, name: str):
+    def _check_all_tensor(self, tensor_list: tuple[torch.Tensor], module: torch.nn.Module, name: str):
         if not self._enable_debug_info:
             return
 

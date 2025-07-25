@@ -8,25 +8,30 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
+
 // Convert onnxruntime::common::Status to OrtStatus*.
 _Ret_notnull_ OrtStatus* ToOrtStatus(const onnxruntime::common::Status& st);
 
-// Convert OrtStatus* to onnxruntime::common::Status.
-Status ToStatus(const OrtStatus* ort_status, common::StatusCategory category = common::StatusCategory::ONNXRUNTIME);
+// Convert OrtStatus* to onnxruntime::common::Status and release the OrtStatus*.
+Status ToStatusAndRelease(OrtStatus* ort_status,
+                          common::StatusCategory category = common::StatusCategory::ONNXRUNTIME);
 };  // namespace onnxruntime
 
 #ifndef ORT_NO_EXCEPTIONS
 #define API_IMPL_BEGIN try {
-#define API_IMPL_END                                                \
-  }                                                                 \
-  catch (const onnxruntime::NotImplementedException& ex) {          \
-    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, ex.what());   \
-  }                                                                 \
-  catch (const std::exception& ex) {                                \
-    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
-  }                                                                 \
-  catch (...) {                                                     \
-    return OrtApis::CreateStatus(ORT_FAIL, "Unknown Exception");    \
+#define API_IMPL_END                                                               \
+  }                                                                                \
+  catch (const onnxruntime::OnnxRuntimeException& ex) {                            \
+    return OrtApis::CreateStatus(static_cast<OrtErrorCode>(ex.Code()), ex.what()); \
+  }                                                                                \
+  catch (const onnxruntime::NotImplementedException& ex) {                         \
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, ex.what());                  \
+  }                                                                                \
+  catch (const std::exception& ex) {                                               \
+    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());                \
+  }                                                                                \
+  catch (...) {                                                                    \
+    return OrtApis::CreateStatus(ORT_FAIL, "Unknown Exception");                   \
   }
 
 #else

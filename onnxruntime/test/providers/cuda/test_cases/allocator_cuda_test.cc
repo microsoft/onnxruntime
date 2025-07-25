@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(CudaEpAllocatorTest, CUDAAllocatorTest) {
+TEST(AllocatorTest, CUDAAllocatorTest) {
   OrtDevice::DeviceId cuda_device_id = 0;
 
   // ensure CUDA device is available.
@@ -25,7 +25,7 @@ TEST(CudaEpAllocatorTest, CUDAAllocatorTest) {
   size_t size = 1024;
 
   EXPECT_STREQ(cuda_arena->Info().name, CUDA);
-  EXPECT_EQ(cuda_arena->Info().id, cuda_device_id);
+  EXPECT_EQ(cuda_arena->Info().device.Id(), cuda_device_id);
   EXPECT_EQ(cuda_arena->Info().mem_type, OrtMemTypeDefault);
   EXPECT_EQ(cuda_arena->Info().alloc_type, OrtArenaAllocator);
 
@@ -34,12 +34,12 @@ TEST(CudaEpAllocatorTest, CUDAAllocatorTest) {
   EXPECT_TRUE(cuda_addr);
 
   AllocatorCreationInfo pinned_memory_info(
-      [](int) { return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED); });
+      [](int device_id) { return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED); });
 
   auto pinned_allocator = CreateAllocator(pinned_memory_info);
 
   EXPECT_STREQ(pinned_allocator->Info().name, CUDA_PINNED);
-  EXPECT_EQ(pinned_allocator->Info().id, 0);
+  EXPECT_EQ(pinned_allocator->Info().device.Id(), 0);
   EXPECT_EQ(pinned_allocator->Info().mem_type, OrtMemTypeCPUOutput);
   EXPECT_EQ(pinned_allocator->Info().alloc_type, OrtArenaAllocator);
 
@@ -51,7 +51,7 @@ TEST(CudaEpAllocatorTest, CUDAAllocatorTest) {
       [](int) { return std::make_unique<CPUAllocator>(); }, true);
   const auto& cpu_arena = CreateAllocator(cpu_memory_info);
   EXPECT_STREQ(cpu_arena->Info().name, CPU);
-  EXPECT_EQ(cpu_arena->Info().id, 0);
+  EXPECT_EQ(cpu_arena->Info().device.Id(), 0);
   EXPECT_EQ(cpu_arena->Info().mem_type, OrtMemTypeDefault);
   EXPECT_EQ(cpu_arena->Info().alloc_type, OrtArenaAllocator);
 
@@ -77,7 +77,7 @@ TEST(CudaEpAllocatorTest, CUDAAllocatorTest) {
 }
 
 // test that we fallback to smaller allocations if the growth of the arena exceeds the available memory
-TEST(CudaEpAllocatorTest, CUDAAllocatorFallbackTest) {
+TEST(AllocatorTest, CUDAAllocatorFallbackTest) {
   OrtDevice::DeviceId cuda_device_id = 0;
 
   size_t free = 0;

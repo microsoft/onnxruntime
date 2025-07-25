@@ -10,6 +10,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <cstdint>
 #include <vector>
 
 namespace onnx_transpose_optimization {
@@ -465,7 +466,7 @@ class GraphRef {
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 21;
+constexpr int64_t kMaxSupportedOpset = 23;
 
 // enum of results that a CostCheckFn can return.
 enum class CostCheckResult {

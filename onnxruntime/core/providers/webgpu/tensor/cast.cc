@@ -52,10 +52,28 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T1", CastOpTypeConstraints())
         .TypeConstraint("T2", CastOpTypeConstraints()),
     Cast);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Cast,
+    kOnnxDomain,
+    19, 20,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", CastOpTypeConstraints())
+        .TypeConstraint("T2", CastOpTypeConstraints()),
+    Cast);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Cast,
+    kOnnxDomain,
+    21, 22,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", CastOpTypeConstraints())
+        .TypeConstraint("T2", CastOpTypeConstraints()),
+    Cast);
 ONNX_OPERATOR_KERNEL_EX(
     Cast,
     kOnnxDomain,
-    19,
+    23,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", CastOpTypeConstraints())
@@ -69,7 +87,7 @@ Status Cast::ComputeInternal(ComputeContext& context) const {
   if (size == 0) {
     return Status::OK();
   }
-  uint32_t vec_size = gsl::narrow<uint32_t>((size + 3) / 4);
+  uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
 
   CastProgram program{to_};
   program

@@ -17,7 +17,7 @@ namespace webgpu {
 
 namespace {
 // append the info of an input or output to the cachekey
-void AppendTensorInfo(std::ostream& ss, const Tensor& tensor, ProgramVariableDataType var_type, ProgramTensorMetadataDependency dependency,
+void AppendTensorInfo(std::ostream& ss, const TensorShape& tensor_shape, ProgramVariableDataType var_type, ProgramTensorMetadataDependency dependency,
                       bool& first) {
   if (first) {
     first = false;
@@ -35,9 +35,9 @@ void AppendTensorInfo(std::ostream& ss, const Tensor& tensor, ProgramVariableDat
   }
 
   if ((dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape) {
-    ss D("Dims=") << tensor.Shape().ToString();
+    ss D("Dims=") << tensor_shape.ToString();
   } else if ((dependency & ProgramTensorMetadataDependency::Rank) == ProgramTensorMetadataDependency::Rank) {
-    ss D("Rank=") << tensor.Shape().NumDimensions();
+    ss D("Rank=") << tensor_shape.NumDimensions();
   }
 }
 }  // namespace
@@ -97,13 +97,26 @@ std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_disp
   ss << ":" D("Inputs=");
   first = true;
   for (const auto& input : program.Inputs()) {
-    AppendTensorInfo(ss, *input.tensor, input.var_type, input.dependency, first);
+    AppendTensorInfo(ss, input.use_override_shape ? input.override_shape : input.tensor->Shape(), input.var_type, input.dependency, first);
   }
 
   ss << ":" D("Outputs=");
   first = true;
   for (const auto& output : program.Outputs()) {
-    AppendTensorInfo(ss, *output.tensor, output.var_type, output.dependency, first);
+    AppendTensorInfo(ss, output.use_override_shape ? output.override_shape : output.tensor->Shape(), output.var_type, output.dependency, first);
+  }
+
+  if (!program.Indices().empty()) {
+    ss << ":" D("Indices=");
+    first = true;
+    for (const auto& indices_shape : program.Indices()) {
+      if (first) {
+        first = false;
+      } else {
+        ss << '|';
+      }
+      ss D("Rank=") << indices_shape.NumDimensions();
+    }
   }
 
   return SS_GET(ss);

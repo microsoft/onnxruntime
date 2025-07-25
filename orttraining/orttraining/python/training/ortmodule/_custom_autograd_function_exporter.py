@@ -118,7 +118,7 @@ def _get_training_mode() -> bool:
     training_mode = None
     if get_runtime_pytorch_version() >= version.parse("1.12"):
         # FIXME: using private modules
-        from torch.onnx import _globals
+        from torch.onnx import _globals  # noqa: PLC0415
 
         # before https://github.com/pytorch/pytorch/commit/c8b9b6266b505328e503b12f6a42fd88c56374f9,
         # training_mode is still a bool type
@@ -191,7 +191,6 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 def _default_export(
     g, func_full_qual_name, func_class, cconv, output_size, output_tensor_types, output_tensor_ranks, *args, **kwargs
 ):
-
     input_tensor_types = []
     input_tensor_ranks = []
 
@@ -224,7 +223,7 @@ def _default_export(
     assert len(args) == len(cconv), "Number of arguments does not match calling convention"
 
     # Encode inputs to torch.autograd.Function.
-    for i, arg, call_type in zip(range(len(args)), args, cconv):
+    for i, arg, call_type in zip(range(len(args)), args, cconv, strict=False):
         if call_type == "d":
             # Got a tensor variable.
             tensor_args.append(arg)
@@ -287,7 +286,7 @@ def _default_export(
             input_float_tuples.extend(list(arg))
             continue
 
-        from onnxruntime.training.utils.hooks._statistics_subscriber import _InspectActivation
+        from onnxruntime.training.utils.hooks._statistics_subscriber import _InspectActivation  # noqa: PLC0415
 
         is_inspect_activation = func_full_qual_name == get_fully_qualified_class_name(_InspectActivation)
         if is_inspect_activation and isinstance(arg, str):

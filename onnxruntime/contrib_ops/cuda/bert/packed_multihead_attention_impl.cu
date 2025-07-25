@@ -589,6 +589,7 @@ Status FlashAttention(
     PackedMultiHeadAttentionData<T>& data) {
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
+  const int token_count = parameters.token_count;
   const int num_heads = parameters.num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
@@ -638,6 +639,7 @@ Status FlashAttention(
           qk_head_size,
           sequence_length,
           sequence_length,
+          token_count,
           scale,
           0.0,
           false,  // is causal
@@ -698,8 +700,8 @@ Status FusedAttentionCutlass(
   p.scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
                                      : parameters.scale;
   p.seqlen_k_ptr = nullptr;
-  p.seqstart_q_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
-  p.seqstart_k_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
+  p.seqstart_q_ptr = data.cumulative_sequence_length;
+  p.seqstart_k_ptr = data.cumulative_sequence_length;
   p.query = data.no_qkv_workspace ? data.query : data.workspace;
   p.key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
   p.value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);

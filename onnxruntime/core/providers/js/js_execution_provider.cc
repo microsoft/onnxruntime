@@ -341,6 +341,10 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Gat
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 12, GatherElements);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, GatherElements);
 
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 11, GatherND);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 12, 12, GatherND);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, GatherND);
+
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, 9, Slice);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 10, 10, Slice);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 12, Slice);
@@ -667,6 +671,10 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 12, GatherElements)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, GatherElements)>,
 
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 11, GatherND)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 12, 12, GatherND)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, GatherND)>,
+
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 10, 10, Resize)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 12, Resize)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, 17, Resize)>,
@@ -764,7 +772,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 using namespace js;
 
 JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info, const SessionOptions* session_options)
-    : IExecutionProvider{kJsExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)},
+    : IExecutionProvider{kJsExecutionProvider,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0)},
       preferred_data_layout_{info.data_layout} {
   if (session_options) {
     enable_graph_capture_ = session_options->config_options.GetConfigOrDefault("enableGraphCapture", "false") == "true";
@@ -782,7 +791,9 @@ std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
 
 std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
-    const IKernelLookup& kernel_lookup) const {
+    const IKernelLookup& kernel_lookup,
+    const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+    IResourceAccountant* /* resource_accountant */) const {
   InlinedVector<NodeIndex> candidates;
   // `tenative_candidates` is a subset of `candidates`.
   InlinedVector<NodeIndex> tenative_candidates;
@@ -810,7 +821,7 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
     candidates.push_back(node.Index());
     tenative_candidates.push_back(node.Index());
   }
-  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tenative_candidates);
+  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tenative_candidates, *GetLogger());
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0) {
@@ -836,6 +847,23 @@ std::unique_ptr<onnxruntime::IDataTransfer> JsExecutionProvider::GetDataTransfer
 
 std::unique_ptr<onnxruntime::IExternalDataLoader> JsExecutionProvider::GetExternalDataLoader() const {
   return std::make_unique<js::ExternalDataLoader>();
+}
+
+std::optional<bool> JsExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                                      std::string_view node_op_type,
+                                                                      DataLayout target_data_layout) const {
+  if (target_data_layout != DataLayout::NHWC) {
+    return std::nullopt;
+  }
+
+  // TODO(fs-eire): Remove special case handing of JSEP once NHWC Resize implementation is fixed
+  if (node_domain == kOnnxDomain && node_op_type == "Resize") {
+    // leave Resize as-is pending bugfix for NHWC implementation. this means the node will remain in the ONNX domain
+    // with the original input layout.
+    return false;
+  }
+
+  return std::nullopt;
 }
 
 JsExecutionProvider::~JsExecutionProvider() {

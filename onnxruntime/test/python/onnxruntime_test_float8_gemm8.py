@@ -20,7 +20,7 @@ from onnx.numpy_helper import from_array
 
 from onnxruntime import InferenceSession, get_available_providers
 
-available_providers = [provider for provider in get_available_providers()]
+available_providers = list(get_available_providers())
 
 
 class TestFloat8Gemm8(unittest.TestCase):
@@ -72,19 +72,19 @@ class TestFloat8Gemm8(unittest.TestCase):
         if use_f8:
             assert domain == "com.microsoft"
             inits.append(from_array(np.array([1], dtype=np.float32), name="one"))
-            kwargs = dict(
-                domain=domain,
-                dtype=dtype,
-            )
+            kwargs = {
+                "domain": domain,
+                "dtype": dtype,
+            }
             if activation is not None:
                 kwargs["activation"] = activation
             op_name = "GemmFloat8"
         elif domain == "com.microsoft":
             op_name = "GemmFloat8"
-            kwargs = dict(
-                domain=domain,
-                dtype=dtype,
-            )
+            kwargs = {
+                "domain": domain,
+                "dtype": dtype,
+            }
         else:
             op_name = "Gemm"
         nodes = [
@@ -173,16 +173,16 @@ class TestFloat8Gemm8(unittest.TestCase):
 
                 raise AssertionError(
                     f"Gemm ERROR len(inputs)={len(feeds)}"
-                    f"\na@b=\n{check(lambda:a@b)}"
-                    f"\na.T@b=\n{check(lambda:a.T@b)}"
-                    f"\na@b.T=\n{check(lambda:a@b.T)}"
-                    f"\na.T@b.T=\n{check(lambda:a.T@b.T)}"
-                    f"\n----\nb@a=\n{check(lambda:b@a)}"
-                    f"\nb.T@a=\n{check(lambda:b.T@a)}"
-                    f"\nb@a.T=\n{check(lambda:b@a.T)}"
-                    f"\nb.T@a.T=\n{check(lambda:b.T@a.T)}"
-                    f"\n----\nexpected=\n{expected[:2,:2]}"
-                    f"\n----\ngot=\n{y[:2,:2]}"
+                    f"\na@b=\n{check(lambda: a @ b)}"
+                    f"\na.T@b=\n{check(lambda: a.T @ b)}"
+                    f"\na@b.T=\n{check(lambda: a @ b.T)}"
+                    f"\na.T@b.T=\n{check(lambda: a.T @ b.T)}"
+                    f"\n----\nb@a=\n{check(lambda: b @ a)}"
+                    f"\nb.T@a=\n{check(lambda: b.T @ a)}"
+                    f"\nb@a.T=\n{check(lambda: b @ a.T)}"
+                    f"\nb.T@a.T=\n{check(lambda: b.T @ a.T)}"
+                    f"\n----\nexpected=\n{expected[:2, :2]}"
+                    f"\n----\ngot=\n{y[:2, :2]}"
                     f"\nkwargs={kwargs}"
                 ) from e
 
@@ -225,16 +225,16 @@ class TestFloat8Gemm8(unittest.TestCase):
 
             raise AssertionError(
                 f"Gemm ERROR len(inputs)={len(feeds)}"
-                f"\na@b=\n{check(lambda:a@b)}"
-                f"\na.T@b=\n{check(lambda:a.T@b)}"
-                f"\na@b.T=\n{check(lambda:a@b.T)}"
-                f"\na.T@b.T=\n{check(lambda:a.T@b.T)}"
-                f"\n----\nb@a=\n{check(lambda:b@a)}"
-                f"\nb.T@a=\n{check(lambda:b.T@a)}"
-                f"\nb@a.T=\n{check(lambda:b@a.T)}"
-                f"\nb.T@a.T=\n{check(lambda:b.T@a.T)}"
-                f"\n----\nexpected=\n{expected[:2,:2]}"
-                f"\n----\ngot=\n{y[:2,:2]}"
+                f"\na@b=\n{check(lambda: a @ b)}"
+                f"\na.T@b=\n{check(lambda: a.T @ b)}"
+                f"\na@b.T=\n{check(lambda: a @ b.T)}"
+                f"\na.T@b.T=\n{check(lambda: a.T @ b.T)}"
+                f"\n----\nb@a=\n{check(lambda: b @ a)}"
+                f"\nb.T@a=\n{check(lambda: b.T @ a)}"
+                f"\nb@a.T=\n{check(lambda: b @ a.T)}"
+                f"\nb.T@a.T=\n{check(lambda: b.T @ a.T)}"
+                f"\n----\nexpected=\n{expected[:2, :2]}"
+                f"\n----\ngot=\n{y[:2, :2]}"
                 f"\nkwargs={kwargs}"
             ) from e
         self.assertEqual(expected.shape, y.shape)

@@ -11,6 +11,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/graph/model_saving_options.h"
 #include "core/graph/graph_utils.h"
 
 #include "orttraining/training_api/checkpoint.h"
@@ -107,6 +108,7 @@ Status TransformModelInputsForInference(Graph& inference_graph,
       ORT_ENFORCE(!inference_graph.IsInitializedTensor(named_parameter_it->first),
                   "The eval graph is invalid. Expected model parameter ",
                   named_parameter_it->first, " to be a graph input, not a graph initializer.");
+
       inference_graph.AddInitializedTensor(utils::CopyTensorToTensorProto(
           named_parameter_it->second->Data().Get<onnxruntime::Tensor>(),
           named_parameter_it->first, data_transfer_manager));
@@ -689,8 +691,10 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
     std::string external_data_name =
         ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(ExternalCheckpointDataPath(ToPathString(inference_model_path)));
     PathString inference_model_pathstring = ToPathString(inference_model_path);
+    ModelSavingOptions model_saving_options{64};
     ORT_THROW_IF_ERROR(
-        Model::SaveWithExternalInitializers(*inference_model, inference_model_pathstring, external_data_name, 64));
+        Model::SaveWithExternalInitializers(*inference_model, inference_model_pathstring, external_data_name,
+                                            model_saving_options));
   } else {
     ORT_THROW_IF_ERROR(Model::Save(*inference_model, ToPathString(inference_model_path)));
   }

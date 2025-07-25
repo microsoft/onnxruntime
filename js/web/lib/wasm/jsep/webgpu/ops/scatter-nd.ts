@@ -84,7 +84,7 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
   const outputShape = inputShape;
   // TODO: support bool with components 4.
   const components = 1;
-  const outputSize = Math.ceil(ShapeUtil.size(indicesShape) / components);
+  const outputSize = Math.ceil(ShapeUtil.sizeToDimension(indicesShape, indicesShape.length - 1) / components);
   const lastIndexDimension = indicesShape[indicesShape.length - 1];
   const numUpdatesElements = ShapeUtil.sizeFromDimension(inputShape, lastIndexDimension);
 
@@ -123,7 +123,7 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
     let dim_value = uniforms.output_shape;`
         : `
     let element_count_dim = uniforms.output_strides[i - indices_start];
-    let dim_value = uniforms.output_shape[i - indices_start + uniforms.last_index_dimension];`
+    let dim_value = uniforms.output_shape[i - indices_start];`
     }
     if (index >= 0) {
       if (index >= i32(dim_value)) {

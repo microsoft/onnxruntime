@@ -51,7 +51,7 @@ TEST(PartitioningUtilsTest, TestQDQHandling) {
 
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer, logger);
 
   auto result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                                  gen_metadef_name, "TEST", kCpuExecutionProvider, &node_unit_map,
@@ -82,7 +82,7 @@ static void CheckAllNodesProcessed(const std::function<void(ModelTestBuilder&)>&
 
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer, logger);
 
   const auto is_node_supported = [&](const Node& /*node*/) -> bool {
     return true;
@@ -170,5 +170,74 @@ TEST(PartitioningUtilsTest, TestQDQNodeGroupWithOutputFromTargetNode) {
 
   CheckAllNodesProcessed(build_model);
 }
+
+TEST(PartitioningUtilsTest, TestQDQNodeGroupWithRedundantRelu) {
+  const auto build_model = [](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<uint8_t>({1, 2, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                 std::numeric_limits<uint8_t>::max());
+    auto* weight_arg = builder.MakeInput<uint8_t>({2, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                  std::numeric_limits<uint8_t>::max());
+    auto* bias_arg =
+        builder.MakeInput<int32_t>({2}, std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
+    // DQ
+    auto* dq_input = builder.MakeIntermediate();
+    auto* dq_weight = builder.MakeIntermediate();
+    auto* dq_bias = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
+    builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
+    builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+
+    // Conv
+    auto* conv_output = builder.MakeIntermediate();
+    Node& conv_node = builder.AddNode("Conv", {dq_input, dq_weight, dq_bias}, {conv_output});
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+    conv_node.AddAttribute("group", int64_t(2));
+    conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+    // Relu
+    auto* relu_output = builder.MakeIntermediate();
+    builder.AddNode("Relu", {conv_output}, {relu_output});
+
+    // Q
+    auto* q_output = builder.MakeOutput();
+    builder.AddQuantizeLinearNode(relu_output, 0.02348f, uint8_t(0), q_output, false);
+  };
+
+  CheckAllNodesProcessed(build_model);
+}
+
+TEST(PartitioningUtilsTest, TestQDQNodeGroupWithRedundantClip) {
+  const auto build_model = [](ModelTestBuilder& builder) {
+    auto* input_0_arg = builder.MakeInput<uint8_t>({2, 3, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+    auto* input_1_arg = builder.MakeInput<uint8_t>({2, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+
+    // DQ
+    auto* dq_input_0 = builder.MakeIntermediate();
+    auto* dq_input_1 = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode(input_0_arg, 0.02348f, uint8_t(0), dq_input_0, false);
+    builder.AddDequantizeLinearNode(input_1_arg, 0.307f, uint8_t(0), dq_input_1, false);
+
+    // Add
+    auto* add_output = builder.MakeIntermediate();
+    builder.AddNode("Add", {dq_input_0, dq_input_1}, {add_output});
+
+    // Clip
+    auto* clip_min_arg = builder.MakeInitializer<float>({}, {0.0f});
+    auto* clip_max_arg = builder.MakeInitializer<float>({}, {6.0f});
+    auto* clip_output = builder.MakeIntermediate();
+    builder.AddNode("Clip", {add_output, clip_min_arg, clip_max_arg}, {clip_output});
+
+    // Q
+    auto* q_output = builder.MakeOutput();
+    builder.AddQuantizeLinearNode(clip_output, 0.02348f, uint8_t(0), q_output, false);
+  };
+
+  CheckAllNodesProcessed(build_model);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -261,19 +261,19 @@ struct BFloat16 : onnxruntime_float16::BFloat16Impl<BFloat16> {
 // initializers with MLFloat16 and BFloat16 from unsigned short
 // E.g 10_f16 or 10_b16
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
-inline MLFloat16 operator"" _f16(unsigned long long int v) noexcept {
+inline MLFloat16 operator""_f16(unsigned long long int v) noexcept {
   return MLFloat16::FromBits(narrow<uint16_t>(v));
 }
 
-inline MLFloat16 operator"" _fp16(long double v) noexcept {
+inline MLFloat16 operator""_fp16(long double v) noexcept {
   return MLFloat16(static_cast<float>(v));
 }
 
-inline BFloat16 operator"" _b16(unsigned long long int v) noexcept {
+inline BFloat16 operator""_b16(unsigned long long int v) noexcept {
   return BFloat16::FromBits((narrow<uint16_t>(v)));
 }
 
-inline BFloat16 operator"" _bfp16(long double v) noexcept {
+inline BFloat16 operator""_bfp16(long double v) noexcept {
   return BFloat16(static_cast<float>(v));
 }
 #endif

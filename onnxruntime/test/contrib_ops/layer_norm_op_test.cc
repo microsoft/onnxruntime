@@ -4,6 +4,7 @@
 #include <chrono>
 #include <random>
 #include "core/framework/tensor.h"
+#include "core/providers/cpu/nn/layer_norm_helper.h"
 #include "core/session/inference_session.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -19,6 +20,33 @@ using namespace std;
 
 namespace onnxruntime {
 namespace test {
+
+// Some feature (like broadcast support) are implemented in CPU and CUDA/ROCM provider only. A helper to run tests.
+void RunTestOnCpuAndCuda(OpTester& test, const std::string& expected_failure_msg = "") {
+  auto expected_result = expected_failure_msg.empty()
+                             ? OpTester::ExpectResult::kExpectSuccess
+                             : OpTester::ExpectResult::kExpectFailure;
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_provider;
+  cpu_execution_provider.push_back(DefaultCpuExecutionProvider());
+  test.Run(expected_result, expected_failure_msg, {}, nullptr, &cpu_execution_provider);
+
+  constexpr int min_cuda_architecture = 0;
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
+  if (enable_cuda || enable_rocm) {
+    std::vector<std::unique_ptr<IExecutionProvider>> gpu_execution_provider;
+    if (enable_cuda) {
+      gpu_execution_provider.push_back(DefaultCudaExecutionProvider());
+    } else if (enable_rocm) {
+      gpu_execution_provider.push_back(DefaultRocmExecutionProvider());
+    }
+
+    if (gpu_execution_provider.size() > 0) {
+      test.Run(expected_result, expected_failure_msg, {}, nullptr, &gpu_execution_provider);
+    }
+  }
+}
 
 TEST(LayerNormTest, BERTLayerNorm) {
   OpTester tester("LayerNormalization", 17 /*opset_version*/);
@@ -210,6 +238,106 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16ScaleBiasOutput) {
             kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kWebGpuExecutionProvider});
 }
 
+TEST(LayerNormTest, LayerNorm_Scale_Bias_NoBroadcast) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{2, 2, 2};
+  test.AddInput<float>("x", dims, {-1.0f, 2.0f, 3.0f, -4.0f, -10.264f, 8.6453f, 43.1561f, -0.641239f});
+  test.AddInput<float>("gamma", {2, 2, 2}, {-0.1f, 1.7f, -0.6953f, 5.1824f, -0.1f, 1.7f, -0.6953f, 5.1824f});
+  test.AddInput<float>("bias", {2, 2, 2}, {-2.0f, 0.3f, 0.0f, 0.0f, -2.0f, 0.3f, 0.0f, 0.0f});
+  test.AddOutput<float>("output", dims, {-1.9f, 2.0f, -0.6953f, -5.1824f, -1.9f, 2.0f, -0.6953f, -5.1824f});
+
+  test.SetOutputTolerance(0.0001f);
+
+  RunTestOnCpuAndCuda(test);
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias_NoBroadcast_Fp16) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{2, 2, 2};
+  test.AddInput<MLFloat16>("x", dims, ToFloat16({-1.0f, 2.0f, 3.0f, -4.0f, -10.264f, 8.6453f, 43.1561f, -0.641239f}));
+  test.AddInput<MLFloat16>("gamma", {2, 2, 2}, ToFloat16({-0.1f, 1.7f, -0.6953f, 5.1824f, -0.1f, 1.7f, -0.6953f, 5.1824f}));
+  test.AddInput<MLFloat16>("bias", {2, 2, 2}, ToFloat16({-2.0f, 0.3f, 0.0f, 0.0f, -2.0f, 0.3f, 0.0f, 0.0f}));
+  test.AddOutput<MLFloat16>("output", dims, ToFloat16({-1.9f, 2.0f, -0.6953f, -5.1824f, -1.9f, 2.0f, -0.6953f, -5.1824f}));
+
+  RunTestOnCpuAndCuda(test);
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim0) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{4, 2, 2};
+  test.AddInput<float>("x", dims, {-1.0f, 2.0f, -10.264f, 8.6453f, 3.0f, -4.0f, 43.1561f, -0.641239f, -5.0f, 6.0f, -8.2164f, 0.11412f, 7.0f, 8.0f, 41.3156f, 3.0458f});
+  test.AddInput<float>("gamma", {1, 2, 2}, {-0.1f, 1.7f, -0.6953f, 5.1824f});
+  test.AddInput<float>("bias", {1, 2, 2}, {-2.0f, 0.3f, 0.0f, 0.0f});
+  test.AddOutput<float>("output", dims, {-1.9f, 2.0f, 0.6953f, 5.1824f, -2.1f, -1.4f, -0.6953f, -5.1824f, -1.9f, 2.0f, 0.6953f, 5.1824f, -1.9f, 2.0f, -0.6953f, -5.1824f});
+  test.SetOutputTolerance(0.0001f);
+
+  RunTestOnCpuAndCuda(test);
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim0_Fp16) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{4, 2, 2};
+  test.AddInput<MLFloat16>("x", dims, ToFloat16({-1.0f, 2.0f, -10.264f, 8.6453f, 3.0f, -4.0f, 43.1561f, -0.641239f, -5.0f, 6.0f, -8.2164f, 0.11412f, 7.0f, 8.0f, 41.3156f, 3.0458f}));
+  test.AddInput<MLFloat16>("gamma", {1, 2, 2}, ToFloat16({-0.1f, 1.7f, -0.6953f, 5.1824f}));
+  test.AddInput<MLFloat16>("bias", {1, 2, 2}, ToFloat16({-2.0f, 0.3f, 0.0f, 0.0f}));
+  test.AddOutput<MLFloat16>("output", dims, ToFloat16({-1.9f, 2.0f, 0.6953f, 5.1824f, -2.1f, -1.4f, -0.6953f, -5.1824f, -1.9f, 2.0f, 0.6953f, 5.1824f, -1.9f, 2.0f, -0.6953f, -5.1824f}));
+
+  RunTestOnCpuAndCuda(test);
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim1) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{2, 4, 2};
+  test.AddInput<float>("x", dims, {-1.0f, 2.0f, 3.0f, -4.0f, -5.0f, 6.0f, 7.0f, 8.0f, -10.264f, 8.6453f, 43.1561f, -0.641239f, -8.2164f, 0.11412f, 41.3156f, 3.0458f});
+  test.AddInput<float>("gamma", {2, 1, 2}, {-0.1f, 1.7f, -0.6953f, 5.1824f});
+  test.AddInput<float>("bias", {2, 1, 2}, {-2.0f, 0.3f, 0.0f, 0.0f});
+  test.AddOutput<float>("output", dims, {-1.9f, 2.0f, -2.1f, -1.4f, -1.9f, 2.0f, -1.9f, 2.0f, 0.6953f, 5.1824f, -0.6953f, -5.1824f, 0.6953f, 5.1824f, -0.6953f, -5.1824f});
+  test.SetOutputTolerance(0.0001f);
+
+  RunTestOnCpuAndCuda(test);
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim1_Fp16) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{2, 4, 2};
+  test.AddInput<MLFloat16>("x", dims, ToFloat16({-1.0f, 2.0f, 3.0f, -4.0f, -5.0f, 6.0f, 7.0f, 8.0f, -10.264f, 8.6453f, 43.1561f, -0.641239f, -8.2164f, 0.11412f, 41.3156f, 3.0458f}));
+  test.AddInput<MLFloat16>("gamma", {2, 1, 2}, ToFloat16({-0.1f, 1.7f, -0.6953f, 5.1824f}));
+  test.AddInput<MLFloat16>("bias", {2, 1, 2}, ToFloat16({-2.0f, 0.3f, 0.0f, 0.0f}));
+  test.AddOutput<MLFloat16>("output", dims, ToFloat16({-1.9f, 2.0f, -2.1f, -1.4f, -1.9f, 2.0f, -1.9f, 2.0f, 0.6953f, 5.1824f, -0.6953f, -5.1824f, 0.6953f, 5.1824f, -0.6953f, -5.1824f}));
+
+  RunTestOnCpuAndCuda(test);
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Fp16) {
+  auto run_test = [](bool is_initializer) {
+    OpTester test("LayerNormalization");
+    test.AddAttribute<float>("epsilon", 1e-05f);
+
+    std::vector<int64_t> dims{1, 3, 2};
+    test.AddInput<MLFloat16>("x", dims, ToFloat16({1.2416f, 0.946123f, 13.1685f, 0.36423f, 21.145f, 0.03941f}));
+    test.AddInput<MLFloat16>("gamma", {1, 1, 2}, ToFloat16({-0.6953f, 5.1824f}), is_initializer);
+    test.AddInput<MLFloat16>("bias", {1, 1, 2}, ToFloat16({0.6435f, -0.3964f}), is_initializer);
+    test.AddOutput<MLFloat16>("output", dims, ToFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
+
+    RunTestOnCpuAndCuda(test);
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput) {
   auto run_test = [](bool is_initializer) {
     OpTester test("LayerNormalization");
@@ -276,7 +404,7 @@ TYPED_TEST(LayerNormTest, LayerNorm17_opset) {
   // Execution provider entry invalid.
   // when other EPs support layer-norm fp16, this test should be updated to include them.
   if (std::is_same<TypeParam, MLFloat16>::value) {
-#if !defined(COREML_ENABLE_MLPROGRAM)
+#if !defined(USE_COREML)
     return;
 #endif
   }
@@ -300,6 +428,21 @@ TEST(LayerNormTest, LayerNorm17_double) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider});
 }
 
+// Test normalize size shall be larger than 1.
+TEST(LayerNormTest, LayerNorm_InvalidNormSize) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{1, 3, 1};
+  test.AddInput<float>("x", dims, {1.2416f, 0.946123f, 13.1685f});
+  test.AddInput<float>("gamma", {1}, {-0.6953f});
+  test.AddInput<float>("bias", {1}, {0.6435f});
+  test.AddAttribute<int64_t>("axis", 2);
+  test.AddOutput<float>("output", dims, {-0.0516f, -5.5776f, -0.0518f});
+
+  RunTestOnCpuAndCuda(test, kLayerNormInvalidSize);
+}
+
 TEST(LayerNormTest, LayerNorm_InvalidScaleBias) {
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
@@ -311,11 +454,10 @@ TEST(LayerNormTest, LayerNorm_InvalidScaleBias) {
   test.AddInput<float>("bias", {2}, {0.6435f, -0.3964f});
   test.AddAttribute<int64_t>("axis", 1);
   test.AddOutput<float>("output", dims, {-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f});
+
   // CPU and CUDA EPs have check for unexpected scale or bias sizes. Exclude other EPs with a LayerNormalization
   // implementation for which we don't control the check or error message.
-  test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Size of X.shape()[axis:] == 6. Size of scale and bias (if provided) must match this",
-           {kDnnlExecutionProvider, kDmlExecutionProvider, kTensorrtExecutionProvider});
+  RunTestOnCpuAndCuda(test, kLayerNormInputShapeMismatchError);
 }
 
 #if defined(USE_DNNL)

@@ -31,7 +31,7 @@ class TensorRTEngineWrapperCreator:
         # Enable TRT plugins
         trt.init_libnvinfer_plugins(logger, "")
         if len(self.plugins):
-            import ctypes
+            import ctypes  # noqa: PLC0415
 
             ctypes.CDLL(self.plugins)
 
@@ -114,6 +114,8 @@ class TensorRTEngineWrapperCreator:
             return TensorProto.FLOAT
         elif trt_data_type == trt.DataType.HALF:
             return TensorProto.FLOAT16
+        elif trt_data_type == trt.DataType.BF16:
+            return TensorProto.BFLOAT16
         elif trt_data_type == trt.DataType.INT8:
             return TensorProto.INT8
         elif trt_data_type == trt.DataType.INT32:
@@ -122,6 +124,8 @@ class TensorRTEngineWrapperCreator:
             return TensorProto.BOOL
         elif trt_data_type == trt.DataType.UINT8:
             return TensorProto.UINT8
+        elif trt_data_type == trt.DataType.INT64:
+            return TensorProto.INT64
         else:
             return TensorProto.UNDEFINED
 

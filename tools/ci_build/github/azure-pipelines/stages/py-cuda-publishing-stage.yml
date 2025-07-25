@@ -7,24 +7,27 @@ stages:
 - stage: Python_Publishing_GPU
   jobs:
   - job: Python_Publishing_GPU
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: linux
     steps:
     - checkout: none
     - download: build
-      displayName: 'Download Pipeline Artifact - onnxruntime_gpu'
-      artifact: 'onnxruntime_gpu'
+      displayName: 'Download Pipeline Artifact'
+      artifact: 'whl'
+
     - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.13'
       displayName: 'Use Python 3.x'
-    - script: 'pip install twine==3.4.2'
+    - script: 'pip install twine==6.0.1'
       displayName: 'Install Twine'
     - task: TwineAuthenticate@1
       displayName: 'Twine Authenticate '
       inputs:
         artifactFeed: PublicPackages/${{ parameters.artifact_feed }}
-    - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --config-file $(PYPIRC_PATH) --non-interactive --skip-existing *.whl'
-      workingDirectory: '$(Pipeline.Workspace)/build/onnxruntime_gpu'
+
+    - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --config-file $(PYPIRC_PATH) --non-interactive *.whl'
+      workingDirectory: '$(Pipeline.Workspace)/build/whl'
       displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
-      retryCountOnTaskFailure: 3
-      env:
-        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 

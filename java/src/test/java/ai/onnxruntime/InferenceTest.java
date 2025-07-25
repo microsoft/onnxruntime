@@ -737,7 +737,6 @@ public class InferenceTest {
     runProvider(OrtProvider.CORE_ML);
   }
 
-  @Disabled("DirectML Java API hasn't been supported yet")
   @Test
   @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
   public void testDirectML() throws OrtException {
@@ -748,6 +747,12 @@ public class InferenceTest {
   @EnabledIfSystemProperty(named = "USE_QNN", matches = "1")
   public void testQNN() throws OrtException {
     runProvider(OrtProvider.QNN);
+  }
+
+  @Test
+  @EnabledIfSystemProperty(named = "USE_WEBGPU", matches = "1")
+  public void testWEBGPU() throws OrtException {
+    runProvider(OrtProvider.WEBGPU);
   }
 
   private void runProvider(OrtProvider provider) throws OrtException {
@@ -1140,7 +1145,7 @@ public class InferenceTest {
       try (OrtSession session = env.createSession(onnxModelFileName)) {
         String testDataDirNamePattern;
         if (opset.equals("opset9") && modelName.equals("LSTM_Seq_lens_unpacked")) {
-          testDataDirNamePattern = "seq_lens"; // discrepency in data directory
+          testDataDirNamePattern = "seq_lens"; // discrepancy in data directory
         } else {
           testDataDirNamePattern = "test_data";
         }
@@ -2126,13 +2131,11 @@ public class InferenceTest {
           options.addXnnpack(Collections.emptyMap());
           break;
         case QNN:
-          {
-            String backendPath = OS.WINDOWS.isCurrentOs() ? "/QnnCpu.dll" : "/libQnnCpu.so";
-            options.addQnn(
-                Collections.singletonMap(
-                    "backend_path", TestHelpers.getResourcePath(backendPath).toString()));
-            break;
-          }
+          options.addQnn(Collections.singletonMap("backend_type", "cpu"));
+          break;
+        case WEBGPU:
+          options.addWebGPU(Collections.emptyMap());
+          break;
         case VITIS_AI:
         case RK_NPU:
         case MI_GRAPH_X:

@@ -1,4 +1,4 @@
-FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_ubi8_gcc12:20241120.3
+FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20250714.2
 
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
 

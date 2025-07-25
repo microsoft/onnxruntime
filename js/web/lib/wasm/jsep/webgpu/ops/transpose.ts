@@ -13,14 +13,18 @@ export interface TransposeAttributes extends AttributeWithCacheKey {
   readonly perm: number[];
 }
 
-const validateInputs = (inputs: readonly TensorView[]): void => {
+const validateInputs = (inputs: readonly TensorView[], perm: readonly number[]): void => {
   if (!inputs || inputs.length !== 1) {
     throw new Error('Transpose requires 1 input.');
+  }
+
+  if (perm.length !== 0 && perm.length !== inputs[0].dims.length) {
+    throw new Error(`perm size ${perm.length} does not match input rank ${inputs[0].dims.length}`);
   }
 };
 
 const getAdjustedPerm = (inputRank: number, perm: number[]): number[] =>
-  perm && perm.length !== inputRank ? [...new Array(inputRank).keys()].reverse() : perm;
+  perm.length !== 0 ? perm : [...new Array(inputRank).keys()].reverse();
 
 const getOutputShape = (inputShape: readonly number[], perm: number[]): readonly number[] =>
   ShapeUtil.sortBasedOnPerm(inputShape, getAdjustedPerm(inputShape.length, perm));
@@ -29,7 +33,9 @@ const permFunctionBody = (perm: number[], rank: number, input: IndicesHelper, ou
   let reverseFunc = `fn perm(i: ${output.type.indices}) -> ${input.type.indices} {
     var a: ${input.type.indices};`;
   for (let i = 0; i < rank; ++i) {
-    reverseFunc += input.indicesSet('a', perm[i], `i[${i}]`);
+    // input indices and output indices should always be larger or equal to 2,
+    // so indexer is always valid to be used on `a` and `i`.
+    reverseFunc += `a[${perm[i]}]=i[${i}];`;
   }
   return (reverseFunc += 'return a;}');
 };
@@ -71,7 +77,7 @@ export const createTransposeProgramInfo = (inputTensor: TensorView, permAttr: nu
   const outputShape = getOutputShape(inputTensor.dims, perm);
   let newInputShape = inputTensor.dims;
   let newOutputShape = outputShape;
-  const transposeAsReshape = isTransposeReshape(perm, inputTensor.dims);
+  const transposeAsReshape = inputRank < 2 || isTransposeReshape(perm, inputTensor.dims);
   let getShaderSource;
   if (transposeAsReshape) {
     getShaderSource = (shaderHelper: ShaderHelper) => {
@@ -189,7 +195,7 @@ export const createTransposeProgramInfo = (inputTensor: TensorView, permAttr: nu
 };
 
 export const transpose = (context: ComputeContext, attributes: TransposeAttributes): void => {
-  validateInputs(context.inputs);
+  validateInputs(context.inputs, attributes.perm);
   context.compute(createTransposeProgramInfo(context.inputs[0], attributes.perm));
 };
 

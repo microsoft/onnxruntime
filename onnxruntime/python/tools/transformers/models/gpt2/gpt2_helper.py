@@ -12,7 +12,6 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
 
 import numpy
 import onnx
@@ -139,17 +138,17 @@ class Gpt2Inputs:
     def __init__(self, input_ids, position_ids, attention_mask, past):
         self.input_ids: torch.LongTensor = input_ids
         self.position_ids: torch.LongTensor = position_ids
-        self.attention_mask: Union[torch.LongTensor, torch.FloatTensor, torch.HalfTensor] = attention_mask
-        self.past: Union[List[torch.FloatTensor], List[torch.HalfTensor]] = past
+        self.attention_mask: torch.LongTensor | torch.FloatTensor | torch.HalfTensor = attention_mask
+        self.past: list[torch.FloatTensor] | list[torch.HalfTensor] = past
 
-    def to_list(self) -> List:
+    def to_list(self) -> list:
         input_list = [v for v in [self.input_ids, self.position_ids, self.attention_mask] if v is not None]
         if self.past:
             input_list.extend(self.past)
 
         return input_list
 
-    def to_tuple(self) -> Tuple:
+    def to_tuple(self) -> tuple:
         return tuple(v for v in [self.input_ids, self.position_ids, self.attention_mask, self.past] if v is not None)
 
     def to_fp32(self):
@@ -241,7 +240,7 @@ class Gpt2Helper:
         sequence_length: int,
         config: GPT2Config,
         model_class: str = "GPT2LMHeadModel",
-    ) -> Dict[str, List[int]]:
+    ) -> dict[str, list[int]]:
         """Returns a dictionary with output name as key, and shape as value."""
         num_attention_heads = config.num_attention_heads
         hidden_size = config.hidden_size
@@ -541,7 +540,7 @@ class Gpt2Helper:
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: List[str] = [  # noqa: B006
+        op_block_list: list[str] = [  # noqa: B006
             "Add",
             "LayerNormalization",
             "SkipLayerNormalization",
@@ -698,8 +697,8 @@ class Gpt2Helper:
     def onnxruntime_inference_with_binded_io(
         ort_session,
         inputs: Gpt2Inputs,
-        output_buffers: Dict[str, torch.Tensor],
-        output_shapes: Dict[str, List[int]],
+        output_buffers: dict[str, torch.Tensor],
+        output_shapes: dict[str, list[int]],
         total_runs: int = 0,
         return_numpy: bool = True,
         include_copy_output_latency: bool = False,
@@ -889,11 +888,11 @@ class Gpt2Helper:
         result["nan_rate"] = (total_test_cases - len(max_abs_diff_list)) * 1.0 / total_test_cases
 
         logger.info(
-            f"Parity Test Cases={total_test_cases}; Passed={passed_test_cases}; Nan={total_test_cases-len(max_abs_diff_list)}; Top1_Matched={top1_matched_cases}"
+            f"Parity Test Cases={total_test_cases}; Passed={passed_test_cases}; Nan={total_test_cases - len(max_abs_diff_list)}; Top1_Matched={top1_matched_cases}"
         )
 
         if passed_test_cases > 0.95 * total_test_cases:
-            logger.info(f"Parity is good: passed rate={int(passed_test_cases*100/total_test_cases):.0f}%")
+            logger.info(f"Parity is good: passed rate={int(passed_test_cases * 100 / total_test_cases):.0f}%")
 
         return result
 

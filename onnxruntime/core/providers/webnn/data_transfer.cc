@@ -20,6 +20,11 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
     // We don't need to transfer the tensor to an MLTensor, so we don't need to copy the data.
     return Status::OK();
   }
+  bool trace = emscripten::val::module_property("webnnEnableTraceEvent").as<bool>();
+  emscripten::val console = emscripten::val::global("console");
+  if (trace) {
+    console.call<void>("time", emscripten::val("ORT::DataTransfer::CopyTensor"));
+  }
 
   size_t bytes = src.SizeInBytes();
   if (bytes > 0) {
@@ -29,11 +34,17 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
     const auto& dst_device = dst.Location().device;
 
     if (dst_device.Type() == OrtDevice::GPU) {
-      EM_ASM({ Module.jsepUploadTensor($0, HEAPU8.subarray($1, $1 + $2)); }, dst_data, reinterpret_cast<intptr_t>(src_data), bytes);
+      EM_ASM({ Module.webnnUploadTensor($0, HEAPU8.subarray($1, $1 + $2)); }, dst_data, reinterpret_cast<intptr_t>(src_data), bytes);
+      if (trace) {
+        console.call<void>("timeEnd", emscripten::val("ORT::DataTransfer::webnnUploadTensor"));
+      }
     } else {
-      auto jsepDownloadTensor = emscripten::val::module_property("jsepDownloadTensor");
+      auto webnnDownloadTensor = emscripten::val::module_property("webnnDownloadTensor");
       auto subarray = emscripten::typed_memory_view(bytes, static_cast<char*>(dst_data));
-      jsepDownloadTensor(reinterpret_cast<intptr_t>(src_data), subarray).await();
+      webnnDownloadTensor(reinterpret_cast<intptr_t>(src_data), subarray).await();
+      if (trace) {
+        console.call<void>("timeEnd", emscripten::val("ORT::DataTransfer::webnnDownloadTensor"));
+      }
     }
   }
 

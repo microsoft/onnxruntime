@@ -420,7 +420,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
                 )
 
                 self.assertEqual(wgt_zp.data_type, quant_type.tensor_type)
-                for index, (zp, scale) in enumerate(zip(wgt_zp.int32_data, wgt_sc.float_data)):
+                for index, (zp, scale) in enumerate(zip(wgt_zp.int32_data, wgt_sc.float_data, strict=False)):
                     wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(
                         wgt_zp.data_type,
                         symmetric=True,  # per-channel is always symmetric
@@ -1146,6 +1146,11 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             graph,
             opset_imports=[onnx.helper.make_opsetid("", 18)],
         )
+
+        # Remove potential leftover external data file.
+        if os.path.exists("add_ext_data.bin"):
+            os.remove("add_ext_data.bin")
+
         onnx.save_model(
             model,
             "add_ext_data.onnx",
@@ -1195,7 +1200,9 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         # get_qnn_qdq_config() should be able to validate the per-channel axis without having to load
         # the external weight data.
         qnn_config = get_qnn_qdq_config(
-            str(model_path), DummyDataReader([]), init_overrides=init_overrides  # Dummy data reader does nothing
+            str(model_path),
+            DummyDataReader([]),
+            init_overrides=init_overrides,  # Dummy data reader does nothing
         )
         self.assertEqual(set(qnn_config.op_types_to_quantize), {"Conv"})
         self.assertTrue(qnn_config.use_external_data_format)

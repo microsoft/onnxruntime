@@ -4,17 +4,22 @@ parameters:
 stages:
 - stage: Nodejs_Test_${{ parameters.StageSuffix }}
   dependsOn:
-  - Nodejs_Packaging
+  - Setup
   condition: succeeded()
   jobs:
   - job: Nodejs_Test_${{ parameters.StageSuffix }}
     workspace:
       clean: all
-    timeoutInMinutes:  120
-    pool: ${{ parameters.AgentPool }}
+    timeoutInMinutes: 120
+    pool:
+      name: ${{ parameters.AgentPool }}
+      os: 'linux'
 
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
     steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '22.x'
     - template: test.yml

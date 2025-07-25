@@ -11,6 +11,15 @@ const minimist = require('minimist');
 
 const { NODEJS_TEST_CASES, BROWSER_TEST_CASES, BUNDLER_TEST_CASES } = require('./run-data');
 
+// commandline arguments
+const parsedArgs = minimist(process.argv.slice(2));
+const BROWSER = parsedArgs.browser || 'Chrome_headless';
+// Preserve the existing test folder
+// When this flag is set, the test folder will not be cleared before running the tests.
+// NPM install will not be run again.
+// This is useful for debugging test failures as it makes it much faster to re-run.
+const PRESERVE = parsedArgs.preserve || parsedArgs.p;
+
 // copy whole folder to out-side of <ORT_ROOT>/js/ because we need to test in a folder that no `package.json` file
 // exists in its parent folder.
 // here we use <ORT_ROOT>/build/js/e2e/ for the test
@@ -20,9 +29,11 @@ const JS_ROOT_FOLDER = path.resolve(__dirname, '../../..');
 const TEST_E2E_RUN_FOLDER = path.resolve(JS_ROOT_FOLDER, '../build/js/e2e');
 const NPM_CACHE_FOLDER = path.resolve(TEST_E2E_RUN_FOLDER, '../npm_cache');
 const CHROME_USER_DATA_FOLDER = path.resolve(TEST_E2E_RUN_FOLDER, '../user_data');
-fs.emptyDirSync(TEST_E2E_RUN_FOLDER);
-fs.emptyDirSync(NPM_CACHE_FOLDER);
-fs.emptyDirSync(CHROME_USER_DATA_FOLDER);
+if (!PRESERVE) {
+  fs.emptyDirSync(TEST_E2E_RUN_FOLDER);
+  fs.emptyDirSync(NPM_CACHE_FOLDER);
+  fs.emptyDirSync(CHROME_USER_DATA_FOLDER);
+}
 fs.copySync(TEST_E2E_SRC_FOLDER, TEST_E2E_RUN_FOLDER);
 
 // always use a new folder as user-data-dir
@@ -33,9 +44,6 @@ function getNextUserDataDir() {
   fs.emptyDirSync(dir);
   return dir;
 }
-
-// commandline arguments
-const BROWSER = minimist(process.argv.slice(2)).browser || 'Chrome_default';
 
 async function main() {
   // find packed package
@@ -61,11 +69,25 @@ async function main() {
 
   // we start here:
 
-  // install dev dependencies
-  await runInShell(`npm install`);
+  if (!PRESERVE) {
+    // install dev dependencies
+    await runInShell(`npm install`);
 
-  // npm install with "--cache" to install packed packages with an empty cache folder
-  await runInShell(`npm install --cache "${NPM_CACHE_FOLDER}" ${PACKAGES_TO_INSTALL.map((i) => `"${i}"`).join(' ')}`);
+    // npm install with "--cache" to install packed packages with an empty cache folder
+    await runInShell(`npm install --cache "${NPM_CACHE_FOLDER}" ${PACKAGES_TO_INSTALL.map((i) => `"${i}"`).join(' ')}`);
+  }
+
+  // perform exports testing
+  {
+    const testExportsMain = require(path.join(TEST_E2E_RUN_FOLDER, './exports/main'));
+    await testExportsMain(PRESERVE, PACKAGES_TO_INSTALL);
+  }
+
+  // perform type (typescript related) testing
+  {
+    const testTypeMain = require(path.join(TEST_E2E_RUN_FOLDER, './type/main'));
+    await testTypeMain(PRESERVE, PACKAGES_TO_INSTALL);
+  }
 
   // prepare .wasm files for path override testing
   prepareWasmPathOverrideFiles();
@@ -146,6 +168,11 @@ function prepareWasmPathOverrideFiles() {
   fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'ort-wasm-simd-threaded.wasm'));
   fs.copyFileSync(`${sourceFile}.mjs`, path.join(folder, 'renamed.mjs'));
   fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'renamed.wasm'));
+  // TODO: add .asyncify/.jspi
+  fs.copyFileSync(`${sourceFile}.jsep.mjs`, path.join(folder, 'ort-wasm-simd-threaded.jsep.mjs'));
+  fs.copyFileSync(`${sourceFile}.jsep.wasm`, path.join(folder, 'ort-wasm-simd-threaded.jsep.wasm'));
+  fs.copyFileSync(`${sourceFile}.jsep.mjs`, path.join(folder, 'jsep-renamed.mjs'));
+  fs.copyFileSync(`${sourceFile}.jsep.wasm`, path.join(folder, 'jsep-renamed.wasm'));
 }
 
 async function testAllNodejsCases() {
