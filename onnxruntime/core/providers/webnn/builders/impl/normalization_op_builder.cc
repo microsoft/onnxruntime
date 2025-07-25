@@ -46,28 +46,14 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
 
-  std::vector<int64_t> scale_shape;
   const size_t scale_input_index = op_type == "SkipSimplifiedLayerNormalization" ? 2 : 1;
-  ORT_RETURN_IF_NOT(GetShape(*input_defs[scale_input_index], scale_shape, logger), "Cannot get scale shape");
-  const auto scale_size = scale_shape.size();
-  // Except LayerNormalization, other normalization ops' scale input should be 1-D.
-  if (op_type == "LayerNormalization") {
-    ORT_RETURN_IF_NOT(scale_size >= 1 && scale_size <= rank,
-                      "The scale size should be less than or equal to input size.");
-  } else {
-    ORT_RETURN_IF_NOT(scale_size == 1, "The scale size should be one.");
-  }
-
   emscripten::val scale = model_builder.GetOperand(input_defs[scale_input_index]->Name());
   options.set("scale", scale);
 
   const size_t bias_input_index = op_type == "SkipSimplifiedLayerNormalization" ? 3 : 2;
   emscripten::val bias = emscripten::val::undefined();
   if (TensorExists(input_defs, bias_input_index)) {
-    // Bias input exists, and bias's shape should be the same as scale's shape.
-    std::vector<int64_t> bias_shape;
-    ORT_RETURN_IF_NOT(GetShape(*input_defs[bias_input_index], bias_shape, logger), "Cannot get bias shape");
-    ORT_RETURN_IF_NOT(bias_shape == scale_shape, "The bias' shape should be equal to scale's shape.");
+    // Bias input exists.
     bias = model_builder.GetOperand(input_defs[bias_input_index]->Name());
     options.set("bias", bias);
   }
@@ -248,7 +234,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     output = model_builder.GetBuilder().call<emscripten::val>("instanceNormalization", input, options);
     // Reshape back to the original output shape for 3D input.
     if (input_shape.size() != 4) {
-      std::vector<uint32_t> output_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
+      std::vector<uint32_t> output_shape = GetNarrowedIntFromInt64<uint32_t>(input_shape);
       emscripten::val reshape_output_options = emscripten::val::object();
       reshape_output_options.set("label", node.Name() + "reshape_output");
       output = model_builder.GetBuilder().call<emscripten::val>("reshape",
@@ -276,12 +262,6 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const GraphViewer&,
 
   if (input_defs.size() < 2) {
     LOGS(logger, VERBOSE) << op_type << " requires at least two inputs.";
-    return false;
-  }
-
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger)) {
-    LOGS(logger, VERBOSE) << "Cannot get input shape.";
     return false;
   }
 
@@ -316,33 +296,28 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const No
                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const std::string_view op_type = node.OpType();
-  int32_t input0_type;  // input data type
-  int32_t input1_type;  // scale data type
-  int32_t input2_type;  // B data type
-  int32_t input3_type;  // mean data type
-  int32_t input4_type;  // var data type
-  bool has_input2 = TensorExists(input_defs, 2);
-  bool has_input3 = TensorExists(input_defs, 3);
-  bool has_input4 = TensorExists(input_defs, 4);
 
-  if (!GetType(*input_defs[0], input0_type, logger) ||
-      !GetType(*input_defs[1], input1_type, logger) ||
-      (has_input2 && !GetType(*input_defs[2], input2_type, logger)) ||
-      (has_input3 && !GetType(*input_defs[3], input3_type, logger)) ||
-      (has_input4 && !GetType(*input_defs[4], input4_type, logger))) {
+  std::vector<int32_t> input_types;
+  bool all_types_valid = true;
+
+  // Iterate through all inputs and check their existence and types
+  for (size_t i = 0; i <= input_defs.size(); ++i) {
+    if (TensorExists(input_defs, i)) {
+      int32_t input_type;
+      if (!GetType(*input_defs[i], input_type, logger)) {
+        all_types_valid = false;
+        break;
+      }
+      input_types.push_back(input_type);
+    }
+  }
+
+  // Return false if any input type is invalid
+  if (!all_types_valid) {
     return false;
   }
 
-  std::vector<int32_t> input_types = {input0_type, input1_type};
-  if (has_input2) {
-    input_types.push_back(input2_type);
-  }
-  if (has_input3) {
-    input_types.push_back(input3_type);
-  }
-  if (has_input4) {
-    input_types.push_back(input4_type);
-  }
+  // Check if all input data types are the same
   if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
@@ -355,13 +330,29 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const No
       const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
       const std::string_view webnn_input_name = GetWebNNOpFirstInputName(decomposed_op_type);
       if (!IsDataTypeSupportedByWebNNOp(
-              op_type, webnn_op_type, input0_type, wnn_limits, webnn_input_name, "input", logger)) {
+              op_type, webnn_op_type, input_types[0], wnn_limits, webnn_input_name, "input", logger)) {
         return false;
       }
     }
-    return true;
+
+    std::vector<int64_t> input_shape;
+    if (!GetShape(*input_defs[0], input_shape, logger)) {
+      return false;
+    }
+    // It's complicated to check all the decomposed ops' input rank support.
+    // Ensure at least the first input rank is supported by the decomposed ops (pow and div accept the first input).
+    return IsInputRankSupported(wnn_limits, "pow", "a", input_shape.size(), node.Name(), logger) &&
+           IsInputRankSupported(wnn_limits, "div", "a", input_shape.size(), node.Name(), logger);
   } else {
-    return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
+    bool is_data_type_supported = IsDataTypeSupportedByOp(op_type, input_types[0], wnn_limits, "input", "X", logger);
+    if (op_type == "InstanceNormalization") {
+      // Skip input rank check for InstanceNormalization, as we will reshape the input to 4D if necessary.
+      return is_data_type_supported;
+    }
+
+    // For other ops, check both data type and input rank compatibility.
+    bool is_input_rank_supported = IsInputRankSupportedByOp(node, wnn_limits, logger);
+    return is_input_rank_supported && is_data_type_supported;
   }
 }
 

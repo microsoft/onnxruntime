@@ -44,9 +44,9 @@ jobs:
       - template: ../../templates/common-variables.yml
       - name: docker_base_image
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
+          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250714.2
         ${{ if eq(parameters.CudaVersion, '12.2') }}:
-          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
+          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
       - name: linux_trt_version
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
           value: ${{ variables.linux_trt_version_cuda11 }}
@@ -84,15 +84,8 @@ jobs:
           ls $(Build.SourcesDirectory)
           mv "$(Build.SourcesDirectory)/linux_gpu_wheel_x86_64" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
           mv "$(Build.SourcesDirectory)/onnxruntime_gpu" "$(Build.BinariesDirectory)/whl"
-          cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
-          find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
         displayName: 'Prepare artifacts'
 
-      - task: BinSkim@4
-        displayName: 'Run BinSkim'
-        inputs:
-          AnalyzeTargetGlob: '$(Build.BinariesDirectory)/tmp/**/*.so'
-          continueOnError: true
 
       - template: ../../templates/get-docker-image-steps.yml
         parameters:

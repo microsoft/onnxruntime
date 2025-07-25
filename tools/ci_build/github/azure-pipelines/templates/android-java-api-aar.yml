@@ -53,7 +53,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.36.0.250627'
+  default: '2.36.1.250708'
 
 - name: is1ES
   displayName: Is 1ES pipeline
@@ -103,7 +103,7 @@ jobs:
   - template: use-android-ndk.yml
 
   - ${{ if contains(parameters.packageName, 'qnn') }}:
-    - template: jobs/download_linux_qnn_sdk.yml
+    - template: jobs/init_linux_qnn_sdk_x64.yml
       parameters:
         QnnSDKVersion: '${{parameters.QnnSDKVersion}}'
 

@@ -379,11 +379,6 @@ Status CheckCustomAttentionInputs(const T* position_ids,
   }
 
   if (head_sink != nullptr) {
-    if (parameters.use_smooth_softmax) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "head_sink should not be provided when use_smooth_softmax is true.");
-    }
-
     const auto& head_sink_shape = head_sink->Shape();
     if (head_sink_shape.NumDimensions() != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "head_sink must be a 1D tensor");
@@ -393,6 +388,37 @@ Status CheckCustomAttentionInputs(const T* position_ids,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "head_sink dimension 0 must be equal to the num heads, got ", head_sink_shape[0]);
     }
+  }
+
+  return Status::OK();
+}
+
+template <typename T = Tensor>
+Status CheckOutputs(const T* output_qk, int qk_output) {
+  const bool is_valid_qk_output = qk_output == static_cast<int>(QKOutputType::NO_OUTPUT) ||
+                                  qk_output == static_cast<int>(QKOutputType::BEFORE_SOFTMAX) ||
+                                  qk_output == static_cast<int>(QKOutputType::AFTER_SOFTMAX);
+  if (!is_valid_qk_output) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "qk_output attribute received unsupported value ", qk_output);
+  }
+
+  if (qk_output != static_cast<int>(QKOutputType::NO_OUTPUT) && output_qk == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "qk_output attribute was configured but output buffer was not provided");
+  }
+
+  return Status::OK();
+}
+
+inline Status CheckNoQKOutput(int num_outputs, int qk_output) {
+  if (num_outputs > 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "output_qk optional output is not supported");
+  }
+
+  if (qk_output != static_cast<int>(QKOutputType::NO_OUTPUT)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "qk_output attribute is not supported");
   }
 
   return Status::OK();

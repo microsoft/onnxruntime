@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.36.0.250627
+  default: 2.36.1.250708
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -33,6 +33,23 @@ jobs:
     name: ${{ parameters.MACHINE_POOL }}
     os: windows
     hostArchitecture: Arm64
+  templateContext:
+    sdl:
+      codeSignValidation:
+        enabled: true
+        # TODO: check why pyd file was not signed
+        break: false
+        additionalTargetsGlobPattern: f|**\*.pyd
+      psscriptanalyzer:
+        enabled: true
+      binskim:
+        enabled: true
+        scanOutputDirectoryOnly: true
+    outputs:
+    - output: pipelineArtifact
+      targetPath: $(Build.ArtifactStagingDirectory)
+      artifactName: onnxruntime_qnn_arm64_$(PythonVersion)
+
   strategy:
     matrix:
       Python311_arm64:
@@ -73,12 +90,6 @@ jobs:
     displayName: 'Pip Authenticate'
     inputs:
       artifactFeeds: 'Lotus'
-
-  - task: onebranch.pipeline.tsaoptions@1
-    displayName: 'OneBranch TSAOptions'
-    inputs:
-      tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
-      appendSourceBranchName: false
 
   - task: PythonScript@0
     inputs:
@@ -145,40 +156,3 @@ jobs:
       SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
       Contents: '*.whl'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-  - ${{ if eq(parameters.is1ES, true) }}:
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Artifact: ONNXRuntime python wheel'
-      inputs:
-        artifactName: onnxruntime_qnn_arm64_$(PythonVersion)
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-  - ${{ if eq(parameters.is1ES, false) }}:
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Artifact: ONNXRuntime python wheel'
-      input:
-        artifactName: onnxruntime_qnn_arm64_$(PythonVersion)
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-
-  - script: |
-      7z x *.whl
-    workingDirectory: '$(Build.ArtifactStagingDirectory)'
-    displayName: 'unzip the package'
-
-  - task: CredScan@3
-    displayName: 'Run CredScan'
-    inputs:
-      debugMode: false
-    continueOnError: true
-
-  - task: BinSkim@4
-    displayName: 'Run BinSkim'
-    inputs:
-      AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll'
-
-  - task: TSAUpload@2
-    displayName: 'TSA upload'
-    condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-    inputs:
-      GdnPublishTsaOnboard: false
-      GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-

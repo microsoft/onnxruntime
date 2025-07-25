@@ -18,11 +18,6 @@ class SoftmaxOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-
-  // Operator support related.
- private:
-  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
 Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -44,20 +39,6 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("softmax", input, axis, options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
-}
-
-// Operator support related.
-
-bool SoftmaxOpBuilder::IsOpSupportedImpl(const GraphViewer&,
-                                         const Node& node,
-                                         const WebnnDeviceType /* device_type */,
-                                         const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-
-  return true;
 }
 
 void CreateSoftmaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.36.0.250627
+  default: 2.36.1.250708
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -63,13 +63,7 @@ jobs:
     inputs:
       artifactFeeds: 'Lotus'
 
-  - task: onebranch.pipeline.tsaoptions@1
-    displayName: 'OneBranch TSAOptions'
-    inputs:
-      tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
-      appendSourceBranchName: fals
-
-  - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\python\requirements.txt
+  - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
 
 
   - template: set-nightly-build-option-variable-step.yml
@@ -129,38 +123,10 @@ jobs:
       Contents: '*.whl'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-  - ${{ if eq(parameters.is1ES, true) }}:
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Artifact: ONNXRuntime python wheel'
-      inputs:
-        artifactName: onnxruntime_qnn_arm64ec_$(PythonVersion)
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-  - ${{ if eq(parameters.is1ES, false) }}:
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Artifact: ONNXRuntime python wheel'
-      inputs:
-        artifactName: onnxruntime_qnn_arm64ec_$(PythonVersion)
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-  - script: |
-      7z x *.whl
-    workingDirectory: '$(Build.ArtifactStagingDirectory)'
-    displayName: 'unzip the package'
-
-  - task: CredScan@3
-    displayName: 'Run CredScan'
+  - task: 1ES.PublishPipelineArtifact@1
+    displayName: 'Publish Artifact: ONNXRuntime python wheel'
     inputs:
-      debugMode: false
-    continueOnError: true
+      artifactName: onnxruntime_qnn_arm64ec_$(PythonVersion)
+      targetPath: '$(Build.ArtifactStagingDirectory)'
 
-  - task: BinSkim@4
-    displayName: 'Run BinSkim'
-    inputs:
-      AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll'
-
-  - task: TSAUpload@2
-    displayName: 'TSA upload'
-    condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-    inputs:
-      GdnPublishTsaOnboard: false
-      GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
 
