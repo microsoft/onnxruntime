@@ -102,7 +102,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         Ort::ConstEpDevice& device = ep_devices[index];
         if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
           added_ep_devices[device.EpName()].push_back(device);
-          fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.\n", index, device.EpName());
+          fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.\n", static_cast<int>(index), device.EpName());
         }
       }
     }
@@ -113,14 +113,22 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
     std::string ep_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 
-    // A list of EP's associated options
-    std::vector<std::unordered_map<std::string, std::string>> ep_options;
-    ParseEpOptions(ep_option_string, ep_options);
+    // A list of EP's associated provider options
+    std::vector<std::unordered_map<std::string, std::string>> ep_options_list;
+    ParseEpOptions(ep_option_string, ep_options_list);
 
-    // EP -> associated EP options
+    // If user only provide the EPs' provider options for the first several EPs,
+    // add empty options for the rest EPs.
+    if (ep_options_list.size() < ep_list.size()) {
+      for (size_t i = ep_options_list.size(); i < ep_list.size(); ++i) {
+        ep_options_list.emplace_back();  // Adds a new empty map
+      }
+    }
+
+    // EP -> associated provider options
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> ep_options_map;
     for (size_t i = 0; i < ep_list.size(); ++i) {
-      ep_options_map.emplace(ep_list[i], ep_options[i]);
+      ep_options_map.emplace(ep_list[i], ep_options_list[i]);
     }
 
     for (auto& ep_and_devices : added_ep_devices) {
