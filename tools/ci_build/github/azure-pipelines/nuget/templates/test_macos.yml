@@ -49,5 +49,3 @@ stages:
           DisableContribOps: $(DisableContribOps)
           DisableMlOps: $(DisableMlOps)
           IsReleaseBuild: $(IsReleaseBuild)
-
-    - template: ../../templates/clean-agent-build-directory-step.yml
