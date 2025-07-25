@@ -158,7 +158,7 @@ jobs:
     name: Windows GPU TensorRT CI Pipeline Test Job
     needs: build
     timeout-minutes: 300
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2025-H100"]
     steps:
       - uses: actions/checkout@v4
         with:
