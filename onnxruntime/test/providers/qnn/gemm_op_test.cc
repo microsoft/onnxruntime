@@ -524,15 +524,18 @@ TEST_F(QnnGPUBackendTests, Gemm_AlphaBetaUnsupported) {
                      "gpu");
 }
 
-// Gemm with matrix bias ie 2D (M, N) is NOT supported. (Note: vector bias is supported ie when M == 1).
+// Gemm with matrix bias ie 2D (M, N) is supported.
+// When vector bias ie M == 1
 // QNN's FullyConnected operator only supports `outputVector = ( inputAsVector * weightsMatrix ) + biasesVector`
+// When 2D bias ie M != 1, N != 1)
+// QNN's Gemm will be split in to FullyConnected and ElementwiseAdd.
 TEST_F(QnnGPUBackendTests, Gemm_2DBiasUnsupported) {
-  // 2D matrix mul with 2D bias not supported.
+  // 2D matrix mul with 2D bias is supported when Gemm is not a QDQ node.
   RunGemmTest<float>({TestInputDef<float>({2, 3}, false, -10.0f, 10.0f),
                       TestInputDef<float>({3, 4}, false, -10.0f, 10.0f),
                       TestInputDef<float>({2, 4}, false, -1.0f, 1.0f)},
                      {},
-                     ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
+                     ExpectedEPNodeAssignment::All,  // Should not be assigned to QNN EP.
                      "gpu");
 }
 
