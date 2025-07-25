@@ -2514,6 +2514,35 @@ ORT_API_STATUS_IMPL(OrtApis::ValueInfo_GetInitializerValue, _In_ const OrtValueI
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::ValueInfo_GetExternalInitializerInfo, _In_ const OrtValueInfo* value_info,
+                    _Outptr_result_maybenull_ OrtExternalInitializerInfo** info) {
+  API_IMPL_BEGIN
+  std::unique_ptr<onnxruntime::ExternalDataInfo> ext_data_info = nullptr;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetExternalInitializerInfo(ext_data_info));
+
+  // Note: ext_data_info can be nullptr if this OrtValueInfo does not represent an external initializer.
+  // std::unique_ptr::release() handles both cases.
+  *info = static_cast<OrtExternalInitializerInfo*>(ext_data_info.release());
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseExternalInitializerInfo, _Frees_ptr_opt_ OrtExternalInitializerInfo* info) {
+  delete static_cast<onnxruntime::ExternalDataInfo*>(info);
+}
+
+ORT_API(const ORTCHAR_T*, OrtApis::ExternalInitializerInfo_GetFilePath, _In_ const OrtExternalInitializerInfo* info) {
+  return info->GetRelPath().c_str();
+}
+
+ORT_API(int64_t, OrtApis::ExternalInitializerInfo_GetFileOffset, _In_ const OrtExternalInitializerInfo* info) {
+  return static_cast<int64_t>(info->GetOffset());
+}
+
+ORT_API(size_t, OrtApis::ExternalInitializerInfo_GetByteSize, _In_ const OrtExternalInitializerInfo* info) {
+  return info->GetLength();
+}
+
 ORT_API_STATUS_IMPL(OrtApis::ValueInfo_IsRequiredGraphInput, _In_ const OrtValueInfo* value_info,
                     _Out_ bool* is_required_graph_input) {
   API_IMPL_BEGIN
@@ -3017,6 +3046,10 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetType, _In_ const OrtOpAttr* attribute, _O
     }
     case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS: {
       *type = OrtOpAttrType::ORT_OP_ATTR_STRINGS;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_GRAPH;
       break;
     }
     default:
@@ -3966,6 +3999,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ValueInfo_GetValueNumConsumers,
     &OrtApis::ValueInfo_GetValueConsumers,
     &OrtApis::ValueInfo_GetInitializerValue,
+    &OrtApis::ValueInfo_GetExternalInitializerInfo,
     &OrtApis::ValueInfo_IsRequiredGraphInput,
     &OrtApis::ValueInfo_IsOptionalGraphInput,
     &OrtApis::ValueInfo_IsGraphOutput,
@@ -4006,6 +4040,10 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetGraph,
     &OrtApis::Node_GetEpName,
+    &OrtApis::ReleaseExternalInitializerInfo,
+    &OrtApis::ExternalInitializerInfo_GetFilePath,
+    &OrtApis::ExternalInitializerInfo_GetFileOffset,
+    &OrtApis::ExternalInitializerInfo_GetByteSize,
 
     &OrtApis::GetRunConfigEntry,
 

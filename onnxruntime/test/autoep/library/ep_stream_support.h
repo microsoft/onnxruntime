@@ -4,15 +4,18 @@
 #pragma once
 
 #include "onnxruntime_c_api.h"
+#include "ep_factory.h"
 #include "example_plugin_ep_utils.h"
+
+class ExampleEpFactory;
 
 //
 // Class implementing Stream support for synchronization.
 //
 class StreamImpl : public OrtSyncStreamImpl, public ApiPtrs {
  public:
-  StreamImpl(ApiPtrs apis, const OrtEp* ep, const OrtKeyValuePairs* /*stream_options*/)
-      : ApiPtrs(apis), ep_{ep} {
+  StreamImpl(ExampleEpFactory& factory, const OrtEp* ep, const OrtKeyValuePairs* /*stream_options*/)
+      : ApiPtrs(factory), ep_{ep}, factory_{&factory} {
     ort_version_supported = ORT_API_VERSION;
     CreateNotification = CreateNotificationImpl;
     GetHandle = GetHandleImpl;
@@ -34,6 +37,7 @@ class StreamImpl : public OrtSyncStreamImpl, public ApiPtrs {
   // EP instance if the stream is being created internally for inferencing.
   // nullptr when the stream is created outside of an inference session for data copies.
   const OrtEp* ep_;
+  ExampleEpFactory* factory_{nullptr};
 };
 
 //
