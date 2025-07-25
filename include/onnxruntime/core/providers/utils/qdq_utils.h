@@ -237,8 +237,7 @@ static Ort::Status GetNodeOutputEdges(const OrtNode* node, EdgeSet& output_edges
     ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ValueInfo_GetValueConsumers(value_info, consumer_nodes.data(),
                                                                        consumer_indices.data(), num_consumers));
 
-    // Build up an edge with `node` as the source and consumer nodes as the destinations. Filter out
-    // consumer indices of `-1` (implicit).
+    // Build up an edge with consumer nodes as the destinations.
     for (size_t c_idx = 0; c_idx < num_consumers; c_idx++) {
       const OrtNode* dst_node = consumer_nodes[c_idx];
       int64_t dst_idx = consumer_indices[c_idx];
@@ -247,7 +246,7 @@ static Ort::Status GetNodeOutputEdges(const OrtNode* node, EdgeSet& output_edges
         continue;  // Skip implicit input to consumer node.
       }
 
-      EdgeEnd edge_end(*node, static_cast<int>(src_idx), static_cast<int>(dst_idx));
+      EdgeEnd edge_end(*dst_node, static_cast<int>(src_idx), static_cast<int>(dst_idx));
       output_edges.insert(edge_end);
     }
   }
