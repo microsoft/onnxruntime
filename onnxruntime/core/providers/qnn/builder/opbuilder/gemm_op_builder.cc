@@ -59,8 +59,8 @@ Status GemmOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support C with shape [N, M].");
     }
 
-    if (inputC_shape.size() == 2 && node_unit.Inputs()[2].quant_param.has_value()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support unquantized C with shape [N, M].");
+    if (inputC_shape.size() == 2 && node_unit.Inputs()[2].quant_param.has_value() && inputC_shape.at(0) != 1 ) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support quantized C with shape [1, M].");
     }
   }
 
