@@ -21,12 +21,13 @@ const tile_rows = 32;
 const tile_k = 32;
 const subtile_cols = 32;
 const subtile_rows = 16;
+alias compute_precision = output_value_t;
 
-var<workgroup> tile_A: array<f32, tile_rows * tile_k>;
+var<workgroup> tile_A: array<compute_precision, tile_rows * tile_k>;
 // 32 x 32 - RxC
-var<workgroup> tile_B: array<f32, tile_cols * tile_k>;
+var<workgroup> tile_B: array<compute_precision, tile_cols * tile_k>;
 // If B is transposed, 64 x 32 - RxC. Else 32 x 64 - RxC
-var<workgroup> scratch: array<array<array<f32, 64>, 4>, 4>;
+var<workgroup> scratch: array<array<array<compute_precision, 64>, 4>, 4>;
 // 64 * 4 * 4
 )";
 
@@ -108,14 +109,14 @@ fn storeOutput(offset: u32, row: u32, col: u32, src_slot: u32, row_limit: i32) {
   // Handle alpha scaling
   if (alpha_ != 1.0f) {
     shader.AdditionalImplementation() << R"(
-        value0 = value0 * uniforms.alpha;
-        value1 = value1 * uniforms.alpha;
-        value2 = value2 * uniforms.alpha;
-        value3 = value3 * uniforms.alpha;
-        value0_2 = value0_2 * uniforms.alpha;
-        value1_2 = value1_2 * uniforms.alpha;
-        value2_2 = value2_2 * uniforms.alpha;
-        value3_2 = value3_2 * uniforms.alpha;
+        value0 = value0 * output_value_t(uniforms.alpha);
+        value1 = value1 * output_value_t(uniforms.alpha);
+        value2 = value2 * output_value_t(uniforms.alpha);
+        value3 = value3 * output_value_t(uniforms.alpha);
+        value0_2 = value0_2 * output_value_t(uniforms.alpha);
+        value1_2 = value1_2 * output_value_t(uniforms.alpha);
+        value2_2 = value2_2 * output_value_t(uniforms.alpha);
+        value3_2 = value3_2 * output_value_t(uniforms.alpha);
 )";
   }
 
@@ -165,14 +166,14 @@ fn storeOutput(offset: u32, row: u32, col: u32, src_slot: u32, row_limit: i32) {
         let base_A = subtile_idy * subtile_rows;
         let base_B = subtile_idx * subtile_cols;
 
-        var matC00: subgroup_matrix_result<f32, 8, 8>;
-        var matC01: subgroup_matrix_result<f32, 8, 8>;
-        var matC02: subgroup_matrix_result<f32, 8, 8>;
-        var matC03: subgroup_matrix_result<f32, 8, 8>;
-        var matC10: subgroup_matrix_result<f32, 8, 8>;
-        var matC11: subgroup_matrix_result<f32, 8, 8>;
-        var matC12: subgroup_matrix_result<f32, 8, 8>;
-        var matC13: subgroup_matrix_result<f32, 8, 8>;
+        var matC00: subgroup_matrix_result<compute_precision, 8, 8>;
+        var matC01: subgroup_matrix_result<compute_precision, 8, 8>;
+        var matC02: subgroup_matrix_result<compute_precision, 8, 8>;
+        var matC03: subgroup_matrix_result<compute_precision, 8, 8>;
+        var matC10: subgroup_matrix_result<compute_precision, 8, 8>;
+        var matC11: subgroup_matrix_result<compute_precision, 8, 8>;
+        var matC12: subgroup_matrix_result<compute_precision, 8, 8>;
+        var matC13: subgroup_matrix_result<compute_precision, 8, 8>;
 
         for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
     )";
@@ -201,31 +202,31 @@ fn storeOutput(offset: u32, row: u32, col: u32, src_slot: u32, row_limit: i32) {
 
   if (transA_) {
     shader.MainFunctionBody() << R"(            let matrix_a_offset = step * 8 * 4 + subtile_idy * subtile_rows;
-            var matA0: subgroup_matrix_left<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>>(&tile_A, matrix_a_offset, true, tile_k);
-            var matA1: subgroup_matrix_left<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>>(&tile_A, matrix_a_offset + 8, true, tile_k);
+            var matA0: subgroup_matrix_left<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<compute_precision, 8, 8>>(&tile_A, matrix_a_offset, true, tile_k);
+            var matA1: subgroup_matrix_left<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<compute_precision, 8, 8>>(&tile_A, matrix_a_offset + 8, true, tile_k);
 )";
   } else {
     shader.MainFunctionBody() << R"(            let matrix_a_offset = subtile_idy * subtile_rows * tile_k + step;
-            var matA0: subgroup_matrix_left<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>>(&tile_A, matrix_a_offset, false, tile_k);
-            var matA1: subgroup_matrix_left<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>>(&tile_A, matrix_a_offset + 8 * tile_k, false, tile_k);
+            var matA0: subgroup_matrix_left<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<compute_precision, 8, 8>>(&tile_A, matrix_a_offset, false, tile_k);
+            var matA1: subgroup_matrix_left<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<compute_precision, 8, 8>>(&tile_A, matrix_a_offset + 8 * tile_k, false, tile_k);
 )";
   }
 
   if (transB_) {
     shader.MainFunctionBody() << R"(            var matrix_b_offset = subtile_idx * subtile_cols * tile_k + step;
 
-            var matB0: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset, true, tile_k);
-            var matB1: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 8 * tile_k, true, tile_k);
-            var matB2: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 16 * tile_k, true, tile_k);
-            var matB3: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 24 * tile_k, true, tile_k);
+            var matB0: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset, true, tile_k);
+            var matB1: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset + 8 * tile_k, true, tile_k);
+            var matB2: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset + 16 * tile_k, true, tile_k);
+            var matB3: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset + 24 * tile_k, true, tile_k);
 )";
   } else {
     shader.MainFunctionBody() << R"(            var matrix_b_offset = step * 8 * 8 + subtile_idx * tile_k;
 
-            var matB0: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset, false, tile_k * 2);
-            var matB1: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 8 , false, tile_k * 2);
-            var matB2: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 16 , false, tile_k * 2);
-            var matB3: subgroup_matrix_right<f32, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>>(&tile_B, matrix_b_offset + 24 , false, tile_k * 2);
+            var matB0: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset, false, tile_k * 2);
+            var matB1: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset + 8 , false, tile_k * 2);
+            var matB2: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset + 16 , false, tile_k * 2);
+            var matB3: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset + 24 , false, tile_k * 2);
 )";
   }
 
@@ -276,12 +277,55 @@ fn storeOutput(offset: u32, row: u32, col: u32, src_slot: u32, row_limit: i32) {
   return Status::OK();
 }
 
-bool CanApplySubgroupMatrixGemm(ComputeContext& context, uint32_t K, uint32_t N) {
-  bool has_subgroup_matrix = context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
-  if (has_subgroup_matrix && context.AdapterInfo().vendor == std::string_view{"apple"}) {
-    return K % 32 == 0 && N % 64 == 0;
+// std::tuple<architecture, backendType, M, N, K, subgroupMinSize, subgroupMaxSize>
+static const std::tuple<std::string_view, wgpu::BackendType, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>
+    metal_supported_subgroup_matrix_configs[] = {
+        {"metal-3", wgpu::BackendType::Metal, 8, 8, 8, 4, 64}};
+
+bool IsSubgroupMatrixConfigSupported(ComputeContext& context, int32_t number_type) {
+  const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
+  const wgpu::AdapterPropertiesSubgroupMatrixConfigs& subgroup_matrix_configs = context.SubgroupMatrixConfigs();
+
+  // Convert number type to wgpu::SubgroupMatrixComponentType
+  wgpu::SubgroupMatrixComponentType type;
+  switch (number_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      type = wgpu::SubgroupMatrixComponentType::F16;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      type = wgpu::SubgroupMatrixComponentType::F32;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      type = wgpu::SubgroupMatrixComponentType::I32;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+      type = wgpu::SubgroupMatrixComponentType::U32;
+      break;
+    default:
+      return false;  // Unsupported type for WebGPU
+  }
+
+  for (auto& supported_config : metal_supported_subgroup_matrix_configs) {
+    for (size_t i = 0; i < subgroup_matrix_configs.configCount; i++) {
+      auto& subgroup_matrix_config = subgroup_matrix_configs.configs[i];
+      auto&& config = std::make_tuple(adapter_info.architecture, adapter_info.backendType,
+                                      subgroup_matrix_config.M, subgroup_matrix_config.N, subgroup_matrix_config.K,
+                                      adapter_info.subgroupMinSize, adapter_info.subgroupMaxSize);
+      if (config == supported_config &&
+          type == subgroup_matrix_config.componentType &&
+          type == subgroup_matrix_config.resultComponentType) {
+        return true;
+      }
+    }
   }
   return false;
+}
+
+bool CanApplySubgroupMatrixGemm(ComputeContext& context, uint32_t K, uint32_t N, int32_t number_type) {
+  bool has_subgroup_matrix = context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
+  bool is_subgroup_matrix_config_supported = IsSubgroupMatrixConfigSupported(context, number_type);
+
+  return has_subgroup_matrix && is_subgroup_matrix_config_supported && K % 32 == 0 && N % 64 == 0;
 }
 
 Status ApplySubgroupMatrixGemm(const Tensor* a,

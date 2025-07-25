@@ -41,7 +41,9 @@ class SubgroupMatrixGemmProgram final : public Program<SubgroupMatrixGemmProgram
   bool need_handle_bias_;
 };
 
-bool CanApplySubgroupMatrixGemm(ComputeContext& context, uint32_t K, uint32_t N);
+bool IsSubgroupMatrixConfigSupported(ComputeContext& context, int32_t number_type);
+
+bool CanApplySubgroupMatrixGemm(ComputeContext& context, uint32_t K, uint32_t N, int32_t number_type);
 
 Status ApplySubgroupMatrixGemm(const Tensor* a,
                                const Tensor* b,
