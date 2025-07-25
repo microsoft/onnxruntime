@@ -75,6 +75,15 @@ stages:
       artifactName: 'onnxruntime-android-full-aar'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
+- stage: Final_AAR_Testing_Android_QNN
+  dependsOn: Android_Java_API_AAR_Packaging_QNN
+  jobs:
+  - template: templates/android-java-api-aar-test.yml
+    parameters:
+      artifactName: 'onnxruntime-android-qnn-aar'
+      packageName: 'onnxruntime-android-qnn'
+      QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
+
 - template: nuget/templates/test_win.yml
   parameters:
     AgentPool: 'onnxruntime-Win-CPU-2022'
