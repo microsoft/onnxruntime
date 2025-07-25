@@ -1478,7 +1478,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("T1", {"tensor(uint8)"}, "Constrain weights type to uint8 tensors.")
-        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)"}, "Constrain scales type to float tensors.")
+        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)"}, "Constrain scales type to float or float16 tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
@@ -2681,10 +2681,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 #define GEMM_FLOAT8_TYPES \
-  {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
+  { "tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
 #else
 #define GEMM_FLOAT8_TYPES \
-  {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
+  { "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
 #endif
 
 ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
