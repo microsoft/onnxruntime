@@ -27,10 +27,10 @@ stages:
 # Linux GPU only
 - ${{ if parameters.BuildPythonPackages }}:
   - template: py-linux-gpu-stage.yml
-      parameters:
-          arch: 'x86_64'
-          machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
-          extra_build_arg: ''
-          cmake_build_type: Release
-          cuda_version: 12.2
-          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
+    parameters:
+        arch: 'x86_64'
+        machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
+        extra_build_arg: ''
+        cmake_build_type: Release
+        cuda_version: 12.2
+        docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
