@@ -103,7 +103,7 @@ jobs:
   - template: use-android-ndk.yml
 
   - ${{ if contains(parameters.packageName, 'qnn') }}:
-    - template: jobs/download_linux_qnn_sdk.yml
+    - template: jobs/init_linux_qnn_sdk_x64.yml
       parameters:
         QnnSDKVersion: '${{parameters.QnnSDKVersion}}'
 

@@ -7,6 +7,7 @@
 
 #include "ep.h"
 #include "ep_allocator.h"
+#include "ep_arena.h"
 #include "ep_data_transfer.h"
 #include "ep_stream_support.h"
 
@@ -38,6 +39,8 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
                                              /*vendor*/ 0xBE57, /* device_id */ 0,
                                              OrtDeviceMemoryType_DEFAULT,
                                              /*alignment*/ 0,
+                                             // it is invalid to use OrtArenaAllocator as that is reserved for the
+                                             // internal ORT Arena implementation
                                              OrtAllocatorType::OrtDeviceAllocator,
                                              &mem_info);
   assert(status == nullptr);  // should never fail.
@@ -208,7 +211,7 @@ void ORT_API_CALL ExampleEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, Or
 /*static*/
 OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this_ptr,
                                                               const OrtMemoryInfo* memory_info,
-                                                              const OrtKeyValuePairs* /*allocator_options*/,
+                                                              const OrtKeyValuePairs* allocator_options,
                                                               OrtAllocator** allocator) noexcept {
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
   *allocator = nullptr;
@@ -226,14 +229,57 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   //       allocator on each call. To do this have an allocator instance as an OrtEpFactory class member and make
   //       ReleaseAllocatorImpl a no-op.
   //
-  auto cpu_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
-  *allocator = cpu_allocator.release();
+  // NOTE: EP should implement its own arena logic. ep_arena.cc/h is provided as a reference and we use it here for
+  //       device memory. `allocator_options` can be used for arena configuration and there is a helper in ep_arena.h
+  //       to convert from OrtKeyValuePairs to the same arena config settings that ORT uses.
+  //       You are of course free to have completely different settings.
+
+  // the read-only allocator is used for initializers. we don't need an arena for that.
+  if (is_readonly_allocator) {
+    auto read_only_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
+    *allocator = read_only_allocator.release();
+    return nullptr;
+  }
+
+  // create/use the shared arena based allocator
+  std::lock_guard<std::mutex> lock{factory.mutex_};
+
+  if (!factory.arena_allocator_) {
+    std::unique_ptr<OrtAllocator> ep_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
+
+    // initial shared allocator in environment does not have allocator options.
+    // if the user calls CreateSharedAllocator they can provide options to configure the arena differently.
+    factory.arena_allocator_using_default_settings_ = allocator_options == nullptr;
+    RETURN_IF_ERROR(ArenaAllocator::CreateOrtArenaAllocator(std::move(ep_allocator), allocator_options,
+                                                            factory.ort_api,
+                                                            factory.default_logger_, factory.arena_allocator_));
+
+  } else {
+    if (factory.arena_allocator_using_default_settings_ && allocator_options) {
+      // potential change in arena settings. up to EP author to determine how to handle this.
+      // we should not get here if replacing the shared allocator in the environment, as we free the existing one
+      // before replacing it. i.e. ReleaseAllocatorImpl should have been called, and arena_allocator_ should be null.
+    }
+  }
+
+  ++factory.num_arena_users_;
+  *allocator = factory.arena_allocator_.get();
+
   return nullptr;
 }
 
 /*static*/
-void ORT_API_CALL ExampleEpFactory::ReleaseAllocatorImpl(OrtEpFactory* /*this*/, OrtAllocator* allocator) noexcept {
-  delete static_cast<CustomAllocator*>(allocator);
+void ORT_API_CALL ExampleEpFactory::ReleaseAllocatorImpl(OrtEpFactory* this_ptr, OrtAllocator* allocator) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+  std::lock_guard<std::mutex> lock{factory.mutex_};
+
+  if (allocator == factory.arena_allocator_.get()) {
+    if (--factory.num_arena_users_ == 0) {
+      factory.arena_allocator_ = nullptr;
+    }
+  } else {
+    delete static_cast<CustomAllocator*>(allocator);
+  }
 }
 
 /*static*/
@@ -255,7 +301,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
                                                                         const OrtMemoryDevice* memory_device,
                                                                         const OrtKeyValuePairs* stream_options,
                                                                         OrtSyncStreamImpl** stream) noexcept {
-  auto& factory = *static_cast<const ExampleEpFactory*>(this_ptr);
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
   *stream = nullptr;
 
   // we only need stream synchronization on the device stream

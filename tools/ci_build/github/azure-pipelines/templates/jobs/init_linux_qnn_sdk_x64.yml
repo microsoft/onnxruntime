@@ -4,12 +4,8 @@ parameters:
     default: '2.36.1.250708'
 
 steps:
-  - script: |
-      azcopy cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v${{ parameters.QnnSDKVersion }} $(Agent.TempDirectory)
-    displayName: 'Download QNN SDK v${{ parameters.QnnSDKVersion }}'
-
   - bash: |
-      echo "##vso[task.setvariable variable=QnnSDKRootDir]$(Agent.TempDirectory)/qnn-v${{ parameters.QnnSDKVersion }}"
+      echo "##vso[task.setvariable variable=QnnSDKRootDir]/data/qnnsdk/qnn-v${{ parameters.QnnSDKVersion }}"
     displayName: Set QnnSDKRootDir
 
   - script: |
@@ -38,6 +34,8 @@ steps:
         exit 1
       fi
     displayName: "Sanity Check: QnnSDKVersion vs sdk.yaml version"
+
+
 
   - script: |
       ls -al $(QnnSDKRootDir)

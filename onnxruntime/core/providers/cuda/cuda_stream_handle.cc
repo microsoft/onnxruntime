@@ -38,7 +38,7 @@ struct CudaNotification : public synchronize::Notification {
 
   void Activate() override {
     // record event with cudaEventBlockingSync so we can support sync on host without busy wait.
-    CUDA_CALL_THROW(cudaEventRecord(event_, static_cast<cudaStream_t>(stream_.GetHandle())));
+    CUDA_CALL_THROW(cudaEventRecord(event_, static_cast<cudaStream_t>(GetStream().GetHandle())));
   }
 
   void wait_on_device(Stream& device_stream) {

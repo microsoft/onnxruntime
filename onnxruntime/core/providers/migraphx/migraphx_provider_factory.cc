@@ -199,6 +199,8 @@ struct MigraphXEpFactory : OrtEpFactory {
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
+    GetVendorId = GetVendorIdImpl;
+    CreateDataTransfer = CreateDataTransferImpl;
   }
 
   // Returns the name for the EP. Each unique factory configuration must have a unique name.
@@ -211,6 +213,17 @@ struct MigraphXEpFactory : OrtEpFactory {
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
     return factory->vendor.c_str();
+  }
+
+  static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    return factory->vendor_id;
+  }
+
+  static OrtStatus* CreateDataTransferImpl(OrtEpFactory* this_ptr,
+                                    OrtDataTransferImpl** data_transfer) noexcept {
+    *data_transfer = nullptr;  // return nullptr to indicate that this EP does not support data transfer.
+    return nullptr;
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
