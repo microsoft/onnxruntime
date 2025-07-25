@@ -366,11 +366,16 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
       for (const OrtOpAttr* ort_attr : ort_attrs) {
         OrtOpAttrType attr_type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
 
-        Ort::Status status{ort_api.OpAttr_GetType(ort_attr, &attr_type)};
-        if (!status.IsOK()) {
-          // This is an attribute type that ORT does not support via ReadOpAttr(), like subgraphs, so skip it.
+        Ort::Status attr_type_status{ort_api.OpAttr_GetType(ort_attr, &attr_type)};
+        if (attr_type == OrtOpAttrType::ORT_OP_ATTR_GRAPH) {
+          // ORT does not support reading subgraphs via ReadOpAttr(), so skip it.
           // Can use Node_GetSubgraphs to get subgraphs.
           continue;
+        }
+
+        if (!attr_type_status.IsOK()) {
+          // Unsupported attribute type.
+          return attr_type_status;
         }
 
         onnx::AttributeProto* attr_proto = node_proto->add_attribute();
