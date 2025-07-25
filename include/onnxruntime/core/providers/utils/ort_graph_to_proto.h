@@ -624,12 +624,12 @@ static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info,
   ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetValueInfoName(&ort_value_info, &value_name));
   value_info_proto.set_name(value_name);
 
-  // If we don't have any dims in the shape, do not set any type information. Otherwise, it looks
+  onnx::TypeProto_Tensor* type_proto_tensor = value_info_proto.mutable_type()->mutable_tensor_type();
+  type_proto_tensor->set_elem_type(ort_elem_type);
+
+  // If there are no dimensions in the shape, do not set a TensorShapeProto. Otherwise, it always looks
   // like a scalar value.
   if (!ort_dims.empty()) {
-    onnx::TypeProto_Tensor* type_proto_tensor = value_info_proto.mutable_type()->mutable_tensor_type();
-    type_proto_tensor->set_elem_type(ort_elem_type);
-
     onnx::TensorShapeProto* shape_proto = type_proto_tensor->mutable_shape();
 
     for (size_t dim_idx = 0; dim_idx < ort_dims.size(); dim_idx++) {
