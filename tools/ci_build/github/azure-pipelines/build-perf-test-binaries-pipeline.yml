@@ -26,7 +26,7 @@ stages:
 # build Python packages
 # Linux GPU only
 - ${{ if parameters.BuildPythonPackages }}:
-  - template: py-linux-gpu-stage.yml
+  - template: templates/py-linux-gpu-stage.yml
     parameters:
         arch: 'x86_64'
         machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
