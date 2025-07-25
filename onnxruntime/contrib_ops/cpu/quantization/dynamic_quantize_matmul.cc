@@ -10,6 +10,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
 
+#include <cassert>
 #include <algorithm>
 #include <vector>
 
@@ -169,43 +170,34 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
     // only pack Matrix B
     if (input_idx == GetBIdx()) {
       const Tensor* b_zp_constant_tensor{nullptr};
-      bool b_quantization_is_asymmetric = false;
+      bool b_quantization_might_be_asymmetric = false;
 
-      // zero point tensor could be provided as a direct input to the kernel and not as a constant so this
-      // test is not sufficient
       const OrtValue* b_zp;
       if (Info().TryGetConstantInput(IN_B_ZERO_POINT, &b_zp)) {
         b_zp_constant_tensor = &b_zp->Get<Tensor>();
       }
 
-      // MlasDynamicQgemm requires symmetric quantization for B, so no zero point should exist or it should
-      // have a zero value
-      if (b_zp_constant_tensor != nullptr) {  // Covers the case where tensor is not a constant
-        const auto& shape = b_zp_constant_tensor->Shape();
-        const auto* zp_data = static_cast<const uint8_t*>(b_zp_constant_tensor->DataRaw());
-        size_t zp_size = static_cast<size_t>(shape.Size());
-        // MlasDynamicQgemm requires symmetric quantization: zp must be scalar 0 or 1D all-zero
-        if ((shape.NumDimensions() == 0) && (zp_data[0] == 0)) {
-          b_quantization_is_asymmetric = false;
-        } else if (shape.NumDimensions() == 1) {
-          b_quantization_is_asymmetric = false;
-          for (size_t i = 0; i < zp_size; ++i) {
-            if (zp_data[i] != 0) {
-              b_quantization_is_asymmetric = true;
-              break;
-            }
-          }
-        } else {
-          // Unsupported higher-rank zp tensor
-          b_quantization_is_asymmetric = true;
-        }
+      // MlasDynamicQgemm requires symmetric quantization for B, so the B zero point value should either be all zeros
+      // or not provided.
+      if (b_zp_constant_tensor != nullptr) {
+        // B zero point is constant. Check if it is all zeros.
+        assert(b_zp_constant_tensor->IsDataType<uint8_t>() || b_zp_constant_tensor->IsDataType<int8_t>());
+        const auto* zp_bytes = static_cast<const std::byte*>(b_zp_constant_tensor->DataRaw());
+        const size_t zp_size_in_bytes = b_zp_constant_tensor->SizeInBytes();
+        b_quantization_might_be_asymmetric = std::any_of(zp_bytes, zp_bytes + zp_size_in_bytes,
+                                                         [](std::byte v) { return v != std::byte{0}; });
+      } else {
+        // B zero point input is not constant. If it exists, we can't assume symmetric quantization.
+        const auto input_defs = Info().node().InputDefs();
+        const bool b_zp_input_exists = input_defs.size() > IN_B_ZERO_POINT && input_defs[IN_B_ZERO_POINT]->Exists();
+        b_quantization_might_be_asymmetric = b_zp_input_exists;
       }
 
       // MlasDynamicQgemm requires scale data to be available at packing stage
       const Tensor* b_scale_tensor = nullptr;
       const bool b_scale_available = Info().TryGetConstantInput(IN_B_SCALE, &b_scale_tensor);
 
-      can_use_dynamic_quant_mlas_ = (!b_quantization_is_asymmetric && b_scale_available);
+      can_use_dynamic_quant_mlas_ = (!b_quantization_might_be_asymmetric && b_scale_available);
 
       // Only handle the common case of a 2D weight matrix. Additional matrices
       // could be handled by stacking the packed buffers.
