@@ -30,8 +30,9 @@ struct DummyAllocator : OrtAllocator {
     Alloc = AllocImpl;
     Free = FreeImpl;
     Info = InfoImpl;
-    Reserve = AllocImpl;  // no special reserve logic and most likely unnecessary unless you have your own arena
-    GetStats = nullptr;   // this can be set to nullptr if not implemented
+    Reserve = AllocImpl;      // no special reserve logic and most likely unnecessary unless you have your own arena
+    GetStats = nullptr;       // this can be set to nullptr if not implemented
+    AllocOnStream = nullptr;  // optional
   }
 
   static void* ORT_API_CALL AllocImpl(struct OrtAllocator* this_, size_t size) {
@@ -75,9 +76,11 @@ TEST(SharedAllocators, AddArenaToSharedAllocator) {
   auto initial_chunk_size = "25600";  // arena allocates in 256 byte amounts
   allocator_options.Add(OrtArenaCfg::ConfigKeyNames::InitialChunkSizeBytes, initial_chunk_size);
 
-  ASSERT_ORTSTATUS_OK(c_api.CreateSharedAllocator(*ort_env, example_ep.get(),
-                                                  OrtDeviceMemoryType_DEFAULT, OrtArenaAllocator, &allocator_options,
-                                                  &allocator));
+  ASSERT_ORTSTATUS_OK(c_api.CreateSharedAllocator(*ort_env, example_ep.get(), OrtDeviceMemoryType_DEFAULT,
+                                                  // allocator is internally added by EP.
+                                                  // OrtArenaAllocator can only be used for the internal BFCArena
+                                                  OrtDeviceAllocator,
+                                                  &allocator_options, &allocator));
 
   // first allocation should init the arena to the initial chunk size
   void* mem = allocator->Alloc(allocator, 16);

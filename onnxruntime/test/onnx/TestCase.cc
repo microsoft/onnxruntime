@@ -948,6 +948,16 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"slice_neg_steps",
        "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
       {"cast_BFLOAT16_to_FLOAT", "Unexpected input data type"},
+      {"cast_FLOAT16_to_INT4", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_FLOAT16_to_UINT4", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_FLOAT_to_INT4", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_FLOAT_to_UINT4", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_INT4_to_FLOAT", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_INT4_to_FLOAT16", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_INT4_to_INT8", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_UINT4_to_FLOAT", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_UINT4_to_FLOAT16", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_UINT4_to_UINT8", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
       {"loop13_seq", "Creation of empty sequences is currently not supported in the test runner"},
       {"sequence_insert_at_front", "shape mismatch, expect {4} got {3}"},
       {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
@@ -1101,6 +1111,30 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"qlinearmatmul_3D_int8_float16", "fp16 type ont supported by CPU EP", {}},
       {"qlinearmatmul_3D_int8_float32", "result diff", {}},
       {"qlinearmatmul_3D_uint8_float16", "fp16 type ont supported by CPU EP", {}}});
+
+  // Attention3D examples are wrong with onnx==1.18.0
+  broken_tests->insert({"attention_3d", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_attn_mask", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_causal", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_diff_heads_sizes", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_diff_heads_sizes_attn_mask", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_diff_heads_sizes_causal", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_diff_heads_sizes_scaled", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_diff_heads_sizes_softcap", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_diff_heads_with_past_and_present", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_gqa", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_gqa_attn_mask", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_gqa_causal", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_gqa_scaled", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_gqa_softcap", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_gqa_with_past_and_present", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_scaled", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_softcap", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_with_past_and_present", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_with_past_and_present_qk_matmul", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_with_past_and_present_qk_matmul_bias", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_with_past_and_present_qk_matmul_softcap", "wrong expected values (fixed in onnx==1.19.0)"});
+  broken_tests->insert({"attention_3d_with_past_and_present_qk_matmul_softmax", "wrong expected values (fixed in onnx==1.19.0)"});
 
   // Some EPs may fail to pass some specific testcases.
   // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.

@@ -44,6 +44,7 @@
 struct OrtGraph;
 
 namespace onnxruntime {
+class ExternalDataInfo;
 class Graph;
 struct IndexedSubGraph;
 class Model;
@@ -788,6 +789,27 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
    */
   bool GetOrtValueInitializer(const std::string& name, OrtValue& value, bool check_outer_scope = false) const;
 
+  /// <summary>
+  /// Loads an initializer with data in an external file into an OrtValue. Does NOT cache the OrtValue
+  /// in this Graph.
+  /// </summary>
+  /// <param name="name">The name of the initializer.</param>
+  /// <param name="value">Output parameter set to the loaded OrtValue. Set to an existing OrtValue if
+  /// it is already loaded.</param>
+  /// <returns>A status indicating an error or success. An error occurs if `name` is not an initializer
+  /// with external data.</returns>
+  Status LoadExternalInitializerAsOrtValue(const std::string& name, OrtValue& value) const;
+
+  /// <summary>
+  /// Gets information (external filepath, file offset, num bytes) for an initializer with data in an external file.
+  /// </summary>
+  /// <param name="name">The initializer's name.</param>
+  /// <param name="ext_info">Output parameter set to the location information of the external data.</param>
+  /// <param name="check_outer_scope">Set to true if parent graphs should be checked.</param>
+  /// <returns>True if `name` refers to an initializer with data in an external file. Otherwise, returns false</returns>
+  bool GetExternalInitializerInfo(const std::string& name, std::unique_ptr<ExternalDataInfo>& ext_info,
+                                  bool check_outer_scope = false) const;
+
   /** Gets all the initializer tensors in this Graph. */
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return name_to_initial_tensor_; }
 
@@ -1198,8 +1220,16 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-  /** Gets the GraphProto representation of this Graph. */
+  /** Gets the GraphProto representation of this Graph only. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
+
+  /// <summary>
+  // This function recurses subgraphs and examines each initializer
+  // If initializer data points to in-memory location, it is inlined
+  // otherwise, the initializer is copied as is including any
+  // external data references.
+  /// </summary>
+  /// <returns>GraphProto</returns>
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   /** Gets the GraphProto representation of this Graph
@@ -1560,6 +1590,25 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto,
                                        std::optional<std::string_view> new_name);
+
+  /// <summary>
+  /// This function is used by ToGraphProto() to ensure in-memory external data references
+  /// don't leak externally since they are non-standard.
+  ///
+  /// It handles two scenarios:
+  /// - When GraphSynchronizationNeeded() is false: GraphProto is simply copied
+  ///   from graph_proto_ by ToGraphProto(). This copy includes both main graph
+  ///   and subgraph initializers. This function examines all initializers
+  ///   and inlines any in-memory data references.
+  /// - When GraphSynchronizationNeeded() is true: ToGraphProto() generates a new GraphProto
+  ///   using ToGraphProtoInternal(). This doesn't transfer main graph initializers, which are
+  ///   copied and inlined by ToGraphProto() itself. This function processes only the subgraph initializers
+  ///   as needed.
+  /// </summary>
+  /// <param name="output_graph_proto">The GraphProto to process</param>
+  /// <param name="process_main">Whether to process the main graph initializers</param>
+  /// <returns>Status indicating success or failure</returns>  ///
+  Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto, bool process_main) const;
 
   /// <summary>
   /// This function traverses the graph bottom up and externalizes

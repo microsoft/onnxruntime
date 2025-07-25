@@ -1170,9 +1170,7 @@ static Status TestDenseToSparseConversion(size_t indices_start,
   return TestDenseAllZerosToSparseConversion<T>(inserter, checker);
 }
 
-// This test is very flaky on x86_64 in Qualcomm CI. Disable it here while we investigate
-// but do not upstream this change.
-TEST(SparseTensorConversionTests, DISABLED_TestDenseToSparseConversion) {
+TEST(SparseTensorConversionTests, TestDenseToSparseConversion) {
   // This one will test indices that are less than max int8 value
   // which should result in int8 indices
   ASSERT_STATUS_OK(TestDenseToSparseConversion<float>(

@@ -1789,9 +1789,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
   std::remove(qnn_ctx_binary_file_name1.c_str());
 }
 
-TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
-  // Disable the test on test-android job in Qualcomm CI here while we investigate
-  // but do not upstream this change.
+TEST_F(QnnHTPBackendTests, VTCMBackupBufferSharing) {
   ProviderOptions provider_options;
   provider_options["offload_graph_io_quantization"] = "0";
   provider_options["backend_type"] = "htp";
@@ -1894,9 +1892,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
 
 // For Ort sessions to generate the context binary, with session option ep.share_ep_contexts enabled
 // Ort sessions will share the QnnBackendManager, so that all graphs from all models compile into the same Qnn context
-TEST_F(QnnHTPBackendTests, DISABLED_QnnContextGenWeightSharingSessionAPI) {
-  // Disable the test on test-windows-arm64 job in Qualcomm CI here while we investigate
-  // but do not upstream this change.
+TEST_F(QnnHTPBackendTests, QnnContextGenWeightSharingSessionAPI) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";

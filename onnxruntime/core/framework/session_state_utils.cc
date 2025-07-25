@@ -37,8 +37,10 @@ namespace session_state_utils {
 
 // The following method will allocate memory directly using the device allocator.
 // It can handle arena-based allocators and non-arena based allocators.
-static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const TensorShape& tensor_shape, const DataTypeImpl* type,
-                                                                         const AllocatorPtr& alloc, /*out*/ void*& p_data) {
+static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const TensorShape& tensor_shape,
+                                                                         const DataTypeImpl* type,
+                                                                         const AllocatorPtr& alloc,
+                                                                         /*out*/ void*& p_data) {
   size_t mem_size = 0;
   ORT_RETURN_IF_ERROR(Tensor::CalculateTensorStorageSize(type, tensor_shape, /*alignment*/ 0, mem_size));
 
@@ -76,13 +78,14 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
  *         data loading, allocation, or copying operation fails.
  */
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
-                                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* memory_buffer,
+                                             const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                             const MemBuffer* memory_buffer,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
                                              OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
                                              const ExternalDataLoaderManager& external_data_loader_mgr,
                                              PrepackedWeightsForGraph& prepacked_for_graph,
                                              bool use_device_allocator_for_initializers = false) {
-  if (bool(alloc) == (memory_buffer != nullptr)) {
+  if (alloc != nullptr && memory_buffer != nullptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "DeserializeTensorProto() takes either pre-allocated buffer or an allocator!");
   }
@@ -138,7 +141,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
   } else {
     // for internal initializer, always allocate memory on device - tensor
-    ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+    ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape,
+                                       use_device_allocator_for_initializers, alloc));
 
     if (device == default_cpu_device) {
       // deserialize directly to CPU tensor
@@ -370,6 +374,9 @@ common::Status SaveInitializedTensors(
       AllocatorPtr alloc;
       // TODO: if the tensor need be copied, does it have enough room?
       ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, memory_buffer, alloc));
+
+      // ??? Should we ignore this session option if the EP is explictly providing the read only allocator?
+      // bool have_readonly_initializer_allocator = alloc->Info().alloc_type == OrtReadOnlyAllocator;
       const bool use_device_allocator_for_initializers =
           session_options.config_options.GetConfigOrDefault(
               kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
@@ -398,9 +405,10 @@ common::Status SaveInitializedTensors(
         // We need to deserialize the tensor proto into an OrtValue
         // using the preallocated buffer or allocator.
 
-        Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (memory_buffer.has_value()) ? &*memory_buffer : nullptr, alloc,
-                                           default_cpu_alloc, ort_value, data_transfer_mgr, external_data_loader_mgr,
-                                           prepacked_for_graph,
+        Status st = DeserializeTensorProto(env, graph_loc, tensor_proto,
+                                           (memory_buffer.has_value()) ? &*memory_buffer : nullptr,
+                                           alloc, default_cpu_alloc, ort_value, data_transfer_mgr,
+                                           external_data_loader_mgr, prepacked_for_graph,
                                            use_device_allocator_for_initializers);
         if (!st.IsOK()) {
           std::ostringstream oss;

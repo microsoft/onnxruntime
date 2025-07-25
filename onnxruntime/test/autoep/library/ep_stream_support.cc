@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "ep_stream_support.h"
-
+#include "ep_factory.h"
 //
 // StreamImpl implementation
 //
@@ -27,7 +27,13 @@ OrtStatus* ORT_API_CALL StreamImpl::FlushImpl(_In_ OrtSyncStreamImpl* /*this_ptr
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL StreamImpl::OnSessionRunEndImpl(_In_ OrtSyncStreamImpl* /*this_ptr*/) noexcept {
+OrtStatus* ORT_API_CALL StreamImpl::OnSessionRunEndImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
+  auto& impl = *static_cast<StreamImpl*>(this_ptr);
+  auto* arena = impl.factory_->GetArenaAllocator();
+  if (arena) {
+    arena->ResetChunksUsingStream(this_ptr);
+  }
+
   return nullptr;
 }
 

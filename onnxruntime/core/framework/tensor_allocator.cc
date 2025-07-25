@@ -5,9 +5,12 @@
 #include "simple_tensor_allocator.h"
 
 namespace onnxruntime {
-
 AllocatorPtr ITensorAllocator::GetAllocator(const OrtDevice& device) {
   return session_state_.GetAllocator(device);
+}
+
+AllocatorPtr ITensorAllocator::GetInitializerAllocator(const OrtDevice& device) {
+  return session_state_.GetInitializerAllocator(device);
 }
 
 std::unique_ptr<ITensorAllocator> ITensorAllocator::Create(bool enable_mem_pattern,

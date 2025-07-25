@@ -959,7 +959,7 @@ TEST_F(QnnHTPBackendTests, QnnIr_OutputFiles) {
 }
 
 // Test that QNN Saver generates the expected files for a model meant to run on the QNN HTP backend.
-TEST_F(QnnHTPBackendTests, DISABLED_QnnSaver_OutputFiles) {
+TEST_F(QnnHTPBackendTests, QnnSaver_OutputFiles) {
   const std::filesystem::path qnn_saver_output_dir = "saver_output";
 
   // Remove pre-existing QNN Saver output files. Note that fs::remove_all() can handle non-existing paths.
@@ -1441,7 +1441,7 @@ TEST_F(QnnIRBackendTests, QnnIr_OutputFiles) {
 }
 
 // Test that QNN Saver generates the expected files for a model meant to run on any QNN backend.
-TEST(QnnSaverBackendTests, DISABLED_QnnSaver_OutputFiles) {
+TEST(QnnSaverBackendTests, QnnSaver_OutputFiles) {
   const std::filesystem::path qnn_saver_output_dir = "saver_output";
 
   // Remove pre-existing QNN Saver output files. Note that fs::remove_all() can handle non-existing paths.

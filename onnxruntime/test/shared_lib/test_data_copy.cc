@@ -113,9 +113,8 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
 
     for (size_t idx = 0; idx < num_inputs; ++idx) {
       const OrtMemoryInfo* mem_info = input_locations[idx];
-      OrtDeviceMemoryType mem_type;
+      OrtDeviceMemoryType mem_type = api->MemoryInfoGetDeviceMemType(mem_info);
       OrtMemoryInfoDeviceType device_type;
-      ASSERT_ORTSTATUS_OK(api->MemoryInfoGetDeviceMemType(mem_info, &mem_type));
       api->MemoryInfoGetDeviceType(mem_info, &device_type);
 
       if (device_type == OrtMemoryInfoDeviceType_GPU && mem_type == OrtDeviceMemoryType_DEFAULT) {
