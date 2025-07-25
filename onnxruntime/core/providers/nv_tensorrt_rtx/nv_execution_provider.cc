@@ -668,7 +668,7 @@ Status BindContextInput(Ort::KernelContext& ctx,
         if (!trt_context->setTensorAddress(input_name, &shape_tensor_values[input_name][0])) {
           std::string error_input_name = input_name;
           std::string error_msg =
-              "Nv EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" +
+              "NvTensorRTRTX EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" +
               error_input_name + "'";
           ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, error_msg));
         }
@@ -691,7 +691,7 @@ Status BindContextInput(Ort::KernelContext& ctx,
         if (!trt_context->setTensorAddress(input_name, &shape_tensor_values_int64[input_name][0])) {
           std::string error_input_name = input_name;
           std::string error_msg =
-              "Nv EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" +
+              "NvTensorRTRTX EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" +
               error_input_name + "'";
           ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, error_msg));
         }
@@ -713,7 +713,7 @@ Status BindContextInput(Ort::KernelContext& ctx,
     if (!trt_context->setInputShape(input_name, dims)) {
       std::string error_input_name = input_name;
       ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                         "Nv EP failed to call nvinfer1::IExecutionContext::setInputShape() for input '" + error_input_name + "'"));
+                                         "NvTensorRTRTX EP failed to call nvinfer1::IExecutionContext::setInputShape() for input '" + error_input_name + "'"));
     }
 
     // Bind "execution tensor" input buffer
@@ -734,7 +734,7 @@ Status BindContextInput(Ort::KernelContext& ctx,
       CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "Nv EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
+                               "NvTensorRTRTX EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
       }
     }
     trt_context->setTensorAddress(input_name, data);
@@ -821,7 +821,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
       CASE_GET_CAST_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "Nv EP output tensor data type: " + std::to_string(output_type) + " not supported.");
+                               "NvTensorRTRTX EP output tensor data type: " + std::to_string(output_type) + " not supported.");
       }
     }
     trt_context->setTensorAddress(output_name, buffers[output_name]);
@@ -885,7 +885,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
     CASE_CAST_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, float, double)
     default: {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "Nv EP output tensor data type: " + std::to_string(output_type) + " not supported.");
+                             "NvTensorRTRTX EP output tensor data type: " + std::to_string(output_type) + " not supported.");
     }
   }
   return Status::OK();
@@ -1069,6 +1069,15 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
                                        "When providing either 'trt_onnx_bytestream_size' or "
                                        "'trt_onnx_bytestream' both have to be provided"));
   }
+  use_external_data_initializer_ = info.use_external_data_initializer;
+  onnx_external_data_bytestream_ = info.external_data_bytestream;
+  onnx_external_data_bytestream_size_ = info.external_data_bytestream_size;
+  if ((onnx_external_data_bytestream_ != nullptr && onnx_external_data_bytestream_size_ == 0) ||
+      (onnx_external_data_bytestream_ == nullptr && onnx_external_data_bytestream_size_ != 0)) {
+    ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                        "When providing either 'onnx_external_data_bytestream_size' or "
+                                        "'onnx_external_data_bytestream' both have to be provided"));
+  }
   detailed_build_log_ = info.detailed_build_log;
   dump_ep_context_model_ = info.dump_ep_context_model;
   ep_context_file_path_ = info.ep_context_file_path;
@@ -1183,13 +1192,13 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     LIBTYPE handle = OPENLIB(engine_decryption_lib_path_.c_str());
     if (handle == nullptr) {
       ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                         "Nv EP could not open shared library from " + engine_decryption_lib_path_));
+                                         "NvTensorRTRTX EP could not open shared library from " + engine_decryption_lib_path_));
     }
     engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
     engine_encryption_ = (int (*)(const char*, char*, size_t))LIBFUNC(handle, "encrypt");
     if (engine_decryption_ == nullptr) {
       ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                         "Nv EP could not find decryption function in shared library from " + engine_decryption_lib_path_));
+                                         "NvTensorRTRTX EP could not find decryption function in shared library from " + engine_decryption_lib_path_));
     }
   }
 
@@ -1234,6 +1243,8 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
                         << ", nv_ep_context_embed_mode: " << ep_context_embed_mode_
                         << ", nv_cache_prefix: " << cache_prefix_
                         << ", nv_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_
+                        << ", nv_onnx_external_bytestream_size_: " << onnx_external_data_bytestream_size_
+                        << ", nv_use_external_data_initializer_: " << use_external_data_initializer_
                         << ", nv_op_types_to_exclude: " << op_types_to_exclude_;
 }
 
@@ -1701,7 +1712,28 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
         // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
         // the model proto that has different node ordering compared to original onnx model.
-        graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/);
+
+        // save user provided external data in memory instead of writing to ModelProto
+        // needed for models > 2GB
+        std::vector<TensorrtUserWeights> userWeights;
+
+        if(use_external_data_initializer_) {
+          auto allInitializers = graph_viewer->GetAllInitializedTensors();
+          for (auto &entry : allInitializers) {
+            auto* tp = entry.second;
+            if (tp->has_raw_data()) {
+              userWeights.emplace_back(tp->name(), tp->raw_data());
+            } else if (utils::HasExternalDataInMemory(*tp)) {
+              std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+              ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
+              userWeights.emplace_back(full_init->name(), full_init->raw_data());
+            }
+          }
+        }
+
+        graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, !use_external_data_initializer_ /*include raw initializers*/);
+
+
         model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
         std::string string_buf;
@@ -1720,11 +1752,22 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         auto network_flags = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
         auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
 
+        bool is_model_supported = false;
+
         // limit the scope of trt_parser so that model gets unloaded from memory asap
         {
           auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
 
-          auto is_model_supported = trt_parser->supportsModelV2(string_buf.data(), string_buf.size(), model_path_);
+          if (use_external_data_initializer_) {
+            trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
+            for (auto const& userWeight : userWeights){
+              trt_parser->loadInitializer(userWeight.Name(), userWeight.Data(), userWeight.Size());
+            }
+            is_model_supported = trt_parser->parseModelProto();
+          }
+          else {
+            is_model_supported = trt_parser->supportsModelV2(string_buf.data(), string_buf.size(), model_path_);
+          }
 
           // Note: Calling getNbSubgraphs or getSubgraphNodes before calling supportsModelV2 results in undefined behavior.
           auto num_subgraphs = trt_parser->getNbSubgraphs();
@@ -2135,10 +2178,15 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
                                                 bool path_check,
                                                 const void* onnx_model_bytestream,
                                                 size_t onnx_model_bytestream_size,
+                                                const void* onnx_external_data_bytestream,
+                                                size_t onnx_external_data_bytestream_size,
                                                 nvinfer1::ICudaEngine* trt_engine,
                                                 bool serialize_refitted_engine,
                                                 bool detailed_build_log) {
+
   bool refit_from_file = onnx_model_bytestream == nullptr && onnx_model_bytestream_size == 0;
+  bool refit_with_external_data = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
+  bool refit_complete = false;
   std::filesystem::path onnx_model_path{onnx_model_folder_path};
   if (refit_from_file) {
     if (!onnx_model_filename.empty()) {
@@ -2175,24 +2223,138 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
   auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(*trt_engine, trt_logger));
   auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
       nvonnxparser::createParserRefitter(*refitter, trt_logger));
-  if (refit_from_file) {
-    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refitting from file on disk: " << onnx_model_path.string();
-    if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
+
+  // New refit APIs
+  if (refit_with_external_data) {
+    // A valid model bytestream must be passed.
+    if (refit_from_file) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "Nv EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
+                             "NvTensorRTRTX EP's refit with external data must be called with a valid ONNX model bytestream");
     }
-  } else {
-    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refitting from byte array";
-    if (!parser_refitter->refitFromBytes(onnx_model_bytestream, onnx_model_bytestream_size)) {
+
+    if (!parser_refitter->loadModelProto(onnx_model_bytestream, onnx_model_bytestream_size, nullptr)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "Nv EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in the provided bytestraem");
+                             "NvTensorRTRTX EP's IParserRefitter could not load model from provided onnx_model_bytestream");
+    }
+
+    // Extract weight information from the Refitter.
+    int required_weights = refitter->getAllWeights(0, nullptr);
+    std::vector<char const*> refit_names(required_weights);
+    refitter->getAllWeights(required_weights, refit_names.data());
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refitter requires " << required_weights << " weights";
+
+    // Vectors to keep track of data pointers.
+    std::vector<std::string> names;
+    names.reserve(required_weights);
+    std::vector<const char*> bytes;
+    bytes.reserve(required_weights);
+    std::vector<int64_t> sizes;
+    sizes.reserve(required_weights);
+
+    auto onnx_model = ModelProto::Create();
+    TensorProtos* allInitializers_byte_stream;
+
+    // Reconstruct onnx model view.
+    const auto onnx_model_view = std::string((const char*)onnx_model_bytestream,
+                                             onnx_model_bytestream_size);
+    if (!onnx_model->ParseFromString(onnx_model_view)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "The provided ONNX bytestream to refit could not be parsed.");
+    }
+
+    // Extract graph and initializer information.
+    auto const& graph = onnx_model->mutable_graph();
+    allInitializers_byte_stream = graph->mutable_initializer();
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Initializers that were found " << allInitializers_byte_stream->size();
+
+    // Loop through all initializers
+    int missing_initializer_data = 0;
+    for (int initializer_idx = 0; initializer_idx < allInitializers_byte_stream->size(); ++initializer_idx) {
+      auto& proto = allInitializers_byte_stream->at(initializer_idx);
+      auto& proto_name = proto.name();
+      bool weight_is_refittable = std::find(refit_names.begin(), refit_names.end(), proto_name) != refit_names.end();
+      if (weight_is_refittable) {
+        if (proto.has_data_location()) {
+          if (proto.data_location() == TensorProto_DataLocation_EXTERNAL) {
+            // Default values for reading into external_data blob.
+            int64_t offset = 0;
+            size_t length = 0;
+            auto external_data = proto.mutable_external_data();
+            const std::string kOffset = "offset", kLength = "length";
+            for (int entry_idx = 0; entry_idx < external_data->size(); ++entry_idx) {
+              auto current_key = external_data->at(entry_idx).mutable_key();
+              auto current_value = external_data->at(entry_idx).mutable_value();
+              if (*current_key == kOffset && !current_value->empty()) {
+                offset = std::stoll(*current_value);
+              } else if (*current_key == kLength && !current_value->empty()) {
+                length = std::stoul(*current_value);
+              }
+            }
+            names.push_back(proto.name());
+            bytes.push_back(static_cast<const char*>(onnx_external_data_bytestream) + offset);
+            sizes.push_back(length);
+          } else {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "[NvTensorRTRTX EP] Proto: " + proto_name + " expected to have external datalocation, but default datalocation was provided instead.");
+          }
+        } else if (proto.has_raw_data()) {
+          auto& raw_data = proto.raw_data();
+          names.push_back(proto.name());
+          bytes.push_back(raw_data.c_str());
+          sizes.push_back(raw_data.size());
+        } else {
+          LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Proto: " + proto_name + " has no raw nor external data.";
+          ++missing_initializer_data;
+        }
+      } else {
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Initializer with name: " << proto_name << " was not marked as refittable";
+      }
+    }
+    if (missing_initializer_data) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "[NvTensorRTRTX EP] RefitEngine is missing " + std::to_string(missing_initializer_data) + " initializers.");
+    }
+
+    // Load extracted initializers into the parser
+    if (!names.empty()) {
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Number of initializers submitted to refitter " << names.size();
+      for (size_t i = 0; i < names.size(); i++) {
+        bool refloadInit = parser_refitter->loadInitializer(names[i].c_str(), bytes[i], sizes[i]);
+        if (!refloadInit) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "NvTensorRTRTX EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in the provided bytestream");
+        }
+      }
+    }
+    // Perform refit.
+    if (!parser_refitter->refitModelProto()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "NvTensorRTRTX EP's IParserRefitter refitModelProto() failed with the provided external data bytestream.");
+    }
+    refit_complete = true;
+  }
+
+  // If new refit flow was not completed, then fallback to refit_from_file.
+  if (!refit_complete) {
+    if (refit_from_file) {
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refitting from file on disk: " << onnx_model_path.string();
+      if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "NvTensorRTRTX EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
+      }
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refitting from byte array";
+      if (!parser_refitter->refitFromBytes(onnx_model_bytestream, onnx_model_bytestream_size)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "NvTensorRTRTX EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in the provided bytestream");
+      }
     }
   }
   if (refitter->refitCudaEngine()) {
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Successfully refitted the weight-stripped engine.";
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                           "Nv EP's IRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
+                           "NvTensorRTRTX EP's IRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
   }
 
   // serialize the refitted engine to disk
@@ -2205,6 +2367,7 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
   }
   return Status::OK();
 }
+
 
 common::Status NvExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                             std::vector<NodeComputeInfo>& node_compute_funcs) {
@@ -2253,11 +2416,28 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   auto model = graph_body_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
 
+  // exclude weights if external
+  auto userWeights = std::make_unique<std::vector<TensorrtUserWeights>>();
+
+  if (use_external_data_initializer_) {
+    auto allInitializers = graph_body_viewer.GetAllInitializedTensors();
+    for (auto& entry : allInitializers){
+      auto* tp = entry.second;
+      if (tp->has_raw_data()){
+        userWeights->emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data()));
+      } else if (utils::HasExternalDataInMemory(*tp)) {
+        std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+        ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
+        userWeights->emplace_back(TensorrtUserWeights(full_init->name(), full_init->raw_data()));
+      }
+    }
+  }
+
   // ORT's default topological sort is using reversed DFS.
   // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
   // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
   // the model proto that has different node ordering compared to original onnx model.
-  graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/);
+  graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, !use_external_data_initializer_ /*include raw initializers*/);
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   std::string string_buf;
   model_proto->SerializeToString(string_buf);
@@ -2274,7 +2454,18 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
   auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
   auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-  trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
+
+  if (use_external_data_initializer_) {
+    trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
+    for (auto const& userWeight : *userWeights){
+      trt_parser->loadInitializer(userWeight.Name(), userWeight.Data(), userWeight.Size());
+    }
+    trt_parser->parseModelProto();
+  }
+  else {
+    trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
+  }
+
   if (max_workspace_size_ > 0) {
     trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
   }
@@ -2522,12 +2713,12 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     std::unique_ptr<nvinfer1::IHostMemory> serialized_engine{trt_builder->buildSerializedNetwork(*trt_network, *trt_config)};
     if (serialized_engine == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "Nv EP failed to create engine from network for fused node: " + fused_node.Name());
+                             "NvTensorRTRTX EP failed to create engine from network for fused node: " + fused_node.Name());
     }
     trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
     if (trt_engine == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "Nv EP failed to deserialize engine for fused node: " + fused_node.Name());
+                             "NvTensorRTRTX EP failed to deserialize engine for fused node: " + fused_node.Name());
     }
     if (detailed_build_log_) {
       auto engine_build_stop = std::chrono::steady_clock::now();
@@ -2555,14 +2746,14 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
   if (weight_stripped_engine_refit_) {
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refit engine from main ONNX file after engine build";
-    char* onnx = string_buf.data();
-    size_t onnx_size = string_buf.size();
     auto status = RefitEngine(model_path_,
                               onnx_model_folder_path_,
                               engine_cache_path,
                               false /* path check for security */,
-                              onnx,
-                              onnx_size,
+                              onnx_model_bytestream_,
+                              onnx_model_bytestream_size_,
+                              onnx_external_data_bytestream_,
+                              onnx_external_data_bytestream_size_,
                               trt_engine.get(),
                               false /* serialize refitted engine to disk */,
                               detailed_build_log_);
@@ -2592,7 +2783,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   }
   if (!trt_context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                           "Nv EP could not build execution context for fused node: " + fused_node.Name());
+                           "NvTensorRTRTX EP could not build execution context for fused node: " + fused_node.Name());
   }
 
   // Create input to index map
@@ -2622,6 +2813,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   engines_.emplace(fused_node.Name(), std::move(trt_engine));
   contexts_.emplace(fused_node.Name(), std::move(trt_context));
   networks_.emplace(fused_node.Name(), std::move(trt_network));
+  weights_.emplace(fused_node.Name(), std::move(userWeights));
   input_info_[fused_node.Name()].push_back(input_indexes);
   output_info_[fused_node.Name()].push_back(output_indexes);
   output_info_[fused_node.Name()].push_back(output_types);
@@ -2642,7 +2834,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
           context_memory_sharing_enable_, &max_ctx_mem_size_,
           engine_decryption_enable_, engine_decryption_, engine_encryption_,
           detailed_build_log_, sparsity_enable_,
-          auxiliary_streams_, cuda_graph_enable_, cache_prefix_, cache_suffix};
+          auxiliary_streams_, cuda_graph_enable_, cache_prefix_, cache_suffix, &weights_[context->node_name]};
     *state = p.release();
     return 0;
   };
@@ -2695,7 +2887,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
     if (multi_profile_enable_ == true) {
       if (!trt_context->setOptimizationProfileAsync(nv_profile_index_, stream))
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Nv EP select an optimization profile for the current context failed");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP select an optimization profile for the current context failed");
     }
 
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
@@ -2736,7 +2928,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       // If there is any input tensor in shape_ranges, it means this input tensor has dynamic shape and its profile shape values have not yet resolved.
       // TRT EP will help determine the min/max/opt profile values based on current input tensor value.
       if (shape_ranges.find(input_name) != shape_ranges.end()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Nv EP failed to parse input tensor and generate optimization profiles.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "NvTensorRTRTX EP failed to parse input tensor and generate optimization profiles.");
       }
     }
 
@@ -2747,6 +2939,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
                                 false /* path check for security */,
                                 onnx_model_bytestream_,
                                 onnx_model_bytestream_size_,
+                                onnx_external_data_bytestream_,
+                                onnx_external_data_bytestream_size_,
                                 trt_engine,
                                 false /* serialize refitted engine to disk */,
                                 detailed_build_log_);
@@ -2855,7 +3049,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
     // Run TRT inference
     if (!trt_context->enqueueV3(stream)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Nv EP execution context enqueue failed.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP execution context enqueue failed.");
     }
 
     /*
@@ -2951,6 +3145,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
                                                            onnx_model_folder_path_,
                                                            onnx_model_bytestream_,
                                                            onnx_model_bytestream_size_,
+                                                           onnx_external_data_bytestream_,
+                                                           onnx_external_data_bytestream_size_,
                                                            detailed_build_log_);
   auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
   if (status != Status::OK()) {
@@ -2980,7 +3176,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
   }
   if (!trt_context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                           "Nv EP could not build execution context for fused node: " + fused_node.Name());
+                           "NvTensorRTRTX EP could not build execution context for fused node: " + fused_node.Name());
   }
 
   // Create input/output to index maps
@@ -3170,7 +3366,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
 
     // Run TRT inference
     if (!trt_context->enqueueV3(stream)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Nv EP execution context enqueue failed.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP execution context enqueue failed.");
     }
 
     /*
