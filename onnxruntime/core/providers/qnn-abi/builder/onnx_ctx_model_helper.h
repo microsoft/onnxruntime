@@ -35,11 +35,6 @@ Status GetMainContextNode(const OrtGraph** graphs,
                           const OrtApi& ort_api,
                           std::vector<int>& main_context_pos);
 
-// Status CreateNodeArgs(const std::vector<std::string>& names,
-//                       const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,
-//                       std::vector<NodeArg*>& node_args,
-//                       onnxruntime::Graph& graph);
-
 Status GetEpContextFromMainNode(const OrtNode* main_context_node,
                                 const OrtApi& ort_api,
                                 const onnxruntime::PathString& ctx_onnx_model_path,
@@ -61,17 +56,21 @@ Status LoadQnnCtxFromOnnxGraph(const OrtGraph* graph,
                                const logging::Logger& logger,
                                int64_t max_spill_fill_size);
 
-// Status CreateEPContextNodes(Model* model,
-//                             unsigned char* buffer,
-//                             uint64_t buffer_size,
-//                             const std::string& sdk_build_version,
-//                             const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-//                             const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
-//                             const onnxruntime::PathString& context_model_path,
-//                             bool qnn_context_embed_mode,
-//                             uint64_t max_spill_fill_buffer_size,
-//                             const logging::Logger& logger,
-//                             bool share_ep_contexts,
-//                             bool stop_share_ep_contexts);
+Status CreateEPContextNodes(const OrtNode** fused_nodes,
+                            size_t count,
+                            OrtNode** ep_context_nodes,
+                            const OrtApi& ort_api,
+                            const OrtModelEditorApi& model_editor_api,
+                            unsigned char* buffer,
+                            uint64_t buffer_size,
+                            const std::string& sdk_build_version,
+                            const QnnModelLookupTable& qnn_models,
+                            const onnxruntime::PathString& context_model_path,
+                            bool qnn_context_embed_mode,
+                            uint64_t max_spill_fill_buffer_size,
+                            const logging::Logger& logger,
+                            bool share_ep_contexts,
+                            bool stop_share_ep_contexts);
+
 }  // namespace qnn
 }  // namespace onnxruntime

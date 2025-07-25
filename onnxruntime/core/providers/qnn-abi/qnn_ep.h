@@ -78,6 +78,8 @@ class QnnEp : public OrtEp, public ApiPtrs {
                                  size_t count,
                                  OrtNodeComputeInfo** node_compute_infos);
 
+  OrtStatus* CreateEPContextNodes(const OrtNode** fused_nodes, size_t count, OrtNode** ep_context_nodes);
+
   // // Helper functions
   // int GenerateMetadefId(const OrtGraph* graph, uint64_t& model_hash);
   // std::string MakeMetadefName(const OrtGraph* graph);

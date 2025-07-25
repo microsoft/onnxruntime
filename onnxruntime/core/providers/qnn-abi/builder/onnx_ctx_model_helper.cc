@@ -169,26 +169,6 @@ Status GetMainContextNode(const OrtGraph** graphs,
   return Status::OK();
 }
 
-// Status CreateNodeArgs(const std::vector<std::string>& names,
-//                       const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,
-//                       std::vector<NodeArg*>& node_args,
-//                       onnxruntime::Graph& graph) {
-//   for (size_t i = 0; i < names.size(); ++i) {
-//     std::string name = names[i];
-//     ORT_RETURN_IF(tensor_info_table.find(name) == tensor_info_table.end(), "Tensor name: ", name, " not found in tensor_info_table");
-//     const OnnxTensorInfo& tensor_info = tensor_info_table.at(name);
-//     std::unique_ptr<ONNX_NAMESPACE::TypeProto> tensor_type = Factory<ONNX_NAMESPACE::TypeProto>::Create();
-//     tensor_type->mutable_tensor_type()->set_elem_type(tensor_info.data_type_);
-//     tensor_type->mutable_tensor_type()->mutable_shape();
-//     for (size_t j = 0; j < tensor_info.shape_.size(); ++j) {
-//       tensor_type->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(tensor_info.shape_[j]);
-//     }
-//     auto& input_arg = graph.GetOrCreateNodeArg(name, tensor_type.get());
-//     node_args.push_back(&input_arg);
-//   }
-//   return Status::OK();
-// }
-
 Status GetEpContextFromMainNode(const OrtNode* main_context_node,
                                 const OrtApi& ort_api,
                                 const onnxruntime::PathString& ctx_onnx_model_path,
@@ -346,111 +326,174 @@ Status LoadQnnCtxFromOnnxGraph(const OrtGraph* graph,
   return Status::OK();
 }
 
-// Status CreateEPContextNodes(Model* model,
-//                             unsigned char* buffer,
-//                             uint64_t buffer_size,
-//                             const std::string& sdk_build_version,
-//                             const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-//                             const QnnModelLookupTable& qnn_models,
-//                             const onnxruntime::PathString& context_model_path,
-//                             bool qnn_context_embed_mode,
-//                             uint64_t max_spill_fill_buffer_size,
-//                             const logging::Logger& logger,
-//                             bool share_ep_contexts,
-//                             bool stop_share_ep_contexts) {
-//   auto& graph = model->MainGraph();
+Status CreateEPContextNodes(const OrtNode** fused_nodes,
+                            size_t count,
+                            OrtNode** ep_context_nodes,
+                            const OrtApi& ort_api,
+                            const OrtModelEditorApi& model_editor_api,
+                            unsigned char* buffer,
+                            uint64_t buffer_size,
+                            const std::string& sdk_build_version,
+                            const QnnModelLookupTable& qnn_models,
+                            const onnxruntime::PathString& context_model_path,
+                            bool qnn_context_embed_mode,
+                            uint64_t max_spill_fill_buffer_size,
+                            const logging::Logger& logger,
+                            bool share_ep_contexts,
+                            bool stop_share_ep_contexts) {
+  // Still need more work to support multiple partition, it's out of EP's scope.
+  // Already have code to make sure it's single partition before this method get invoked.
+  for (size_t idx = 0; idx < count; ++idx) {
+    const OrtNode* fused_node = fused_nodes[idx];
 
-//   using namespace ONNX_NAMESPACE;
-//   int index = 0;
-//   // Still need more work to support multiple partition, it's out of EP's scope.
-//   // Already have code to make sure it's single partition before this method get invoked.
-//   for (const auto& fused_node_graph : fused_nodes_and_graphs) {
-//     Node& fused_node = fused_node_graph.fused_node;
-//     auto qnn_model_kv = qnn_models.find(fused_node.Name());
-//     ORT_RETURN_IF(qnn_model_kv == qnn_models.end(), fused_node.Name(), " not exist in QnnModel table.");
+    const char* fused_node_name = nullptr;
+    RETURN_STATUS_IF_ERROR(ort_api.Node_GetName(fused_node, &fused_node_name), ort_api, "Failed to get node name.");
+    const std::string graph_name(fused_node_name);
 
-//     auto qnn_model = qnn_model_kv->second.get();
-//     std::vector<NodeArg*> inputs;
-//     std::vector<NodeArg*> outputs;
-//     ORT_RETURN_IF_ERROR(CreateNodeArgs(qnn_model->GetInputNames(), qnn_model->GetInputsInfo(), inputs, graph));
-//     ORT_RETURN_IF_ERROR(CreateNodeArgs(qnn_model->GetOutputNames(), qnn_model->GetOutputsInfo(), outputs, graph));
+    auto qnn_model_kv = qnn_models.find(graph_name);
+    ORT_RETURN_IF(qnn_model_kv == qnn_models.end(), graph_name, " not exist in QnnModel table.");
 
-//     const std::string& graph_name = fused_node.Name();
-//     auto& ep_node = graph.AddNode(graph_name,
-//                                   EPCONTEXT_OP,
-//                                   "Onnx Qnn context binary cache for graph partition: " + graph_name,
-//                                   inputs,
-//                                   outputs,
-//                                   nullptr,
-//                                   kMSDomain);
+    auto qnn_model = qnn_model_kv->second.get();
+    std::vector<const char*> input_names;
+    std::vector<const char*> output_names;
+    for (const std::string& input_name : qnn_model->GetInputNames()) {
+      input_names.push_back(input_name.c_str());
+    }
+    for (const std::string& output_name : qnn_model->GetOutputNames()) {
+      output_names.push_back(output_name.c_str());
+    }
 
-//     // Only dump the context buffer once since all QNN graphs are in one single context
-//     if (0 == index) {
-//       if (qnn_context_embed_mode) {
-//         std::string cache_payload(buffer, buffer + buffer_size);
-//         ep_node.AddAttribute(EP_CACHE_CONTEXT, cache_payload);
-//       } else {
-//         onnxruntime::PathString context_bin_path;
-//         std::string context_cache_name;
-//         auto pos = context_model_path.find_last_of(ORT_TSTR("."));
-//         if (pos != std::string::npos) {
-//           context_bin_path = context_model_path.substr(0, pos);
-//         } else {
-//           context_bin_path = context_model_path;
-//         }
+    std::array<OrtOpAttr*, 7> attributes = {};
 
-//         if (context_bin_path.empty()) {
-//           // Context bin path is empty, so just use the graph name (e.g., "QNNExecutionProvider_QNN_13728744673520368385_2_0").
-//           // This happens if both the input model and output model are stored in buffers (i.e., there are no paths).
-//           context_bin_path = ToPathString(graph_name);
-//         }
+    // Only dump the context buffer once since all QNN graphs are in one single context
+    if (0 == idx) {
+      if (qnn_context_embed_mode) {
+        std::string cache_payload(buffer, buffer + buffer_size);
+        RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EP_CACHE_CONTEXT.c_str(),
+                                                    cache_payload.c_str(),
+                                                    static_cast<int>(cache_payload.length()),
+                                                    ORT_OP_ATTR_STRING,
+                                                    &attributes[0]),
+                               ort_api,
+                               "Failed to create op attribute.");
+      } else {
+        onnxruntime::PathString context_bin_path;
+        std::string context_cache_name;
+        auto pos = context_model_path.find_last_of(ORT_TSTR("."));
+        if (pos != std::string::npos) {
+          context_bin_path = context_model_path.substr(0, pos);
+        } else {
+          context_bin_path = context_model_path;
+        }
 
-//         context_bin_path = context_bin_path + ToPathString("_qnn.bin");
-//         context_cache_name = std::filesystem::path(context_bin_path).filename().string();
+        if (context_bin_path.empty()) {
+          // Context bin path is empty, so just use the graph name (e.g., "QNNExecutionProvider_QNN_13728744673520368385_2_0").
+          // This happens if both the input model and output model are stored in buffers (i.e., there are no paths).
+          context_bin_path = ToPathString(graph_name);
+        }
 
-//         // If generate ctx.onnx with share_ep_context enabled, all ctx.onnx should point to the same ctx.bin
-//         if (share_ep_contexts) {
-//           auto shared_ctx_bin_name = SharedContext::GetInstance().GetSharedCtxBinFileName();
-//           if (shared_ctx_bin_name.empty()) {
-//             SharedContext::GetInstance().SetSharedCtxBinFileName(context_cache_name);
-//           } else {
-//             context_cache_name = shared_ctx_bin_name;
-//             auto model_folder_path = std::filesystem::path(context_bin_path).parent_path().string();
-//             context_bin_path = ToPathString(model_folder_path + "/" + context_cache_name);
-//           }
-//         }
+        context_bin_path = context_bin_path + ToPathString("_qnn.bin");
+        context_cache_name = std::filesystem::path(context_bin_path).filename().string();
 
-//         // Write the ctx.bin file for the case: 1. no share_ep_context enabled, write for every session
-//         // 2. share_ep_context enabled, only write for the last session which has stop_share_ep_contexts enabled
-//         if (!share_ep_contexts || (share_ep_contexts && stop_share_ep_contexts)) {
-//           std::ofstream of_stream(context_bin_path.c_str(), std::ofstream::binary);
-//           if (!of_stream) {
-//             LOGS(logger, ERROR) << "Failed to open create context file.";
-//             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
-//           }
-//           of_stream.write(reinterpret_cast<char*>(buffer), buffer_size);
-//         }
+        // If generate ctx.onnx with share_ep_context enabled, all ctx.onnx should point to the same ctx.bin
+        if (share_ep_contexts) {
+          auto shared_ctx_bin_name = SharedContext::GetInstance().GetSharedCtxBinFileName();
+          if (shared_ctx_bin_name.empty()) {
+            SharedContext::GetInstance().SetSharedCtxBinFileName(context_cache_name);
+          } else {
+            context_cache_name = shared_ctx_bin_name;
+            auto model_folder_path = std::filesystem::path(context_bin_path).parent_path().string();
+            context_bin_path = ToPathString(model_folder_path + "/" + context_cache_name);
+          }
+        }
 
-//         ep_node.AddAttribute(EP_CACHE_CONTEXT, context_cache_name);
-//         if (share_ep_contexts && stop_share_ep_contexts) {
-//           SharedContext::GetInstance().ResetSharedCtxBinFileName();
-//         }
+        // Write the ctx.bin file for the case: 1. no share_ep_context enabled, write for every session
+        // 2. share_ep_context enabled, only write for the last session which has stop_share_ep_contexts enabled
+        if (!share_ep_contexts || (share_ep_contexts && stop_share_ep_contexts)) {
+          std::ofstream of_stream(context_bin_path.c_str(), std::ofstream::binary);
+          if (!of_stream) {
+            LOGS(logger, ERROR) << "Failed to open create context file.";
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
+          }
+          of_stream.write(reinterpret_cast<char*>(buffer), buffer_size);
+        }
 
-//         ep_node.AddAttribute(MAX_SIZE, static_cast<int64_t>(max_spill_fill_buffer_size));
-//       }
-//     } else {
-//       ep_node.AddAttribute(MAIN_CONTEXT, static_cast<int64_t>(0));
-//     }
-//     int64_t embed_mode = qnn_context_embed_mode ? static_cast<int64_t>(1) : static_cast<int64_t>(0);
-//     ep_node.AddAttribute(EMBED_MODE, embed_mode);
-//     ep_node.AddAttribute(EP_SDK_VER, sdk_build_version);
-//     ep_node.AddAttribute(PARTITION_NAME, graph_name);
-//     ep_node.AddAttribute(SOURCE, kQnnExecutionProvider);
-//     ++index;
-//   }
+        RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EP_CACHE_CONTEXT.c_str(),
+                                                    context_cache_name.c_str(),
+                                                    static_cast<int>(context_cache_name.length()),
+                                                    ORT_OP_ATTR_STRING,
+                                                    &attributes[0]),
+                               ort_api,
+                               "Failed to create op attribute.");
+        if (share_ep_contexts && stop_share_ep_contexts) {
+          SharedContext::GetInstance().ResetSharedCtxBinFileName();
+        }
+      }
+    }
 
-//   return Status::OK();
-// }
+    int64_t is_main_context = idx == 0 ? static_cast<int64_t>(1) : static_cast<int64_t>(0);
+    RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(MAIN_CONTEXT.c_str(),
+                                                &is_main_context,
+                                                1,
+                                                ORT_OP_ATTR_INT,
+                                                &attributes[1]),
+                           ort_api,
+                           "Failed to create op attribute.");
+
+    int64_t embed_mode = qnn_context_embed_mode ? static_cast<int64_t>(1) : static_cast<int64_t>(0);
+    RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EMBED_MODE.c_str(), &embed_mode, 1, ORT_OP_ATTR_INT, &attributes[2]),
+                           ort_api,
+                           "Failed to create op attribute.");
+
+    RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EP_SDK_VER.c_str(),
+                                                sdk_build_version.c_str(),
+                                                static_cast<int>(sdk_build_version.length()),
+                                                ORT_OP_ATTR_STRING,
+                                                &attributes[3]),
+                           ort_api,
+                           "Failed to create op attribute.");
+
+    RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(PARTITION_NAME.c_str(),
+                                                graph_name.c_str(),
+                                                static_cast<int>(graph_name.length()),
+                                                ORT_OP_ATTR_STRING,
+                                                &attributes[4]),
+                           ort_api,
+                           "Failed to create op attribute.");
+
+    std::string source(kQnnExecutionProvider);
+    RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(SOURCE.c_str(),
+                                                source.c_str(),
+                                                static_cast<int>(source.length()),
+                                                ORT_OP_ATTR_STRING,
+                                                &attributes[5]),
+                           ort_api,
+                           "Failed to create op attribute.");
+
+    RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(MAX_SIZE.c_str(),
+                                                &max_spill_fill_buffer_size,
+                                                1,
+                                                ORT_OP_ATTR_INT,
+                                                &attributes[6]),
+                           ort_api,
+                           "Failed to create op attribute.");
+
+    RETURN_STATUS_IF_ERROR(model_editor_api.CreateNode(EPCONTEXT_OP.c_str(),
+                                                       kMSDomain,
+                                                       graph_name.c_str(),
+                                                       input_names.data(),
+                                                       input_names.size(),
+                                                       output_names.data(),
+                                                       output_names.size(),
+                                                       attributes.data(),
+                                                       attributes.size(),
+                                                       &ep_context_nodes[idx]),
+                           ort_api,
+                           "Failsed to create node.");
+  }
+
+  return Status::OK();
+}
 
 }  // namespace qnn
 }  // namespace onnxruntime

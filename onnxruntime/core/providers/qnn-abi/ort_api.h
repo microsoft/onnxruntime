@@ -60,12 +60,12 @@
 
 namespace onnxruntime {
 
-#define RETURN_IF_NOT_OK(fn, ort_api)                                   \
-  do {                                                                  \
-    Status status = (fn);                                               \
-    if (!status.IsOK()) {                                               \
-      ort_api.CreateStatus(ORT_EP_FAIL, status.ErrorMessage().c_str()); \
-    }                                                                   \
+#define RETURN_IF_NOT_OK(fn, ort_api)                                     \
+  do {                                                                    \
+    Status status = (fn);                                                 \
+    if (!status.IsOK()) {                                                 \
+      (ort_api).CreateStatus(ORT_EP_FAIL, status.ErrorMessage().c_str()); \
+    }                                                                     \
   } while (0)
 
 #define RETURN_IF_ERROR(fn)    \
@@ -74,6 +74,15 @@ namespace onnxruntime {
     if (_status != nullptr) {  \
       return _status;          \
     }                          \
+  } while (0)
+
+#define RETURN_STATUS_IF_ERROR(fn, ort_api, msg)      \
+  do {                                                \
+    OrtStatus* _status = (fn);                        \
+    if (_status != nullptr) {                         \
+      (ort_api).ReleaseStatus(_status);               \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, msg); \
+    }                                                 \
   } while (0)
 
 #define RETURN_IF(cond, ort_api, msg)                    \

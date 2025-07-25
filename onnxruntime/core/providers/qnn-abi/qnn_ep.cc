@@ -417,8 +417,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
                            << stop_share_ep_contexts_;
   }
 
-  // std::string backend_path = kDefaultHtpBackendPath;
-  std::string backend_path = kDefaultCpuBackendPath;
+  std::string backend_path = kDefaultHtpBackendPath;
   {
     std::optional<std::string> backend_path_from_options{};
 
@@ -1460,6 +1459,51 @@ OrtStatus* QnnEp::CompileContextModel(const OrtGraph** graphs,
   return nullptr;
 }
 
+OrtStatus* QnnEp::CreateEPContextNodes(const OrtNode** fused_nodes, size_t count, OrtNode** ep_context_nodes) {
+  // All partitioned graph share single QNN context, included in the same context binary
+  uint64_t buffer_size(0);
+  auto context_buffer = qnn_backend_manager_->GetContextBinaryBuffer(buffer_size);
+  // Get max spill fill buffer size
+  uint64_t max_spill_fill_buffer_size = 0;
+  if (enable_spill_fill_buffer_) {
+    RETURN_IF_NOT_OK(qnn_backend_manager_->GetMaxSpillFillBufferSize(context_buffer.get(),
+                                                                     buffer_size,
+                                                                     max_spill_fill_buffer_size),
+                     ort_api);
+  }
+
+  // Figure out the EP context model path from session option
+  PathString context_model_path;
+  GetContextOnnxModelFilePath(context_cache_path_cfg_, ToPathString(""), context_model_path);
+
+  RETURN_IF_NOT_OK(qnn::CreateEPContextNodes(fused_nodes,
+                                             count,
+                                             ep_context_nodes,
+                                             ort_api,
+                                             model_editor_api,
+                                             context_buffer.get(),
+                                             buffer_size,
+                                             qnn_backend_manager_->GetSdkVersion(),
+                                             qnn_models_,
+                                             context_model_path,
+                                             qnn_context_embed_mode_,
+                                             max_spill_fill_buffer_size,
+                                             *(logger_.ToInternal()),
+                                             share_ep_contexts_,
+                                             stop_share_ep_contexts_),
+                   ort_api);
+
+  if (share_ep_contexts_ &&
+      !stop_share_ep_contexts_ &&
+      nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {
+    RETURN_IF(SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_),
+              ort_api,
+              "Failed to set shared QnnBackendManager.");
+  }
+
+  return nullptr;
+}
+
 OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
                                            _In_ const OrtGraph** graphs,
                                            _In_ const OrtNode** fused_nodes,
@@ -1541,6 +1585,10 @@ OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
 
     auto node_compute_info = std::make_unique<QnnNodeComputeInfo>(*ep);
     node_compute_infos[graph_idx] = node_compute_info.release();
+  }
+
+  if (ep->context_cache_enabled_) {
+    RETURN_IF_ERROR(ep->CreateEPContextNodes(fused_nodes, count, ep_context_nodes));
   }
 
   std::cout << "DEBUG: QNN CompileImpl completed!" << std::endl;
