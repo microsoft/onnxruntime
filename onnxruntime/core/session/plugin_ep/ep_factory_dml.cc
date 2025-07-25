@@ -96,22 +96,19 @@ OrtStatus* DmlEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* const
   return nullptr;
 }
 
-OrtStatus* DmlEpFactory::CreateAllocator(const OrtMemoryInfo* /*memory_info*/,
-                                         const OrtKeyValuePairs* /*allocator_options*/,
+/*
+// TODO: This needs to create an allocator for the specific device so it's available as a shared allocator. That
+//       requires pulling lots of things out of the DML EP to get the D3D12 device and create a
+//       BucketizedBufferAllocator. See providers\dml\DmlExecutionProvider\src\ExecutionProvider.cpp
+OrtStatus* DmlEpFactory::CreateAllocator(const OrtMemoryInfo* memory_info,
+                                         const OrtKeyValuePairs* allocator_options,
                                          OrtAllocator** allocator) noexcept {
-  // TODO: This needs to create an allocator for the specific device so it's available as a shared allocator. That
-  //       requires pulling lots of things out of the DML EP to get the D3D12 device and create a
-  //       BucketizedBufferAllocator. See providers\dml\DmlExecutionProvider\src\ExecutionProvider.cpp
-  //*allocator = device_allocators[memory_info->device.Id()].get();
-  *allocator = nullptr;
-  return nullptr;
 }
 
+// TODO: Wrap the IDataTransfer implementation so we can copy to device using OrtApi CopyTensors.
 OrtStatus* DmlEpFactory::CreateDataTransfer(_Outptr_result_maybenull_ OrtDataTransferImpl** data_transfer) noexcept {
-  // TODO: Wrap the IDataTransfer implementation so we can copy to device using OrtApi CopyTensors.
-  *data_transfer = nullptr;
-  return nullptr;
 }
+*/
 }  // namespace onnxruntime
 
 #endif  // USE_DML

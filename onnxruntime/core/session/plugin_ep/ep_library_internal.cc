@@ -3,14 +3,8 @@
 
 #include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/plugin_ep/ep_factory_cpu.h"
-
-#if defined(USE_DML)
 #include "core/session/plugin_ep/ep_factory_dml.h"
-#endif
-
-#if defined(USE_WEBGPU)
 #include "core/session/plugin_ep/ep_factory_webgpu.h"
-#endif
 
 namespace onnxruntime {
 

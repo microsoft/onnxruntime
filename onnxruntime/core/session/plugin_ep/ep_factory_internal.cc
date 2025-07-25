@@ -6,9 +6,6 @@
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_session_options_impl.h"
-#include "core/session/plugin_ep/ep_factory_cpu.h"
-#include "core/session/plugin_ep/ep_factory_dml.h"
-#include "core/session/plugin_ep/ep_factory_webgpu.h"
 #include "core/session/plugin_ep/forward_to_factory_impl.h"
 #include "core/session/ort_apis.h"
 

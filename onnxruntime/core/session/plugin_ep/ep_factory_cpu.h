@@ -21,8 +21,8 @@ class CpuEpFactory : public EpFactoryInternalImpl {
                                  size_t max_ep_devices,
                                  size_t* p_num_ep_devices) noexcept override;
 
-  OrtStatus* CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
-                                      const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
+  OrtStatus* CreateIExecutionProvider(const OrtHardwareDevice* const* devices,
+                                      const OrtKeyValuePairs* const* ep_metadata_pairs,
                                       size_t num_devices,
                                       const OrtSessionOptions* session_options,
                                       const OrtLogger* session_logger,
