@@ -4062,7 +4062,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ReleaseSyncStream,
 
     &OrtApis::CopyTensors,
-		
+
     &OrtApis::CreateMIGraphXProviderOptions,
     &OrtApis::UpdateMIGraphXProviderOptions,
     &OrtApis::GetMIGraphXProviderOptionsAsString,
