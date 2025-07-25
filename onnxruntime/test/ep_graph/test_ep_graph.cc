@@ -87,6 +87,105 @@ TEST(EpGraphTest, Check3LayerNestedSubgraphV2) {
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
 }
 
+// Check correctness of an OrtGraph that has external initializers.
+TEST(EpGraphTest, CheckModelExternalInitializers) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/conv_qdq_external_ini.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
+static void RunConvQDQExtIni(const ORTCHAR_T* model_path, std::vector<float>& output_data) {
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  Ort::SessionOptions sess_options;
+  Ort::Session session(*ort_env, model_path, sess_options);
+
+  std::vector<int64_t> input_shape = {1, 3, 24, 24};
+  std::vector<float> input_data(3 * 24 * 24, 0.5f);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add 'input'
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input_data.data(), input_data.size(), input_shape.data(), input_shape.size()));
+  ort_input_names.push_back("input");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"output"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output type and number of elements.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto output_type_shape = ort_output.GetTensorTypeAndShapeInfo();
+  size_t num_output_elems = output_type_shape.GetElementCount();
+
+  ASSERT_EQ(output_type_shape.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  ASSERT_EQ(num_output_elems, 32 * 26 * 26);
+
+  // Return output data.
+  const float* output_values = ort_output.GetTensorData<float>();
+  output_data.assign(output_values, output_values + num_output_elems);
+}
+
+// Test serializing an OrtGraph with external initializers to GraphProto.
+// Checks that the outputs of the serialized and original models are identical.
+TEST(EpGraphTest, SerializeToProto_InputModelHasExternalIni) {
+  const ORTCHAR_T* original_model_path = ORT_TSTR("testdata/conv_qdq_external_ini.onnx");
+  const ORTCHAR_T* serialized_model_path = ORT_TSTR("conv_qdq_ext_ini_serialized.onnx");
+  std::filesystem::remove(serialized_model_path);
+
+  {
+    auto test_graph = TestGraph::Load(original_model_path);
+    ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+    // Serialize OrtGraph to GraphProto. Save initializers to external file.
+    std::string ext_ini_file_path = "conv_qdq_ext_ini_serialized.bin";
+    std::filesystem::remove(ext_ini_file_path);
+    std::ofstream ext_ini_ofs(ext_ini_file_path, std::ios::binary);
+    auto handle_initializer_data = [&ext_ini_ofs, &ext_ini_file_path](const OrtValueInfo* value_info,
+                                                                      const void* data, size_t bytes,
+                                                                      bool& is_external, std::string& location,
+                                                                      int64_t& offset) -> Ort::Status {
+      // OrtValueInfo* could be used to query initializer's name, type, shape,
+      // node consumers, etc.
+      (void)value_info;
+
+      if (bytes <= 127) {
+        is_external = false;  // Keep small initializers stored inside the TensorProto.
+        return Ort::Status{nullptr};
+      }
+
+      offset = ext_ini_ofs.tellp();
+      location = ext_ini_file_path;
+      ext_ini_ofs.write(static_cast<const char*>(data), bytes);
+      ext_ini_ofs.flush();
+      is_external = true;  // True if is external initializer.
+
+      return Ort::Status{nullptr};
+    };
+
+    ONNX_NAMESPACE::ModelProto model_proto;
+    OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto, handle_initializer_data);
+
+    std::ofstream ofs(serialized_model_path, std::ios::binary);
+    model_proto.SerializeToOstream(&ofs);
+    ofs.flush();
+
+    ASSERT_TRUE(std::filesystem::exists(serialized_model_path));
+    ASSERT_TRUE(std::filesystem::exists(ext_ini_file_path));
+  }
+
+  // Compare output of the original and serialized models. Should be identical.
+  std::vector<float> output_original;
+  std::vector<float> output_serialized;
+
+  RunConvQDQExtIni(original_model_path, output_original);
+  RunConvQDQExtIni(serialized_model_path, output_serialized);
+
+  EXPECT_EQ(output_serialized, output_original);
+}
+
 static void RunMNISTModel(const ORTCHAR_T* model_path, std::vector<float>& output_data) {
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   Ort::SessionOptions sess_options;
@@ -442,16 +541,39 @@ static void CheckValueInfoConsumers(const GraphViewer& graph_viewer, const OrtVa
 }
 
 static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
-                                      const ONNX_NAMESPACE::TensorProto* tensor_proto) {
+                                      const ONNX_NAMESPACE::TensorProto* tensor_proto,
+                                      const GraphViewer& graph_viewer) {
   const OrtApi& ort_api = Ort::GetApi();
-
-  const OrtValue* api_initializer_value = nullptr;
-  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(api_value_info, &api_initializer_value));
-  ASSERT_NE(api_initializer_value, nullptr);
 
   const char* api_initializer_name = nullptr;
   ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(api_value_info, &api_initializer_name));
   ASSERT_NE(api_initializer_name, nullptr);
+
+  // Check external initializer info (if any).
+  OrtExternalInitializerInfo* api_ext_info = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetExternalInitializerInfo(api_value_info, &api_ext_info));
+  DeferOrtRelease<OrtExternalInitializerInfo> defer_release_info(&api_ext_info, ort_api.ReleaseExternalInitializerInfo);
+
+  std::unique_ptr<ExternalDataInfo> ext_info = nullptr;
+  bool has_ext_info = graph_viewer.GetGraph().GetExternalInitializerInfo(api_initializer_name, ext_info, true);
+
+  if (has_ext_info) {
+    ASSERT_NE(api_ext_info, nullptr);
+    const ORTCHAR_T* api_ext_file_path = ort_api.ExternalInitializerInfo_GetFilePath(api_ext_info);
+    int64_t api_ext_file_offset = ort_api.ExternalInitializerInfo_GetFileOffset(api_ext_info);
+    size_t api_ext_byte_size = ort_api.ExternalInitializerInfo_GetByteSize(api_ext_info);
+
+    ASSERT_EQ(PathString(api_ext_file_path), ext_info->GetRelPath());
+    ASSERT_EQ(api_ext_file_offset, static_cast<int64_t>(ext_info->GetOffset()));
+    ASSERT_EQ(api_ext_byte_size, ext_info->GetLength());
+  } else {
+    ASSERT_EQ(api_ext_info, nullptr);
+    ASSERT_FALSE(utils::HasExternalDataInFile(*tensor_proto));
+  }
+
+  const OrtValue* api_initializer_value = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(api_value_info, &api_initializer_value));
+  ASSERT_NE(api_initializer_value, nullptr);
 
   // Check initializer type.
   const ONNX_NAMESPACE::TypeProto type_proto = utils::TypeProtoFromTensorProto(*tensor_proto);
@@ -463,7 +585,8 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
 }
 
 static void CheckInitializerValueInfosCApi(gsl::span<const OrtValueInfo* const> initializer_value_infos,
-                                           const InitializedTensorSet& initializer_tensor_protos) {
+                                           const InitializedTensorSet& initializer_tensor_protos,
+                                           const GraphViewer& graph_viewer) {
   const OrtApi& ort_api = Ort::GetApi();
 
   for (size_t i = 0; i < initializer_value_infos.size(); i++) {
@@ -479,7 +602,7 @@ static void CheckInitializerValueInfosCApi(gsl::span<const OrtValueInfo* const> 
     const ONNX_NAMESPACE::TensorProto* tensor_proto = tensor_proto_iter->second;
     ASSERT_NE(tensor_proto, nullptr);
 
-    CheckInitializerValueInfo(api_value_info, tensor_proto);
+    CheckInitializerValueInfo(api_value_info, tensor_proto, graph_viewer);
   }
 }
 
@@ -543,7 +666,7 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
       ASSERT_EQ(api_is_const_initializer, is_const_initializer);
 
       if (is_const_initializer || api_is_opt_graph_input) {
-        CheckInitializerValueInfo(value_info, initializer);
+        CheckInitializerValueInfo(value_info, initializer, graph_viewer);
       } else {
         auto node_arg_type_info = OrtTypeInfo::FromTypeProto(*node_arg->TypeAsProto());
         const OrtTypeInfo* api_type_info = nullptr;
@@ -643,7 +766,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
 
   std::vector<const OrtValueInfo*> api_initializers(api_num_initializers);
   ASSERT_ORTSTATUS_OK(ort_api.Graph_GetInitializers(&api_graph, api_initializers.data(), api_initializers.size()));
-  CheckInitializerValueInfosCApi(api_initializers, graph_initializers);
+  CheckInitializerValueInfosCApi(api_initializers, graph_initializers, graph_viewer);
 
   // Check if it has a parent node.
   const Node* parent_node = graph_viewer.ParentNode();

@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <mutex>
+
+#include "ep_arena.h"
 #include "ep_data_transfer.h"
 #include "example_plugin_ep_utils.h"
 
@@ -15,6 +18,11 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   OrtDataTransferImpl* GetDataTransfer() const {
     return data_transfer_impl_.get();
+  }
+
+  // Get the shared arena allocator if created.
+  ArenaAllocator* GetArenaAllocator() const {
+    return arena_allocator_.get();
   }
 
  private:
@@ -69,6 +77,11 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
   MemoryInfoUniquePtr default_memory_info_;
   MemoryInfoUniquePtr readonly_memory_info_;  // used for initializers
+
+  bool arena_allocator_using_default_settings_{true};
+  std::unique_ptr<ArenaAllocator> arena_allocator_;  // shared device allocator that uses an arena
+  uint32_t num_arena_users_{0};
+  std::mutex mutex_;  // mutex to protect arena_allocator_ and num_arena_users_
 
   std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 };
