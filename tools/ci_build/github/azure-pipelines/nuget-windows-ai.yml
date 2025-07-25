@@ -100,7 +100,7 @@ extends:
           - output: pipelineArtifact
             path: '$(Build.ArtifactStagingDirectory)/merged'
             artifact: drop_Windows_Build_NuGet_Packaging
-          - ${{if and(eq(parameters.IsReleaseBuild, false), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/users/snnn/')))}}:
+          - ${{if and(eq(parameters.IsReleaseBuild, false), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))}}:
             - output: nuget
               useDotNetTask: false # The default is false to use the NuGetCommand task. Set to true to use the DotNetCoreCLI task to publish packages.
               packagesToPush: '$(Build.ArtifactStagingDirectory)/merged/*.nupkg;!$(Build.ArtifactStagingDirectory)/merged/*.symbols.nupkg'
