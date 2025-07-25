@@ -1215,13 +1215,12 @@ TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePacked) {
 
     test.AddOutput<TypeParam>("Y", {M, N}, expected_data);
 
-    // Exclude providers based on TypeParam
-    std::unordered_set<std::string> excluded_providers = {kQnnExecutionProvider};
+    // Run int/uint32_t tests only on WebGPU EP
     if (std::is_same_v<TypeParam, int32_t> || std::is_same_v<TypeParam, uint32_t>) {
-      excluded_providers.insert(kCpuExecutionProvider);  // CPU provider doesn't support int32 GEMM properly
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider}, run_with_tunable_op);
     }
 
-    test.ConfigExcludeEps(excluded_providers)
+    test.ConfigExcludeEps({kQnnExecutionProvider})
         .Config(run_with_tunable_op)
         .RunWithConfig();
   };
@@ -1285,13 +1284,12 @@ TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePackedTransA) {
 
     test.AddOutput<TypeParam>("Y", {M, N}, expected_data);
 
-    // Exclude providers based on TypeParam
-    std::unordered_set<std::string> excluded_providers = {kQnnExecutionProvider};
+    // Run int/uint32_t tests only on WebGPU EP
     if (std::is_same_v<TypeParam, int32_t> || std::is_same_v<TypeParam, uint32_t>) {
-      excluded_providers.insert(kCpuExecutionProvider);  // CPU provider doesn't support int32 GEMM properly
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider}, run_with_tunable_op);
     }
 
-    test.ConfigExcludeEps(excluded_providers)
+    test.ConfigExcludeEps({kQnnExecutionProvider})
         .Config(run_with_tunable_op)
         .RunWithConfig();
   };
@@ -1353,13 +1351,12 @@ TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePackedTransB) {
     }
 
     test.AddOutput<TypeParam>("Y", {M, N}, expected_data);
-    // Exclude providers based on TypeParam
-    std::unordered_set<std::string> excluded_providers = {kQnnExecutionProvider};
+    // Run int/uint32_t tests only on WebGPU EP
     if (std::is_same_v<TypeParam, int32_t> || std::is_same_v<TypeParam, uint32_t>) {
-      excluded_providers.insert(kCpuExecutionProvider);  // CPU provider doesn't support int32 GEMM properly
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider}, run_with_tunable_op);
     }
 
-    test.ConfigExcludeEps(excluded_providers)
+    test.ConfigExcludeEps({kQnnExecutionProvider})
         .Config(run_with_tunable_op)
         .RunWithConfig();
   };
@@ -1421,13 +1418,13 @@ TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePackedTransAB) {
     }
 
     test.AddOutput<TypeParam>("Y", {M, N}, expected_data);
-    // Exclude providers based on TypeParam
-    std::unordered_set<std::string> excluded_providers = {kQnnExecutionProvider};
+
+    // Run int/uint32_t tests only on WebGPU EP
     if (std::is_same_v<TypeParam, int32_t> || std::is_same_v<TypeParam, uint32_t>) {
-      excluded_providers.insert(kCpuExecutionProvider);  // CPU provider doesn't support int32 GEMM properly
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider}, run_with_tunable_op);
     }
 
-    test.ConfigExcludeEps(excluded_providers)
+    test.ConfigExcludeEps({kQnnExecutionProvider})
         .Config(run_with_tunable_op)
         .RunWithConfig();
   };
