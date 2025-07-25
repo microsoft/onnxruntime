@@ -45,13 +45,7 @@ std::optional<Equation> ParseEquation(std::string_view equation_string) {
   if (term_1.empty() || term_2.empty()) {
     return std::nullopt;
   }
-  if (term_1.size() < 2) {
-    return std::nullopt;
-  }
-  if (term_1.size() != term_2.size()) {
-    return std::nullopt;
-  }
-  if (term_1.size() != result.size()) {
+  if (term_1.size() < 2 || term_2.size() < 2 || result.size() < 2) {
     return std::nullopt;
   }
   if (!std::all_of(term_1.begin(), term_1.end(), [](unsigned char c) { return std::islower(c); })) {
@@ -149,6 +143,50 @@ bool IsEquationMatMulTransposeAll(const Equation& equation) {
     return false;
   }
   if (term_2_n != result_n) {
+    return false;
+  }
+  return true;
+}
+
+bool IsEquationMatMulBroadcastTransposeY(const Equation& equation) {
+  // E.g., bhwc,hkc->bhwk
+  const auto& [term_1, term_2, result] = equation;
+  const size_t term1_dims = term_1.size();
+  if (term1_dims != 4) {
+    return false;
+  }
+  const size_t term2_dims = term_2.size();
+  if (term2_dims != 3) {
+    return false;
+  }
+  const size_t result_dims = result.size();
+  if (result_dims != 4) {
+    return false;
+  }
+  // Check matrix multiplication dimensions
+  char term_1_m = term_1[term1_dims - 2];
+  char term_1_k = term_1[term1_dims - 1];
+  char term_2_k = term_2[term2_dims - 1];
+  char term_2_n = term_2[term2_dims - 2];
+  char result_m = result[result_dims - 2];
+  char result_n = result[result_dims - 1];
+  if (term_1_m != result_m) {
+    return false;
+  }
+  if (term_1_k != term_2_k) {
+    return false;
+  }
+  if (term_2_n != result_n) {
+    return false;
+  }
+  // Check batch dimensions
+  if (term_1[0] != result[0]) {
+    return false;
+  }
+  if (term_1[1] != result[1]) {
+    return false;
+  }
+  if (term_2[0] != result[1]) {
     return false;
   }
   return true;
@@ -317,6 +355,7 @@ Status EinsumOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   }
   if (!IsEquationMatMul(parsed_equation.value()) &&
       !IsEquationMatMulTransposeY(parsed_equation.value()) &&
+      !IsEquationMatMulBroadcastTransposeY(parsed_equation.value()) &&
       !IsEquationMatMulTransposeAll(parsed_equation.value())) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_unit.OpType() + " unsupported equation: " + equation);
   }
@@ -353,7 +392,8 @@ Status EinsumOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                        /*logger=*/logger,
                                        /*do_op_validation=*/do_op_validation,
                                        /*qnn_op_type=*/QNN_OP_MAT_MUL));
-  } else if (IsEquationMatMulTransposeY(parsed_equation.value())) {
+  } else if (IsEquationMatMulTransposeY(parsed_equation.value()) ||
+             IsEquationMatMulBroadcastTransposeY(parsed_equation.value())) {
     std::vector<std::string> param_tensor_names = SetMatMulParamTensorNames(
         &qnn_model_wrapper, node_unit, /*transpose_in0=*/false, /*transpose_in1=*/true);
     ORT_RETURN_IF_ERROR(ProcessOutputs(/*qnn_model_wrapper=*/qnn_model_wrapper,
@@ -364,7 +404,10 @@ Status EinsumOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                        /*do_op_validation=*/do_op_validation,
                                        /*qnn_op_type=*/QNN_OP_MAT_MUL));
   } else if (IsEquationMatMulTransposeAll(parsed_equation.value())) {
-    ORT_RETURN_IF_ERROR(CreateMatMulTransposeAll(&qnn_model_wrapper, node_unit, std::move(input_names), do_op_validation));
+    ORT_RETURN_IF_ERROR(CreateMatMulTransposeAll(/*qnn_model_wrapper=*/&qnn_model_wrapper,
+                                                 /*node_unit=*/node_unit,
+                                                 /*input_names=*/std::move(input_names),
+                                                 /*do_op_validation=*/do_op_validation));
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_unit.OpType() + " unsupported equation: " + equation);
   }
