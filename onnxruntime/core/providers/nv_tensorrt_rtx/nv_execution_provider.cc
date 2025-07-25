@@ -1305,9 +1305,7 @@ std::vector<AllocatorPtr> NvExecutionProvider::CreatePreferredAllocators() {
       true,
       arena_cfg,
       // make it stream aware
-      true,
-      // enable cross stream sharing?
-      false);
+      true);
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
