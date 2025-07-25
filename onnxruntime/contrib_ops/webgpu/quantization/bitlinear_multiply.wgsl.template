@@ -1,0 +1,242 @@
+const k_step_size: u32 = 20;
+const k_step_size_in_u32: u32 = 5;
+const k_in_u32_for_A: u32 = 4;
+const tile_size: u32 = 64;
+const subtile_size = 16;
+
+// Shared memory
+var<workgroup> tile_A  : array<vec4<u32>, tile_size>;                              // 4  x 64 x 4 bytes.
+var<workgroup> tile_A5 : array<u32, tile_size>;                                    // 1  x 64 x 4 bytes.
+var<workgroup> tile_B  : array<vec4<u32>, tile_size>;                              // 4  x 64 x 4 bytes.
+var<workgroup> tile_B5 : array<u32, tile_size>;                                    // 1  x 64 x 4 bytes.
+var<workgroup> scratch_B  : array<vec4<i32>, tile_size>;                           // 1  x 64 x 4 bytes.
+
+// Unpacks a uint8 into 4xI8 vector.
+// Since every 3 consequtive values are the same, index with /3.
+const dequantize_LUT = array<u32, 86>(
+    0xFFFFFFFF,
+    0x00FFFFFF,
+    0x01FFFFFF,
+    0xFF00FFFF,
+    0x0000FFFF,
+    0x0100FFFF,
+    0xFF01FFFF,
+    0x0001FFFF,
+    0x0101FFFF,
+    0xFFFF00FF,
+    0x00FF00FF,
+    0x01FF00FF,
+    0xFF0000FF,
+    0x000000FF,
+    0x010000FF,
+    0xFF0100FF,
+    0x000100FF,
+    0x010100FF,
+    0xFFFF01FF,
+    0x00FF01FF,
+    0x01FF01FF,
+    0xFF0001FF,
+    0x000001FF,
+    0x010001FF,
+    0xFF0101FF,
+    0x000101FF,
+    0x010101FF,
+    0xFFFFFF00,
+    0x00FFFF00,
+    0x01FFFF00,
+    0xFF00FF00,
+    0x0000FF00,
+    0x0100FF00,
+    0xFF01FF00,
+    0x0001FF00,
+    0x0101FF00,
+    0xFFFF0000,
+    0x00FF0000,
+    0x01FF0000,
+    0xFF000000,
+    0x00000000,
+    0x01000000,
+    0xFF010000,
+    0x00010000,
+    0x01010000,
+    0xFFFF0100,
+    0x00FF0100,
+    0x01FF0100,
+    0xFF000100,
+    0x00000100,
+    0x01000100,
+    0xFF010100,
+    0x00010100,
+    0x01010100,
+    0xFFFFFF01,
+    0x00FFFF01,
+    0x01FFFF01,
+    0xFF00FF01,
+    0x0000FF01,
+    0x0100FF01,
+    0xFF01FF01,
+    0x0001FF01,
+    0x0101FF01,
+    0xFFFF0001,
+    0x00FF0001,
+    0x01FF0001,
+    0xFF000001,
+    0x00000001,
+    0x01000001,
+    0xFF010001,
+    0x00010001,
+    0x01010001,
+    0xFFFF0101,
+    0x00FF0101,
+    0x01FF0101,
+    0xFF000101,
+    0x00000101,
+    0x01000101,
+    0xFF010101,
+    0x00010101,
+    0x01010101,
+    0xFFFFFF00,
+    0xFFFFFF00,
+    0xFFFFFF00,
+    0x00FFFF00,
+    0x00FFFF00);
+
+fn loadA(local_idx: u32, a_global_base: u32, kidx_v: u32) {
+    // Load A and Scales using 128 threads.
+    if (local_idx < 64) {
+        var a_global_idx = (a_global_base + local_idx) * uniforms.InputAStride + kidx_v / 5;
+        tile_A[local_idx] = input_a[a_global_idx];
+    } else if (local_idx < 128) {
+        // Load A5.
+        let a_row = local_idx - 64;
+        var a_global_idx = (a_global_base + a_row) * uniforms.K / 20 + u32(kidx_v / 5);
+        tile_A5[a_row] = input_a5[a_global_idx];
+    }
+}
+
+fn loadB(local_idx: u32, b_global_base: u32, kidx_v: u32) {
+    // Load B
+    // Using 256 threads. 4 threads per row.
+    // Need to load 20 elements of B for each row.
+    // 20 elements fit in one u32 with B's quantization.
+    let b_row = u32(local_idx / 4);
+    let k_idx = kidx_v * k_in_u32_for_A;
+    let b_global_idx = (b_global_base + b_row) * uniforms.K / 20 + u32(k_idx / 20);
+    var b: u32 = input_b[b_global_idx];
+    let b_col = u32(local_idx % 4);
+    // Extract the column byte from the u32.
+    let b_byte = (b >> (b_col * 8)) & 0xFF;
+    // Retrieve the first 4 dequantized values using the lookup table.
+    let b_dequantized: u32 = dequantize_LUT[b_byte / 3];
+    tile_B[b_row][b_col] = b_dequantized;
+
+    // Retrieve the last dequantized value using math.
+    let b_last_dequantized = (b_byte % 3) - 1;
+    scratch_B[b_row][b_col] = i32(b_last_dequantized);
+    if (local_idx % 4 == 0) {
+        tile_B5[b_row] = pack4xI8(scratch_B[b_row]);
+    }
+}
+
+// Scaled dot product of 5 packed unsigned integers.
+fn SDP5AI(a1: vec4<u32>, b1: vec4<u32>, a2: u32, b2: u32) -> i32 {
+    var local_sum = dot4I8Packed(a1[0], b1[0]);
+    local_sum += dot4I8Packed(a1[1], b1[1]);
+    local_sum += dot4I8Packed(a1[2], b1[2]);
+    local_sum += dot4I8Packed(a1[3], b1[3]);
+    local_sum += dot4I8Packed(a2, b2);
+    return i32(local_sum);
+}
+
+$MAIN {
+    // During the load phase we use all 256 threads to load 64 rows of A/B.
+    // For each row we load k_step_size_in_u32 (5) u32 elements, which are total 20 elements of K per row.
+    let a_global_base = workgroup_id.x * tile_size;
+    let b_global_base = workgroup_id.y * tile_size;
+
+    // During the compute phase, we have the 64x64 tile split into
+    // subtiles of 16x16. We have a grid of 4x4 subtiles.
+    let subtile_id = u32(local_idx / subtile_size);
+    let subtile_idx = u32(subtile_id % 4);
+    let subtile_idy = u32(subtile_id / 4);
+    let base_A = subtile_idy * 16;
+    let base_B = subtile_idx * 16;
+    // For each subtile we have 16 threads assigned.
+    let a_idx = u32(local_idx % subtile_size);
+
+    var lane_output1: vec4<i32>;
+    var lane_output2: vec4<i32>;
+    var lane_output3: vec4<i32>;
+    var lane_output4: vec4<i32>;
+    // kidx_v is in u32 units, aka is in a vectorized space of 4.
+    for (var kidx_v: u32 = 0; kidx_v < uniforms.K / 4; kidx_v += k_step_size_in_u32) {
+        loadA(local_idx, a_global_base, kidx_v);
+        loadB(local_idx, b_global_base, kidx_v);
+        workgroupBarrier();
+        var own_a0: vec4<u32> = tile_A[base_A + a_idx];
+        var own_a1: u32 = tile_A5[base_A + a_idx];
+
+        // Now compute the partial products.
+        if (sg_size == 16) {
+          var own_b0: vec4<u32> = vec4<u32>(tile_B[base_B + sg_id]);
+          var own_b1: u32 = tile_B5[base_B + sg_id];
+
+          // Access registers across the subgroup using subgroupShuffle and perform the matmul.
+          lane_output1[0] += SDP5AI(own_a0, subgroupShuffle(own_b0, 0), own_a1, subgroupShuffle(own_b1, 0));
+          lane_output1[1] += SDP5AI(own_a0, subgroupShuffle(own_b0, 1), own_a1, subgroupShuffle(own_b1, 1));
+          lane_output1[2] += SDP5AI(own_a0, subgroupShuffle(own_b0, 2), own_a1, subgroupShuffle(own_b1, 2));
+          lane_output1[3] += SDP5AI(own_a0, subgroupShuffle(own_b0, 3), own_a1, subgroupShuffle(own_b1, 3));
+
+          lane_output2[0] += SDP5AI(own_a0, subgroupShuffle(own_b0, 4), own_a1, subgroupShuffle(own_b1, 4));
+          lane_output2[1] += SDP5AI(own_a0, subgroupShuffle(own_b0, 5), own_a1, subgroupShuffle(own_b1, 5));
+          lane_output2[2] += SDP5AI(own_a0, subgroupShuffle(own_b0, 6), own_a1, subgroupShuffle(own_b1, 6));
+          lane_output2[3] += SDP5AI(own_a0, subgroupShuffle(own_b0, 7), own_a1, subgroupShuffle(own_b1, 7));
+
+          lane_output3[0] += SDP5AI(own_a0, subgroupShuffle(own_b0, 8), own_a1, subgroupShuffle(own_b1, 8));
+          lane_output3[1] += SDP5AI(own_a0, subgroupShuffle(own_b0, 9), own_a1, subgroupShuffle(own_b1, 9));
+          lane_output3[2] += SDP5AI(own_a0, subgroupShuffle(own_b0, 10), own_a1, subgroupShuffle(own_b1, 10));
+          lane_output3[3] += SDP5AI(own_a0, subgroupShuffle(own_b0, 11), own_a1, subgroupShuffle(own_b1, 11));
+
+          lane_output4[0] += SDP5AI(own_a0, subgroupShuffle(own_b0, 12), own_a1, subgroupShuffle(own_b1, 12));
+          lane_output4[1] += SDP5AI(own_a0, subgroupShuffle(own_b0, 13), own_a1, subgroupShuffle(own_b1, 13));
+          lane_output4[2] += SDP5AI(own_a0, subgroupShuffle(own_b0, 14), own_a1, subgroupShuffle(own_b1, 14));
+          lane_output4[3] += SDP5AI(own_a0, subgroupShuffle(own_b0, 15), own_a1, subgroupShuffle(own_b1, 15));
+        } else {
+          // Code for other subgroup sizes, simply doesnt use subgroups at all.
+          // Relies on reads from single location tile_B[][base_B + col] by all
+          // lanes being optimized by the hardware.
+          lane_output1[0] += SDP5AI(own_a0, tile_B[base_B + 0], own_a1, tile_B5[base_B + 0]);
+          lane_output1[1] += SDP5AI(own_a0, tile_B[base_B + 1], own_a1, tile_B5[base_B + 1]);
+          lane_output1[2] += SDP5AI(own_a0, tile_B[base_B + 2], own_a1, tile_B5[base_B + 2]);
+          lane_output1[3] += SDP5AI(own_a0, tile_B[base_B + 3], own_a1, tile_B5[base_B + 3]);
+
+          lane_output2[0] += SDP5AI(own_a0, tile_B[base_B + 4], own_a1, tile_B5[base_B + 4]);
+          lane_output2[1] += SDP5AI(own_a0, tile_B[base_B + 5], own_a1, tile_B5[base_B + 5]);
+          lane_output2[2] += SDP5AI(own_a0, tile_B[base_B + 6], own_a1, tile_B5[base_B + 6]);
+          lane_output2[3] += SDP5AI(own_a0, tile_B[base_B + 7], own_a1, tile_B5[base_B + 7]);
+
+          lane_output3[0] += SDP5AI(own_a0, tile_B[base_B + 8], own_a1, tile_B5[base_B + 8]);
+          lane_output3[1] += SDP5AI(own_a0, tile_B[base_B + 9], own_a1, tile_B5[base_B + 9]);
+          lane_output3[2] += SDP5AI(own_a0, tile_B[base_B + 10], own_a1, tile_B5[base_B + 10]);
+          lane_output3[3] += SDP5AI(own_a0, tile_B[base_B + 11], own_a1, tile_B5[base_B + 11]);
+
+          lane_output4[0] += SDP5AI(own_a0, tile_B[base_B + 12], own_a1, tile_B5[base_B + 12]);
+          lane_output4[1] += SDP5AI(own_a0, tile_B[base_B + 13], own_a1, tile_B5[base_B + 13]);
+          lane_output4[2] += SDP5AI(own_a0, tile_B[base_B + 14], own_a1, tile_B5[base_B + 14]);
+          lane_output4[3] += SDP5AI(own_a0, tile_B[base_B + 15], own_a1, tile_B5[base_B + 15]);
+        }
+        workgroupBarrier();
+    }
+    let a_global = a_global_base + base_A + a_idx;
+    let scale_A = scales_a[a_global];
+    let scale = scale_A * output_element_t(uniforms.scale_B);
+    let b_global = b_global_base + base_B;
+    let output_idx = ((a_global) * uniforms.N + b_global) / 4;
+    // This creates a shader requirement that uniforms.N % 16 == 0
+    if (a_global < uniforms.M && b_global < uniforms.N) {
+        output[output_idx] = vec4<output_element_t>(lane_output1) * scale;
+        output[output_idx + 1] = vec4<output_element_t>(lane_output2) * scale;
+        output[output_idx + 2] = vec4<output_element_t>(lane_output3) * scale;
+        output[output_idx + 3] = vec4<output_element_t>(lane_output4) * scale;
+    }
+}

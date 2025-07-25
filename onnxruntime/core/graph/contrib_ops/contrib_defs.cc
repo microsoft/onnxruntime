@@ -3640,6 +3640,48 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
         MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, transB);
       });
 
+  static const char* BitLinear_ver1_doc = R"DOC(
+BitLinear performs a matrix multiplication between input A and ternary quantized weights B.
+
+The weight matrix B is quantized to ternary values {-1, 0, 1} and packed using base-3 arithmetic.
+Five ternary values pack into a single uint8, utilizing the fact that 3^5 = 243 < 256.
+The weights are stored transposed (similar to MatMulNBits) in shape [N, K/5].
+
+During computation:
+1. Input A is first quantized.
+2. Matrix multiplication is performed between quantized A and packed ternary B
+3. Results are scaled using the provided scale factor
+
+The packing format stores 5 consecutive K-dimension values as a single uint8:
+packed_value = v0 + v1*3 + v2*9 + v3*27 + v4*81, where each v is in {-1, 0, 1}.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BitLinear)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(BitLinear_ver1_doc)
+      .Attr("K", "Input feature dimension of the weight matrix.", AttributeProto::INT)
+      .Attr("N", "Output feature dimension of the weight matrix.", AttributeProto::INT)
+      .Attr("scale", "Scaling factor to apply to the output.", AttributeProto::FLOAT)
+      .Input(0, "A", "The input tensor, not quantized.", "T1")
+      .Input(1, "B",
+             "Packed uint8 tensor of shape [N, K/5]. "
+             "Contains ternary weights {-1, 0, 1} packed using base-3 arithmetic. "
+             "Five consecutive K-dimension values are packed into each uint8.",
+             "T2")
+      .Output(0, "Y", "Output tensor with same rank as input A.", "T1")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference
+        int64_t in_features = getAttribute(ctx, "K", -1);
+        int64_t out_features = getAttribute(ctx, "N", -1);
+        MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, true);
+      });
+
   static const char* GatherBlockQuantized_ver1_doc = R"DOC(
 GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) with differences:
   1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.
