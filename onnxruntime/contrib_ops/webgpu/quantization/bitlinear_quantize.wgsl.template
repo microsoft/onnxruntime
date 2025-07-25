@@ -1,0 +1,70 @@
+#param K4
+
+var<workgroup> max_values : array<vec4<input_a_element_t>, 16>;
+var<workgroup> values : array<vec4<input_a_element_t>, K4>;
+
+fn max4(a: input_a_element_t, b: input_a_element_t, c: input_a_element_t, d: input_a_element_t) -> input_a_element_t {
+  return max(max(max(a, b), c), d);
+}
+
+$MAIN {
+  let row_offset = workgroup_idx * K4;
+  let subgroup_max_result_idx = u32(local_idx / sg_size);
+
+  // First compute max for each subgroup.
+  let input_idx = row_offset + local_idx;
+  for (var i = 0u; i < K4; i += workgroup_size_x) {
+    let value = input_a[input_idx+i];
+    let abs_value = abs(value);
+    let sg_max = subgroupMax(abs_value);
+    if (sg_id == 0) {
+        max_values[subgroup_max_result_idx] = max(max_values[subgroup_max_result_idx], sg_max);
+    }
+    values[local_idx + i] = value;
+  }
+  workgroupBarrier();
+
+  // Each subgroup now computes the full max by reducing the partial maxes.
+  var reduce_max_value1 = vec4<input_a_element_t>(0.0);
+  if (sg_id < u32(workgroup_size_x / sg_size)) {
+    if (sg_size == 8) {
+        reduce_max_value1 = max(max_values[sg_id], max_values[sg_id + 8]);
+    } else {
+        reduce_max_value1 = max_values[sg_id];
+    }
+  }
+  var reduce_max_value = subgroupMax(reduce_max_value1);
+  var max_value: input_a_element_t = 0.0;
+  max_value = max4(reduce_max_value.x, reduce_max_value.y, reduce_max_value.z, reduce_max_value.w);
+
+  // Now quantize the values.
+  // The results are written out as u32 with an additional swizzle.
+  // Swizzle: In a block of 20, every 5th value is pulled out and packed together
+  // at the end of the group. The Swizzle helps with fast multiplication in the next step.
+  for (var i = 0u; i < K4; i += (workgroup_size_x * 5)) {
+    let vidx = local_idx * 5 + i;
+    if (vidx + 4 < K4) {
+      let value1 = values[vidx] / max_value;
+      let out_vidx = (vidx / 5) * 4;
+      output[out_vidx] = pack4x8snorm(vec4<f32>(value1));
+
+      let value2 = values[vidx + 1] / max_value;
+      let value3 = values[vidx + 2] / max_value;
+      let value4 = values[vidx + 3] / max_value;
+      let value5 = values[vidx + 4] / max_value;
+      // skip the 5th value - value2[0]
+      output[out_vidx + 1] = pack4x8snorm(vec4<f32>(vec4<input_a_element_t>(value2[1], value2[2], value2[3], value3[0])));
+      // skip the 5th value -  value3[1]
+      output[out_vidx + 2] = pack4x8snorm(vec4<f32>(vec4<input_a_element_t>(value3[2], value3[3], value4[0], value4[1])));
+      // skip the 5th value -  value4[2]
+      output[out_vidx + 3] = pack4x8snorm(vec4<f32>(vec4<input_a_element_t>(value4[3], value5[0], value5[1], value5[2])));
+      // last 5th value is value5[3]
+
+      // Now pack the skipped values together.
+      output_5th[vidx / 5] = pack4x8snorm(vec4<f32>(vec4<input_a_element_t>(value2[0], value3[1], value4[2], value5[3])));
+    }
+  }
+  if (local_idx == 0) {
+    scales[workgroup_idx] = max_value / 127.0;
+  }
+}
