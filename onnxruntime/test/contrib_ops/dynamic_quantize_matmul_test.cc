@@ -105,7 +105,7 @@ void TestDynamicQuantizeMatMul(const TestDynamicQuantizeMatMulOptions& opts) {
 
   SCOPED_TRACE(MakeString(
       "b data type:", (std::is_same_v<T, uint8_t> ? "uint8" : "int8"),
-      "is_matrix_b_constant:", opts.is_matrix_b_constant,
+      ", is_matrix_b_constant:", opts.is_matrix_b_constant,
       ", per_column:", opts.per_column,
       ", is_scale_constant:", opts.is_scale_constant,
       ", has_zp:", opts.has_zp,
