@@ -24,7 +24,7 @@ import onnxruntime
 torch.manual_seed(42)
 numpy.random.seed(42)
 
-USE_QUANT = False
+USE_QUANT = True
 ORT_DTYPE = TensorProto.FLOAT16 if USE_QUANT else TensorProto.FLOAT
 NP_TYPE = numpy.float16 if ORT_DTYPE == TensorProto.FLOAT16 else numpy.float32
 THRESHOLD = 5e-1 if USE_QUANT else 1e-2
@@ -586,13 +586,6 @@ class SparseMoeBlockORTHelper(nn.Module):
                 self.ort_run_with_iobinding(ort_inputs)
                 return None
 
-        # print_tensor("input", ort_inputs["input"])
-        # print_tensor("router_probs", ort_inputs["router_probs"])
-        # print_tensor("fc1_experts_weights", self.moe_experts_weight1.detach().numpy())
-        # print_tensor("fc2_experts_weights", self.moe_experts_weight2.detach().numpy())
-        # print_tensor("fc3_experts_weights", self.moe_experts_weight3.detach().numpy())
-        # print_tensor("output", ort_output[0])
-
         return None
 
     def ort_run_with_iobinding(self, ort_inputs, repeat=1000):
@@ -1076,19 +1069,22 @@ class SwigluMlp(nn.Module):
 
 
 def create_swiglu_moe_onnx_graph(
-    num_tokens,
-    num_experts,
-    hidden_size,
-    inter_size,
-    fc1_experts_weights,
-    fc1_experts_bias,
-    fc2_experts_weights,
-    fc2_experts_bias,
-    topk,
+    num_tokens:int,
+    num_experts:int,
+    hidden_size:int,
+    inter_size:int,
+    topk:int,
+    use_quant:bool,
+    fc1_experts_weights:torch.Tensor,
+    fc1_experts_bias:torch.Tensor,
+    fc2_experts_weights:torch.Tensor,
+    fc2_experts_bias:torch.Tensor,
+    fc1_experts_weight_scale:torch.Tensor = None,
+    fc2_experts_weight_scale:torch.Tensor = None,
 ):
     nodes = [
         helper.make_node(
-            "MoE",
+            "MoE" if not use_quant else "QMoE",
             [
                 "input",
                 "router_probs",
@@ -1096,7 +1092,17 @@ def create_swiglu_moe_onnx_graph(
                 "fc1_experts_bias",
                 "fc2_experts_weights",
                 "fc2_experts_bias",
-            ],
+            ] if not use_quant else [
+                "input",
+                "router_probs",
+                "fc1_experts_weights",
+                "fc1_experts_weight_scale",
+                "fc1_experts_bias",
+                "fc2_experts_weights",
+                "fc2_experts_weight_scale",
+                "fc2_experts_bias",
+            ]
+
             ["output"],
             "MoE_0",
             k=topk,
@@ -1108,16 +1114,21 @@ def create_swiglu_moe_onnx_graph(
 
     fc1_weight_shape = [num_experts, hidden_size, 2 * inter_size]
     fc1_bias_shape = [num_experts, 2 * inter_size]
+    fc1_experts_weight_scale_shape = [num_experts, 2 * inter_size]
 
     fc2_weight_shape = [num_experts, inter_size, hidden_size]
     fc2_bias_shape = [num_experts, hidden_size]
+    fc2_experts_weight_scale_shape = [num_experts, hidden_size]
 
     torch_type = torch.float16 if ORT_DTYPE == TensorProto.FLOAT16 else torch.float32
+    numpy_type = numpy.float16 if ORT_DTYPE == TensorProto.FLOAT16 else numpy.float32
+    if use_quant:
+        numpy_type = numpy.uint8
 
     initializers = [
         helper.make_tensor(
             "fc1_experts_weights",
-            ORT_DTYPE,
+            ORT_DTYPE if not use_quant else TensorProto.UINT8,
             fc1_weight_shape,
             fc1_experts_weights.to(torch_type).flatten().tolist(),
             raw=False,
@@ -1131,7 +1142,7 @@ def create_swiglu_moe_onnx_graph(
         ),
         helper.make_tensor(
             "fc2_experts_weights",
-            ORT_DTYPE,
+            ORT_DTYPE if not use_quant else TensorProto.UINT8,
             fc2_weight_shape,
             fc2_experts_weights.to(torch_type).flatten().tolist(),
             raw=False,
@@ -1141,6 +1152,34 @@ def create_swiglu_moe_onnx_graph(
             ORT_DTYPE,
             fc2_bias_shape,
             fc2_experts_bias.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+        helper.make_tensor(
+            "fc2_experts_weights",
+            ORT_DTYPE if not use_quant else TensorProto.UINT8,
+            fc2_weight_shape,
+            fc2_experts_weights.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+        helper.make_tensor(
+            "fc2_experts_bias",
+            ORT_DTYPE,
+            fc2_bias_shape,
+            fc2_experts_bias.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+        helper.make_tensor(
+            "fc1_experts_weight_scale",
+            ORT_DTYPE,
+            fc1_experts_weight_scale_shape,
+            fc1_experts_weight_scale.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+        helper.make_tensor(
+            "fc2_experts_weight_scale",
+            ORT_DTYPE,
+            fc2_experts_weight_scale_shape,
+            fc2_experts_weight_scale.to(torch_type).flatten().tolist(),
             raw=False,
         ),
     ]
@@ -1189,17 +1228,32 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
         weight_2_list = []
         bias_1_list = []
         bias_2_list = []
+        scale_1_list = []
+        scale_2_list = []
         for i in range(self.num_experts):
-            weight_1_list.append(self.experts[i].w1.weight)
-            weight_2_list.append(self.experts[i].w2.weight)
             bias_1_list.append(self.experts[i].w1.bias)
             bias_2_list.append(self.experts[i].w2.bias)
+            if not USE_QUANT:
+                weight_1_list.append(self.experts[i].w1.weight)
+                weight_2_list.append(self.experts[i].w2.weight)
+            else:
+                scale1, pre_qweight1, w1_qdq = quant_dequant(self.experts[i].w1.weight, False)
+                scale2, pre_qweight2, w2_qdq = quant_dequant(self.experts[i].w2.weight, False)
+                self.experts[i].w1.weight.data = w1_qdq
+                self.experts[i].w2.weight.data = w2_qdq
+                weight_1_list.append(pre_qweight1)
+                weight_2_list.append(pre_qweight2)
+                scale_1_list.append(scale1)
+                scale_2_list.append(scale2)
 
         self.moe_experts_weight1 = torch.stack(weight_1_list, dim=0)
         self.moe_experts_weight2 = torch.stack(weight_2_list, dim=0)
 
         self.moe_experts_bias1 = torch.stack(bias_1_list, dim=0)
         self.moe_experts_bias2 = torch.stack(bias_2_list, dim=0)
+
+        moe_experts_weight_scale1 = torch.stack(scale_1_list, dim=0) if USE_QUANT else None
+        moe_experts_weight_scale2 = torch.stack(scale_2_list, dim=0) if USE_QUANT else None
 
         self.batch_size = batch_size
         self.sequence_length = sequence_length
@@ -1208,12 +1262,15 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
             num_experts=self.num_experts,
             hidden_size=self.hidden_dim,
             inter_size=self.ffn_dim,
+            topk=self.top_k,
+            use_quant=USE_QUANT,
             fc1_experts_weights=self.moe_experts_weight1,
             fc1_experts_bias=self.moe_experts_bias1,
             fc2_experts_weights=self.moe_experts_weight2,
             fc2_experts_bias=self.moe_experts_bias2,
-            topk=self.top_k,
-        )
+            fc1_experts_weight_scale=moe_experts_weight_scale1,
+            fc2_experts_weight_scale=moe_experts_weight_scale2,
+            )
 
         self.ort_sess = self.create_ort_session(self.moe_onnx_graph)
 
