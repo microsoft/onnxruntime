@@ -1,0 +1,75 @@
+name: Qualcomm Merge Upstream Workflow
+
+on:
+  # Allows the workflow to be ran manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  merge-upstream:
+    runs-on: ["self-hosted", "X64", "Linux", "Build"]
+    env:
+      ORIGIN_BRANCH: main
+      UPSTREAM_URL: https://github.com/microsoft/onnxruntime.git
+      UPSTREAM_BRANCH: main
+    steps:
+      - name: Setup dynamic environment variables
+        run: |
+          TODAY=$(date +%Y%m%d)
+          echo "TODAY=$TODAY" >> $GITHUB_ENV
+          echo "PR_BRANCH=$(echo merge-upstream-$TODAY)" >> $GITHUB_ENV
+      - name: Checkout internal ORT QNN EP repository
+        uses: actions/checkout@v4
+        with:
+          # Set fetch-depth to 0 (pulls in full history) to allow the histories to be merged
+          fetch-depth: 0
+          submodules: false
+          token: ${{ secrets.ORTQNNEPCI_PAT }}
+      - name: Configure git as ortqnnepci
+        run: |
+          git config --local user.name "ortqnnepci"
+          git config --local user.email "ortqnnepci@qualcomm.com"
+      - name: Add upstream and fetch
+        run: |
+          git remote set-url upstream "$UPSTREAM_URL" || git remote add upstream "$UPSTREAM_URL"
+          git fetch upstream
+      - name: Determine merge base
+        run: |
+          ORIGIN_BRANCH_HEAD=$(git rev-parse origin/$ORIGIN_BRANCH)
+          UPSTREAM_BRANCH_HEAD=$(git rev-parse upstream/$UPSTREAM_BRANCH)
+          echo "MERGE_BASE=$(git merge-base $ORIGIN_BRANCH_HEAD $UPSTREAM_BRANCH_HEAD)" >> $GITHUB_ENV
+      - name: Merge upstream into origin
+        run: |
+          git checkout -b $PR_BRANCH origin/$ORIGIN_BRANCH
+          # Don't auto-commit the merge to allow for binary file removal and conflict resolution
+          if ! git merge upstream/$UPSTREAM_BRANCH --no-commit; then
+            echo "Merge conflicts detected. Will be resolved in the next step."
+          fi
+      - name: Resolve conflicts automatically and commit
+        run: |
+          git checkout --theirs .
+          git add .
+          git commit -m "[MERGE-UPSTREAM] Automated upstream merge for $TODAY"
+      - name: Authenticate service account with GitHub CLI
+        run: |
+          echo "${{ secrets.ORTQNNEPCI_PAT }}" | gh auth login --with-token -h github.qualcomm.com -p https
+      - name: Push branch to origin
+        run: |
+          git push origin $PR_BRANCH
+      - name: Raise a pull request on PR branch
+        run: |
+          PR_TITLE="[MERGE-UPSTREAM] Automated upstream merge for $TODAY"
+          PR_BODY="This PR merges the latest changes from \`microsoft/onnxruntime\` into the \`onnxruntime-qnn-ep\` repository.
+
+          > :warning: **Warning:** To properly preserve the history of this repository, please use \"Merge commit\" when merging this PR.
+
+          The following is the merge base for this action:
+
+          $(git log -1 $MERGE_BASE)
+
+          Created by ortqnnepci through GitHub Actions."
+
+          gh pr create \
+          -B $ORIGIN_BRANCH \
+          -H $PR_BRANCH \
+          --title "$PR_TITLE" \
+          --body "$PR_BODY"
