@@ -56,7 +56,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
-      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
+      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'qnn_abi', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -221,6 +221,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
   bool enable_qnn = false;
+  bool enable_qnn_abi = false;
   bool enable_nnapi = false;
   bool enable_vsinpu = false;
   bool enable_coreml = false;
@@ -242,6 +243,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   std::basic_string<ORTCHAR_T> ep_runtime_config_string;
   std::unordered_map<std::string, std::string> session_config_entries;
   std::string provider_name = "cpu";
+  // Only used for ABI
+  std::string registration_name = "";
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
   bool verbose_logging_required = false;
@@ -305,6 +308,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_tensorrt = true;
           } else if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
             enable_qnn = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("qnn_abi"))) {
+            enable_qnn_abi = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
           } else if (!CompareCString(optarg, ORT_TSTR("vsinpu"))) {
@@ -536,7 +541,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_qnn) {
+    if (enable_qnn || enable_qnn_abi) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
       std::string option_string = ToUTF8String(ep_runtime_config_string);
@@ -634,7 +639,29 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
         qnn_options[key] = value;
       }
-      sf.AppendExecutionProvider("QNN", qnn_options);
+      if (enable_qnn_abi) {
+        const std::filesystem::path& library_path = "onnxruntime_providers_qnn_abi.dll";
+        registration_name = "QnnAbiTestProvider";
+        &env.RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+        {
+          std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
+
+          Ort::ConstEpDevice plugin_ep_device;
+          for (Ort::ConstEpDevice& device : ep_devices) {
+            if (std::string(device.EpName()) == registration_name) {
+              plugin_ep_device = device;
+              break;
+            }
+          }
+          if (plugin_ep_device == nullptr) {
+            ORT_THROW("Fail to find/get the plugin ep devices - QnnAbiTestProvider");
+          }
+          sf.AppendExecutionProvider_V2(env, std::vector<Ort::ConstEpDevice>{plugin_ep_device}, qnn_options);
+        }
+      } else {
+        // old version
+        sf.AppendExecutionProvider("QNN", qnn_options);
+      }
 #else
       fprintf(stderr, "QNN is not supported in this build");
       return -1;
@@ -935,7 +962,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
       all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
-    if (enable_qnn) {
+    if (enable_qnn || enable_qnn_abi) {
       all_disabled_tests.insert(std::begin(qnn_disabled_tests), std::end(qnn_disabled_tests));
       all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
@@ -973,6 +1000,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   for (const auto& p : stat.GetFailedTest()) {
     fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
     result = -1;
+  }
+  if (enable_qnn_abi) {
+    &env.UnregisterExecutionProviderLibrary(registration_name.c_str());
   }
   return result;
 }

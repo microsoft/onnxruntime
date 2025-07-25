@@ -644,10 +644,10 @@ QnnEp::QnnEp(QnnEpFactory& factory,
                                                                  _logger);
 
   if (disable_cpu_ep_fallback_ && model_settings_.offload_graph_io_quantization) {
-    LOGS_DEFAULT(INFO) << "Fallback to CPU EP is disabled, but user tried to configure QNN EP to offload graph I/O "
-                       << "quantization/dequantization to another EP. These are conflicting options. Fallback to CPU "
-                       << "EP will remain disabled and graph I/O quantization/dequantization will not be offloaded "
-                       << "to another EP.";
+    LOGS(_logger, INFO) << "Fallback to CPU EP is disabled, but user tried to configure QNN EP to offload graph I/O "
+                        << "quantization/dequantization to another EP. These are conflicting options. Fallback to CPU "
+                        << "EP will remain disabled and graph I/O quantization/dequantization will not be offloaded "
+                        << "to another EP.";
     model_settings_.offload_graph_io_quantization = false;
   }
 
@@ -668,7 +668,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   if (!json_graph_dir_str.empty()) {
     json_qnn_graph_dir_ = json_graph_dir_str;
     if (dump_json_qnn_graph_) {
-      LOGS_DEFAULT(INFO) << "JSON graphs directory: " << json_qnn_graph_dir_;
+      LOGS(_logger, INFO) << "JSON graphs directory: " << json_qnn_graph_dir_;
     } else {
       LOGS(_logger, WARNING) << "Provided a directory for dumping QNN JSON graphs, "
                             << "but did not enable dumping of QNN JSON graphs.";
