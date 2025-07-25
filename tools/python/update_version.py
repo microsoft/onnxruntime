@@ -5,11 +5,12 @@
 # NOTE: please install azcli and run "az login" before running this script!
 
 import re
-import sys
 import shutil
+import sys
 from pathlib import Path
 
 # --- Helper Functions for Updating Files ---
+
 
 def update_versioning_md(file_path: Path, new_version: str):
     """Updates the version table in Versioning.md."""
@@ -18,7 +19,7 @@ def update_versioning_md(file_path: Path, new_version: str):
         print(f"Warning: File not found at '{file_path}'. Skipping.")
         return
     content = file_path.read_text()
-    
+
     # Find the first version number in the markdown table
     match = re.search(r"^\| ([\d.]+) \|", content, re.MULTILINE)
     if not match:
@@ -38,8 +39,8 @@ def update_versioning_md(file_path: Path, new_version: str):
 
         header_separator = header_separator_match.group(2)
         # Create a new row based on the separator, replacing dashes with spaces and adding the version
-        new_row_parts = [" " + part.replace("-", " ") + " " for part in header_separator.split('|')]
-        new_row_parts[1] = f" {new_version} " # Set the new version
+        new_row_parts = [" " + part.replace("-", " ") + " " for part in header_separator.split("|")]
+        new_row_parts[1] = f" {new_version} "  # Set the new version
         new_row = "|".join(new_row_parts)
 
         # Insert the new row right after the header separator line
@@ -73,7 +74,7 @@ def update_readme_rst(file_path: Path, new_version: str):
         new_header = f"{new_version}\n{'^' * len(new_version)}"
         release_notes = f"Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v{new_version}"
         new_section = f"{new_header}\n\n{release_notes}\n\n"
-        
+
         # Insert the new section before the first version header found
         insertion_point = match.start(0)
         new_content = content[:insertion_point] + new_section + content[insertion_point:]
@@ -102,11 +103,7 @@ def update_init_py(file_path: Path, new_version: str):
 
     if new_version != current_version:
         print(f"Updating version in '{file_path.name}' to {new_version}...")
-        new_content = re.sub(
-            r"__version__\s*=\s*[\"'][\d.]+[\"']",
-            f'__version__ = "{new_version}"',
-            content
-        )
+        new_content = re.sub(r"__version__\s*=\s*[\"'][\d.]+[\"']", f'__version__ = "{new_version}"', content)
         file_path.write_text(new_content)
         print("Update complete.")
     else:
@@ -116,10 +113,11 @@ def update_init_py(file_path: Path, new_version: str):
 def update_npm_packages(js_root: Path, new_version: str):
     """Updates versions for all NPM packages in the js directory."""
     print("\nUpdating NPM package versions...")
-    
+
     # This script assumes a 'util' module is available in the search path.
     try:
-        from util import is_windows, run as run_command
+        from util import is_windows
+        from util import run as run_command
     except ImportError:
         print("Error: Could not import 'is_windows' and 'run' from a 'util' module.", file=sys.stderr)
         print("Please ensure the 'util' module is in Python's search path.", file=sys.stderr)
@@ -136,12 +134,14 @@ def update_npm_packages(js_root: Path, new_version: str):
         # Check for .nvmrc file.
         if not nvmrc_path.exists():
             print(f"Error: 'fnm' is being used, but the version file '{nvmrc_path}' was not found.", file=sys.stderr)
-            print("Please create a .nvmrc file in the 'js' directory with the desired Node.js version.", file=sys.stderr)
+            print(
+                "Please create a .nvmrc file in the 'js' directory with the desired Node.js version.", file=sys.stderr
+            )
             return
-        
+
         node_version = nvmrc_path.read_text().strip()
         print(f"Found node version '{node_version}' in .nvmrc.")
-        
+
         # Ensure the required node version is installed by fnm.
         print(f"Ensuring Node.js version '{node_version}' is installed via fnm...")
         run_command("fnm", "install", node_version, cwd=js_root)
@@ -159,7 +159,7 @@ def update_npm_packages(js_root: Path, new_version: str):
     def run_npm(args, cwd):
         """Helper to run npm commands, prepending fnm if necessary."""
         full_command = command_prefix + list(args)
-        
+
         if is_windows():
             run_command("cmd", "/c", *full_command, cwd=cwd)
         else:
@@ -178,9 +178,10 @@ def update_npm_packages(js_root: Path, new_version: str):
     run_npm(["npm", "ci"], cwd=js_root)
     for package in packages:
         run_npm(["npm", "run", "update-version", package], cwd=js_root)
-    
+
     run_npm(["npm", "run", "format"], cwd=js_root)
     print("NPM package updates complete.")
+
 
 # Define repository root relative to the script's location
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -202,10 +203,10 @@ def update_version():
     if not re.fullmatch(r"\d+\.\d+\.\d+", new_version):
         print(
             f"Error: Version '{new_version}' from '{version_file.name}' is not a valid x.y.z semantic version.",
-            file=sys.stderr
+            file=sys.stderr,
         )
         sys.exit(1)
-    
+
     print(f"Target version to set: {new_version}\n")
 
     # Update files using absolute paths from REPO_DIR
