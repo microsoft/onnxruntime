@@ -245,6 +245,22 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetFlags,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetGraphOptimizationLevel,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    _In_ GraphOptimizationLevel graph_optimization_level) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetGraphOptimizationLevel(graph_optimization_level));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(graph_optimization_level);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtCompileAPI::CompileModel, _In_ const OrtEnv* env,
                     _In_ const OrtModelCompilationOptions* ort_model_compile_options) {
   API_IMPL_BEGIN
@@ -278,6 +294,7 @@ static constexpr OrtCompileApi ort_compile_api = {
 
     &OrtCompileAPI::ModelCompilationOptions_SetFlags,
     &OrtCompileAPI::ModelCompilationOptions_SetEpContextBinaryInformation,
+    &OrtCompileAPI::ModelCompilationOptions_SetGraphOptimizationLevel,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

@@ -130,6 +130,13 @@ class ModelCompilationOptions {
   size_t GetInputModelDataSize() const;
 
   /// <summary>
+  /// Sets the graph optimization level for the underlying session that compiles the model.
+  /// </summary>
+  /// <param name="graph_optimization_level">The optimization level</param>
+  /// <returns></returns>
+  Status SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);
+
+  /// <summary>
   /// Checks if the compilation options described by this object are valid.
   /// </summary>
   /// <returns>An error status if the compilation options are invalid</returns>

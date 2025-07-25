@@ -32,5 +32,8 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOp
                     size_t flags);
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetEpContextBinaryInformation, _In_ OrtModelCompilationOptions* model_compile_options,
                     _In_ const ORTCHAR_T* output_dir, _In_ const ORTCHAR_T* model_name);
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetGraphOptimizationLevel,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_ GraphOptimizationLevel graph_optimization_level);
 
 }  // namespace OrtCompileAPI

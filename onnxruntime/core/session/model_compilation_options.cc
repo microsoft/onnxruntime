@@ -27,6 +27,8 @@ ModelCompilationOptions::ModelCompilationOptions(const onnxruntime::Environment&
   // Shouldn't fail because the key/value strings are below the maximum string length limits in ConfigOptions.
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1").IsOK());
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionsDisableModelCompile, "0").IsOK());
+
+  session_options_.value.graph_optimization_level = TransformerLevel::Default;  // L0: required transformers only
 }
 
 void ModelCompilationOptions::SetInputModelPath(const std::string& input_model_path) {
@@ -168,6 +170,31 @@ void ModelCompilationOptions::ResetInputModelSettings() {
   input_model_path_.clear();
   input_model_data_ = nullptr;
   input_model_data_size_ = 0;
+}
+
+Status ModelCompilationOptions::SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level) {
+  switch (graph_optimization_level) {
+    case ORT_DISABLE_ALL:
+      session_options_.value.graph_optimization_level = onnxruntime::TransformerLevel::Default;
+      break;
+    case ORT_ENABLE_BASIC:
+      session_options_.value.graph_optimization_level = onnxruntime::TransformerLevel::Level1;
+      break;
+    case ORT_ENABLE_EXTENDED:
+      session_options_.value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
+      break;
+    case ORT_ENABLE_LAYOUT:
+      session_options_.value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+      break;
+    case ORT_ENABLE_ALL:
+      session_options_.value.graph_optimization_level = onnxruntime::TransformerLevel::MaxLevel;
+      break;
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "graph_optimization_level with value ",
+                             static_cast<int>(graph_optimization_level), " is invalid");
+  }
+
+  return Status::OK();
 }
 
 Status ModelCompilationOptions::ResetOutputModelSettings() {
