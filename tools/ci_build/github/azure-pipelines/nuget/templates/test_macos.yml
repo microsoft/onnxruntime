@@ -21,23 +21,19 @@ stages:
       displayName: 'Download Nuget'
       artifact: 'drop-signed-nuget-${{ parameters.ArtifactSuffix }}'
 
+    - download: build
+      displayName: 'Download Nuget'
+      artifact: 'onnxruntime-osx'
 
     - script: |
         mv $(Pipeline.Workspace)/build/drop-signed-nuget-${{ parameters.ArtifactSuffix }} $(Build.BinariesDirectory)/nuget-artifact
-  
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download OsX CustomOp test data'
-      inputs:
-        artifactName: 'onnxruntime-osx'
-        targetPath: '$(Build.BinariesDirectory)/testdata'
+        mv $(Pipeline.Workspace)/build/onnxruntime-osx $(Build.BinariesDirectory)/testdata
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - script: |
-       echo "TODO: Enable this test once fix this nuget test issue"
        $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
                  $(Build.BinariesDirectory)/nuget-artifact \
                  $(NuGetPackageVersionNumber) \
@@ -53,5 +49,3 @@ stages:
           DisableContribOps: $(DisableContribOps)
           DisableMlOps: $(DisableMlOps)
           IsReleaseBuild: $(IsReleaseBuild)
-
-    - template: ../../templates/clean-agent-build-directory-step.yml

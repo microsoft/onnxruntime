@@ -13,7 +13,6 @@ stages:
     timeoutInMinutes: 120
     pool:
       name: ${{ parameters.AgentPool }}
-      os: 'linux'
 
     variables:
     - name: OnnxRuntimeBuildDirectory

@@ -29,7 +29,7 @@ stages:
         artifactName: drop-win-dml-arm64-zip
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
       outputs:
-        - ${{if and(eq(parameters.IsReleaseBuild, false), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/users/snnn/')))}}:
+        - ${{if and(eq(parameters.IsReleaseBuild, false), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))}}:
           - output: nuget
             useDotNetTask: false # The default is false to use the NuGetCommand task. Set to true to use the DotNetCoreCLI task to publish packages.
             packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg'
