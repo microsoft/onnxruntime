@@ -4,6 +4,7 @@
 #include "core/platform/linux/cpuinfo.h"
 
 #include <fstream>
+#include <iostream>  // TODO for debugging - remove later
 #include <map>
 #include <string_view>
 
@@ -51,6 +52,7 @@ Status ParseCpuInfoFile(const std::string& cpu_info_file, CpuInfo& cpu_info_out)
   };
 
   for (std::string line{}; std::getline(in, line);) {
+    std::cerr << "/proc/cpuinfo line: " << line << "\n";
     line = utils::TrimString(line);
 
     if (line.empty()) {
