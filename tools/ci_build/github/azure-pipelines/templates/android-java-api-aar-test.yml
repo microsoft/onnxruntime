@@ -29,7 +29,7 @@ parameters:
 jobs:
 - job: Final_AAR_Testing_Android
   pool:
-    name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    name: 'onnxruntime-Ubuntu2404-AMD-CPU'
     os: linux
   workspace:
     clean: all

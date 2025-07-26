@@ -223,6 +223,7 @@ void CPUIDInfo::ArmLinuxInit() {
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+    has_arm_sme_ = cpuinfo_has_arm_sme();
 
     const uint32_t core_cnt = cpuinfo_get_cores_count();
     core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
@@ -395,6 +396,7 @@ void CPUIDInfo::ArmAppleInit() {
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+    has_arm_sme_ = cpuinfo_has_arm_sme();
 
     // Note: We leave is_armv8_narrow_ld_ unset because it only applies to a limited set of uarchs that we don't expect
     // to encounter on Apple platforms.

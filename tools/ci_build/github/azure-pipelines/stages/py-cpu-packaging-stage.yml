@@ -302,7 +302,7 @@ stages:
     - template: ../templates/py-linux.yml
       parameters:
         arch: 'x86_64'
-        machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
+        machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
         extra_build_arg: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
         is1ES: true
@@ -346,7 +346,7 @@ stages:
     jobs:
     - template: ../templates/py-linux-qnn.yml
       parameters:
-        machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+        machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
         extra_build_arg: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
         is1ES: true
