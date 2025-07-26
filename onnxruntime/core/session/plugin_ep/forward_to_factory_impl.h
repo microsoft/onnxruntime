@@ -7,7 +7,7 @@ namespace onnxruntime {
 // helper to forward a call from the C API to an instance of the factory implementation.
 // used by EpFactoryInternal and EpFactoryProviderBridge.
 template <typename TFactory>
-struct ForwardToFactory {
+struct ForwardToFactoryImpl {
   static const char* ORT_API_CALL GetFactoryName(const OrtEpFactory* this_ptr) noexcept {
     return static_cast<const TFactory*>(this_ptr)->GetName();
   }

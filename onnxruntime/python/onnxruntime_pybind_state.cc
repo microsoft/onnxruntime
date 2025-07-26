@@ -46,7 +46,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/session/abi_devices.h"
-#include "core/session/ep_factory_internal.h"
+#include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/provider_policy_context.h"
 #include "core/session/utils.h"
 #endif

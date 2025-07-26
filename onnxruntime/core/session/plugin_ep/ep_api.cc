@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/ep_api.h"
+#include "core/session/plugin_ep/ep_api.h"
 
 #include <algorithm>
 #include <vector>

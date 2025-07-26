@@ -20,7 +20,7 @@
 #include "core/platform/threadpool.h"
 
 #include "core/session/abi_devices.h"
-#include "core/session/ep_library.h"
+#include "core/session/plugin_ep/ep_library.h"
 #include "core/session/onnxruntime_c_api.h"
 
 struct OrtThreadingOptions;

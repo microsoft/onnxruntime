@@ -5,6 +5,8 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_INCLUDE_DIR}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/plugin_ep/*.h"
+    "${ONNXRUNTIME_ROOT}/core/session/plugin_ep/*.cc"
     )
 
 if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -22,7 +24,7 @@ endif()
 # which is not enabled for any minimal builds.
 if (onnxruntime_MINIMAL_BUILD)
   file(GLOB autoep_srcs
-    "${ONNXRUNTIME_ROOT}/core/session/ep_*.*"
+    "${ONNXRUNTIME_ROOT}/core/session/plugin_ep/*.*"
   )
 
   set(onnxruntime_session_src_exclude

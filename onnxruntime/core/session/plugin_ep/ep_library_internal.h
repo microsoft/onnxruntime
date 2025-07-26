@@ -4,8 +4,8 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/session/ep_library.h"
-#include "core/session/ep_factory_internal.h"
+#include "core/session/plugin_ep/ep_library.h"
+#include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/provider_bridge_library.h"
 
