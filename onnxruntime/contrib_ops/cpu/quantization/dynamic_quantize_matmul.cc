@@ -202,7 +202,9 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
       // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
       // We check that here too before attempting to use them.
-      can_use_dynamic_quant_mlas_ &&= CPUIDInfo::GetCPUIDInfo().HasArm_SME();
+      if (!CPUIDInfo::GetCPUIDInfo().HasArm_SME()) {
+        can_use_dynamic_quant_mlas_ = false;
+      }
 
       // Only handle the common case of a 2D weight matrix. Additional matrices
       // could be handled by stacking the packed buffers.
