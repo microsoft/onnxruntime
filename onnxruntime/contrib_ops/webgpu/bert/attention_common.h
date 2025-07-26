@@ -50,6 +50,7 @@ struct WebgpuAttentionParameters {
                                                                                                        v_hidden_size_(parameters.kv_hidden_size),
                                                                                                        v_head_size_(parameters.kv_hidden_size / parameters.kv_num_heads),
                                                                                                        num_heads_(parameters.num_heads),
+                                                                                                       is_unidirectional_(true),
                                                                                                        do_rotary_(parameters.do_rotary),
                                                                                                        scale_(parameters.scale),
                                                                                                        seqlen_past_kv_cache_(parameters.seqlen_past_kv_cache),
