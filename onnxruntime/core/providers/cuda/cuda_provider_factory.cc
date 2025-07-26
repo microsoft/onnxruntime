@@ -355,8 +355,9 @@ struct CudaOrtAllocator : OrtAllocator {
     Alloc = AllocImpl;
     Free = FreeImpl;
     Info = InfoImpl;
-    Reserve = AllocImpl;  // no special behavior for Reserve so use AllocImpl
-    GetStats = nullptr;   // GetStatsImpl. The CUDA allocators don't have stats currently so we can skip.
+    Reserve = AllocImpl;      // no special behavior for Reserve so use AllocImpl
+    GetStats = nullptr;       // GetStatsImpl. The CUDA allocators don't have stats currently so we can skip.
+    AllocOnStream = nullptr;  // TODO. Plugin EP arena to provide this.
 
     const OrtEpApi& ep_api = *api.GetEpApi();
     const OrtMemoryDevice* mem_device = ep_api.MemoryInfo_GetMemoryDevice(mem_info);
@@ -436,9 +437,8 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
       OrtValue* dst_tensor = dst_tensors[idx];
       OrtSyncStream* stream = streams ? streams[idx] : nullptr;
 
-      const OrtMemoryDevice *src_device = nullptr, *dst_device = nullptr;
-      RETURN_IF_ERROR(impl.ep_api.Value_GetMemoryDevice(src_tensor, &src_device));
-      RETURN_IF_ERROR(impl.ep_api.Value_GetMemoryDevice(dst_tensor, &dst_device));
+      const OrtMemoryDevice* src_device = impl.ep_api.Value_GetMemoryDevice(src_tensor);
+      const OrtMemoryDevice* dst_device = impl.ep_api.Value_GetMemoryDevice(dst_tensor);
 
       size_t bytes;
       RETURN_IF_ERROR(impl.ort_api.GetTensorSizeInBytes(src_tensor, &bytes));
@@ -666,9 +666,10 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
 struct CudaEpFactory : OrtEpFactory {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
 
-  CudaEpFactory(const OrtApi& ort_api_in) : ort_api{ort_api_in},
-                                            ep_api{*ort_api_in.GetEpApi()},
-                                            data_transfer_impl{ort_api_in} {
+  CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in) : ort_api{ort_api_in},
+                                                                                default_logger{default_logger_in},
+                                                                                ep_api{*ort_api_in.GetEpApi()},
+                                                                                data_transfer_impl{ort_api_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
     GetVendorId = GetVendorIdImpl;
@@ -679,7 +680,6 @@ struct CudaEpFactory : OrtEpFactory {
 
     CreateAllocator = CreateAllocatorImpl;
     ReleaseAllocator = ReleaseAllocatorImpl;
-
     CreateDataTransfer = CreateDataTransferImpl;
 
     IsStreamAware = IsStreamAwareImpl;
@@ -911,6 +911,7 @@ struct CudaEpFactory : OrtEpFactory {
 
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
+  const OrtLogger& default_logger;
   const std::string ep_name{kCudaExecutionProvider};  // EP name
   const std::string vendor{"Microsoft"};              // EP vendor name
   uint32_t vendor_id{0x1414};                         // Microsoft vendor ID
@@ -935,12 +936,13 @@ extern "C" {
 // Public symbols
 //
 OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
+                             const OrtLogger* default_logger,
                              OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   ErrorHelper::ort_api = ort_api;  // setup our error helper
 
   // Factory could use registration_name or define its own EP name.
-  std::unique_ptr<OrtEpFactory> factory = std::make_unique<CudaEpFactory>(*ort_api);
+  std::unique_ptr<OrtEpFactory> factory = std::make_unique<CudaEpFactory>(*ort_api, *default_logger);
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,

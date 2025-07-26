@@ -78,7 +78,7 @@ jobs:
       architecture: $(buildArch)
   - task: NodeTool@0
     inputs:
-      versionSpec: '20.x'
+      versionSpec: '22.x'
 
   - task: PythonScript@0
     displayName: 'Build and test (node)'
