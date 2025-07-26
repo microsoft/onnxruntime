@@ -159,9 +159,9 @@ struct OrtDmlApi {
   ORT_API2_STATUS(GetDMLDevice, _In_ OrtSessionOptions* options, _Out_ IDMLDevice** dmlDevice);
 
   /**
- * GetDMLCommandQueue
- * returns the command queue used by DML
- */
+   * GetDMLCommandQueue
+   * returns the command queue used by DML
+   */
   ORT_API2_STATUS(GetDMLCommandQueue, _In_ OrtSessionOptions* options, _Out_ ID3D12CommandQueue** dmlCommandQueue);
 
 };
