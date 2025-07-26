@@ -19,7 +19,8 @@ namespace cuda {
                           (*KernelDefBuilder::Create())                                    \
                               .MayInplace(0, 0)                                            \
                               .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16>()) \
-                              .TypeConstraint("T1", BuildKernelDefConstraints<uint8_t>()), \
+                              .TypeConstraint("T1", BuildKernelDefConstraints<uint8_t>())  \
+                              .TypeConstraint("T2", BuildKernelDefConstraints<MLFloat16>()), \
                           QMoE);
 
 REGISTER_KERNEL()

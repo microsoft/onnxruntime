@@ -9,7 +9,6 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace cpu {
 
 enum class MoEParallelType {
   None = 0,
@@ -51,6 +50,7 @@ class MoEBaseCPU {
                      const Tensor* fc1_experts_bias_optional, const Tensor* fc2_experts_weights,
                      const Tensor* fc2_experts_bias_optional, const Tensor* fc3_experts_weights_optional,
                      const Tensor* fc3_experts_bias_optional) const {
+    ORT_UNUSED_PARAMETER(fc3_experts_bias_optional);
     const auto& input_dims = input->Shape().GetDims();
     const auto& router_probs_dims = router_probs->Shape().GetDims();
     const auto& fc1_experts_weights_dims = fc1_experts_weights->Shape().GetDims();
@@ -224,6 +224,5 @@ class MoEBaseCPU {
   ActivationType activation_type_;
 };
 
-}  // namespace cpu
 }  // namespace contrib
 }  // namespace onnxruntime
