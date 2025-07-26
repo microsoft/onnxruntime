@@ -14,7 +14,7 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/check_intel.h"
     "${ONNXRUNTIME_ROOT}/core/platform/check_intel.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.h"
-    "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/device_discovery_common.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
@@ -32,18 +32,37 @@ set(onnxruntime_common_src_patterns
 
 if(WIN32)
     list(APPEND onnxruntime_common_src_patterns
-         "${ONNXRUNTIME_ROOT}/core/platform/windows/*.h"
-         "${ONNXRUNTIME_ROOT}/core/platform/windows/*.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/dll_load_error.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/dll_load_error.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/env_time.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/env.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/env.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/hardware_core_enumerator.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/hardware_core_enumerator.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/stacktrace.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/telemetry.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/telemetry.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
 
 else()
     list(APPEND onnxruntime_common_src_patterns
-         "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"
-         "${ONNXRUNTIME_ROOT}/core/platform/posix/*.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/posix/env_time.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/posix/env.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc"
     )
 
+    if(LINUX)
+        list(APPEND onnxruntime_common_src_patterns
+             "${ONNXRUNTIME_ROOT}/core/platform/linux/cpuinfo.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/linux/cpuinfo.cc"
+        )
+    endif()
+
+    # logging files
     if (onnxruntime_USE_SYSLOG)
         list(APPEND onnxruntime_common_src_patterns
             "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.h"
@@ -51,7 +70,7 @@ else()
         )
     endif()
 
-    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    if (ANDROID)
         list(APPEND onnxruntime_common_src_patterns
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.h"
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.cc"
@@ -64,6 +83,21 @@ else()
             "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/*.mm"
             )
     endif()
+endif()
+
+# platform-specific device discovery files
+if (WIN32)
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/device_discovery.cc")
+elseif (LINUX OR ANDROID)
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/linux/device_discovery.cc")
+elseif (APPLE)
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/apple/device_discovery.cc")
+else()
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/device_discovery_default.cc")
 endif()
 
 if(onnxruntime_target_platform STREQUAL "ARM64EC")

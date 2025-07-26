@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/common/cpuid_info.h"
+
+#include <iostream>
+#include <optional>
+
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/platform/check_intel.h"
@@ -39,6 +43,8 @@
 
 #endif  // ARM
 
+#include "core/platform/linux/cpuinfo.h"
+
 #endif  // Linux
 
 #if _WIN32
@@ -50,6 +56,14 @@
 #endif
 
 #endif  // _WIN32
+
+#if defined(__APPLE__)
+#if defined(CPUIDINFO_ARCH_ARM)
+
+#include <sys/sysctl.h>
+
+#endif  // defined(CPUIDINFO_ARCH_ARM)
+#endif  // defined(__APPLE__)
 
 #if defined(CPUINFO_SUPPORTED)
 #include <cpuinfo.h>
@@ -73,6 +87,21 @@ void decodeMIDR(uint32_t midr, uint32_t uarch[1]);
 #endif  // defined(CPUIDINFO_ARCH_X86)
 
 namespace onnxruntime {
+
+namespace {
+
+// Log function that uses ORT logging if available or writes to stderr.
+// This enables us to log even before ORT logging has been initialized.
+[[maybe_unused]]
+void LogWarning(std::string_view message) {
+  if (logging::LoggingManager::HasDefaultLogger()) {
+    LOGS_DEFAULT(WARNING) << message;
+  } else {
+    std::cerr << "onnxruntime cpuid_info warning: " << message << "\n";
+  }
+}
+
+}  // namespace
 
 #if defined(CPUIDINFO_ARCH_X86)
 
@@ -173,6 +202,7 @@ uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
   if (vendor == "AuthenticAMD") return 0x1022;
   if (vendor.find("Qualcomm") == 0) return 'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24);
   if (vendor.find("NV") == 0) return 0x10DE;
+  if (vendor == "Apple") return 0x106B;
   return 0;
 }
 
@@ -181,6 +211,9 @@ uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
 #if defined(__linux__)
 
 void CPUIDInfo::ArmLinuxInit() {
+  vendor_ = GetArmLinuxVendor();
+  vendor_id_ = GetVendorId(vendor_);
+
   // Assuming no hyper-threading, no NUMA groups
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
@@ -223,6 +256,23 @@ void CPUIDInfo::ArmLinuxInit() {
 
     has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
   }
+}
+
+std::string CPUIDInfo::GetArmLinuxVendor() {
+  std::string vendor{};
+
+  CpuInfo cpu_info{};
+  Status parse_status = ParseCpuInfoFile(cpu_info);
+  if (!parse_status.IsOK()) {
+    LogWarning(MakeString("Failed to parse /proc/cpuinfo file. Error: ", parse_status));
+  }
+
+  if (cpu_info.size() > 0) {
+    // just use the vendor from the first processor's information
+    vendor = cpu_info[0].vendor_id;
+  }
+
+  return vendor;
 }
 
 #elif defined(_WIN32)  // ^ defined(__linux__)
@@ -335,6 +385,9 @@ std::string CPUIDInfo::GetArmWindowsVendor() {
 #elif defined(__APPLE__)  // ^ defined(_WIN32)
 
 void CPUIDInfo::ArmAppleInit() {
+  vendor_ = GetArmAppleVendor();
+  vendor_id_ = GetVendorId(vendor_);
+
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
     is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
@@ -354,6 +407,45 @@ void CPUIDInfo::ArmAppleInit() {
   {
     // No fallback detection attempted now. Add if needed.
   }
+}
+
+std::string CPUIDInfo::GetArmAppleVendor() {
+  auto get_sysctl_value = [](const char* key) -> std::optional<std::string> {
+    size_t value_length{};
+    if (sysctlbyname(key, nullptr, &value_length, nullptr, 0) != 0) {
+      const auto error = errno;
+      if (error == ENOENT) {
+        // key not found
+      } else {
+        LogWarning(MakeString("Failed to get '", key, "' value length with sysctlbyname(). Error: ", error));
+      }
+      return std::nullopt;
+    }
+
+    std::string value{};
+    value.resize(value_length);
+    if (sysctlbyname(key, value.data(), &value_length, nullptr, 0) != 0) {
+      const auto error = errno;
+      LogWarning(MakeString("Failed to get '", key, "' value with sysctlbyname(). Error: ", error));
+    }
+
+    return value;
+  };
+
+  constexpr auto vendor_key = "machdep.cpu.vendor";
+  if (auto vendor = get_sysctl_value(vendor_key); vendor.has_value()) {
+    return *vendor;
+  }
+
+  constexpr auto brand_string_key = "machdep.cpu.brand_string";
+  if (auto brand_string = get_sysctl_value(brand_string_key); brand_string.has_value()) {
+    if (brand_string->find("Apple") != std::string::npos) {
+      return "Apple";
+    }
+  }
+
+  LogWarning("Unable to determine CPU vendor.");
+  return "";
 }
 
 #endif  // defined(__APPLE__)
