@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/cpuid_info.h"  // for CPUIDInfo::GetCPUIDInfo().HasArm_SME()
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
@@ -198,6 +199,10 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
       const bool b_scale_available = Info().TryGetConstantInput(IN_B_SCALE, &b_scale_tensor);
 
       can_use_dynamic_quant_mlas_ = (!b_quantization_might_be_asymmetric && b_scale_available);
+
+      // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
+      // We check that here too before attempting to use them.
+      can_use_dynamic_quant_mlas_ &&= CPUIDInfo::GetCPUIDInfo().HasArm_SME();
 
       // Only handle the common case of a 2D weight matrix. Additional matrices
       // could be handled by stacking the packed buffers.
