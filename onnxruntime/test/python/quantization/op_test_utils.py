@@ -465,6 +465,7 @@ def check_model_correctness(
     inputs,
     rtol=1e-2,
     atol=0.05,
+    skip_onnx_reference_evaluator=False,
     providers=None,
     dynamic=False,
     is_gemm=False,
@@ -481,7 +482,7 @@ def check_model_correctness(
     with open(model_path_origin, "rb") as f:
         model_onnx = onnx.load(f)
     ops_set = {node.op_type for node in model_onnx.graph.node}
-    check_reference_evaluator = not (ops_set & {"EmbedLayerNormalization", "Conv", "Attention", "Transpose"})
+    check_reference_evaluator = not skip_onnx_reference_evaluator and not (ops_set & {"EmbedLayerNormalization", "Conv", "Attention", "Transpose"})
     check_target_evaluator = False
 
     with open(model_path_to_check, "rb") as f:
