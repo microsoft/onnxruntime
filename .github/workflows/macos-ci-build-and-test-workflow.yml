@@ -63,10 +63,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: run sysctl -a
-        shell: bash
-        run: sysctl -a
-
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup
         with:
