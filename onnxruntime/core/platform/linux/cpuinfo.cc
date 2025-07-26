@@ -4,7 +4,6 @@
 #include "core/platform/linux/cpuinfo.h"
 
 #include <fstream>
-#include <iostream>  // TODO for debugging - remove later
 #include <map>
 #include <string_view>
 
@@ -16,12 +15,14 @@ namespace onnxruntime {
 namespace {
 using KeyValuePairs = std::map<std::string, std::string, std::less<>>;
 
-Status GetValue(const KeyValuePairs& key_value_pairs, std::string_view key,
-                std::string_view& value) {
+bool TryGetValue(const KeyValuePairs& key_value_pairs, std::string_view key, std::string& value) {
   auto it = key_value_pairs.find(key);
-  ORT_RETURN_IF(it == key_value_pairs.end(), "Failed to find key: ", key);
+  if (it == key_value_pairs.end()) {
+    return false;
+  }
+
   value = it->second;
-  return Status::OK();
+  return true;
 }
 }  // namespace
 
@@ -35,14 +36,19 @@ Status ParseCpuInfoFile(const std::string& cpu_info_file, CpuInfo& cpu_info_out)
 
   auto add_processor_info = [&]() -> Status {
     if (!key_value_pairs.empty()) {
-      std::string_view value{};
       CpuInfoFileProcessorInfo processor_info{};
 
-      ORT_RETURN_IF_ERROR(GetValue(key_value_pairs, "processor", value));
-      ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale<size_t>(value, processor_info.processor));
+      {
+        std::string processor_str{};
+        ORT_RETURN_IF_NOT(TryGetValue(key_value_pairs, "processor", processor_str), "Failed to get processor value.");
+        ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale<size_t>(processor_str, processor_info.processor));
+      }
 
-      ORT_RETURN_IF_ERROR(GetValue(key_value_pairs, "vendor", value));
-      processor_info.vendor_id = std::string{value};
+      // Try to get a vendor name.
+      // This approach doesn't always work, e.g., for ARM processors.
+      if (!TryGetValue(key_value_pairs, "vendor", processor_info.vendor_id)) {
+        // TODO try something else?
+      }
 
       cpu_info.emplace_back(std::move(processor_info));
 
@@ -52,7 +58,6 @@ Status ParseCpuInfoFile(const std::string& cpu_info_file, CpuInfo& cpu_info_out)
   };
 
   for (std::string line{}; std::getline(in, line);) {
-    std::cerr << "/proc/cpuinfo line: " << line << "\n";
     line = utils::TrimString(line);
 
     if (line.empty()) {
