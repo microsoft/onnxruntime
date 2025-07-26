@@ -57,7 +57,6 @@ class CPUUsage : public ICPUUsage {
 std::unique_ptr<ICPUUsage> CreateICPUUsage() {
   return std::make_unique<CPUUsage>();
 }
-
 }  // namespace utils
 }  // namespace perftest
 }  // namespace onnxruntime

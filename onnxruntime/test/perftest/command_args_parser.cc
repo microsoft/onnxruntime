@@ -4,6 +4,7 @@
 // Licensed under the MIT License.
 
 #include "command_args_parser.h"
+#include "utils.h"
 
 #include <string.h>
 #include <iostream>
@@ -11,13 +12,7 @@
 #include <string_view>
 #include <unordered_map>
 
-// Windows Specific
-#ifdef _WIN32
-#include "getopt.h"
-#include "windows.h"
-#else
-#include <unistd.h>
-#endif
+#include <cxxopts.hpp>
 
 #include <core/graph/constants.h>
 #include <core/platform/path_lib.h>
@@ -166,6 +161,20 @@ namespace perftest {
       "\t-X [Enable onnxruntime-extensions custom ops]: Registers custom ops from onnxruntime-extensions. "
       "onnxruntime-extensions must have been built in to onnxruntime. This can be done with the build.py "
       "'--use_extensions' option.\n"
+      "\n"
+      "\t--plugin_ep_libs      [registration names and libraries] Specifies a list of plugin execution provider (EP) registration names and their corresponding shared libraries to register.\n"
+      "\t                      [Usage]: --plugin_ep_libs \"plugin_ep_name_1|plugin_ep_1.dll plugin_ep_name_2|plugin_ep_2.dll ... \"\n"
+      "\n"
+      "\t--plugin_eps          [Plugin EPs] Specifies a semicolon-separated list of plugin execution providers (EPs) to use.\n"
+      "\t                      [Usage]: --plugin_eps \"plugin_ep_1;plugin_ep_2;... \"\n"
+      "\n"
+      "\t--plugin_ep_options   [EP options] Specifies provider options for each EP listed in --plugin_eps. Options (key-value pairs) for each EP are separated by space and EPs are separated by semicolons.\n"
+      "\t                      [Usage]: --plugin_ep_options \"ep_1_option_1_key|ep_1_option_1_value ...;ep_2_option_1_key|ep_2_option_1_value ...;... \" or \n"
+      "\t                               --plugin_ep_options \";ep_2_option_1_key|ep_2_option_1_value ...;... \" or \n"
+      "\t                               --plugin_ep_options \"ep_1_option_1_key|ep_1_option_1_value ...;;ep_3_option_1_key|ep_3_option_1_value ...;... \" \n"
+      "\n"
+      "\t--list_ep_devices     Prints all available device indices and their properties (including metadata). This option makes the program exit early without performing inference.\n"
+      "\t--select_ep_devices   [list of device indices] A semicolon-separated list of device indices to add to the session and run with.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -173,8 +182,8 @@ static const ORTCHAR_T* overrideDelimiter = L":";
 #else
 static const ORTCHAR_T* overrideDelimiter = ":";
 #endif
-static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier, int64_t& override_val) {
-  std::basic_string<ORTCHAR_T> free_dim_str(optarg);
+static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier, int64_t& override_val, const ORTCHAR_T* option) {
+  std::basic_string<ORTCHAR_T> free_dim_str(option);
   size_t delimiter_location = free_dim_str.find(overrideDelimiter);
   if (delimiter_location >= free_dim_str.size() - 1) {
     return false;
@@ -193,240 +202,291 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
   return true;
 }
 
-/*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
-  int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlgR:X"))) != -1) {
-    switch (ch) {
-      case 'f': {
-        std::basic_string<ORTCHAR_T> dim_name;
-        int64_t override_val;
-        if (!ParseDimensionOverride(dim_name, override_val)) {
-          return false;
-        }
-        test_config.run_config.free_dim_name_overrides[dim_name] = override_val;
-        break;
+bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
+  ORT_TRY {
+    cxxopts::Options options("onnxruntime_perf_test", "perf_test [options...] model_path [result_file]");
+
+    // See ShowUsage() for detailed option descriptions.
+    options.add_options()("f", "", cxxopts::value<std::vector<std::string> >());
+    options.add_options()("F", "", cxxopts::value<std::vector<std::string> >());
+    options.add_options()("m", "", cxxopts::value<std::string>());
+    options.add_options()("e", "", cxxopts::value<std::string>());
+    options.add_options()("r", "", cxxopts::value<size_t>());
+    options.add_options()("t", "", cxxopts::value<size_t>());
+    options.add_options()("p", "", cxxopts::value<std::string>());
+    options.add_options()("x", "", cxxopts::value<int>());
+    options.add_options()("y", "", cxxopts::value<int>());
+    options.add_options()("c", "", cxxopts::value<size_t>());
+    options.add_options()("d", "", cxxopts::value<int>());
+    options.add_options()("o", "", cxxopts::value<int>());
+    options.add_options()("u", "", cxxopts::value<std::string>());
+    options.add_options()("i", "", cxxopts::value<std::string>());
+    options.add_options()("S", "", cxxopts::value<int>());
+    options.add_options()("T", "", cxxopts::value<std::string>());
+    options.add_options()("C", "", cxxopts::value<std::string>());
+    options.add_options()("R", "", cxxopts::value<std::string>());
+    options.add_options()("A", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("M", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("s", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("v", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("I", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("P", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("q", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("z", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("D", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("Z", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("n", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("l", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("g", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("X", "", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+    options.add_options()("plugin_ep_libs", "", cxxopts::value<std::string>());
+    options.add_options()("plugin_eps", "", cxxopts::value<std::string>());
+    options.add_options()("plugin_ep_options", "", cxxopts::value<std::string>());
+    options.add_options()("list_ep_devices", "");
+    options.add_options()("select_ep_devices", "", cxxopts::value<std::string>());
+    options.add_options()("h,help", "");
+
+#ifdef _WIN32
+    auto utf8_strings = utils::ConvertArgvToUtf8Strings(argc, argv);
+    auto utf8_argv = utils::CStringsFromStrings(utf8_strings);
+    auto result = options.parse(static_cast<int>(utf8_argv.size()), utf8_argv.data());
+#else
+    auto result = options.parse(argc, argv);
+#endif
+
+    if (result.count("f")) {
+      std::basic_string<ORTCHAR_T> dim_name;
+      int64_t override_val;
+      std::basic_string<ORTCHAR_T> opt_str = ToPathString(result["f"].as<std::string>());
+      if (!ParseDimensionOverride(dim_name, override_val, opt_str.c_str())) {
+        return false;
       }
-      case 'F': {
-        std::basic_string<ORTCHAR_T> dim_denotation;
-        int64_t override_val;
-        if (!ParseDimensionOverride(dim_denotation, override_val)) {
-          return false;
-        }
-        test_config.run_config.free_dim_denotation_overrides[dim_denotation] = override_val;
-        break;
+      test_config.run_config.free_dim_name_overrides[dim_name] = override_val;
+    }
+
+    if (result.count("F")) {
+      std::basic_string<ORTCHAR_T> dim_denotation;
+      int64_t override_val;
+      std::basic_string<ORTCHAR_T> opt_str = ToPathString(result["F"].as<std::string>());
+      if (!ParseDimensionOverride(dim_denotation, override_val, opt_str.c_str())) {
+        return false;
       }
-      case 'm':
-        if (!CompareCString(optarg, ORT_TSTR("duration"))) {
-          test_config.run_config.test_mode = TestMode::kFixDurationMode;
-        } else if (!CompareCString(optarg, ORT_TSTR("times"))) {
-          test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
-        } else {
-          return false;
-        }
-        break;
-      case 'p':
-        test_config.run_config.profile_file = optarg;
-        break;
-      case 'M':
-        test_config.run_config.enable_memory_pattern = false;
-        break;
-      case 'A':
-        test_config.run_config.enable_cpu_mem_arena = false;
-        break;
-      case 'e':
-        if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kCpuExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kCudaExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kQnnExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("snpe"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kSnpeExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("vsinpu"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kVSINPUExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kCoreMLExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("rocm"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kRocmExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("xnnpack"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kXnnpackExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("vitisai"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("webgpu"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kWebGpuExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("nvtensorrtrtx"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kNvTensorRTRTXExecutionProvider;
-        } else {
-          return false;
-        }
-        break;
-      case 'r':
-        test_config.run_config.repeated_times = static_cast<size_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.repeated_times <= 0) {
-          return false;
-        }
-        test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
-        break;
-      case 't':
-        test_config.run_config.duration_in_seconds = static_cast<size_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.repeated_times <= 0) {
-          return false;
-        }
+      test_config.run_config.free_dim_denotation_overrides[dim_denotation] = override_val;
+    }
+
+    if (result.count("m")) {
+      std::basic_string<ORTCHAR_T> opt_str = ToPathString(result["m"].as<std::string>());
+      if (!CompareCString(opt_str.c_str(), ORT_TSTR("duration"))) {
         test_config.run_config.test_mode = TestMode::kFixDurationMode;
-        break;
-      case 's':
-        test_config.run_config.f_dump_statistics = true;
-        break;
-      case 'S':
-        test_config.run_config.random_seed_for_input_data = static_cast<int32_t>(
-            OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        break;
-      case 'v':
-        test_config.run_config.f_verbose = true;
-        break;
-      case 'x':
-        test_config.run_config.intra_op_num_threads = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.intra_op_num_threads < 0) {
-          return false;
-        }
-        break;
-      case 'y':
-        test_config.run_config.inter_op_num_threads = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.inter_op_num_threads < 0) {
-          return false;
-        }
-        break;
-      case 'P':
-        test_config.run_config.execution_mode = ExecutionMode::ORT_PARALLEL;
-        break;
-      case 'c':
-        test_config.run_config.concurrent_session_runs =
-            static_cast<size_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.concurrent_session_runs <= 0) {
-          return false;
-        }
-        break;
-      case 'o': {
-        int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        switch (tmp) {
-          case ORT_DISABLE_ALL:
-            test_config.run_config.optimization_level = ORT_DISABLE_ALL;
-            break;
-          case ORT_ENABLE_BASIC:
-            test_config.run_config.optimization_level = ORT_ENABLE_BASIC;
-            break;
-          case ORT_ENABLE_EXTENDED:
-            test_config.run_config.optimization_level = ORT_ENABLE_EXTENDED;
-            break;
-          case ORT_ENABLE_LAYOUT:
-            test_config.run_config.optimization_level = ORT_ENABLE_LAYOUT;
-            break;
-          case ORT_ENABLE_ALL:
+      } else if (!CompareCString(opt_str.c_str(), ORT_TSTR("times"))) {
+        test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
+      } else {
+        return false;
+      }
+    }
+
+    if (result.count("p")) test_config.run_config.profile_file = ToPathString(result["p"].as<std::string>());
+    if (result["M"].as<bool>()) test_config.run_config.enable_memory_pattern = false;
+    if (result["A"].as<bool>()) test_config.run_config.enable_cpu_mem_arena = false;
+
+    if (result.count("e")) {
+      auto optarg = result["e"].as<std::string>().c_str();
+      if (!CompareCString(optarg, "cpu")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kCpuExecutionProvider;
+      } else if (!CompareCString(optarg, "cuda")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kCudaExecutionProvider;
+      } else if (!CompareCString(optarg, "dnnl")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
+      } else if (!CompareCString(optarg, "openvino")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
+      } else if (!CompareCString(optarg, "tensorrt")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
+      } else if (!CompareCString(optarg, "qnn")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kQnnExecutionProvider;
+      } else if (!CompareCString(optarg, "snpe")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kSnpeExecutionProvider;
+      } else if (!CompareCString(optarg, "nnapi")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
+      } else if (!CompareCString(optarg, "vsinpu")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kVSINPUExecutionProvider;
+      } else if (!CompareCString(optarg, "coreml")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kCoreMLExecutionProvider;
+      } else if (!CompareCString(optarg, "dml")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
+      } else if (!CompareCString(optarg, "acl")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
+      } else if (!CompareCString(optarg, "armnn")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
+      } else if (!CompareCString(optarg, "rocm")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kRocmExecutionProvider;
+      } else if (!CompareCString(optarg, "migraphx")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
+      } else if (!CompareCString(optarg, "xnnpack")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kXnnpackExecutionProvider;
+      } else if (!CompareCString(optarg, "vitisai")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
+      } else if (!CompareCString(optarg, "webgpu")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kWebGpuExecutionProvider;
+      } else if (!CompareCString(optarg, "nvtensorrtrtx")) {
+        test_config.machine_config.provider_type_name = onnxruntime::kNvTensorRTRTXExecutionProvider;
+      } else {
+        return false;
+      }
+    }
+
+    if (result.count("r")) {
+      auto val = result["r"].as<size_t>();
+      if (val <= 0) return false;
+      test_config.run_config.repeated_times = val;
+      test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
+    }
+
+    if (result.count("t")) {
+      auto val = result["t"].as<size_t>();
+      if (val <= 0) return false;
+      test_config.run_config.duration_in_seconds = val;
+      test_config.run_config.test_mode = TestMode::kFixDurationMode;
+    }
+
+    if (result["s"].as<bool>()) test_config.run_config.f_dump_statistics = true;
+
+    if (result.count("S")) {
+      auto val = result["S"].as<int>();
+      test_config.run_config.random_seed_for_input_data = val;
+    }
+
+    if (result["v"].as<bool>()) test_config.run_config.f_verbose = true;
+
+    if (result.count("x")) {
+      auto val = result["x"].as<int>();
+      if (val < 0) return false;
+      test_config.run_config.intra_op_num_threads = val;
+    }
+
+    if (result.count("y")) {
+      auto val = result["y"].as<int>();
+      if (val < 0) return false;
+      test_config.run_config.inter_op_num_threads = val;
+    }
+
+    if (result.count("P")) {
+      test_config.run_config.execution_mode = ExecutionMode::ORT_PARALLEL;
+    }
+
+    if (result.count("c")) {
+      auto val = result["c"].as<size_t>();
+      if (static_cast<int>(val) <= 0) return false;
+      test_config.run_config.concurrent_session_runs = val;
+    }
+
+    if (result.count("o")) {
+      auto val = result["o"].as<int>();
+      switch (val) {
+        case ORT_DISABLE_ALL:
+          test_config.run_config.optimization_level = ORT_DISABLE_ALL;
+          break;
+        case ORT_ENABLE_BASIC:
+          test_config.run_config.optimization_level = ORT_ENABLE_BASIC;
+          break;
+        case ORT_ENABLE_EXTENDED:
+          test_config.run_config.optimization_level = ORT_ENABLE_EXTENDED;
+          break;
+        case ORT_ENABLE_LAYOUT:
+          test_config.run_config.optimization_level = ORT_ENABLE_LAYOUT;
+          break;
+        case ORT_ENABLE_ALL:
+          test_config.run_config.optimization_level = ORT_ENABLE_ALL;
+          break;
+        default: {
+          if (val > ORT_ENABLE_ALL) {  // relax constraint
             test_config.run_config.optimization_level = ORT_ENABLE_ALL;
-            break;
-          default: {
-            if (tmp > ORT_ENABLE_ALL) {  // relax constraint
-              test_config.run_config.optimization_level = ORT_ENABLE_ALL;
-            } else {
-              return false;
-            }
+          } else {
+            return false;
           }
         }
-        break;
       }
-      case 'u':
-        test_config.run_config.optimized_model_path = optarg;
-        break;
-      case 'I':
-        test_config.run_config.generate_model_input_binding = true;
-        break;
-      case 'd':
-        test_config.run_config.cudnn_conv_algo = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        break;
-      case 'q':
-        test_config.run_config.do_cuda_copy_in_separate_stream = true;
-        break;
-      case 'z':
-        test_config.run_config.set_denormal_as_zero = true;
-        break;
-      case 'i':
-        test_config.run_config.ep_runtime_config_string = optarg;
-        break;
-      case 'T':
-        test_config.run_config.intra_op_thread_affinities = ToUTF8String(optarg);
-        break;
-      case 'C': {
-        ORT_TRY {
-          ParseSessionConfigs(ToUTF8String(optarg), test_config.run_config.session_config_entries);
-        }
-        ORT_CATCH(const std::exception& ex) {
-          ORT_HANDLE_EXCEPTION([&]() {
-            fprintf(stderr, "Error parsing session configuration entries: %s\n", ex.what());
-          });
-          return false;
-        }
-        break;
+    }
+
+    if (result.count("u")) test_config.run_config.optimized_model_path = ToPathString(result["u"].as<std::string>());
+
+    if (result.count("I")) test_config.run_config.generate_model_input_binding = true;
+
+    if (result.count("d")) {
+      auto val = result["d"].as<int>();
+      if (val < 0) return false;
+      test_config.run_config.cudnn_conv_algo = val;
+    }
+
+    if (result.count("q")) test_config.run_config.do_cuda_copy_in_separate_stream = true;
+
+    if (result.count("z")) test_config.run_config.set_denormal_as_zero = true;
+
+    if (result.count("i")) test_config.run_config.ep_runtime_config_string = ToPathString(result["i"].as<std::string>());
+
+    if (result.count("T")) test_config.run_config.intra_op_thread_affinities = result["T"].as<std::string>();
+
+    if (result.count("C")) {
+      ORT_TRY {
+        ParseSessionConfigs(result["C"].as<std::string>(), test_config.run_config.session_config_entries);
       }
-      case 'D':
-        test_config.run_config.disable_spinning = true;
-        break;
-      case 'Z':
-        test_config.run_config.disable_spinning_between_run = true;
-        break;
-      case 'n':
-        test_config.run_config.exit_after_session_creation = true;
-        break;
-      case 'l':
-        test_config.model_info.load_via_path = true;
-        break;
-      case 'R':
-        test_config.run_config.register_custom_op_path = optarg;
-        break;
-      case 'g':
-        test_config.run_config.enable_cuda_io_binding = true;
-        break;
-      case 'X':
-        test_config.run_config.use_extensions = true;
-        break;
-      case '?':
-      case 'h':
-      default:
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          fprintf(stderr, "Error parsing session configuration entries: %s\n", ex.what());
+        });
         return false;
+      }
+    }
+
+    if (result.count("D")) test_config.run_config.disable_spinning = true;
+
+    if (result.count("Z")) test_config.run_config.disable_spinning_between_run = true;
+
+    if (result.count("n")) test_config.run_config.exit_after_session_creation = true;
+
+    if (result.count("l")) test_config.model_info.load_via_path = true;
+
+    if (result.count("R")) test_config.run_config.register_custom_op_path = ToPathString(result["R"].as<std::string>());
+
+    if (result.count("g")) test_config.run_config.enable_cuda_io_binding = true;
+
+    if (result.count("X")) test_config.run_config.use_extensions = true;
+
+    if (result.count("plugin_ep_libs")) test_config.plugin_ep_names_and_libs = ToPathString(result["plugin_ep_libs"].as<std::string>());
+
+    if (result.count("plugin_eps")) ParseEpList(result["plugin_eps"].as<std::string>(), test_config.machine_config.plugin_provider_type_list);
+
+    if (result.count("plugin_ep_options")) test_config.run_config.ep_runtime_config_string = ToPathString(result["plugin_ep_options"].as<std::string>());
+
+    if (result.count("select_ep_devices")) test_config.selected_devices = result["select_ep_devices"].as<std::string>();
+
+    if (result.count("h")) {
+      perftest::CommandLineParser::ShowUsage();
+      return false;
+    }
+
+    if (result.count("list_ep_devices")) {
+      test_config.list_available_devices = true;
+      return true;
+    }
+
+    // Positional arguments
+    std::vector<std::string> positional = result.unmatched();
+    if (positional.size() == 1) {
+      test_config.model_info.model_file_path = ToPathString(positional[0]);
+      test_config.run_config.f_dump_statistics = true;
+    } else if (positional.size() == 2) {
+      test_config.model_info.model_file_path = ToPathString(positional[0]);
+      test_config.model_info.result_file_path = ToPathString(positional[1]);
+    } else {
+      return false;
     }
   }
-
-  // parse model_path and result_file_path
-  argc -= optind;
-  argv += optind;
-
-  switch (argc) {
-    case 2:
-      test_config.model_info.result_file_path = argv[1];
-      break;
-    case 1:
-      test_config.run_config.f_dump_statistics = true;
-      break;
-    default:
-      return false;
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      fprintf(stderr, "Error parsing options: %s\n", ex.what());
+    });
+    return false;
   }
-
-  test_config.model_info.model_file_path = argv[0];
 
   return true;
 }

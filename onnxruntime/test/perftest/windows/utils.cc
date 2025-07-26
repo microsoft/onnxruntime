@@ -2,11 +2,14 @@
 // Licensed under the MIT License.
 
 #include "test/perftest/utils.h"
+#include "test/perftest/strings_helper.h"
+#include <core/platform/path_lib.h>
 
 #include <cstdint>
 
 #include <Windows.h>
 #include <psapi.h>
+#include <filesystem>
 
 namespace onnxruntime {
 namespace perftest {
@@ -75,6 +78,23 @@ std::unique_ptr<ICPUUsage> CreateICPUUsage() {
   return std::make_unique<CPUUsage>();
 }
 
+std::vector<std::string> ConvertArgvToUtf8Strings(int argc, wchar_t* argv[]) {
+  std::vector<std::string> utf8_args;
+  utf8_args.reserve(argc);
+  for (int i = 0; i < argc; ++i) {
+    utf8_args.push_back(ToUTF8String(argv[i]));
+  }
+  return utf8_args;
+}
+
+std::vector<const char*> CStringsFromStrings(const std::vector<std::string>& utf8_args) {
+  std::vector<const char*> utf8_argv;
+  utf8_argv.reserve(utf8_args.size());
+  for (auto& str : utf8_args) {
+    utf8_argv.push_back(&str[0]);
+  }
+  return utf8_argv;
+}
 }  // namespace utils
 }  // namespace perftest
 }  // namespace onnxruntime

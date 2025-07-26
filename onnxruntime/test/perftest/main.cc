@@ -5,7 +5,9 @@
 #include <core/session/onnxruntime_c_api.h>
 #include <random>
 #include "command_args_parser.h"
+#include "utils.h"
 #include "performance_runner.h"
+#include "strings_helper.h"
 #include <google/protobuf/stubs/common.h>
 
 using namespace onnxruntime;
@@ -41,6 +43,30 @@ int real_main(int argc, char* argv[]) {
     if (failed)
       return -1;
   }
+
+  if (!test_config.plugin_ep_names_and_libs.empty()) {
+    perftest::utils::RegisterExecutionProviderLibrary(env, test_config);
+  }
+
+  // Unregister all registered plugin EP libraries before program exits.
+  // This is necessary because unregistering the plugin EP also unregisters any associated shared allocators.
+  // If we don't do this and program returns, the factories stored inside the environment will be destroyed when the environment goes out of scope.
+  // Later, when the shared allocator's deleter runs, it may cause a segmentation fault because it attempts to use the already-destroyed factory to call ReleaseAllocator.
+  // See "ep_device.ep_factory->ReleaseAllocator" in Environment::CreateSharedAllocatorImpl.
+  auto unregister_plugin_eps_at_scope_exit = gsl::finally([&]() {
+    if (!test_config.registered_plugin_eps.empty()) {
+      perftest::utils::UnregisterExecutionProviderLibrary(env, test_config);  // this won't throw
+    }
+  });
+
+  if (test_config.list_available_devices) {
+    perftest::utils::ListDevices(env);
+    if (test_config.registered_plugin_eps.empty()) {
+      fprintf(stdout, "No plugin execution provider libraries are registered. Please specify them using \"--plugin_ep_libs\"; otherwise, only CPU may be available.\n");
+    }
+    return 0;
+  }
+
   std::random_device rd;
   perftest::PerformanceRunner perf_runner(env, test_config, rd);
 

@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-
+#include "test/perftest/test_configuration.h"
+#include <core/session/onnxruntime_cxx_api.h>
 #include <memory>
 
 namespace onnxruntime {
@@ -21,6 +22,18 @@ class ICPUUsage {
 };
 
 std::unique_ptr<ICPUUsage> CreateICPUUsage();
+
+#ifdef _WIN32
+std::vector<std::string> ConvertArgvToUtf8Strings(int argc, wchar_t* argv[]);
+
+std::vector<const char*> CStringsFromStrings(const std::vector<std::string>& utf8_args);
+#endif
+
+void RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
+
+void UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
+
+void ListDevices(const Ort::Env& env);
 
 }  // namespace utils
 }  // namespace perftest

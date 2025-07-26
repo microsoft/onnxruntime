@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "core/graph/constants.h"
 #include "core/framework/session_options.h"
@@ -35,6 +36,7 @@ struct ModelInfo {
 struct MachineConfig {
   Platform platform{Platform::kWindows};
   std::string provider_type_name{onnxruntime::kCpuExecutionProvider};
+  std::vector<std::string> plugin_provider_type_list;
 };
 
 struct RunConfig {
@@ -74,6 +76,10 @@ struct PerformanceTestConfig {
   ModelInfo model_info;
   MachineConfig machine_config;
   RunConfig run_config;
+  std::basic_string<ORTCHAR_T> plugin_ep_names_and_libs;
+  std::vector<std::string> registered_plugin_eps;
+  std::string selected_devices;
+  bool list_available_devices = false;
 };
 
 }  // namespace perftest
