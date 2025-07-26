@@ -2,8 +2,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# NOTE: please install azcli and run "az login" before running this script!
-
 import re
 import shutil
 import sys
