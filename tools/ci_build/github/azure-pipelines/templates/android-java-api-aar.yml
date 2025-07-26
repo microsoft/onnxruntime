@@ -33,7 +33,7 @@ parameters:
 - name: pool_name
   displayName: Pool name
   type: string
-  default: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  default: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
 - name: packageName
   displayName: Package Name

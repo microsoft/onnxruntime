@@ -37,3 +37,9 @@
     EXPECT_NE(_tmp_status, nullptr);                           \
     if (_tmp_status) Ort::GetApi().ReleaseStatus(_tmp_status); \
   } while (false)
+
+#define ASSERT_CXX_ORTSTATUS_OK(function)                             \
+  do {                                                                \
+    Ort::Status _tmp_status = (function);                             \
+    ASSERT_TRUE(_tmp_status.IsOK()) << _tmp_status.GetErrorMessage(); \
+  } while (false)

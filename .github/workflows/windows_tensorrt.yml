@@ -51,9 +51,6 @@ jobs:
       - name: Download TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8
         run: 'azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8" ${{ runner.temp }}'
         shell: pwsh
-        env:
-          AZCOPY_AUTO_LOGIN_TYPE: MSI
-          AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
 
       - name: Add CUDA to PATH
         shell: powershell
@@ -119,7 +116,7 @@ jobs:
             exit $lastExitCode
           }
           # Execute the build process
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib --build --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib --build --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -186,11 +183,6 @@ jobs:
           java-version: '17'
           architecture: x64
 
-      - name: Locate vcvarsall and Setup Env
-        uses: ./.github/actions/locate-vcvarsall-and-setup-env
-        with:
-          architecture: x64
-
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
         working-directory: ${{ github.workspace }}
@@ -206,9 +198,6 @@ jobs:
       - name: Download TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8
         run: 'azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8" ${{ runner.temp }}'
         shell: pwsh
-        env:
-          AZCOPY_AUTO_LOGIN_TYPE: MSI
-          AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
 
       - name: Add CUDA to PATH
         shell: powershell
@@ -243,7 +232,7 @@ jobs:
             exit $lastExitCode
           }
           
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
