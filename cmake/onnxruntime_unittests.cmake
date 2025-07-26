@@ -1610,7 +1610,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 
   if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
+    if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS AND onnxruntime_ENABLE_JAVA_CTESTS)
       block()
         message(STATUS "Enabling Java tests")
 

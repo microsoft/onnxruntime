@@ -88,6 +88,11 @@ if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
     message(WARNING "Disabling KleidiAI: not supported on Apple x86_64 platforms")
   set(onnxruntime_USE_KLEIDIAI OFF CACHE BOOL "" FORCE)
 endif()
+option(onnxruntime_BUILD_JAVA "Build ONNXRuntime Java library" OFF)
+
+# When this option is turned OFF, users still can run the test directly with gradle
+cmake_dependent_option(onnxruntime_ENABLE_JAVA_CTESTS "Run Java tests through ctest" ON "onnxruntime_BUILD_JAVA" OFF)
+
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
