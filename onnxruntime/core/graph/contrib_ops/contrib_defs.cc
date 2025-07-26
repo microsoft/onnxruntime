@@ -1392,7 +1392,7 @@ constexpr const char* MoE_ver1_doc = R"DOC(
 ONNX_MS_OPERATOR_SET_SCHEMA(MoE, 1,
                             OpSchema()
                                 .SetDoc(MoE_ver1_doc)
-                                .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
+                                .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
                                 .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
                                 .Attr("normalize_routing_weights", "Whether to normalize routing weights", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
@@ -1413,7 +1413,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc("Quantized MoE")
         .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu",
+              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
               AttributeProto::STRING,
               std::string("relu"))
         .Attr("k",

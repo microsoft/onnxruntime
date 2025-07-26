@@ -72,6 +72,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   using CudaT = typename ToCudaType<T>::MappedType;
 
   ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaWeightT> moe_runner(sm,
+                                                                           activation_type_,
                                                                            fc3_experts_weights_optional != nullptr,
                                                                            normalize_routing_weights_,
                                                                            use_sparse_mixer_);

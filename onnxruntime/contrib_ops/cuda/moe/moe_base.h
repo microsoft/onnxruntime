@@ -76,15 +76,16 @@ class MoEBase {
     }
 
     const int64_t coe = quant_type == MoEQuantType::UINT4 ? 2 : 1;
-    if (fc1_experts_weights_dims[2] != inter_size / coe) {
+    const int64_t act = activation_type_ == ort_fastertransformer::ActivationType::SwiGLU ? 2 : 1;
+    if (fc1_experts_weights_dims[2] != act * inter_size / coe) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "fc1_experts_weights_dims[2] must be equal to inter_size, got ",
-                             fc1_experts_weights_dims[2], " and ", inter_size);
+                             "fc1_experts_weights_dims[2] is ",
+                             fc1_experts_weights_dims[2], " expected ", act * inter_size / coe);
     }
     if (fc2_experts_weights_dims[2] != hidden_size / coe) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "fc2_experts_weights_dims[2] must be equal to hidden_size, got ",
-                             fc2_experts_weights_dims[2], " and ", hidden_size);
+                             "fc2_experts_weights_dims[2] is ",
+                             fc2_experts_weights_dims[2], " expected ", hidden_size / coe);
     }
 
     if (router_probs_dims.size() != 2) {
@@ -116,10 +117,10 @@ class MoEBase {
                                "fc2_experts_bias_dims[0] must be equal to num_experts, got ", fc2_experts_bias_dims[0],
                                " and ", num_experts);
       }
-      if (fc1_experts_bias_dims[1] != inter_size) {
+      if (fc1_experts_bias_dims[1] != act * inter_size) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "fc1_experts_bias_dims[1] must be equal to inter_size, got ", fc1_experts_bias_dims[1],
-                               " and ", inter_size);
+                               "fc1_experts_bias_dims[1] is ", fc1_experts_bias_dims[1],
+                               ", expected ", act * inter_size);
       }
       if (fc2_experts_bias_dims[1] != hidden_size) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -219,6 +220,8 @@ class MoEBase {
       activation_type_ = ort_fastertransformer::ActivationType::Gelu;
     } else if (activation_type_str == "silu") {
       activation_type_ = ort_fastertransformer::ActivationType::Silu;
+    } else if (activation_type_str == "swiglu") {
+      activation_type_ = ort_fastertransformer::ActivationType::SwiGLU;
     } else if (activation_type_str == "identity") {
       activation_type_ = ort_fastertransformer::ActivationType::Identity;
     } else {
