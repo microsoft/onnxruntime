@@ -366,11 +366,16 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
       for (const OrtOpAttr* ort_attr : ort_attrs) {
         OrtOpAttrType attr_type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
 
-        Ort::Status status{ort_api.OpAttr_GetType(ort_attr, &attr_type)};
-        if (!status.IsOK()) {
-          // This is an attribute type that ORT does not support via ReadOpAttr(), like subgraphs, so skip it.
+        Ort::Status attr_type_status{ort_api.OpAttr_GetType(ort_attr, &attr_type)};
+        if (attr_type == OrtOpAttrType::ORT_OP_ATTR_GRAPH) {
+          // ORT does not support reading subgraphs via ReadOpAttr(), so skip it.
           // Can use Node_GetSubgraphs to get subgraphs.
           continue;
+        }
+
+        if (!attr_type_status.IsOK()) {
+          // Unsupported attribute type.
+          return attr_type_status;
         }
 
         onnx::AttributeProto* attr_proto = node_proto->add_attribute();
@@ -622,20 +627,24 @@ static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info,
   onnx::TypeProto_Tensor* type_proto_tensor = value_info_proto.mutable_type()->mutable_tensor_type();
   type_proto_tensor->set_elem_type(ort_elem_type);
 
-  onnx::TensorShapeProto* shape_proto = type_proto_tensor->mutable_shape();
+  // If there are no dimensions in the shape, do not set a TensorShapeProto. Otherwise, it always looks
+  // like a scalar value.
+  if (!ort_dims.empty()) {
+    onnx::TensorShapeProto* shape_proto = type_proto_tensor->mutable_shape();
 
-  for (size_t dim_idx = 0; dim_idx < ort_dims.size(); dim_idx++) {
-    onnx::TensorShapeProto_Dimension* dim_proto = shape_proto->add_dim();
+    for (size_t dim_idx = 0; dim_idx < ort_dims.size(); dim_idx++) {
+      onnx::TensorShapeProto_Dimension* dim_proto = shape_proto->add_dim();
 
-    if (ort_dims[dim_idx] >= 0) {
-      dim_proto->set_dim_value(ort_dims[dim_idx]);
-    } else {
-      const std::string& dim_param = ort_dim_syms[dim_idx];
+      if (ort_dims[dim_idx] >= 0) {
+        dim_proto->set_dim_value(ort_dims[dim_idx]);
+      } else {
+        const std::string& dim_param = ort_dim_syms[dim_idx];
 
-      // If dim_param is empty, leave dim_proto with neither the dim_value or dim_param set,
-      // which represents an unknown dimension.
-      if (!dim_param.empty()) {
-        dim_proto->set_dim_param(dim_param);
+        // If dim_param is empty, leave dim_proto with neither the dim_value or dim_param set,
+        // which represents an unknown dimension.
+        if (!dim_param.empty()) {
+          dim_proto->set_dim_param(dim_param);
+        }
       }
     }
   }

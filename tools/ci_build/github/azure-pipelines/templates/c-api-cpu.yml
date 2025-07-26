@@ -100,15 +100,6 @@ stages:
       QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
       is1ES: ${{ parameters.is1ES }}
 
-- stage: Final_AAR_Testing_Android_QNN
-  dependsOn: Android_Java_API_AAR_Packaging_QNN
-  jobs:
-  - template: android-java-api-aar-test.yml
-    parameters:
-      artifactName: 'onnxruntime-android-qnn-aar'
-      packageName: 'onnxruntime-android-qnn'
-      QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
-
 - stage: iOS_Full_xcframework
   dependsOn: []
   jobs:

@@ -1,10 +1,12 @@
 steps:
 - checkout: none
-- task: DownloadPipelineArtifact@0
-  displayName: 'Download NPM packages'
-  inputs:
-    artifactName: NPM_packages
-    targetPath: '$(Build.BinariesDirectory)/nodejs-artifact'
+- download: build
+  displayName: 'Download NPM_packages'
+  artifact: 'NPM_packages'
+
+- script: |
+    mv $(Pipeline.Workspace)/build/NPM_packages '$(Build.BinariesDirectory)/nodejs-artifact'
+
 - script: mkdir e2e_test
   workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -32,5 +34,3 @@ steps:
     npm install $(NpmPackageFilesForTest) --onnxruntime-node-install-cuda=skip
     node -p "require('onnxruntime-node')"
   workingDirectory: '$(Build.BinariesDirectory)/e2e_test'
-
-- template: ../../templates/clean-agent-build-directory-step.yml
