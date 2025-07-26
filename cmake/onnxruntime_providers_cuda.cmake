@@ -18,8 +18,11 @@
     file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/plugin_ep/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/plugin_ep/*.cc"
     )
   endif()
+
   # Remove pch files
   list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
@@ -43,8 +46,12 @@
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/math/unary_elementwise_ops_impl.cu"
         )
   endif()
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
-  set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs}
+                                                   ${onnxruntime_providers_cuda_shared_srcs}
+                                                   ${onnxruntime_providers_cuda_cu_srcs})
+  set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs}
+                                     ${onnxruntime_providers_cuda_shared_srcs}
+                                     ${onnxruntime_providers_cuda_cu_srcs})
 
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
