@@ -25,7 +25,7 @@ TEST(DeviceDiscoveryTest, HasCpuDevice) {
   const auto cpu_devices = GetDevicesByType(OrtHardwareDeviceType_CPU);
   ASSERT_GT(cpu_devices.size(), 0);
 #if defined(__linux__) && (defined(__aarch64__) || defined(__arm__))
-  // TODO vendor_id is not properly set for Linux and ARM yet
+  // TODO vendor_id is not properly set for ARM Linux yet
 #else
   ASSERT_NE(cpu_devices[0].vendor_id, 0);
 #endif
