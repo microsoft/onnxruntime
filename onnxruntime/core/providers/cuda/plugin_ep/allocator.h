@@ -19,6 +19,7 @@ struct CudaOrtAllocator : OrtAllocator {
 
  private:
   const OrtMemoryInfo& memory_info_;
+  const OrtMemoryDevice& memory_device_;
 };
 
 }  // namespace cuda_plugin_ep

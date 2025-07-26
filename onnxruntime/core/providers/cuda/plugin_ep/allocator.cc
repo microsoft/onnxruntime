@@ -6,18 +6,7 @@
 namespace cuda_plugin_ep {
 
 namespace {
-OrtStatus* CheckDevice(const OrtMemoryDevice& device) {
-#ifndef NDEBUG
-  // check device to match at debug build
-  // if it's expected to change, call cudaSetDevice instead of the check
-  int current_device;
-  auto cuda_err = cudaGetDevice(&current_device);
-  EP_ENFORCE(cuda_err == cudaSuccess, "Failed to get current CUDA device: " + std::to_string(cuda_err));
-  EP_ENFORCE(current_device == Shared::ep_api->MemoryDevice_GetDeviceId(&device), __FUNCTION__);
-#endif
-}
-
-OrtStatus* SetDevice(const OrtMemoryDevice& device) {
+void SetDevice(const OrtMemoryDevice& device) {
   int current_device;
   auto device_id = Shared::ep_api->MemoryDevice_GetDeviceId(&device);
 
@@ -29,47 +18,14 @@ OrtStatus* SetDevice(const OrtMemoryDevice& device) {
     }
   }
 
-  CUDA_RETURN_IF_ERROR(cuda_err);
-
-  return nullptr;
+  CUDA_THROW_IF_ERROR(cuda_err);
 }
-
 
 }  // namespace
 
-/*
-void* CUDAAllocator::Alloc(size_t size) {
-  SetDevice(true);
-  CheckDevice(true);
-  void* p = nullptr;
-  if (size > 0) {
-    // BFCArena was updated recently to handle the exception and adjust the request size
-    CUDA_CALL_THROW(cudaMalloc((void**)&p, size));
-  }
-  return p;
-}
-
-void CUDAAllocator::Free(void* p) {
-  SetDevice(false);
-  CheckDevice(false);  // ignore CUDA failure when free
-  cudaFree(p);         // do not throw error since it's OK for cudaFree to fail during shutdown
-}
-
-void* CUDAPinnedAllocator::Alloc(size_t size) {
-  void* p = nullptr;
-  if (size > 0) {
-    CUDA_CALL_THROW(cudaMallocHost((void**)&p, size));
-  }
-  return p;
-}
-
-void CUDAPinnedAllocator::Free(void* p) {
-  CUDA_CALL_THROW(cudaFreeHost(p));
-}
-*/
-
 CudaOrtAllocator::CudaOrtAllocator(const OrtMemoryInfo* mem_info, const OrtApi& api)
-    : memory_info_{*mem_info} {
+    : memory_info_{*mem_info},
+      memory_device_{*Shared::ep_api->MemoryInfo_GetMemoryDevice(mem_info)} {
   version = ORT_API_VERSION;
   Info = InfoImpl;
   Reserve = AllocImpl;  // no special behavior for Reserve so use AllocImpl
@@ -86,38 +42,44 @@ CudaOrtAllocator::CudaOrtAllocator(const OrtMemoryInfo* mem_info, const OrtApi& 
   }
 }
 
-void* ORT_API_CALL CudaOrtAllocator::AllocImpl(struct OrtAllocator* this_, size_t size) {
+void* CudaOrtAllocator::AllocImpl(struct OrtAllocator* this_, size_t size) {
   auto& impl = *static_cast<CudaOrtAllocator*>(this_);
-  SetDevice();
-  CheckDevice(true);
+
+  // TODO: This should not be necessary unless the allocator is being used in different sessions.
+  //       Should we have a flag for the shared allocator so we can skip the cudaSetDevice call
+  //       if it's a per-session allocator?
+  SetDevice(impl.memory_device_);
+
   void* p = nullptr;
   if (size > 0) {
-    // BFCArena was updated recently to handle the exception and adjust the request size
-    THROW_IF_ERROR(cudaMalloc((void**)&p, size));
+    CUDA_THROW_IF_ERROR(cudaMalloc((void**)&p, size));
   }
   return p;
 }
 
-void ORT_API_CALL CudaOrtAllocator::FreeImpl(struct OrtAllocator* this_, void* p) {
+void CudaOrtAllocator::FreeImpl(struct OrtAllocator* this_, void* p) {
   auto& impl = *static_cast<CudaOrtAllocator*>(this_);
-  impl.allocator_->Free(p);
+  SetDevice(impl.memory_device_);
+
+  // do not throw error since it's OK for cudaFree to fail during shutdown
+  cudaFree(p);
 }
 
-const struct OrtMemoryInfo* ORT_API_CALL CudaOrtAllocator::InfoImpl(const struct OrtAllocator* this_) {
+const struct OrtMemoryInfo* CudaOrtAllocator::InfoImpl(const struct OrtAllocator* this_) {
   const CudaOrtAllocator& impl = *static_cast<const CudaOrtAllocator*>(this_);
-  return impl.memory_info_;
+  return &impl.memory_info_;
 }
 
-void* CUDAPinnedAllocator::Alloc(size_t size) {
+void* CudaOrtAllocator::PinnedAllocImpl(struct OrtAllocator* this_, size_t size) {
   void* p = nullptr;
   if (size > 0) {
-    CUDA_CALL_THROW(cudaMallocHost((void**)&p, size));
+    CUDA_THROW_IF_ERROR(cudaMallocHost((void**)&p, size));
   }
   return p;
 }
 
-void CUDAPinnedAllocator::Free(void* p) {
-  CUDA_CALL_THROW(cudaFreeHost(p));
+void CudaOrtAllocator::PinnedFreeImpl(struct OrtAllocator* this_, void* p) {
+  CUDA_THROW_IF_ERROR(cudaFreeHost(p));
 }
 
 }  // namespace cuda_plugin_ep
