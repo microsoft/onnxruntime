@@ -78,7 +78,7 @@ def main():
     if not dst_deps_file.exists():
         log.info(f"Copy deps.txt to : {dst_deps_file}")
         if not dst_scripts_dir.exists():
-            dst_scripts_dir.mkdir(parents=True)
+            dst_scripts_dir.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(Path(REPO_DIR) / "cmake" / "deps.txt", str(dst_deps_file))
 
     if "manylinux" in args.dockerfile and args.multiple_repos:
