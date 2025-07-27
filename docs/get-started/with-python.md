@@ -44,6 +44,11 @@ For Cuda 11.8, please use the following instructions to install from [ORT Azure 
 pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
 ```
 
+### ROCm (external repository with compiled packages)
+
+The external [`onnxruntime-rocm-build` repository](https://github.com/Looong01/onnxruntime-rocm-build) provides Compiled packages for C/C++ and detailed instructions on how to install ONNXRuntime for ROCm and MIGraphX.
+If you have any questions about it, please open an issue [here](https://github.com/Looong01/onnxruntime-rocm-build/issues).
+
 ## Install ONNX for model export
 
 
