@@ -111,11 +111,18 @@ pip install flatbuffers numpy packaging protobuf sympy
 pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-qnn
 ```
 
-### Install ONNX Runtime GPU (ROCm)
+### Install ONNX Runtime GPU (ROCm and MIGraphX)
+
+#### Build from source
 
 For ROCm, please follow instructions to install it at the [AMD ROCm install docs](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.2.0/). The ROCm execution provider for ONNX Runtime is built and tested with ROCm 6.2.0. 
 
 To build from source on Linux, follow the instructions [here](https://onnxruntime.ai/docs/build/eps.html#amd-rocm).
+
+#### Use compiled wheels
+P.S. 
+The external [`onnxruntime-rocm-build` repository](https://github.com/Looong01/onnxruntime-rocm-build) provides Compiled wheels for Python (for Python 3.10~3.13) and detailed instructions on how to install ONNXRuntime for ROCm and MIGraphX.
+If you have any questions about it, please open an issue [here](https://github.com/Looong01/onnxruntime-rocm-build/issues).
 
 
 
@@ -180,6 +187,12 @@ dotnet add package Microsoft.ML.OnnxRuntime.DirectML
 ```bash
 dotnet add package Microsoft.AI.MachineLearning
 ```
+
+
+#### ROCm (external repository with compiled packages)
+The external [`onnxruntime-rocm-build` repository](https://github.com/Looong01/onnxruntime-rocm-build) provides Compiled packages for C/C++ and detailed instructions on how to install ONNXRuntime for ROCm and MIGraphX.
+If you have any questions about it, please open an issue [here](https://github.com/Looong01/onnxruntime-rocm-build/issues).
+
 
 ## Install on web and mobile
 
