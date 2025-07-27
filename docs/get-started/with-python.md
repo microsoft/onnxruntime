@@ -268,6 +268,7 @@ If using pip, run `pip install --upgrade pip` prior to downloading.
 |[onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)|GPU (Release)| Windows (x64), Linux (x64, ARM64) |
 |[onnxruntime-gpu for CUDA 11.*](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ort-cuda-11-nightly/PyPI/onnxruntime-gpu) |GPU (Dev) | Windows (x64), Linux (x64, ARM64) |
 |[onnxruntime-gpu for CUDA 12.*](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-gpu) |GPU (Dev) | Windows (x64), Linux (x64, ARM64) |
+|[onnxruntime-rocm](https://github.com/Looong01/onnxruntime-rocm-build/releases) |ROCm (External) | Linux (x64) |
 
 
 Example to install onnxruntime-gpu for CUDA 11.*:
