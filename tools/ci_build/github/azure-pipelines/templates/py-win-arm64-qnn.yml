@@ -6,7 +6,7 @@ parameters:
 
 - name: PYTHON_VERSION
   type: string
-  default: 'onnxruntime-qnn-windows-vs-2022-arm64'
+  default: '3.11'
   
 - name: QNN_SDK
   displayName: QNN SDK Version
