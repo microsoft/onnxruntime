@@ -24,7 +24,7 @@ parameters:
   default: ''
 
 jobs:
-- job: Win_py_arm64_qnn_Wheels
+- job: Win_py_arm64_qnn_Wheels_${{ parameters.PYTHON_VERSION }}
   timeoutInMinutes: 210
   workspace:
     clean: all
