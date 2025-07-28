@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/ep_library_plugin.h"
+#include "core/session/plugin_ep/ep_library_plugin.h"
 
 #include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
