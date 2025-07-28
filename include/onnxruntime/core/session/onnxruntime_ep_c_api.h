@@ -338,8 +338,14 @@ struct OrtEpApi {
    * The registered values will be used in calls to OrtEpFactory::CreateAllocator to ensure the required allocator/s
    * are available for EP usage.
    *
-   * At most one DEFAULT and one HOST_ACCESSIBLE entry can be added.
-   * Multiple calls for the same memory type will replace a previous entry.
+   * Multiple calls for the same entry type will replace a previous entry.
+   *
+   * Available entries:
+   *   - OrtDeviceAllocator with type of OrtDeviceMemoryType_DEFAULT
+   *   - OrtDeviceAllocator with type of OrtDeviceMemoryType_HOST_ACCESSIBLE
+   *   - OrtReadOnlyAllocator with type of OrtDeviceMemoryType_DEFAULT
+   *     - if provided this allocator will only be used to copy initializers to the device the EP uses.
+   *       ORT will use the OrtDeviceAllocator if not provided.
    *
    * \param[in] ep_device The OrtEpDevice instance to register the OrtMemoryInfo with.
    * \param[in] allocator_memory_info The OrtMemoryInfo information for the allocator.
@@ -366,12 +372,11 @@ struct OrtEpApi {
   /** \brief Get the OrtMemoryDevice from an OrtValue instance if it contains a Tensor.
    *
    * \param[in] value The OrtValue instance to get the memory device from.
-   * \param[out] device The OrtMemoryDevice associated with the OrtValue instance.
-   * \return Status Success if OrtValue contains a Tensor. Otherwise, an error status is returned.
+   * \return Memory device if OrtValue contains a Tensor, nullptr otherwise.
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Value_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device);
+  ORT_API_T(const OrtMemoryDevice*, Value_GetMemoryDevice, _In_ const OrtValue* value);
 
   /** \brief Compare two OrtMemoryDevice instances for equality.
    *
@@ -425,6 +430,41 @@ struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API_T(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
+
+  /** \brief Get the OrtSyncStreamImpl associated with an OrtSyncStream instance.
+   *
+   * This allows an the plugin library to connect its OrtSyncStreamImpl instance with an OrtSyncStream if needed.
+   *
+   * \param[in] stream The OrtSyncStream instance to find an OrtSyncStreamImpl for.
+   * \return The associated OrtSyncStreamImpl if found. nullptr otherwise.
+   *
+   * \since Version 1.23.
+   *
+   * \remarks There should always be an OrtSyncStreamImpl associated with an OrtSyncStream instance that the EP gets.
+   */
+  ORT_API_T(const OrtSyncStreamImpl*, SyncStream_GetImpl, _In_ const OrtSyncStream* stream);
+
+  /** \brief Get the current sync ID for a stream.
+   *
+   * \param[in] stream The OrtSyncStream to get the sync ID for.
+   * \return Current sync ID.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(uint64_t, SyncStream_GetSyncId, _In_ const OrtSyncStream* stream);
+
+  /** \brief Get the sync ID for the last time the consumer_stream waited on the producer_stream.
+   *
+   * When two streams are synchronized, the sync id represents the event used in that synchronization.
+   *
+   * \param[in] producer_stream The OrtSyncStream that produced the data.
+   * \param[in] consumer_stream The OrtSyncStream that waited on the producer_stream.
+   * \return ID for last sync. 0 if no sync has occurred between the two streams.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(uint64_t, GetSyncIdForLastWaitOnSyncStream,
+            _In_ const OrtSyncStream* producer_stream, _In_ const OrtSyncStream* consumer_stream);
 };
 
 /**
@@ -696,8 +736,8 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  const char*(ORT_API_CALL* GetCompiledModelCompatibilityInfo)(_In_ OrtEp* this_ptr,
-                                                               _In_ const OrtGraph* graph);
+  ORT_API_T(const char*, GetCompiledModelCompatibilityInfo, _In_ OrtEp* this_ptr,
+            _In_ const OrtGraph* graph);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -874,9 +914,9 @@ struct OrtEpFactory {
    *
    * \since Version 1.23.
    */
-  OrtStatus*(ORT_API_CALL* ValidateCompiledModelCompatibilityInfo)(_In_ OrtEpFactory* this_ptr,
-                                                                   _In_ const char* compatibility_info,
-                                                                   _Out_ OrtCompiledModelCompatibility* model_compatibility);
+  ORT_API2_STATUS(ValidateCompiledModelCompatibilityInfo, _In_ OrtEpFactory* this_ptr,
+                  _In_ const char* compatibility_info,
+                  _Out_ OrtCompiledModelCompatibility* model_compatibility);
 
   /** \brief Create an OrtAllocator that can be shared across sessions for the given OrtMemoryInfo.
    *

@@ -4,10 +4,10 @@ parameters:
   IsReleaseBuild: false
   DoEsrp: false
   qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-  ArtifactName: 'drop-nuget-qnn'
   OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.QNN'
   StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
   PublishArchive: false
+  PublishNugetToFeed: true
 
 stages:
 - stage: ${{ parameters.StageName }}
@@ -15,12 +15,37 @@ stages:
   jobs:
   - job: ${{ parameters.StageName }}
     timeoutInMinutes: 300
-
     pool:
       name: ${{ parameters.qnn_ep_build_pool_name }}
+      os: windows
+    templateContext:
+      sdl:
+        codeSignValidation:
+          enabled: true
+          break: true
+        psscriptanalyzer:
+          enabled: true
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+      outputs:
+      - ${{if and(and(eq(parameters.PublishNugetToFeed, true), eq(parameters.IsReleaseBuild, false)), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))}}:
+        - output: nuget
+          # condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main')) # Optional condition
+          useDotNetTask: false # The default is false to use the NuGetCommand task. Set to true to use the DotNetCoreCLI task to publish packages.
+          packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg;!$(Build.BinariesDirectory)/*.symbols.nupkg'
+          packageParentPath: $(Build.ArtifactStagingDirectory)
+          publishVstsFeed: PublicPackages/ORT-Nightly  # Required when pushing to internal feed.
+          nuGetFeedType: internal
+          allowPackageConflicts: true # Optional. NuGetCommand task only.
+          publishPackageMetadata: true # Optional
+      - ${{ else }}:
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)
+          artifactName: "drop-signed-nuget-qnn"
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
-      commonBuildArgs: '--compile_no_warning_as_error --skip_submodule_sync --build_shared_lib --client_package_build --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags '
+      commonBuildArgs: '--skip_submodule_sync --build_shared_lib --client_package_build --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags '
 
     steps:
     - template: set-version-number-variables-step.yml
@@ -60,7 +85,7 @@ stages:
         Pattern: 'onnxruntime*.dll'
 
     - ${{ if eq(parameters.PublishArchive, true) }}:
-      - template: c-api-artifacts-package-and-publish-steps-windows.yml
+      - template: c-api-artifacts-package-and-publish-steps-windows-qnn.yml
         parameters:
           buildConfig: ${{ parameters.build_config }}
           artifactName: 'onnxruntime-win-arm64x-qnn'
@@ -120,9 +145,3 @@ stages:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.ArtifactStagingDirectory)'
         DoEsrp: ${{ parameters.DoEsrp }}
-
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline Qnn NuGet Artifact'
-      inputs:
-        artifactName: 'drop-signed-nuget-qnn'
-        targetPath: '$(Build.ArtifactStagingDirectory)'

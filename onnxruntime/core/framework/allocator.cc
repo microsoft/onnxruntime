@@ -164,19 +164,16 @@ void CPUAllocator::Free(void* p) {
   AllocatorDefaultFreeAligned(p, alignment);
 }
 
-void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
-  if (use_reserve)
+void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream,
+                                WaitNotificationFn /*ignored*/) {
+  if (use_reserve) {
     return alloc.Reserve(size);
-  if (stream && alloc.Info().alloc_type == OrtArenaAllocator) {
-#ifdef ORT_ENABLE_STREAM
-    auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(static_cast<BFCArena&>(alloc));
-    if (stream_aware_alloc) {
-      return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
-    }
-#else
-    ORT_UNUSED_PARAMETER(wait_fn);
-#endif  // ORT_ENABLE_STREAM
   }
+
+  if (stream && alloc.IsStreamAware()) {
+    return alloc.AllocOnStream(size, stream);
+  }
+
   return alloc.Alloc(size);
 }
 }  // namespace onnxruntime
@@ -315,12 +312,10 @@ ORT_API(void, OrtApis::MemoryInfoGetDeviceType, _In_ const OrtMemoryInfo* info, 
   *out = static_cast<OrtMemoryInfoDeviceType>(info->device.Type());
 }
 
-ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetDeviceMemType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtDeviceMemoryType* out) {
-  *out = static_cast<OrtDeviceMemoryType>(ptr->device.MemType());
-  return nullptr;
+ORT_API(OrtDeviceMemoryType, OrtApis::MemoryInfoGetDeviceMemType, _In_ const OrtMemoryInfo* ptr) {
+  return static_cast<OrtDeviceMemoryType>(ptr->device.MemType());
 }
 
-ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetVendorId, _In_ const OrtMemoryInfo* ptr, _Out_ uint32_t* out) {
-  *out = ptr->device.Vendor();
-  return nullptr;
+ORT_API(uint32_t, OrtApis::MemoryInfoGetVendorId, _In_ const OrtMemoryInfo* ptr) {
+  return ptr->device.Vendor();
 }

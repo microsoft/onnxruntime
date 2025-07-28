@@ -188,5 +188,30 @@ TEST(MIGraphXExecutionProviderTest, canEvalArgument) {
   ASSERT_EQ(canEvalNodeArgument(gv, node2, {1}, input_nodes), true);
 }
 
+TEST(MIGraphXExecutionProviderTest, AutoEp_PreferGpu) {
+  PathString model_name = ORT_TSTR("migraphx_basic_test.onnx");
+
+  onnxruntime::Model model("test", false, DefaultLoggingManager().DefaultLogger());
+  std::vector<int> dims = {1, 3, 2};
+  CreateBaseModel(model, dims);
+
+  auto status = onnxruntime::Model::Save(model, model_name);
+  ASSERT_TRUE(status.IsOK());
+
+  auto env = Ort::Env();
+  env.UpdateEnvWithCustomLogLevel(OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING);
+
+  {
+    env.RegisterExecutionProviderLibrary(kMIGraphXExecutionProvider, ORT_TSTR("onnxruntime_providers_migraphx.dll"));
+
+    Ort::SessionOptions so;
+    so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
+    Ort::Session session_object(env, model_name.c_str(), so);
+    EXPECT_TRUE(SessionHasEp(session_object, kMIGraphXExecutionProvider));
+  }
+
+  env.UnregisterExecutionProviderLibrary(kMIGraphXExecutionProvider);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -54,7 +54,6 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
       return AllocatorPtr(
           std::make_unique<StreamAwareArena>(std::move(device_allocator),
                                              max_mem,
-                                             info.enable_cross_stream_reusing,
                                              arena_extend_str,
                                              initial_chunk_size_bytes,
                                              max_dead_bytes_per_chunk,

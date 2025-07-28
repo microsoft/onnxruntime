@@ -355,8 +355,9 @@ struct CudaOrtAllocator : OrtAllocator {
     Alloc = AllocImpl;
     Free = FreeImpl;
     Info = InfoImpl;
-    Reserve = AllocImpl;  // no special behavior for Reserve so use AllocImpl
-    GetStats = nullptr;   // GetStatsImpl. The CUDA allocators don't have stats currently so we can skip.
+    Reserve = AllocImpl;      // no special behavior for Reserve so use AllocImpl
+    GetStats = nullptr;       // GetStatsImpl. The CUDA allocators don't have stats currently so we can skip.
+    AllocOnStream = nullptr;  // TODO. Plugin EP arena to provide this.
 
     const OrtEpApi& ep_api = *api.GetEpApi();
     const OrtMemoryDevice* mem_device = ep_api.MemoryInfo_GetMemoryDevice(mem_info);
@@ -436,9 +437,8 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
       OrtValue* dst_tensor = dst_tensors[idx];
       OrtSyncStream* stream = streams ? streams[idx] : nullptr;
 
-      const OrtMemoryDevice *src_device = nullptr, *dst_device = nullptr;
-      RETURN_IF_ERROR(impl.ep_api.Value_GetMemoryDevice(src_tensor, &src_device));
-      RETURN_IF_ERROR(impl.ep_api.Value_GetMemoryDevice(dst_tensor, &dst_device));
+      const OrtMemoryDevice* src_device = impl.ep_api.Value_GetMemoryDevice(src_tensor);
+      const OrtMemoryDevice* dst_device = impl.ep_api.Value_GetMemoryDevice(dst_tensor);
 
       size_t bytes;
       RETURN_IF_ERROR(impl.ort_api.GetTensorSizeInBytes(src_tensor, &bytes));
@@ -680,7 +680,6 @@ struct CudaEpFactory : OrtEpFactory {
 
     CreateAllocator = CreateAllocatorImpl;
     ReleaseAllocator = ReleaseAllocatorImpl;
-
     CreateDataTransfer = CreateDataTransferImpl;
 
     IsStreamAware = IsStreamAwareImpl;

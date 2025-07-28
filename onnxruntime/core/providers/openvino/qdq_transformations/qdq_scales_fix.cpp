@@ -512,7 +512,7 @@ struct CustomGraph {
           continue;
         }
 
-        auto scale_name = node->node_input_name[1];  // Scale
+        const auto& scale_name = node->node_input_name[1];  // Scale
         auto scale_value = get_initializer_value(original_graph, scale_name);
         if (scale_value / node->scale_factor < threshold) {
           remove_qdq_pair(*node, removed);
@@ -699,7 +699,7 @@ bool scale_graph(CustomGraph& gen_graph,
       if (cur_node->op_type == "QuantizeLinear" &&
           cur_node->to_node[0]->op_type == "DequantizeLinear") {
         needs_second_run = true;
-        auto scale_name = *std::next(cur_node->node_input_name.begin());
+        const auto& scale_name = *std::next(cur_node->node_input_name.begin());
         auto scale_value = get_initializer_value(gen_graph.original_graph, scale_name);
 
         // QDQ pair with scale over 1
