@@ -240,40 +240,6 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
                         << "\n " << migraphx_provider_option::kModelCacheDir << ": " << model_cache_path_;
 }
 
-AllocatorPtr MIGraphXExecutionProvider::CreateMIGraphXAllocator(OrtDevice::DeviceId device_id,
-                                                                size_t migx_mem_limit,
-                                                                ArenaExtendStrategy arena_extend_strategy,
-                                                                void* alloc_fn,
-                                                                void* free_fn,
-                                                                void* empty_cache_fn,
-                                                                const OrtArenaCfg* default_memory_arena_cfg) {
-  if (alloc_fn != nullptr && free_fn != nullptr) {
-    const AllocatorCreationInfo default_memory_info(
-        [alloc_fn, free_fn, empty_cache_fn](OrtDevice::DeviceId id) {
-          return std::make_unique<MIGraphXExternalAllocator>(id, HIP, alloc_fn, free_fn, empty_cache_fn);
-        },
-        device_id,
-        false);
-
-    return CreateAllocator(default_memory_info);
-  } else {
-    AllocatorCreationInfo default_memory_info(
-        [](OrtDevice::DeviceId id) {
-          return std::make_unique<MIGraphXAllocator>(id, HIP);
-        },
-        device_id,
-        true,
-        {default_memory_arena_cfg ? *default_memory_arena_cfg
-                                  : OrtArenaCfg(migx_mem_limit, static_cast<int>(arena_extend_strategy),
-                                                -1, -1, -1, -1L)},
-        // make it stream aware
-        true);
-
-    // ROCM malloc/free is expensive so always use an arena
-    return CreateAllocator(default_memory_info);
-  }
-}
-
 std::vector<AllocatorPtr> MIGraphXExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId device_id) {
