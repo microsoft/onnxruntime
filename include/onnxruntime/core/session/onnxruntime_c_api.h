@@ -6057,7 +6057,8 @@ struct OrtApi {
    *
    * \param[in] node The OrtNode instance.
    * \param[in] attribute The OrtOpAttr instance.
-   * \param[out] name Output parameter set to the attribute's name. The name is a null-terminated string.
+   * \param[out] attr_tensor Output parameter set to the 'TENSOR' attribute value or NULL. Do not cache the OrtValue
+   *                         as it is released when the owning OrtGraph is released.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

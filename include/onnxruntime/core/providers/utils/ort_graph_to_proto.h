@@ -764,8 +764,6 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
       onnx::TensorProto tensor_proto;
       std::string name = std::string(attr_name) + "_tensor_proto";
       tensor_proto.set_name(name);
-      tensor_proto.add_dims(2);
-      tensor_proto.add_dims(3);
 
       const OrtValue* ort_value = nullptr;
       ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetTensorAttributeAsOrtValue(&ort_node, &ort_attr, &ort_value));
