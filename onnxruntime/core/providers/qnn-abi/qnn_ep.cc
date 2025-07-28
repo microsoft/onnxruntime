@@ -338,6 +338,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   GetCapability = GetCapabilityImpl;
   Compile = CompileImpl;
   ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
+  GetPreferredDataLayout = GetPreferredDataLayoutImpl;
   OnRunStart = OnRunStartImpl;
   OnRunEnd = OnRunEndImpl;
 
@@ -425,8 +426,10 @@ QnnEp::QnnEp(QnnEpFactory& factory,
     std::string backend_type;
     std::string backend_path_option;
 
-    GetSessionConfigEntryOrDefault(ort_api, session_options_, "backend_type", "", backend_type);
+    // TODO: Fix key with prefix.
+    GetSessionConfigEntryOrDefault(ort_api, session_options_, "ep.qnnabitestprovider.backend_type", "", backend_type);
     GetSessionConfigEntryOrDefault(ort_api, session_options_, "backend_path", "", backend_path_option);
+    std::cout << "DEBUG: BackendType " << backend_type << std::endl;
 
     // Check if both options are provided
     if (!backend_type.empty() && !backend_path_option.empty()) {
@@ -450,6 +453,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
     }
 
     LOGS(_logger, VERBOSE) << "Using backend path: " << backend_path;
+    std::cout << "DEBUG: BackendPath " << backend_path << std::endl;
   }
 
   std::unique_ptr<qnn::QnnSerializerConfig> qnn_serializer_config = ParseSerializerBackendOptions(ort_api,
@@ -1602,6 +1606,14 @@ void ORT_API_CALL QnnEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
   for (size_t idx = 0; idx < num_node_compute_infos; ++idx) {
     delete node_compute_infos[idx];
   }
+}
+
+
+OrtStatus* ORT_API_CALL QnnEp::GetPreferredDataLayoutImpl(_In_ OrtEp* this_ptr,
+                                                          _Out_ OrtEpDataLayout* preferred_data_layout) {
+  ORT_UNUSED_PARAMETER(this_ptr);
+  *preferred_data_layout = OrtEpDataLayout::OrtEpDataLayout_NHWC;
+  return nullptr;
 }
 
 OrtStatus* ORT_API_CALL QnnEp::OnRunStartImpl(_In_ OrtEp* this_ptr, _In_ const OrtRunOptions* run_options) {

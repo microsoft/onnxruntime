@@ -59,6 +59,8 @@ class QnnEp : public OrtEp, public ApiPtrs {
   static void ORT_API_CALL ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
                                                        OrtNodeComputeInfo** node_compute_infos,
                                                        size_t num_node_compute_infos);
+  static OrtStatus* ORT_API_CALL GetPreferredDataLayoutImpl(_In_ OrtEp* this_ptr,
+                                                            _Out_ OrtEpDataLayout* preferred_data_layout);
   static OrtStatus* ORT_API_CALL OnRunStartImpl(_In_ OrtEp* this_ptr, _In_ const OrtRunOptions* run_options);
   static OrtStatus* ORT_API_CALL OnRunEndImpl(_In_ OrtEp* this_ptr,
                                               _In_ const OrtRunOptions* run_options,
