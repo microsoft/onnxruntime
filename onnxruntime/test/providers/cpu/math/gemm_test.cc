@@ -305,71 +305,6 @@ TEST(GemmOpTest, GemmTransB_f16) {
         .Config(run_with_tunable_op)
         .RunWithConfig();
   }
-
-  {
-    // 32x32, 32x128 matrix multiplication test with transB=True, alpha=1.0, beta=1.0
-    const int64_t M = 32, K = 32, N = 128;
-
-    // Initialize input matrices with simple pattern
-    std::vector<float> A_f32(M * K);
-    std::vector<float> B_f32(N * K);  // Note: B is N×K because transB=True
-    std::vector<float> C_f32(M * N);
-
-    // Fill A matrix with pattern
-    for (int64_t i = 0; i < M * K; ++i) {
-      A_f32[i] = static_cast<float>((i % 7) + 1) * 0.1f;
-    }
-
-    // Fill B matrix with pattern (will be transposed)
-    for (int64_t i = 0; i < N * K; ++i) {
-      B_f32[i] = static_cast<float>((i % 5) + 1) * 0.1f;
-    }
-
-    // Fill C matrix (bias) with small values
-    for (int64_t i = 0; i < M * N; ++i) {
-      C_f32[i] = static_cast<float>((i % 3) + 1) * 0.01f;
-    }
-
-    // Convert to MLFloat16
-    std::vector<MLFloat16> f_A(M * K);
-    std::vector<MLFloat16> f_B(N * K);
-    std::vector<MLFloat16> f_C(M * N);
-
-    ConvertFloatToMLFloat16(A_f32.data(), f_A.data(), M * K);
-    ConvertFloatToMLFloat16(B_f32.data(), f_B.data(), N * K);
-    ConvertFloatToMLFloat16(C_f32.data(), f_C.data(), M * N);
-
-    // Calculate expected output: Y = alpha * A * B^T + beta * C
-    std::vector<float> Y_f32(M * N, 0.0f);
-    for (int64_t i = 0; i < M; ++i) {
-      for (int64_t j = 0; j < N; ++j) {
-        float sum = 0.0f;
-        for (int64_t k = 0; k < K; ++k) {
-          // B is transposed, so B^T[k][j] = B[j][k]
-          sum += A_f32[i * K + k] * B_f32[j * K + k];
-        }
-        Y_f32[i * N + j] = 1.0f * sum + 1.0f * C_f32[i * N + j];  // alpha=1.0, beta=1.0
-      }
-    }
-
-    // Convert expected output to MLFloat16
-    std::vector<MLFloat16> f_Y(M * N);
-    ConvertFloatToMLFloat16(Y_f32.data(), f_Y.data(), M * N);
-
-    OpTester test("Gemm", 13);
-    test.AddAttribute("transA", (int64_t)0);
-    test.AddAttribute("transB", (int64_t)1);  // transB = True
-    test.AddAttribute("alpha", 1.0f);
-    test.AddAttribute("beta", 1.0f);
-    test.AddInput<MLFloat16>("A", {M, K}, f_A);
-    test.AddInput<MLFloat16>("B", {N, K}, f_B);  // B shape is {N, K} because transB=True
-    test.AddInput<MLFloat16>("C", {M, N}, f_C);
-    test.AddOutput<MLFloat16>("Y", {M, N}, f_Y);
-    test.SetOutputTolerance(0.01f);
-    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
-        .Config(run_with_tunable_op)
-        .RunWithConfig();
-  }
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
@@ -1420,28 +1355,29 @@ TEST(GemmOpTest, GemmOptimizePackedTransAB) {
 }
 
 #if defined(USE_WEBGPU)
-TEST(GemmOpTest, GemmWebGPU_int_128x128x128_transposeB) {
+// Test int32 with M=128, K=128, N=128, transB=True
+TEST(GemmOpTest, GemmWebGPU_int_128x128x128_transposeA) {
   OpTester test("Gemm", 13);
 
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)1);  // transposeB = 1
+  test.AddAttribute("transA", (int64_t)1);  // transposeA = 1
+  test.AddAttribute("transB", (int64_t)0);
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
   const int64_t M = 128, K = 128, N = 128;
 
   // Initialize input matrices with int values
-  std::vector<int32_t> A_data(M * K);
-  std::vector<int32_t> B_data(N * K);  // B shape is {N, K} because transposeB=1
+  std::vector<int32_t> A_data(K * M);  // A shape is {K, M} because transposeA=1
+  std::vector<int32_t> B_data(K * N);
   std::vector<int32_t> C_data(M * N);
 
-  // Fill A matrix with pattern
-  for (int64_t i = 0; i < M * K; ++i) {
+  // Fill A matrix with pattern (will be transposed)
+  for (int64_t i = 0; i < K * M; ++i) {
     A_data[i] = static_cast<int32_t>((i % 7) + 1);
   }
 
-  // Fill B matrix with pattern (will be transposed)
-  for (int64_t i = 0; i < N * K; ++i) {
+  // Fill B matrix with pattern
+  for (int64_t i = 0; i < K * N; ++i) {
     B_data[i] = static_cast<int32_t>((i % 5) + 1);
   }
 
@@ -1450,21 +1386,21 @@ TEST(GemmOpTest, GemmWebGPU_int_128x128x128_transposeB) {
     C_data[i] = static_cast<int32_t>((i % 3) + 1);
   }
 
-  // Calculate expected output: Y = alpha * A * B^T + beta * C
+  // Calculate expected output: Y = alpha * A^T * B + beta * C
   std::vector<int32_t> Y_data(M * N, 0);
   for (int64_t i = 0; i < M; ++i) {
     for (int64_t j = 0; j < N; ++j) {
       int64_t sum = 0;
       for (int64_t k = 0; k < K; ++k) {
-        // B is transposed, so B^T[k][j] = B[j][k]
-        sum += static_cast<int64_t>(A_data[i * K + k]) * static_cast<int64_t>(B_data[j * K + k]);
+        // A is transposed, so A^T[i][k] = A[k][i]
+        sum += static_cast<int64_t>(A_data[k * M + i]) * static_cast<int64_t>(B_data[k * N + j]);
       }
       Y_data[i * N + j] = static_cast<int32_t>(sum + C_data[i * N + j]);  // alpha=1.0, beta=1.0
     }
   }
 
-  test.AddInput<int32_t>("A", {M, K}, A_data);
-  test.AddInput<int32_t>("B", {N, K}, B_data);  // B shape is {N, K} because transB=True
+  test.AddInput<int32_t>("A", {K, M}, A_data);  // A shape is {K, M} because transA=True
+  test.AddInput<int32_t>("B", {K, N}, B_data);
   test.AddInput<int32_t>("C", {M, N}, C_data);
   test.AddOutput<int32_t>("Y", {M, N}, Y_data);
 
@@ -1473,6 +1409,80 @@ TEST(GemmOpTest, GemmWebGPU_int_128x128x128_transposeB) {
       .RunWithConfig();
 }
 #endif  // defined(USE_WEBGPU)
+
+// Test f16 with M=32, K=32, N=128
+TEST(GemmOpTest, GemmTransB_f16_32x32x128) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+
+  // 32x32, 32x128 matrix multiplication test with transB=True, alpha=1.0, beta=1.0
+  const int64_t M = 32, K = 32, N = 128;
+
+  // Initialize input matrices with simple pattern
+  std::vector<float> A_f32(M * K);
+  std::vector<float> B_f32(N * K);  // Note: B is N×K because transB=True
+  std::vector<float> C_f32(M * N);
+
+  // Fill A matrix with pattern
+  for (int64_t i = 0; i < M * K; ++i) {
+    A_f32[i] = static_cast<float>((i % 7) + 1) * 0.1f;
+  }
+
+  // Fill B matrix with pattern (will be transposed)
+  for (int64_t i = 0; i < N * K; ++i) {
+    B_f32[i] = static_cast<float>((i % 5) + 1) * 0.1f;
+  }
+
+  // Fill C matrix (bias) with small values
+  for (int64_t i = 0; i < M * N; ++i) {
+    C_f32[i] = static_cast<float>((i % 3) + 1) * 0.01f;
+  }
+
+  // Convert to MLFloat16
+  std::vector<MLFloat16> f_A(M * K);
+  std::vector<MLFloat16> f_B(N * K);
+  std::vector<MLFloat16> f_C(M * N);
+
+  ConvertFloatToMLFloat16(A_f32.data(), f_A.data(), M * K);
+  ConvertFloatToMLFloat16(B_f32.data(), f_B.data(), N * K);
+  ConvertFloatToMLFloat16(C_f32.data(), f_C.data(), M * N);
+
+  // Calculate expected output: Y = alpha * A * B^T + beta * C
+  std::vector<float> Y_f32(M * N, 0.0f);
+  for (int64_t i = 0; i < M; ++i) {
+    for (int64_t j = 0; j < N; ++j) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; ++k) {
+        // B is transposed, so B^T[k][j] = B[j][k]
+        sum += A_f32[i * K + k] * B_f32[j * K + k];
+      }
+      Y_f32[i * N + j] = 1.0f * sum + 1.0f * C_f32[i * N + j];  // alpha=1.0, beta=1.0
+    }
+  }
+
+  // Convert expected output to MLFloat16
+  std::vector<MLFloat16> f_Y(M * N);
+  ConvertFloatToMLFloat16(Y_f32.data(), f_Y.data(), M * N);
+
+  OpTester test("Gemm", 13);
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)1);  // transB = True
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+  test.AddInput<MLFloat16>("A", {M, K}, f_A);
+  test.AddInput<MLFloat16>("B", {N, K}, f_B);  // B shape is {N, K} because transB=True
+  test.AddInput<MLFloat16>("C", {M, N}, f_C);
+  test.AddOutput<MLFloat16>("Y", {M, N}, f_Y);
+  test.SetOutputTolerance(0.01f);
+  test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
+}
 
 }  // namespace test
 }  // namespace onnxruntime
