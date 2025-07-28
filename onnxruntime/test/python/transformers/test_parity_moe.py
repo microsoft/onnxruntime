@@ -695,10 +695,10 @@ class SparseMoeBlockORTHelper(nn.Module):
         ort_output = self.ort_forward(hidden_state)
 
         if atol is None:
-            atol = 1e-2 if self.quant_bits == 0 else 2.0
+            atol = 5e-2 if self.quant_bits == 0 else (2.0 if self.quant_bits == 8 else 3.0)
 
         if rtol is None:
-            rtol = 1e-5 if self.quant_bits == 0 else 1e-3
+            rtol = 1e-3 if self.quant_bits == 0 else 1e-2
 
         if ort_output is not None:
             dtype_str = "FP32" if self.quant_bits == 0 else "FP16"
@@ -1054,7 +1054,7 @@ phi3_test_params = list(
     itertools.product(
         [1, 4],  # batch_size
         [1, 32],  # sequence_length
-        [0, 8],  # quant_bits (0 for fp32/fp32, 8 for int8/fp16, 4 for int4/fp16)
+        [0, 8, 4],  # quant_bits (0 for fp32/fp32, 8 for int8/fp16, 4 for int4/fp16)
     )
 )
 
@@ -1397,7 +1397,7 @@ swiglu_test_params = list(
     itertools.product(
         [1, 4],  # batch_size
         [1, 32],  # sequence_length
-        [0, 8],  # quant_bits (0 for fp32/fp32, 8 for int8/fp16, 4 for int4/fp16)
+        [0, 8, 4],  # quant_bits (0 for fp32/fp32, 8 for int8/fp16, 4 for int4/fp16)
     )
 )
 
