@@ -32,6 +32,7 @@ typedef CtxNull CtxSoftplus;
 typedef CtxNull CtxSoftsign;
 typedef CtxNull CtxTanh;
 typedef CtxAlpha CtxThresholdedRelu;
+typedef CtxNull CtxHardSwish;
 
 #define UNARY_ACTIVATION_OPS()          \
   UNARY_ACTIVATION_OP_NAME(Elu)         \
@@ -43,7 +44,8 @@ typedef CtxAlpha CtxThresholdedRelu;
   UNARY_ACTIVATION_OP_NAME(Softplus)    \
   UNARY_ACTIVATION_OP_NAME(Softsign)    \
   UNARY_ACTIVATION_OP_NAME(Tanh)        \
-  UNARY_ACTIVATION_OP_NAME(ThresholdedRelu)
+  UNARY_ACTIVATION_OP_NAME(ThresholdedRelu) \
+  UNARY_ACTIVATION_OP_NAME(HardSwish)
 
 #define UNARY_ACTIVATION_IMPL_DECLARATION(name) \
   template <typename T>                         \
