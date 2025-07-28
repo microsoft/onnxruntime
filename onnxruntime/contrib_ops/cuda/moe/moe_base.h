@@ -183,10 +183,14 @@ class MoEBase {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_scales[0] must be equal to num_experts, got ",
                              fc1_experts_scales_dims[0], " and ", num_experts);
     }
-    if (fc1_experts_scales_dims[1] != inter_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_scales[1] must be equal to inter_size, got ",
-                             fc1_experts_scales_dims[1], " and ", inter_size);
+
+    // The activation type affects the output dimension of the first FC layer.
+    const int64_t act = activation_type_ == ort_fastertransformer::ActivationType::SwiGLU ? 2 : 1;
+    if (fc1_experts_scales_dims[1] != act * inter_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_scales[1] must be equal to act * inter_size, got ",
+                             fc1_experts_scales_dims[1], " and ", act * inter_size);
     }
+
     if (fc2_experts_scales_dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc2_experts_scales must be 2D, got ",
                              fc2_experts_scales->Shape().GetDims().size());
