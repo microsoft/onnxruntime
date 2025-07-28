@@ -3,14 +3,17 @@
 
 #pragma once
 
+#include <iterator>
 #include <functional>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
 
-#include "core/common/transform_iterator.h"
+#include "boost/iterator/transform_iterator.hpp"
 
 namespace ONNX_NAMESPACE {
+// This header is being used in the provider bridge as is
+// make sure it does not pull anything that is not compatible with the provider bridge.
 #ifndef SHARED_PROVIDER
 class TensorProto;
 #else
@@ -19,18 +22,27 @@ struct TensorProto;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
+
+
 // Create a shallow class to act as a proxy for whatever container is currently used for the initialized tensors
 // in the graph. Exposing begin()/end(), size(), empty methods. Begin()/end() method pairs must return a
-// onnxruntime::transform_iterator template that returns references to the map keys only. That transform
-// iterator must use std::select1st() as a transformation function.
+// boost::transform_iterator template that returns references to the map keys only.
 namespace initializers_names_details {
-constexpr auto select1st = [](auto&& x) noexcept -> decltype(auto) {
-  return std::get<0>(std::forward<decltype(x)>(x));
+
+using tensor_container = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
+using tensor_container_const_iterator = tensor_container::const_iterator;
+using tensor_container_value_type = tensor_container::value_type;
+
+struct select1st_t {
+  using argument_type = tensor_container_value_type;
+  using result_type = const std::string&;
+  constexpr result_type operator()(const argument_type& v) const noexcept {
+    return std::get<0>(v);
+  }
 };
 
-using TensorSetIterator = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>::const_iterator;
-using ProjectedTensorSetIterator =
-    onnxruntime::transform_iterator<TensorSetIterator, decltype(select1st)>;
+using KeyProjectionIterator =
+    boost::transform_iterator<select1st_t, tensor_container_const_iterator>;
 
 }  // namespace initializers_names_details
 
@@ -50,25 +62,25 @@ using ProjectedTensorSetIterator =
  */
 class InitializersNames {
  public:
-  using const_iterator = initializers_names_details::ProjectedTensorSetIterator;
+  using const_iterator = initializers_names_details::KeyProjectionIterator;
   using container = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
 
   InitializersNames(const container& initialized_tensors) noexcept
       : initialized_tensors_(initialized_tensors) {}
 
   const_iterator begin() const {
-    return const_iterator(initialized_tensors_.get().begin(), initializers_names_details::select1st);
+    return cbegin();
   }
   const_iterator cbegin() const {
-    return const_iterator(initialized_tensors_.get().begin(), initializers_names_details::select1st);
+    return boost::make_transform_iterator(initialized_tensors_.get().begin(), initializers_names_details::select1st_t());
   }
   const_iterator end() const {
-    return const_iterator(initialized_tensors_.get().end(), initializers_names_details::select1st);
+    return cend();
   }
   const_iterator cend() const {
-    return const_iterator(initialized_tensors_.get().end(), initializers_names_details::select1st);
+    return boost::make_transform_iterator(initialized_tensors_.get().end(), initializers_names_details::select1st_t());
   }
-  size_t size() const {
+  size_t size() const noexcept {
     return initialized_tensors_.get().size();
   }
   bool empty() const {

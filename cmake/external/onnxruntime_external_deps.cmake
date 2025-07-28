@@ -279,6 +279,78 @@ onnxruntime_fetchcontent_declare(
 )
 onnxruntime_fetchcontent_makeavailable(date)
 
+if(NOT TARGET Boost::config)
+  if(onnxruntime_USE_VCPKG)
+    find_package(Boost REQUIRED COMPONENTS config)
+  else()
+    onnxruntime_fetchcontent_declare(
+     boost_config
+     URL ${DEP_URL_boost_config}
+     EXCLUDE_FROM_ALL
+     FIND_PACKAGE_ARGS NAMES Boost COMPONENTS config
+    )
+    FetchContent_Populate(boost_config)
+    if(NOT TARGET Boost::config)
+      add_library(Boost::config IMPORTED INTERFACE)
+      target_include_directories(Boost::config INTERFACE $<BUILD_INTERFACE:${boost_config_SOURCE_DIR}/include>)
+    endif()
+  endif()
+endif()
+
+if(NOT TARGET Boost::core)
+  if(onnxruntime_USE_VCPKG)
+    find_package(Boost REQUIRED COMPONENTS core)
+  else()
+    onnxruntime_fetchcontent_declare(
+     boost_core
+     URL ${DEP_URL_boost_core}
+     EXCLUDE_FROM_ALL
+     FIND_PACKAGE_ARGS NAMES Boost COMPONENTS core
+    )
+    FetchContent_Populate(boost_core)
+    if(NOT TARGET Boost::core)
+      add_library(Boost::core IMPORTED INTERFACE)
+      target_include_directories(Boost::core INTERFACE $<BUILD_INTERFACE:${boost_core_SOURCE_DIR}/include>)
+    endif()
+  endif()
+endif()
+
+if(NOT TARGET Boost::detail)
+  if(onnxruntime_USE_VCPKG)
+    find_package(Boost REQUIRED COMPONENTS detail)
+  else()
+    onnxruntime_fetchcontent_declare(
+     boost_detail
+     URL ${DEP_URL_boost_detail}
+     EXCLUDE_FROM_ALL
+     FIND_PACKAGE_ARGS NAMES Boost COMPONENTS detail
+    )
+    FetchContent_Populate(boost_detail)
+    if(NOT TARGET Boost::detail)
+      add_library(Boost::detail IMPORTED INTERFACE)
+      target_include_directories(Boost::detail INTERFACE $<BUILD_INTERFACE:${boost_detail_SOURCE_DIR}/include>)
+    endif()
+  endif()
+endif()
+
+if(NOT TARGET Boost::mpl)
+  if(onnxruntime_USE_VCPKG)
+    find_package(Boost REQUIRED COMPONENTS mpl)
+  else()
+    onnxruntime_fetchcontent_declare(
+     boost_mpl
+     URL ${DEP_URL_boost_mpl}
+     EXCLUDE_FROM_ALL
+     FIND_PACKAGE_ARGS NAMES Boost COMPONENTS mpl
+    )
+    FetchContent_Populate(boost_mpl)
+    if(NOT TARGET Boost::mpl)
+      add_library(Boost::mpl IMPORTED INTERFACE)
+      target_include_directories(Boost::mpl INTERFACE $<BUILD_INTERFACE:${boost_mpl_SOURCE_DIR}/include>)
+    endif()
+  endif()
+endif()
+
 if(NOT TARGET Boost::mp11)
   if(onnxruntime_USE_VCPKG)
      find_package(Boost REQUIRED)
@@ -298,6 +370,98 @@ if(NOT TARGET Boost::mp11)
     endif()
   endif()
 endif()
+
+if(NOT TARGET Boost::iterator)
+  if(onnxruntime_USE_VCPKG)
+    find_package(Boost REQUIRED COMPONENTS iterator)
+  else()
+    onnxruntime_fetchcontent_declare(
+     boost_iterator
+     URL ${DEP_URL_boost_iterator}
+     EXCLUDE_FROM_ALL
+     FIND_PACKAGE_ARGS NAMES Boost COMPONENTS iterator
+    )
+    FetchContent_Populate(boost_iterator)
+    if(NOT TARGET Boost::iterator)
+      add_library(Boost::iterator IMPORTED INTERFACE)
+      target_include_directories(Boost::iterator INTERFACE $<BUILD_INTERFACE:${boost_iterator_SOURCE_DIR}/include>)
+    endif()
+  endif()
+endif()
+
+if(NOT TARGET Boost::preprocessor)
+  if(onnxruntime_USE_VCPKG)
+    find_package(Boost REQUIRED COMPONENTS preprocessor)
+  else()
+    onnxruntime_fetchcontent_declare(
+     boost_preprocessor
+     URL ${DEP_URL_boost_preprocessor}
+     EXCLUDE_FROM_ALL
+     FIND_PACKAGE_ARGS NAMES Boost COMPONENTS preprocessor
+    )
+    FetchContent_Populate(boost_preprocessor)
+    if(NOT TARGET Boost::preprocessor)
+      add_library(Boost::preprocessor IMPORTED INTERFACE)
+      target_include_directories(Boost::preprocessor INTERFACE $<BUILD_INTERFACE:${boost_preprocessor_SOURCE_DIR}/include>)
+    endif()
+  endif()
+endif()
+
+if(NOT TARGET Boost::static_assert)
+  if(onnxruntime_USE_VCPKG)
+    find_package(Boost REQUIRED COMPONENTS static_assert)
+  else()
+    onnxruntime_fetchcontent_declare(
+     boost_static_assert
+     URL ${DEP_URL_boost_static_assert}
+     EXCLUDE_FROM_ALL
+     FIND_PACKAGE_ARGS NAMES Boost COMPONENTS static_assert
+    )
+    FetchContent_Populate(boost_static_assert)
+    if(NOT TARGET Boost::static_assert)
+      add_library(Boost::static_assert IMPORTED INTERFACE)
+      target_include_directories(Boost::static_assert INTERFACE $<BUILD_INTERFACE:${boost_static_assert_SOURCE_DIR}/include>)
+    endif()
+  endif()
+endif()
+
+if(NOT TARGET Boost::type_traits)
+  if(onnxruntime_USE_VCPKG)
+    find_package(Boost REQUIRED COMPONENTS type_traits)
+  else()
+    onnxruntime_fetchcontent_declare(
+     boost_type_traits
+     URL ${DEP_URL_boost_type_traits}
+     EXCLUDE_FROM_ALL
+     FIND_PACKAGE_ARGS NAMES Boost COMPONENTS type_traits
+    )
+    FetchContent_Populate(boost_type_traits)
+    if(NOT TARGET Boost::type_traits)
+      add_library(Boost::type_traits IMPORTED INTERFACE)
+      target_include_directories(Boost::type_traits INTERFACE $<BUILD_INTERFACE:${boost_type_traits_SOURCE_DIR}/include>)
+      target_compile_definitions(Boost::type_traits INTERFACE BOOST_NO_CXX23_HDR_STDFLOAT)
+    endif()
+  endif()
+endif()
+
+if(NOT TARGET Boost::boost_utility)
+  if(onnxruntime_USE_VCPKG)
+    find_package(Boost REQUIRED COMPONENTS boost_utility)
+  else()
+    onnxruntime_fetchcontent_declare(
+     boost_utility
+     URL ${DEP_URL_boost_utility}
+     EXCLUDE_FROM_ALL
+     FIND_PACKAGE_ARGS NAMES Boost COMPONENTS utility
+    )
+    FetchContent_Populate(boost_utility)
+    if(NOT TARGET Boost::utility)
+      add_library(Boost::utility IMPORTED INTERFACE)
+      target_include_directories(Boost::utility INTERFACE $<BUILD_INTERFACE:${boost_utility_SOURCE_DIR}/include>)
+    endif()
+  endif()
+endif()
+
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install ON CACHE INTERNAL "")

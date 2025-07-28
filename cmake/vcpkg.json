@@ -13,11 +13,15 @@
     },
     {
       "name": "boost-config",
-      "version>=": "1.82.0"
+      "version>=": "1.86.0"
+    },
+    {
+      "name": "boost-iterator",
+      "version>=": "1.86.0"
     },
     {
       "name": "boost-mp11",
-      "version>=": "1.82.0"
+      "version>=": "1.86.0"
     },
     {
       "name": "cpuinfo",
