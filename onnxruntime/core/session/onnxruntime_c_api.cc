@@ -3100,58 +3100,6 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetName, _In_ const OrtOpAttr* attribute, _O
   API_IMPL_END
 }
 
-/*
-ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetTensorAsOrtValue, _In_ const OrtOpAttr* attribute, _Outptr_ OrtValue** attr_tensor) {
-  API_IMPL_BEGIN
-  if (attr_tensor == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attr_tensor argument is null");
-  }
-  if (attribute == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attribute argument is null");
-  }
-
-  const auto& tensor_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute)->t();
-
-  ORT_ENFORCE(utils::HasDataType(tensor_proto));
-  ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(tensor_proto.data_type()));
-  ORT_ENFORCE(!utils::HasExternalData(tensor_proto),
-              "Tensor proto with external data for value attribute is not supported.");
-
-  // Set up memory info for CPU
-  OrtMemoryInfo* mem_info;
-  using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
-  ORT_API_RETURN_IF_ERROR(OrtApis::CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info));
-  auto unique_ptr_mem_info = MemoryInfoUniquePtr(mem_info, OrtApis::ReleaseMemoryInfo);
-
-    //ORT_API2_STATUS(CreateTensorWithDataAsOrtValue, _In_ const OrtMemoryInfo* info, _Inout_ void* p_data,
-    //              size_t p_data_len, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
-    //              _Outptr_ OrtValue** out);
-
-  const auto tensor_type = static_cast<ONNXTensorElementDataType>(tensor_proto.data_type());
-  //const void* const raw_data = utils::HasRawData(tensor_proto) ? tensor_proto.raw_data().data() : nullptr;
-  //const size_t raw_data_len = utils::HasRawData(tensor_proto) ? tensor_proto.raw_data().size() : 0;
-
-  // Get shape
-  std::vector<int64_t> shape(tensor_proto.dims().begin(), tensor_proto.dims().end());
-  size_t num_elements = 1;
-  for (auto d : shape) num_elements *= d;
-
-  // find raw data in proto buf
-  void* raw_data = nullptr;
-  SafeInt<size_t> raw_data_len = 0;
-  if (utils::HasRawData(tensor_proto)) {
-    raw_data = const_cast<char*>(tensor_proto.raw_data().data());
-    raw_data_len = tensor_proto.raw_data().size();
-  }
-
-  ORT_API_RETURN_IF_ERROR(OrtApis::CreateTensorWithDataAsOrtValue(mem_info, raw_data, raw_data_len, shape.data(), shape.size(), tensor_type, attr_tensor));
-
-
-  return nullptr;
-  API_IMPL_END
-}
-*/
-
 ORT_API_STATUS_IMPL(OrtApis::Node_GetNumSubgraphs, _In_ const OrtNode* node, _Out_ size_t* num_subgraphs) {
   API_IMPL_BEGIN
   if (num_subgraphs == nullptr) {

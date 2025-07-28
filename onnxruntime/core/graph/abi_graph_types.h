@@ -157,13 +157,6 @@ struct OrtOpAttr {
 };
 
 /// <summary>
-/// Public type that represents an ONNX tensor. Currently, an OrtTensor is interchangeable with TensorProto.
-/// </summary>
-struct OrtTensor {
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-};
-
-/// <summary>
 /// Public type that represents an ONNX node.
 /// </summary>
 struct OrtNode {
