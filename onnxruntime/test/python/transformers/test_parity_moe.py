@@ -9,6 +9,7 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+import itertools
 import unittest
 from collections import OrderedDict
 
@@ -24,11 +25,6 @@ import onnxruntime
 torch.manual_seed(42)
 numpy.random.seed(42)
 
-USE_QUANT = False
-ORT_DTYPE = TensorProto.FLOAT16 if USE_QUANT else TensorProto.FLOAT
-NP_TYPE = numpy.float16 if ORT_DTYPE == TensorProto.FLOAT16 else numpy.float32
-THRESHOLD = 5e-1 if USE_QUANT else 1e-2
-
 
 def value_string_of(numpy_array):
     arr = numpy_array.flatten()
@@ -40,26 +36,69 @@ def print_tensor(name, numpy_array):
     print(f"const std::vector<float> {name} = {value_string_of(numpy_array)};")
 
 
-def quant_dequant(weights, quant_mode: bool = True):
-    # use the test version `_symmetric_...` to get the non-interleaved weights
-    type = torch.quint4x2 if quant_mode else torch.int8
-    # This import is needed to use torch.ops.trtllm._symmetric_quantize_last_axis_of_batched_matrix()
-    # Comment out this line for passing the lintrunner check in the CI.
-    # import tensorrt_llm
+def quant_dequant(weights: torch.Tensor, is_4_bit_quantization: bool):
+    """
+    Performs symmetric per-column quantization and dequantization on a weight tensor.
 
-    quant_weights, processed_q_weight, torch_weight_scales = (
-        torch.ops.trtllm._symmetric_quantize_last_axis_of_batched_matrix(weights.T.cpu().contiguous(), type)
-    )
+    This implementation is a pure PyTorch replacement for the original function that
+    relied on a custom tensorrt_llm operator. It supports both 8-bit (int8) and
+    4-bit (quint4x2 style) quantization.
 
-    # Unpack the int4s int int8s
-    if quant_mode:
-        upper = quant_weights >> 4
-        lower = (quant_weights << 4) >> 4  # Arithmetic right shift sign extends
-        quant_weights = torch.stack((lower, upper), dim=2).view(weights.T.shape)
+    Args:
+        weights (torch.Tensor): The input weight tensor to be quantized.
+        is_4_bit_quantization (bool): If True, performs 4-bit quantization. If False,
+                           performs 8-bit quantization.
 
-    quant_weights = quant_weights.to(dtype=weights.dtype)
-    result = torch.multiply(quant_weights, torch_weight_scales.unsqueeze(0)).T.contiguous()
-    return torch_weight_scales.to(torch.float16), processed_q_weight, result.to(device=weights.device)
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: A tuple containing:
+            - scales (torch.float16): The quantization scales for each column.
+            - processed_q_weight (torch.int8): The packed quantized weights. For
+              4-bit mode, two 4-bit values are packed into a single int8. For
+              8-bit mode, this is the standard int8 quantized tensor. It is
+              transposed relative to the input weights' shape.
+            - dequantized_weights (torch.Tensor): The weights after being dequantized,
+              restored to the original dtype and device.
+    """
+    # Determine quantization bits and range based on the mode
+    if is_4_bit_quantization:
+        # 4-bit symmetric quantization path
+        q_bits = 4
+        q_max = 2 ** (q_bits - 1) - 1  # 7
+        q_min = -(2 ** (q_bits - 1))  # -8
+
+        max_abs_val = torch.max(torch.abs(weights), dim=0, keepdim=True).values
+        max_abs_val[max_abs_val == 0] = 1.0
+        scales = max_abs_val / q_max
+
+        quant_weights = torch.round(weights / scales).clamp(q_min, q_max).to(torch.int8)
+
+        # Pack two 4-bit integers into a single int8
+        q_weights_t = quant_weights.T.contiguous()
+        shape = q_weights_t.shape
+        q_weights_t_reshaped = q_weights_t.view(shape[0], shape[1] // 2, 2)
+        lower_nibble = q_weights_t_reshaped[..., 0]
+        upper_nibble = q_weights_t_reshaped[..., 1]
+        processed_q_weight = (lower_nibble & 0x0F) | (upper_nibble << 4)
+
+    else:
+        # 8-bit symmetric quantization path
+        q_bits = 8
+        q_max = 2 ** (q_bits - 1) - 1  # 127
+        q_min = -(2 ** (q_bits - 1))  # -128
+
+        max_abs_val = torch.max(torch.abs(weights), dim=0, keepdim=True).values
+        max_abs_val[max_abs_val == 0] = 1.0
+        scales = max_abs_val / q_max
+
+        quant_weights = torch.round(weights / scales).clamp(q_min, q_max).to(torch.int8)
+
+        # For 8-bit, the processed weights are just the transposed quantized weights (no packing)
+        processed_q_weight = quant_weights.T.contiguous()
+
+    # Dequantize the weights to verify and return for PyTorch-side parity check
+    dequantized_weights = quant_weights.to(weights.dtype) * scales.to(weights.dtype)
+
+    return (scales.squeeze(0).to(torch.float16), processed_q_weight, dequantized_weights.T.to(device=weights.device))
 
 
 def create_moe_onnx_graph(
@@ -71,6 +110,7 @@ def create_moe_onnx_graph(
     fc1_experts_bias,
     fc2_experts_weights,
     fc2_experts_bias,
+    ort_dtype,
 ):
     nodes = [
         helper.make_node(
@@ -94,19 +134,19 @@ def create_moe_onnx_graph(
     fc1_shape = [num_experts, hidden_size, inter_size]
     fc2_shape = [num_experts, inter_size, hidden_size]
 
-    torch_type = torch.float16 if ORT_DTYPE == TensorProto.FLOAT16 else torch.float32
+    torch_type = torch.float16 if ort_dtype == TensorProto.FLOAT16 else torch.float32
 
     initializers = [
         helper.make_tensor(
             "fc1_experts_weights",
-            ORT_DTYPE,
+            ort_dtype,
             fc1_shape,
             fc1_experts_weights.to(torch_type).flatten().tolist(),
             raw=False,
         ),
         helper.make_tensor(
             "fc2_experts_weights",
-            ORT_DTYPE,
+            ort_dtype,
             fc2_shape,
             fc2_experts_weights.to(torch_type).flatten().tolist(),
             raw=False,
@@ -119,14 +159,14 @@ def create_moe_onnx_graph(
         [
             helper.make_tensor(
                 "fc1_experts_bias",
-                ORT_DTYPE,
+                ort_dtype,
                 fc1_bias_shape,
                 fc1_experts_bias.to(torch_type).flatten().tolist(),
                 raw=False,
             ),
             helper.make_tensor(
                 "fc2_experts_bias",
-                ORT_DTYPE,
+                ort_dtype,
                 fc2_bias_shape,
                 fc2_experts_bias.to(torch_type).flatten().tolist(),
                 raw=False,
@@ -135,19 +175,19 @@ def create_moe_onnx_graph(
     )
 
     graph_inputs = [
-        helper.make_tensor_value_info("input", ORT_DTYPE, [sequence_length, hidden_size]),
+        helper.make_tensor_value_info("input", ort_dtype, [sequence_length, hidden_size]),
     ]
 
     graph_inputs.append(
         helper.make_tensor_value_info(
             "router_probs",
-            ORT_DTYPE,
+            ort_dtype,
             [sequence_length, num_experts],
         )
     )
 
     graph_outputs = [
-        helper.make_tensor_value_info("output", ORT_DTYPE, [sequence_length, hidden_size]),
+        helper.make_tensor_value_info("output", ort_dtype, [sequence_length, hidden_size]),
     ]
 
     graph = helper.make_graph(
@@ -171,6 +211,7 @@ def create_mixtral_moe_onnx_graph(
     fc2_experts_weights,
     fc3_experts_weights,
     topk,
+    ort_dtype,
 ):
     nodes = [
         helper.make_node(
@@ -197,26 +238,26 @@ def create_mixtral_moe_onnx_graph(
     fc2_shape = [num_experts, inter_size, hidden_size]
     fc3_shape = [num_experts, hidden_size, inter_size]
 
-    torch_type = torch.float16 if ORT_DTYPE == TensorProto.FLOAT16 else torch.float32
+    torch_type = torch.float16 if ort_dtype == TensorProto.FLOAT16 else torch.float32
 
     initializers = [
         helper.make_tensor(
             "fc1_experts_weights",
-            ORT_DTYPE,
+            ort_dtype,
             fc1_shape,
             fc1_experts_weights.to(torch_type).flatten().tolist(),
             raw=False,
         ),
         helper.make_tensor(
             "fc2_experts_weights",
-            ORT_DTYPE,
+            ort_dtype,
             fc2_shape,
             fc2_experts_weights.to(torch_type).flatten().tolist(),
             raw=False,
         ),
         helper.make_tensor(
             "fc3_experts_weights",
-            ORT_DTYPE,
+            ort_dtype,
             fc3_shape,
             fc3_experts_weights.to(torch_type).flatten().tolist(),
             raw=False,
@@ -224,19 +265,19 @@ def create_mixtral_moe_onnx_graph(
     ]
 
     graph_inputs = [
-        helper.make_tensor_value_info("input", ORT_DTYPE, [sequence_length, hidden_size]),
+        helper.make_tensor_value_info("input", ort_dtype, [sequence_length, hidden_size]),
     ]
 
     graph_inputs.append(
         helper.make_tensor_value_info(
             "router_probs",
-            ORT_DTYPE,
+            ort_dtype,
             [sequence_length, num_experts],
         )
     )
 
     graph_outputs = [
-        helper.make_tensor_value_info("output", ORT_DTYPE, [sequence_length, hidden_size]),
+        helper.make_tensor_value_info("output", ort_dtype, [sequence_length, hidden_size]),
     ]
 
     graph = helper.make_graph(
@@ -259,12 +300,14 @@ def create_phi_moe_onnx_graph(
     fc1_experts_weights,
     fc2_experts_weights,
     fc3_experts_weights,
-    fc1_scales,
-    fc2_scales,
-    fc3_scales,
     topk,
+    ort_dtype,
+    quant_bits=0,
+    fc1_scales=None,
+    fc2_scales=None,
+    fc3_scales=None,
 ):
-    use_quant = USE_QUANT
+    use_quant = quant_bits > 0
     if use_quant:
         assert fc1_experts_weights.dtype == torch.int8
         assert fc2_experts_weights.dtype == torch.int8
@@ -276,34 +319,37 @@ def create_phi_moe_onnx_graph(
         assert fc2_scales.dtype == torch.float16
         assert fc3_scales.dtype == torch.float16
 
+    op_name = "QMoE" if use_quant else "MoE"
+    inputs = (
+        [
+            "input",
+            "router_probs",
+            "fc1_experts_weights",
+            "fc1_scales",
+            "",
+            "fc2_experts_weights",
+            "fc2_scales",
+            "",
+            "fc3_experts_weights",
+            "fc3_scales",
+            "",
+        ]
+        if use_quant
+        else [
+            "input",
+            "router_probs",
+            "fc1_experts_weights",
+            "",
+            "fc2_experts_weights",
+            "",
+            "fc3_experts_weights",
+        ]
+    )
+
     nodes = [
         helper.make_node(
-            "MoE" if not use_quant else "QMoE",
-            (
-                [
-                    "input",
-                    "router_probs",
-                    "fc1_experts_weights",
-                    "",
-                    "fc2_experts_weights",
-                    "",
-                    "fc3_experts_weights",
-                ]
-                if not use_quant
-                else [
-                    "input",
-                    "router_probs",
-                    "fc1_experts_weights",
-                    "fc1_scales",
-                    "",
-                    "fc2_experts_weights",
-                    "fc2_scales",
-                    "",
-                    "fc3_experts_weights",
-                    "fc3_scales",
-                    "",
-                ]
-            ),
+            op_name,
+            inputs,
             ["output"],
             "MoE_0",
             k=topk,
@@ -315,37 +361,38 @@ def create_phi_moe_onnx_graph(
     ]
 
     if use_quant:
-        nodes[0].attribute.extend([helper.make_attribute("expert_weight_bits", 8)])
+        nodes[0].attribute.extend([helper.make_attribute("expert_weight_bits", quant_bits)])
 
-    fc1_shape = [num_experts, hidden_size, inter_size]
-    fc2_shape = [num_experts, inter_size, hidden_size]
-    fc3_shape = [num_experts, hidden_size, inter_size]
+    components = 2 if quant_bits == 4 else 1
+    fc1_shape = [num_experts, hidden_size, inter_size // components]
+    fc2_shape = [num_experts, inter_size, hidden_size // components]
+    fc3_shape = [num_experts, hidden_size, inter_size // components]
 
-    torch_type = torch.float16 if ORT_DTYPE == TensorProto.FLOAT16 else torch.float32
-    numpy_type = numpy.float16 if ORT_DTYPE == TensorProto.FLOAT16 else numpy.float32
-    if use_quant:
-        numpy_type = numpy.uint8
+    torch_type = torch.float16 if ort_dtype == TensorProto.FLOAT16 else torch.float32
+    numpy_type = numpy.float16 if ort_dtype == TensorProto.FLOAT16 else numpy.float32
+    weight_numpy_type = numpy.uint8 if use_quant else numpy_type
+    weight_onnx_type = TensorProto.UINT8 if use_quant else ort_dtype
 
     initializers = [
         helper.make_tensor(
             "fc1_experts_weights",
-            ORT_DTYPE if not use_quant else TensorProto.UINT8,
+            weight_onnx_type,
             fc1_shape,
-            fc1_experts_weights.flatten().detach().numpy().astype(numpy_type).tolist(),
+            fc1_experts_weights.flatten().detach().numpy().astype(weight_numpy_type).tolist(),
             raw=False,
         ),
         helper.make_tensor(
             "fc2_experts_weights",
-            ORT_DTYPE if not use_quant else TensorProto.UINT8,
+            weight_onnx_type,
             fc2_shape,
-            fc2_experts_weights.flatten().detach().numpy().astype(numpy_type).tolist(),
+            fc2_experts_weights.flatten().detach().numpy().astype(weight_numpy_type).tolist(),
             raw=False,
         ),
         helper.make_tensor(
             "fc3_experts_weights",
-            ORT_DTYPE if not use_quant else TensorProto.UINT8,
+            weight_onnx_type,
             fc3_shape,
-            fc3_experts_weights.flatten().detach().numpy().astype(numpy_type).tolist(),
+            fc3_experts_weights.flatten().detach().numpy().astype(weight_numpy_type).tolist(),
             raw=False,
         ),
     ]
@@ -358,21 +405,21 @@ def create_phi_moe_onnx_graph(
             [
                 helper.make_tensor(
                     "fc1_scales",
-                    ORT_DTYPE,
+                    ort_dtype,
                     fc1_scale_shape,
                     fc1_scales.to(torch_type).flatten().tolist(),
                     raw=False,
                 ),
                 helper.make_tensor(
                     "fc2_scales",
-                    ORT_DTYPE,
+                    ort_dtype,
                     fc2_scale_shape,
                     fc2_scales.to(torch_type).flatten().tolist(),
                     raw=False,
                 ),
                 helper.make_tensor(
                     "fc3_scales",
-                    ORT_DTYPE,
+                    ort_dtype,
                     fc3_scale_shape,
                     fc3_scales.to(torch_type).flatten().tolist(),
                     raw=False,
@@ -381,19 +428,19 @@ def create_phi_moe_onnx_graph(
         )
 
     graph_inputs = [
-        helper.make_tensor_value_info("input", ORT_DTYPE, [sequence_length, hidden_size]),
+        helper.make_tensor_value_info("input", ort_dtype, [sequence_length, hidden_size]),
     ]
 
     graph_inputs.append(
         helper.make_tensor_value_info(
             "router_probs",
-            ORT_DTYPE,
+            ort_dtype,
             [sequence_length, num_experts],
         )
     )
 
     graph_outputs = [
-        helper.make_tensor_value_info("output", ORT_DTYPE, [sequence_length, hidden_size]),
+        helper.make_tensor_value_info("output", ort_dtype, [sequence_length, hidden_size]),
     ]
 
     graph = helper.make_graph(
@@ -546,8 +593,11 @@ class PhiMoEBlockSparseTop2MLP(MoEBlockSparseTop2MLP):
 
 
 class SparseMoeBlockORTHelper(nn.Module):
-    def __init__(self):
+    def __init__(self, quant_bits=0):
         super().__init__()
+        self.quant_bits = quant_bits
+        self.ort_dtype = TensorProto.FLOAT16 if self.quant_bits > 0 else TensorProto.FLOAT
+        self.np_type = numpy.float16 if self.ort_dtype == TensorProto.FLOAT16 else numpy.float32
 
     def create_ort_session(self, moe_onnx_graph):
         from onnxruntime import InferenceSession, SessionOptions  # noqa: PLC0415
@@ -573,8 +623,8 @@ class SparseMoeBlockORTHelper(nn.Module):
         router_logits = self.gate(hidden_states)
 
         ort_inputs = {
-            "input": numpy.ascontiguousarray(hidden_states.detach().numpy().astype(NP_TYPE)),
-            "router_probs": numpy.ascontiguousarray(router_logits.detach().numpy().astype(NP_TYPE)),
+            "input": numpy.ascontiguousarray(hidden_states.detach().numpy().astype(self.np_type)),
+            "router_probs": numpy.ascontiguousarray(router_logits.detach().numpy().astype(self.np_type)),
         }
 
         ort_output = None
@@ -586,13 +636,6 @@ class SparseMoeBlockORTHelper(nn.Module):
                 self.ort_run_with_iobinding(ort_inputs)
                 return None
 
-        # print_tensor("input", ort_inputs["input"])
-        # print_tensor("router_probs", ort_inputs["router_probs"])
-        # print_tensor("fc1_experts_weights", self.moe_experts_weight1.detach().numpy())
-        # print_tensor("fc2_experts_weights", self.moe_experts_weight2.detach().numpy())
-        # print_tensor("fc3_experts_weights", self.moe_experts_weight3.detach().numpy())
-        # print_tensor("output", ort_output[0])
-
         return None
 
     def ort_run_with_iobinding(self, ort_inputs, repeat=1000):
@@ -603,7 +646,7 @@ class SparseMoeBlockORTHelper(nn.Module):
             name="input",
             device_type="cuda",
             device_id=device_id,
-            element_type=NP_TYPE,
+            element_type=self.np_type,
             shape=ort_inputs["input"].shape,
             buffer_ptr=onnxruntime.OrtValue.ortvalue_from_numpy(ort_inputs["input"], "cuda", device_id).data_ptr(),
         )
@@ -612,7 +655,7 @@ class SparseMoeBlockORTHelper(nn.Module):
             name="router_probs",
             device_type="cuda",
             device_id=device_id,
-            element_type=NP_TYPE,
+            element_type=self.np_type,
             shape=ort_inputs["router_probs"].shape,
             buffer_ptr=onnxruntime.OrtValue.ortvalue_from_numpy(
                 ort_inputs["router_probs"], "cuda", device_id
@@ -623,7 +666,7 @@ class SparseMoeBlockORTHelper(nn.Module):
             name="output",
             device_type="cuda",
             device_id=device_id,
-            element_type=NP_TYPE,
+            element_type=self.np_type,
             shape=ort_inputs["input"].shape,
             buffer_ptr=onnxruntime.OrtValue.ortvalue_from_numpy(
                 numpy.zeros(ort_inputs["input"].shape), "cuda", device_id
@@ -646,22 +689,27 @@ class SparseMoeBlockORTHelper(nn.Module):
         e = time.time()
         print(f"MoE cuda kernel time: {(e - s) / repeat * 1000} ms")
 
-    def parity_check(self):
+    def parity_check(self, atol=None, rtol=None):
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
         torch_output = self.forward(hidden_state)
         ort_output = self.ort_forward(hidden_state)
+
+        if atol is None:
+            atol = 5e-2 if self.quant_bits == 0 else (2.0 if self.quant_bits == 8 else 3.0)
+
+        if rtol is None:
+            rtol = 1e-3 if self.quant_bits == 0 else 1e-2
+
         if ort_output is not None:
+            dtype_str = "FP32" if self.quant_bits == 0 else "FP16"
             print(
-                "name:",
-                self.__class__.__name__,
-                " batch_size:",
-                self.batch_size,
-                " sequence_length:",
-                self.sequence_length,
-                " max_diff:",
-                (torch_output - ort_output).abs().max(),
+                f"name: {self.__class__.__name__}, quant_bits: {self.quant_bits}, dtype: {dtype_str},"
+                f" batch: {self.batch_size}, seq_len: {self.sequence_length},"
+                f" max_diff: {(torch_output - ort_output).abs().max()}"
             )
-            torch.testing.assert_close(ort_output.to(torch.float32), torch_output, rtol=THRESHOLD, atol=THRESHOLD)
+            torch.testing.assert_close(
+                ort_output.to(torch.float32), torch_output.to(torch.float32), rtol=rtol, atol=atol
+            )
 
     def benchmark_ort(self):
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
@@ -680,7 +728,7 @@ class SwitchMoE(SparseMoeBlockORTHelper):
         eval_capacity=-1,
         activation="gelu",
     ):
-        super().__init__()
+        super().__init__(quant_bits=0)  # SwitchMoE is not quantized
         self.batch_size = batch_size
         self.sequence_length = sequence_length
         self.num_experts = num_experts
@@ -709,6 +757,7 @@ class SwitchMoE(SparseMoeBlockORTHelper):
             self.moe_experts.bias1,
             self.moe_experts.weight2.transpose(1, 2),
             self.moe_experts.bias2,
+            self.ort_dtype,
         )
 
         self.ort_sess = self.create_ort_session(self.moe_onnx_graph)
@@ -744,7 +793,7 @@ class MixtralSparseMoeBlock(SparseMoeBlockORTHelper):
     """
 
     def __init__(self, config, batch_size, sequence_length):
-        super().__init__()
+        super().__init__(quant_bits=0)  # Mixtral test is not quantized
         self.hidden_dim = config.hidden_size
         self.ffn_dim = config.intermediate_size
         self.num_experts = config.num_local_experts
@@ -778,6 +827,7 @@ class MixtralSparseMoeBlock(SparseMoeBlockORTHelper):
             self.moe_experts_weight2,
             self.moe_experts_weight3,
             self.top_k,
+            self.ort_dtype,
         )
 
         self.ort_sess = self.create_ort_session(self.moe_onnx_graph)
@@ -874,43 +924,44 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
     and memory on padding.
     """
 
-    def __init__(self, config, batch_size, sequence_length):
-        super().__init__()
+    def __init__(self, config, batch_size, sequence_length, quant_bits=0):
+        super().__init__(quant_bits)
         self.hidden_dim = config.hidden_size
         self.ffn_dim = config.intermediate_size
         self.num_experts = config.num_local_experts
         self.top_k = config.num_experts_per_tok
         self.router_jitter_noise = config.router_jitter_noise
+        use_quant = self.quant_bits > 0
 
         # gating
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
 
         self.experts = nn.ModuleList([PhiMoEBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
 
-        w1_list = []
-        w2_list = []
-        w3_list = []
-        w1_scale_list = []
-        w2_scale_list = []
-        w3_scale_list = []
-        if not USE_QUANT:
+        w1_list, w2_list, w3_list = [], [], []
+        w1_scale_list, w2_scale_list, w3_scale_list = [], [], []
+
+        if not use_quant:
             for i in range(self.num_experts):
                 w1_list.append(self.experts[i].w1.weight)
                 w2_list.append(self.experts[i].w2.weight)
                 w3_list.append(self.experts[i].w3.weight)
         else:
+            is_4_bit = self.quant_bits == 4
             for i in range(self.num_experts):
-                w1_scale, pre_qweight1, w1_qdq = quant_dequant(self.experts[i].w1.weight, False)
-                w2_scale, pre_qweight2, w2_qdq = quant_dequant(self.experts[i].w2.weight, False)
-                w3_scale, pre_qweight3, w3_qdq = quant_dequant(self.experts[i].w3.weight, False)
+                # Corrected quantization logic for per-output-channel quantization
+                w1_scale, pre_qweight1, w1_qdq = quant_dequant(self.experts[i].w1.weight.T, is_4_bit)
+                w2_scale, pre_qweight2, w2_qdq = quant_dequant(self.experts[i].w2.weight.T, is_4_bit)
+                w3_scale, pre_qweight3, w3_qdq = quant_dequant(self.experts[i].w3.weight.T, is_4_bit)
 
                 self.experts[i].w1.weight.data = w1_qdq
                 self.experts[i].w2.weight.data = w2_qdq
                 self.experts[i].w3.weight.data = w3_qdq
 
-                w1_list.append(pre_qweight1)
-                w2_list.append(pre_qweight2)
-                w3_list.append(pre_qweight3)
+                # Transpose quantized weights to match the expected ONNX layout
+                w1_list.append(pre_qweight1.T)
+                w2_list.append(pre_qweight2.T)
+                w3_list.append(pre_qweight3.T)
                 w1_scale_list.append(w1_scale)
                 w2_scale_list.append(w2_scale)
                 w3_scale_list.append(w3_scale)
@@ -919,9 +970,9 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         self.moe_experts_weight2 = torch.stack(w2_list, dim=0)
         self.moe_experts_weight3 = torch.stack(w3_list, dim=0)
 
-        moe_experts_weight_scale1 = torch.stack(w1_scale_list, dim=0) if USE_QUANT else None
-        moe_experts_weight_scale2 = torch.stack(w2_scale_list, dim=0) if USE_QUANT else None
-        moe_experts_weight_scale3 = torch.stack(w3_scale_list, dim=0) if USE_QUANT else None
+        moe_experts_weight_scale1 = torch.stack(w1_scale_list, dim=0) if use_quant else None
+        moe_experts_weight_scale2 = torch.stack(w2_scale_list, dim=0) if use_quant else None
+        moe_experts_weight_scale3 = torch.stack(w3_scale_list, dim=0) if use_quant else None
 
         self.batch_size = batch_size
         self.sequence_length = sequence_length
@@ -933,10 +984,12 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
             self.moe_experts_weight1,
             self.moe_experts_weight2,
             self.moe_experts_weight3,
+            self.top_k,
+            self.ort_dtype,
+            self.quant_bits,
             moe_experts_weight_scale1,
             moe_experts_weight_scale2,
             moe_experts_weight_scale3,
-            self.top_k,
         )
 
         self.ort_sess = self.create_ort_session(self.moe_onnx_graph)
@@ -992,19 +1045,23 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
 def small_test_cases():
     for batch_size in [1, 4, 16]:
         for sequence_length in [128, 512, 1024]:
-            yield batch_size, sequence_length
+            yield batch_size, sequence_length, 0
 
 
-def phi3_test_cases():
-    # TODO: phi3 moe failed in long sequence lengths (max diff 0.22 > threshold 0.01), need investigation.
-    for batch_size in [1, 4, 16]:
-        for sequence_length in [128]:
-            yield batch_size, sequence_length
+# Test cases for Phi-3 MoE.
+# We test three modes: no quantization, 8-bit, and 4-bit.
+phi3_test_params = list(
+    itertools.product(
+        [1, 4],  # batch_size
+        [1, 32],  # sequence_length
+        [0, 8, 4],  # quant_bits (0 for fp32/fp32, 8 for int8/fp16, 4 for int4/fp16)
+    )
+)
 
 
 class TestSwitchMoE(unittest.TestCase):
     @parameterized.expand(small_test_cases())
-    def test_switch_moe_parity(self, batch_size, sequence_length):
+    def test_switch_moe_parity(self, batch_size, sequence_length, quant_bits):
         # if platform.system() == "Windows":
         #     pytest.skip("Skip on Windows")
         switch_moe = SwitchMoE(
@@ -1020,8 +1077,8 @@ class TestSwitchMoE(unittest.TestCase):
 
 
 class TestMixtralMoE(unittest.TestCase):
-    @parameterized.expand(small_test_cases())
-    def test_mixtral_moe_parity(self, batch_size, sequence_length):
+    @parameterized.expand([(b, s, q) for b, s, q in small_test_cases() if q == 0])  # only run non-quantized
+    def test_mixtral_moe_parity(self, batch_size, sequence_length, quant_bits):
         config = MixtralConfig(hidden_size=256, intermediate_size=1024)
         mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
         mixtral_moe.parity_check()
@@ -1029,12 +1086,328 @@ class TestMixtralMoE(unittest.TestCase):
 
 
 class TestPhiMoE(unittest.TestCase):
-    @parameterized.expand(phi3_test_cases())
-    def test_phi3_moe_parity(self, batch_size, sequence_length):
+    @parameterized.expand(phi3_test_params)
+    def test_phi3_moe_parity(self, batch_size, sequence_length, quant_bits):
         config = PhiMoEConfig(hidden_size=256, intermediate_size=1024)
-        phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length)
+        phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length, quant_bits)
         phi3_moe.parity_check()
         # phi3_moe.benchmark_ort()
+
+
+# ---------------------------------------------
+# The following test are for swiglu activation
+# ---------------------------------------------
+class SwigluMoeConfig:
+    def __init__(
+        self,
+        hidden_size=2048,
+        intermediate_size=2048,
+        num_experts_per_token=2,
+        num_local_experts=8,
+    ):
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.num_experts_per_token = num_experts_per_token
+        self.num_local_experts = num_local_experts
+
+
+class SwigluMlp(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.intermediate_size = config.intermediate_size
+        self.hidden_dim = config.hidden_size
+        self.w1 = nn.Linear(self.hidden_dim, 2 * self.intermediate_size, bias=True)
+        self.w2 = nn.Linear(self.intermediate_size, self.hidden_dim, bias=True)
+
+    def swiglu(self, x: torch.Tensor):
+        dim = x.shape[-1]
+        x = x.view(-1, dim // 2, 2)
+        x_glu, x_linear = x[..., 0], x[..., 1]
+        y = x_glu * torch.sigmoid(1.702 * x_glu) * (x_linear + 1)
+        return y
+
+    def forward(self, x):
+        y = self.swiglu(self.w1(x))
+        y = self.w2(y)
+        return y
+
+
+def create_swiglu_moe_onnx_graph(
+    num_tokens: int,
+    num_experts: int,
+    hidden_size: int,
+    inter_size: int,
+    topk: int,
+    ort_dtype: int,
+    quant_bits: int,
+    fc1_experts_weights: torch.Tensor,
+    fc1_experts_bias: torch.Tensor,
+    fc2_experts_weights: torch.Tensor,
+    fc2_experts_bias: torch.Tensor,
+    fc1_experts_weight_scale: torch.Tensor = None,
+    fc2_experts_weight_scale: torch.Tensor = None,
+):
+    use_quant = quant_bits > 0
+    op_name = "QMoE" if use_quant else "MoE"
+
+    inputs = (
+        [
+            "input",
+            "router_probs",
+            "fc1_experts_weights",
+            "fc1_experts_weight_scale",
+            "fc1_experts_bias",
+            "fc2_experts_weights",
+            "fc2_experts_weight_scale",
+            "fc2_experts_bias",
+        ]
+        if use_quant
+        else [
+            "input",
+            "router_probs",
+            "fc1_experts_weights",
+            "fc1_experts_bias",
+            "fc2_experts_weights",
+            "fc2_experts_bias",
+        ]
+    )
+
+    nodes = [
+        helper.make_node(
+            op_name,
+            inputs,
+            ["output"],
+            "MoE_0",
+            k=topk,
+            normalize_routing_weights=1,
+            activation_type="swiglu",
+            domain="com.microsoft",
+        ),
+    ]
+
+    if use_quant:
+        nodes[0].attribute.extend([helper.make_attribute("expert_weight_bits", quant_bits)])
+
+    components = 2 if quant_bits == 4 else 1
+    fc1_weight_shape = [num_experts, hidden_size, 2 * inter_size // components]
+    fc1_bias_shape = [num_experts, 2 * inter_size]
+    fc1_experts_weight_scale_shape = [num_experts, 2 * inter_size]
+
+    fc2_weight_shape = [num_experts, inter_size, hidden_size // components]
+    fc2_bias_shape = [num_experts, hidden_size]
+    fc2_experts_weight_scale_shape = [num_experts, hidden_size]
+
+    torch_type = torch.float16 if ort_dtype == TensorProto.FLOAT16 else torch.float32
+    numpy_type = numpy.float16 if ort_dtype == TensorProto.FLOAT16 else numpy.float32
+    weight_numpy_type = numpy.uint8 if use_quant else numpy_type
+    weight_onnx_type = TensorProto.UINT8 if use_quant else ort_dtype
+
+    initializers = [
+        helper.make_tensor(
+            "fc1_experts_weights",
+            weight_onnx_type,
+            fc1_weight_shape,
+            fc1_experts_weights.flatten().detach().numpy().astype(weight_numpy_type).tolist()
+            if use_quant
+            else fc1_experts_weights.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+        helper.make_tensor(
+            "fc1_experts_bias",
+            ort_dtype,
+            fc1_bias_shape,
+            fc1_experts_bias.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+        helper.make_tensor(
+            "fc2_experts_weights",
+            weight_onnx_type,
+            fc2_weight_shape,
+            fc2_experts_weights.flatten().detach().numpy().astype(weight_numpy_type).tolist()
+            if use_quant
+            else fc2_experts_weights.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+        helper.make_tensor(
+            "fc2_experts_bias",
+            ort_dtype,
+            fc2_bias_shape,
+            fc2_experts_bias.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+    ]
+
+    if use_quant:
+        initializers.extend(
+            [
+                helper.make_tensor(
+                    "fc1_experts_weight_scale",
+                    ort_dtype,
+                    fc1_experts_weight_scale_shape,
+                    fc1_experts_weight_scale.to(torch_type).flatten().tolist(),
+                    raw=False,
+                ),
+                helper.make_tensor(
+                    "fc2_experts_weight_scale",
+                    ort_dtype,
+                    fc2_experts_weight_scale_shape,
+                    fc2_experts_weight_scale.to(torch_type).flatten().tolist(),
+                    raw=False,
+                ),
+            ]
+        )
+
+    graph_inputs = [
+        helper.make_tensor_value_info("input", ort_dtype, [num_tokens, hidden_size]),
+    ]
+
+    graph_inputs.append(
+        helper.make_tensor_value_info(
+            "router_probs",
+            ort_dtype,
+            [num_tokens, num_experts],
+        )
+    )
+
+    graph_outputs = [
+        helper.make_tensor_value_info("output", ort_dtype, [num_tokens, hidden_size]),
+    ]
+
+    graph = helper.make_graph(
+        nodes,
+        "MoE_Graph",
+        graph_inputs,
+        graph_outputs,
+        initializers,
+    )
+
+    model = helper.make_model(graph)
+    return model.SerializeToString()
+
+
+class SwigluMoEBlock(SparseMoeBlockORTHelper):
+    def __init__(self, config: SwigluMoeConfig, batch_size: int, sequence_length: int, quant_bits: int = 0):
+        super().__init__(quant_bits)
+        self.hidden_dim = config.hidden_size
+        self.ffn_dim = config.intermediate_size
+        self.num_experts = config.num_local_experts
+        self.top_k = config.num_experts_per_token
+        use_quant = self.quant_bits > 0
+
+        self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=True)
+
+        self.experts = nn.ModuleList([SwigluMlp(config) for _ in range(self.num_experts)])
+
+        weight_1_list, weight_2_list = [], []
+        bias_1_list, bias_2_list = [], []
+        scale_1_list, scale_2_list = [], []
+
+        for i in range(self.num_experts):
+            bias_1_list.append(self.experts[i].w1.bias)
+            bias_2_list.append(self.experts[i].w2.bias)
+            if not use_quant:
+                weight_1_list.append(self.experts[i].w1.weight)
+                weight_2_list.append(self.experts[i].w2.weight)
+            else:
+                is_4_bit = self.quant_bits == 4
+                # Pass the transposed weight to quant_dequant to get correct scales,
+                # then transpose the resulting quantized weight back to the expected layout.
+                scale1, pre_qweight1, w1_qdq = quant_dequant(self.experts[i].w1.weight.T, is_4_bit)
+                scale2, pre_qweight2, w2_qdq = quant_dequant(self.experts[i].w2.weight.T, is_4_bit)
+
+                self.experts[i].w1.weight.data = w1_qdq
+                self.experts[i].w2.weight.data = w2_qdq
+
+                weight_1_list.append(pre_qweight1.T)
+                weight_2_list.append(pre_qweight2.T)
+                scale_1_list.append(scale1)
+                scale_2_list.append(scale2)
+
+        self.moe_experts_weight1 = torch.stack(weight_1_list, dim=0)
+        self.moe_experts_weight2 = torch.stack(weight_2_list, dim=0)
+
+        self.moe_experts_bias1 = torch.stack(bias_1_list, dim=0)
+        self.moe_experts_bias2 = torch.stack(bias_2_list, dim=0)
+
+        moe_experts_weight_scale1 = torch.stack(scale_1_list, dim=0) if use_quant else None
+        moe_experts_weight_scale2 = torch.stack(scale_2_list, dim=0) if use_quant else None
+
+        self.batch_size = batch_size
+        self.sequence_length = sequence_length
+        self.moe_onnx_graph = create_swiglu_moe_onnx_graph(
+            num_tokens=self.batch_size * self.sequence_length,
+            num_experts=self.num_experts,
+            hidden_size=self.hidden_dim,
+            inter_size=self.ffn_dim,
+            topk=self.top_k,
+            ort_dtype=self.ort_dtype,
+            quant_bits=self.quant_bits,
+            fc1_experts_weights=self.moe_experts_weight1,
+            fc1_experts_bias=self.moe_experts_bias1,
+            fc2_experts_weights=self.moe_experts_weight2,
+            fc2_experts_bias=self.moe_experts_bias2,
+            fc1_experts_weight_scale=moe_experts_weight_scale1,
+            fc2_experts_weight_scale=moe_experts_weight_scale2,
+        )
+
+        self.ort_sess = self.create_ort_session(self.moe_onnx_graph)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        """ """
+        batch_size, sequence_length, hidden_dim = hidden_states.shape
+        hidden_states = hidden_states.view(-1, hidden_dim)
+        router_logits = self.gate(hidden_states)  # router_logits shape is (batch * sequence_length, num_experts)
+        routing_weights, selected_experts = torch.topk(router_logits, self.top_k, dim=-1)
+
+        routing_weights = F.softmax(routing_weights, dim=1, dtype=torch.float)
+
+        # we cast back to the input dtype
+        routing_weights = routing_weights.to(hidden_states.dtype)
+
+        final_hidden_states = torch.zeros(
+            (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
+        )
+
+        # One hot encode the selected experts to create an expert mask
+        # this will be used to easily index which expert is going to be sollicitated
+        expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
+
+        # Loop over all available experts in the model and perform the computation on each expert
+        for expert_idx in range(self.num_experts):
+            expert_layer = self.experts[expert_idx]
+            idx, top_x = torch.where(expert_mask[expert_idx])
+
+            if top_x.shape[0] == 0:
+                continue
+
+            # Index the correct hidden states and compute the expert hidden state for
+            # the current expert. We need to make sure to multiply the output hidden
+            # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
+            current_state = hidden_states[None, top_x].reshape(-1, hidden_dim)
+            current_hidden_states = expert_layer(current_state) * routing_weights[top_x, idx, None]
+
+            # However `index_add_` only support torch tensors for indexing so we'll use
+            # the `top_x` tensor here.
+            final_hidden_states.index_add_(0, top_x, current_hidden_states.to(hidden_states.dtype))
+        final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
+        return final_hidden_states
+
+
+swiglu_test_params = list(
+    itertools.product(
+        [1, 4],  # batch_size
+        [1, 32],  # sequence_length
+        [0, 8, 4],  # quant_bits (0 for fp32/fp32, 8 for int8/fp16, 4 for int4/fp16)
+    )
+)
+
+
+class TestSwigluMoE(unittest.TestCase):
+    @parameterized.expand(swiglu_test_params)
+    def test_swiglu_moe_parity(self, batch_size, sequence_length, quant_bits):
+        config = SwigluMoeConfig(hidden_size=128, intermediate_size=512, num_experts_per_token=1, num_local_experts=4)
+        moe = SwigluMoEBlock(config, batch_size, sequence_length, quant_bits)
+        moe.parity_check()
 
 
 if __name__ == "__main__":
