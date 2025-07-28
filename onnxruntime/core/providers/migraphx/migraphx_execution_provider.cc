@@ -1628,17 +1628,17 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             m.add(name, migraphx::argument(param_shapes[name],
                                            const_cast<void*>(input_tensor.GetTensorRawData())));
           }
-          // It is a output argument
+          // It is an output argument
           else {
-            auto compute_output_index = [](const std::string& name) -> int {
-              std::string out_name_prefix = "#output_";
-              auto pos = name.find(out_name_prefix);
-              if (pos == std::string::npos) {
+            auto compute_output_index = [](const std::string_view sv) -> int {
+              constexpr std::string_view out_name_prefix = "#output_";
+              const auto pos = sv.find(out_name_prefix);
+              if (pos == std::string_view::npos) {
                 return -1;
               }
 
-              std::string index_str = name.substr(pos + out_name_prefix.length());
-              return std::stoi(index_str);
+              const auto index_str = sv.substr(pos + out_name_prefix.length());
+              return ToInteger(Trim(index_str, std::isdigit));
             };
 
             int output_index = compute_output_index(name);
