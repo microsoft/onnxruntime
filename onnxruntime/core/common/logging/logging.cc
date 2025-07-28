@@ -161,10 +161,18 @@ std::unique_ptr<Logger> LoggingManager::CreateLogger(const std::string& logger_i
 }
 
 void LoggingManager::Log(const std::string& logger_id, const Capture& message) const {
+  // Ensure the LoggingManager instance is valid before logging
+  if (owns_default_logger_ && !DefaultLoggerManagerInstance().load()) {
+    return;
+  }
   sink_->Send(GetTimestamp(), logger_id, message);
 }
 
 void LoggingManager::SendProfileEvent(profiling::EventRecord& eventRecord) const {
+  // Ensure the LoggingManager instance is valid before sending profile events
+  if (owns_default_logger_ && !DefaultLoggerManagerInstance().load()) {
+    return;
+  }
   sink_->SendProfileEvent(eventRecord);
 }
 
