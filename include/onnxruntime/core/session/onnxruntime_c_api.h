@@ -264,6 +264,7 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
   ORT_MODEL_LOAD_CANCELED,
   ORT_MODEL_REQUIRES_COMPILATION,
+  ORT_NOT_FOUND,
 } OrtErrorCode;
 
 typedef enum OrtOpAttrType {
@@ -6044,7 +6045,8 @@ struct OrtApi {
    * \param[in] node The OrtNode instance.
    * \param[in] attribute_name The name of the attribute
    * \param[out] attribute Output parameter set to the OrtOpAttr instance if an attribute by the given name exists.
-   *                       Otherwise, `attribute` is set to nullptr and a non-error status is returned.
+   *                       Otherwise, `attribute` is set to nullptr and an error status with code ORT_NOT_FOUND
+   *                       is returned.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

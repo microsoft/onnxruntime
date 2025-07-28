@@ -3005,8 +3005,15 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, 
     return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Node_GetAttributeByName.");
   }
 
-  *attribute = ep_node->GetAttribute(attribute_name);  // Can be NULL if attribute_name does not exist.
-  return nullptr;
+  *attribute = ep_node->GetAttribute(attribute_name);
+
+  if (*attribute) {
+    return nullptr;
+  } else {
+    std::ostringstream oss;
+    oss << "Node attribute does not exist: " << attribute_name;
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_NOT_FOUND, oss.str().c_str());
+  }
   API_IMPL_END
 }
 
