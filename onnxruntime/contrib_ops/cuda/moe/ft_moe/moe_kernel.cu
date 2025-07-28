@@ -1001,7 +1001,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
         swiglu_output_buffer + total_past_rows_ * inter_size,
         gemm1_output_buffer + total_past_rows_ * 2 * inter_size,
         inter_size,
-        total_covered_rows_,
+        static_cast<int>(total_covered_rows_),
         swiglu_alpha,
         stream);
 
