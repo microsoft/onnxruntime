@@ -2575,9 +2575,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>total_sequence_length</tt> : M</dt>
 <dd>Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for checking inputs and determining prompt vs token generation case.</dd>
 <dt><tt>cos_cache</tt> (optional) : T</dt>
-<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
+<dd>2D tensor with shape (max_sequence_length, rotary_embedding_dim / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
-<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
+<dd>2D tensor with shape (max_sequence_length, rotary_embedding_dim / 2).</dd>
 <dt><tt>position_ids</tt> (optional) : tensor(int64)</dt>
 <dd>2D tensor with shape (batch_size, sequence_length). When processing the first prompt the kernel uses only the first element</dd>
 <dt><tt>attention_bias</tt> (optional) : T</dt>
