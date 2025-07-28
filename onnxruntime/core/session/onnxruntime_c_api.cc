@@ -3037,6 +3037,7 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetTensorAttributeAsOrtValue, _In_ const OrtNo
               "Tensor proto with external data for value attribute is not supported.");
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(ep_node->GetTensorAttributeAsOrtValue(attribute, *attr_tensor));
+  return nullptr;
   API_IMPL_END
 }
 
