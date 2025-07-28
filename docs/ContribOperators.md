@@ -3089,7 +3089,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
@@ -3106,9 +3106,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>router_probs</tt> : T</dt>
 <dd>2D input tensor with shape (num_rows, num_experts)</dd>
 <dt><tt>fc1_experts_weights</tt> : T</dt>
-<dd>3D input tensor with shape (num_experts, hidden_size, inter_size)</dd>
+<dd>3D input tensor with shape (num_experts, hidden_size, inter_size), or (num_experts, hidden_size, 2 * inter_size) for swiglu</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
-<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+<dd>2D optional input tensor with shape (num_experts, inter_size), or (num_experts, 2 * inter_size) for swiglu</dd>
 <dt><tt>fc2_experts_weights</tt> : T</dt>
 <dd>3D input tensor with shape (num_experts, inter_size, hidden_size)</dd>
 <dt><tt>fc2_experts_bias</tt> (optional) : T</dt>
@@ -4523,7 +4523,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
 <dd>Number of bits used in quantized weights. Default is 4 bits</dd>
 <dt><tt>k</tt> : int</dt>
@@ -4542,11 +4542,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>router_probs</tt> : T</dt>
 <dd>2D input tensor with shape (num_rows, num_experts)</dd>
 <dt><tt>fc1_experts_weights</tt> : T1</dt>
-<dd>3D input tensor with shape (num_experts, hidden_size, inter_size) or (num_experts, hidden_size, inter_size / 2)</dd>
+<dd>3D input tensor with shape (num_experts, hidden_size, inter_size) or (num_experts, hidden_size, inter_size / 2). For swiglu, shape can be (num_experts, hidden_size, 2 * inter_size) or (num_experts, hidden_size, inter_size).</dd>
 <dt><tt>fc1_scales</tt> : T</dt>
-<dd>2D input tensor with shape (num_experts, inter_size)</dd>
+<dd>2D input tensor with shape (num_experts, inter_size), or (num_experts, 2 * inter_size) for swiglu</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
-<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+<dd>2D optional input tensor with shape (num_experts, inter_size), or (num_experts, 2 * inter_size) for swiglu</dd>
 <dt><tt>fc2_experts_weights</tt> : T1</dt>
 <dd>3D input tensor with shape (num_experts, inter_size, hidden_size) or (num_experts, inter_size, hidden_size / 2)</dd>
 <dt><tt>fc2_scales</tt> : T</dt>
