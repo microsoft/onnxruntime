@@ -252,19 +252,19 @@ struct OrtNode {
   virtual onnxruntime::Status GetAttributes(gsl::span<const OrtOpAttr*> attrs) const = 0;
 
   /// <summary>
-  /// Gets the number of node subgraphs.
-  /// </summary>
-  /// <param name="num_subgraphs">Output parameter set to the number of subgraphs.</param>
-  /// <returns>A status indicating success or an error.</returns>
-  virtual onnxruntime::Status GetNumSubgraphs(size_t& num_subgraphs) const = 0;
-
-  /// <summary>
   /// Gets the node's attributes.
   /// </summary>
   /// <param name="attrs">Buffer into which to copy the attributes.</param>
   /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute,
                                                            const OrtValue*& attr_tensor) const = 0;
+
+  /// <summary>
+  /// Gets the number of node subgraphs.
+  /// </summary>
+  /// <param name="num_subgraphs">Output parameter set to the number of subgraphs.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetNumSubgraphs(size_t& num_subgraphs) const = 0;
 
   /// <summary>
   /// Gets the node's subgraphs (e.g., subgraphs contained by an If or Loop node).
