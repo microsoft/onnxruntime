@@ -1278,9 +1278,9 @@ bool get_input_output_names(const GraphViewer& graph,
 bool load_precompiled_model(migraphx::program& prog, bool load_enable, std::string path) {
   try {
     if (load_enable) {
-      LOGS_DEFAULT(WARNING) << "Attempting to load model at:" << path;
+      LOGS_DEFAULT(VERBOSE) << "Attempting to load model at:" << path;
       prog = migraphx::load(path.c_str());
-      LOGS_DEFAULT(WARNING) << "load model : Success";
+      LOGS_DEFAULT(VERBOSE) << "load model : Success";
       return true;
     } else {
       return false;
@@ -1293,11 +1293,11 @@ bool load_precompiled_model(migraphx::program& prog, bool load_enable, std::stri
 
 void save_compiled_model(migraphx::program& prog, bool save_enable, std::string out_path) {
   if (save_enable) {
-    LOGS_DEFAULT(WARNING) << "Model Save at " << out_path << ": Begin";
+    LOGS_DEFAULT(VERBOSE) << "Model Save at " << out_path << ": Begin";
     migraphx::file_options fo;
     fo.set_file_format("msgpack");
     migraphx::save(prog, out_path.c_str(), fo);
-    LOGS_DEFAULT(WARNING) << "Model Save: Complete";
+    LOGS_DEFAULT(VERBOSE) << "Model Save: Complete";
   }
 }
 
@@ -1409,7 +1409,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
     if (!no_input_shape) {
       if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
-        LOGS_DEFAULT(INFO) << "No input shapes detected quantizing model";
+        LOGS_DEFAULT(VERBOSE) << "No input shapes detected quantizing model";
 #ifndef ENABLE_TRAINING_CORE
 #ifdef HAVE_MIGRAPHX_API_ONNX_OPTIONS_SET_EXTERNAL_DATA_PATH
         options.set_external_data_path(model_path_.parent_path().string());
@@ -1477,7 +1477,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       bool input_shape_match = true;
       migraphx::program_parameter_shapes param_shapes;
       if (no_input_shape) {
-        LOGS_DEFAULT(INFO) << "Missing input shape setting input parameters again";
+        LOGS_DEFAULT(VERBOSE) << "Missing input shape setting input parameters again";
         for (auto& it : map_input_name_index) {
           auto& name = it.first;
           auto& index = it.second;
@@ -1489,7 +1489,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           input_shape_match = false;
         }
       } else {
-        LOGS_DEFAULT(INFO) << "Assigning inputs, and parameters from compiled model";
+        LOGS_DEFAULT(VERBOSE) << "Assigning inputs, and parameters from compiled model";
         param_shapes = prog.get_parameter_shapes();
         auto prog_output_shapes = prog.get_output_shapes();
 
@@ -1571,7 +1571,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       if (param_shapes.size() > 0) {
         for (auto&& name : param_shapes.names()) {
           if (map_input_name_index.count(name) > 0) {
-            LOGS_DEFAULT(INFO) << "Setting parameters for:" << name;
+            LOGS_DEFAULT(VERBOSE) << "Setting parameters for:" << name;
             auto input_tensor = ctx.GetInput(map_input_name_index[name]);
             auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
             const auto tensor_shape = tensor_info.GetShape();
@@ -1585,7 +1585,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
               LOGS_DEFAULT(FATAL) << "MIGraphX: param type mismatch";
             }
 
-            LOGS_DEFAULT(INFO) << "Writing Raw tensor data ";
+            LOGS_DEFAULT(VERBOSE) << "Writing Raw tensor data ";
             m.add(name, migraphx::argument(param_shapes[name],
                                            const_cast<void*>(input_tensor.GetTensorRawData())));
           }
