@@ -7,9 +7,9 @@ const subtile_size = 16;
 // Shared memory
 var<workgroup> tile_A  : array<vec4<u32>, tile_size>;                              // 4  x 64 x 4 bytes.
 var<workgroup> tile_A5 : array<u32, tile_size>;                                    // 1  x 64 x 4 bytes.
-var<workgroup> tile_B  : array<vec4<u32>, tile_size>;                              // 4  x 64 x 4 bytes.
+var<workgroup> tile_B  : array<array<u32, 4>, tile_size>;                          // 4  x 64 x 4 bytes.
 var<workgroup> tile_B5 : array<u32, tile_size>;                                    // 1  x 64 x 4 bytes.
-var<workgroup> scratch_B  : array<vec4<i32>, tile_size>;                           // 1  x 64 x 4 bytes.
+var<workgroup> scratch_B  : array<array<i32, 4>, tile_size>;                       // 1  x 64 x 4 bytes.
 
 // Unpacks a uint8 into 4xI8 vector.
 // Since every 3 consequtive values are the same, index with /3.
@@ -134,7 +134,7 @@ fn loadB(local_idx: u32, b_global_base: u32, kidx_v: u32) {
     let b_last_dequantized = (b_byte % 3) - 1;
     scratch_B[b_row][b_col] = i32(b_last_dequantized);
     if (local_idx % 4 == 0) {
-        tile_B5[b_row] = pack4xI8(scratch_B[b_row]);
+        tile_B5[b_row] = pack4xI8(vec4<i32>(scratch_B[b_row][0], scratch_B[b_row][1], scratch_B[b_row][2], scratch_B[b_row][3]));
     }
 }
 
@@ -151,8 +151,8 @@ fn SDP5AI(a1: vec4<u32>, b1: vec4<u32>, a2: u32, b2: u32) -> i32 {
 $MAIN {
     // During the load phase we use all 256 threads to load 64 rows of A/B.
     // For each row we load k_step_size_in_u32 (5) u32 elements, which are total 20 elements of K per row.
-    let a_global_base = workgroup_id.x * tile_size;
-    let b_global_base = workgroup_id.y * tile_size;
+    let a_global_base = u32(workgroup_idx / uniforms.num_N_tile) * tile_size;
+    let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
 
     // During the compute phase, we have the 64x64 tile split into
     // subtiles of 16x16. We have a grid of 4x4 subtiles.
@@ -178,10 +178,9 @@ $MAIN {
 
         // Now compute the partial products.
         if (sg_size == 16) {
-          var own_b0: vec4<u32> = vec4<u32>(tile_B[base_B + sg_id]);
+          var own_b0: vec4<u32> = vec4<u32>(tile_B[base_B + sg_id][0], tile_B[base_B + sg_id][1], tile_B[base_B + sg_id][2], tile_B[base_B + sg_id][3]);
           var own_b1: u32 = tile_B5[base_B + sg_id];
 
-          // Access registers across the subgroup using subgroupShuffle and perform the matmul.
           lane_output1[0] += SDP5AI(own_a0, subgroupShuffle(own_b0, 0), own_a1, subgroupShuffle(own_b1, 0));
           lane_output1[1] += SDP5AI(own_a0, subgroupShuffle(own_b0, 1), own_a1, subgroupShuffle(own_b1, 1));
           lane_output1[2] += SDP5AI(own_a0, subgroupShuffle(own_b0, 2), own_a1, subgroupShuffle(own_b1, 2));
@@ -202,28 +201,26 @@ $MAIN {
           lane_output4[2] += SDP5AI(own_a0, subgroupShuffle(own_b0, 14), own_a1, subgroupShuffle(own_b1, 14));
           lane_output4[3] += SDP5AI(own_a0, subgroupShuffle(own_b0, 15), own_a1, subgroupShuffle(own_b1, 15));
         } else {
-          // Code for other subgroup sizes, simply doesnt use subgroups at all.
-          // Relies on reads from single location tile_B[][base_B + col] by all
-          // lanes being optimized by the hardware.
-          lane_output1[0] += SDP5AI(own_a0, tile_B[base_B + 0], own_a1, tile_B5[base_B + 0]);
-          lane_output1[1] += SDP5AI(own_a0, tile_B[base_B + 1], own_a1, tile_B5[base_B + 1]);
-          lane_output1[2] += SDP5AI(own_a0, tile_B[base_B + 2], own_a1, tile_B5[base_B + 2]);
-          lane_output1[3] += SDP5AI(own_a0, tile_B[base_B + 3], own_a1, tile_B5[base_B + 3]);
 
-          lane_output2[0] += SDP5AI(own_a0, tile_B[base_B + 4], own_a1, tile_B5[base_B + 4]);
-          lane_output2[1] += SDP5AI(own_a0, tile_B[base_B + 5], own_a1, tile_B5[base_B + 5]);
-          lane_output2[2] += SDP5AI(own_a0, tile_B[base_B + 6], own_a1, tile_B5[base_B + 6]);
-          lane_output2[3] += SDP5AI(own_a0, tile_B[base_B + 7], own_a1, tile_B5[base_B + 7]);
+          lane_output1[0] += SDP5AI(own_a0,  vec4<u32>(tile_B[base_B + 0][0],tile_B[base_B + 0][1],tile_B[base_B + 0][2],tile_B[base_B + 0][3]), own_a1, tile_B5[base_B + 0]);
+          lane_output1[1] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 1][0], tile_B[base_B + 1][1],tile_B[base_B + 1][2],tile_B[base_B + 1][3]), own_a1, tile_B5[base_B + 1]);
+          lane_output1[2] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 2][0], tile_B[base_B + 2][1],tile_B[base_B + 2][2],tile_B[base_B + 2][3]), own_a1, tile_B5[base_B + 2]);
+          lane_output1[3] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 3][0], tile_B[base_B + 3][1],tile_B[base_B + 3][2],tile_B[base_B + 3][3]), own_a1, tile_B5[base_B + 3]);
 
-          lane_output3[0] += SDP5AI(own_a0, tile_B[base_B + 8], own_a1, tile_B5[base_B + 8]);
-          lane_output3[1] += SDP5AI(own_a0, tile_B[base_B + 9], own_a1, tile_B5[base_B + 9]);
-          lane_output3[2] += SDP5AI(own_a0, tile_B[base_B + 10], own_a1, tile_B5[base_B + 10]);
-          lane_output3[3] += SDP5AI(own_a0, tile_B[base_B + 11], own_a1, tile_B5[base_B + 11]);
+          lane_output2[0] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 4][0], tile_B[base_B + 4][1],tile_B[base_B + 4][2],tile_B[base_B + 4][3]), own_a1, tile_B5[base_B + 4]);
+          lane_output2[1] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 5][0], tile_B[base_B + 5][1],tile_B[base_B + 5][2],tile_B[base_B + 5][3]), own_a1, tile_B5[base_B + 5]);
+          lane_output2[2] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 6][0], tile_B[base_B + 6][1],tile_B[base_B + 6][2],tile_B[base_B + 6][3]), own_a1, tile_B5[base_B + 6]);
+          lane_output2[3] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 7][0], tile_B[base_B + 7][1],tile_B[base_B + 7][2],tile_B[base_B + 7][3]), own_a1, tile_B5[base_B + 7]);
 
-          lane_output4[0] += SDP5AI(own_a0, tile_B[base_B + 12], own_a1, tile_B5[base_B + 12]);
-          lane_output4[1] += SDP5AI(own_a0, tile_B[base_B + 13], own_a1, tile_B5[base_B + 13]);
-          lane_output4[2] += SDP5AI(own_a0, tile_B[base_B + 14], own_a1, tile_B5[base_B + 14]);
-          lane_output4[3] += SDP5AI(own_a0, tile_B[base_B + 15], own_a1, tile_B5[base_B + 15]);
+          lane_output3[0] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 8][0], tile_B[base_B + 8][1],tile_B[base_B + 8][2],tile_B[base_B + 8][3]), own_a1, tile_B5[base_B + 8]);
+          lane_output3[1] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 9][0], tile_B[base_B + 9][1],tile_B[base_B + 9][2],tile_B[base_B + 9][3]), own_a1, tile_B5[base_B + 9]);
+          lane_output3[2] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 10][0], tile_B[base_B + 10][1],tile_B[base_B + 10][2],tile_B[base_B + 10][3]), own_a1, tile_B5[base_B + 10]);
+          lane_output3[3] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 11][0], tile_B[base_B + 11][1],tile_B[base_B + 11][2],tile_B[base_B + 11][3]), own_a1, tile_B5[base_B + 11]);
+
+          lane_output4[0] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 12][0], tile_B[base_B + 12][1],tile_B[base_B + 12][2],tile_B[base_B + 12][3]), own_a1, tile_B5[base_B + 12]);
+          lane_output4[1] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 13][0], tile_B[base_B + 13][1],tile_B[base_B + 13][2],tile_B[base_B + 13][3]), own_a1, tile_B5[base_B + 13]);
+          lane_output4[2] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 14][0], tile_B[base_B + 14][1],tile_B[base_B + 14][2],tile_B[base_B + 14][3]), own_a1, tile_B5[base_B + 14]);
+          lane_output4[3] += SDP5AI(own_a0, vec4<u32>(tile_B[base_B + 15][0], tile_B[base_B + 15][1],tile_B[base_B + 15][2],tile_B[base_B + 15][3]), own_a1, tile_B5[base_B + 15]);
         }
         workgroupBarrier();
     }

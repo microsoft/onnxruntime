@@ -89,7 +89,8 @@ Status BitLinear::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
         .AddOutputs({{&quantized_a, ProgramTensorMetadataDependency::None},
                      {&quantized_a5, ProgramTensorMetadataDependency::None},
-                     {&scales_a, ProgramTensorMetadataDependency::None}});
+                     {&scales_a, ProgramTensorMetadataDependency::None}})
+        .CacheHint(K);
     ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
   }
 
@@ -99,15 +100,18 @@ Status BitLinear::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
     // input_a is vectorized as vec4<u32> which gives a packing of 16 elements per value.
     const uint32_t input_a_stride = (K - (K / 5)) / 16;
     constexpr uint32_t kTileSize = 64;
+    TensorShape reshaped_y_shape{1, M, N / kVec4Components};
+    uint32_t num_M_tile = (M + kTileSize - 1) / kTileSize;
+    uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
     multiply_program
         .SetWorkgroupSize(256)
-        .SetDispatchGroupSize((M+kTileSize-1)/kTileSize, (N+kTileSize-1)/kTileSize)
+        .SetDispatchGroupSize(num_M_tile * num_N_tile)
         .AddInputs({{&quantized_a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
                     {&quantized_a5, ProgramTensorMetadataDependency::TypeAndRank},
                     {&scales_a, ProgramTensorMetadataDependency::TypeAndRank},
                     {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kU32Components)}})
-        .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
-        .AddUniformVariables({{M}, {N}, {K}, {input_a_stride}, {scale_b_}});
+        .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)}})
+        .AddUniformVariables({{M}, {N}, {K}, {input_a_stride}, {scale_b_}, {num_N_tile}});
     ORT_RETURN_IF_ERROR(context.RunProgram(multiply_program));
   }
 

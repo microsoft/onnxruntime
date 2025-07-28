@@ -45,7 +45,7 @@ $MAIN {
     let vidx = local_idx * 5 + i;
     if (vidx + 4 < K4) {
       let value1 = values[vidx] / max_value;
-      let out_vidx = (vidx / 5) * 4;
+      let out_vidx = ((vidx+row_offset) / 5) * 4;
       output[out_vidx] = pack4x8snorm(vec4<f32>(value1));
 
       let value2 = values[vidx + 1] / max_value;
@@ -61,7 +61,7 @@ $MAIN {
       // last 5th value is value5[3]
 
       // Now pack the skipped values together.
-      output_5th[vidx / 5] = pack4x8snorm(vec4<f32>(vec4<input_a_element_t>(value2[0], value3[1], value4[2], value5[3])));
+      output_5th[(row_offset+vidx) / 5] = pack4x8snorm(vec4<f32>(vec4<input_a_element_t>(value2[0], value3[1], value4[2], value5[3])));
     }
   }
   if (local_idx == 0) {

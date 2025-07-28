@@ -30,7 +30,8 @@ class BitLinearMultiplyProgram final : public Program<BitLinearMultiplyProgram> 
                                           {"N", ProgramUniformVariableDataType::Uint32},
                                           {"K", ProgramUniformVariableDataType::Uint32},
                                           {"InputAStride", ProgramUniformVariableDataType::Uint32},
-                                          {"scale_B", ProgramUniformVariableDataType::Float32});
+                                          {"scale_B", ProgramUniformVariableDataType::Float32},
+                                          {"num_N_tile", ProgramUniformVariableDataType::Uint32});
 };
 
 class BitLinear final : public WebGpuKernel {
