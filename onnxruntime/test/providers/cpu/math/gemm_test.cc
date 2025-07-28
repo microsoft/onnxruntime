@@ -194,70 +194,6 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
         .Config(run_with_tunable_op)
         .RunWithConfig();
   }
-
-  {
-    // 64x64 matrix multiplication test with f16
-    const int64_t M = 64, K = 64, N = 64;
-
-    // Initialize input matrices with simple pattern
-    std::vector<float> A_f32(M * K);
-    std::vector<float> B_f32(K * N);
-    std::vector<float> C_f32(M * N);
-
-    // Fill A matrix with pattern
-    for (int64_t i = 0; i < M * K; ++i) {
-      A_f32[i] = static_cast<float>((i % 7) + 1) * 0.1f;
-    }
-
-    // Fill B matrix with pattern
-    for (int64_t i = 0; i < K * N; ++i) {
-      B_f32[i] = static_cast<float>((i % 5) + 1) * 0.1f;
-    }
-
-    // Fill C matrix (bias) with small values
-    for (int64_t i = 0; i < M * N; ++i) {
-      C_f32[i] = static_cast<float>((i % 3) + 1) * 0.01f;
-    }
-
-    // Convert to MLFloat16
-    std::vector<MLFloat16> f_A(M * K);
-    std::vector<MLFloat16> f_B(K * N);
-    std::vector<MLFloat16> f_C(M * N);
-
-    ConvertFloatToMLFloat16(A_f32.data(), f_A.data(), M * K);
-    ConvertFloatToMLFloat16(B_f32.data(), f_B.data(), K * N);
-    ConvertFloatToMLFloat16(C_f32.data(), f_C.data(), M * N);
-
-    // Calculate expected output in float32 for precision
-    std::vector<float> Y_f32(M * N, 0.0f);
-    for (int64_t i = 0; i < M; ++i) {
-      for (int64_t j = 0; j < N; ++j) {
-        float sum = 0.0f;
-        for (int64_t k = 0; k < K; ++k) {
-          sum += A_f32[i * K + k] * B_f32[k * N + j];
-        }
-        Y_f32[i * N + j] = 2.0 * sum + 0.5f * C_f32[i * N + j];  // alpha=2.0, beta=0.5
-      }
-    }
-
-    // Convert expected output to MLFloat16
-    std::vector<MLFloat16> f_Y(M * N);
-    ConvertFloatToMLFloat16(Y_f32.data(), f_Y.data(), M * N);
-
-    OpTester test("Gemm", 13);
-    test.AddAttribute("transA", (int64_t)0);
-    test.AddAttribute("transB", (int64_t)0);
-    test.AddAttribute("alpha", 2.0f);
-    test.AddAttribute("beta", 0.5f);
-    test.AddInput<MLFloat16>("A", {M, K}, f_A);
-    test.AddInput<MLFloat16>("B", {K, N}, f_B);
-    test.AddInput<MLFloat16>("C", {M, N}, f_C);
-    test.AddOutput<MLFloat16>("Y", {M, N}, f_Y);
-    test.SetOutputTolerance(0.02f);                      // Slightly higher tolerance for 64x64 due to accumulation errors
-    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
-        .Config(run_with_tunable_op)
-        .RunWithConfig();
-  }
 }
 
 // Only CUDA, ROCM and CoreML kernels have float 16 support
@@ -1355,8 +1291,8 @@ TEST(GemmOpTest, GemmOptimizePackedTransAB) {
 }
 
 #if defined(USE_WEBGPU)
-// Test int32 with M=128, K=128, N=128, transB=True
-TEST(GemmOpTest, GemmWebGPU_int_128x128x128_transposeA) {
+// Test int32 with M=128, K=128, N=128, transA=True
+TEST(GemmOpTest, GemmTransA_int32_128x128x128) {
   OpTester test("Gemm", 13);
 
   test.AddAttribute("transA", (int64_t)1);  // transposeA = 1

@@ -124,7 +124,7 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
 
   if (M <= 8 && N <= 8 && K <= 8) {
     // Use naive implementation for small matrices
-    GemmNaiveProgram program{transA_, transB_, alpha_, need_handle_bias, need_handle_matmul};
+    GemmNaiveProgram program{transA_, transB_, need_handle_bias, need_handle_matmul};
     if (need_handle_matmul) {
       program.AddInputs({{A, ProgramTensorMetadataDependency::Type},
                          {B, ProgramTensorMetadataDependency::Type}});
