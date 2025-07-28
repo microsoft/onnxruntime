@@ -1,18 +1,19 @@
 #param K4
+#param K_PADDED_4
 
 var<workgroup> max_values : array<vec4<input_a_element_t>, 16>;
-var<workgroup> values : array<vec4<input_a_element_t>, K4>;
+var<workgroup> values : array<vec4<input_a_element_t>, K_PADDED_4>;
 
 fn max4(a: input_a_element_t, b: input_a_element_t, c: input_a_element_t, d: input_a_element_t) -> input_a_element_t {
   return max(max(max(a, b), c), d);
 }
 
 $MAIN {
-  let row_offset = workgroup_idx * K4;
+  let input_row_offset = workgroup_idx * K4;
   let subgroup_max_result_idx = u32(local_idx / sg_size);
 
   // First compute max for each subgroup.
-  let input_idx = row_offset + local_idx;
+  let input_idx = input_row_offset + local_idx;
   for (var i = 0u; i < K4; i += workgroup_size_x) {
     let value = input_a[input_idx+i];
     let abs_value = abs(value);
@@ -41,11 +42,12 @@ $MAIN {
   // The results are written out as u32 with an additional swizzle.
   // Swizzle: In a block of 20, every 5th value is pulled out and packed together
   // at the end of the group. The Swizzle helps with fast multiplication in the next step.
-  for (var i = 0u; i < K4; i += (workgroup_size_x * 5)) {
+  let output_row_offset = workgroup_idx * K_PADDED_4;
+  for (var i = 0u; i < K_PADDED_4; i += (workgroup_size_x * 5)) {
     let vidx = local_idx * 5 + i;
     if (vidx + 4 < K4) {
       let value1 = values[vidx] / max_value;
-      let out_vidx = ((vidx+row_offset) / 5) * 4;
+      let out_vidx = ((vidx+output_row_offset) / 5) * 4;
       output[out_vidx] = pack4x8snorm(vec4<f32>(value1));
 
       let value2 = values[vidx + 1] / max_value;
@@ -61,7 +63,7 @@ $MAIN {
       // last 5th value is value5[3]
 
       // Now pack the skipped values together.
-      output_5th[(row_offset+vidx) / 5] = pack4x8snorm(vec4<f32>(vec4<input_a_element_t>(value2[0], value3[1], value4[2], value5[3])));
+      output_5th[(output_row_offset+vidx) / 5] = pack4x8snorm(vec4<f32>(vec4<input_a_element_t>(value2[0], value3[1], value4[2], value5[3])));
     }
   }
   if (local_idx == 0) {

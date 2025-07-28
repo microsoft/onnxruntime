@@ -31,7 +31,8 @@ Status BitLinearQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const 
   shader.AddOutput("scales", ShaderUsage::UseElementTypeAlias);
 
   return WGSL_TEMPLATE_APPLY(shader, "quantization/bitlinear_quantize.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(K4, K_ / 4));
+                             WGSL_TEMPLATE_PARAMETER(K4, K_ / 4),
+                             WGSL_TEMPLATE_PARAMETER(K_PADDED_4, K_PADDED_ / 4));
 }
 
 Status BitLinearMultiplyProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -64,12 +65,17 @@ Status BitLinear::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
 
   // Validate input B shape more specifically
-  TensorShape expected_b_shape({N, K / 5});
-  ORT_ENFORCE(b->Shape() == expected_b_shape, "Input B shape must be [N, K/5], got ", b->Shape().ToString());
+  const uint32_t kQuantizationBlockSize = 20;
+  const uint32_t kWeightsPerByte = 5;
+  // When K is not divisible by kQuantizationBlockSize, weights are padded to fit kQuantizationBlockSize.
+  // During quantization of A we also pad the resulting output to K_PADDED to match the weights.
+  const uint32_t K_PADDED = ((K + (kQuantizationBlockSize - 1)) / kQuantizationBlockSize) * kQuantizationBlockSize;
+  TensorShape expected_b_shape({N, K_PADDED / kWeightsPerByte});
+  ORT_ENFORCE(b->Shape() == expected_b_shape, "Unexpected input B shape", b->Shape().ToString());
 
   // Step 1: Quantize input A using BitLinearQuantizeProgram
-  const uint32_t quantize_output_size = (M * (K - K / 5) / 4);  // skipping every 5th, packed into u32
-  const uint32_t quantize_5th_output_size = M * K / 20;         // every 5th element packed int u32
+  const uint32_t quantize_output_size = (M * (K_PADDED - (K_PADDED / kWeightsPerByte)) / 4);  // skipping every 5th, packed into u32
+  const uint32_t quantize_5th_output_size = M * K_PADDED / kQuantizationBlockSize;   // every 5th element packed int u32
 
   TensorShape quantize_output_shape({quantize_output_size});
   TensorShape quantize_5th_output_shape({quantize_5th_output_size});
@@ -82,7 +88,7 @@ Status BitLinear::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   constexpr uint32_t kU32Components = 4;
 
   {
-    BitLinearQuantizeProgram quantize_program(K);
+    BitLinearQuantizeProgram quantize_program(K, K_PADDED);
     quantize_program
         .SetWorkgroupSize(128)
         .SetDispatchGroupSize(M)
@@ -98,7 +104,9 @@ Status BitLinear::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   {
     BitLinearMultiplyProgram multiply_program;
     // input_a is vectorized as vec4<u32> which gives a packing of 16 elements per value.
-    const uint32_t input_a_stride = (K - (K / 5)) / 16;
+    // Support for cases where (K_PADDED - (K_PADDED / 5)) is not divisible by 16, is not implemented.
+    ORT_ENFORCE((K_PADDED - (K_PADDED / 5)) % 16 == 0, "K_PADDED must be divisible by 16 after skipping every 5th element. K_PADDED: ", K_PADDED);
+    const uint32_t input_a_stride = (K_PADDED - (K_PADDED / 5)) / 16;
     constexpr uint32_t kTileSize = 64;
     TensorShape reshaped_y_shape{1, M, N / kVec4Components};
     uint32_t num_M_tile = (M + kTileSize - 1) / kTileSize;
@@ -111,7 +119,7 @@ Status BitLinear::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
                     {&scales_a, ProgramTensorMetadataDependency::TypeAndRank},
                     {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kU32Components)}})
         .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)}})
-        .AddUniformVariables({{M}, {N}, {K}, {input_a_stride}, {scale_b_}, {num_N_tile}});
+        .AddUniformVariables({{M}, {N}, {K_PADDED}, {input_a_stride}, {scale_b_}, {num_N_tile}});
     ORT_RETURN_IF_ERROR(context.RunProgram(multiply_program));
   }
 

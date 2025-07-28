@@ -14,11 +14,12 @@ using namespace onnxruntime::webgpu;
 
 class BitLinearQuantizeProgram final : public Program<BitLinearQuantizeProgram> {
  public:
-  BitLinearQuantizeProgram(uint32_t k) : Program{"BitLinearQuantize"}, K_(k) {}
+  BitLinearQuantizeProgram(uint32_t k, uint32_t k_padded) : Program{"BitLinearQuantize"}, K_(k), K_PADDED_(k_padded) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
  private:
   uint32_t K_;
+  uint32_t K_PADDED_;
 };
 
 class BitLinearMultiplyProgram final : public Program<BitLinearMultiplyProgram> {
@@ -40,9 +41,6 @@ class BitLinear final : public WebGpuKernel {
     K_ = info.GetAttr<int64_t>("K");
     N_ = info.GetAttr<int64_t>("N");
     scale_b_ = info.GetAttr<float>("scale");
-
-    // Validate that K is divisible by 5 for ternary packing
-    ORT_ENFORCE(K_ % 5 == 0, "K must be divisible by 5 for BitLinear ternary packing, got K=", K_);
   }
 
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
