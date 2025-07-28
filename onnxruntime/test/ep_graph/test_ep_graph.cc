@@ -166,7 +166,8 @@ TEST(EpGraphTest, SerializeToProto_InputModelHasExternalIni) {
     };
 
     ONNX_NAMESPACE::ModelProto model_proto;
-    OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto, handle_initializer_data);
+    ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto,
+                                                        handle_initializer_data));
 
     std::ofstream ofs(serialized_model_path, std::ios::binary);
     model_proto.SerializeToOstream(&ofs);
@@ -257,7 +258,8 @@ TEST(EpGraphTest, SerializeToProto_Mnist) {
     };
 
     ONNX_NAMESPACE::ModelProto model_proto;
-    OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto, handle_initializer_data);
+    ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto,
+                                                        handle_initializer_data));
 
     std::ofstream ofs(serialized_model_path, std::ios::binary);
     model_proto.SerializeToOstream(&ofs);
@@ -301,7 +303,7 @@ TEST(EpGraphTest, SerializeToProto_ExternalInitializersInMemory) {
   };
 
   ONNX_NAMESPACE::GraphProto graph_proto;
-  OrtEpUtils::OrtGraphToProto(ort_graph, graph_proto, handle_initializer_data);
+  ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::OrtGraphToProto(ort_graph, graph_proto, handle_initializer_data));
 
   // Verify that TensorProto objects within GraphProto point to memory owned by OrtValues in the OrtGraph.
   const OrtApi& ort_api = Ort::GetApi();
@@ -393,7 +395,7 @@ TEST(EpGraphTest, SerializeToProto_3LayerSubgraphs) {
 
     // Serialize OrtGraph to ModelProto (all initializers stored within TensorProtos).
     ONNX_NAMESPACE::ModelProto model_proto;
-    OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto);
+    ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto));
 
     std::ofstream ofs(serialized_model_path, std::ios::binary);
     model_proto.SerializeToOstream(&ofs);
@@ -848,6 +850,8 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
 
         // It's possible that the type is defined in ONNX::AttributeProto_AttributeType but not in OrtOpAttrType, since the two are not in a 1:1 mapping.
         // In such cases, OpAttr_GetType will return a non-null status, and we simply skip the check here.
+        // TODO: Once we add support for ORT_OP_ATTR_TENSOR, we should be able to just fail if OpAttr_GetType
+        // returns an error.
         OrtStatusPtr status = ort_api.OpAttr_GetType(api_node_attr, &api_node_attr_type);
         if (status != nullptr) {
           Ort::GetApi().ReleaseStatus(status);
@@ -882,6 +886,10 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
           }
           case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS: {
             ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_GRAPH);
             break;
           }
           default:

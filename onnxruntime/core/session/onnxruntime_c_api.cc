@@ -38,8 +38,8 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
 #include "core/session/environment.h"
-#include "core/session/ep_api.h"
-#include "core/session/ep_library_internal.h"
+#include "core/session/plugin_ep/ep_api.h"
+#include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
@@ -3046,6 +3046,10 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetType, _In_ const OrtOpAttr* attribute, _O
     }
     case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS: {
       *type = OrtOpAttrType::ORT_OP_ATTR_STRINGS;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_GRAPH;
       break;
     }
     default:
