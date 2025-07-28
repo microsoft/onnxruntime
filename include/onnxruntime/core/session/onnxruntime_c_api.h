@@ -275,6 +275,7 @@ typedef enum OrtOpAttrType {
   ORT_OP_ATTR_STRING,
   ORT_OP_ATTR_STRINGS,
   ORT_OP_ATTR_GRAPH,
+  ORT_OP_ATTR_TENSOR,
 } OrtOpAttrType;
 
 //! @}
@@ -6051,6 +6052,19 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name,
                   _Outptr_ const OrtOpAttr** attribute);
+
+  /** \brief Get the OrtNode's 'TENSOR' attribute as an OrtValue.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[in] attribute The OrtOpAttr instance.
+   * \param[out] name Output parameter set to the attribute's name. The name is a null-terminated string.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetTensorAttributeAsOrtValue, _In_ const OrtNode* node, _In_ const OrtOpAttr* attribute,
+                  _Outptr_ const OrtValue** attr_tensor);
 
   /** \brief Get the attribute type as OrtOpAttrType from an OrtOpAttr.
    *

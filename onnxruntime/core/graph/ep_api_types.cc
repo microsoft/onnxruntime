@@ -113,11 +113,32 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
 
   if (node_attrs.size() > 0) {
     ep_node_attributes.reserve(node_attrs.size());
+    std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> tensor_attribute_values;
 
     for (const auto& item : node_attrs) {
       auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>(item.second);  // Copy AttributeProto and owned by this EpNode object.
+
+      // Create and cache an OrtValue for the 'TENSOR' attribute
+      if (attr->type() == onnx::AttributeProto::TENSOR) {
+        const auto& graph_viewer = ep_graph->GetGraphViewer();
+        const auto& tensor_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr.get())->t();
+
+        // Initialize OrtValue for tensor attribute.
+        // Note: using std::unique_ptr<OrtValue> because we return a OrtValue* to the user and we want it to be stable.
+        auto tensor_attribute_value = std::make_unique<OrtValue>();
+        AllocatorPtr tensor_attribute_allocator = CPUAllocator::DefaultInstance();
+        ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), tensor_proto,
+                                                         tensor_attribute_allocator, *tensor_attribute_value));
+
+        tensor_attribute_values.emplace(tensor_proto.name(), std::move(tensor_attribute_value));
+      }
+
       ep_node_attributes.push_back(reinterpret_cast<OrtOpAttr*>(attr.get()));
       ep_node_attributes_map.emplace(item.first, std::move(attr));
+    }
+
+    if (!tensor_attribute_values.empty()) {
+      ep_node->tensor_attribute_values_ = std ::move(tensor_attribute_values);
     }
   }
 
@@ -228,6 +249,24 @@ Status EpNode::GetAttributes(gsl::span<const OrtOpAttr*> dst) const {
   }
 
   return Status::OK();
+}
+
+Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, const OrtValue*& result) const {
+  const auto attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute);
+
+  if (attr_proto->type() != onnx::AttributeProto::TENSOR) {
+    result = nullptr;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This OrtOpAttr instance is not a 'TENSOR' attribute");
+  }
+
+  const auto& it = tensor_attribute_values_.find(attr_proto->name());
+  if (it != tensor_attribute_values_.end()) {
+    result = it->second.get();
+    Status::OK();
+  }
+
+  result = nullptr;
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get 'TENSOR' attribute with the name ", attr_proto->name());
 }
 
 Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {

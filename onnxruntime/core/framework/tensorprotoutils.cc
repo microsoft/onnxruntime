@@ -1372,6 +1372,32 @@ Status TensorProtoToOrtValue(const Env& env, const std::filesystem::path& model_
   return TensorProtoToOrtValueImpl(env, model_path, tensor_proto, nullptr, alloc, value);
 }
 
+/*
+Status TensorProtoToOrtValue(const onnx::TensorProto& tensor_proto, OrtMemoryInfo* mem_info, OrtValue& value) {
+  // Get shape
+  std::vector<int64_t> shape(tensor_proto.dims().begin(), tensor_proto.dims().end());
+  size_t num_elements = 1;
+  for (auto d : shape) num_elements *= d;
+
+ // find raw data in proto buf
+  void* raw_data = nullptr;
+  SafeInt<size_t> raw_data_len = 0;
+  if (utils::HasRawData(tensor_proto)) {
+    raw_data = const_cast<char*>(tensor_proto.raw_data().data());
+    raw_data_len = tensor_proto.raw_data().size();
+  }
+
+  // Wrap with CreateTensorWithDataAsOrtValue
+  return Ort::Value::CreateTensor(
+      mem_info,
+      data.data(),
+      data.size() * sizeof(float),
+      shape.data(),
+      shape.size(),
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+}
+*/
+
 #define CASE_TYPE(X)                             \
   case ONNX_NAMESPACE::TensorProto_DataType_##X: \
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_##X;

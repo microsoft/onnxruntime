@@ -183,6 +183,9 @@ struct EpNode : public OrtNode {
   // Gets the node's attributes.
   Status GetAttributes(gsl::span<const OrtOpAttr*> attrs) const override;
 
+  Status GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute,
+                                      const OrtValue*& attr_tensor) const override;
+
   // Gets the number of subgraphs contained by this node.
   Status GetNumSubgraphs(size_t& num_subgraphs) const override;
 
@@ -227,6 +230,7 @@ struct EpNode : public OrtNode {
 
   std::unordered_map<std::string, std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> attributes_map_;
   std::vector<OrtOpAttr*> attributes_;
+  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> tensor_attribute_values_;  // The 'TENSOR' Attribute as an OrtValue
 
   std::vector<EpValueInfo*> implicit_inputs_;
   std::vector<SubgraphState> subgraphs_;
