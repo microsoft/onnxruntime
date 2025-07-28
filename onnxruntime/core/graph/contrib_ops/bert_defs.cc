@@ -1204,12 +1204,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(7,
                "cos_cache",
-               "2D tensor with shape (max_sequence_length, head_size / 2).",
+               "2D tensor with shape (max_sequence_length, rotary_embedding_dim / 2).",
                "T",
                OpSchema::Optional)
         .Input(8,
                "sin_cache",
-               "2D tensor with shape (max_sequence_length, head_size / 2).",
+               "2D tensor with shape (max_sequence_length, rotary_embedding_dim / 2).",
                "T",
                OpSchema::Optional)
         .Input(9,
