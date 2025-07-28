@@ -1730,6 +1730,8 @@ struct ProviderHostImpl : ProviderHost {
 #ifdef _WIN32
   std::string ToUTF8String(const std::wstring& s) override { return onnxruntime::ToUTF8String(s); }
   std::wstring ToWideString(const std::string& s) override { return onnxruntime::ToWideString(s); }
+  std::string ToUTF8String(std::wstring_view s) override { return onnxruntime::ToUTF8String(s); }
+  std::wstring ToWideString(std::string_view s) override { return onnxruntime::ToWideString(s); }
 #endif
 
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }

@@ -171,9 +171,9 @@ void MIGraphXExecutionProvider::get_flags_from_session_info(const MIGraphXExecut
   // Load INT8 calibration table
   std::unordered_map<std::string, float> dynamic_range_map;
   if ((int8_enable_ || fp8_enable_) && int8_calibration_cache_available_) {
-    const std::string calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_cache_name_);
+    const auto calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_cache_name_);
     if (!ReadDynamicRange(calibration_cache_path, int8_use_native_migraphx_calibration_table_, dynamic_range_map)) {
-      throw std::runtime_error("Session Failed to read INT8 calibration table " + calibration_cache_path);
+      throw std::runtime_error("Session Failed to read INT8 calibration table " + calibration_cache_path.string());
     }
   }
 
@@ -267,9 +267,9 @@ void MIGraphXExecutionProvider::get_flags_from_env() {
   // Load INT8 calibration table
   std::unordered_map<std::string, float> dynamic_range_map;
   if ((int8_enable_ || fp8_enable_) && int8_calibration_cache_available_) {
-    const std::string calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_cache_name_);
+    const auto calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_cache_name_);
     if (!ReadDynamicRange(calibration_cache_path, int8_use_native_migraphx_calibration_table_, dynamic_range_map)) {
-      throw std::runtime_error("ENV Failed to read calibration table " + calibration_cache_path);
+      throw std::runtime_error("ENV Failed to read calibration table " + calibration_cache_path.string());
     }
   }
 

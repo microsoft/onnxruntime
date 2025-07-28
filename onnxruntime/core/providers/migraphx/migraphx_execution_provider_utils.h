@@ -187,12 +187,12 @@ inline float ConvertSinglePrecisionIEEE754ToFloat(uint32_t input) {
  * Taken from the tensorRT EP to allow MIGraphX EP to reuse calibration tables for existing models
  *
  */
-inline bool ReadDynamicRange(const std::string file_name,
+inline bool ReadDynamicRange(const std::filesystem::path& filename,
                              const bool is_calibration_table,
                              std::unordered_map<std::string,
                                                 float>& dynamic_range_map) {
-  std::ifstream infile(file_name, std::ios::binary | std::ios::in);
-  if (!infile) {
+  std::ifstream infile{filename, std::ios::binary | std::ios::in};
+  if (!infile.good()) {
     return false;
   }
 
@@ -218,7 +218,7 @@ inline bool ReadDynamicRange(const std::string file_name,
           dynamic_range_map[tensor_name] = dynamic_range;
         }
       } else {
-        throw std::runtime_error("This is not a TensorRT generated calibration table " + file_name);
+        throw std::runtime_error("This is not a TensorRT generated calibration table " + filename.string());
       }
     }
   } else {
@@ -243,14 +243,8 @@ inline bool ReadDynamicRange(const std::string file_name,
  * Get cache by name
  *
  */
-inline std::string GetCachePath(const std::string& root, const std::string& name) {
-  if (root.empty()) {
-    return name;
-  } else {
-    fs::path path = root;
-    path.append(name);
-    return path.string();
-  }
+inline std::filesystem::path GetCachePath(const std::filesystem::path& root, std::string_view name) {
+  return root.empty() ? std::filesystem::path{ToPathString(name)} : root / ToPathString(name);
 }
 
 }  // namespace onnxruntime
