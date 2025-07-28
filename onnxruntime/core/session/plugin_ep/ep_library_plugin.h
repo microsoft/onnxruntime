@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <mutex>
 
-#include "core/session/ep_library.h"
+#include "core/session/plugin_ep/ep_library.h"
 
 namespace onnxruntime {
 /// <summary>
