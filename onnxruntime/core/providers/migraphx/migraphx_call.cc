@@ -1,21 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdio>
+#include <string>
+
 #ifdef _WIN32
 #include <winsock.h>
 #else
 #include <unistd.h>
 #endif
 
-#include <string>
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/migraphx/migraphx_call.h"
 
 namespace onnxruntime {
-
-using namespace common;
 
 template <typename ERRTYPE>
 const char* RocmErrString(ERRTYPE x) {
@@ -48,8 +48,8 @@ std::conditional_t<THRW, void, Status> RocmCall(
       (void)hipGetDevice(&currentHipDevice);
       (void)hipGetLastError();  // clear last HIP error
       static char str[1024];
-      snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; file=%s ; line=%d ; expr=%s; %s",
-               libName, (int)retCode, RocmErrString(retCode), currentHipDevice,
+      snprintf(str, sizeof(str), "%s failure %d: %s ; GPU=%d ; hostname=%s ; file=%s ; line=%d ; expr=%s; %s",
+               libName, static_cast<int>(retCode), RocmErrString(retCode), currentHipDevice,
                hostname.c_str(),
                file, line, exprString, msg);
       if constexpr (THRW) {

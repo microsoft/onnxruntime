@@ -3,16 +3,19 @@
 
 #pragma once
 
+#include <filesystem>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
-#include <mutex>
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #include "core/providers/migraphx/migraphx_call.h"
-
-#include <map>
-#include <unordered_map>
-#include <filesystem>
 
 using namespace std::literals::string_view_literals;
 
@@ -64,7 +67,7 @@ struct MIGraphXFuncState {
 class MIGraphXExecutionProvider : public IExecutionProvider {
  public:
   explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
-  ~MIGraphXExecutionProvider();
+  ~MIGraphXExecutionProvider() override;
 
   void get_flags_from_session_info(const MIGraphXExecutionProviderInfo& info);
   void get_flags_from_env();
@@ -85,7 +88,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
   static AllocatorPtr CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t migx_mem_limit, ArenaExtendStrategy arena_extend_strategy,

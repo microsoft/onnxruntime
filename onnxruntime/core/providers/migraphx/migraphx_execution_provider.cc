@@ -1,26 +1,34 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
-#include <fstream>
+
+#include <hip/hip_version.h>
+
 #include <algorithm>
-#include <iterator>
-#include <unordered_map>
-#include <set>
 #include <filesystem>
+#include <fstream>
+#include <functional>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
 #include "core/common/logging/severity.h"
-#include "migraphx_execution_provider.h"
-#include "migraphx_execution_provider_info.h"
-#include "migraphx_execution_provider_utils.h"
-#include "migraphx_allocator.h"
-#include "gpu_data_transfer.h"
-#include <hip/hip_version.h>
-#include "migraphx_call.h"
-
-#include "migraphx_stream_handle.h"
+#include "core/providers/migraphx/migraphx_execution_provider.h"
+#include "core/providers/migraphx/migraphx_execution_provider_info.h"
+#include "core/providers/migraphx/migraphx_execution_provider_utils.h"
+#include "core/providers/migraphx/migraphx_allocator.h"
+#include "core/providers/migraphx/gpu_data_transfer.h"
+#include "core/providers/migraphx/migraphx_call.h"
+#include "core/providers/migraphx/migraphx_stream_handle.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -131,7 +139,7 @@ void MIGraphXExecutionProvider::get_flags_from_session_info(const MIGraphXExecut
   bf16_enable_ = info.bf16_enable;
 #endif
 
-  if (bf16_enable_ and fp16_enable_) {
+  if (bf16_enable_ && fp16_enable_) {
     bf16_enable_ = false;
     fp16_enable_ = false;
     LOGS_DEFAULT(FATAL) << "MIGraphX: BF16 and FP16 Quantization Mutually exclusive. Ignoring both Quantization flags";
@@ -145,18 +153,18 @@ void MIGraphXExecutionProvider::get_flags_from_session_info(const MIGraphXExecut
 #endif
   int8_enable_ = info.int8_enable;
 
-  if (int8_enable_ and fp8_enable_) {
+  if (int8_enable_ && fp8_enable_) {
     int8_enable_ = false;
     fp8_enable_ = false;
     LOGS_DEFAULT(FATAL) << "MIGraphX: FP8 and INT8 Quantization Mutually exclusive. Ignoring both Quantization flags";
   }
 
-  if (int8_enable_ xor fp8_enable_) {
+  if (int8_enable_ ^ fp8_enable_) {
     int8_calibration_cache_name_ = info.int8_calibration_table_name;
     int8_use_native_migraphx_calibration_table_ = info.int8_use_native_calibration_table;
   }
 
-  if (int8_enable_ or fp8_enable_) {
+  if (int8_enable_ || fp8_enable_) {
     int8_calibration_cache_available_ = !info.int8_calibration_table_name.empty();
   }
 
@@ -201,7 +209,7 @@ void MIGraphXExecutionProvider::get_flags_from_env() {
 #endif
   }
 
-  if (bf16_enable_ and fp16_enable_) {
+  if (bf16_enable_ && fp16_enable_) {
     LOGS_DEFAULT(FATAL) << "\nMIGraphX: FP16 and BF16 Quantization Mutually exclusive. Ignoring both flags";
   }
 
@@ -224,7 +232,7 @@ void MIGraphXExecutionProvider::get_flags_from_env() {
     LOGS_DEFAULT(WARNING) << "\nORT_MIGRAPHX_INT8_ENABLE: " << int8_enable_;
   }
 
-  if (int8_enable_ and fp8_enable_) {
+  if (int8_enable_ && fp8_enable_) {
     LOGS_DEFAULT(FATAL) << "\nMIGraphX: FP8 and INT8 Quantization Mutually exclusive. Ignoring both Quantization flags";
   }
 
@@ -252,7 +260,7 @@ void MIGraphXExecutionProvider::get_flags_from_env() {
     }
   }
 
-  if (int8_enable_ or fp8_enable_) {
+  if (int8_enable_ || fp8_enable_) {
     int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
   }
 
@@ -489,7 +497,7 @@ std::vector<int> toVector(const ONNX_NAMESPACE::int64s& nums) {
 static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, const Node* node) {
   std::vector<NodeIndex> input_nodes;
   const auto& optype = node->OpType();
-  if (optype == "ArgMax" or optype == "ArgMin") {
+  if (optype == "ArgMax" || optype == "ArgMin") {
     const auto& attributes = node->GetAttributes();
     // we do not support select_last_index = 1 for now
     auto sli_attr = attributes.find("select_last_index");
@@ -507,7 +515,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
 
-    if ((input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) and
+    if ((input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) &&
         (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)) {
       return true;
     }
@@ -535,7 +543,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
 
     // storage order 1 (column major format) is not supported
     auto storage_order_attr = attributes.find("storage_order");
-    if (storage_order_attr != attributes.end() and (*storage_order_attr).second.i() != 0) {
+    if (storage_order_attr != attributes.end() && (*storage_order_attr).second.i() != 0) {
       return true;
     }
 
@@ -545,7 +553,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
     auto data_type = input_type->tensor_type().elem_type();
-    if (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 or
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
         data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
       return true;
     }
@@ -556,7 +564,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
 
-    if ((input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) and
+    if ((input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) &&
         (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)) {
       return true;
     }
@@ -612,7 +620,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       }
       return true;
     }
-  } else if (optype == "Resize" or optype == "Upsample") {
+  } else if (optype == "Resize" || optype == "Upsample") {
     const auto& attributes = node->GetAttributes();
     auto ct_attr = attributes.find("coordinate_transformation_mode");
     if (ct_attr != attributes.end()) {
@@ -650,7 +658,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     }
 
     const auto& attributes = node->GetAttributes();
-    if (attributes.count("starts") > 0 and attributes.count("ends") > 0) {
+    if (attributes.count("starts") > 0 && attributes.count("ends") > 0) {
       auto starts = toVector((*attributes.find("starts")).second.ints());
       auto ends = toVector((*attributes.find("ends")).second.ints());
       for (std::size_t i = 0; i < starts.size(); ++i) {
@@ -688,7 +696,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     if (!canEvalNodeArgument(graph_viewer, node, {1}, input_nodes)) {
       return true;
     }
-  } else if (optype == "Unsqueeze" or optype == "Squeeze") {
+  } else if (optype == "Unsqueeze" || optype == "Squeeze") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
       if (canEvalNodeArgument(graph_viewer, node, {1}, input_nodes)) {
@@ -717,9 +725,9 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
         if (args.size() == 2) {
           std::vector<NodeIndex> node_inputs;
           if (canEvalNodeArgument(graph_viewer, node, {1}, node_inputs)) {
-            return (not std::all_of(node_inputs.begin(), node_inputs.end(), [&](auto index) {
-              return std::find(git.begin(), git.end(), index) != git.end();
-            }));
+            return !std::all_of(node_inputs.begin(), node_inputs.end(), [&](auto i) {
+              return std::find(git.begin(), git.end(), i) != git.end();
+            });
           } else {
             return true;
           }
@@ -889,12 +897,14 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
           erased.insert(output);
         }
         // Only when output is neither in input list nor erased list, add the output to output list
-        else if (erased.find(output) == erased.end()) {
-          if (std::find(graph_output_names.begin(),
-                        graph_output_names.end(), output->Name()) != graph_output_names.end()) {
-            graph_outputs_to_add[output] = output_order;
+        else {
+          if (erased.find(output) == erased.end()) {
+            if (std::find(graph_output_names.begin(),
+                          graph_output_names.end(), output->Name()) != graph_output_names.end()) {
+              graph_outputs_to_add[output] = output_order;
+            }
+            fused_outputs[output] = output_order++;
           }
-          fused_outputs[output] = output_order++;
         }
       }
     }
@@ -1313,7 +1323,7 @@ void calibrate_and_quantize(migraphx::program& prog,
                             bool int8_calibration_cache_available,
                             std::unordered_map<std::string, float>& dynamic_range_map) {
   // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
-  if ((int8_enable xor fp8_enable) && int8_calibration_cache_available) {
+  if ((int8_enable ^ fp8_enable) && int8_calibration_cache_available) {
     LOGS_DEFAULT(WARNING) << "Quantizing input program";
 
     auto param_shapes = prog.get_parameter_shapes();
@@ -1506,8 +1516,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
               auto mgx_s = param_shapes[name];
               auto mgx_lens = mgx_s.lengths();
               auto mgx_strides = mgx_s.strides();
-              if (mgx_lens.size() == 1 and mgx_lens[0] == 1 and
-                  mgx_strides.size() == 1 and mgx_strides[0] == 0) {
+              if (mgx_lens.size() == 1 && mgx_lens[0] == 1 &&
+                  mgx_strides.size() == 1 && mgx_strides[0] == 0) {
                 mgx_lens.clear();
               }
 
@@ -1533,7 +1543,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
           migraphx::program_parameters quant_params;
 
-          if ((int8_enable xor fp8_enable) and int8_calibration_cache_available) {
+          if ((int8_enable ^ fp8_enable) && int8_calibration_cache_available) {
             auto local_param_shapes = prog.get_parameter_shapes();
             // Add input parameter data and the values they're set to
             for (auto&& name : local_param_shapes.names()) {
@@ -1646,7 +1656,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
                                                static_cast<hipStream_t>(rocm_stream)));
           }
         }
-      };
+      }
 
       return Status::OK();
     };

@@ -3,12 +3,15 @@
 
 #pragma once
 
-#include <fstream>
-#include <unordered_map>
-#include <string>
-#include <iostream>
+#include <algorithm>
+#include <charconv>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 #include "flatbuffers/idl.h"
 #include "core/providers/migraphx/ort_trt_int8_cal_table.fbs.h"
 #include "core/session/onnxruntime_cxx_api.h"
