@@ -72,7 +72,7 @@ Status GemmNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   // Calculate Alpha
-  if (alpha_) {
+  if (alpha_ != 1.0f) {
     shader.MainFunctionBody() << "  value = value * output_value_t(uniforms.alpha);\n";
   }
 
