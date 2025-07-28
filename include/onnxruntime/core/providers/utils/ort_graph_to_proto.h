@@ -841,7 +841,6 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
       tensor_proto.set_raw_data(data, data_bytes);
 
       ort_api.ReleaseTensorTypeAndShapeInfo(type_shape_info);
-
     }
     default: {
       std::string err_msg = "Unexpected OrtOpAttrType with value " + std::to_string(static_cast<int>(attr_type));

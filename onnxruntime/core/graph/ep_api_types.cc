@@ -262,7 +262,7 @@ Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, const Or
   const auto& it = tensor_attribute_values_.find(attr_proto->name());
   if (it != tensor_attribute_values_.end()) {
     result = it->second.get();
-    Status::OK();
+    return Status::OK();
   }
 
   result = nullptr;
