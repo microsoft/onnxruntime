@@ -6043,14 +6043,15 @@ struct OrtApi {
    *
    * \param[in] node The OrtNode instance.
    * \param[in] attribute_name The name of the attribute
-   * \param[out] attribute Output the attribute if its name matches 'attribute_name', otherwise output nullptr.
+   * \param[out] attribute Output parameter set to the OrtOpAttr instance if an attribute by the given name exists.
+   *                       Otherwise, `attribute` is set to nullptr and a non-error status is returned.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name,
-                  _Outptr_ const OrtOpAttr** attribute);
+                  _Outptr_result_maybenull_ const OrtOpAttr** attribute);
 
   /** \brief Get the attribute type as OrtOpAttrType from an OrtOpAttr.
    *

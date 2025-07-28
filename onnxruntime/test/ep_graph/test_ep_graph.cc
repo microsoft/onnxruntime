@@ -900,6 +900,12 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
       }
     }
 
+    // Check that using Node_GetAttributeByName with a non-existing attribute name returns an OK status and
+    // api_node_attr is set to NULL.
+    const OrtOpAttr* api_node_attr = nullptr;
+    ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributeByName(api_node, "_does_not_exist_", &api_node_attr));
+    ASSERT_EQ(api_node_attr, nullptr);
+
     // Check node subgraphs
     std::unordered_map<std::string, gsl::not_null<const Graph*>> node_subgraphs_map =
         node->GetAttributeNameToSubgraphMap();

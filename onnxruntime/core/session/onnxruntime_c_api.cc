@@ -2993,7 +2993,8 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributes, _In_ const OrtNode* node,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name, _Outptr_ const OrtOpAttr** attribute) {
+ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name,
+                    _Outptr_result_maybenull_ const OrtOpAttr** attribute) {
   API_IMPL_BEGIN
   if (attribute == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'attribute' argument is NULL");
@@ -3004,14 +3005,8 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, 
     return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Node_GetAttributeByName.");
   }
 
-  *attribute = ep_node->GetAttribute(attribute_name);
-
-  if (*attribute) {
-    return nullptr;
-  } else {
-    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute does not exist.");
-  }
-
+  *attribute = ep_node->GetAttribute(attribute_name);  // Can be NULL if attribute_name does not exist.
+  return nullptr;
   API_IMPL_END
 }
 
