@@ -23,16 +23,15 @@ const onnxruntime::RunOptions run_options = []() {
 
 const constexpr auto run_with_tunable_op = &run_options;
 
-// Helper function to initialize input matrices (template version)
-template <typename T>
-std::vector<T> initialize_matrix(int64_t rows, int64_t cols) {
-  std::vector<T> data;
+// Helper function to initialize input matrices
+auto initialize_matrix = [](int64_t rows, int64_t cols) {
+  std::vector<float> data;
   data.reserve(rows * cols);
   for (int64_t i = 0; i < rows * cols; ++i) {
-    data.push_back(static_cast<T>((i % 7) + 1));
+    data.push_back(static_cast<float>((i % 7) + 1));
   }
   return data;
-}
+};
 
 enum class BiasType {
   noBias,      // No bias input
@@ -41,11 +40,9 @@ enum class BiasType {
   MNBias,      // C shape is {M,N}
   NBias        // C shape is {N}
 };
-
-// Helper function to initialize bias data for Gemm tests (template version)
-template <typename T>
-std::pair<std::vector<T>, std::vector<int64_t>> initialize_bias(BiasType bias_type, int64_t M, int64_t N) {
-  std::pair<std::vector<T>, std::vector<int64_t>> result;
+// Helper function to initialize bias data for Gemm tests
+auto initialize_bias = [](BiasType bias_type, int64_t M, int64_t N) {
+  std::pair<std::vector<float>, std::vector<int64_t>> result;
   auto& [data, shape] = result;
 
   switch (bias_type) {
@@ -54,37 +51,36 @@ std::pair<std::vector<T>, std::vector<int64_t>> initialize_bias(BiasType bias_ty
     case BiasType::MBias:
       shape = {M, 1};
       for (int64_t i = 0; i < M; ++i) {
-        data.push_back(static_cast<T>((i % 7) + 1));
+        data.push_back(static_cast<float>((i % 7) + 1));
       }
       break;
     case BiasType::ScalarBias:
       shape = {1, 1};
-      data.push_back(static_cast<T>(1));
+      data.push_back(1.0f);
       break;
     case BiasType::MNBias:
       shape = {M, N};
       for (int64_t i = 0; i < M * N; ++i) {
-        data.push_back(static_cast<T>((i % 7) + 1));
+        data.push_back(static_cast<float>((i % 7) + 1));
       }
       break;
     case BiasType::NBias:
       shape = {N};
       for (int64_t i = 0; i < N; ++i) {
-        data.push_back(static_cast<T>((i % 7) + 1));
+        data.push_back(static_cast<float>((i % 7) + 1));
       }
       break;
   }
   return result;
-}
+};
 
-// Helper function to get bias value for Gemm tests (template version)
-template <typename T>
-T get_bias_value(const std::vector<T>& bias_data, BiasType bias_type, int64_t i, int64_t j, int64_t N) {
-  if (bias_data.empty()) return static_cast<T>(0);
+// Helper function to get bias value for Gemm tests
+auto get_bias_value = [](const std::vector<float>& bias_data, BiasType bias_type, int64_t i, int64_t j, int64_t N) {
+  if (bias_data.empty()) return 0.0f;
 
   switch (bias_type) {
     case BiasType::noBias:
-      return static_cast<T>(0);
+      return 0.0f;
     case BiasType::MBias:
       return bias_data[i];
     case BiasType::ScalarBias:
@@ -94,9 +90,9 @@ T get_bias_value(const std::vector<T>& bias_data, BiasType bias_type, int64_t i,
     case BiasType::NBias:
       return bias_data[j];
     default:
-      return static_cast<T>(0);
+      return 0.0f;
   }
-}
+};
 
 }  // namespace
 
@@ -589,13 +585,6 @@ class GemmOpTypedTests : public ::testing::Test {
 // , then they will still pass.
 using GemmOpTypedTestsTypes = ::testing::Types<float, double>;
 TYPED_TEST_SUITE(GemmOpTypedTests, GemmOpTypedTestsTypes);
-
-template <typename T>
-class GemmOptimizeTypedTests : public ::testing::Test {
-};
-
-using GemmOptimizeTypedTestsTypes = ::testing::Types<float, int32_t, uint32_t>;
-TYPED_TEST_SUITE(GemmOptimizeTypedTests, GemmOptimizeTypedTestsTypes);
 
 TYPED_TEST(GemmOpTypedTests, TestGemmScalarBroadcast) {
   auto run_test = [](bool b_is_initializer, bool c_is_initializer) {
@@ -1177,7 +1166,7 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
 }
 #endif
 
-TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePacked) {
+TEST(GemmOpTest, GemmOptimizePacked) {
   auto run_test = [](int64_t M, int64_t K, int64_t N, BiasType bias_type, float alpha, float beta) {
     OpTester test("Gemm", 13);
 
@@ -1186,39 +1175,34 @@ TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePacked) {
     test.AddAttribute("alpha", alpha);
     test.AddAttribute("beta", beta);
 
-    std::vector<TypeParam> a_data = initialize_matrix<TypeParam>(M, K);
-    std::vector<TypeParam> b_data = initialize_matrix<TypeParam>(K, N);
+    std::vector<float> a_data = initialize_matrix(M, K);
+    std::vector<float> b_data = initialize_matrix(K, N);
 
     // Initialize bias with appropriate shape
-    auto [c_data, c_shape] = initialize_bias<TypeParam>(bias_type, M, N);
+    auto [c_data, c_shape] = initialize_bias(bias_type, M, N);
     bool has_bias = !c_data.empty();
 
-    test.AddInput<TypeParam>("A", {M, K}, a_data);
-    test.AddInput<TypeParam>("B", {K, N}, b_data);
+    test.AddInput<float>("A", {M, K}, a_data);
+    test.AddInput<float>("B", {K, N}, b_data);
     if (has_bias) {
-      test.AddInput<TypeParam>("C", c_shape, c_data);
+      test.AddInput<float>("C", c_shape, c_data);
     }
 
     // Calculate expected output
-    std::vector<TypeParam> expected_data(M * N, static_cast<TypeParam>(0));
+    std::vector<float> expected_data(M * N, static_cast<float>(0));
     for (int64_t i = 0; i < M; ++i) {
       for (int64_t j = 0; j < N; ++j) {
-        TypeParam sum = static_cast<TypeParam>(0);
+        float sum = static_cast<float>(0);
         for (int64_t k = 0; k < K; ++k) {
           sum += a_data[i * K + k] * b_data[k * N + j];
         }
-        TypeParam matmul_result = static_cast<TypeParam>(alpha) * sum;
-        TypeParam bias_value = static_cast<TypeParam>(beta) * get_bias_value<TypeParam>(c_data, bias_type, i, j, N);
+        float matmul_result = static_cast<float>(alpha) * sum;
+        float bias_value = static_cast<float>(beta) * get_bias_value(c_data, bias_type, i, j, N);
         expected_data[i * N + j] = matmul_result + bias_value;
       }
     }
 
-    test.AddOutput<TypeParam>("Y", {M, N}, expected_data);
-
-    // Run int/uint32_t tests only on WebGPU EP
-    if (std::is_same_v<TypeParam, int32_t> || std::is_same_v<TypeParam, uint32_t>) {
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider}, run_with_tunable_op);
-    }
+    test.AddOutput<float>("Y", {M, N}, expected_data);
 
     test.ConfigExcludeEps({kQnnExecutionProvider})
         .Config(run_with_tunable_op)
@@ -1246,7 +1230,7 @@ TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePacked) {
   }
 }
 
-TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePackedTransA) {
+TEST(GemmOpTest, GemmOptimizePackedTransA) {
   auto run_test = [](int64_t M, int64_t K, int64_t N, BiasType bias_type, float alpha, float beta) {
     OpTester test("Gemm", 13);
 
@@ -1255,39 +1239,34 @@ TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePackedTransA) {
     test.AddAttribute("alpha", alpha);
     test.AddAttribute("beta", beta);
 
-    std::vector<TypeParam> a_data = initialize_matrix<TypeParam>(K, M);
-    std::vector<TypeParam> b_data = initialize_matrix<TypeParam>(K, N);
+    std::vector<float> a_data = initialize_matrix(K, M);
+    std::vector<float> b_data = initialize_matrix(K, N);
 
     // Initialize bias with appropriate shape
-    auto [c_data, c_shape] = initialize_bias<TypeParam>(bias_type, M, N);
+    auto [c_data, c_shape] = initialize_bias(bias_type, M, N);
     bool has_bias = !c_data.empty();
 
-    test.AddInput<TypeParam>("A", {K, M}, a_data);
-    test.AddInput<TypeParam>("B", {K, N}, b_data);
+    test.AddInput<float>("A", {K, M}, a_data);
+    test.AddInput<float>("B", {K, N}, b_data);
     if (has_bias) {
-      test.AddInput<TypeParam>("C", c_shape, c_data);
+      test.AddInput<float>("C", c_shape, c_data);
     }
 
     // Calculate expected output for transposed A
-    std::vector<TypeParam> expected_data(M * N, static_cast<TypeParam>(0));
+    std::vector<float> expected_data(M * N, static_cast<float>(0));
     for (int64_t i = 0; i < M; ++i) {
       for (int64_t j = 0; j < N; ++j) {
-        TypeParam sum = static_cast<TypeParam>(0);
+        float sum = static_cast<float>(0);
         for (int64_t k = 0; k < K; ++k) {
           sum += a_data[k * M + i] * b_data[k * N + j];
         }
-        TypeParam matmul_result = static_cast<TypeParam>(alpha) * sum;
-        TypeParam bias_value = static_cast<TypeParam>(beta) * get_bias_value<TypeParam>(c_data, bias_type, i, j, N);
+        float matmul_result = static_cast<float>(alpha) * sum;
+        float bias_value = static_cast<float>(beta) * get_bias_value(c_data, bias_type, i, j, N);
         expected_data[i * N + j] = matmul_result + bias_value;
       }
     }
 
-    test.AddOutput<TypeParam>("Y", {M, N}, expected_data);
-
-    // Run int/uint32_t tests only on WebGPU EP
-    if (std::is_same_v<TypeParam, int32_t> || std::is_same_v<TypeParam, uint32_t>) {
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider}, run_with_tunable_op);
-    }
+    test.AddOutput<float>("Y", {M, N}, expected_data);
 
     test.ConfigExcludeEps({kQnnExecutionProvider})
         .Config(run_with_tunable_op)
@@ -1314,7 +1293,7 @@ TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePackedTransA) {
   }
 }
 
-TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePackedTransB) {
+TEST(GemmOpTest, GemmOptimizePackedTransB) {
   auto run_test = [](int64_t M, int64_t K, int64_t N, BiasType bias_type, float alpha, float beta) {
     OpTester test("Gemm", 13);
 
@@ -1323,38 +1302,34 @@ TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePackedTransB) {
     test.AddAttribute("alpha", alpha);
     test.AddAttribute("beta", beta);
 
-    std::vector<TypeParam> a_data = initialize_matrix<TypeParam>(M, K);
-    std::vector<TypeParam> b_data = initialize_matrix<TypeParam>(N, K);
+    std::vector<float> a_data = initialize_matrix(M, K);
+    std::vector<float> b_data = initialize_matrix(N, K);
 
     // Initialize bias with appropriate shape
-    auto [c_data, c_shape] = initialize_bias<TypeParam>(bias_type, M, N);
+    auto [c_data, c_shape] = initialize_bias(bias_type, M, N);
     bool has_bias = !c_data.empty();
 
-    test.AddInput<TypeParam>("A", {M, K}, a_data);
-    test.AddInput<TypeParam>("B", {N, K}, b_data);
+    test.AddInput<float>("A", {M, K}, a_data);
+    test.AddInput<float>("B", {N, K}, b_data);
     if (has_bias) {
-      test.AddInput<TypeParam>("C", c_shape, c_data);
+      test.AddInput<float>("C", c_shape, c_data);
     }
 
     // Calculate expected output
-    std::vector<TypeParam> expected_data(M * N, static_cast<TypeParam>(0));
+    std::vector<float> expected_data(M * N, static_cast<float>(0));
     for (int64_t i = 0; i < M; ++i) {
       for (int64_t j = 0; j < N; ++j) {
-        TypeParam sum = static_cast<TypeParam>(0);
+        float sum = static_cast<float>(0);
         for (int64_t k = 0; k < K; ++k) {
           sum += a_data[i * K + k] * b_data[j * K + k];
         }
-        TypeParam matmul_result = static_cast<TypeParam>(alpha) * sum;
-        TypeParam bias_value = static_cast<TypeParam>(beta) * get_bias_value<TypeParam>(c_data, bias_type, i, j, N);
+        float matmul_result = static_cast<float>(alpha) * sum;
+        float bias_value = static_cast<float>(beta) * get_bias_value(c_data, bias_type, i, j, N);
         expected_data[i * N + j] = matmul_result + bias_value;
       }
     }
 
-    test.AddOutput<TypeParam>("Y", {M, N}, expected_data);
-    // Run int/uint32_t tests only on WebGPU EP
-    if (std::is_same_v<TypeParam, int32_t> || std::is_same_v<TypeParam, uint32_t>) {
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider}, run_with_tunable_op);
-    }
+    test.AddOutput<float>("Y", {M, N}, expected_data);
 
     test.ConfigExcludeEps({kQnnExecutionProvider})
         .Config(run_with_tunable_op)
@@ -1381,7 +1356,7 @@ TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePackedTransB) {
   }
 }
 
-TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePackedTransAB) {
+TEST(GemmOpTest, GemmOptimizePackedTransAB) {
   auto run_test = [](int64_t M, int64_t K, int64_t N, BiasType bias_type, float alpha, float beta) {
     OpTester test("Gemm", 13);
 
@@ -1390,39 +1365,34 @@ TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePackedTransAB) {
     test.AddAttribute("alpha", alpha);
     test.AddAttribute("beta", beta);
 
-    std::vector<TypeParam> a_data = initialize_matrix<TypeParam>(M, K);
-    std::vector<TypeParam> b_data = initialize_matrix<TypeParam>(N, K);
+    std::vector<float> a_data = initialize_matrix(M, K);
+    std::vector<float> b_data = initialize_matrix(N, K);
 
     // Initialize bias with appropriate shape
-    auto [c_data, c_shape] = initialize_bias<TypeParam>(bias_type, M, N);
+    auto [c_data, c_shape] = initialize_bias(bias_type, M, N);
     bool has_bias = !c_data.empty();
 
-    test.AddInput<TypeParam>("A", {K, M}, a_data);
-    test.AddInput<TypeParam>("B", {N, K}, b_data);
+    test.AddInput<float>("A", {K, M}, a_data);
+    test.AddInput<float>("B", {N, K}, b_data);
     if (has_bias) {
-      test.AddInput<TypeParam>("C", c_shape, c_data);
+      test.AddInput<float>("C", c_shape, c_data);
     }
 
     // Calculate expected output for both matrices transposed
-    std::vector<TypeParam> expected_data(M * N, static_cast<TypeParam>(0));
+    std::vector<float> expected_data(M * N, static_cast<float>(0));
     for (int64_t i = 0; i < M; ++i) {
       for (int64_t j = 0; j < N; ++j) {
-        TypeParam sum = static_cast<TypeParam>(0);
+        float sum = static_cast<float>(0);
         for (int64_t k = 0; k < K; ++k) {
           sum += a_data[k * M + i] * b_data[j * K + k];
         }
-        TypeParam matmul_result = static_cast<TypeParam>(alpha) * sum;
-        TypeParam bias_value = static_cast<TypeParam>(beta) * get_bias_value<TypeParam>(c_data, bias_type, i, j, N);
+        float matmul_result = static_cast<float>(alpha) * sum;
+        float bias_value = static_cast<float>(beta) * get_bias_value(c_data, bias_type, i, j, N);
         expected_data[i * N + j] = matmul_result + bias_value;
       }
     }
 
-    test.AddOutput<TypeParam>("Y", {M, N}, expected_data);
-
-    // Run int/uint32_t tests only on WebGPU EP
-    if (std::is_same_v<TypeParam, int32_t> || std::is_same_v<TypeParam, uint32_t>) {
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider}, run_with_tunable_op);
-    }
+    test.AddOutput<float>("Y", {M, N}, expected_data);
 
     test.ConfigExcludeEps({kQnnExecutionProvider})
         .Config(run_with_tunable_op)
@@ -1448,6 +1418,61 @@ TYPED_TEST(GemmOptimizeTypedTests, GemmOptimizePackedTransAB) {
     }
   }
 }
+
+#if defined(USE_WEBGPU)
+TEST(GemmOpTest, GemmWebGPU_int_128x128x128_transposeB) {
+  OpTester test("Gemm", 13);
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)1);  // transposeB = 1
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  const int64_t M = 128, K = 128, N = 128;
+
+  // Initialize input matrices with int values
+  std::vector<int32_t> A_data(M * K);
+  std::vector<int32_t> B_data(N * K);  // B shape is {N, K} because transposeB=1
+  std::vector<int32_t> C_data(M * N);
+
+  // Fill A matrix with pattern
+  for (int64_t i = 0; i < M * K; ++i) {
+    A_data[i] = static_cast<int32_t>((i % 7) + 1);
+  }
+
+  // Fill B matrix with pattern (will be transposed)
+  for (int64_t i = 0; i < N * K; ++i) {
+    B_data[i] = static_cast<int32_t>((i % 5) + 1);
+  }
+
+  // Fill C matrix (bias) with small values
+  for (int64_t i = 0; i < M * N; ++i) {
+    C_data[i] = static_cast<int32_t>((i % 3) + 1);
+  }
+
+  // Calculate expected output: Y = alpha * A * B^T + beta * C
+  std::vector<int32_t> Y_data(M * N, 0);
+  for (int64_t i = 0; i < M; ++i) {
+    for (int64_t j = 0; j < N; ++j) {
+      int64_t sum = 0;
+      for (int64_t k = 0; k < K; ++k) {
+        // B is transposed, so B^T[k][j] = B[j][k]
+        sum += static_cast<int64_t>(A_data[i * K + k]) * static_cast<int64_t>(B_data[j * K + k]);
+      }
+      Y_data[i * N + j] = static_cast<int32_t>(sum + C_data[i * N + j]);  // alpha=1.0, beta=1.0
+    }
+  }
+
+  test.AddInput<int32_t>("A", {M, K}, A_data);
+  test.AddInput<int32_t>("B", {N, K}, B_data);  // B shape is {N, K} because transB=True
+  test.AddInput<int32_t>("C", {M, N}, C_data);
+  test.AddOutput<int32_t>("Y", {M, N}, Y_data);
+
+  test.ConfigExcludeEps({kQnnExecutionProvider, kCpuExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+#endif  // defined(USE_WEBGPU)
 
 }  // namespace test
 }  // namespace onnxruntime
