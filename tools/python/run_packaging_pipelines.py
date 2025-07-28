@@ -53,6 +53,7 @@ class EvaluationResult(TypedDict):
 
     pipeline: PipelineDetails
     packaging_type: Literal["nightly", "release", "none"]
+    has_pre_release_params: bool
 
 
 # --- Configuration ---
@@ -121,6 +122,7 @@ def evaluate_single_pipeline(
     headers = {"Authorization": f"Bearer {token}"}
     thirty_days_ago = datetime.utcnow() - timedelta(days=DAYS_SINCE_LAST_RUN)
     target_repo_path = urlparse(TARGET_REPO_URL).path.strip("/")
+    has_pre_release_params = False
 
     try:
         detail_url = pipeline_summary.get("url")
@@ -230,8 +232,20 @@ def evaluate_single_pipeline(
                     )
                     return None
 
+                # Check for pre-release parameters if it's a release packaging pipeline
+                if packaging_type == "release":
+                    yaml_params = data.get("parameters", [])
+                    if isinstance(yaml_params, list):
+                        param_names = {p.get("name") for p in yaml_params if isinstance(p, dict)}
+                        if (
+                            "PreReleaseVersionSuffixString" in param_names
+                            and "PreReleaseVersionSuffixNumber" in param_names
+                        ):
+                            has_pre_release_params = True
+                            print("  - OK: Found pre-release versioning parameters.")
+
         print(f"  - MATCH: '{pipeline_name}' matches all criteria.")
-        return {"pipeline": pipeline_details, "packaging_type": packaging_type}
+        return {"pipeline": pipeline_details, "packaging_type": packaging_type, "has_pre_release_params": has_pre_release_params}
 
     except KeyError as e:
         print(f"  - SKIPPING '{pipeline_name}': Missing expected key {e} in pipeline details.")
@@ -270,7 +284,6 @@ def cancel_running_builds(pipeline_id: int, branch: str, token: str, project: st
     )
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    # The 'builds' API uses 'branchName' to filter. Based on the swagger and behavior, it expects the full ref name.
     builds_url = f"https://dev.azure.com/{ADO_ORGANIZATION}/{project}/_apis/build/builds?definitions={pipeline_id}&branchName={branch}&statusFilter=inProgress,notStarted&api-version=7.1"
 
     try:
@@ -306,6 +319,9 @@ def trigger_pipeline(
     nightly_override: str | None,
     release_override: str | None,
     packaging_type: str,
+    has_pre_release_params: bool,
+    pre_release_suffix_string: str | None,
+    pre_release_suffix_number: int | None,
 ) -> int | None:
     """Triggers a pipeline and returns the new build ID."""
     print(f"\n--- Triggering Pipeline ID: {pipeline_id} on branch '{branch}' in project '{project}' ---")
@@ -313,13 +329,26 @@ def trigger_pipeline(
     run_url = f"https://dev.azure.com/{ADO_ORGANIZATION}/{project}/_apis/pipelines/{pipeline_id}/runs?api-version=7.1-preview.1"
 
     payload: dict[str, any] = {"resources": {"repositories": {"self": {"refName": branch}}}}
+    template_params: dict[str, any] = {}
 
     if nightly_override is not None and packaging_type == "nightly":
         print(f"Overriding NIGHTLY_BUILD variable to '{nightly_override}'.")
         payload["variables"] = {"NIGHTLY_BUILD": {"value": nightly_override}}
     elif release_override is not None and packaging_type == "release":
         print(f"Overriding IsReleaseBuild parameter to '{release_override}'.")
-        payload["templateParameters"] = {"IsReleaseBuild": release_override}
+        template_params["IsReleaseBuild"] = release_override
+
+    # Add pre-release parameters if the pipeline supports them and user provided them
+    if has_pre_release_params:
+        if pre_release_suffix_string is not None:
+            print(f"Setting PreReleaseVersionSuffixString parameter to '{pre_release_suffix_string}'.")
+            template_params["PreReleaseVersionSuffixString"] = pre_release_suffix_string
+        if pre_release_suffix_number is not None:
+            print(f"Setting PreReleaseVersionSuffixNumber parameter to {pre_release_suffix_number}.")
+            template_params["PreReleaseVersionSuffixNumber"] = pre_release_suffix_number
+
+    if template_params:
+        payload["templateParameters"] = template_params
 
     try:
         response = requests.post(run_url, headers=headers, data=json.dumps(payload))
@@ -327,12 +356,12 @@ def trigger_pipeline(
         build_info = response.json()
         build_id = build_info.get("id")
         print(f"Successfully triggered build. Build ID: {build_id}")
-        print(f"   Web URL: {build_info.get('_links', {}).get('web', {}).get('href')}")
+        print(f"    Web URL: {build_info.get('_links', {}).get('web', {}).get('href')}")
         return build_id
     except requests.exceptions.RequestException as e:
         print(f"ERROR triggering pipeline: {e}")
         if e.response is not None:
-            print(f"   Response: {e.response.text}")
+            print(f"    Response: {e.response.text}")
         return None
 
 
@@ -351,6 +380,24 @@ def main():
         choices=["nightly", "release"],
         help="Specify the build mode for packaging pipelines (nightly or release). This sets NIGHTLY_BUILD and IsReleaseBuild accordingly.",
     )
+    parser.add_argument(
+        "--no-cancel",
+        action="store_true",
+        dest="no_cancel_builds",
+        help="Do not cancel existing running builds for the pipeline before triggering a new one.",
+    )
+    # New arguments for pre-release versioning
+    parser.add_argument(
+        "--pre-release-suffix-string",
+        choices=["alpha", "beta", "rc", "none"],
+        help="Suffix for pre-release versions (e.g., 'rc'). Requires the pipeline to have the parameter.",
+    )
+    parser.add_argument(
+        "--pre-release-suffix-number",
+        type=int,
+        help="Number for pre-release versions (e.g., '1'). Requires the pipeline to have the parameter.",
+    )
+
     args = parser.parse_args()
 
     project = "Lotus"
@@ -400,9 +447,24 @@ def main():
         for result in pipelines_to_trigger:
             pipeline = result["pipeline"]
             packaging_type = result["packaging_type"]
-            cancel_running_builds(pipeline["id"], branch_for_trigger, token, project)
+            has_pre_release_params = result["has_pre_release_params"]
+            
+            if not args.no_cancel_builds:
+                cancel_running_builds(pipeline["id"], branch_for_trigger, token, project)
+            else:
+                print(f"\nSkipping cancellation for Pipeline ID: {pipeline['id']} as per --no-cancel flag.")
+
             trigger_pipeline(
-                pipeline["id"], token, branch_for_trigger, project, nightly_override, release_override, packaging_type
+                pipeline_id=pipeline["id"],
+                token=token,
+                branch=branch_for_trigger,
+                project=project,
+                nightly_override=nightly_override,
+                release_override=release_override,
+                packaging_type=packaging_type,
+                has_pre_release_params=has_pre_release_params,
+                pre_release_suffix_string=args.pre_release_suffix_string,
+                pre_release_suffix_number=args.pre_release_suffix_number,
             )
 
 
