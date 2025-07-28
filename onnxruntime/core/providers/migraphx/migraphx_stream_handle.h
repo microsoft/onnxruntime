@@ -18,7 +18,7 @@ struct MIGraphXStream : Stream {
                  AllocatorPtr cpu_allocator,
                  bool release_cpu_buffer_on_migraphx_stream);
 
-  ~MIGraphXStream();
+  ~MIGraphXStream() override;
 
   std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override;
 
@@ -30,7 +30,7 @@ struct MIGraphXStream : Stream {
 
   bool own_stream_{true};
 
-  virtual void* GetResource(int version, int id) const;
+  void* GetResource(int version, int id) const override;
 
  private:
   std::vector<void*> deferred_cpu_buffers_;
@@ -39,7 +39,7 @@ struct MIGraphXStream : Stream {
 };
 
 void RegisterMIGraphXStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry,
-                                   const OrtDevice::DeviceType device_type,
+                                   OrtDevice::DeviceType device_type,
                                    const AllocatorPtr& cpu_allocator,
                                    bool release_cpu_buffer_on_migraphx_stream,
                                    hipStream_t external_stream,

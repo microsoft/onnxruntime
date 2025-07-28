@@ -11,7 +11,7 @@
 
 namespace onnxruntime {
 
-enum class MIGraphXResource {
+enum MIGraphXResource {
   hip_stream_t = rocm_resource_offset
 };
 
@@ -133,11 +133,8 @@ Status MIGraphXStream::CleanUpOnRunEnd() {
 
 void* MIGraphXStream::GetResource(int version, int id) const {
   ORT_ENFORCE(version <= MIGRAPHX_RESOURCE_VERSION, "resource version unsupported!");
-  switch (id) {
-    case MIGraphXResource::hip_stream_t:
-      return GetHandle();
-    default:
-      break;
+  if (id == hip_stream_t) {
+    return GetHandle();
   }
   return nullptr;
 }

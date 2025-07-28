@@ -35,6 +35,7 @@ constexpr auto kSavedModelPath = "ORT_MIGRAPHX_SAVE_COMPILED_PATH"sv;
 constexpr auto kLoadCompiledModel = "ORT_MIGRAPHX_LOAD_COMPILED_MODEL"sv;
 constexpr auto kLoadModelPath = "ORT_MIGRAPHX_LOAD_COMPILED_PATH"sv;
 constexpr auto kExhaustiveTune = "ORT_MIGRAPHX_EXHAUSTIVE_TUNE"sv;
+constexpr auto kModelCachePath = "ORT_MIGRAPHX_MODEL_CACHE_PATH"sv;
 }  // namespace migraphx_env_vars
 
 // Information to construct kernel function state.
@@ -55,10 +56,7 @@ struct MIGraphXFuncState {
   bool int8_enable = false;
   bool int8_calibration_cache_available = false;
   std::unordered_map<std::string, float> dynamic_range_map;
-  bool save_compiled_mode = false;
-  std::string save_compiled_path;
-  bool load_compiled_mode = false;
-  std::string load_compiled_path;
+  std::filesystem::path model_cache_dir;
   bool dump_model_ops = false;
   bool exhaustive_tune = false;
 };
@@ -115,14 +113,13 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   bool int8_use_native_migraphx_calibration_table_ = false;
   std::filesystem::path calibration_cache_path_{};
   std::unordered_map<std::string, float> dynamic_range_map_;
-  bool save_compiled_model_ = false;
-  std::string save_compiled_path_;
-  bool load_compiled_model_ = false;
-  std::string load_compiled_path_;
+  std::filesystem::path model_cache_path_{};
+  std::set<std::string> session_input_names;
   bool dump_model_ops_ = false;
   migraphx::target t_;
   std::mutex mgx_mu_;
   hipStream_t stream_ = nullptr;
+  hipDeviceProp_t device_prop_;
   bool exhaustive_tune_ = false;
   mutable std::filesystem::path model_path_;
 
