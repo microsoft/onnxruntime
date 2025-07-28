@@ -97,6 +97,9 @@ struct NodeUnitIODef {
 };
 
 class NodeUnit {
+ private:
+  struct PrivateTag {};
+
  public:
   // NodeUnit type
   enum class Type : uint8_t {
@@ -104,24 +107,23 @@ class NodeUnit {
     QDQGroup,    // The NodeUnit contain a QDQ group of nodes, such as "DQ->Sigmoid->Q"
   };
 
- public:
-  explicit NodeUnit(const OrtNode& node);
-  explicit NodeUnit(const OrtGraph& graph, const NodeGroup& node_group);
+  NodeUnit(const OrtNode& target_node, Type type, PrivateTag tag);
+
+  static Ort::Status MakeSingleNode(const OrtNode& node, /*out*/ std::unique_ptr<NodeUnit>& node_unit);
+  static Ort::Status MakeQDQGroup(const OrtGraph& graph, const NodeGroup& node_group,
+                                  /*out*/ std::unique_ptr<NodeUnit>& node_unit);
 
  private:
-  // Initialization for a NodeUnit that contains a single node
-  void InitForSingleNode();
-
-  const std::vector<const OrtNode*> dq_nodes_;  // dq nodes for this NodeUnit, not necessarily all inputs
+  std::vector<const OrtNode*> dq_nodes_;  // dq nodes for this NodeUnit, not necessarily all inputs
   const OrtNode& target_node_;
-  const OrtNode* redundant_clip_node_;         // Optional redundant clip node for the QDQ group, nullptr if not present.
-  const std::vector<const OrtNode*> q_nodes_;  // q-nodes for this NodeUnit. not necessarily all outputs
-  const Type type_;
+  const OrtNode* redundant_clip_node_ = nullptr;  // Optional redundant clip node for the QDQ group, nullptr if not present.
+  std::vector<const OrtNode*> q_nodes_;           // q-nodes for this NodeUnit. not necessarily all outputs
+  Type type_;
 
   std::vector<NodeUnitIODef> inputs_;
   std::vector<NodeUnitIODef> outputs_;
 
-  size_t input_edge_count_;  // total number of input edges
+  size_t input_edge_count_ = 0;  // total number of input edges
 
   // output edges, hiding any Q nodes involved. src_idx will be value from target node. only used for QDQ node group.
   EdgeSet output_edges_;
@@ -250,6 +252,19 @@ static Ort::Status GetNodeOutputEdges(const OrtNode* node, EdgeSet& output_edges
       output_edges.insert(edge_end);
     }
   }
+}
+
+NodeUnit::NodeUnit(const OrtNode& target_node, Type type, PrivateTag tag)
+    : target_node_(target_node),
+      type_(type) {}
+
+/*static*/
+Ort::Status NodeUnit::MakeSingleNode(const OrtNode& node, /*out*/ std::unique_ptr<NodeUnit>& result) {
+  auto node_unit = std::make_unique<NodeUnit>(node, Type::SingleNode, PrivateTag{});
+  node_unit->redundant_clip_node_ = nullptr;
+
+  result = std::move(node_unit);
+  return Ort::Status{nullptr};
 }
 
 }  // namespace OrtEpUtils
