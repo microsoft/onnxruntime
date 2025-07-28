@@ -28,14 +28,13 @@ OrtStatus* DmlEpFactory::GetSupportedDevices(EpFactoryInternal& ep_factory,
   for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
     const OrtHardwareDevice& device = *devices[i];
     if (device.type == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
-      std::unique_ptr<OrtKeyValuePairs> ep_options;
+      auto ep_options = std::make_unique<OrtKeyValuePairs>();
 
       // TODO: Should we ignore a user provided 'device_id' when they select an OrtEpDevice as that is
       //       associated with a specific device.
       //       How would we know what options should not allow user overrides if set in OrtEpDevice?
       int32_t device_id = 0;  // If no device_id was found default to 0
       if (auto it = device.metadata.Entries().find("DxgiAdapterNumber"); it != device.metadata.Entries().end()) {
-        ep_options = std::make_unique<OrtKeyValuePairs>();
         device_id = std::stoi(it->second);
       }
 
