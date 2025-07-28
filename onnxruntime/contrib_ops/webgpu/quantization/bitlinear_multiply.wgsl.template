@@ -1,5 +1,5 @@
 const k_step_size: u32 = 20;
-const k_step_size_in_u32: u32 = 5;
+const k_step_size_in_u32: u32 = 5;  // Count of K, packed as u32 processed in one iteration.
 const k_in_u32_for_A: u32 = 4;
 const tile_size: u32 = 64;
 const subtile_size = 16;
@@ -12,7 +12,7 @@ var<workgroup> tile_B5 : array<u32, tile_size>;                                 
 var<workgroup> scratch_B  : array<array<i32, 4>, tile_size>;                       // 1  x 64 x 4 bytes.
 
 // Unpacks a uint8 into 4xI8 vector.
-// Since every 3 consequtive values are the same, index with /3.
+// Since every 3 consecutive values are the same, index with /3.
 const dequantize_LUT = array<u32, 86>(
     0xFFFFFFFF,
     0x00FFFFFF,
