@@ -307,7 +307,7 @@ TEST(MLOpTest, TreeEnsembleLeafLike) {
 
   std::vector<int64_t> leaf_targetids = {0, 0, 0, 0, 0, 0, 0};
   std::vector<double> leaf_weights = {100.0, 0.0, 25.0, 0.5, -0.5, -5.0, -9.0};
-  
+
   auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
   auto nodes_splits_as_tensor = make_tensor(nodes_splits, "nodes_splits");
   auto leaf_weights_as_tensor = make_tensor(leaf_weights, "leaf_weight");
