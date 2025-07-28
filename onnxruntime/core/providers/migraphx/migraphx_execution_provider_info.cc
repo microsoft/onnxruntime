@@ -21,6 +21,7 @@ namespace migraphx {
 namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
 constexpr const char* kFp16Enable = "trt_fp16_enable";
+constexpr const char* kBf16Enable = "migx_bf16_enable";
 constexpr const char* kFp8Enable = "migx_fp8_enable";
 constexpr const char* kInt8Enable = "migx_int8_enable";
 constexpr const char* kInt8CalibTable = "migx_int8_calibration_table_name";
@@ -83,6 +84,7 @@ MIGraphXExecutionProviderInfo MIGraphXExecutionProviderInfo::FromProviderOptions
                 return Status::OK();
               })
           .AddAssignmentToReference(migraphx::provider_option_names::kFp16Enable, info.fp16_enable)
+          .AddAssignmentToReference(migraphx::provider_option_names::kBf16Enable, info.bf16_enable)
           .AddAssignmentToReference(migraphx::provider_option_names::kFp8Enable, info.fp8_enable)
           .AddAssignmentToReference(migraphx::provider_option_names::kInt8Enable, info.int8_enable)
           .AddAssignmentToReference(migraphx::provider_option_names::kSaveCompiledModel, info.save_compiled_model)
@@ -102,6 +104,7 @@ ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions(const MIGraphXE
   const ProviderOptions options{
       {migraphx::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {migraphx::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.fp16_enable)},
+      {migraphx::provider_option_names::kBf16Enable, MakeStringWithClassicLocale(info.bf16_enable)},
       {migraphx::provider_option_names::kFp8Enable, MakeStringWithClassicLocale(info.fp8_enable)},
       {migraphx::provider_option_names::kInt8Enable, MakeStringWithClassicLocale(info.int8_enable)},
       {migraphx::provider_option_names::kSaveCompiledModel, MakeStringWithClassicLocale(info.save_compiled_model)},
@@ -121,6 +124,7 @@ ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions(const OrtMIGrap
   const ProviderOptions options{
       {migraphx::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {migraphx::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.migraphx_fp16_enable)},
+      {migraphx::provider_option_names::kBf16Enable, MakeStringWithClassicLocale(info.migraphx_bf16_enable)},
       {migraphx::provider_option_names::kFp8Enable, MakeStringWithClassicLocale(info.migraphx_fp8_enable)},
       {migraphx::provider_option_names::kInt8Enable, MakeStringWithClassicLocale(info.migraphx_int8_enable)},
       {migraphx::provider_option_names::kSaveCompiledModel, MakeStringWithClassicLocale(info.migraphx_save_compiled_model)},

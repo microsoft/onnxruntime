@@ -773,7 +773,7 @@ typedef struct OrtMIGraphXProviderOptions {
    *   \note If a ::OrtArenaCfg has been applied, it will override this field
    */
   int migraphx_arena_extend_strategy;
-
+  int migraphx_bf16_enable;  // MIGraphX BF16 precision. Default 0 = false, nonzero = true
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options

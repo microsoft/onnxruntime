@@ -42,6 +42,7 @@ struct MIGraphXExecutionProviderInfo {
   std::string target_device;
   OrtDevice::DeviceId device_id{0};
   bool fp16_enable{false};
+  bool bf16_enable{false};
   bool fp8_enable{false};
   bool int8_enable{false};
   std::string int8_calibration_table_name{""};
@@ -77,7 +78,9 @@ struct std::hash<::onnxruntime::MIGraphXExecutionProviderInfo> {
                   (static_cast<size_t>(info.int8_use_native_calibration_table) << 20) ^
                   (static_cast<size_t>(info.save_compiled_model) << 21) ^
                   (static_cast<size_t>(info.load_compiled_model) << 22) ^
-                  (static_cast<size_t>(info.exhaustive_tune) << 23);
+                  (static_cast<size_t>(info.exhaustive_tune) << 23) ^
+                  (static_cast<size_t>(info.bf16_enable) << 24);
+
     onnxruntime::HashCombine(data, value);
 
     onnxruntime::HashCombine(info.mem_limit, value);
