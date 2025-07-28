@@ -131,9 +131,9 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       // 3. copy tensor from CPU to device - deserialized_value -> tensor -> ort_value
 #ifdef USE_MIGRAPHX
       if (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::AMD) {
-      ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path, tensor_proto,
-                                                           ort_value,
-                                                           &prepacked_for_graph));
+        ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path, tensor_proto,
+                                                             ort_value,
+                                                             &prepacked_for_graph));
         return common::Status::OK();
       }
 #endif
