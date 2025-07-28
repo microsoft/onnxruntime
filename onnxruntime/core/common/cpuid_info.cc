@@ -198,11 +198,14 @@ std::string CPUIDInfo::GetX86Vendor(int32_t* data) {
 #endif  // defined(CPUIDINFO_ARCH_X86)
 
 uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
-  if (vendor == "GenuineIntel") return 0x8086;
-  if (vendor == "AuthenticAMD") return 0x1022;
+  if (vendor == "Intel" || vendor == "GenuineIntel") return 0x8086;
+  if (vendor == "AMD" || vendor == "AuthenticAMD") return 0x1022;
   if (vendor.find("Qualcomm") == 0) return 'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24);
-  if (vendor.find("NV") == 0) return 0x10DE;
+  if (vendor == "Nvidia" || vendor.find("NV") == 0) return 0x10DE;
   if (vendor == "Apple") return 0x106B;
+  if (vendor == "ARM") return 0x13B5;
+
+  LogWarning(MakeString("Unable to determine vendor ID from vendor string: ", vendor));
   return 0;
 }
 

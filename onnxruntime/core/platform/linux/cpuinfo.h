@@ -13,14 +13,12 @@ namespace onnxruntime {
 
 struct CpuInfoFileProcessorInfo {
   size_t processor;
-  std::string vendor_id;
+  std::string vendor;
 
   // There are plenty of other fields. We can add more if needed.
 };
 
-using CpuInfo = std::vector<CpuInfoFileProcessorInfo>;
-
-Status ParseCpuInfoFile(const std::string& cpu_info_file, CpuInfo& cpu_info);
+Status ParseCpuInfoFile(const std::string& cpu_info_file, std::vector<CpuInfoFileProcessorInfo>& cpu_infos);
 
 inline Status ParseCpuInfoFile(CpuInfo& cpu_info) {
   return ParseCpuInfoFile("/proc/cpuinfo", cpu_info);

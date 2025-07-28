@@ -24,14 +24,52 @@ bool TryGetValue(const KeyValuePairs& key_value_pairs, std::string_view key, std
   value = it->second;
   return true;
 }
+
+std::string ArmCpuImplementerIdToVendorName(uint32_t implementer_id) {
+  // ARM CPU implementer ids are copied from here:
+  // https://github.com/torvalds/linux/blob/038d61fd642278bab63ee8ef722c50d10ab01e8f/arch/arm64/include/asm/cputype.h#L54-L64
+  // https://github.com/torvalds/linux/blob/038d61fd642278bab63ee8ef722c50d10ab01e8f/arch/arm/include/asm/cputype.h#L65-L68
+
+  switch (implementer_id) {
+    case 0x41:
+      return "ARM";
+    case 0x42:
+      return "Broadcom";
+    case 0x44:
+      return "DEC";
+    case 0x43:
+      return "Cavium";
+    case 0x46:
+      return "Fujitsu";
+    case 0x48:
+      return "HiSilicon";
+    case 0x4E:
+      return "Nvidia";
+    case 0x50:
+      return "APM";
+    case 0x51:
+      return "Qualcomm";
+    case 0x61:
+      return "Apple";
+    case 0x69:
+      return "Intel";
+    case 0x6D:
+      return "Microsoft";
+    case 0xC0:
+      return "Ampere";
+
+    default:
+      return "unknown";
+  }
+}
 }  // namespace
 
-Status ParseCpuInfoFile(const std::string& cpu_info_file, CpuInfo& cpu_info_out) {
+Status ParseCpuInfoFile(const std::string& cpu_info_file, std::vector<CpuInfoFileProcessorInfo>& cpu_infos_out) {
   std::ifstream in{cpu_info_file};
 
   ORT_RETURN_IF_NOT(in, "Failed to open file: ", cpu_info_file);
 
-  CpuInfo cpu_info{};
+  std::vector<CpuInfoFileProcessorInfo> cpu_infos{};
   KeyValuePairs key_value_pairs{};
 
   auto add_processor_info = [&]() -> Status {
@@ -44,13 +82,19 @@ Status ParseCpuInfoFile(const std::string& cpu_info_file, CpuInfo& cpu_info_out)
         ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale<size_t>(processor_str, processor_info.processor));
       }
 
-      // Try to get a vendor name.
-      // This approach doesn't always work, e.g., for ARM processors.
-      if (!TryGetValue(key_value_pairs, "vendor", processor_info.vendor_id)) {
-        // TODO try something else?
+      // Try to get a vendor string.
+      if (std::string vendor_id;
+          TryGetValue(key_value_pairs, "vendor_id", vendor_id)) {
+        processor_info.vendor = std::move(vendor_id);
+      } else if (std::string implementer_id_str;
+                 TryGetValue(key_value_pairs, "CPU implementer", implementer_id_str)) {
+        const auto implementer_id = ParseStringWithClassicLocale<uint32_t>(implementer_id_str);
+        processor_info.vendor = ArmCpuImplementerIdToVendorName(implementer_id);
+      } else {
+        processor_info.vendor = "unknown";
       }
 
-      cpu_info.emplace_back(std::move(processor_info));
+      cpu_infos.emplace_back(std::move(processor_info));
 
       key_value_pairs.clear();
     }
@@ -73,7 +117,7 @@ Status ParseCpuInfoFile(const std::string& cpu_info_file, CpuInfo& cpu_info_out)
 
   ORT_RETURN_IF_ERROR(add_processor_info());
 
-  cpu_info_out = std::move(cpu_info);
+  cpu_infos_out = std::move(cpu_infos);
   return Status::OK();
 }
 
