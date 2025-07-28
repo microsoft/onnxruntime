@@ -72,9 +72,7 @@ Status GemmNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   // Calculate Alpha
-  if (alpha_ != 1.0f) {
-    shader.MainFunctionBody() << "  value = value * output_value_t(uniforms.alpha);\n";
-  }
+  shader.MainFunctionBody() << "  value = value * output_value_t(uniforms.alpha);\n";
 
   // Calculate Bias
   if (need_handle_bias_) {
@@ -136,7 +134,7 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
       program.AddInput({C, ProgramTensorMetadataDependency::Rank});
     }
 
-    program.CacheHint(alpha_, transA_, transB_)
+    program.CacheHint(transA_, transB_)
         .AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .SetWorkgroupSize(WORKGROUP_SIZE)
