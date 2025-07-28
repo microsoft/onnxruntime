@@ -434,7 +434,7 @@ class NvExecutionProvider : public IExecutionProvider {
     // (1) memory pattern is enabled. (2) arena allocation for stream.
     // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
     // to allocate enough memory in Arena before graph capturing.
-    const int min_num_runs_before_cuda_graph_capture_ = 2;  // 2 or 1 ??? as CUDA EP has 2 // required min regular runs before graph capture for the necessary memory allocations.
+    const int min_num_runs_before_cuda_graph_capture_ = 2;  // required min regular runs before graph capture for the necessary memory allocations.
   };
 
   using PerThreadContextMap = std::unordered_map<const NvExecutionProvider*, std::weak_ptr<PerThreadContext>>;

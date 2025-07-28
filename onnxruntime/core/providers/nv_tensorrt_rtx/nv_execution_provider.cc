@@ -716,7 +716,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
 
 NvExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream) {
   // Only set device if user hasn't provided a compute stream
-  if (!has_user_compute_stream) {
+  if (has_user_compute_stream) {
     CUDA_CALL_THROW(cudaSetDevice(device_id));
     (void)stream;
   }
@@ -758,7 +758,7 @@ bool NvExecutionProvider::PerThreadContext::IsGraphCaptureAllowed(CudaGraphAnnot
 
   bool allowed = it->second >= min_num_runs_before_cuda_graph_capture_;
   if (allowed) {
-    LOGS_DEFAULT(VERBOSE) << "[NV EP] Graph capture allowed for ID: " << cuda_graph_annotation_id
+    LOGS_DEFAULT(VERBOSE) << "NvTensorRTRTX EP Graph capture allowed for ID: " << cuda_graph_annotation_id
                          << ", run count: " << it->second;
   }
   return allowed;
@@ -2481,10 +2481,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     }
 
     trt_runtime_config = std::unique_ptr<nvinfer1::IRuntimeConfig>(trt_engine->createRuntimeConfig());
-    if(trt_runtime_config) {
-      if(cuda_graph_enable_) {
+    if(trt_runtime_config && cuda_graph_enable_) {
         trt_runtime_config->setDynamicShapesKernelSpecializationStrategy(nvinfer1::DynamicShapesKernelSpecializationStrategy::kEAGER);
-      }
     }
 
     if (detailed_build_log_) {
@@ -2637,6 +2635,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       void* cuda_stream;
       Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
       stream = static_cast<cudaStream_t>(cuda_stream);
+      stream_ = stream;
     }
 
     if (multi_profile_enable_ == true) {
@@ -2761,7 +2760,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     // Run TRT inference - only if not using captured graph
     if (!GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
       if (!trt_context->enqueueV3(stream)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Nv EP execution context enqueue failed.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP execution context enqueue failed.");
       }
     }
 
@@ -3087,7 +3086,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     // Run TRT inference - only if not using captured graph
     if (!GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
       if (!trt_context->enqueueV3(stream)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Nv EP execution context enqueue failed.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP execution context enqueue failed.");
       }
     }
 
