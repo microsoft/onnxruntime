@@ -71,7 +71,7 @@ namespace cuda {
   UNARY_ACTIVATION_OP_TYPED(name, ver, BFloat16)
 
 UNARY_ACTIVATION_OP_HFD_WITH_BF16(Elu, 6);
-UNARY_ACTIVATION_OP_HFD_WITH_BF16(HardSigmoid, 6);
+UNARY_ACTIVATION_OP_VERSIONED_HFD(HardSigmoid, 6, 21);
 UNARY_ACTIVATION_OP_VERSIONED_HFD(LeakyRelu, 6, 15);
 UNARY_ACTIVATION_OP_HFD_WITH_BF16(Relu, 14);
 UNARY_ACTIVATION_OP_VERSIONED_HFD_WITH_BF16(Relu, 13, 13);
@@ -85,11 +85,12 @@ UNARY_ACTIVATION_OP_HFD_WITH_BF16(Tanh, 13);
 UNARY_ACTIVATION_OP_VERSIONED_HFD(Tanh, 6, 12);
 UNARY_ACTIVATION_OP_HFD_WITH_BF16(ThresholdedRelu, 10);
 
-UNARY_ACTIVATION_OP_VERSIONED_HFD(HardSwish, 14, 17);
+UNARY_ACTIVATION_OP_VERSIONED_HFD(HardSwish, 14, 21);
 // Opset-16 adds BFloat16 to allowed types for the LeakyRelu operator
 UNARY_ACTIVATION_OP_HFD_WITH_BF16(LeakyRelu, 16);
-// Opset-22 adds BFloat16 to allowed types for the HardSwish operator
-UNARY_ACTIVATION_OP_HFD_WITH_BF16(HardSwish, 18);
+// Opset-22 adds BFloat16 to allowed types for the HardSigmoid / HardSwish operators
+UNARY_ACTIVATION_OP_HFD_WITH_BF16(HardSigmoid, 22);
+UNARY_ACTIVATION_OP_HFD_WITH_BF16(HardSwish, 22);
 
 }  // namespace cuda
 }  // namespace onnxruntime
