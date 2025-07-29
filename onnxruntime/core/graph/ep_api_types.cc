@@ -87,6 +87,84 @@ static void ConvertNodeArgsToValueInfos(const EpGraph* ep_graph,
   }
 }
 
+/// <summary>
+/// Singleton class that stores the default attribute values (per operator type) as OrtOpAttr instances.
+/// The default attribute values are created on demand.
+/// </summary>
+class OperatorOptionalAttributes {
+ private:
+  OperatorOptionalAttributes() = default;
+
+ public:
+  static OperatorOptionalAttributes& GetInstance() {
+    static OperatorOptionalAttributes instance;
+    return instance;
+  }
+
+  const OrtOpAttr* GetOrCreateAttributeDefaultValue(const Node& node, const std::string& attr_name) {
+#if !defined(ORT_MINIMAL_BUILD)
+    const ONNX_NAMESPACE::OpSchema* op_schema = node.Op();
+    if (op_schema == nullptr) {
+      return nullptr;
+    }
+
+    auto attr_schema_iter = op_schema->attributes().find(attr_name);
+    if (attr_schema_iter == op_schema->attributes().end()) {
+      return nullptr;  // Not an attribute for this operator type.
+    }
+
+    const ONNX_NAMESPACE::OpSchema::Attribute& attr_schema = attr_schema_iter->second;
+
+    if (attr_schema.required) {
+      return nullptr;  // Not an optional attribute.
+    }
+
+    if (attr_schema.default_value.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_UNDEFINED) {
+      return nullptr;
+    }
+
+    const OrtOpAttr* default_val = nullptr;
+
+    {
+      std::lock_guard<std::mutex> lock{mutex_};
+
+      // Get dictionary of attribute names to default values for the given operator type.
+      std::unordered_map<std::string, std::unique_ptr<OrtOpAttr>>* op_attrs_defaults = nullptr;
+      if (auto iter = operator_attr_defaults_.find(node.OpType()); iter == operator_attr_defaults_.end()) {
+        auto ret = operator_attr_defaults_.emplace(node.OpType(),
+                                                   std::unordered_map<std::string, std::unique_ptr<OrtOpAttr>>{});
+        op_attrs_defaults = &ret.first->second;
+      } else {
+        op_attrs_defaults = &iter->second;
+      }
+
+      // Add a new OrtOpAttr representing the default value if it does not yet exist.
+      if (auto iter = op_attrs_defaults->find(attr_name); iter == op_attrs_defaults->end()) {
+        auto ort_op_attr = std::make_unique<OrtOpAttr>();
+        ort_op_attr->attr_proto = attr_schema.default_value;
+
+        default_val = ort_op_attr.get();
+
+        op_attrs_defaults->emplace(attr_name, std::move(ort_op_attr));
+      } else {
+        default_val = iter->second.get();
+      }
+
+      return default_val;
+    }
+#else
+    ORT_UNUSED_PARAMETER(node);
+    ORT_UNUSED_PARAMETER(attr_name);
+    return nullptr;
+#endif
+  }
+
+ private:
+  // {op_type: {attr_name: default_attr_val}}
+  std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<OrtOpAttr>>> operator_attr_defaults_;
+  std::mutex mutex_;
+};
+
 //
 // EpNode
 //
@@ -270,11 +348,13 @@ gsl::span<const EpValueInfo* const> EpNode::GetOutputsSpan() const {
 
 const OrtOpAttr* EpNode::GetAttribute(const std::string& name) const {
   auto iter = attributes_map_.find(name);
-  if (iter == attributes_map_.end()) {
-    return nullptr;
-  } else {
+  if (iter != attributes_map_.end()) {
     return reinterpret_cast<const OrtOpAttr*>(iter->second.get());
   }
+
+  // Node doesn't set this attribute explicitly. Try getting the default value if this is an
+  // optional attribute.
+  return OperatorOptionalAttributes::GetInstance().GetOrCreateAttributeDefaultValue(node_, name);
 }
 
 const std::string& EpNode::GetEpName() const {
