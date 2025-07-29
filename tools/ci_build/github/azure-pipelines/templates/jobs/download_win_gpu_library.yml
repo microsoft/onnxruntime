@@ -27,8 +27,8 @@ steps:
         scriptType: 'batch'
         scriptLocation: 'inlineScript' 
         inlineScript: |
-          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CudaVersion }} $(Agent.TempDirectory)
-      
+          az storage blob download-batch -s lotusscus -d $(Agent.TempDirectory) --pattern "models/cuda_sdk/v${{ parameters.CudaVersion }}/*"
+          
     - powershell: |
         Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\bin;$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\extras\CUPTI\lib64"
       displayName: 'Append CUDA SDK Directory to PATH'
@@ -37,6 +37,7 @@ steps:
       inputs:
         script: |
           echo %PATH%
+          dir $(Agent.TempDirectory)
       displayName: 'Print PATH after download CUDA SDK'
 
   - ${{ if eq(parameters.DownloadTRT, true) }}:
@@ -65,7 +66,7 @@ steps:
         scriptType: 'batch'
         scriptLocation: 'inlineScript' 
         inlineScript: |
-          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion) $(Agent.TempDirectory)
+          az storage blob download-batch -s lotusscus -d $(Agent.TempDirectory) --pattern "models/local/TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)/*"          
           
     - powershell: |
         Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)\lib"
