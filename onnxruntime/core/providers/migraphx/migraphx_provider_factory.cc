@@ -182,8 +182,12 @@ struct MigraphXEpFactory : OrtEpFactory {
                     OrtHardwareDeviceType hw_type,
                     const OrtLogger& default_logger_in)
       : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type}, default_logger{default_logger_in} {
+    ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVendorId = GetVendorIdImpl;
+    GetVersion = GetVersionImpl;
+
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
@@ -206,6 +210,16 @@ struct MigraphXEpFactory : OrtEpFactory {
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) {
     const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
     return factory->vendor.c_str();
+  }
+
+  static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    return factory->vendor_id;
+  }
+
+  static const char* GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    return factory->version.c_str();
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
@@ -293,6 +307,7 @@ struct MigraphXEpFactory : OrtEpFactory {
   const OrtLogger& default_logger;
   const std::string ep_name;
   const std::string vendor{"AMD"};
+  const std::string version{"1.0.0"};  // MigraphX EP version
 
   const uint32_t vendor_id{0x1002};
   const OrtHardwareDeviceType ort_hw_device_type;  // Supported OrtHardwareDevice
