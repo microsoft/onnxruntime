@@ -20,7 +20,7 @@ struct CpuInfoFileProcessorInfo {
 
 Status ParseCpuInfoFile(const std::string& cpu_info_file, std::vector<CpuInfoFileProcessorInfo>& cpu_infos);
 
-inline Status ParseCpuInfoFile(CpuInfo& cpu_info) {
+inline Status ParseCpuInfoFile(std::vector<CpuInfoFileProcessorInfo>& cpu_info) {
   return ParseCpuInfoFile("/proc/cpuinfo", cpu_info);
 }
 

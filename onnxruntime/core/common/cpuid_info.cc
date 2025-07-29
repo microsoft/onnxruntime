@@ -264,15 +264,15 @@ void CPUIDInfo::ArmLinuxInit() {
 std::string CPUIDInfo::GetArmLinuxVendor() {
   std::string vendor{};
 
-  CpuInfo cpu_info{};
-  Status parse_status = ParseCpuInfoFile(cpu_info);
+  std::vector<CpuInfoFileProcessorInfo> cpu_infos{};
+  Status parse_status = ParseCpuInfoFile(cpu_infos);
   if (!parse_status.IsOK()) {
     LogWarning(MakeString("Failed to parse /proc/cpuinfo file. Error: ", parse_status));
   }
 
-  if (cpu_info.size() > 0) {
+  if (cpu_infos.size() > 0) {
     // just use the vendor from the first processor's information
-    vendor = cpu_info[0].vendor_id;
+    vendor = cpu_infos[0].vendor;
   }
 
   return vendor;
