@@ -570,7 +570,7 @@ if (onnxruntime_USE_XNNPACK)
      ENDIF()
      ADD_LIBRARY(xnnpack STATIC IMPORTED)
      find_library(xnnpack_LIBRARY NAMES XNNPACK)
-     find_library(microkernels_prod_LIBRARY NAMES microkernels-prod)
+     find_library(microkernels_prod_LIBRARY NAMES xnnpack-microkernels-prod)
      find_package(unofficial-pthreadpool CONFIG REQUIRED)
 
      target_include_directories(xnnpack INTERFACE "${XNNPACK_HDR}")
