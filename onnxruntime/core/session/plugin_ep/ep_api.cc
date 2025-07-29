@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/ep_api.h"
+#include "core/session/plugin_ep/ep_api.h"
 
 #include <algorithm>
 #include <vector>
@@ -114,7 +114,11 @@ ORT_API_STATUS_IMPL(EpDevice_AddAllocatorInfo, _In_ OrtEpDevice* ep_device,
   const OrtDevice& info = allocator_memory_info->device;
   switch (info.MemType()) {
     case OrtDevice::MemType::DEFAULT:
-      ep_device->device_memory_info = allocator_memory_info;
+      if (allocator_memory_info->alloc_type == OrtReadOnlyAllocator) {
+        ep_device->read_only_device_memory_info = allocator_memory_info;
+      } else {
+        ep_device->device_memory_info = allocator_memory_info;
+      }
       break;
     case OrtDevice::MemType::HOST_ACCESSIBLE:
       ep_device->host_accessible_memory_info = allocator_memory_info;
@@ -176,6 +180,31 @@ ORT_API(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_d
   return memory_device->Id();
 }
 
+ORT_API(const OrtSyncStreamImpl*, SyncStream_GetImpl, _In_ const OrtSyncStream* ort_stream) {
+  // the EP API should only ever see plugin_ep::Stream instances
+  const auto& stream = *reinterpret_cast<const plugin_ep::Stream*>(ort_stream);
+  return &stream.GetImpl();
+}
+
+ORT_API(uint64_t, SyncStream_GetSyncId, _In_ const OrtSyncStream* stream) {
+  return static_cast<const Stream*>(stream)->GetSyncId();
+}
+
+ORT_API(uint64_t, GetSyncIdForLastWaitOnSyncStream, _In_ const OrtSyncStream* producer_stream,
+        _In_ const OrtSyncStream* consumer_stream) {
+  uint64_t id{0};
+  if (producer_stream && consumer_stream) {
+    const auto& producer = *static_cast<const Stream*>(producer_stream);
+    const auto& consumer = *static_cast<const Stream*>(consumer_stream);
+
+    // If both streams are valid, we can return the sync id for the last wait on the producer stream.
+    // This is useful for synchronizing operations between different streams.
+    id = consumer.GetSyncIdForLastWaitOnStream(producer);
+  }
+
+  return id;
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -197,6 +226,10 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::MemoryDevice_GetMemoryType,
     &OrtExecutionProviderApi::MemoryDevice_GetVendorId,
     &OrtExecutionProviderApi::MemoryDevice_GetDeviceId,
+
+    &OrtExecutionProviderApi::SyncStream_GetImpl,
+    &OrtExecutionProviderApi::SyncStream_GetSyncId,
+    &OrtExecutionProviderApi::GetSyncIdForLastWaitOnSyncStream,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

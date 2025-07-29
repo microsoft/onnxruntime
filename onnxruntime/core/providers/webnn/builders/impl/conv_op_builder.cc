@@ -317,32 +317,34 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     int32_t x_type;
     ORT_RETURN_IF_NOT(GetType(*input_defs[0], x_type, logger), "Cannot get data type of input x");
 
-    emscripten::val x_zero_point, w_zero_point, x_scale, w_scale;
+    emscripten::val x_zero_point, w_zero_point;
+    std::vector<int64_t> x_zero_point_shape;
     if (TensorExists(input_defs, 2)) {
       x_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
+      ORT_RETURN_IF_NOT(GetShape(*input_defs[2], x_zero_point_shape, logger), "Cannot get shape of x_zero_point");
     } else {
       x_zero_point = model_builder.CreateOrGetConstant<uint8_t>(x_type, 0);
     }
-
     // Scale is not used by ConvInteger but required by DequantizeLinear. So set it to default value 1.0f.
     // The x_zero_point must be a scalar and the scale input should have the same shape as the zero point input.
     // So the x_scale must be a scalar too.
-    x_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f);
+    // ONNX allows 1D tensor of size 1 as scalar. So explicitly set the shape of x_scale to x_zero_point_shape.
+    emscripten::val x_scale = model_builder.CreateOrGetConstant<float>(
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f, GetNarrowedIntFromInt64<uint32_t>(x_zero_point_shape));
     // Dequantize x to Float32
     common_options.set("label", node.Name() + "_dequantized_x");
     input = model_builder.GetBuilder().call<emscripten::val>("dequantizeLinear", input, x_scale, x_zero_point,
                                                              common_options);
 
+    std::vector<int64_t> w_zero_point_shape;
     if (TensorExists(input_defs, 3)) {
       w_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
-      std::vector<int64_t> w_zero_point_shape;
       ORT_RETURN_IF_NOT(GetShape(*input_defs[3], w_zero_point_shape, logger), "Cannot get shape of w_zero_point");
-      w_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f,
-                                                         GetNarrowedIntFromInt64<uint32_t>(w_zero_point_shape));
     } else {
       w_zero_point = model_builder.CreateOrGetConstant<uint8_t>(x_type, 0);
-      w_scale = x_scale;
     }
+    emscripten::val w_scale = model_builder.CreateOrGetConstant<float>(
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f, GetNarrowedIntFromInt64<uint32_t>(w_zero_point_shape));
     // Dequantize w to Float32
     common_options.set("label", node.Name() + "_dequantized_w");
     filter = model_builder.GetBuilder().call<emscripten::val>("dequantizeLinear", filter, w_scale, w_zero_point,

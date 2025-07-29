@@ -1,5 +1,5 @@
 # Use the specified UBI8 base image with GCC 14
-ARG BASEIMAGE="onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20250714.2"
+ARG BASEIMAGE="onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20250724.1"
 FROM ${BASEIMAGE}
 
 ARG BUILD_UID=1000
