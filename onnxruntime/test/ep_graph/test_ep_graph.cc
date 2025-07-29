@@ -87,7 +87,8 @@ TEST(EpGraphTest, Check3LayerNestedSubgraphV2) {
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
 }
 
-TEST(EpGraphTest, MissingAttributes) {
+TEST(EpGraphTest, GetAttributeByName) {
+  // Load model with a single Conv that has no explicit attributes set.
   auto test_graph = TestGraph::Load(ORT_TSTR("testdata/conv_default_attrs.onnx"));
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
@@ -145,6 +146,31 @@ TEST(EpGraphTest, MissingAttributes) {
     ASSERT_FALSE(status.IsOK());
     ASSERT_EQ(status.GetErrorCode(), ORT_NOT_FOUND);
     ASSERT_EQ(attr, nullptr);
+  }
+
+  //
+  // Test 3: Get attribute that is known to be set.
+  //
+  {
+    const OrtOpAttr* attr = nullptr;
+    Ort::Status status{ort_api.Node_GetAttributeByName(conv_node, "auto_pad", &attr)};
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_NE(attr, nullptr);
+
+    OrtOpAttrType attr_type = ORT_OP_ATTR_UNDEFINED;
+    ASSERT_ORTSTATUS_OK(ort_api.OpAttr_GetType(attr, &attr_type));
+    ASSERT_EQ(attr_type, ORT_OP_ATTR_STRING);
+
+    std::string auto_pad_val;
+
+    // First call to ReadOpAttr gets the total byte size. Second call reads the data.
+    size_t total_attr_bytes = 0;
+    Ort::Status status{ort_api.ReadOpAttr(attr, attr_type, nullptr, 0, &total_attr_bytes)};
+    auto_pad_val.resize(total_attr_bytes);
+
+    ASSERT_ORTSTATUS_OK(ort_api.ReadOpAttr(attr, attr_type, auto_pad_val.data(), total_attr_bytes,
+                                           &total_attr_bytes));
+    ASSERT_EQ(auto_pad_val, "NOTSET");
   }
 }
 
