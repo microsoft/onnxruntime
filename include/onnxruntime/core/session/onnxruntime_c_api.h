@@ -775,6 +775,9 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_arena_extend_strategy;
   int migraphx_bf16_enable;             // MIGraphX BF16 precision. Default 0 = false, nonzero = true
   const ORTCHAR_T* migraphx_cache_dir;  // MIGraphX model cache directory
+  void* migraphx_external_alloc;        // Pointer to an external Alloc() function (default is none)
+  void* migraphx_external_free;         // Pointer to an external Free() function (default is none)
+  void* migraphx_external_empty_cache;  // Pointer to an external EmptyCache() function (default is none)
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options

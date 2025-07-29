@@ -8,7 +8,6 @@
 
 #include "core/common/make_string.h"
 #include "core/common/parse_string.h"
-#include "core/framework/provider_options_utils.h"
 #include "core/providers/migraphx/migraphx_inc.h"
 #include "core/providers/migraphx/migraphx_call.h"
 
@@ -19,95 +18,86 @@ const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
     {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
 };
 
-MIGraphXExecutionProviderInfo MIGraphXExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
-  MIGraphXExecutionProviderInfo info{};
-  void* alloc = nullptr;
-  void* free = nullptr;
-  void* empty_cache = nullptr;
+MIGraphXExecutionProviderInfo::MIGraphXExecutionProviderInfo(const ProviderOptions& options) {
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
               migraphx_provider_option::kDeviceId,
-              [&info](const std::string& value_str) -> Status {
-                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.device_id));
+              [this](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, device_id));
                 int num_devices{};
                 ORT_RETURN_IF_ERROR(HIP_CALL(hipGetDeviceCount(&num_devices)));
                 ORT_RETURN_IF_NOT(
-                    0 <= info.device_id && info.device_id < num_devices,
-                    "Invalid device ID: ", info.device_id,
+                    0 <= device_id && device_id < num_devices,
+                    "Invalid device ID: ", device_id,
                     ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
                 return Status::OK();
               })
           .AddValueParser(
               migraphx_provider_option::kGpuExternalAlloc,
-              [&alloc](const std::string& value_str) -> Status {
+              [this](const std::string& value_str) -> Status {
                 std::uintptr_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
-                alloc = reinterpret_cast<void*>(address);
+                external_alloc = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
           .AddValueParser(
               migraphx_provider_option::kGpuExternalFree,
-              [&free](const std::string& value_str) -> Status {
+              [this](const std::string& value_str) -> Status {
                 std::uintptr_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
-                free = reinterpret_cast<void*>(address);
+                external_free = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
           .AddValueParser(
               migraphx_provider_option::kGpuExternalEmptyCache,
-              [&empty_cache](const std::string& value_str) -> Status {
+              [this](const std::string& value_str) -> Status {
                 std::uintptr_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
-                empty_cache = reinterpret_cast<void*>(address);
+                external_empty_cache = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
-          .AddAssignmentToReference(migraphx_provider_option::kFp16Enable, info.fp16_enable)
-          .AddAssignmentToReference(migraphx_provider_option::kBf16Enable, info.bf16_enable)
-          .AddAssignmentToReference(migraphx_provider_option::kFp8Enable, info.fp8_enable)
-          .AddAssignmentToReference(migraphx_provider_option::kInt8Enable, info.int8_enable)
-          .AddAssignmentToReference(migraphx_provider_option::kModelCacheDir, info.model_cache_dir)
-          .AddAssignmentToReference(migraphx_provider_option::kExhaustiveTune, info.exhaustive_tune)
-          .AddAssignmentToReference(migraphx_provider_option::kMemLimit, info.mem_limit)
-          .AddAssignmentToEnumReference(migraphx_provider_option::kArenaExtendStrategy, arena_extend_strategy_mapping, info.arena_extend_strategy)
+          .AddAssignmentToReference(migraphx_provider_option::kFp16Enable, fp16_enable)
+          .AddAssignmentToReference(migraphx_provider_option::kBf16Enable, bf16_enable)
+          .AddAssignmentToReference(migraphx_provider_option::kFp8Enable, fp8_enable)
+          .AddAssignmentToReference(migraphx_provider_option::kInt8Enable, int8_enable)
+          .AddAssignmentToReference(migraphx_provider_option::kModelCacheDir, model_cache_dir)
+          .AddAssignmentToReference(migraphx_provider_option::kExhaustiveTune, exhaustive_tune)
+          .AddAssignmentToReference(migraphx_provider_option::kMemLimit, mem_limit)
+          .AddAssignmentToEnumReference(migraphx_provider_option::kArenaExtendStrategy, arena_extend_strategy_mapping, arena_extend_strategy)
           .Parse(options));
-
-  MIGraphXExecutionProviderExternalAllocatorInfo alloc_info{alloc, free, empty_cache};
-  info.external_allocator_info = alloc_info;
-
-  return info;
 }
 
-ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions(const MIGraphXExecutionProviderInfo& info) {
-  const ProviderOptions options{
-      {std::string{migraphx_provider_option::kDeviceId}, MakeStringWithClassicLocale(info.device_id)},
-      {std::string{migraphx_provider_option::kFp16Enable}, MakeStringWithClassicLocale(info.fp16_enable)},
-      {std::string{migraphx_provider_option::kBf16Enable}, MakeStringWithClassicLocale(info.bf16_enable)},
-      {std::string{migraphx_provider_option::kFp8Enable}, MakeStringWithClassicLocale(info.fp8_enable)},
-      {std::string{migraphx_provider_option::kInt8Enable}, MakeStringWithClassicLocale(info.int8_enable)},
-      {std::string{migraphx_provider_option::kMemLimit}, MakeStringWithClassicLocale(info.mem_limit)},
-      {std::string{migraphx_provider_option::kGpuExternalAlloc}, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
-      {std::string{migraphx_provider_option::kGpuExternalFree}, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
-      {std::string{migraphx_provider_option::kGpuExternalEmptyCache}, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.empty_cache))},
-      {std::string{migraphx_provider_option::kArenaExtendStrategy}, EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
-      {std::string{migraphx_provider_option::kExhaustiveTune}, MakeStringWithClassicLocale(info.exhaustive_tune)},
-      {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(info.model_cache_dir)},
+MIGraphXExecutionProviderInfo::MIGraphXExecutionProviderInfo(const OrtMIGraphXProviderOptions& options) noexcept
+    : device_id{static_cast<OrtDevice::DeviceId>(options.device_id)},
+      fp16_enable{options.migraphx_fp16_enable != 0},
+      bf16_enable{options.migraphx_bf16_enable != 0},
+      fp8_enable{options.migraphx_fp8_enable != 0},
+      int8_enable{options.migraphx_int8_enable != 0},
+      model_cache_dir{options.migraphx_cache_dir},
+      exhaustive_tune{options.migraphx_exhaustive_tune != 0},
+      mem_limit{options.migraphx_mem_limit},
+      arena_extend_strategy{options.migraphx_arena_extend_strategy},
+      external_alloc{options.migraphx_external_alloc},
+      external_free{options.migraphx_external_free},
+      external_empty_cache{options.migraphx_external_empty_cache} {
+}
+
+ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions() const {
+  return {
+      {std::string{migraphx_provider_option::kDeviceId}, MakeStringWithClassicLocale(device_id)},
+      {std::string{migraphx_provider_option::kFp16Enable}, MakeStringWithClassicLocale(fp16_enable)},
+      {std::string{migraphx_provider_option::kBf16Enable}, MakeStringWithClassicLocale(bf16_enable)},
+      {std::string{migraphx_provider_option::kFp8Enable}, MakeStringWithClassicLocale(fp8_enable)},
+      {std::string{migraphx_provider_option::kInt8Enable}, MakeStringWithClassicLocale(int8_enable)},
+      {std::string{migraphx_provider_option::kMemLimit}, MakeStringWithClassicLocale(mem_limit)},
+      {std::string{migraphx_provider_option::kArenaExtendStrategy}, EnumToName(arena_extend_strategy_mapping, arena_extend_strategy)},
+      {std::string{migraphx_provider_option::kExhaustiveTune}, MakeStringWithClassicLocale(exhaustive_tune)},
+      {std::string{migraphx_provider_option::kGpuExternalAlloc}, MakeStringWithClassicLocale(external_alloc)},
+      {std::string{migraphx_provider_option::kGpuExternalFree}, MakeStringWithClassicLocale(external_free)},
+      {std::string{migraphx_provider_option::kGpuExternalEmptyCache}, MakeStringWithClassicLocale(external_empty_cache)},
+      {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(model_cache_dir)},
   };
-  return options;
 }
 
-ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions(const OrtMIGraphXProviderOptions& info) {
-  const ProviderOptions options{
-      {std::string{migraphx_provider_option::kDeviceId}, MakeStringWithClassicLocale(info.device_id)},
-      {std::string{migraphx_provider_option::kFp16Enable}, MakeStringWithClassicLocale(info.migraphx_fp16_enable)},
-      {std::string{migraphx_provider_option::kBf16Enable}, MakeStringWithClassicLocale(info.migraphx_bf16_enable)},
-      {std::string{migraphx_provider_option::kFp8Enable}, MakeStringWithClassicLocale(info.migraphx_fp8_enable)},
-      {std::string{migraphx_provider_option::kInt8Enable}, MakeStringWithClassicLocale(info.migraphx_int8_enable)},
-      {std::string{migraphx_provider_option::kMemLimit}, MakeStringWithClassicLocale(info.migraphx_mem_limit)},
-      {std::string{migraphx_provider_option::kArenaExtendStrategy}, EnumToName(arena_extend_strategy_mapping, static_cast<onnxruntime::ArenaExtendStrategy>(info.migraphx_arena_extend_strategy))},
-      {std::string{migraphx_provider_option::kExhaustiveTune}, MakeStringWithClassicLocale(info.migraphx_exhaustive_tune)},
-      {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(info.migraphx_cache_dir)},
-  };
-  return options;
-}
 }  // namespace onnxruntime

@@ -828,7 +828,7 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
-   # process all other library dependencies
+    # process all other library dependencies
     if is_cpu_package or is_cuda_gpu_package or is_migraphx_package or is_dml_package or is_mklml_package:
         # Process dnnl dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies["dnnl"])):

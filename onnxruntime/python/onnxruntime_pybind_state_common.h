@@ -226,9 +226,14 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 namespace onnxruntime {
 ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
-namespace python {
-extern onnxruntime::MIGraphXExecutionProviderExternalAllocatorInfo migx_external_allocator_info;
-}  // namespace python
+namespace python::migraphx::external {
+extern void* alloc_fn;
+extern void* free_fn;
+extern void* empty_cache_fn;
+inline bool UseExternalAllocator() {
+  return alloc_fn != nullptr && free_fn != nullptr;
+}
+}  // namespace python::migraphx::external
 }  // namespace onnxruntime
 
 #endif

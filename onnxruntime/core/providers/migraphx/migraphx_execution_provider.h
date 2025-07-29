@@ -14,6 +14,7 @@
 #include <vector>
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/provider_options_utils.h"
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #include "core/providers/migraphx/migraphx_call.h"
 
@@ -89,21 +90,33 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
-  static AllocatorPtr CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t migx_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                              MIGraphXExecutionProviderExternalAllocatorInfo external_alloc_info, const OrtArenaCfg* arena_cfg);
+  static AllocatorPtr CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t mem_limit, ArenaExtendStrategy arena_extend_strategy,
+                                              void* alloc_fn, void* free_fn, void* empty_cache_fn, const OrtArenaCfg* arena_cfg);
 
   std::unique_ptr<IndexedSubGraph> GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const;
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
-  int GetDeviceId() const override { return info_.device_id; }
+  int GetDeviceId() const override { return device_id_; }
   ProviderOptions GetProviderOptions() const override {
-    return MIGraphXExecutionProviderInfo::ToProviderOptions(info_);
+    return {
+        {std::string{migraphx_provider_option::kDeviceId}, MakeStringWithClassicLocale(device_id_)},
+        {std::string{migraphx_provider_option::kFp16Enable}, MakeStringWithClassicLocale(fp16_enable_)},
+        {std::string{migraphx_provider_option::kBf16Enable}, MakeStringWithClassicLocale(bf16_enable_)},
+        {std::string{migraphx_provider_option::kFp8Enable}, MakeStringWithClassicLocale(fp8_enable_)},
+        {std::string{migraphx_provider_option::kInt8Enable}, MakeStringWithClassicLocale(int8_enable_)},
+        {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(model_cache_path_)},
+        {std::string{migraphx_provider_option::kMemLimit}, MakeStringWithClassicLocale(mem_limit_)},
+        {std::string{migraphx_provider_option::kArenaExtendStrategy}, EnumToName(arena_extend_strategy_mapping, arena_extend_strategy_)},
+        {std::string{migraphx_provider_option::kExhaustiveTune}, MakeStringWithClassicLocale(exhaustive_tune_)},
+        {std::string{migraphx_provider_option::kGpuExternalAlloc}, MakeStringWithClassicLocale(external_alloc_)},
+        {std::string{migraphx_provider_option::kGpuExternalFree}, MakeStringWithClassicLocale(external_free_)},
+        {std::string{migraphx_provider_option::kGpuExternalEmptyCache}, MakeStringWithClassicLocale(external_empty_cache_)}};
   }
 
  private:
-  MIGraphXExecutionProviderInfo info_;
+  OrtDevice::DeviceId device_id_{0};
   bool fp16_enable_ = false;
   bool bf16_enable_ = false;
   bool fp8_enable_ = false;
@@ -121,7 +134,9 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   hipStream_t stream_ = nullptr;
   hipDeviceProp_t device_prop_;
   bool exhaustive_tune_ = false;
-  mutable std::filesystem::path model_path_;
+  mutable std::filesystem::path model_path_{};
+  size_t mem_limit_{std::numeric_limits<size_t>::max()};
+  ArenaExtendStrategy arena_extend_strategy_{ArenaExtendStrategy::kNextPowerOfTwo};
 
   std::unordered_map<std::string, migraphx::program> map_progs_;
   std::unordered_map<std::string, std::string> map_onnx_string_;
@@ -130,6 +145,9 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 
   AllocatorPtr allocator_;
   std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
+  void* external_alloc_{nullptr};
+  void* external_free_{nullptr};
+  void* external_empty_cache_{nullptr};
 };
 
 }  // namespace onnxruntime

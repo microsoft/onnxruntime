@@ -17,7 +17,6 @@
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "core/providers/migraphx/migraphx_execution_provider.h"
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
-#include "core/providers/migraphx/migraphx_provider_factory_creator.h"
 #include "core/providers/migraphx/migraphx_allocator.h"
 #include "core/providers/migraphx/gpu_data_transfer.h"
 #include "core/framework/provider_options.h"
@@ -70,8 +69,9 @@ struct ProviderInfo_MIGraphX_Impl final : ProviderInfo_MIGraphX {
     HIP_CALL_THROW(hipMemcpy(dst, src, count, hipMemcpyDeviceToHost));
   }
 
-  std::shared_ptr<IAllocator> CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t migx_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::MIGraphXExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) override {
-    return MIGraphXExecutionProvider::CreateMIGraphXAllocator(device_id, migx_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
+  std::shared_ptr<IAllocator> CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy,
+                                                      void* alloc_fn, void* free_fn, void* empty_cache_fn, const OrtArenaCfg* default_memory_arena_cfg) override {
+    return MIGraphXExecutionProvider::CreateMIGraphXAllocator(device_id, mem_limit, arena_extend_strategy, alloc_fn, free_fn, empty_cache_fn, default_memory_arena_cfg);
   }
 } g_info;
 
@@ -86,7 +86,7 @@ struct MIGraphX_Provider : Provider {
   }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
-    auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);
+    auto& options = *static_cast<const OrtMIGraphXProviderOptions*>(provider_options);
     MIGraphXExecutionProviderInfo info;
     info.device_id = static_cast<OrtDevice::DeviceId>(options.device_id);
     info.target_device = "gpu";
@@ -110,17 +110,17 @@ struct MIGraphX_Provider : Provider {
   }
 
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
-    auto internal_options = onnxruntime::MIGraphXExecutionProviderInfo::FromProviderOptions(options);
-    auto& migx_options = *reinterpret_cast<OrtMIGraphXProviderOptions*>(provider_options);
-    migx_options.device_id = internal_options.device_id;
-    migx_options.migraphx_fp16_enable = internal_options.fp16_enable;
-    migx_options.migraphx_bf16_enable = internal_options.bf16_enable;
-    migx_options.migraphx_fp8_enable = internal_options.fp8_enable;
-    migx_options.migraphx_int8_enable = internal_options.int8_enable;
-    migx_options.migraphx_exhaustive_tune = internal_options.exhaustive_tune;
+    MIGraphXExecutionProviderInfo internal_options{options};
+    const auto migx_options = static_cast<OrtMIGraphXProviderOptions*>(provider_options);
+    migx_options->device_id = internal_options.device_id;
+    migx_options->migraphx_fp16_enable = internal_options.fp16_enable;
+    migx_options->migraphx_bf16_enable = internal_options.bf16_enable;
+    migx_options->migraphx_fp8_enable = internal_options.fp8_enable;
+    migx_options->migraphx_int8_enable = internal_options.int8_enable;
+    migx_options->migraphx_exhaustive_tune = internal_options.exhaustive_tune;
 
     if (internal_options.int8_calibration_table_name.empty()) {
-      migx_options.migraphx_int8_calibration_table_name = nullptr;
+      migx_options->migraphx_int8_calibration_table_name = nullptr;
     } else {
       auto str_size = internal_options.int8_calibration_table_name.size();
       auto dest = new char[str_size + 1];
@@ -130,13 +130,13 @@ struct MIGraphX_Provider : Provider {
       strncpy(dest, internal_options.int8_calibration_table_name.c_str(), str_size);
 #endif
       dest[str_size] = '\0';
-      migx_options.migraphx_int8_calibration_table_name = static_cast<const char*>(dest);
+      migx_options->migraphx_int8_calibration_table_name = static_cast<const char*>(dest);
     }
 
-    migx_options.migraphx_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
+    migx_options->migraphx_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
 
     if (internal_options.model_cache_dir.empty()) {
-      migx_options.migraphx_cache_dir = nullptr;
+      migx_options->migraphx_cache_dir = nullptr;
     } else {
       const auto cache_dir_str{internal_options.model_cache_dir.native()};
       auto cache_dir = new ORTCHAR_T[cache_dir_str.size() + 1];
@@ -146,33 +146,19 @@ struct MIGraphX_Provider : Provider {
       strncpy(cache_dir, cache_dir_str.data(), cache_dir_str.size());
 #endif
       cache_dir[cache_dir_str.size()] = '\0';
-      migx_options.migraphx_cache_dir = cache_dir;
+      migx_options->migraphx_cache_dir = cache_dir;
     }
 
-    migx_options.migraphx_arena_extend_strategy = static_cast<int>(internal_options.arena_extend_strategy);
-    migx_options.migraphx_mem_limit = internal_options.mem_limit;
+    migx_options->migraphx_arena_extend_strategy = static_cast<int>(internal_options.arena_extend_strategy);
+    migx_options->migraphx_mem_limit = internal_options.mem_limit;
+
+    migx_options->migraphx_external_alloc = internal_options.external_alloc;
+    migx_options->migraphx_external_free = internal_options.external_free;
+    migx_options->migraphx_external_empty_cache = internal_options.external_empty_cache;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
-    auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);
-    return onnxruntime::MIGraphXExecutionProviderInfo::ToProviderOptions(options);
-  }
-
-  Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
-                                  const OrtKeyValuePairs* const* /*ep_metadata*/,
-                                  size_t num_devices,
-                                  ProviderOptions& provider_options,
-                                  const OrtSessionOptions& session_options,
-                                  const OrtLogger& logger,
-                                  std::unique_ptr<IExecutionProvider>& ep) override {
-    ORT_UNUSED_PARAMETER(num_devices);
-    const ConfigOptions* config_options = &session_options.GetConfigOptions();
-
-    std::array<const void*, 2> configs_array = {&provider_options, config_options};
-    auto ep_factory = CreateExecutionProviderFactory(&provider_options);
-    ep = ep_factory->CreateProvider(session_options, logger);
-
-    return Status::OK();
+    return MIGraphXExecutionProviderInfo{*static_cast<const OrtMIGraphXProviderOptions*>(provider_options)}.ToProviderOptions();
   }
 
   void Initialize() override {

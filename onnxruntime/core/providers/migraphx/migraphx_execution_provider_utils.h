@@ -322,7 +322,7 @@ inline std::string GenerateGraphId(const GraphViewer& graph_viewer) {
 
   model_hash = hash[0] | static_cast<uint64_t>(hash[1]) << 32;
 
-  std::array<char, sizeof(HashValue) << 1> s;
+  std::array<char, sizeof(HashValue) << 1> s{};
   auto [ptr, ec] = std::to_chars(s.data(), s.data() + s.size(), model_hash, 16);
   return std::string{s.data(), ptr};
 }

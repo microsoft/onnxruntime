@@ -972,6 +972,9 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
           SIZE_MAX,
           0,
           0,
+          nullptr,
+          nullptr,
+          nullptr,
           nullptr};
       for (auto option : it->second) {
         if (option.first == "device_id") {
