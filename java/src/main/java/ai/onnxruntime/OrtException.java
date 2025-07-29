@@ -91,7 +91,7 @@ public class OrtException extends Exception {
 
     private final int value;
 
-    private static final OrtErrorCode[] values = new OrtErrorCode[12];
+    private static final OrtErrorCode[] values = new OrtErrorCode[15];
 
     static {
       for (OrtErrorCode ot : OrtErrorCode.values()) {
