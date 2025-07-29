@@ -264,6 +264,7 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
   ORT_MODEL_LOAD_CANCELED,
   ORT_MODEL_REQUIRES_COMPILATION,
+  ORT_NOT_FOUND,
 } OrtErrorCode;
 
 typedef enum OrtOpAttrType {
@@ -6032,6 +6033,11 @@ struct OrtApi {
    *                           Typical usage sets this to the result of Node_GetNumAttributes(). An error status is
    *                           returned if `num_attributes` is less than the number of node attributes.
    *
+   * \note ONNX Runtime automatically sets optional (unset) attributes to their default values if the default value
+   * is a constant expression that does not depend on other tensor/model characteristics. Conv's 'kernel_shape'
+   * attribute is an example of an optional attribute that does not have a constant default value. This function
+   * does not provide any unset optional attributes without a constant default value.
+   *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
@@ -6043,14 +6049,22 @@ struct OrtApi {
    *
    * \param[in] node The OrtNode instance.
    * \param[in] attribute_name The name of the attribute
-   * \param[out] attribute Output the attribute if its name matches 'attribute_name', otherwise output nullptr.
+   * \param[out] attribute Output parameter set to the OrtOpAttr instance if an attribute by the given name exists.
+   *                       For an unset optional attribute, `attribute` is set to NULL and a non-error status is
+   *                       returned. For an invalid attribute name, `attribute` is set to NULL and an error status with
+   *                       code ORT_NOT_FOUND is returned.
+   *
+   * \note ONNX Runtime automatically sets optional (unset) attributes to their default values if the default value
+   * is a constant expression that does not depend on other tensor/model characteristics. Conv's 'kernel_shape'
+   * attribute is an example of an optional attribute that does not have a constant default value. This function
+   * does not provide any unset optional attributes without a constant default value.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name,
-                  _Outptr_ const OrtOpAttr** attribute);
+                  _Outptr_result_maybenull_ const OrtOpAttr** attribute);
 
   /** \brief Get the attribute type as OrtOpAttrType from an OrtOpAttr.
    *
