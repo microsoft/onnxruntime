@@ -3,6 +3,7 @@
 
 #include "core/providers/webgpu/math/gemm.h"
 #include "core/providers/webgpu/math/gemm_packed.h"
+#include "core/providers/webgpu/math/subgroup_matrix_gemm.h"
 
 #include <vector>
 
@@ -72,7 +73,7 @@ Status GemmNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   // Calculate Alpha
-  if (alpha_) {
+  if (alpha_ != 1.0f) {
     shader.MainFunctionBody() << "  value = value * output_value_t(uniforms.alpha);\n";
   }
 
@@ -148,6 +149,14 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
                               {beta_}});
     return context.RunProgram(program);
   }
+
+#if !defined(__wasm__)
+  // Experimental dawn support for subgroup matrix GEMM.
+  int32_t number_type = A->GetElementType();
+  if (CanApplySubgroupMatrixGemm(context, static_cast<uint32_t>(K), static_cast<uint32_t>(N), number_type)) {
+    return ApplySubgroupMatrixGemm(A, B, C, transA_, transB_, alpha_, beta_, context);
+  }
+#endif
 
   return ApplyGemmPacked(A, B, C, transA_, transB_, alpha_, beta_, context);
 }
