@@ -223,9 +223,12 @@ struct MigraphXEpFactory : OrtEpFactory {
       : ort_api{ort_api_in}, default_logger{default_logger_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
+    GetVendorId = GetVendorIdImpl;
+    CreateDataTransfer = CreateDataTransferImpl;
   }
 
   // Returns the name for the EP. Each unique factory configuration must have a unique name.
@@ -238,6 +241,23 @@ struct MigraphXEpFactory : OrtEpFactory {
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
     return factory->vendor.c_str();
+  }
+
+  static const char* GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    return factory->ep_version.c_str();
+  }
+
+  static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    return factory->vendor_id;
+  }
+
+  static OrtStatus* CreateDataTransferImpl(OrtEpFactory* this_ptr,
+                                           OrtDataTransferImpl** data_transfer) noexcept {
+    ORT_UNUSED_PARAMETER(this_ptr);
+    *data_transfer = nullptr;  // return nullptr to indicate that this EP does not support data transfer.
+    return nullptr;
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
@@ -288,7 +308,7 @@ struct MigraphXEpFactory : OrtEpFactory {
   const OrtLogger& default_logger;
   const std::string ep_name;
   const std::string vendor{"AMD"};
-
+  const std::string ep_version{"0.1.0"};
   const uint32_t vendor_id{0x1002};
   const OrtHardwareDeviceType ort_hw_device_type;  // Supported OrtHardwareDevice
 };
