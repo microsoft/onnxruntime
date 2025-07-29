@@ -151,10 +151,10 @@ struct MIGraphX_Provider : Provider {
                                   const OrtSessionOptions& session_options,
                                   const OrtLogger& logger,
                                   std::unique_ptr<IExecutionProvider>& ep) override {
+    ORT_UNUSED_PARAMETER(num_devices);
     const ConfigOptions* config_options = &session_options.GetConfigOptions();
 
     std::array<const void*, 2> configs_array = {&provider_options, config_options};
-    const void* arg = reinterpret_cast<const void*>(&configs_array);
     auto ep_factory = CreateExecutionProviderFactory(&provider_options);
     ep = ep_factory->CreateProvider(session_options, logger);
 
@@ -181,7 +181,7 @@ struct MigraphXEpFactory : OrtEpFactory {
                     const char* ep_name,
                     OrtHardwareDeviceType hw_type,
                     const OrtLogger& default_logger_in)
-      : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type}, default_logger{default_logger_in} {
+      : ort_api{ort_api_in}, default_logger{default_logger_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
     ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
@@ -202,12 +202,12 @@ struct MigraphXEpFactory : OrtEpFactory {
 
   // Returns the name for the EP. Each unique factory configuration must have a unique name.
   // Ex: a factory that supports NPU should have a different than a factory that supports GPU.
-  static const char* GetNameImpl(const OrtEpFactory* this_ptr) {
+  static const char* GetNameImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
     return factory->ep_name.c_str();
   }
 
-  static const char* GetVendorImpl(const OrtEpFactory* this_ptr) {
+  static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
     return factory->vendor.c_str();
   }
@@ -233,7 +233,7 @@ struct MigraphXEpFactory : OrtEpFactory {
                                             size_t num_devices,
                                             OrtEpDevice** ep_devices,
                                             size_t max_ep_devices,
-                                            size_t* p_num_ep_devices) {
+                                            size_t* p_num_ep_devices) noexcept {
     size_t& num_ep_devices = *p_num_ep_devices;
     auto* factory = static_cast<MigraphXEpFactory*>(this_ptr);
 
@@ -258,11 +258,11 @@ struct MigraphXEpFactory : OrtEpFactory {
                                  _In_ size_t /*num_devices*/,
                                  _In_ const OrtSessionOptions* /*session_options*/,
                                  _In_ const OrtLogger* /*logger*/,
-                                 _Out_ OrtEp** /*ep*/) {
+                                 _Out_ OrtEp** /*ep*/) noexcept {
     return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT, "[MigraphX/AMDGPU EP] EP factory does not support this method.");
   }
 
-  static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* /*ep*/) {
+  static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* /*ep*/) noexcept {
     // no-op as we never create an EP here.
   }
 
