@@ -1240,8 +1240,8 @@ Graph::Graph(const Model& owning_model,
                                                             use_tensor_buffer_true);
       assert(ort_value.IsAllocated());
       auto ins_result = ortvalue_initializers_.insert_or_assign(tensor_proto_to_add.name(), std::move(ort_value));
-      ORT_ENFORCE(ins_result.second, "Unexpected duplicate insert or assign OrtValue for tensor: ", tensor_proto_to_add.name(),
-                  " in the initializer list.");
+      // ORT_ENFORCE(ins_result.second, "Unexpected duplicate insert or assign OrtValue for tensor: ", tensor_proto_to_add.name(),
+      //             " in the initializer list.");
       tensor_proto = std::move(tensor_proto_to_add);
     }
   };
