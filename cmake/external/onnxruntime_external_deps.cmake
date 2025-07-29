@@ -446,7 +446,7 @@ endif()
 
 if(NOT TARGET Boost::boost_utility)
   if(onnxruntime_USE_VCPKG)
-    find_package(Boost REQUIRED COMPONENTS boost_utility)
+    find_package(Boost REQUIRED COMPONENTS utility)
   else()
     onnxruntime_fetchcontent_declare(
      boost_utility
