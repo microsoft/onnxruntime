@@ -221,7 +221,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
         const MLFloat16* token_input_typed = input_data + token_idx * moe_params.hidden_size;
 
         // Convert input from MLFloat16 to float for computation
-        std::vector<float> token_input_float(moe_params.hidden_size);
+        std::vector<float> token_input_float(static_cast<size_t>(moe_params.hidden_size));
         for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
           token_input_float[static_cast<size_t>(i)] = ToFloat(token_input_typed[i]);
         }
@@ -241,11 +241,11 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
           // Use MLAS SGEMM for FC1: input [1 x hidden_size] * weights [hidden_size x inter_size] = output [1 x inter_size]
           MLAS_SGEMM_DATA_PARAMS fc1_params;
           fc1_params.A = token_input;
-          fc1_params.lda = moe_params.hidden_size;
+          fc1_params.lda = static_cast<size_t>(moe_params.hidden_size);
           fc1_params.B = fc1_expert_weights;
-          fc1_params.ldb = moe_params.hidden_size;
+          fc1_params.ldb = static_cast<size_t>(moe_params.hidden_size);
           fc1_params.C = thread_fc1_output;
-          fc1_params.ldc = moe_params.inter_size;
+          fc1_params.ldc = static_cast<size_t>(moe_params.inter_size);
           fc1_params.alpha = 1.0f;
           fc1_params.beta = 0.0f;
 
@@ -266,11 +266,11 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
           // Use MLAS SGEMM for FC2: intermediate [1 x inter_size] * weights [inter_size x hidden_size] = output [1 x hidden_size]
           MLAS_SGEMM_DATA_PARAMS fc2_params;
           fc2_params.A = thread_fc1_output;
-          fc2_params.lda = moe_params.inter_size;
+          fc2_params.lda = static_cast<size_t>(moe_params.inter_size);
           fc2_params.B = fc2_expert_weights;
-          fc2_params.ldb = moe_params.inter_size;
+          fc2_params.ldb = static_cast<size_t>(moe_params.inter_size);
           fc2_params.C = thread_fc2_output;
-          fc2_params.ldc = moe_params.hidden_size;
+          fc2_params.ldc = static_cast<size_t>(moe_params.hidden_size);
           fc2_params.alpha = 1.0f;
           fc2_params.beta = 0.0f;
 
@@ -286,7 +286,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
         }
       }
     };  // Execute token processing in parallel across threads
-    concurrency::ThreadPool::TryParallelFor(thread_pool, moe_params.num_rows,
+    concurrency::ThreadPool::TryParallelFor(thread_pool, static_cast<std::ptrdiff_t>(moe_params.num_rows),
                                             static_cast<double>(std::max<int64_t>(1, moe_params.num_rows / num_threads)),
                                             process_token_range);
   } else {
@@ -341,7 +341,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
         const MLFloat16* token_input_typed = input_data + token_idx * moe_params.hidden_size;
 
         // Convert input from MLFloat16 to float for MLAS computation
-        std::vector<float> token_input_float(moe_params.hidden_size);
+        std::vector<float> token_input_float(static_cast<size_t>(moe_params.hidden_size));
         for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
           token_input_float[static_cast<size_t>(i)] = ToFloat(token_input_typed[i]);
         }
@@ -361,11 +361,11 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
           // Use MLAS SGEMM for FC1: input [1 x hidden_size] * weights [hidden_size x inter_size] = output [1 x inter_size]
           MLAS_SGEMM_DATA_PARAMS fc1_params;
           fc1_params.A = token_input;
-          fc1_params.lda = moe_params.hidden_size;
+          fc1_params.lda = static_cast<size_t>(moe_params.hidden_size);
           fc1_params.B = fc1_expert_weights;
-          fc1_params.ldb = moe_params.hidden_size;
+          fc1_params.ldb = static_cast<size_t>(moe_params.hidden_size);
           fc1_params.C = thread_fc1_output;
-          fc1_params.ldc = moe_params.inter_size;
+          fc1_params.ldc = static_cast<size_t>(moe_params.inter_size);
           fc1_params.alpha = 1.0f;
           fc1_params.beta = 0.0f;
 
@@ -386,11 +386,11 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
           // Use MLAS SGEMM for FC2: intermediate [1 x inter_size] * weights [inter_size x hidden_size] = output [1 x hidden_size]
           MLAS_SGEMM_DATA_PARAMS fc2_params;
           fc2_params.A = thread_fc1_output;
-          fc2_params.lda = moe_params.inter_size;
+          fc2_params.lda = static_cast<size_t>(moe_params.inter_size);
           fc2_params.B = fc2_expert_weights;
-          fc2_params.ldb = moe_params.inter_size;
+          fc2_params.ldb = static_cast<size_t>(moe_params.inter_size);
           fc2_params.C = thread_fc2_output;
-          fc2_params.ldc = moe_params.hidden_size;
+          fc2_params.ldc = static_cast<size_t>(moe_params.hidden_size);
           fc2_params.alpha = 1.0f;
           fc2_params.beta = 0.0f;
 
@@ -408,7 +408,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
     };
 
     // Execute token processing in parallel across threads
-    concurrency::ThreadPool::TryParallelFor(thread_pool, moe_params.num_rows,
+    concurrency::ThreadPool::TryParallelFor(thread_pool, static_cast<std::ptrdiff_t>(moe_params.num_rows),
                                             static_cast<double>(std::max<int64_t>(1, moe_params.num_rows / num_threads)),
                                             process_token_range);
   }
