@@ -110,35 +110,44 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
   const auto& node_attrs = node.GetAttributes();
   std::unordered_map<std::string, std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> ep_node_attributes_map;
   std::vector<OrtOpAttr*> ep_node_attributes;
+  std::unordered_map<std::string, std::unique_ptr<OrtValue>> tensor_attribute_values;
+
+  auto tensor_proto_to_ort_value = [&](const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                       std::string& tensor_proto_name) -> Status {
+    const auto& graph_viewer = ep_graph->GetGraphViewer();
+
+    // Initialize OrtValue for tensor attribute.
+    // Note: using std::unique_ptr<OrtValue> because we return a OrtValue* to the user and we want it to be stable.
+    auto tensor_attribute_value = std::make_unique<OrtValue>();
+    AllocatorPtr tensor_attribute_allocator = CPUAllocator::DefaultInstance();
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), tensor_proto,
+                                                     tensor_attribute_allocator, *tensor_attribute_value));
+
+    tensor_attribute_values.emplace(tensor_proto_name, std::move(tensor_attribute_value));
+
+    return Status::OK();
+  };
 
   if (node_attrs.size() > 0) {
     ep_node_attributes.reserve(node_attrs.size());
-    std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> tensor_attribute_values;
 
     for (const auto& item : node_attrs) {
       auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>(item.second);  // Copy AttributeProto and owned by this EpNode object.
 
       // Create and cache an OrtValue for the 'TENSOR' attribute
       if (attr->type() == onnx::AttributeProto::TENSOR) {
-        const auto& graph_viewer = ep_graph->GetGraphViewer();
-        const auto& tensor_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr.get())->t();
-
-        // Initialize OrtValue for tensor attribute.
-        // Note: using std::unique_ptr<OrtValue> because we return a OrtValue* to the user and we want it to be stable.
-        auto tensor_attribute_value = std::make_unique<OrtValue>();
-        AllocatorPtr tensor_attribute_allocator = CPUAllocator::DefaultInstance();
-        ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), tensor_proto,
-                                                         tensor_attribute_allocator, *tensor_attribute_value));
-
-        tensor_attribute_values.emplace(tensor_proto.name(), std::move(tensor_attribute_value));
+        const auto& tensor_proto = attr->t();
+        // Some tensor proto could have no name.
+        // Create a name for that case since we need the name as the key for lookup later.
+        std::string tensor_proto_name = tensor_proto.name();
+        if (tensor_proto.name().empty()) {
+          tensor_proto_name = node.Name() + "_" + attr->name();
+        }
+        ORT_RETURN_IF_ERROR(tensor_proto_to_ort_value(tensor_proto, tensor_proto_name));
       }
 
       ep_node_attributes.push_back(reinterpret_cast<OrtOpAttr*>(attr.get()));
       ep_node_attributes_map.emplace(item.first, std::move(attr));
-    }
-
-    if (!tensor_attribute_values.empty()) {
-      ep_node->tensor_attribute_values_ = std ::move(tensor_attribute_values);
     }
   }
 
@@ -168,6 +177,11 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
   ep_node->inputs_ = std::move(ep_node_inputs);
   ep_node->outputs_ = std::move(ep_node_outputs);
   ep_node->attributes_map_ = std::move(ep_node_attributes_map);
+
+  if (!tensor_attribute_values.empty()) {
+    ep_node->tensor_attribute_values_ = std ::move(tensor_attribute_values);
+  }
+
   ep_node->attributes_ = std::move(ep_node_attributes);
   ep_node->implicit_inputs_ = std::move(ep_node_implicit_inputs);
   ep_node->subgraphs_ = std::move(ep_node_subgraphs);
@@ -259,7 +273,13 @@ Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, const Or
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This OrtOpAttr instance is not a 'TENSOR' attribute");
   }
 
-  const auto& it = tensor_attribute_values_.find(attr_proto->name());
+  const auto& tensor_proto = attr_proto->t();
+  std::string tensor_proto_name = tensor_proto.name();
+  if (tensor_proto.name().empty()) {
+    tensor_proto_name = node_.Name() + "_" + attr_proto->name();
+  }
+
+  const auto& it = tensor_attribute_values_.find(tensor_proto_name);
   if (it != tensor_attribute_values_.end()) {
     result = it->second.get();
     return Status::OK();

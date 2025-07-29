@@ -761,9 +761,9 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
     case OrtOpAttrType::ORT_OP_ATTR_TENSOR: {
       attr_proto.set_type(onnx::AttributeProto_AttributeType_TENSOR);
 
-      onnx::TensorProto tensor_proto;
-      std::string name = std::string(attr_name) + "_tensor_proto";
-      tensor_proto.set_name(name);
+      std::unique_ptr<onnx::TensorProto> tensor_proto = std::make_unique<onnx::TensorProto>();
+
+      // TensorProto as an attribute value doesn't require a name.
 
       const OrtValue* ort_value = nullptr;
       ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetTensorAttributeAsOrtValue(&ort_node, &ort_attr, &ort_value));
@@ -779,37 +779,48 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
       // Set tensor type
       switch (element_type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_FLOAT);
+          tensor_proto->set_data_type(onnx::TensorProto_DataType_FLOAT);
+          break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT8);
+          tensor_proto->set_data_type(onnx::TensorProto_DataType_UINT8);
+          break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_INT8);
+          tensor_proto->set_data_type(onnx::TensorProto_DataType_INT8);
+          break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT16);
+          tensor_proto->set_data_type(onnx::TensorProto_DataType_UINT16);
+          break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_INT16);
+          tensor_proto->set_data_type(onnx::TensorProto_DataType_INT16);
+          break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_INT32);
+          tensor_proto->set_data_type(onnx::TensorProto_DataType_INT32);
+          break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_INT64);
+          tensor_proto->set_data_type(onnx::TensorProto_DataType_INT64);
+          break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_BOOL);
+          tensor_proto->set_data_type(onnx::TensorProto_DataType_BOOL);
+          break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_DOUBLE);
+          tensor_proto->set_data_type(onnx::TensorProto_DataType_DOUBLE);
+          break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT32);
+          tensor_proto->set_data_type(onnx::TensorProto_DataType_UINT32);
+          break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT64);
+          tensor_proto->set_data_type(onnx::TensorProto_DataType_UINT64);
+          break;
         }
         default: {
           std::string err_msg = "Unexpected ONNXTensorElementDataType with value " + std::to_string(static_cast<int>(element_type));
@@ -827,7 +838,7 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
 
       // Set dimensions
       for (auto& dim : dims) {
-        tensor_proto.add_dims(dim);
+        tensor_proto->add_dims(dim);
       }
 
       const void* data = nullptr;
@@ -836,9 +847,12 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
       ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetTensorSizeInBytes(ort_value, &data_bytes));
 
       // Copy the Ortvalue to TensorProto as raw data
-      tensor_proto.set_raw_data(data, data_bytes);
+      tensor_proto->set_raw_data(data, data_bytes);
 
       ort_api.ReleaseTensorTypeAndShapeInfo(type_shape_info);
+
+      *(attr_proto.mutable_t()) = *tensor_proto;  // Copy TensorProto into attribute
+      break;
     }
     default: {
       std::string err_msg = "Unexpected OrtOpAttrType with value " + std::to_string(static_cast<int>(attr_type));
