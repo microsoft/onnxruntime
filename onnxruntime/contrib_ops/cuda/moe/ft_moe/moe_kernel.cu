@@ -38,6 +38,7 @@
 
 #include "moe_kernel.h"
 
+#include <cuda_runtime_api.h>
 #include <cub/cub.cuh>
 #include <cub/device/device_radix_sort.cuh>
 #include <cub/util_type.cuh>
@@ -838,11 +839,15 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, 
 }
 
 namespace {
-
-struct __align__(8) Half4 {
+typedef struct __CUDA_ALIGN__(8) {
   half2 x;
   half2 y;
-};
+} half2_2;
+
+typedef struct __CUDA_ALIGN__(8) {
+  __nv_bfloat162 x;
+  __nv_bfloat162 y;
+} __nv_bfloat162_2;
 
 // TODO(wy): move to common header
 template <typename T>
@@ -853,7 +858,11 @@ struct T4<float> {
 };
 template <>
 struct T4<half> {
-  using Type = Half4;
+  using Type = half2_2;
+};
+template <>
+struct T4<__nv_bfloat16> {
+  using Type = __nv_bfloat162_2;
 };
 
 template <typename T>
@@ -865,6 +874,10 @@ struct T2<float> {
 template <>
 struct T2<half> {
   using Type = half2;
+};
+template <>
+struct T2<__nv_bfloat16> {
+  using Type = __nv_bfloat162;
 };
 
 inline __device__ float2 operator*(const float2 a, const float2 b) { return make_float2(a.x * b.x, a.y * b.y); }
@@ -882,15 +895,27 @@ inline __device__ half2 operator*(const half2 a, const half2 b) { return make_ha
 #endif
 
 // TODO(wy): use cuda common header and investigate pipeline build issue.
-inline __device__ Half4 operator*(const Half4 a, const Half4 b) {
+inline __device__ half2_2 operator*(const half2_2 a, const half2_2 b) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530 && \
     ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
-  Half4 result;
+  half2_2 result;
   result.x = a.x * b.x;
   result.y = a.y * b.y;
   return result;
 #else
-  return Half4{__hmul2(a.x, b.x), __hmul2(a.y, b.y)};
+  return half2_2{__hmul2(a.x, b.x), __hmul2(a.y, b.y)};
+#endif
+}
+
+inline __device__ __nv_bfloat162_2 operator*(const __nv_bfloat162_2 a, const __nv_bfloat162_2 b) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800 && \
+    ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+  __nv_bfloat162_2 result;
+  result.x = a.x * b.x;
+  result.y = a.y * b.y;
+  return result;
+#else
+  return __nv_bfloat162_2{__hmul2(a.x, b.x), __hmul2(a.y, b.y)};
 #endif
 }
 
@@ -1291,17 +1316,25 @@ template void topk_gating_softmax_kernelLauncher(const float*, const bool*, floa
                                                  int, bool, bool, cudaStream_t);
 template void topk_gating_softmax_kernelLauncher(const half*, const bool*, half*, half*, int*, int*, int, int,
                                                  int, bool, bool, cudaStream_t);
+template void topk_gating_softmax_kernelLauncher(const __nv_bfloat16*, const bool*, __nv_bfloat16*, __nv_bfloat16*, int*, int*, int, int,
+                                                 int, bool, bool, cudaStream_t);
 
 // ==================== Variable batched GEMM specializations ==================================
 template class CutlassMoeFCRunner<float, float>;
 template class CutlassMoeFCRunner<half, half>;
+template class CutlassMoeFCRunner<__nv_bfloat16, __nv_bfloat16>;
+// For qMoE:
 template class CutlassMoeFCRunner<half, cutlass::uint4b_t>;
 template class CutlassMoeFCRunner<half, uint8_t>;
+template class CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint4b_t>;
+template class CutlassMoeFCRunner<__nv_bfloat16, uint8_t>;
 
 // ===================== Specializations for init routing =========================
 template void initialize_moe_routing_kernelLauncher(const float*, float*, const int*, int*, int, int, int, int,
                                                     cudaStream_t);
 template void initialize_moe_routing_kernelLauncher(const half*, half*, const int*, int*, int, int, int, int,
+                                                    cudaStream_t);
+template void initialize_moe_routing_kernelLauncher(const __nv_bfloat16*, __nv_bfloat16*, const int*, int*, int, int, int, int,
                                                     cudaStream_t);
 
 // ==================== Specializations for final routing ===================================
@@ -1317,6 +1350,8 @@ template void finalize_moe_routing_kernelLauncher(const float*, float*, const fl
                                                   const float*, const int*, const int*, int, int, int, cudaStream_t);
 template void finalize_moe_routing_kernelLauncher(const half*, half*, const half*, const half*, const half*,
                                                   const half*, const int*, const int*, int, int, int, cudaStream_t);
+template void finalize_moe_routing_kernelLauncher(const __nv_bfloat16*, __nv_bfloat16*, const __nv_bfloat16*,
+                                                  const __nv_bfloat16*, const int*, const int*, int, int, int, cudaStream_t);
 
 template void invokeSwiGLU<float, true>(float*, float const*, int, int, float, cudaStream_t);
 template void invokeSwiGLU<half, true>(half*, half const*, int, int, float, cudaStream_t);
