@@ -87,6 +87,92 @@ TEST(EpGraphTest, Check3LayerNestedSubgraphV2) {
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
 }
 
+TEST(EpGraphTest, GetAttributeByName) {
+  // Load model with a single Conv that has no explicit attributes set.
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/conv_default_attrs.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  //
+  // Pre-check
+  //
+
+  // Original Conv has no explicit attributes but Graph::Resolve() fills in default values for
+  // 'auto_pad' and 'group'. The other optional attributes (i.e. dilations, kernel_shape, pads, strides) do not
+  // have statically computable default values, so will not be filled in by Graph::Resolve().
+  const OrtGraph& ort_graph = test_graph->GetOrtGraph();
+  const OrtApi& ort_api = Ort::GetApi();
+
+  size_t num_nodes = 0;
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNumNodes(&ort_graph, &num_nodes));
+  ASSERT_EQ(num_nodes, 1);
+
+  std::vector<const OrtNode*> nodes(num_nodes);
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNodes(&ort_graph, nodes.data(), nodes.size()));
+
+  const OrtNode* conv_node = nodes[0];
+  const char* op_type = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.Node_GetOperatorType(conv_node, &op_type));
+  ASSERT_STREQ(op_type, "Conv");
+
+  size_t num_attrs = 0;
+  ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumAttributes(conv_node, &num_attrs));
+  ASSERT_EQ(num_attrs, 2);
+
+  std::vector<const OrtOpAttr*> attrs(num_attrs);
+  ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributes(conv_node, attrs.data(), attrs.size()));
+  for (const OrtOpAttr* attr : attrs) {
+    const char* attr_name_cstr = nullptr;
+    ASSERT_ORTSTATUS_OK(ort_api.OpAttr_GetName(attr, &attr_name_cstr));
+    std::string_view attr_name = attr_name_cstr;
+    ASSERT_TRUE(attr_name == "auto_pad" || attr_name == "group");  // Only 'auto_pad' and 'group' have been set
+  }
+
+  //
+  // Test 1: Get optional attribute that is not set (e.g., dilations). Should not get an error.
+  //
+  {
+    const OrtOpAttr* attr = nullptr;
+    Ort::Status status{ort_api.Node_GetAttributeByName(conv_node, "dilations", &attr)};
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ(attr, nullptr);
+  }
+
+  //
+  // Test 2: Get attribute that does not exist in operator schema. Should get a ORT_NOT_FOUND error.
+  //
+  {
+    const OrtOpAttr* attr = nullptr;
+    Ort::Status status{ort_api.Node_GetAttributeByName(conv_node, "_does_not_exist_", &attr)};
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_EQ(status.GetErrorCode(), ORT_NOT_FOUND);
+    ASSERT_EQ(attr, nullptr);
+  }
+
+  //
+  // Test 3: Get attribute that is known to be set.
+  //
+  {
+    const OrtOpAttr* attr = nullptr;
+    ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributeByName(conv_node, "auto_pad", &attr));
+    ASSERT_NE(attr, nullptr);
+
+    OrtOpAttrType attr_type = ORT_OP_ATTR_UNDEFINED;
+    ASSERT_ORTSTATUS_OK(ort_api.OpAttr_GetType(attr, &attr_type));
+    ASSERT_EQ(attr_type, ORT_OP_ATTR_STRING);
+
+    std::string auto_pad_val;
+
+    // First call to ReadOpAttr gets the total byte size. Second call reads the data.
+    size_t total_attr_bytes = 0;
+    Ort::Status status2{ort_api.ReadOpAttr(attr, attr_type, nullptr, 0, &total_attr_bytes)};
+    auto_pad_val.resize(total_attr_bytes);
+
+    ASSERT_ORTSTATUS_OK(ort_api.ReadOpAttr(attr, attr_type, auto_pad_val.data(), total_attr_bytes,
+                                           &total_attr_bytes));
+    ASSERT_EQ(auto_pad_val, "NOTSET");
+  }
+}
+
 // Check correctness of an OrtGraph that has external initializers.
 TEST(EpGraphTest, CheckModelExternalInitializers) {
   auto test_graph = TestGraph::Load(ORT_TSTR("testdata/conv_qdq_external_ini.onnx"));
