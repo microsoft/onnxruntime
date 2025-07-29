@@ -281,7 +281,7 @@ Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, const Or
 
     return Status::OK();
   };
-  
+
   const auto* attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute);
   const auto& tensor_proto = attr_proto->t();
 
