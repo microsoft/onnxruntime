@@ -119,24 +119,36 @@ struct MIGraphX_Provider : Provider {
     migx_options.migraphx_int8_enable = internal_options.int8_enable;
     migx_options.migraphx_exhaustive_tune = internal_options.exhaustive_tune;
 
-    char* dest = nullptr;
-    auto str_size = internal_options.int8_calibration_table_name.size();
-    if (str_size == 0) {
+    if (internal_options.int8_calibration_table_name.empty()) {
       migx_options.migraphx_int8_calibration_table_name = nullptr;
     } else {
-      dest = new char[str_size + 1];
+      auto str_size = internal_options.int8_calibration_table_name.size();
+      auto dest = new char[str_size + 1];
 #ifdef _MSC_VER
       strncpy_s(dest, str_size + 1, internal_options.int8_calibration_table_name.c_str(), str_size);
 #else
       strncpy(dest, internal_options.int8_calibration_table_name.c_str(), str_size);
 #endif
       dest[str_size] = '\0';
-      migx_options.migraphx_int8_calibration_table_name = (const char*)dest;
+      migx_options.migraphx_int8_calibration_table_name = static_cast<const char*>(dest);
     }
 
     migx_options.migraphx_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
 
-    migx_options.migraphx_cache_dir = internal_options.model_cache_dir.native().c_str();
+    if (internal_options.model_cache_dir.empty()) {
+      migx_options.migraphx_cache_dir = nullptr;
+    } else {
+      const auto cache_dir_str{internal_options.model_cache_dir.native()};
+      auto cache_dir = new ORTCHAR_T[cache_dir_str.size() + 1];
+#ifdef _MSC_VER
+      wcsncpy_s(cache_dir, cache_dir_str.size() + 1, cache_dir_str.data(), cache_dir_str.size());
+#else
+      strncpy(cache_dir, cache_dir_str.data(), cache_dir_str.size());
+#endif
+      cache_dir[cache_dir_str.size()] = '\0';
+      migx_options.migraphx_cache_dir = cache_dir;
+    }
+
     migx_options.migraphx_arena_extend_strategy = static_cast<int>(internal_options.arena_extend_strategy);
     migx_options.migraphx_mem_limit = internal_options.mem_limit;
   }

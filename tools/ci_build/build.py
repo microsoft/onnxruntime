@@ -1994,6 +1994,7 @@ def build_nuget_package(
     use_winml,
     use_qnn,
     use_dml,
+    use_migraphx,
     enable_training_apis,
     msbuild_extra_options,
 ):
@@ -2031,6 +2032,9 @@ def build_nuget_package(
     elif use_tensorrt:
         execution_provider = "/p:ExecutionProvider=tensorrt"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.TensorRT"
+    elif use_migraphx:
+        execution_provider = "/p:ExecutionProvider=migraphx"
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.MIGraphX"
     elif use_dnnl:
         execution_provider = "/p:ExecutionProvider=dnnl"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DNNL"
@@ -2622,6 +2626,7 @@ def main():
                 getattr(args, "use_winml", False),
                 args.use_qnn,
                 getattr(args, "use_dml", False),
+                args.use_migraphx,
                 args.enable_training_apis,
                 normalize_arg_list(args.msbuild_extra_options),
             )

@@ -58,6 +58,9 @@ namespace Microsoft.ML.OnnxRuntime
         private static string[] cudaDelayLoadedLibs = { };
         private static string[] trtDelayLoadedLibs = { };
 
+        // Delay-loaded MIGraphX DLLs. Currently, delayload is disabled. See cmake/CMakeLists.txt for more information.
+        private static string[] migxDelayLoadedLibs = { };
+
         #region Constructor and Factory methods
 
         /// <summary>
@@ -197,6 +200,28 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 options.AppendExecutionProvider_ROCm(rocmProviderOptions);
+                return options;
+            }
+            catch (Exception)
+            {
+                options.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for MIGraaphX execution provider.
+        /// Use only if MIGraphX is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="migxProviderOptions">MIGraphX EP provider options</param>
+        /// <returns>A SessionsOptions() object configured for execution on provider options</returns>
+        public static SessionOptions MakeSessionOptionWithMIGraphXProvider(OrtMIGraphXProviderOptions migxProviderOptions)
+        {
+            CheckMIGraphXExecutionProviderDLLs();
+            SessionOptions options = new SessionOptions();
+            try
+            {
+                options.AppendExecutionProvider_MIGraphX(migxProviderOptions);
                 return options;
             }
             catch (Exception)
@@ -347,9 +372,22 @@ namespace Microsoft.ML.OnnxRuntime
         public void AppendExecutionProvider_MIGraphX(int deviceId = 0)
         {
 #if __MOBILE__
-            throw new NotSupportedException($"The MIGraphX Execution Provider is not supported in this build");
+            throw new NotSupportedException("The MIGraphX Execution Provider is not supported in this build");
 #else
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_MIGraphX(handle, deviceId));
+#endif
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId">device identification</param>
+        public void AppendExecutionProvider_MIGraphX(OrtMIGraphXProviderOptions migraphxProviderOptions)
+        {
+#if __MOBILE__
+            throw new NotSupportedException($"The AMD Nitris Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_MIGraphX(handle, migraphxProviderOptions.Handle));
 #endif
         }
 
@@ -1125,6 +1163,27 @@ namespace Microsoft.ML.OnnxRuntime
             return true;
         }
 
+        private static bool CheckMIGraphXExecutionProviderDLLs()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                foreach (var dll in migxDelayLoadedLibs)
+                {
+                    IntPtr handle = LoadLibrary(dll);
+                    if (handle != IntPtr.Zero)
+                        continue;
+                    var sysdir = new StringBuilder(String.Empty, 2048);
+                    GetSystemDirectory(sysdir, (uint)sysdir.Capacity);
+                    throw new OnnxRuntimeException(
+                        ErrorCode.NoSuchFile,
+                        $"kernel32.LoadLibrary():'{dll}' not found. MIGraphX are required for GPU execution. " +
+                        $". Verify it is available in the system directory={sysdir}. Else copy it to the output folder."
+                    );
+                }
+            }
+            return true;
+        }
+        
         #endregion
 
         #region SafeHandle
