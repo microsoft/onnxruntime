@@ -3005,9 +3005,10 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, 
     return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Node_GetAttributeByName.");
   }
 
-  *attribute = ep_node->GetAttribute(attribute_name);
+  bool is_unset_optional_attr = false;
+  *attribute = ep_node->GetAttribute(attribute_name, is_unset_optional_attr);
 
-  if (*attribute) {
+  if (*attribute || is_unset_optional_attr) {
     return nullptr;
   } else {
     std::ostringstream oss;
