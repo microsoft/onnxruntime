@@ -27,7 +27,7 @@ steps:
         scriptType: 'batch'
         scriptLocation: 'inlineScript' 
         inlineScript: |
-          az storage blob download-batch -s https://lotusscus.blob.core.windows.net/models -d $(Agent.TempDirectory) --pattern "cuda_sdk/v${{ parameters.CudaVersion }}/*"
+          az storage blob download-batch --auth-mode login -s https://lotusscus.blob.core.windows.net/models -d $(Agent.TempDirectory) --pattern "cuda_sdk/v${{ parameters.CudaVersion }}/*"
           
     - powershell: |
         Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\bin;$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\extras\CUPTI\lib64"
@@ -66,7 +66,7 @@ steps:
         scriptType: 'batch'
         scriptLocation: 'inlineScript' 
         inlineScript: |
-          az storage blob download-batch -s https://lotusscus.blob.core.windows.net/models -d $(Agent.TempDirectory) --pattern "local/TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)/*"          
+          az storage blob download-batch --auth-mode login -s https://lotusscus.blob.core.windows.net/models -d $(Agent.TempDirectory) --pattern "local/TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)/*"          
           
     - powershell: |
         Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)\lib"
