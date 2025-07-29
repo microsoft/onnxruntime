@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string_view>
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include <mutex>
@@ -13,24 +14,25 @@
 #include <unordered_map>
 #include <filesystem>
 
+using namespace std::literals::string_view_literals;
+
 namespace onnxruntime {
 
 namespace migraphx_env_vars {
-static const char kFP16Enable[] = "ORT_MIGRAPHX_FP16_ENABLE";
-static const char kBF16Enable[] = "ORT_MIGRAPHX_BF16_ENABLE";
-static const char kFP8Enable[] = "ORT_MIGRAPHX_FP8_ENABLE";
-static const char kINT8Enable[] = "ORT_MIGRAPHX_INT8_ENABLE";
-static const char dumpModelOps[] = "ORT_MIGRAPHX_DUMP_MODEL_OPS";
-static const char kINT8CalibrationTableName[] = "ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME";
-static const char kCachePath[] = "ORT_MIGRAPHX_CACHE_PATH";
-static const char kINT8UseNativeMIGraphXCalibrationTable[] = "ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE";
-static const char kSaveCompiledModel[] = "ORT_MIGRAPHX_SAVE_COMPILED_MODEL";
-static const char kSavedModelPath[] = "ORT_MIGRAPHX_SAVE_COMPILED_PATH";
-static const char kLoadCompiledModel[] = "ORT_MIGRAPHX_LOAD_COMPILED_MODEL";
-static const char kLoadModelPath[] = "ORT_MIGRAPHX_LOAD_COMPILED_PATH";
-static const char kExhaustiveTune[] = "ORT_MIGRAPHX_EXHAUSTIVE_TUNE";
-
-};  // namespace migraphx_env_vars
+constexpr auto kFP16Enable = "ORT_MIGRAPHX_FP16_ENABLE"sv;
+constexpr auto kBF16Enable = "ORT_MIGRAPHX_BF16_ENABLE"sv;
+constexpr auto kFP8Enable = "ORT_MIGRAPHX_FP8_ENABLE"sv;
+constexpr auto kINT8Enable = "ORT_MIGRAPHX_INT8_ENABLE"sv;
+constexpr auto kDumpModelOps = "ORT_MIGRAPHX_DUMP_MODEL_OPS"sv;
+constexpr auto kINT8CalibrationTableName = "ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME"sv;
+constexpr auto kCachePath = "ORT_MIGRAPHX_CACHE_PATH"sv;
+constexpr auto kINT8UseNativeMIGraphXCalibrationTable = "ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE"sv;
+constexpr auto kSaveCompiledModel = "ORT_MIGRAPHX_SAVE_COMPILED_MODEL"sv;
+constexpr auto kSavedModelPath = "ORT_MIGRAPHX_SAVE_COMPILED_PATH"sv;
+constexpr auto kLoadCompiledModel = "ORT_MIGRAPHX_LOAD_COMPILED_MODEL"sv;
+constexpr auto kLoadModelPath = "ORT_MIGRAPHX_LOAD_COMPILED_PATH"sv;
+constexpr auto kExhaustiveTune = "ORT_MIGRAPHX_EXHAUSTIVE_TUNE"sv;
+}  // namespace migraphx_env_vars
 
 // Information to construct kernel function state.
 struct MIGraphXFuncState {

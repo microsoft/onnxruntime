@@ -291,7 +291,7 @@ void MIGraphXExecutionProvider::get_flags_from_env() {
   }
 
   // dump unsupported ops
-  const std::string dump_model_ops_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::dumpModelOps);
+  const std::string dump_model_ops_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kDumpModelOps);
   if (!dump_model_ops_env.empty()) {
     dump_model_ops_ = (std::stoi(dump_model_ops_env) == 0 ? false : true);
     LOGS_DEFAULT(WARNING) << "\nORT_MIGRAPHX_DUMP_MODEL_OPS: " << dump_model_ops_;

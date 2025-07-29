@@ -5,6 +5,7 @@
 
 #include <limits>
 #include <string>
+#include <string_view>
 
 #include "core/framework/ortdevice.h"
 #include "core/common/hash_combine.h"
@@ -12,7 +13,29 @@
 #include "core/framework/provider_options.h"
 #include "core/session/onnxruntime_c_api.h"
 
+using namespace std::literals::string_view_literals;
+
 namespace onnxruntime {
+
+namespace migraphx_provider_option {
+constexpr auto kDeviceId = "device_id"sv;
+constexpr auto kFp16Enable = "migraphx_fp16_enable"sv;
+constexpr auto kBf16Enable = "migraphx_bf16_enable"sv;
+constexpr auto kFp8Enable = "migraphx_fp8_enable"sv;
+constexpr auto kInt8Enable = "migraphx_int8_enable"sv;
+constexpr auto kInt8CalibTable = "migraphx_int8_calibration_table_name"sv;
+constexpr auto kInt8UseNativeCalibTable = "migraphx_int8_use_native_calibration_table"sv;
+constexpr auto kSaveCompiledModel = "migraphx_save_compiled_model"sv;
+constexpr auto kSaveModelPath = "migraphx_save_model_name"sv;
+constexpr auto kLoadCompiledModel = "migraphx_load_compiled_model"sv;
+constexpr auto kLoadModelPath = "migraphx_load_model_name"sv;
+constexpr auto kExhaustiveTune = "migraphx_exhaustive_tune"sv;
+constexpr auto kMemLimit = "migraphx_mem_limit"sv;
+constexpr auto kArenaExtendStrategy = "migraphx_arena_extend_strategy"sv;
+constexpr auto kGpuExternalAlloc = "migraphx_external_alloc"sv;
+constexpr auto kGpuExternalFree = "migraphx_external_free"sv;
+constexpr auto kGpuExternalEmptyCache = "migraphx_external_empty_cache"sv;
+}  // namespace migraphx_provider_option
 
 // Information needed to construct MIGraphX execution providers.
 struct MIGraphXExecutionProviderExternalAllocatorInfo {
