@@ -274,6 +274,10 @@ stages:
           clean: true
           submodules: none
 
+        - download: build
+          artifact: 'Windows_Packaging_cuda_build_artifacts'
+          displayName: 'Download Windows GPU Packages Build'
+
         - template: templates/flex-downloadPipelineArtifact.yml
           parameters:
             ArtifactName: "Windows_Packaging_cuda_build_artifacts"
