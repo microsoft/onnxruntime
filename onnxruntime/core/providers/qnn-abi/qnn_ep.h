@@ -161,6 +161,7 @@ class QnnEp : public OrtEp, public ApiPtrs {
   std::string name_;
   Config config_;
   const OrtLogger& logger_;
+  const logging::Logger& logger_in_;
   bool context_cache_enabled_;
   bool share_ep_contexts_;
   bool enable_vtcm_backup_buffer_sharing_;

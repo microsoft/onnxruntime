@@ -111,7 +111,6 @@ OrtStatus* ORT_API_CALL QnnEpFactory::GetSupportedDevicesImpl(OrtEpFactory* this
     }
   }
 
-  std::cout << "DEBUG: GetSupportedDevicesImpl created " << num_ep_devices << " EpDevices" << std::endl;
   return nullptr;
 }
 
@@ -135,7 +134,6 @@ OrtStatus* ORT_API_CALL QnnEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   }
 
   // Create the execution provider
-  std::cout << "DEBUG: About to create QnnEp instance" << std::endl;
   RETURN_IF_ERROR(factory->ort_api.Logger_LogMessage(logger,
                                                      OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
                                                      "Creating QNN EP", ORT_FILE, __LINE__, __FUNCTION__));
@@ -147,6 +145,10 @@ OrtStatus* ORT_API_CALL QnnEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
 }
 
 void ORT_API_CALL QnnEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
+  if (ep == nullptr) {
+    return;
+  }
+
   QnnEp* dummy_ep = static_cast<QnnEp*>(ep);
   delete dummy_ep;
 }
@@ -154,7 +156,6 @@ void ORT_API_CALL QnnEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp*
 OrtStatus* ORT_API_CALL QnnEpFactory::CreateDataTransferImpl(OrtEpFactory* this_ptr,
                                                              OrtDataTransferImpl** data_transfer) noexcept {
   auto& factory = *static_cast<QnnEpFactory*>(this_ptr);
-  factory;
   std::cout << "DEBUG: QNN CreateDataTransferImpl called!" << std::endl;
   *data_transfer = factory.data_transfer_impl_.get();
 
