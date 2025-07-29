@@ -256,6 +256,7 @@ struct OrtApiForVaip {
   GraphProto* (*graph_to_graph_proto)(const Graph& graph);  // [106]
   void (*graph_proto_delete)(GraphProto* p);                // [107]
   void (*graph_infer_shapes)(ModelProto& m);                // [108]
+  DllSafe<std::string> (*graph_save_string)(const Graph& graph);  // [109]
 };
 
 #ifndef USE_VITISAI
