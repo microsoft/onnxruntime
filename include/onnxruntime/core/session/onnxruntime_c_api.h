@@ -5847,14 +5847,13 @@ struct OrtApi {
 
   /** \brief Returns an OrtGraph that contains a subset of nodes in the source OrtGraph.
    *
-   * Note:
-   * The lifetime of "dst_graph" is tied to that of "src_graph", as they both internally reference
+   * \note The lifetime of "dst_graph" is tied to that of "src_graph", as they both internally reference
    * the same underlying graph.
    *
    * \param[in] src_graph The source OrtGraph instance.
    * \param[in] nodes A subset of the nodes/OrtNodes in 'graph'.
    * \param[in] num_nodes Number of nodes.
-   * \param[out] dst_sub_graph An OrtGraph created from a given set of nodes. Must be released by calling ReleaseGraph.
+   * \param[out] dst_graph An OrtGraph created from a given set of nodes. Must be released by calling ReleaseGraph.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
