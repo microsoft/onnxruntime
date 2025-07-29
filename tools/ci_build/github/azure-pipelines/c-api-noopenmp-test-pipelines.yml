@@ -75,6 +75,16 @@ stages:
       artifactName: 'onnxruntime-android-full-aar'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
+- stage: Final_AAR_Testing_Android_QNN
+  dependsOn: Setup
+  jobs:
+  - template: templates/android-java-api-aar-test.yml
+    parameters:
+      artifactName: 'onnxruntime-android-qnn-aar'
+      packageName: 'onnxruntime-android-qnn'
+      #TODO: get this information from the setup stage
+      QnnSDKVersion: '2.36.1.250708'
+
 - template: nuget/templates/test_win.yml
   parameters:
     AgentPool: 'onnxruntime-Win-CPU-2022'
@@ -180,7 +190,7 @@ stages:
     - name: runCodesignValidationInjection
       value: false
     - name: docker_base_image
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250724.1
     timeoutInMinutes: 60
     steps:
     - checkout: self

@@ -48,8 +48,11 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   auto& device_prop = GetDeviceProp();
   const int sm = device_prop.major * 10 + device_prop.minor;
 
-  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm, fc3_experts_weights_optional != nullptr,
-                                                                     normalize_routing_weights_, use_sparse_mixer_);
+  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm,
+                                                                     activation_type_,
+                                                                     fc3_experts_weights_optional != nullptr,
+                                                                     normalize_routing_weights_,
+                                                                     use_sparse_mixer_);
 
   size_t ws_size = moe_runner.getWorkspaceSize(
       static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),

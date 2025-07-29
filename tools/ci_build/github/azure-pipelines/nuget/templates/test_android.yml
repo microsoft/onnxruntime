@@ -24,17 +24,13 @@ stages:
         inputs:
           versionSpec: 6.10.x
 
-      - template: ../../templates/flex-downloadPipelineArtifact.yml
-        parameters:
-          StepName: 'Download Pipeline Artifact'
-          ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
-          TargetPath: '$(Build.BinariesDirectory)\nuget-artifact'
-          SpecificArtifact: ${{ parameters.SpecificArtifact }}
-          BuildId: ${{ parameters.BuildId }}
+      - download: build
+        displayName: 'Download Nuget'
+        artifact: 'drop-signed-nuget-${{ parameters.ArtifactSuffix }}'
 
       - template: get-nuget-package-version-as-variable.yml
         parameters:
-          packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
+          packageFolder: '$(Pipeline.Workspace)/build/drop-signed-nuget-${{ parameters.ArtifactSuffix }}'
 
       - task: PowerShell@2
         displayName: Install MAUI workloads
@@ -49,7 +45,7 @@ stages:
         inputs:
           targetType: 'inline'
           script: |
-            dotnet nuget add source $(Build.BinariesDirectory)\nuget-artifact --name local-nuget
+            dotnet nuget add source $(Pipeline.Workspace)/build/drop-signed-nuget-${{ parameters.ArtifactSuffix }} --name local-nuget
             dotnet publish -c Release --property:UsePrebuiltNativePackage=true --property:CurrentOnnxRuntimeVersion=$(NuGetPackageVersionNumber) -f net8.0-android
           workingDirectory: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.MAUI'
 

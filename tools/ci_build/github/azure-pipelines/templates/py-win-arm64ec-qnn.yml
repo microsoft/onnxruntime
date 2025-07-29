@@ -19,11 +19,6 @@ parameters:
   type: string
   default: ''
 
-- name: is1ES
-  displayName: 'Whether the pipeline is running in 1ES'
-  type: boolean
-  default: false
-
 jobs:
 - job: Win_py_x64_qnn_Wheels
   timeoutInMinutes: 210

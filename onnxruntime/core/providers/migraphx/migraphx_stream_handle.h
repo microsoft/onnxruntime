@@ -29,8 +29,6 @@ struct MIGraphXStream : Stream {
 
   virtual void* GetResource(int version, int id) const;
 
-  virtual WaitNotificationFn GetWaitNotificationFn() const { return WaitMIGraphXNotificationOnDevice; }
-
  private:
   std::vector<void*> deferred_cpu_buffers_;
   AllocatorPtr cpu_allocator_;
