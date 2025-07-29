@@ -113,7 +113,7 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> tensor_attribute_values;
 
   auto tensor_proto_to_ort_value = [&](const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                       std::string& tensor_proto_name) -> Status {
+                                       const std::string& tensor_proto_name) -> Status {
     const auto& graph_viewer = ep_graph->GetGraphViewer();
 
     // Initialize OrtValue for tensor attribute.
@@ -136,13 +136,11 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
 
       // Create and cache an OrtValue for the 'TENSOR' attribute
       if (attr->type() == onnx::AttributeProto::TENSOR) {
-        const auto& tensor_proto = attr->t();
         // Some tensor proto could have no name.
-        // Create a name for that case since we need the name as the key for lookup later.
-        std::string tensor_proto_name = tensor_proto.name();
-        if (tensor_proto.name().empty()) {
-          tensor_proto_name = node.Name() + "_" + attr->name();
-        }
+        // Create a name for that case since we need a unique name as the key for lookup later.
+        std::string tensor_proto_name = ep_node->GetUniqueTensorAttributeName(reinterpret_cast<OrtOpAttr*>(attr.get()));
+        const auto& tensor_proto = attr->t();
+
         ORT_RETURN_IF_ERROR(tensor_proto_to_ort_value(tensor_proto, tensor_proto_name));
       }
 
@@ -177,11 +175,7 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
   ep_node->inputs_ = std::move(ep_node_inputs);
   ep_node->outputs_ = std::move(ep_node_outputs);
   ep_node->attributes_map_ = std::move(ep_node_attributes_map);
-
-  if (!tensor_attribute_values.empty()) {
-    ep_node->tensor_attribute_values_ = std ::move(tensor_attribute_values);
-  }
-
+  ep_node->tensor_attribute_values_ = std::move(tensor_attribute_values);
   ep_node->attributes_ = std::move(ep_node_attributes);
   ep_node->implicit_inputs_ = std::move(ep_node_implicit_inputs);
   ep_node->subgraphs_ = std::move(ep_node_subgraphs);
@@ -266,18 +260,14 @@ Status EpNode::GetAttributes(gsl::span<const OrtOpAttr*> dst) const {
 }
 
 Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, const OrtValue*& result) const {
-  const auto attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute);
+  const auto* attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute);
 
   if (attr_proto->type() != onnx::AttributeProto::TENSOR) {
     result = nullptr;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This OrtOpAttr instance is not a 'TENSOR' attribute");
   }
 
-  const auto& tensor_proto = attr_proto->t();
-  std::string tensor_proto_name = tensor_proto.name();
-  if (tensor_proto.name().empty()) {
-    tensor_proto_name = node_.Name() + "_" + attr_proto->name();
-  }
+  auto tensor_proto_name = GetUniqueTensorAttributeName(attribute);
 
   const auto& it = tensor_attribute_values_.find(tensor_proto_name);
   if (it != tensor_attribute_values_.end()) {
@@ -286,7 +276,7 @@ Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, const Or
   }
 
   result = nullptr;
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get 'TENSOR' attribute with the name ", attr_proto->name());
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get 'TENSOR' attribute with the name ", tensor_proto_name);
 }
 
 Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {
@@ -338,6 +328,22 @@ const OrtOpAttr* EpNode::GetAttribute(const std::string& name) const {
 
 const std::string& EpNode::GetEpName() const {
   return node_.GetExecutionProviderType();
+}
+
+const std::string EpNode::GetUniqueTensorAttributeName(const OrtOpAttr* attr) const {
+  const auto* attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr);
+
+  if (attr_proto->type() != onnx::AttributeProto::TENSOR) {
+    return "";
+  }
+
+  const auto& tensor_proto = attr_proto->t();
+  std::string tensor_proto_name = node_.Name() + "_" + attr_proto->name();
+  if (!tensor_proto.name().empty()) {
+    tensor_proto_name += "_" + attr_proto->name();
+  }
+
+  return tensor_proto_name;
 }
 
 //

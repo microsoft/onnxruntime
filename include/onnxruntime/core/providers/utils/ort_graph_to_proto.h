@@ -768,58 +768,69 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
       const OrtValue* ort_value = nullptr;
       ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetTensorAttributeAsOrtValue(&ort_node, &ort_attr, &ort_value));
 
+      Ort::ConstValue tensor(ort_value);
+
       // Get tensor type and shape info
-      OrtTensorTypeAndShapeInfo* type_shape_info;
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetTensorTypeAndShape(ort_value, &type_shape_info));
+      Ort::TensorTypeAndShapeInfo type_shape_info = tensor.GetTensorTypeAndShapeInfo();
 
       // Get tensor type
-      ONNXTensorElementDataType element_type;
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetTensorElementType(type_shape_info, &element_type));
+      ONNXTensorElementDataType element_type = type_shape_info.GetElementType();
 
-      // Set tensor type
+      size_t element_size = 0;
       switch (element_type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
           tensor_proto->set_data_type(onnx::TensorProto_DataType_FLOAT);
+          element_size = sizeof(float);
           break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
           tensor_proto->set_data_type(onnx::TensorProto_DataType_UINT8);
+          element_size = sizeof(uint8_t);
           break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
           tensor_proto->set_data_type(onnx::TensorProto_DataType_INT8);
+          element_size = sizeof(int8_t);
           break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: {
           tensor_proto->set_data_type(onnx::TensorProto_DataType_UINT16);
+          element_size = sizeof(uint16_t);
           break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: {
           tensor_proto->set_data_type(onnx::TensorProto_DataType_INT16);
+          element_size = sizeof(int16_t);
           break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
           tensor_proto->set_data_type(onnx::TensorProto_DataType_INT32);
+          element_size = sizeof(int32_t);
           break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
           tensor_proto->set_data_type(onnx::TensorProto_DataType_INT64);
+          element_size = sizeof(int64_t);
           break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
           tensor_proto->set_data_type(onnx::TensorProto_DataType_BOOL);
+          element_size = sizeof(bool);
           break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
           tensor_proto->set_data_type(onnx::TensorProto_DataType_DOUBLE);
+          element_size = sizeof(double);
           break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: {
           tensor_proto->set_data_type(onnx::TensorProto_DataType_UINT32);
+          element_size = sizeof(uint32_t);
           break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: {
           tensor_proto->set_data_type(onnx::TensorProto_DataType_UINT64);
+          element_size = sizeof(uint64_t);
           break;
         }
         default: {
@@ -828,30 +839,20 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
         }
       }
 
-      // Get rank
-      size_t num_dims;
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetDimensionsCount(type_shape_info, &num_dims));
+      auto shape = type_shape_info.GetShape();
 
-      // Get dimensions
-      std::vector<int64_t> dims(num_dims);
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetDimensions(type_shape_info, dims.data(), num_dims));
-
-      // Set dimensions
-      for (auto& dim : dims) {
+      for (auto& dim : shape) {
         tensor_proto->add_dims(dim);
       }
 
-      const void* data = nullptr;
-      size_t data_bytes = 0;
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetTensorData(ort_value, &data));
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetTensorSizeInBytes(ort_value, &data_bytes));
+      size_t element_count = type_shape_info.GetElementCount();
+      size_t data_bytes = element_count * element_size;
+      const void* data = tensor.GetTensorData<void>();
 
       // Copy the Ortvalue to TensorProto as raw data
       tensor_proto->set_raw_data(data, data_bytes);
 
-      ort_api.ReleaseTensorTypeAndShapeInfo(type_shape_info);
-
-      *(attr_proto.mutable_t()) = *tensor_proto;  // Copy TensorProto into attribute
+      *(attr_proto.mutable_t()) = std::move(*tensor_proto);  // move assignment
       break;
     }
     default: {

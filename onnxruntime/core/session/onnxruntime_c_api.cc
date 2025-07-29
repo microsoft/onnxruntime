@@ -3024,19 +3024,14 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetTensorAttributeAsOrtValue, _In_ const OrtNo
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attribute argument is null");
   }
 
-  const EpNode* ep_node = EpNode::ToInternal(node);
-  if (ep_node == nullptr) {
-    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Node_GetAttributeByName.");
-  }
-
   const auto& tensor_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute)->t();
 
-  ORT_ENFORCE(utils::HasDataType(tensor_proto));
-  ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(tensor_proto.data_type()));
+  ORT_ENFORCE(utils::HasDataType(tensor_proto), "Tensor proto doesn't have data type.");
+  ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(tensor_proto.data_type()), "Tensor proto has invalid data type.");
   ORT_ENFORCE(!utils::HasExternalData(tensor_proto),
               "Tensor proto with external data for value attribute is not supported.");
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(ep_node->GetTensorAttributeAsOrtValue(attribute, *attr_tensor));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetTensorAttributeAsOrtValue(attribute, *attr_tensor));
   return nullptr;
   API_IMPL_END
 }
