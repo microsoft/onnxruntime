@@ -9,5 +9,6 @@ buildIdentifier: ${BUILD_NUMBER}
 projectName: ORT-UITests
 debug: true
 networkLogs: false
+logLevel: debug
 testContextOptions:
-    skipSessionStatus: true   
+    skipSessionStatus: true
