@@ -16,7 +16,12 @@ import numpy.typing as npt
 import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 
-from onnxruntime.capi._pybind_state import quantize_matmul_nbits, quantize_matmul_4bits, quantize_matmul_8bits, quantize_qdq_matmul_4bits
+from onnxruntime.capi._pybind_state import (
+    quantize_matmul_4bits,
+    quantize_matmul_8bits,
+    quantize_matmul_nbits,
+    quantize_qdq_matmul_4bits,
+)
 
 from .calibrate import CalibrationDataReader
 from .neural_compressor import gptq_quantize, rtn_quantize
@@ -820,7 +825,15 @@ class DefaultWeightOnlyQuantizer:
             scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
             if qbits == 2:
                 quantize_matmul_nbits(
-                    packed, fp32weight, self.config.bits, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
+                    packed,
+                    fp32weight,
+                    self.config.bits,
+                    scales,
+                    zero_point,
+                    block_size,
+                    cols,
+                    rows,
+                    self.config.is_symmetric,
                 )
             elif qbits == 8:
                 quantize_matmul_8bits(
@@ -1254,7 +1267,6 @@ class MatMulNBitsQuantizer:
 
         if algo_config is None:
             algo_config = DefaultWeightOnlyQuantConfig(
-                bits=bits,
                 block_size=block_size,
                 is_symmetric=is_symmetric,
                 accuracy_level=accuracy_level,
@@ -1577,7 +1589,6 @@ if __name__ == "__main__":
         )
     elif args.quant_method == "default":
         quant_config = DefaultWeightOnlyQuantConfig(
-            bits=args.bits,
             block_size=args.block_size,
             is_symmetric=args.symmetric,
             accuracy_level=args.accuracy_level,
