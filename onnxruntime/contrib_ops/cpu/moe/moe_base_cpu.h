@@ -28,6 +28,7 @@ enum class ActivationType {
   Gelu = 1,
   Silu = 2,
   Identity = 3,
+  SwiGLU = 4,
 };
 
 struct MoEParameters {
@@ -82,10 +83,12 @@ class MoEBaseCPU {
     }
 
     const int64_t coe = quant_type == MoEQuantType::UINT4 ? 2 : 1;
-    if (fc1_experts_weights_dims[2] != inter_size / coe) {
+    const int64_t act = activation_type_ == ActivationType::SwiGLU ? 2 : 1;  // SwiGLU requires 2x weights for gate
+
+    if (fc1_experts_weights_dims[2] != act * inter_size / coe) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "fc1_experts_weights_dims[2] must be equal to inter_size, got ",
-                             fc1_experts_weights_dims[2], " and ", inter_size);
+                             "fc1_experts_weights_dims[2] is ", fc1_experts_weights_dims[2],
+                             " expected ", act * inter_size / coe);
     }
     if (fc2_experts_weights_dims[2] != hidden_size / coe) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -132,11 +135,14 @@ class MoEBaseCPU {
       }
     }
 
-    // Optional fc3 validation - CPU implementation doesn't support FC3 yet
-    if (fc3_experts_weights_optional != nullptr) {
+    // FC3 validation - match CUDA FasterTransformer behavior
+    if (activation_type_ == ActivationType::SwiGLU && fc3_experts_weights_optional != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "FC3 gating is not yet implemented for CPU quantized MoE. "
-                             "Please use the CUDA execution provider for gated experts or disable FC3 gating.");
+                             "SwiGLU activation is not supported with fc3. For SwiGLU, the gate weights should be concatenated with FC1 weights.");
+    }
+    if (fc3_experts_weights_optional != nullptr && activation_type_ != ActivationType::SwiGLU) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "FC3 gating is not yet implemented for non-SwiGLU activations on CPU.");
     }
 
     // Set output parameters
@@ -156,6 +162,16 @@ class MoEBaseCPU {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_scales and fc2_experts_scales cannot be null for quantized MoE");
     }
 
+    // SwiGLU should not use separate FC3 scales - weights are concatenated in FC1
+    if (activation_type_ == ActivationType::SwiGLU && fc3_experts_scales_optional != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "SwiGLU should not use separate fc3_experts_scales. Gate weights should be concatenated with FC1 weights.");
+    }
+    if (activation_type_ != ActivationType::SwiGLU && fc3_experts_scales_optional != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "FC3 gating is not yet implemented for non-SwiGLU activations on CPU.");
+    }
+
     const auto& fc1_experts_scales_dims = fc1_experts_scales->Shape().GetDims();
     const auto& fc2_experts_scales_dims = fc2_experts_scales->Shape().GetDims();
 
@@ -171,9 +187,11 @@ class MoEBaseCPU {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_scales[0] must be equal to num_experts, got ",
                              fc1_experts_scales_dims[0], " and ", num_experts);
     }
-    if (fc1_experts_scales_dims[1] != inter_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_scales[1] must be equal to inter_size, got ",
-                             fc1_experts_scales_dims[1], " and ", inter_size);
+
+    const int64_t act = activation_type_ == ActivationType::SwiGLU ? 2 : 1;  // SwiGLU requires 2x scales
+    if (fc1_experts_scales_dims[1] != act * inter_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_scales[1] is ", fc1_experts_scales_dims[1],
+                             " expected ", act * inter_size);
     }
     if (fc2_experts_scales_dims[0] != num_experts) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc2_experts_scales[0] must be equal to num_experts, got ",
@@ -182,12 +200,6 @@ class MoEBaseCPU {
     if (fc2_experts_scales_dims[1] != hidden_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc2_experts_scales[1] must be equal to hidden_size, got ",
                              fc2_experts_scales_dims[1], " and ", hidden_size);
-    }
-    if (fc3_experts_scales_optional != nullptr &&
-        TensorShape(fc1_experts_scales_dims) != fc3_experts_scales_optional->Shape()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "fc3_experts_scales must be equal to fc1_experts_scales, got ",
-                             fc3_experts_scales_optional->Shape(), " and ", TensorShape(fc1_experts_scales_dims));
     }
 
     return Status::OK();
@@ -207,6 +219,8 @@ class MoEBaseCPU {
       activation_type_ = ActivationType::Silu;
     } else if (activation_type_str == "identity") {
       activation_type_ = ActivationType::Identity;
+    } else if (activation_type_str == "swiglu") {
+      activation_type_ = ActivationType::SwiGLU;
     } else {
       ORT_THROW("Unsupported MoE activation type: ", activation_type_str);
     }

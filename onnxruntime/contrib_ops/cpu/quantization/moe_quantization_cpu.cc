@@ -82,12 +82,6 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
                               const Tensor* fc1_scales,
                               const Tensor* fc2_scales,
                               const Tensor* fc3_scales_optional) const {
-  // FC3 (gating) check - throw error if present (CPU doesn't support FC3)
-  if (fc3_experts_weights_optional != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "FC3 gating is not yet implemented for CPU quantized MoE. Please use the CUDA execution provider for gated experts or disable FC3 gating.");
-  }
-
   // Get thread pool
   auto* thread_pool = context->GetOperatorThreadPool();
 
@@ -101,6 +95,17 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
   const MLFloat16* fc1_bias_data = fc1_experts_bias_optional ? fc1_experts_bias_optional->Data<MLFloat16>() : nullptr;
   const MLFloat16* fc2_bias_data = fc2_experts_bias_optional ? fc2_experts_bias_optional->Data<MLFloat16>() : nullptr;
+
+  // SwiGLU validation - FC3 not supported (match CUDA FasterTransformer)
+  bool is_swiglu = (activation_type_ == ActivationType::SwiGLU);
+  if (is_swiglu && fc3_experts_weights_optional != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "SwiGLU activation is not supported with fc3. Gate weights should be concatenated with FC1 weights.");
+  }
+  if (!is_swiglu && fc3_experts_weights_optional != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "FC3 gating is not yet implemented for non-SwiGLU activations on CPU.");
+  }
 
   // Create output tensor
   Tensor* output = context->Output(0, input->Shape());
@@ -119,7 +124,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
       moe_params.num_rows);
 
   // Allocate thread-local buffers
-  auto thread_fc1_buffers = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads * moe_params.inter_size));
+  auto thread_fc1_buffers = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads * moe_params.inter_size * (is_swiglu ? 2 : 1)));
   auto thread_fc2_buffers = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads * moe_params.hidden_size));
   auto thread_results = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads * moe_params.num_rows * moe_params.hidden_size));
 
@@ -144,8 +149,26 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
         return x * (1.0f / (1.0f + std::exp(-x)));
       case ActivationType::Identity:
         return x;
+      case ActivationType::SwiGLU:
+        // SwiGLU: This is handled specially as it requires gating, not applied here
+        return x;
       default:
         return x;  // Default to identity
+    }
+  };
+
+  // Helper function to apply SwiGLU activation: gate * sigmoid(1.702 * gate) * (linear + 1)
+  // Input: fc1_output contains [linear_values, gate_values] concatenated (chunked layout)
+  auto ApplySwiGLU = [](const float* fc1_output, float* result, int64_t inter_size) {
+    constexpr float swiglu_alpha = 1.702f;
+    for (int64_t i = 0; i < inter_size; ++i) {
+      float linear_val = fc1_output[i];             // First half: linear projection
+      float gate_val = fc1_output[i + inter_size];  // Second half: gate projection
+      // SwiGLU: gate * sigmoid(alpha * gate) * (linear + 1)
+      float sigmoid_arg = swiglu_alpha * gate_val;
+      float sigmoid_out = 1.0f / (1.0f + std::exp(-sigmoid_arg));
+      float swish_out = gate_val * sigmoid_out;
+      result[i] = swish_out * (linear_val + 1.0f);
     }
   };
 
@@ -153,18 +176,19 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
     // UInt4x2 implementation - pre-dequantize weights and use optimized GEMM-like operations
 
     // Pre-dequantize all expert weights once (shared across all threads)
+    const int64_t fc1_output_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
     auto dequant_fc1_weights = IAllocator::MakeUniquePtr<float>(allocator,
-                                                                static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size * moe_params.inter_size));
+                                                                static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size * fc1_output_size));
     auto dequant_fc2_weights = IAllocator::MakeUniquePtr<float>(allocator,
                                                                 static_cast<size_t>(moe_params.num_experts * moe_params.inter_size * moe_params.hidden_size));
 
     // Dequantize FC1 weights for all experts (Int4 unpacking)
     for (int64_t expert_idx = 0; expert_idx < moe_params.num_experts; ++expert_idx) {
-      const uint8_t* fc1_expert_weights = fc1_weights_data + expert_idx * moe_params.hidden_size * moe_params.inter_size / 2;
-      const float* fc1_expert_scales = fc1_scales_data + expert_idx * moe_params.inter_size;
-      float* dequant_fc1_expert = dequant_fc1_weights.get() + expert_idx * moe_params.hidden_size * moe_params.inter_size;
+      const uint8_t* fc1_expert_weights = fc1_weights_data + expert_idx * moe_params.hidden_size * fc1_output_size / 2;
+      const float* fc1_expert_scales = fc1_scales_data + expert_idx * fc1_output_size;
+      float* dequant_fc1_expert = dequant_fc1_weights.get() + expert_idx * moe_params.hidden_size * fc1_output_size;
 
-      for (int64_t out_col = 0; out_col < moe_params.inter_size; ++out_col) {
+      for (int64_t out_col = 0; out_col < fc1_output_size; ++out_col) {
         for (int64_t in_col = 0; in_col < moe_params.hidden_size; ++in_col) {
           // For Int4, two values are packed in each uint8
           size_t linear_idx = static_cast<size_t>(out_col * moe_params.hidden_size + in_col);
@@ -212,7 +236,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
     auto process_token_range = [&](ptrdiff_t start_token, ptrdiff_t end_token) {
       const int64_t thread_id = start_token / ((moe_params.num_rows + num_threads - 1) / num_threads);
-      float* thread_fc1_output = thread_fc1_buffers.get() + thread_id * moe_params.inter_size;
+      float* thread_fc1_output = thread_fc1_buffers.get() + thread_id * moe_params.inter_size * (is_swiglu ? 2 : 1);
       float* thread_fc2_output = thread_fc2_buffers.get() + thread_id * moe_params.hidden_size;
       float* thread_local_results = thread_results.get() + thread_id * moe_params.num_rows * moe_params.hidden_size;
 
@@ -235,28 +259,41 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
           if (routing_weight <= 1e-6f) continue;  // Skip experts with negligible routing weight
 
           // FC1: input -> intermediate using pre-dequantized weights + MLAS SGEMM
-          const float* fc1_expert_weights = dequant_fc1_weights.get() + expert_idx * moe_params.hidden_size * moe_params.inter_size;
-          const MLFloat16* fc1_expert_bias_typed = fc1_bias_data ? fc1_bias_data + expert_idx * moe_params.inter_size : nullptr;
+          const float* fc1_expert_weights = dequant_fc1_weights.get() + expert_idx * moe_params.hidden_size * fc1_output_size;
+          const MLFloat16* fc1_expert_bias_typed = fc1_bias_data ? fc1_bias_data + expert_idx * fc1_output_size : nullptr;
 
-          // Use MLAS SGEMM for FC1: input [1 x hidden_size] * weights [hidden_size x inter_size] = output [1 x inter_size]
+          // Use MLAS SGEMM for FC1: input [1 x hidden_size] * weights [hidden_size x fc1_output_size] = output [1 x fc1_output_size]
           MLAS_SGEMM_DATA_PARAMS fc1_params;
           fc1_params.A = token_input;
           fc1_params.lda = static_cast<size_t>(moe_params.hidden_size);
           fc1_params.B = fc1_expert_weights;
           fc1_params.ldb = static_cast<size_t>(moe_params.hidden_size);
           fc1_params.C = thread_fc1_output;
-          fc1_params.ldc = static_cast<size_t>(moe_params.inter_size);
+          fc1_params.ldc = static_cast<size_t>(fc1_output_size);
           fc1_params.alpha = 1.0f;
           fc1_params.beta = 0.0f;
 
-          MlasGemm(CblasNoTrans, CblasNoTrans, 1, static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(moe_params.hidden_size), fc1_params, nullptr);
+          MlasGemm(CblasNoTrans, CblasNoTrans, 1, static_cast<size_t>(fc1_output_size), static_cast<size_t>(moe_params.hidden_size), fc1_params, nullptr);
 
-          // Add bias and apply activation
-          for (int64_t i = 0; i < moe_params.inter_size; ++i) {
-            if (fc1_expert_bias_typed) {
-              thread_fc1_output[i] += ToFloat(fc1_expert_bias_typed[i]);
+          // Handle different activation types
+          if (is_swiglu) {
+            // Add bias to both linear and gate parts before applying SwiGLU
+            for (int64_t i = 0; i < fc1_output_size; ++i) {
+              if (fc1_expert_bias_typed) {
+                thread_fc1_output[i] += ToFloat(fc1_expert_bias_typed[i]);
+              }
             }
-            thread_fc1_output[i] = ApplyActivation(thread_fc1_output[i], activation_type_);
+            // Apply SwiGLU: SiLU(linear_part) * gate_part
+            // thread_fc1_output contains [linear_vals, gate_vals], we want to store result in first inter_size elements
+            ApplySwiGLU(thread_fc1_output, thread_fc1_output, moe_params.inter_size);
+          } else {
+            // Standard activation (non-SwiGLU)
+            for (int64_t i = 0; i < moe_params.inter_size; ++i) {
+              if (fc1_expert_bias_typed) {
+                thread_fc1_output[i] += ToFloat(fc1_expert_bias_typed[i]);
+              }
+              thread_fc1_output[i] = ApplyActivation(thread_fc1_output[i], activation_type_);
+            }
           }
 
           // FC2: intermediate -> output using pre-dequantized weights + MLAS SGEMM
@@ -293,18 +330,19 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
     // UInt8 implementation with pre-dequantized weights and MLAS SGEMM
 
     // Pre-dequantize all expert weights once (shared across all threads)
+    int act = activation_type_ == ActivationType::SwiGLU ? 2 : 1;
     auto dequant_fc1_weights = IAllocator::MakeUniquePtr<float>(allocator,
-                                                                static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size * moe_params.inter_size));
+                                                                static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size * moe_params.inter_size * act));
     auto dequant_fc2_weights = IAllocator::MakeUniquePtr<float>(allocator,
                                                                 static_cast<size_t>(moe_params.num_experts * moe_params.inter_size * moe_params.hidden_size));
 
-    // Dequantize FC1 weights for all experts
+    // Dequantize FC1 weights for all experts (including concatenated weights for SwiGLU)
     for (int64_t expert_idx = 0; expert_idx < moe_params.num_experts; ++expert_idx) {
-      const uint8_t* fc1_expert_weights = fc1_weights_data + expert_idx * moe_params.hidden_size * moe_params.inter_size;
-      const float* fc1_expert_scales = fc1_scales_data + expert_idx * moe_params.inter_size;
-      float* dequant_fc1_expert = dequant_fc1_weights.get() + expert_idx * moe_params.hidden_size * moe_params.inter_size;
+      const uint8_t* fc1_expert_weights = fc1_weights_data + expert_idx * moe_params.hidden_size * moe_params.inter_size * act;
+      const float* fc1_expert_scales = fc1_scales_data + expert_idx * moe_params.inter_size * act;
+      float* dequant_fc1_expert = dequant_fc1_weights.get() + expert_idx * moe_params.hidden_size * moe_params.inter_size * act;
 
-      for (int64_t out_col = 0; out_col < moe_params.inter_size; ++out_col) {
+      for (int64_t out_col = 0; out_col < moe_params.inter_size * act; ++out_col) {
         for (int64_t in_col = 0; in_col < moe_params.hidden_size; ++in_col) {
           size_t weight_idx = static_cast<size_t>(out_col * moe_params.hidden_size + in_col);
           uint8_t quantized_weight = fc1_expert_weights[weight_idx];
@@ -332,7 +370,8 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
     auto process_token_range = [&](ptrdiff_t start_token, ptrdiff_t end_token) {
       const int64_t thread_id = start_token / ((moe_params.num_rows + num_threads - 1) / num_threads);
-      float* thread_fc1_output = thread_fc1_buffers.get() + thread_id * moe_params.inter_size;
+      int act = activation_type_ == ActivationType::SwiGLU ? 2 : 1;
+      float* thread_fc1_output = thread_fc1_buffers.get() + thread_id * moe_params.inter_size * act;
       float* thread_fc2_output = thread_fc2_buffers.get() + thread_id * moe_params.hidden_size;
       float* thread_local_results = thread_results.get() + thread_id * moe_params.num_rows * moe_params.hidden_size;
 
@@ -355,28 +394,53 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
           if (routing_weight <= 1e-6f) continue;  // Skip experts with negligible routing weight
 
           // FC1: input -> intermediate using pre-dequantized weights + MLAS SGEMM
-          const float* fc1_expert_weights = dequant_fc1_weights.get() + expert_idx * moe_params.hidden_size * moe_params.inter_size;
-          const MLFloat16* fc1_expert_bias_typed = fc1_bias_data ? fc1_bias_data + expert_idx * moe_params.inter_size : nullptr;
+          const float* fc1_expert_weights = dequant_fc1_weights.get() + expert_idx * moe_params.hidden_size * moe_params.inter_size * act;
+          const MLFloat16* fc1_expert_bias_typed = fc1_bias_data ? fc1_bias_data + expert_idx * moe_params.inter_size * act : nullptr;
 
-          // Use MLAS SGEMM for FC1: input [1 x hidden_size] * weights [hidden_size x inter_size] = output [1 x inter_size]
+          // Use MLAS SGEMM for FC1: input [1 x hidden_size] * weights [hidden_size x (inter_size * act)] = output [1 x (inter_size * act)]
           MLAS_SGEMM_DATA_PARAMS fc1_params;
           fc1_params.A = token_input;
           fc1_params.lda = static_cast<size_t>(moe_params.hidden_size);
           fc1_params.B = fc1_expert_weights;
           fc1_params.ldb = static_cast<size_t>(moe_params.hidden_size);
           fc1_params.C = thread_fc1_output;
-          fc1_params.ldc = static_cast<size_t>(moe_params.inter_size);
+          fc1_params.ldc = static_cast<size_t>(moe_params.inter_size * act);
           fc1_params.alpha = 1.0f;
           fc1_params.beta = 0.0f;
 
-          MlasGemm(CblasNoTrans, CblasNoTrans, 1, static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(moe_params.hidden_size), fc1_params, nullptr);
+          MlasGemm(CblasNoTrans, CblasNoTrans, 1, static_cast<size_t>(moe_params.inter_size * act), static_cast<size_t>(moe_params.hidden_size), fc1_params, nullptr);
 
-          // Add bias and apply activation
-          for (int64_t i = 0; i < moe_params.inter_size; ++i) {
+          // Handle different activation types
+          if (is_swiglu) {
+            // For SwiGLU, split concatenated output into linear and gate parts using chunked layout
+            // This matches CUDA FasterTransformer swiglu_kernel_chunked implementation
+            float* linear_part = thread_fc1_output;
+            float* gate_part = thread_fc1_output + moe_params.inter_size;
+
+            // Add bias if present
             if (fc1_expert_bias_typed) {
-              thread_fc1_output[i] += ToFloat(fc1_expert_bias_typed[i]);
+              for (int64_t i = 0; i < moe_params.inter_size; ++i) {
+                linear_part[i] += ToFloat(fc1_expert_bias_typed[i]);
+                gate_part[i] += ToFloat(fc1_expert_bias_typed[i + moe_params.inter_size]);
+              }
             }
-            thread_fc1_output[i] = ApplyActivation(thread_fc1_output[i], activation_type_);
+
+            // Apply SwiGLU: gate_part * sigmoid(1.702 * gate_part) * (linear_part + 1)
+            constexpr float swiglu_alpha = 1.702f;
+            for (int64_t i = 0; i < moe_params.inter_size; ++i) {
+              float sigmoid_arg = swiglu_alpha * gate_part[i];
+              float sigmoid_out = 1.0f / (1.0f + expf(-sigmoid_arg));
+              float swish_out = gate_part[i] * sigmoid_out;
+              thread_fc1_output[i] = swish_out * (linear_part[i] + 1.0f);
+            }
+          } else {
+            // Standard activation (non-SwiGLU)
+            for (int64_t i = 0; i < moe_params.inter_size; ++i) {
+              if (fc1_expert_bias_typed) {
+                thread_fc1_output[i] += ToFloat(fc1_expert_bias_typed[i]);
+              }
+              thread_fc1_output[i] = ApplyActivation(thread_fc1_output[i], activation_type_);
+            }
           }
 
           // FC2: intermediate -> output using pre-dequantized weights + MLAS SGEMM
@@ -424,9 +488,11 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
     }
   }
 
-  // Suppress unused parameter warnings for optional parameters
-  ORT_UNUSED_PARAMETER(fc3_experts_bias_optional);
-  ORT_UNUSED_PARAMETER(fc3_scales_optional);
+  // Suppress unused parameter warnings for optional parameters that are not used in non-SwiGLU modes
+  if (!is_swiglu) {
+    ORT_UNUSED_PARAMETER(fc3_experts_bias_optional);
+    ORT_UNUSED_PARAMETER(fc3_scales_optional);
+  }
 
   return Status::OK();
 }
