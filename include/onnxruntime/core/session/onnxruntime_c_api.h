@@ -6034,7 +6034,8 @@ struct OrtApi {
    *
    * \note ONNX Runtime automatically sets optional (unset) attributes to their default values if the default value
    * is a constant expression that does not depend on other tensor/model characteristics. Conv's 'kernel_shape'
-   * attribute is an example of an optional attribute that does not have a constant default value.
+   * attribute is an example of an optional attribute that does not have a constant default value. This function
+   * does not provide any unset optional attributes without a constant default value.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -6054,7 +6055,8 @@ struct OrtApi {
    *
    * \note ONNX Runtime automatically sets optional (unset) attributes to their default values if the default value
    * is a constant expression that does not depend on other tensor/model characteristics. Conv's 'kernel_shape'
-   * attribute is an example of an optional attribute that does not have a constant default value.
+   * attribute is an example of an optional attribute that does not have a constant default value. This function
+   * does not provide any unset optional attributes without a constant default value.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

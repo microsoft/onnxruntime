@@ -112,7 +112,7 @@ TEST(EpGraphTest, GetAttributeByName) {
   const OrtNode* conv_node = nodes[0];
   const char* op_type = nullptr;
   ASSERT_ORTSTATUS_OK(ort_api.Node_GetOperatorType(conv_node, &op_type));
-  ASSERT_EQ(std::string(op_type), "Conv");
+  ASSERT_STREQ(op_type, "Conv");
 
   size_t num_attrs = 0;
   ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumAttributes(conv_node, &num_attrs));
