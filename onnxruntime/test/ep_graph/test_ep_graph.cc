@@ -153,8 +153,7 @@ TEST(EpGraphTest, GetAttributeByName) {
   //
   {
     const OrtOpAttr* attr = nullptr;
-    Ort::Status status{ort_api.Node_GetAttributeByName(conv_node, "auto_pad", &attr)};
-    ASSERT_TRUE(status.IsOK());
+    ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributeByName(conv_node, "auto_pad", &attr));
     ASSERT_NE(attr, nullptr);
 
     OrtOpAttrType attr_type = ORT_OP_ATTR_UNDEFINED;
@@ -165,7 +164,7 @@ TEST(EpGraphTest, GetAttributeByName) {
 
     // First call to ReadOpAttr gets the total byte size. Second call reads the data.
     size_t total_attr_bytes = 0;
-    Ort::Status status{ort_api.ReadOpAttr(attr, attr_type, nullptr, 0, &total_attr_bytes)};
+    Ort::Status status2{ort_api.ReadOpAttr(attr, attr_type, nullptr, 0, &total_attr_bytes)};
     auto_pad_val.resize(total_attr_bytes);
 
     ASSERT_ORTSTATUS_OK(ort_api.ReadOpAttr(attr, attr_type, auto_pad_val.data(), total_attr_bytes,
