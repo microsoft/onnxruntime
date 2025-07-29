@@ -2,7 +2,7 @@
 title: Qualcomm - QNN
 description: Execute ONNX models with QNN Execution Provider 
 parent: Execution Providers
-nav_order: 6
+nav_order: 301
 redirect_from: /docs/reference/execution-providers/QNN-ExecutionProvider
 ---
 
