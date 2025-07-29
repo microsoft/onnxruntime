@@ -82,7 +82,7 @@ bool IsSubgroupMatrixConfigSupportedOnIntel(onnxruntime::webgpu::ComputeContext&
 // d20, d21, | d22, d23,
 // d30, d31, | d32, d33,
 //
-// The layout program rearranges the input matrix A to be in the following order:
+// The prepack program rearranges the input matrix A to be in the following order:
 // d00, d01,
 // d10, d11,
 // ---------
@@ -94,12 +94,12 @@ bool IsSubgroupMatrixConfigSupportedOnIntel(onnxruntime::webgpu::ComputeContext&
 // ---------
 // d22, d23,
 // d32, d33,
-class LayoutProgram final : public Program<LayoutProgram> {
+class PrepackProgram final : public Program<PrepackProgram> {
  public:
-  LayoutProgram(uint32_t m, uint32_t k, std::string_view component_type) : Program{"SubgroupMatrixMatMulLayout"},
-                                                                           m_(m),
-                                                                           k_(k),
-                                                                           component_type_(component_type) {}
+  PrepackProgram(uint32_t m, uint32_t k, std::string_view component_type) : Program{"SubgroupMatrixMatMulLayout"},
+                                                                            m_(m),
+                                                                            k_(k),
+                                                                            component_type_(component_type) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -111,7 +111,7 @@ class LayoutProgram final : public Program<LayoutProgram> {
   std::string_view component_type_;
 };
 
-Status LayoutProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status PrepackProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform);
   shader.AddOutput("output_a", ShaderUsage::UseUniform);
   shader.AdditionalImplementation() << "alias component_type = " << component_type_ << ";\n"
@@ -492,7 +492,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y) {
   // If applicable, layout optimization of input matrix A(MxK) can be used for SubgroupMatrixLoad.
-  Tensor a_layout;
+  Tensor a_prepack;
   if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
     const auto& config = intel_supported_subgroup_matrix_configs[config_index];
     const auto component_type = ComponentTypeName[static_cast<uint32_t>(std::get<2>(config))];
@@ -500,24 +500,24 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
     const auto k = std::get<6>(config);
 
     // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
-    LayoutProgram layout_program{m, k, component_type};
+    PrepackProgram prepack_program{m, k, component_type};
     constexpr uint32_t kSubgroupSize = 32;
-    layout_program.SetWorkgroupSize(kSubgroupSize);
+    prepack_program.SetWorkgroupSize(kSubgroupSize);
 
     const auto dispatch_group_size_x = (M + m - 1) / m;
     ORT_ENFORCE(K % k == 0, "K must be a multiple of ", k);
     const auto dispatch_group_size_y = K / k;
     // Each workgroup will process one subgroup matrix of size m x k.
-    layout_program.SetDispatchGroupSize(dispatch_group_size_x, dispatch_group_size_y, 1);
+    prepack_program.SetDispatchGroupSize(dispatch_group_size_x, dispatch_group_size_y, 1);
 
-    TensorShape a_layout_shape{dispatch_group_size_x * m, K};
-    a_layout = context.CreateGPUTensor(a->DataType(), a_layout_shape);
-    layout_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddOutputs({{&a_layout, ProgramTensorMetadataDependency::Rank, a_layout.Shape(), 1}})
+    TensorShape a_prepack_shape{dispatch_group_size_x * m, K};
+    a_prepack = context.CreateGPUTensor(a->DataType(), a_prepack_shape);
+    prepack_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+        .AddOutputs({{&a_prepack, ProgramTensorMetadataDependency::Rank, a_prepack.Shape(), 1}})
         .AddUniformVariables({{M}, {K}})
         .CacheHint(m, k);
-    ORT_RETURN_IF_ERROR(context.RunProgram(layout_program));
-    a = &a_layout;
+    ORT_RETURN_IF_ERROR(context.RunProgram(prepack_program));
+    a = &a_prepack;
   }
   uint32_t tile_size_a = 32;
   uint32_t work_group_size = 128;
