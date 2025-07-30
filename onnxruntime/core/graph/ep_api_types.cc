@@ -258,6 +258,12 @@ Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, OrtValue
   const auto& graph_viewer = ep_graph_->GetGraphViewer();
   const auto& tensor_proto = attr_proto->t();
 
+  // Check that TensorProto is valid.
+  ORT_ENFORCE(utils::HasDataType(tensor_proto), "Tensor proto doesn't have data type.");
+  ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(tensor_proto.data_type()), "Tensor proto has invalid data type.");
+  ORT_ENFORCE(!utils::HasExternalData(tensor_proto),
+              "Tensor proto with external data for value attribute is not supported.");
+
   // Initialize OrtValue for tensor attribute.
   auto tensor_attribute_value = std::make_unique<OrtValue>();
   AllocatorPtr tensor_attribute_allocator = CPUAllocator::DefaultInstance();
