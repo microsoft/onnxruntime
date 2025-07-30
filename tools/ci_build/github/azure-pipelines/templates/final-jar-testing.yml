@@ -84,13 +84,9 @@ stages:
         targetType: 'inline'
         script: |
           $ErrorActionPreference = "Stop"
+          cd $(Pipeline.Workspace)/build/onnxruntime-java
 
-          # For ONNX Runtime, setting the PATH is crucial for finding native .dll files
-          $libPath = $env:appPath
-          $env:PATH = "$libPath;$($env:PATH)"
-          Write-Host "Updated PATH for native libraries."
-
-          $junitRunnerJar = Get-ChildItem -Path $env:appPath -Filter "junit-platform-console-standalone-*.jar" -Recurse | Select-Object -First 1
+          $junitRunnerJar = Get-ChildItem -Path . -Filter "junit-platform-console-standalone-*.jar" -Recurse | Select-Object -First 1
           if ($null -eq $junitRunnerJar) {
             Write-Host "##vso[task.logissue type=error]JUnit Platform Console Standalone JAR not found!"
             exit 1
@@ -98,7 +94,7 @@ stages:
 
           Write-Host "Running JUnit Tests..."
           & java -jar "$($junitRunnerJar.FullName)" `
-            --scan-classpath "$($env:appPath)" `
+            --scan-classpath . `
             --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
 
     - task: Bash@3
@@ -108,6 +104,8 @@ stages:
         targetType: 'inline'
         script: |
           set -e
+          cd $(Pipeline.Workspace)/build/onnxruntime-java
+          appPath="$(pwd)"
           libPath="$(appPath)"
 
           # Set the correct library path based on the OS
