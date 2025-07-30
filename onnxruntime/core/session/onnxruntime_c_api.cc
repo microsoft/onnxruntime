@@ -3018,7 +3018,7 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Node_GetTensorAttributeAsOrtValue, _In_ const OrtNode* node, _In_ const OrtOpAttr* attribute, _Outptr_ const OrtValue** attr_tensor) {
+ORT_API_STATUS_IMPL(OrtApis::Node_GetTensorAttributeAsOrtValue, _In_ const OrtNode* node, _In_ const OrtOpAttr* attribute, _Outptr_result_maybenull_ OrtValue** attr_tensor) {
   API_IMPL_BEGIN
   if (attr_tensor == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attr_tensor argument is null");
@@ -3034,7 +3034,7 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetTensorAttributeAsOrtValue, _In_ const OrtNo
   ORT_ENFORCE(!utils::HasExternalData(tensor_proto),
               "Tensor proto with external data for value attribute is not supported.");
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetTensorAttributeAsOrtValue(attribute, *attr_tensor));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetTensorAttributeAsOrtValue(attribute, attr_tensor));
   return nullptr;
   API_IMPL_END
 }

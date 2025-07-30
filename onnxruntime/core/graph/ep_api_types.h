@@ -184,7 +184,7 @@ struct EpNode : public OrtNode {
   Status GetAttributes(gsl::span<const OrtOpAttr*> attrs) const override;
 
   Status GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute,
-                                      const OrtValue*& attr_tensor) override;
+                                      OrtValue** attr_tensor) const override;
 
   // Gets the number of subgraphs contained by this node.
   Status GetNumSubgraphs(size_t& num_subgraphs) const override;
@@ -218,10 +218,6 @@ struct EpNode : public OrtNode {
 
   // Helper that gets the execution provider name that this node is assigned to run on.
   const std::string& GetEpName() const;
-
-  // Helper to get the unique name for the 'TENSOR' attribute. Returns empty string if
-  // attribute is not 'TENSOR' type.
-  const std::string GetUniqueTensorAttributeName(const OrtOpAttr* attr) const;
 
  private:
   // Back pointer to containing graph. Useful when traversing through nested subgraphs.

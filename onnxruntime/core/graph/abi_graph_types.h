@@ -259,7 +259,7 @@ struct OrtNode {
   ///                     if it's not a 'TENSOR' attribute.</param>
   /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetTensorAttributeAsOrtValue(const OrtOpAttr* attr,
-                                                           const OrtValue*& value) = 0;
+                                                           OrtValue** value) const = 0;
 
   /// <summary>
   /// Gets the number of node subgraphs.

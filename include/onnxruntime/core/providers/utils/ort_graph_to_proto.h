@@ -765,10 +765,10 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
 
       // TensorProto as an attribute value doesn't require a name.
 
-      const OrtValue* ort_value = nullptr;
+      OrtValue* ort_value = nullptr;
       ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetTensorAttributeAsOrtValue(&ort_node, &ort_attr, &ort_value));
 
-      Ort::ConstValue tensor(ort_value);
+      Ort::Value tensor(ort_value);
 
       // Get tensor type and shape info
       Ort::TensorTypeAndShapeInfo type_shape_info = tensor.GetTensorTypeAndShapeInfo();
@@ -852,7 +852,7 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
       // Copy the Ortvalue to TensorProto as raw data
       tensor_proto.set_raw_data(data, data_bytes);
 
-      *(attr_proto.mutable_t()) = tensor_proto;
+      *(attr_proto.mutable_t()) = std::move(tensor_proto);
       break;
     }
     default: {

@@ -248,25 +248,16 @@ Status EpNode::GetAttributes(gsl::span<const OrtOpAttr*> dst) const {
   return Status::OK();
 }
 
-Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, const OrtValue*& result) {
+Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, OrtValue** result) const {
   const auto* attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute);
 
   if (attr_proto->type() != onnx::AttributeProto::TENSOR) {
-    result = nullptr;
+    *result = nullptr;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This OrtOpAttr instance is not a 'TENSOR' attribute");
   }
 
-  auto tensor_proto_name = GetUniqueTensorAttributeName(attribute);
-  assert(!tensor_proto_name.empty());
-
-  const auto& it = tensor_attribute_values_.find(tensor_proto_name);
-  if (it != tensor_attribute_values_.end()) {
-    result = it->second.get();
-    return Status::OK();
-  }
-
   auto tensor_proto_to_ort_value = [&](const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                       const OrtValue*& result) -> Status {
+                                       OrtValue** result) -> Status {
     const auto& graph_viewer = ep_graph_->GetGraphViewer();
 
     // Initialize OrtValue for tensor attribute.
@@ -276,15 +267,13 @@ Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, const Or
     ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), tensor_proto,
                                                      tensor_attribute_allocator, *tensor_attribute_value));
 
-    result = tensor_attribute_value.get();
-    tensor_attribute_values_.emplace(tensor_proto_name, std::move(tensor_attribute_value));
-
+    *result = tensor_attribute_value.release();
     return Status::OK();
   };
 
   const auto& tensor_proto = attr_proto->t();
 
-  // Create and cache an OrtValue for the 'TENSOR' attribute
+  // Create and returns an OrtValue for the 'TENSOR' attribute
   ORT_RETURN_IF_ERROR(tensor_proto_to_ort_value(tensor_proto, result));
   return Status::OK();
 }
@@ -345,22 +334,6 @@ const OrtOpAttr* EpNode::GetAttribute(const std::string& name, bool& is_unset_op
 
 const std::string& EpNode::GetEpName() const {
   return node_.GetExecutionProviderType();
-}
-
-const std::string EpNode::GetUniqueTensorAttributeName(const OrtOpAttr* attr) const {
-  const auto* attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr);
-
-  if (attr_proto->type() != onnx::AttributeProto::TENSOR) {
-    return "";
-  }
-
-  const auto& tensor_proto = attr_proto->t();
-  std::string tensor_proto_name = node_.Name() + "_" + attr_proto->name();
-  if (!tensor_proto.name().empty()) {
-    tensor_proto_name += "_" + attr_proto->name();
-  }
-
-  return tensor_proto_name;
 }
 
 //
