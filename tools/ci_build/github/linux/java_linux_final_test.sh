@@ -20,20 +20,22 @@ EXIT_CODE=1
 
 uname -a
 
-cd "$BINARY_DIR/final-jar"
-
-mkdir test
+cd "$BINARY_DIR/onnxruntime-java"
+rm -f *.asc
+rm -f *.sha256
+rm -f *.sha512
+rm -f *.pom
+ls
+cd ..
+mkdir tests
+cd tests
+jar xf ../onnxruntime-java/testing.jar
+rm -f ../onnxruntime-java/testing.jar
+echo "Java Version"
+java -version
 
 echo "Directories created"
 echo  "Library path:" "$LD_LIBRARY_PATH"
 
-
-curl -O -sSL https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar
-curl -O -sSL https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.25.5/protobuf-java-3.25.5.jar
-java -DUSE_CUDA=1 -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.25.5.jar:./onnxruntime_gpu-"${VERSION_NUMBER}".jar --scan-class-path=testing.jar --fail-if-no-tests --disable-banner
-
-
-EXIT_CODE=$?
-
-set -e
-exit $EXIT_CODE
+java -DUSE_CUDA=1 -cp '$BINARY_DIR/tests:$BINARY_DIR/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$BINARY_DIR/tests \
+            --fail-if-no-tests --disable-banner
