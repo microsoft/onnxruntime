@@ -182,11 +182,22 @@ struct MigraphXEpFactory : OrtEpFactory {
                     OrtHardwareDeviceType hw_type,
                     const OrtLogger& default_logger_in)
       : ort_api{ort_api_in}, default_logger{default_logger_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
+    ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVendorId = GetVendorIdImpl;
+    GetVersion = GetVersionImpl;
+
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
+
+    CreateAllocator = CreateAllocatorImpl;
+    ReleaseAllocator = ReleaseAllocatorImpl;
+    CreateDataTransfer = CreateDataTransferImpl;
+
+    IsStreamAware = IsStreamAwareImpl;
+    CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   }
 
   // Returns the name for the EP. Each unique factory configuration must have a unique name.
@@ -199,6 +210,16 @@ struct MigraphXEpFactory : OrtEpFactory {
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
     return factory->vendor.c_str();
+  }
+
+  static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    return factory->vendor_id;
+  }
+
+  static const char* GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    return factory->version.c_str();
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
@@ -245,10 +266,48 @@ struct MigraphXEpFactory : OrtEpFactory {
     // no-op as we never create an EP here.
   }
 
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
+                                                     const OrtMemoryInfo* /*memory_info*/,
+                                                     const OrtKeyValuePairs* /*allocator_options*/,
+                                                     OrtAllocator** allocator) noexcept {
+    auto* factory = static_cast<MigraphXEpFactory*>(this_ptr);
+
+    *allocator = nullptr;
+    return factory->ort_api.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "CreateAllocator should not be called as we did not add OrtMemoryInfo to our OrtEpDevice.");
+  }
+
+  static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* /*allocator*/) noexcept {
+    // should never be called as we don't implement CreateAllocator
+  }
+
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* /*this_ptr*/,
+                                                        OrtDataTransferImpl** data_transfer) noexcept {
+    *data_transfer = nullptr;  // not implemented
+    return nullptr;
+  }
+
+  static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return false;
+  }
+
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+                                                               const OrtMemoryDevice* /*memory_device*/,
+                                                               const OrtKeyValuePairs* /*stream_options*/,
+                                                               OrtSyncStreamImpl** stream) noexcept {
+    auto* factory = static_cast<MigraphXEpFactory*>(this_ptr);
+
+    *stream = nullptr;
+    return factory->ort_api.CreateStatus(
+        ORT_INVALID_ARGUMENT, "CreateSyncStreamForDevice should not be called as IsStreamAware returned false.");
+  }
+
   const OrtApi& ort_api;
   const OrtLogger& default_logger;
   const std::string ep_name;
   const std::string vendor{"AMD"};
+  const std::string version{"1.0.0"};  // MigraphX EP version
 
   const uint32_t vendor_id{0x1002};
   const OrtHardwareDeviceType ort_hw_device_type;  // Supported OrtHardwareDevice
