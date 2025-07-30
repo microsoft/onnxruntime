@@ -113,7 +113,12 @@ stages:
         # Add Maven's bin directory to the PATH for subsequent tasks in the job
         echo "##vso[task.prependpath]${MAVEN_DIR}/bin"
       displayName: 'Install Maven (Linux)'
-      condition: and(succeeded(), eq(variables['Agent.OS'], 'Linux'))
+
+    - task: JavaToolInstaller@0
+      inputs:
+        versionSpec: "17"
+        jdkArchitectureOption: x64
+        jdkSourceOption: 'PreInstalled'
 
     - script: |
         echo "Maven is now on the PATH."
