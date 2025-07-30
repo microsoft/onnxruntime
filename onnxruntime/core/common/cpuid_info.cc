@@ -43,8 +43,6 @@
 
 #endif  // ARM
 
-#include "core/platform/linux/cpuinfo.h"
-
 #endif  // Linux
 
 #if _WIN32
@@ -88,20 +86,13 @@ void decodeMIDR(uint32_t midr, uint32_t uarch[1]);
 
 namespace onnxruntime {
 
-namespace {
-
-// Log function that uses ORT logging if available or writes to stderr.
-// This enables us to log even before ORT logging has been initialized.
-[[maybe_unused]]
-void LogWarning(std::string_view message) {
+void CPUIDInfo::LogEarlyWarning(std::string_view message) {
   if (logging::LoggingManager::HasDefaultLogger()) {
     LOGS_DEFAULT(WARNING) << message;
   } else {
     std::cerr << "onnxruntime cpuid_info warning: " << message << "\n";
   }
 }
-
-}  // namespace
 
 #if defined(CPUIDINFO_ARCH_X86)
 
@@ -136,9 +127,6 @@ static inline int XGETBV() {
 void CPUIDInfo::X86Init() {
   int data[4] = {-1};
   GetCPUID(0, data);
-
-  vendor_ = GetX86Vendor(data);
-  vendor_id_ = GetVendorId(vendor_);
 
   int num_IDs = data[0];
   if (num_IDs >= 1) {
@@ -187,36 +175,13 @@ void CPUIDInfo::X86Init() {
   }
 }
 
-std::string CPUIDInfo::GetX86Vendor(int32_t* data) {
-  char vendor[sizeof(int32_t) * 3 + 1]{};
-  *reinterpret_cast<int*>(vendor + 0) = data[1];
-  *reinterpret_cast<int*>(vendor + 4) = data[3];
-  *reinterpret_cast<int*>(vendor + 8) = data[2];
-  return vendor;
-}
-
 #endif  // defined(CPUIDINFO_ARCH_X86)
-
-uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
-  if (vendor == "Intel" || vendor == "GenuineIntel") return 0x8086;
-  if (vendor == "AMD" || vendor == "AuthenticAMD") return 0x1022;
-  if (vendor.find("Qualcomm") == 0) return 'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24);
-  if (vendor == "Nvidia" || vendor.find("NV") == 0) return 0x10DE;
-  if (vendor == "Apple") return 0x106B;
-  if (vendor == "ARM") return 0x13B5;
-
-  LogWarning(MakeString("Unable to determine vendor ID from vendor string: ", vendor));
-  return 0;
-}
 
 #if defined(CPUIDINFO_ARCH_ARM)
 
 #if defined(__linux__)
 
 void CPUIDInfo::ArmLinuxInit() {
-  vendor_ = GetArmLinuxVendor();
-  vendor_id_ = GetVendorId(vendor_);
-
   // Assuming no hyper-threading, no NUMA groups
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
@@ -261,30 +226,9 @@ void CPUIDInfo::ArmLinuxInit() {
   }
 }
 
-std::string CPUIDInfo::GetArmLinuxVendor() {
-  std::string vendor{};
-
-  std::vector<CpuInfoFileProcessorInfo> cpu_infos{};
-  Status parse_status = ParseCpuInfoFile(cpu_infos);
-  if (!parse_status.IsOK()) {
-    LogWarning(MakeString("Failed to parse /proc/cpuinfo file. Error: ", parse_status));
-  }
-
-  if (cpu_infos.size() > 0) {
-    // just use the vendor from the first processor's information
-    vendor = cpu_infos[0].vendor;
-  }
-
-  return vendor;
-}
-
 #elif defined(_WIN32)  // ^ defined(__linux__)
 
 void CPUIDInfo::ArmWindowsInit() {
-  // Get the ARM vendor string from the registry
-  vendor_ = GetArmWindowsVendor();
-  vendor_id_ = GetVendorId(vendor_);
-
   // Read MIDR and ID_AA64ISAR1_EL1 register values from Windows registry
   // There should be one per CPU
   std::vector<uint64_t> midr_values{}, id_aa64isar1_el1_values{};
@@ -376,21 +320,9 @@ void CPUIDInfo::ArmWindowsInit() {
 #endif  // defined(CPUINFO_SUPPORTED)
 }
 
-std::string CPUIDInfo::GetArmWindowsVendor() {
-  const int MAX_VALUE_NAME = 256;
-  const CHAR vendorKey[] = "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0";
-  CHAR vendorVal[MAX_VALUE_NAME] = "";
-  unsigned long vendorSize = sizeof(char) * MAX_VALUE_NAME;
-  ::RegGetValueA(HKEY_LOCAL_MACHINE, vendorKey, "Vendor Identifier", RRF_RT_REG_SZ | RRF_ZEROONFAILURE, nullptr, &vendorVal, &vendorSize);
-  return vendorVal;
-}
-
 #elif defined(__APPLE__)  // ^ defined(_WIN32)
 
 void CPUIDInfo::ArmAppleInit() {
-  vendor_ = GetArmAppleVendor();
-  vendor_id_ = GetVendorId(vendor_);
-
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
     is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
@@ -410,45 +342,6 @@ void CPUIDInfo::ArmAppleInit() {
   {
     // No fallback detection attempted now. Add if needed.
   }
-}
-
-std::string CPUIDInfo::GetArmAppleVendor() {
-  auto get_sysctl_value = [](const char* key) -> std::optional<std::string> {
-    size_t value_length{};
-    if (sysctlbyname(key, nullptr, &value_length, nullptr, 0) != 0) {
-      const auto error = errno;
-      if (error == ENOENT) {
-        // key not found
-      } else {
-        LogWarning(MakeString("Failed to get '", key, "' value length with sysctlbyname(). Error: ", error));
-      }
-      return std::nullopt;
-    }
-
-    std::string value{};
-    value.resize(value_length);
-    if (sysctlbyname(key, value.data(), &value_length, nullptr, 0) != 0) {
-      const auto error = errno;
-      LogWarning(MakeString("Failed to get '", key, "' value with sysctlbyname(). Error: ", error));
-    }
-
-    return value;
-  };
-
-  constexpr auto vendor_key = "machdep.cpu.vendor";
-  if (auto vendor = get_sysctl_value(vendor_key); vendor.has_value()) {
-    return *vendor;
-  }
-
-  constexpr auto brand_string_key = "machdep.cpu.brand_string";
-  if (auto brand_string = get_sysctl_value(brand_string_key); brand_string.has_value()) {
-    if (brand_string->find("Apple") != std::string::npos) {
-      return "Apple";
-    }
-  }
-
-  LogWarning("Unable to determine CPU vendor.");
-  return "";
 }
 
 #endif  // defined(__APPLE__)
@@ -471,16 +364,21 @@ uint32_t CPUIDInfo::GetCurrentCoreIdx() const {
 }
 
 CPUIDInfo::CPUIDInfo() {
-#ifdef CPUIDINFO_ARCH_X86
-  X86Init();
-#elif defined(CPUIDINFO_ARCH_ARM)
 #if defined(CPUINFO_SUPPORTED)
   pytorch_cpuinfo_init_ = cpuinfo_initialize();
   if (!pytorch_cpuinfo_init_) {
-    LOGS_DEFAULT(WARNING) << "Failed to initialize PyTorch cpuinfo library. May cause CPU EP performance degradation "
-                             "due to undetected CPU features.";
+    LogEarlyWarning(
+        "Failed to initialize PyTorch cpuinfo library. May cause CPU EP performance degradation due to undetected CPU "
+        "features.");
   }
 #endif  // defined(CPUINFO_SUPPORTED)
+
+  // Note: This should be run after cpuinfo initialization if cpuinfo is enabled.
+  VendorInfoInit();
+
+#ifdef CPUIDINFO_ARCH_X86
+  X86Init();
+#elif defined(CPUIDINFO_ARCH_ARM)
 #if defined(__linux__)
   ArmLinuxInit();
 #elif defined(_WIN32)
