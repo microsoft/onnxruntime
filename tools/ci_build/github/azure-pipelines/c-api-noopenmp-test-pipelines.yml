@@ -5,9 +5,6 @@ resources:
     trigger: true
     branch: main
 
-variables:
-  mavenVersion: '3.9.8'
-
 stages:
 - stage: Setup
   jobs:
