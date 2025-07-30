@@ -78,42 +78,59 @@ stages:
         mavenVersionOption: 'Default'
 
     - task: PowerShell@2
-      displayName: 'Run Java Tests with PowerShell'
+      displayName: 'Run Java Tests on Windows'
+      condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
       inputs:
         targetType: 'inline'
         script: |
-          # Exit script on any error
           $ErrorActionPreference = "Stop"
 
-          # Set the dynamic library path based on the OS
-          $libPath = '$(Build.BinariesDirectory)/final-jar/test'
+          # For ONNX Runtime, setting the PATH is crucial for finding native .dll files
+          $libPath = $env:appPath
+          $env:PATH = "$libPath;$($env:PATH)"
+          Write-Host "Updated PATH for native libraries."
 
-          if ($IsLinux) {
-              Write-Host "Setting LD_LIBRARY_PATH for Linux..."
-              $env:LD_LIBRARY_PATH = "$libPath:${env:LD_LIBRARY_PATH}"
-              Write-Host "LD_LIBRARY_PATH is now set for this script."
-          }
-          elseif ($IsMacOs) {
-              Write-Host "Setting DYLD_LIBRARY_PATH for MacOS..."
-              $env:DYLD_LIBRARY_PATH = "$libPath:${env:DYLD_LIBRARY_PATH}"
-              Write-Host "DYLD_LIBRARY_PATH is now set for this script."
-          }
-
-          # Find the JUnit Standalone Runner JAR using Get-ChildItem
-          $junitRunnerJar = Get-ChildItem -Path $(Pipeline.Workspace)/build/onnxruntime-java -Filter "junit-platform-console-standalone-*.jar" -Recurse | Select-Object -First 1
-
-          # Check if the JAR file was found and fail the task if not
+          $junitRunnerJar = Get-ChildItem -Path $env:appPath -Filter "junit-platform-console-standalone-*.jar" -Recurse | Select-Object -First 1
           if ($null -eq $junitRunnerJar) {
-            Write-Host "##vso[task.logissue type=error]JUnit Platform Console Standalone JAR not found in $(Pipeline.Workspace)/build/onnxruntime-java!"
+            Write-Host "##vso[task.logissue type=error]JUnit Platform Console Standalone JAR not found!"
             exit 1
           }
 
-          Write-Host "Found JUnit Runner: $($junitRunnerJar.FullName)"
-
           Write-Host "Running JUnit Tests..."
+          & java -jar "$($junitRunnerJar.FullName)" `
+            --scan-classpath "$($env:appPath)" `
+            --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
 
-          # Execute the java command
-          & java -jar "$($junitRunnerJar.FullName)" --scan-classpath "$(Pipeline.Workspace)/build/onnxruntime-java" --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
+    - task: bash
+      displayName: 'Run Java Tests on Linux/macOS'
+      condition: and(succeeded(), in(variables['Agent.OS'], 'Linux', 'Darwin'))
+      inputs:
+        targetType: 'inline'
+        script: |
+          set -e
+          libPath="$(appPath)"
+
+          # Set the correct library path based on the OS
+          os_name=$(uname)
+          if [[ "$os_name" == "Linux" ]]; then
+            echo "Platform: Linux. Setting LD_LIBRARY_PATH."
+            export LD_LIBRARY_PATH="$libPath:$LD_LIBRARY_PATH"
+          elif [[ "$os_name" == "Darwin" ]]; then
+            echo "Platform: macOS. Setting DYLD_LIBRARY_PATH."
+            export DYLD_LIBRARY_PATH="$libPath:$DYLD_LIBRARY_PATH"
+          fi
+
+          JUNIT_RUNNER_JAR=$(find "$libPath" -name "junit-platform-console-standalone-*.jar")
+          if [[ -z "$JUNIT_RUNNER_JAR" ]]; then
+            echo "##[error]JUnit Platform Console Standalone JAR not found!"
+            exit 1
+          fi
+
+          echo "Running JUnit Tests..."
+          java -jar "$JUNIT_RUNNER_JAR" \
+            --scan-classpath "$libPath" \
+            --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
+
 
     - task: PublishTestResults@2
       displayName: 'Publish Test Results'
