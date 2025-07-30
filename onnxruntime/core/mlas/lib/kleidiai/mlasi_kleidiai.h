@@ -112,3 +112,11 @@ MlasConv(
     MLAS_THREADPOOL* ThreadPool
     );
 }
+
+void DepthwiseReference(const size_t batches, const size_t in_height, const size_t in_width, const size_t channels,
+    const size_t filter_height, const size_t filter_width, const void* feature_map, const void* weights,
+    const void* bias, void* out, float clamp_min, float clamp_max);
+
+bool DepthwiseConvKleidiAI(const size_t batches, const size_t in_height, const size_t in_width, const size_t channels,
+    const size_t filter_height, const size_t filter_width, const float* feature_map, const float* weights,
+    const float* bias, float* out, float clamp_min, float clamp_max);

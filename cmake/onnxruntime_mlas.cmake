@@ -272,6 +272,7 @@ function(setup_kleidiai)
     ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/dw_conv_kleidiai.cpp
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)

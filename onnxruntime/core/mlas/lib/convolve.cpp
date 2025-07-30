@@ -16,6 +16,9 @@ Abstract:
 
 #include "mlasi.h"
 
+#ifdef USE_KLEIDIAI
+#include "kleidiai/mlasi_kleidiai.h"
+#endif
 //
 // Define the number of working buffer elements required per thread.
 //
@@ -1000,13 +1003,22 @@ Return Value:
                     // back to a single thread.
                     //
 
-                    if (!MlasConvTryMultithread(Parameters, Input, filter, bias, WorkingBuffer,
-                        Output, ThreadPool)) {
-                        MlasConvOperation(Parameters, Input, filter, bias, WorkingBuffer,
-                            Output, 0, OutputSize);
-                    }
+                    //Damo - 29/7/25 - Let's try the latest depthwise 3x3 stride 1
+                    //DepthwiseReference(BatchCount, Parameters->InputShape[0], Parameters->InputShape[1],
+                    //    Parameters->InputChannels, Parameters->KernelShape[0], Parameters->KernelShape[1],
+                    //    Input,filter,bias,Output, 0.0f /*<-Chosen ReLU Bound Values->*/, 6.0f);
 
-                    break;
+                    if(!DepthwiseConvKleidiAI(BatchCount, Parameters->InputShape[0], Parameters->InputShape[1],
+                        Parameters->InputChannels, Parameters->KernelShape[0], Parameters->KernelShape[1],
+                        Input,filter,bias,Output, 0.0f /*<-Chosen ReLU Bound Values->*/, 6.0f)){
+                        if (!MlasConvTryMultithread(Parameters, Input, filter, bias, WorkingBuffer,
+                            Output, ThreadPool)) {
+                            MlasConvOperation(Parameters, Input, filter, bias, WorkingBuffer,
+                                Output, 0, OutputSize);
+                        }
+                        break;
+                    };
+                    //break;
                 }
             }
 
