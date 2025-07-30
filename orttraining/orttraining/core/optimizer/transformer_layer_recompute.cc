@@ -136,7 +136,7 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
       const Node* p_node = graph.GetProducerNode(input->Name());
 
       // do not duplicate initializers in recompute subgraph
-      if (initializers.find(input->Name()) != initializers.end() ||
+      if (initializers.contains(input->Name()) ||
           std::find(nodes.begin(), nodes.end(), p_node) == nodes.end()) {
         recomputed_inputs.push_back(input);
       } else {

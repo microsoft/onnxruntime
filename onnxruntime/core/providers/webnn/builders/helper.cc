@@ -46,9 +46,7 @@ InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewe
     // Collect initializers in top-level graph.
     collect_initializers(*cur_graph, all_initializers);
   }
-}
-
-return all_initializers;
+  return all_initializers;
 }
 
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger) {

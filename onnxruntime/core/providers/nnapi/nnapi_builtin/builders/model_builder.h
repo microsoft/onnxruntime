@@ -95,7 +95,7 @@ class ModelBuilder {
   const std::unordered_set<std::string>&
   GetFusedActivations() const { return fused_activations_; }
 
-  const InitializedTensorSet& GetInitializerTensors() const;
+  InitializedTensorSet GetInitializerTensors() const;
 
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name) const;
 

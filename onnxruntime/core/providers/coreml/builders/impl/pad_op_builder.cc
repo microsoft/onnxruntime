@@ -169,7 +169,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     }
 
     const ONNX_NAMESPACE::TensorProto* pads_initializer = nullptr;
-    graph_viewer.GetInitializedTensor(input_defs[1]->Name(), pads_initializer);
+    input_params.graph_viewer.GetInitializedTensor(input_defs[1]->Name(), pads_initializer);
     Initializer unpacked_tensor(*pads_initializer);
 
     auto pads_tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
@@ -183,8 +183,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
 
     // Check if provided, `axes` input must be a constant initializer
     if (input_defs.size() > 3) {
-      const auto axes_initializer_it = initializers.find(input_defs[3]->Name());
-      if (axes_initializer_it == initializers.end()) {
+      if (!initializers.contains(input_defs[3]->Name())) {
         LOGS(logger, VERBOSE) << "if provided, `axes` input is required to a constant initializer";
         return false;
       }
