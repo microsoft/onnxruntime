@@ -11,7 +11,7 @@
 #
 abseil_cpp;https://github.com/abseil/abseil-cpp/archive/refs/tags/20250512.0.zip;3d6ff7e7ce144d9a53a53bef1f1bf79e1da4b8e1
 coremltools;https://github.com/apple/coremltools/archive/refs/tags/7.1.zip;f1bab0f30966f2e217d8e01207d518f230a1641a
-cxxopts;https://github.com/jarro2783/cxxopts/archive/refs/tags/v3.3.1.zip;B77F1CE4A03F610488BA0ED17C1BE2EFDBC15564
+cxxopts;https://github.com/jarro2783/cxxopts/archive/3c73d91c0b04e2b59462f0a741be8c07024c1bc0.zip;6c6ca7f8480b26c8d00476e0e24b7184717fe4f0
 date;https://github.com/HowardHinnant/date/archive/refs/tags/v3.0.1.zip;2dac0c81dc54ebdd8f8d073a75c053b04b56e159
 dlpack;https://github.com/dmlc/dlpack/archive/5c210da409e7f1e51ddf445134a4376fdbd70d7d.zip;e499c86e4e5c5268a87661d7ea39c27fae10907c
 # This Eigen commit id matches the eigen archive being consumed from https://gitlab.com/libeigen/eigen/-/archive/3.4/eigen-3.4.zip
