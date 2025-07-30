@@ -1392,14 +1392,14 @@ constexpr const char* MoE_ver1_doc = R"DOC(
 ONNX_MS_OPERATOR_SET_SCHEMA(MoE, 1,
                             OpSchema()
                                 .SetDoc(MoE_ver1_doc)
-                                .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
+                                .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
                                 .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
                                 .Attr("normalize_routing_weights", "Whether to normalize routing weights", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Input(0, "input", "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
                                 .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
-                                .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
-                                .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
+                                .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size), or (num_experts, hidden_size, 2 * inter_size) for swiglu", "T")
+                                .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, inter_size), or (num_experts, 2 * inter_size) for swiglu", "T", OpSchema::Optional)
                                 .Input(4, "fc2_experts_weights", "3D input tensor with shape (num_experts, inter_size, hidden_size)", "T")
                                 .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
                                 .Input(6, "fc3_experts_weights", "3D optional input tensor with shape (num_experts, hidden_size, inter_size)", "T", OpSchema::Optional)
@@ -1413,7 +1413,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc("Quantized MoE")
         .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu",
+              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
               AttributeProto::STRING,
               std::string("relu"))
         .Attr("k",
@@ -1438,12 +1438,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(2,
                "fc1_experts_weights",
                "3D input tensor with shape (num_experts, hidden_size, inter_size) "
-               "or (num_experts, hidden_size, inter_size / 2)",
+               "or (num_experts, hidden_size, inter_size / 2). For swiglu, shape can be (num_experts, hidden_size, 2 * inter_size) or (num_experts, hidden_size, inter_size).",
                "T1")
-        .Input(3, "fc1_scales", "2D input tensor with shape (num_experts, inter_size)", "T")
+        .Input(3, "fc1_scales", "2D input tensor with shape (num_experts, inter_size), or (num_experts, 2 * inter_size) for swiglu", "T")
         .Input(4,
                "fc1_experts_bias",
-               "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
+               "2D optional input tensor with shape (num_experts, inter_size), or (num_experts, 2 * inter_size) for swiglu", "T", OpSchema::Optional)
         .Input(5,
                "fc2_experts_weights",
                "3D input tensor with shape (num_experts, inter_size, hidden_size) "
