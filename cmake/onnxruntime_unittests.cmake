@@ -1210,14 +1210,6 @@ endif()
 
 if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   if(NOT IOS)
-    onnxruntime_fetchcontent_declare(
-      cxxopts
-      URL ${DEP_URL_cxxopts}
-      URL_HASH SHA1=${DEP_SHA1_cxxopts}
-      EXCLUDE_FROM_ALL
-    )
-    onnxruntime_fetchcontent_makeavailable(cxxopts)
-
     #perf test runner
     set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
     set(onnxruntime_perf_test_src_patterns
@@ -1244,21 +1236,13 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
     target_include_directories(onnxruntime_perf_test PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
           ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
-          ${CMAKE_CURRENT_BINARY_DIR} ${cxxopts_SOURCE_DIR}/include)
+          ${CMAKE_CURRENT_BINARY_DIR}
 
     if (WIN32)
       target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
       if (NOT DEFINED SYS_PATH_LIB)
         set(SYS_PATH_LIB shlwapi)
       endif()
-    endif()
-
-    if(onnxruntime_MINIMAL_BUILD)
-      target_compile_definitions(onnxruntime_perf_test PRIVATE CXXOPTS_NO_RTTI)
-    endif()
-
-    if(onnxruntime_DISABLE_EXCEPTIONS)
-     target_compile_definitions(onnxruntime_perf_test PRIVATE CXXOPTS_NO_EXCEPTIONS)
     endif()
 
     if (onnxruntime_BUILD_SHARED_LIB)
@@ -1268,7 +1252,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
             onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
             ${onnxruntime_EXTERNAL_LIBRARIES}
-            ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+            absl::flags absl::flags_parse ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
       if(NOT WIN32)
         if(onnxruntime_USE_SNPE)
           list(APPEND onnxruntime_perf_test_libs onnxruntime_providers_snpe)

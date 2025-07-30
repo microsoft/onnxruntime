@@ -87,8 +87,8 @@ std::vector<std::string> ConvertArgvToUtf8Strings(int argc, wchar_t* argv[]) {
   return utf8_args;
 }
 
-std::vector<const char*> CStringsFromStrings(const std::vector<std::string>& utf8_args) {
-  std::vector<const char*> utf8_argv;
+std::vector<char*> CStringsFromStrings(std::vector<std::string>& utf8_args) {
+  std::vector<char*> utf8_argv;
   utf8_argv.reserve(utf8_args.size());
   for (auto& str : utf8_args) {
     utf8_argv.push_back(&str[0]);
