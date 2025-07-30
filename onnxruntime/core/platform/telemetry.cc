@@ -40,13 +40,13 @@ void Telemetry::SetLanguageProjection(uint32_t projection) const {
 void Telemetry::LogProcessInfo() const {
 }
 
-void Telemetry::LogSessionCreationStart() const {
+void Telemetry::LogSessionCreationStart(uint32_t session_id) const {
 }
 
-void Telemetry::LogEvaluationStop() const {
+void Telemetry::LogEvaluationStop(uint32_t session_id) const {
 }
 
-void Telemetry::LogEvaluationStart() const {
+void Telemetry::LogEvaluationStart(uint32_t session_id) const {
 }
 
 void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
