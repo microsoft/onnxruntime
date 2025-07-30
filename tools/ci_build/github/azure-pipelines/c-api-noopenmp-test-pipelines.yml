@@ -5,6 +5,9 @@ resources:
     trigger: true
     branch: main
 
+variables:
+  mavenVersion: '3.9.8'
+
 stages:
 - stage: Setup
   jobs:
@@ -137,6 +140,9 @@ stages:
     PoolName: 'macOS-14'
 
 
+
+
+
 - stage: GPU_JAR_Testing
   dependsOn: Setup
   jobs:
@@ -157,6 +163,23 @@ stages:
         CudaVersion: 12.2
         DownloadCUDA: true
         DownloadTRT: true
+
+    - pwsh: |
+        echo "Downloading and installing Maven $(mavenVersion) for Windows..."
+        $MAVEN_DIR = "$(Agent.TempDirectory)\apache-maven-$(mavenVersion)"
+        # Download Maven binary
+        Invoke-WebRequest -Uri "https://archive.apache.org/dist/maven/maven-3/$(mavenVersion)/binaries/apache-maven-$(mavenVersion)-bin.zip" -OutFile "$(Agent.TempDirectory)\maven.zip"
+
+        # Extract to the temp directory
+        Expand-Archive -Path "$(Agent.TempDirectory)\maven.zip" -DestinationPath "$(Agent.TempDirectory)"
+
+        # Add Maven's bin directory to the PATH for subsequent tasks in the job
+        echo "##vso[task.prependpath]$MAVEN_DIR\bin"
+
+
+    - script: |
+        echo "Maven is now on the PATH."
+        mvn --version
 
     - download: build
       artifact: 'onnxruntime-java-gpu'
@@ -220,6 +243,24 @@ stages:
     steps:
     - checkout: self
       submodules: false
+
+    - bash: |
+        echo "Downloading and installing Maven $(mavenVersion) for Linux..."
+        MAVEN_DIR="$(Agent.TempDirectory)/apache-maven-$(mavenVersion)"
+        # Download Maven binary
+        wget https://archive.apache.org/dist/maven/maven-3/$(mavenVersion)/binaries/apache-maven-$(mavenVersion)-bin.tar.gz -O $(Agent.TempDirectory)/maven.tar.gz
+
+        # Extract to the temp directory
+        mkdir -p ${MAVEN_DIR}
+        tar -xzf $(Agent.TempDirectory)/maven.tar.gz -C $(Agent.TempDirectory)
+
+        # Add Maven's bin directory to the PATH for subsequent tasks in the job
+        echo "##vso[task.prependpath]${MAVEN_DIR}/bin"
+
+    - script: |
+        echo "Maven is now on the PATH."
+        mvn --version
+
     - template: templates/set-version-number-variables-step.yml
 
     - download: build
@@ -233,11 +274,7 @@ stages:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0
         Context: tools/ci_build/github/linux/docker/
-        DockerBuildArgs: "
-        --build-arg BUILD_UID=$( id -u )
-        --build-arg BASEIMAGE=${{ variables.docker_base_image }}
-        --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
-        "
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{ variables.docker_base_image }} --build-arg TRT_VERSION=${{ variables.linux_trt_version }}"
         Repository: onnxruntimeubi8packagestest
 
     - bash: |
