@@ -200,7 +200,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   if (!do_rotary_ &&
       head_sink == nullptr && !use_smooth_softmax_ &&
-      local_window_size_ == -1 &&
+      (local_window_size_ == -1 || local_window_size_ >= parameters.seqlen_present_kv_cache_) &&
       CanApplyFlashAttention(attention_bias, present_key, present_value, parameters, context)) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                                present_value, parameters, context);
