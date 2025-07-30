@@ -175,7 +175,7 @@ enum cpuinfo_vendor {
   cpuinfo_vendor_dec = 57,
 };
 
-#endif
+#endif  // !defined(CPUINFO_SUPPORTED)
 
 }  // namespace
 
@@ -202,7 +202,7 @@ constexpr std::array kCpuVendorInfos{
     // TODO add more as needed
 };
 
-constexpr const CpuVendorInfo* FindCpuVendorInfo(cpuinfo_vendor vendor) {
+const CpuVendorInfo* FindCpuVendorInfo(cpuinfo_vendor vendor) {
   const auto vendor_mapping_it = std::find_if(kCpuVendorInfos.begin(), kCpuVendorInfos.end(),
                                               [vendor](const CpuVendorInfo& entry) {
                                                 return entry.vendor == vendor;
