@@ -86,20 +86,15 @@ stages:
         script: |
           $ErrorActionPreference = "Stop"
           cd $(Pipeline.Workspace)/build/onnxruntime-java
+          del *.asc
+          del *.sha256
+          del *.sha512
+          del *.pom
           dir
-          mkdir test
-          pushd test
-          jar xf ..\testing.jar
-          popd
-          $junitRunnerJar = Get-ChildItem -Path . -Filter "junit-platform-console-standalone-*.jar" -Recurse | Select-Object -First 1
-          if ($null -eq $junitRunnerJar) {
-            Write-Host "##vso[task.logissue type=error]JUnit Platform Console Standalone JAR not found!"
-            exit 1
-          }
-          dir
+          cd ..
           Write-Host "Running JUnit Tests..."
           & java `
-            -cp $(Pipeline.Workspace)\build\onnxruntime-java org.junit.platform.console.ConsoleLauncher --scan-classpath `
+            -cp $(Pipeline.Workspace)\build\* org.junit.platform.console.ConsoleLauncher --scan-classpath `
             --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
 
     - task: Bash@3
