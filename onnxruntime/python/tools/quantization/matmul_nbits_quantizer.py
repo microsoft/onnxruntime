@@ -17,9 +17,9 @@ import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 
 from onnxruntime.capi._pybind_state import (
+    quantize_matmul_2bits,
     quantize_matmul_4bits,
     quantize_matmul_8bits,
-    quantize_matmul_nbits,
     quantize_qdq_matmul_4bits,
 )
 
@@ -824,7 +824,7 @@ class DefaultWeightOnlyQuantizer:
             zero_point = np.zeros(cols * ((k_blocks + kpack - 1) // kpack), dtype="uint8")
             scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
             if qbits == 2:
-                quantize_matmul_nbits(
+                quantize_matmul_2bits(
                     packed,
                     fp32weight,
                     self.config.bits,
