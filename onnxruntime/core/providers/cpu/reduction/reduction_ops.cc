@@ -80,6 +80,41 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), \
       x<int64_t>);
 
+#define REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT64_ONLY(x, sinceVersion)                 \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                     \
+      x,                                                                              \
+      sinceVersion,                                                                   \
+      uint64_t,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint64_t>()), \
+      x<uint64_t>);
+
+#define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT64_ONLY(x, startVer, endVer)   \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
+      x,                                                                              \
+      startVer,                                                                       \
+      endVer,                                                                         \
+      uint64_t,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint64_t>()), \
+      x<uint64_t>);
+
+#define REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT32_ONLY(x, sinceVersion)                 \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                     \
+      x,                                                                              \
+      sinceVersion,                                                                   \
+      uint32_t,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint32_t>()), \
+      x<uint32_t>);
+
+#define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT32_ONLY(x, startVer, endVer)   \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
+      x,                                                                              \
+      startVer,                                                                       \
+      endVer,                                                                         \
+      uint32_t,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint32_t>()), \
+      x<uint32_t>);
+
+
 #define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT8_ONLY(x, startVer, endVer)   \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                          \
       x,                                                                             \
@@ -266,12 +301,18 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceProd, 18);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSum, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceSum, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT64_ONLY(ReduceSum, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT32_ONLY(ReduceSum, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSum, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSum, 11, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceSum, 11, 12);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT64_ONLY(ReduceSum, 11, 12);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT32_ONLY(ReduceSum, 11, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSum, 11, 12);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSum, 13);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceSum, 13);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT64_ONLY(ReduceSum, 13);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT32_ONLY(ReduceSum, 13);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSum, 13);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSumSquare, 1, 10);
@@ -1154,8 +1195,10 @@ Status ArgMin<T>::Compute(OpKernelContext* ctx) const {
 // tries to resolve symbols in the einsum_auxiliary_ops obj file
 template class ReduceSum<float>;
 template class ReduceSum<int32_t>;
+template class ReduceSum<uint32_t>;
 template class ReduceSum<double>;
 template class ReduceSum<int64_t>;
+template class ReduceSum<uint64_t>;
 
 template void CommonReduce1Loop<ReduceAggregatorSum<float>>(OpKernelContext* ctx,
                                                             const gsl::span<const int64_t>& axes_, int64_t keepdims_,
