@@ -83,9 +83,9 @@ stages:
       displayName: 'Run Java Tests with PowerShell'
       inputs:
         env:
-          ${{ if eq(parameters.OS, 'MacOS') }}:
+          - ${{ if eq(parameters.OS, 'MacOS') }}:
             DYLD_LIBRARY_PATH: '$(Build.BinariesDirectory)/final-jar/test:$(DYLD_LIBRARY_PATH)'
-          ${{ if eq(parameters.OS, 'Linux') }}:
+          - ${{ if eq(parameters.OS, 'Linux') }}:
             LD_LIBRARY_PATH: '$(Build.BinariesDirectory)/final-jar/test:$(LD_LIBRARY_PATH)'
         targetType: 'inline'
         script: |
