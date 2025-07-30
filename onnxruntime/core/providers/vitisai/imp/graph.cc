@@ -225,7 +225,7 @@ vaip_core::DllSafe<std::string> graph_save_string(const Graph& graph) {
   std::string graph_string;
   bool result = model_proto->SerializeToString(graph_string);
   vai_assert(result, "model serialize to string error");
-  return vaip_core::DllSafe(std::move(graph_string));
+  return vaip_core::DllSafe(graph_string);
 }
 
 Node& graph_fuse(Graph& graph, const std::string& name,
