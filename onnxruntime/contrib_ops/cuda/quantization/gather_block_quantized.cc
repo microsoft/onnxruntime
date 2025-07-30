@@ -119,6 +119,14 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
     zero_points_ptr = zero_points->Data<T1>();
   }
 
+  const int64_t gather_axis_dim = data_shape[gather_axis_];
+  for (int64_t i_idx = 0; i_idx < ind_dim; ++i_idx) {
+    auto indices_val = indices_ptr[i_idx];
+    ORT_ENFORCE(indices_val >= -gather_axis_dim && indices_val < gather_axis_dim,
+                "indices element out of data bounds, idx=", indices_val,
+                " must be within the inclusive range [", -gather_axis_dim, ",", gather_axis_dim - 1, "]");
+  }
+
   GatherBlockQuantizedParam param;
   param.stream = Stream(ctx);
   param.after_gather_dim = after_gather_dim;
