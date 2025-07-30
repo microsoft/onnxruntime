@@ -834,19 +834,19 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   for (const auto& it : all_inits) {
     const std::string& name = *it;
     const ONNX_NAMESPACE::TensorProto* initializer_tensor = nullptr;
-    if (!src_graph.GetInitializedTensor(name, true, initializer_tensor)) {
+    if (!src_graph.GetInitializedTensor(name, initializer_tensor)) {
       // Initializer not found
       continue;
     }
 
     std::unique_ptr<ONNX_NAMESPACE::TensorProto> init_with_data;
-    ORT_RETURN_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(initializer_tensor, init_with_data));
+    ORT_RETURN_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*initializer_tensor, init_with_data));
 
     // Check if the initializer has external data
     if (!init_with_data &&
-        utils::HasExternalData(initializer_tensor) &&
+        utils::HasExternalData(*initializer_tensor) &&
         enable_ovep_weight_sharing) {
-      insert_metadata(initializer_tensor);
+      insert_metadata(*initializer_tensor);
 
       // Add initializer with external data as input
       AddInitializerAsInput(dst_graph, accumulated_inputs, src_graph, name);
@@ -856,7 +856,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
         if (init_with_data) {
           dst_graph.AddInitializedTensor(*init_with_data);
         } else {
-          dst_graph.AddInitializedTensor(initializer_tensor);
+          dst_graph.AddInitializedTensor(*initializer_tensor);
         }
       }
     }

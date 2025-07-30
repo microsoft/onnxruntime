@@ -113,7 +113,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                      const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto initializers = input_params.graph_viewer.GetAllInitializerNames();
+  const auto initializers = input_params.graph_viewer.GetAllInitializersNames();
 
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))

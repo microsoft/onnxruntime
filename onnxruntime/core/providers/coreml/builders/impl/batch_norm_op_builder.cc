@@ -130,7 +130,7 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBu
   const auto& b_name = input_defs[2]->Name();
   const auto& mean_name = input_defs[3]->Name();
   const auto& var_name = input_defs[4]->Name();
-  const auto initializers = input_params.graph_viewer.GetAllInitializerNames();
+  const auto initializers = input_params.graph_viewer.GetAllInitializersNames();
   if (!initializers.contains(scale_name)) {
     LOGS(logger, VERBOSE) << "Scale of BN must be a constant initializer";
     return false;

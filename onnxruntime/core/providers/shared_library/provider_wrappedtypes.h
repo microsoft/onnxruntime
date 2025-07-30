@@ -1093,7 +1093,7 @@ struct Graph final {
   }
   // [[deprecated("Use GetAllInitializedTensorNames() + GetInitializedTensor()")]]
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return g_host->Graph__GetAllInitializedTensors(this); }
-  InitializersNames GetAllInitializerNames() const noexcept { return g_host->Graph__GetAllInitializersNames(this); }
+  InitializersNames GetAllInitializersNames() const noexcept { return g_host->Graph__GetAllInitializersNames(this); }
   int MaxNodeIndex() const noexcept { return g_host->Graph__MaxNodeIndex(this); }
   const Node* GetNode(NodeIndex node_index) const noexcept { return g_host->Graph__GetNode(this, node_index); }
   Node* GetNode(NodeIndex node_index) noexcept { return g_host->Graph__GetNode(this, node_index); }
