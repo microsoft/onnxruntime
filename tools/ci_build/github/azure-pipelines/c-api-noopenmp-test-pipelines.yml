@@ -162,23 +162,48 @@ stages:
       artifact: 'onnxruntime-java-gpu'
       displayName: 'Download Final Jar'
 
-    - download: build
-      artifact: 'onnxruntime-java-tools'
-      displayName: 'Download Jar Tools'
-
-    - task: CmdLine@2
+    - task: Maven@4
+      displayName: 'Download Dependencies into App Folder'
       inputs:
+        mavenPomFile: '$(Build.SourcesDirectory)/tools/ci_build/java/pom.xml'
+        goals: 'dependency:copy-dependencies'
+        options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java-gpu'
+        publishJUnitTestResults: false
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.17'
+        mavenVersionOption: 'Default'
+
+    - task: PowerShell@2
+      displayName: 'Run Java Tests with PowerShell'
+      inputs:
+        targetType: 'inline'
         script: |
-          mkdir final-jar
-          move $(Pipeline.Workspace)/build/onnxruntime-java-gpu/* final-jar
-          move $(Pipeline.Workspace)/build/onnxruntime-java-tools/* final-jar
-          cd final-jar
-          mkdir test
-          pushd test
-          jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
-          popd
-          java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.25.5.jar;onnxruntime_gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
-        workingDirectory: '$(Build.BinariesDirectory)'
+          # Exit script on any error
+          $ErrorActionPreference = "Stop"
+
+          # Find the JUnit Standalone Runner JAR using Get-ChildItem
+          $junitRunnerJar = Get-ChildItem -Path $(Pipeline.Workspace)/build/onnxruntime-java-gpu -Filter "junit-platform-console-standalone-*.jar" -Recurse | Select-Object -First 1
+
+          # Check if the JAR file was found and fail the task if not
+          if ($null -eq $junitRunnerJar) {
+            Write-Host "##vso[task.logissue type=error]JUnit Platform Console Standalone JAR not found in $(Pipeline.Workspace)/build/onnxruntime-java-gpu!"
+            exit 1
+          }
+
+          Write-Host "Found JUnit Runner: $($junitRunnerJar.FullName)"
+
+          Write-Host "Running JUnit Tests..."
+
+          # Execute the java command. Note the backtick (`) for line continuation in PowerShell.
+          & java -jar "$($junitRunnerJar.FullName)" --scan-classpath "$(Pipeline.Workspace)/build/onnxruntime-java-gpu" --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
+
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results'
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '$(Build.ArtifactStagingDirectory)/TestResults/TEST-junit-jupiter.xml'
+        failTaskOnFailedTests: true
+
 
   - job: Final_Jar_Testing_Linux_GPU
     workspace:
@@ -197,11 +222,12 @@ stages:
       submodules: false
     - template: templates/set-version-number-variables-step.yml
 
-    - template: templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Final Jar'
-        ArtifactName: onnxruntime-java-gpu
-        TargetPath: '$(Build.BinariesDirectory)/final-jar'
+    - download: build
+      artifact: 'onnxruntime-java-gpu'
+      displayName: 'Download Final Jar'
+
+    - script: |
+        mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu $(Build.BinariesDirectory)/final-jar
 
     - template: templates/get-docker-image-steps.yml
       parameters:
@@ -324,7 +350,7 @@ stages:
           displayName: 'test'
           inputs:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests'
             workingDirectory: '$(Build.BinariesDirectory)'
         # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
         - template: templates/make_java_win_binaries.yml
@@ -397,7 +423,7 @@ stages:
           displayName: 'test'
           inputs:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests'
             workingDirectory: '$(Build.BinariesDirectory)'
         # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
         - template: templates/make_java_win_binaries.yml
