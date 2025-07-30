@@ -118,7 +118,6 @@ stages:
       inputs:
         versionSpec: "17"
         jdkArchitectureOption: x64
-        jdkSourceOption: 'PreInstalled'
 
     - script: |
         echo "Maven is now on the PATH."
