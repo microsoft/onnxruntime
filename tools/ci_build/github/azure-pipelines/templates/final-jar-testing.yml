@@ -90,12 +90,12 @@ stages:
 
           if ($IsLinux) {
               Write-Host "Setting LD_LIBRARY_PATH for Linux..."
-              $env:LD_LIBRARY_PATH = "$libPath:$($env:LD_LIBRARY_PATH)"
+              $env:LD_LIBRARY_PATH = "$libPath:${env:LD_LIBRARY_PATH}"
               Write-Host "LD_LIBRARY_PATH is now set for this script."
           }
           elseif ($IsMacOs) {
               Write-Host "Setting DYLD_LIBRARY_PATH for MacOS..."
-              $env:DYLD_LIBRARY_PATH = "$libPath:$($env:DYLD_LIBRARY_PATH)"
+              $env:DYLD_LIBRARY_PATH = "$libPath:${env:DYLD_LIBRARY_PATH}"
               Write-Host "DYLD_LIBRARY_PATH is now set for this script."
           }
 
