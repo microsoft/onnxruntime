@@ -49,7 +49,7 @@ stages:
       artifact: 'onnxruntime-java-gpu'
       displayName: 'Download Final Jar'
     - script: |
-        mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu/*.jar $(Pipeline.Workspace)/build/onnxruntime-java/
+        move $(Pipeline.Workspace)/build/onnxruntime-java-gpu/*.jar $(Pipeline.Workspace)/build/onnxruntime-java/
 
     - task: PowerShell@2
       displayName: 'Run Java Tests with PowerShell'
@@ -100,12 +100,14 @@ stages:
 
     - template: templates/set-version-number-variables-step.yml
 
+    - template: templates/download_maven_for_tests.yml
+
     - download: build
       artifact: 'onnxruntime-java-gpu'
       displayName: 'Download Final Jar'
 
     - script: |
-        mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu $(Build.BinariesDirectory)/final-jar
+        mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu/*.jar $(Pipeline.Workspace)/build/onnxruntime-java/
 
     - template: templates/get-docker-image-steps.yml
       parameters:
@@ -115,10 +117,10 @@ stages:
         Repository: onnxruntimeubi8packagestest
 
     - bash: |
-        docker run -e SYSTEM_COLLECTIONURI --rm \
+        docker run --network=none --rm \
           --gpus all \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
+          --volume $(Pipeline.Workspace)/build:/build \
           --volume /data/models:/build/models:ro \
           onnxruntimeubi8packagestest \
           /bin/bash /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -r /build -v $(OnnxRuntimeVersion)
