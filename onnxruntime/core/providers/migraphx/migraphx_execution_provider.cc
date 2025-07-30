@@ -323,9 +323,7 @@ AllocatorPtr MIGraphXExecutionProvider::CreateMIGraphXAllocator(OrtDevice::Devic
                                   : OrtArenaCfg(migx_mem_limit, static_cast<int>(arena_extend_strategy),
                                                 -1, -1, -1, -1L)},
         // make it stream aware
-        true,
-        // enable cross stream sharing?
-        false);
+        true);
 
     // ROCM malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);

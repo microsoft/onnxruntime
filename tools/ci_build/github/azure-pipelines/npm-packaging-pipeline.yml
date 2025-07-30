@@ -55,7 +55,7 @@ extends:
       parameters:
         NpmPackagingMode: ${{ variables.NpmPackagingMode }}
         IsReleasePipeline: true
-        PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+        PoolName: 'onnxruntime-Ubuntu2404-AMD-CPU'
         PackageName: 'onnxruntime-web'
         ExtraBuildArgs: ''
         UseWebPoolName: true
@@ -69,7 +69,7 @@ extends:
       parameters:
         NpmPackagingMode: ${{ variables.NpmPackagingMode }}
         BuildConfig: 'Release'
-        PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+        PoolName: 'onnxruntime-Ubuntu2404-AMD-CPU'
         PackageName: 'onnxruntime-react-native'
         InitialStageDependsOn: 'Precheck_and_extract_commit'
         enable_code_sign: false

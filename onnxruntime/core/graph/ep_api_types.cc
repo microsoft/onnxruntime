@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "core/framework/allocator.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/graph_viewer.h"
@@ -85,6 +86,24 @@ static void ConvertNodeArgsToValueInfos(const EpGraph* ep_graph,
     }
   }
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+static bool IsOptionalAttribute(const Node& node, const std::string& attr_name) {
+  const ONNX_NAMESPACE::OpSchema* op_schema = node.Op();
+  if (op_schema == nullptr) {
+    return false;
+  }
+
+  auto attr_schema_iter = op_schema->attributes().find(attr_name);
+  if (attr_schema_iter == op_schema->attributes().end()) {
+    return false;  // Not an attribute for this operator type.
+  }
+
+  const ONNX_NAMESPACE::OpSchema::Attribute& attr_schema = attr_schema_iter->second;
+
+  return !attr_schema.required;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 //
 // EpNode
@@ -267,13 +286,20 @@ gsl::span<const EpValueInfo* const> EpNode::GetOutputsSpan() const {
   return outputs_;
 }
 
-const OrtOpAttr* EpNode::GetAttribute(const std::string& name) const {
+const OrtOpAttr* EpNode::GetAttribute(const std::string& name, bool& is_unset_optional_attr) const {
   auto iter = attributes_map_.find(name);
-  if (iter == attributes_map_.end()) {
-    return nullptr;
-  } else {
+  if (iter != attributes_map_.end()) {
+    is_unset_optional_attr = false;
     return reinterpret_cast<const OrtOpAttr*>(iter->second.get());
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  is_unset_optional_attr = IsOptionalAttribute(node_, name);
+#else
+  // This is not properly set in a minimal build because it does not have access to the operator schema.
+  is_unset_optional_attr = false;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  return nullptr;
 }
 
 const std::string& EpNode::GetEpName() const {
@@ -452,8 +478,26 @@ Status EpValueInfo::GetInitializerValue(const OrtValue*& result) const {
 
   // This gets an initializer value defined in this graph or in a parent graph (as long as the value
   // is used in this graph).
-  result = graph_->GetInitializerValue(name_);
+  ORT_RETURN_IF_ERROR(graph_->GetInitializerValue(name_, result));
   ORT_RETURN_IF(result == nullptr, "Unable to find initializer value named '", name_, "'.");
+  return Status::OK();
+}
+
+Status EpValueInfo::GetExternalInitializerInfo(std::unique_ptr<ExternalDataInfo>& result) const {
+  if (!IsFlagSet(kIsConstantInitializer) && !IsFlagSet(kIsOptionalGraphInput)) {
+    result = nullptr;
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF(graph_ == nullptr, "Unable to get external initializer information for value named '",
+                name_, "': parent graph is NULL");
+
+  const onnxruntime::Graph& graph = graph_->GetGraphViewer().GetGraph();
+
+  if (!graph.GetExternalInitializerInfo(name_, result, /*check_outer_scope*/ true)) {
+    result = nullptr;
+  }
+
   return Status::OK();
 }
 
@@ -596,15 +640,18 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
     initializer_value_infos.push_back(value_info);
 
     // Initialize OrtValue for the initializer.
+    // Note: using std::unique_ptr<OrtValue> because we return a OrtValue* to the user and we want it to be stable.
     auto initializer_value = std::make_unique<OrtValue>();
     bool graph_has_ortvalue = graph_viewer.GetGraph().GetOrtValueInitializer(initializer_name, *initializer_value,
                                                                              /*check_outer_scope*/ false);
 
     if (!graph_has_ortvalue) {
-      // onnxruntime::Graph does not have an OrtValue for this initializer, so create one from the TensorProto.
-      // This should only happen for small initializers that are needed for ONNX shape inferencing.
-      ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
-                                                       initializer_allocator, *initializer_value));
+      // Copy to OrtValue if not external. This should only happen for small initializers.
+      // Do nothing for external initializers, as we will load/mmap into an OrtValue on demand.
+      if (!utils::HasExternalDataInFile(*tensor_proto)) {
+        ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
+                                                         initializer_allocator, *initializer_value));
+      }
     }
 
     initializer_values.emplace(value_info->GetName(), std::move(initializer_value));
@@ -653,8 +700,10 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
       }
 
       EpValueInfo* outer_value_info = value_info_iter->second.get();
-      bool is_constant = false;
+
+      // Note: using std::unique_ptr<OrtValue> because we return a OrtValue* to the user and we want it to be stable.
       auto outer_initializer_value = std::make_unique<OrtValue>();
+      bool is_constant = false;
       const ONNX_NAMESPACE::TensorProto* outer_initializer = parent_graph->GetInitializer(implicit_name,
                                                                                           *outer_initializer_value,
                                                                                           is_constant,
@@ -668,11 +717,13 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
       // Add the OrtValue if this is an initializer.
       if (outer_initializer != nullptr) {
         if (!outer_initializer_value->IsAllocated()) {
-          // onnxruntime::Graph does not have an OrtValue for this initializer, so create one from the TensorProto.
-          // This should only happen for small initializers that are needed for ONNX shape inferencing.
-          ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
-                                                           *outer_initializer, initializer_allocator,
-                                                           *outer_initializer_value));
+          // Copy to OrtValue if not external. This should only happen for small initializers.
+          // Do nothing for external initializers. Will load/mmap into an OrtValue on demand.
+          if (!utils::HasExternalDataInFile(*outer_initializer)) {
+            ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
+                                                             *outer_initializer, initializer_allocator,
+                                                             *outer_initializer_value));
+          }
         }
         outer_scope_initializer_values.emplace(outer_value_info->GetName(), std::move(outer_initializer_value));
       }
@@ -811,20 +862,40 @@ const EpNode* EpGraph::GetNode(NodeIndex node_index) const {
   return index_to_ep_node_.GetEpNode(node_index);
 }
 
-const OrtValue* EpGraph::GetInitializerValue(std::string_view name) const {
+Status EpGraph::GetInitializerValue(std::string_view name, const OrtValue*& result) const {
+  auto ensure_ort_value_loaded = [&](const std::unique_ptr<OrtValue>& ort_value) -> Status {
+    if (!ort_value->IsAllocated()) {
+      // Lazy load the OrtValue. This happens for external initializers.
+      const Graph& graph = graph_viewer_.GetGraph();
+      ORT_RETURN_IF_ERROR(graph.LoadExternalInitializerAsOrtValue(std::string(name),
+                                                                  const_cast<OrtValue&>(*ort_value)));
+    }
+
+    return Status::OK();
+  };
+
   // Check for initializer value in the graph's scope.
   if (auto iter = initializer_values_.find(name);
       iter != initializer_values_.end()) {
-    return iter->second.get();
+    const std::unique_ptr<OrtValue>& ort_value = iter->second;
+    ORT_RETURN_IF_ERROR(ensure_ort_value_loaded(ort_value));
+
+    result = ort_value.get();
+    return Status::OK();
   }
 
   // Check for the initializer value in an outer scope.
   // Only finds a value if the outer initializer value is used within this graph.
   if (auto iter = outer_scope_initializer_values_.find(name);
       iter != outer_scope_initializer_values_.end()) {
-    return iter->second.get();
+    const std::unique_ptr<OrtValue>& ort_value = iter->second;
+    ORT_RETURN_IF_ERROR(ensure_ort_value_loaded(ort_value));
+
+    result = ort_value.get();
+    return Status::OK();
   }
 
-  return nullptr;
+  result = nullptr;
+  return Status::OK();
 }
 }  // namespace onnxruntime

@@ -65,6 +65,10 @@ struct EpValueInfo : public OrtValueInfo {
   // represent an initializer (either constant or non-constant).
   Status GetInitializerValue(const OrtValue*& value) const override;
 
+  // Gets external initializer information (file path, file offset, byte size) if this is an external initializer.
+  // Otherwise, sets the output parameter `ext_info` to nullptr (not an error).
+  Status GetExternalInitializerInfo(std::unique_ptr<onnxruntime::ExternalDataInfo>& ext_info) const override;
+
   // Check if this value is a required graph input.
   Status IsRequiredGraphInput(bool& is_required_graph_input) const override;
 
@@ -205,8 +209,9 @@ struct EpNode : public OrtNode {
   // Helper that returns this node's outputs as a span of EpValueInfo pointers.
   gsl::span<const EpValueInfo* const> GetOutputsSpan() const;
 
-  // Helper that gets the node's attributes by name.
-  const OrtOpAttr* GetAttribute(const std::string& name) const;
+  // Helper that gets the node's attributes by name. If the attribute is not set, returns NULL and sets the
+  // output parameter `is_unset_optional_attr` to true if this is an unset optional attribute.
+  const OrtOpAttr* GetAttribute(const std::string& name, bool& is_unset_optional_attr) const;
 
   // Helper that gets the execution provider name that this node is assigned to run on.
   const std::string& GetEpName() const;
@@ -351,7 +356,7 @@ struct EpGraph : public OrtGraph {
   // Considers both constant and non-constant initializers.
   // Supports initializers defined in an outer scope as long as that initializer is used
   // within this graph.
-  const OrtValue* GetInitializerValue(std::string_view name) const;
+  Status GetInitializerValue(std::string_view name, const OrtValue*& value) const;
 
  private:
   /// <summary>

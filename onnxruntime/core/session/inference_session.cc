@@ -3576,7 +3576,7 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
       ++iter;
     }
 
-    // Shrink if it is an arena based allocator
+    // Shrink if it is a BFCArena allocator
     // Iterate through the registered allocators as we could have multiple allocators for the device+type
     // if they differ by vendor_id.
     for (const auto& [device, allocator_ptr] : session_state_->GetAllocators()) {
