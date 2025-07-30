@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 message(STATUS "Loading Dependencies URLs ...")
 
 include(external/helper_functions.cmake)
@@ -363,25 +366,13 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-  if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
-      message(STATUS "Applying a patch for Windows ARM64/ARM64EC in cpuinfo")
-      onnxruntime_fetchcontent_declare(
-        pytorch_cpuinfo
-        URL ${DEP_URL_pytorch_cpuinfo}
-        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-        EXCLUDE_FROM_ALL
-        PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/9bb12d342fd9479679d505d93a478a6f9cd50a47.patch
-        FIND_PACKAGE_ARGS NAMES cpuinfo
-      )
-  else()
-      onnxruntime_fetchcontent_declare(
-        pytorch_cpuinfo
-        URL ${DEP_URL_pytorch_cpuinfo}
-        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-        EXCLUDE_FROM_ALL
-        FIND_PACKAGE_ARGS NAMES cpuinfo
-      )
-  endif()
+  onnxruntime_fetchcontent_declare(
+    pytorch_cpuinfo
+    URL ${DEP_URL_pytorch_cpuinfo}
+    URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+    EXCLUDE_FROM_ALL
+    FIND_PACKAGE_ARGS NAMES cpuinfo
+  )
   set(ONNXRUNTIME_CPUINFO_PROJ pytorch_cpuinfo)
   onnxruntime_fetchcontent_makeavailable(${ONNXRUNTIME_CPUINFO_PROJ})
   if(TARGET cpuinfo::cpuinfo AND NOT TARGET cpuinfo)
@@ -567,7 +558,7 @@ if (onnxruntime_USE_XNNPACK)
      ENDIF()
      ADD_LIBRARY(xnnpack STATIC IMPORTED)
      find_library(xnnpack_LIBRARY NAMES XNNPACK)
-     find_library(microkernels_prod_LIBRARY NAMES microkernels-prod)
+     find_library(microkernels_prod_LIBRARY NAMES xnnpack-microkernels-prod)
      find_package(unofficial-pthreadpool CONFIG REQUIRED)
 
      target_include_directories(xnnpack INTERFACE "${XNNPACK_HDR}")
@@ -817,6 +808,14 @@ if(onnxruntime_USE_COREML)
   # we don't build directly so use Populate. selected files are built from onnxruntime_providers_coreml.cmake
   FetchContent_Populate(coremltools)
 
+endif()
+
+if(onnxruntime_USE_KLEIDIAI)
+  # Disable the KleidiAI tests
+  set(KLEIDIAI_BUILD_TESTS  OFF)
+
+  onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
+  onnxruntime_fetchcontent_makeavailable(kleidiai)
 endif()
 
 set(onnxruntime_LINK_DIRS)

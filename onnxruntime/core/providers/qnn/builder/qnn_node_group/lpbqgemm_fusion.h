@@ -16,7 +16,7 @@ namespace qnn {
 class QnnModelWrapper;
 
 /// <summary>
-/// Represents a fusion of a {DQ, DQ->Q->DQ} -> Gemm -> DQ sequence.
+/// Represents a fusion of a {DQ, DQ->Q->DQ} -> Gemm -> Q sequence.
 /// This is translated into a QNN's FC w/ LPBQ encodings.
 /// The contained NodeUnits are of type SingleNode since they are not part of a QDQ node unit.
 /// </summary>
