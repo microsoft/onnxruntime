@@ -57,7 +57,7 @@ jobs:
         ${{ inputs.use_coreml && '--use_coreml --skip_onnx_tests' || '' }}
         --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         --config ${{ matrix.build_config }}
-      xcode_version: ${{ matrix.platform_machine == 'x86_64' && '14.3.1' || '16' }}
+      xcode_version: ${{ matrix.platform_machine == 'x86_64' && '15.2' || '16' }}
 
     steps:
       - name: Checkout code

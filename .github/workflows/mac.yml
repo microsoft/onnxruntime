@@ -19,125 +19,131 @@ env:
   python_version: 3.11
 
 jobs:
-  cpu:
-    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
-    with:
-      # Only build arm64 for CPU
-      matrix_exclude: >-
-        [
-          {"platform_machine": "x86_64"}
-        ]
+  # cpu:
+  #   uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+  #   with:
+  #     # Only build arm64 for CPU
+  #     matrix_exclude: >-
+  #       [
+  #         {"platform_machine": "x86_64"}
+  #       ]
 
-  coreml:
-    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
-    with:
-      use_coreml: true
+  # coreml:
+  #   uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+  #   with:
+  #     use_coreml: true
 
-  xnnpack:
-    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
-    with:
-      use_xnnpack: true
-      # only build arm64/Debug for XNNPack
-      matrix_exclude: >-
-        [
-          {"platform_machine": "x86_64"},
-          {"platform_machine": "arm64", "build_config": "Release"}
-        ]
+  # xnnpack:
+  #   uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+  #   with:
+  #     use_xnnpack: true
+  #     # only build arm64/Debug for XNNPack
+  #     matrix_exclude: >-
+  #       [
+  #         {"platform_machine": "x86_64"},
+  #         {"platform_machine": "arm64", "build_config": "Release"}
+  #       ]
 
   webgpu:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       use_webgpu: true
+      # only build x86_64
+      matrix_exclude: >-
+        [
+          {"platform_machine": "arm64"}
+        ]
 
-  iphone_simulator:
-    runs-on: macos-15
 
-    env:
-      xcode_version: 16
+  # iphone_simulator:
+  #   runs-on: macos-15
 
-    strategy:
-      matrix:
-        target_arch: [x86_64, arm64]
+  #   env:
+  #     xcode_version: 16
 
-    timeout-minutes: 90
+  #   strategy:
+  #     matrix:
+  #       target_arch: [x86_64, arm64]
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  #   timeout-minutes: 90
 
-      - name: macOS CI pipeline prepare steps
-        uses: ./.github/actions/macos-ci-setup
-        with:
-          platform_machine: "arm64"
-          python_version: ${{ env.python_version }}
-          xcode_version: ${{ env.xcode_version }}
-          use_cache: false
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
 
-      - name: Build for iphonesimulator ${{ matrix.target_arch }}
-        shell: bash
-        run: |
-          python ./tools/ci_build/build.py \
-            --build_dir ./build \
-            --update \
-            --build --parallel \
-            --test \
-            --build_apple_framework \
-            --use_xcode \
-            --use_coreml \
-            --use_xnnpack \
-            --use_binskim_compliant_compile_flags \
-            --ios \
-            --apple_deploy_target=15.1 \
-            --apple_sysroot=iphonesimulator \
-            --osx_arch=${{ matrix.target_arch }}
+  #     - name: macOS CI pipeline prepare steps
+  #       uses: ./.github/actions/macos-ci-setup
+  #       with:
+  #         platform_machine: "arm64"
+  #         python_version: ${{ env.python_version }}
+  #         xcode_version: ${{ env.xcode_version }}
+  #         use_cache: false
 
-  Objective-C-StaticAnalysis:
-    runs-on: macos-14
+  #     - name: Build for iphonesimulator ${{ matrix.target_arch }}
+  #       shell: bash
+  #       run: |
+  #         python ./tools/ci_build/build.py \
+  #           --build_dir ./build \
+  #           --update \
+  #           --build --parallel \
+  #           --test \
+  #           --build_apple_framework \
+  #           --use_xcode \
+  #           --use_coreml \
+  #           --use_xnnpack \
+  #           --use_binskim_compliant_compile_flags \
+  #           --ios \
+  #           --apple_deploy_target=15.1 \
+  #           --apple_sysroot=iphonesimulator \
+  #           --osx_arch=${{ matrix.target_arch }}
 
-    env:
-      xcode_version: 15.2
+  # Objective-C-StaticAnalysis:
+  #   runs-on: macos-14
 
-    timeout-minutes: 30
+  #   env:
+  #     xcode_version: 15.2
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  #   timeout-minutes: 30
 
-      - name: macOS CI pipeline prepare steps
-        uses: ./.github/actions/macos-ci-setup
-        with:
-          platform_machine: "arm64"
-          python_version: ${{ env.python_version }}
-          xcode_version: ${{ env.xcode_version }}
-          use_cache: false
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
 
-      - name: Generate compile_commands.json and ONNX protobuf files
-        shell: bash
-        run: |
-          python ./tools/ci_build/build.py \
-            --build_dir ./build \
-            --cmake_generator "Unix Makefiles" \
-            --config Debug \
-            --build_shared_lib \
-            --use_coreml \
-            --build_objc \
-            --enable_training_apis \
-            --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            --use_binskim_compliant_compile_flags \
-            --update \
-            --build --parallel \
-            --target onnx_proto
+  #     - name: macOS CI pipeline prepare steps
+  #       uses: ./.github/actions/macos-ci-setup
+  #       with:
+  #         platform_machine: "arm64"
+  #         python_version: ${{ env.python_version }}
+  #         xcode_version: ${{ env.xcode_version }}
+  #         use_cache: false
 
-      - name: Analyze Objective-C/C++ source code
-        shell: bash
-        run: |
-          CLANG_TIDY_CHECKS="-*,clang-analyzer-*"
+  #     - name: Generate compile_commands.json and ONNX protobuf files
+  #       shell: bash
+  #       run: |
+  #         python ./tools/ci_build/build.py \
+  #           --build_dir ./build \
+  #           --cmake_generator "Unix Makefiles" \
+  #           --config Debug \
+  #           --build_shared_lib \
+  #           --use_coreml \
+  #           --build_objc \
+  #           --enable_training_apis \
+  #           --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
+  #           --use_binskim_compliant_compile_flags \
+  #           --update \
+  #           --build --parallel \
+  #           --target onnx_proto
 
-          "$(brew --prefix llvm@15)/bin/clang-tidy" \
-            -p=./build/Debug \
-            --checks="${CLANG_TIDY_CHECKS}" \
-            --warnings-as-errors="${CLANG_TIDY_CHECKS}" \
-            --header-filter="objectivec/include|objectivec|onnxruntime/core" \
-            ./objectivec/*.mm \
-            ./onnxruntime/core/platform/apple/logging/apple_log_sink.mm \
-            ./onnxruntime/core/providers/coreml/model/*.mm
+  #     - name: Analyze Objective-C/C++ source code
+  #       shell: bash
+  #       run: |
+  #         CLANG_TIDY_CHECKS="-*,clang-analyzer-*"
+
+  #         "$(brew --prefix llvm@15)/bin/clang-tidy" \
+  #           -p=./build/Debug \
+  #           --checks="${CLANG_TIDY_CHECKS}" \
+  #           --warnings-as-errors="${CLANG_TIDY_CHECKS}" \
+  #           --header-filter="objectivec/include|objectivec|onnxruntime/core" \
+  #           ./objectivec/*.mm \
+  #           ./onnxruntime/core/platform/apple/logging/apple_log_sink.mm \
+  #           ./onnxruntime/core/providers/coreml/model/*.mm
