@@ -1,5 +1,4 @@
 import os
-from collections.abc import Iterable
 from pathlib import Path
 
 # The official vcpkg repository has about 80 different triplets. But ONNX Runtime has many more build variants. For example, in general, for each platform, we need to support builds with C++ exceptions, builds without C++ exceptions, builds with C++ RTTI, builds without C++ RTTI, linking to static C++ runtime, linking to dynamic (shared) C++ runtime, builds with address sanitizer, builds without address sanitizer, etc. Therefore, this script file was created to dynamically generate the triplet files on-the-fly.
@@ -116,7 +115,7 @@ def add_build_type(f, build_type: str) -> None:
 
 def generate_triplet_for_android(
     build_dir: str,
-    configs: Iterable[str],
+    configs: set[str],
     target_abi: str,
     enable_rtti: bool,
     enable_exception: bool,
@@ -247,9 +246,7 @@ def generate_triplet_for_android(
             add_port_configs(f, enable_exception, False, enable_minimal_build)  # Pass enable_minimal_build
 
 
-def generate_android_triplets(
-    build_dir: str, configs: Iterable[str], use_cpp_shared: bool, android_api_level: int
-) -> None:
+def generate_android_triplets(build_dir: str, configs: set[str], use_cpp_shared: bool, android_api_level: int) -> None:
     """
     Generate triplet files for POSIX platforms (Linux, macOS, Android).
 
@@ -279,7 +276,7 @@ def generate_android_triplets(
 
 def generate_triplet_for_posix_platform(
     build_dir: str,
-    configs: Iterable[str],
+    configs: set[str],
     os_name: str,
     enable_rtti: bool,
     enable_exception: bool,
@@ -432,7 +429,7 @@ def generate_triplet_for_posix_platform(
 
 def generate_vcpkg_triplets_for_emscripten(
     build_dir: str,
-    configs: Iterable[str],
+    configs: set[str],
     emscripten_root: str,
     # Parameters defining the specific build configuration
     enable_rtti: bool,
@@ -581,7 +578,7 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
                 )  # Original parameter
 
 
-def generate_windows_triplets(build_dir: str, configs: Iterable[str], toolset_version: str) -> None:
+def generate_windows_triplets(build_dir: str, configs: set[str], toolset_version: str) -> None:
     """
     Generate triplet files for Windows platforms.
 
@@ -676,7 +673,7 @@ def generate_windows_triplets(build_dir: str, configs: Iterable[str], toolset_ve
                                         )  # Pass enable_minimal_build
 
 
-def generate_linux_triplets(build_dir: str, configs: Iterable[str]) -> None:
+def generate_linux_triplets(build_dir: str, configs: set[str]) -> None:
     """
     Generate triplet files for Linux platforms.
 
@@ -709,7 +706,7 @@ def generate_linux_triplets(build_dir: str, configs: Iterable[str]) -> None:
                             )
 
 
-def generate_macos_triplets(build_dir: str, configs: Iterable[str], osx_deployment_target: str) -> None:
+def generate_macos_triplets(build_dir: str, configs: set[str], osx_deployment_target: str) -> None:
     """
     Generate triplet files for macOS platforms.
 
