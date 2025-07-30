@@ -255,11 +255,11 @@ struct OrtNode {
   /// Gets the node's 'TENSOR' attribute as an OrtValue.
   /// </summary>
   /// <param name="attr">Node's 'TENSOR' attribute.</param>
-  /// <param name="value">Output parameter set to the 'TENSOR' attribute value or nullptr
-  ///                     if it's not a 'TENSOR' attribute.</param>
+  /// <param name="value">Output parameter is set to a newly created OrtValue containing the 'TENSOR' attribute value,
+  ///                     only if the attribute is of type 'TENSOR'</param>
   /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetTensorAttributeAsOrtValue(const OrtOpAttr* attr,
-                                                           OrtValue** value) const = 0;
+                                                           OrtValue*& value) const = 0;
 
   /// <summary>
   /// Gets the number of node subgraphs.

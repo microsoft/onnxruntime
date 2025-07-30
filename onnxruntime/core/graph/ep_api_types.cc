@@ -248,7 +248,7 @@ Status EpNode::GetAttributes(gsl::span<const OrtOpAttr*> dst) const {
   return Status::OK();
 }
 
-Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, OrtValue** result) const {
+Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, OrtValue*& result) const {
   const auto* attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute);
 
   if (attr_proto->type() != onnx::AttributeProto::TENSOR) {
@@ -270,7 +270,7 @@ Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, OrtValue
   ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), tensor_proto,
                                                    tensor_attribute_allocator, *tensor_attribute_value));
 
-  *result = tensor_attribute_value.release();
+  result = tensor_attribute_value.release();
   return Status::OK();
 }
 

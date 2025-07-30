@@ -3027,7 +3027,7 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetTensorAttributeAsOrtValue, _In_ const OrtNo
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attribute argument is null");
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetTensorAttributeAsOrtValue(attribute, attr_tensor));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetTensorAttributeAsOrtValue(attribute, *attr_tensor));
   return nullptr;
   API_IMPL_END
 }
