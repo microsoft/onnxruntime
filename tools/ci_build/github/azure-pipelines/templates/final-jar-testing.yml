@@ -115,7 +115,7 @@ stages:
           java -version
           mkdir test
           pushd test
-          jar xf ../testing.jar'
+          jar xf ../testing.jar
           popd
           # Set the correct library path based on the OS
           os_name=$(uname)
