@@ -244,23 +244,6 @@ stages:
     - checkout: self
       submodules: false
 
-    - bash: |
-        echo "Downloading and installing Maven $(mavenVersion) for Linux..."
-        MAVEN_DIR="$(Agent.TempDirectory)/apache-maven-$(mavenVersion)"
-        # Download Maven binary
-        wget https://archive.apache.org/dist/maven/maven-3/$(mavenVersion)/binaries/apache-maven-$(mavenVersion)-bin.tar.gz -O $(Agent.TempDirectory)/maven.tar.gz
-
-        # Extract to the temp directory
-        mkdir -p ${MAVEN_DIR}
-        tar -xzf $(Agent.TempDirectory)/maven.tar.gz -C $(Agent.TempDirectory)
-
-        # Add Maven's bin directory to the PATH for subsequent tasks in the job
-        echo "##vso[task.prependpath]${MAVEN_DIR}/bin"
-
-    - script: |
-        echo "Maven is now on the PATH."
-        mvn --version
-
     - template: templates/set-version-number-variables-step.yml
 
     - download: build
