@@ -82,15 +82,24 @@ stages:
     - task: PowerShell@2
       displayName: 'Run Java Tests with PowerShell'
       inputs:
-        env:
-          - ${{ if eq(parameters.OS, 'MacOS') }}:
-            DYLD_LIBRARY_PATH: '$(Build.BinariesDirectory)/final-jar/test:$(DYLD_LIBRARY_PATH)'
-          - ${{ if eq(parameters.OS, 'Linux') }}:
-            LD_LIBRARY_PATH: '$(Build.BinariesDirectory)/final-jar/test:$(LD_LIBRARY_PATH)'
         targetType: 'inline'
         script: |
           # Exit script on any error
           $ErrorActionPreference = "Stop"
+
+          # Set the dynamic library path based on the OS
+          $libPath = '$(Build.BinariesDirectory)/final-jar/test'
+
+          if ($IsLinux) {
+              Write-Host "Setting LD_LIBRARY_PATH for Linux..."
+              $env:LD_LIBRARY_PATH = "$libPath:$($env:LD_LIBRARY_PATH)"
+              Write-Host "LD_LIBRARY_PATH is now set for this script."
+          }
+          elseif ($IsMacOs) {
+              Write-Host "Setting DYLD_LIBRARY_PATH for MacOS..."
+              $env:DYLD_LIBRARY_PATH = "$libPath:$($env:DYLD_LIBRARY_PATH)"
+              Write-Host "DYLD_LIBRARY_PATH is now set for this script."
+          }
 
           # Find the JUnit Standalone Runner JAR using Get-ChildItem
           $junitRunnerJar = Get-ChildItem -Path $(Pipeline.Workspace)/build/onnxruntime-java -Filter "junit-platform-console-standalone-*.jar" -Recurse | Select-Object -First 1
@@ -105,7 +114,7 @@ stages:
 
           Write-Host "Running JUnit Tests..."
 
-          # Execute the java command. Note the backtick (`) for line continuation in PowerShell.
+          # Execute the java command
           & java -jar "$($junitRunnerJar.FullName)" --scan-classpath "$(Pipeline.Workspace)/build/onnxruntime-java" --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
 
     - task: PublishTestResults@2
