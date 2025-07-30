@@ -284,7 +284,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
     }
 
     // -p
-    std::basic_string<ORTCHAR_T> opt_w_str = ToPathString(absl::GetFlag(FLAGS_p));
+    PathString opt_w_str = ToPathString(absl::GetFlag(FLAGS_p));
     if (!opt_w_str.empty()) test_config.run_config.profile_file = opt_w_str;
 
     // -M
