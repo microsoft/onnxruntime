@@ -87,6 +87,10 @@ stages:
           $ErrorActionPreference = "Stop"
           cd $(Pipeline.Workspace)/build/onnxruntime-java
           dir
+          mkdir test
+          pushd test
+          jar xf ..\testing.jar
+          popd
           $junitRunnerJar = Get-ChildItem -Path . -Filter "junit-platform-console-standalone-*.jar" -Recurse | Select-Object -First 1
           if ($null -eq $junitRunnerJar) {
             Write-Host "##vso[task.logissue type=error]JUnit Platform Console Standalone JAR not found!"
@@ -95,7 +99,7 @@ stages:
 
           Write-Host "Running JUnit Tests..."
           & java -jar "$($junitRunnerJar.FullName)" `
-            --scan-classpath $(Pipeline.Workspace)/build/onnxruntime-java `
+            --scan-classpath -cp . `
             --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
 
     - task: Bash@3
@@ -104,9 +108,15 @@ stages:
       inputs:
         targetType: 'inline'
         script: |
-          set -e
+          set -e -x
           cd $(Pipeline.Workspace)/build/onnxruntime-java
           ls
+          echo "Java Version"
+          java -version
+          mkdir test
+          pushd test
+          jar xf ../testing.jar'
+          popd
           # Set the correct library path based on the OS
           os_name=$(uname)
           if [[ "$os_name" == "Linux" ]]; then
@@ -125,7 +135,7 @@ stages:
 
           echo "Running JUnit Tests..."
           java -jar "$JUNIT_RUNNER_JAR" \
-            --scan-classpath $(Pipeline.Workspace)/build/onnxruntime-java \
+            --scan-classpath -cp . \
             --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
 
 
