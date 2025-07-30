@@ -207,6 +207,7 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
 #endif
 
 #ifdef USE_MIGRAPHX
+
 void CpuToMIGraphXMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_MIGraphX().MIGraphXMemcpy_HostToDevice(dst, src, num_bytes);
 }
@@ -230,7 +231,8 @@ AllocatorPtr GetMIGraphXAllocator(OrtDevice::DeviceId id) {
 
   if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
     // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
-    id_to_allocator_map->insert({id, GetProviderInfo_MIGraphX().CreateMIGraphXAllocator(id, gpu_mem_limit, arena_extend_strategy, migx_external_allocator_info, nullptr)});
+    id_to_allocator_map->insert({id, GetProviderInfo_MIGraphX().CreateMIGraphXAllocator(id, gpu_mem_limit, arena_extend_strategy,
+                                                                                        migraphx::external::alloc_fn, migraphx::external::free_fn, migraphx::external::empty_cache_fn, nullptr)});
   }
 
   return (*id_to_allocator_map)[id];

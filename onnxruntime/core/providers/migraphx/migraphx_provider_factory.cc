@@ -1,19 +1,27 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
+
 #include <atomic>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <shlwapi.h>
+#endif
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/migraphx/migraphx_provider_factory.h"
-#include "migraphx_execution_provider.h"
-#include "migraphx_execution_provider_info.h"
-#include "migraphx_provider_factory_creator.h"
-#include "migraphx_allocator.h"
-#include "gpu_data_transfer.h"
+#include "core/providers/migraphx/migraphx_execution_provider.h"
+#include "core/providers/migraphx/migraphx_execution_provider_info.h"
+#include "core/providers/migraphx/migraphx_allocator.h"
+#include "core/providers/migraphx/gpu_data_transfer.h"
 #include "core/framework/provider_options.h"
 
 #include "core/session/onnxruntime_c_api.h"
-
-using namespace onnxruntime;
 
 namespace onnxruntime {
 
@@ -21,8 +29,8 @@ void InitializeRegistry();
 void DeleteRegistry();
 
 struct MIGraphXProviderFactory : IExecutionProviderFactory {
-  MIGraphXProviderFactory(const MIGraphXExecutionProviderInfo& info) : info_{info} {}
-  ~MIGraphXProviderFactory() override {}
+  explicit MIGraphXProviderFactory(MIGraphXExecutionProviderInfo info) : info_{std::move(info)} {}
+  ~MIGraphXProviderFactory() override = default;
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
@@ -35,11 +43,11 @@ std::unique_ptr<IExecutionProvider> MIGraphXProviderFactory::CreateProvider() {
 }
 
 struct ProviderInfo_MIGraphX_Impl final : ProviderInfo_MIGraphX {
-  std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) override {
+  std::unique_ptr<IAllocator> CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, const char* name) override {
     return std::make_unique<MIGraphXAllocator>(device_id, name);
   }
 
-  std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) override {
+  std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(OrtDevice::DeviceId device_id, const char* name) override {
     return std::make_unique<MIGraphXPinnedAllocator>(device_id, name);
   }
 
@@ -61,8 +69,31 @@ struct ProviderInfo_MIGraphX_Impl final : ProviderInfo_MIGraphX {
     HIP_CALL_THROW(hipMemcpy(dst, src, count, hipMemcpyDeviceToHost));
   }
 
-  std::shared_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, size_t migx_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::MIGraphXExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) override {
-    return MIGraphXExecutionProvider::CreateMIGraphXAllocator(device_id, migx_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
+  std::shared_ptr<IAllocator> CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy,
+                                                      void* alloc_fn, void* free_fn, void* empty_cache_fn, const OrtArenaCfg* default_memory_arena_cfg) override {
+    if (alloc_fn != nullptr && free_fn != nullptr) {
+      AllocatorCreationInfo default_memory_info{
+          [alloc_fn, free_fn, empty_cache_fn](OrtDevice::DeviceId id) {
+            return std::make_unique<MIGraphXExternalAllocator>(id, HIP, alloc_fn, free_fn, empty_cache_fn);
+          },
+          device_id, false};
+
+      return CreateAllocator(default_memory_info);
+    }
+    AllocatorCreationInfo default_memory_info{
+        [](OrtDevice::DeviceId id) {
+          return std::make_unique<MIGraphXAllocator>(id, HIP);
+        },
+        device_id,
+        true,
+        {default_memory_arena_cfg ? *default_memory_arena_cfg
+                                  : OrtArenaCfg(mem_limit, static_cast<int>(arena_extend_strategy),
+                                                -1, -1, -1, -1L)},
+        // make it stream aware
+        true};
+
+    // ROCM malloc/free is expensive so always use an arena
+    return CreateAllocator(default_memory_info);
   }
 } g_info;
 
@@ -77,11 +108,12 @@ struct MIGraphX_Provider : Provider {
   }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
-    auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);
+    auto& options = *static_cast<const OrtMIGraphXProviderOptions*>(provider_options);
     MIGraphXExecutionProviderInfo info;
     info.device_id = static_cast<OrtDevice::DeviceId>(options.device_id);
     info.target_device = "gpu";
     info.fp16_enable = options.migraphx_fp16_enable;
+    info.bf16_enable = options.migraphx_bf16_enable;
     info.fp8_enable = options.migraphx_fp8_enable;
     info.exhaustive_tune = options.migraphx_exhaustive_tune;
     info.int8_enable = options.migraphx_int8_enable;
@@ -90,15 +122,9 @@ struct MIGraphX_Provider : Provider {
       info.int8_calibration_table_name = options.migraphx_int8_calibration_table_name;
     }
     info.int8_use_native_calibration_table = options.migraphx_use_native_calibration_table != 0;
-    info.save_compiled_model = options.migraphx_save_compiled_model;
-    info.save_model_file = "";
-    if (options.migraphx_save_model_path != nullptr) {
-      info.save_model_file = options.migraphx_save_model_path;
-    }
-    info.load_compiled_model = options.migraphx_load_compiled_model;
-    info.load_model_file = "";
-    if (options.migraphx_load_model_path != nullptr) {
-      info.load_model_file = options.migraphx_load_model_path;
+    info.model_cache_dir = "";
+    if (options.migraphx_cache_dir != nullptr) {
+      info.model_cache_dir = options.migraphx_cache_dir;
     }
     info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(options.migraphx_arena_extend_strategy);
     info.mem_limit = options.migraphx_mem_limit;
@@ -106,62 +132,75 @@ struct MIGraphX_Provider : Provider {
   }
 
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
-    auto internal_options = onnxruntime::MIGraphXExecutionProviderInfo::FromProviderOptions(options);
-    auto& migx_options = *reinterpret_cast<OrtMIGraphXProviderOptions*>(provider_options);
-    migx_options.device_id = internal_options.device_id;
-    migx_options.migraphx_fp16_enable = internal_options.fp16_enable;
-    migx_options.migraphx_fp8_enable = internal_options.fp8_enable;
-    migx_options.migraphx_int8_enable = internal_options.int8_enable;
-    migx_options.migraphx_exhaustive_tune = internal_options.exhaustive_tune;
+    MIGraphXExecutionProviderInfo internal_options{options};
+    const auto migx_options = static_cast<OrtMIGraphXProviderOptions*>(provider_options);
+    migx_options->device_id = internal_options.device_id;
+    migx_options->migraphx_fp16_enable = internal_options.fp16_enable;
+    migx_options->migraphx_bf16_enable = internal_options.bf16_enable;
+    migx_options->migraphx_fp8_enable = internal_options.fp8_enable;
+    migx_options->migraphx_int8_enable = internal_options.int8_enable;
+    migx_options->migraphx_exhaustive_tune = internal_options.exhaustive_tune;
 
-    char* dest = nullptr;
-    auto str_size = internal_options.int8_calibration_table_name.size();
-    if (str_size == 0) {
-      migx_options.migraphx_int8_calibration_table_name = nullptr;
+    if (internal_options.int8_calibration_table_name.empty()) {
+      migx_options->migraphx_int8_calibration_table_name = nullptr;
     } else {
-      dest = new char[str_size + 1];
+      auto str_size = internal_options.int8_calibration_table_name.size();
+      auto dest = new char[str_size + 1];
 #ifdef _MSC_VER
       strncpy_s(dest, str_size + 1, internal_options.int8_calibration_table_name.c_str(), str_size);
 #else
       strncpy(dest, internal_options.int8_calibration_table_name.c_str(), str_size);
 #endif
       dest[str_size] = '\0';
-      migx_options.migraphx_int8_calibration_table_name = (const char*)dest;
+      migx_options->migraphx_int8_calibration_table_name = static_cast<const char*>(dest);
     }
 
-    migx_options.migraphx_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
+    migx_options->migraphx_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
 
-    migx_options.migraphx_save_compiled_model = internal_options.save_compiled_model;
-    migx_options.migraphx_save_model_path = internal_options.save_model_file.c_str();
-    migx_options.migraphx_load_compiled_model = internal_options.load_compiled_model;
-    migx_options.migraphx_load_model_path = internal_options.load_model_file.c_str();
-    migx_options.migraphx_arena_extend_strategy = static_cast<int>(internal_options.arena_extend_strategy);
-    migx_options.migraphx_mem_limit = internal_options.mem_limit;
+    if (internal_options.model_cache_dir.empty()) {
+      migx_options->migraphx_cache_dir = nullptr;
+    } else {
+      const auto cache_dir_str{internal_options.model_cache_dir.native()};
+      auto cache_dir = new ORTCHAR_T[cache_dir_str.size() + 1];
+#ifdef _MSC_VER
+      wcsncpy_s(cache_dir, cache_dir_str.size() + 1, cache_dir_str.data(), cache_dir_str.size());
+#else
+      strncpy(cache_dir, cache_dir_str.data(), cache_dir_str.size());
+#endif
+      cache_dir[cache_dir_str.size()] = '\0';
+      migx_options->migraphx_cache_dir = cache_dir;
+    }
+
+    migx_options->migraphx_arena_extend_strategy = static_cast<int>(internal_options.arena_extend_strategy);
+    migx_options->migraphx_mem_limit = internal_options.mem_limit;
+
+    migx_options->migraphx_external_alloc = internal_options.external_alloc;
+    migx_options->migraphx_external_free = internal_options.external_free;
+    migx_options->migraphx_external_empty_cache = internal_options.external_empty_cache;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
-    auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);
-    return onnxruntime::MIGraphXExecutionProviderInfo::ToProviderOptions(options);
-  }
-
-  Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
-                                  const OrtKeyValuePairs* const* /*ep_metadata*/,
-                                  size_t num_devices,
-                                  ProviderOptions& provider_options,
-                                  const OrtSessionOptions& session_options,
-                                  const OrtLogger& logger,
-                                  std::unique_ptr<IExecutionProvider>& ep) override {
-    ORT_UNUSED_PARAMETER(num_devices);
-    const ConfigOptions* config_options = &session_options.GetConfigOptions();
-
-    std::array<const void*, 2> configs_array = {&provider_options, config_options};
-    auto ep_factory = CreateExecutionProviderFactory(&provider_options);
-    ep = ep_factory->CreateProvider(session_options, logger);
-
-    return Status::OK();
+    return MIGraphXExecutionProviderInfo{*static_cast<const OrtMIGraphXProviderOptions*>(provider_options)}.ToProviderOptions();
   }
 
   void Initialize() override {
+#ifdef _WIN32
+    HMODULE module = nullptr;
+    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          static_cast<LPCSTR>(static_cast<void*>(InitializeRegistry)),
+                          &module) != 0) {
+      std::vector<wchar_t> pathBuf;
+      for (;;) {
+        pathBuf.resize(pathBuf.size() + MAX_PATH);
+        if (const auto writen = GetModuleFileNameW(module, pathBuf.data(), static_cast<DWORD>(pathBuf.size())); writen < pathBuf.size()) {
+          break;
+        }
+      }
+      std::filesystem::path path(pathBuf.begin(), pathBuf.end());
+      SetDllDirectoryW(path.parent_path().native().c_str());
+    }
+#endif
     InitializeRegistry();
   }
 
@@ -184,9 +223,12 @@ struct MigraphXEpFactory : OrtEpFactory {
       : ort_api{ort_api_in}, default_logger{default_logger_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
+    GetVendorId = GetVendorIdImpl;
+    CreateDataTransfer = CreateDataTransferImpl;
   }
 
   // Returns the name for the EP. Each unique factory configuration must have a unique name.
@@ -199,6 +241,23 @@ struct MigraphXEpFactory : OrtEpFactory {
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
     return factory->vendor.c_str();
+  }
+
+  static const char* GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    return factory->ep_version.c_str();
+  }
+
+  static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    return factory->vendor_id;
+  }
+
+  static OrtStatus* CreateDataTransferImpl(OrtEpFactory* this_ptr,
+                                           OrtDataTransferImpl** data_transfer) noexcept {
+    ORT_UNUSED_PARAMETER(this_ptr);
+    *data_transfer = nullptr;  // return nullptr to indicate that this EP does not support data transfer.
+    return nullptr;
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
@@ -249,7 +308,7 @@ struct MigraphXEpFactory : OrtEpFactory {
   const OrtLogger& default_logger;
   const std::string ep_name;
   const std::string vendor{"AMD"};
-
+  const std::string ep_version{"0.1.0"};
   const uint32_t vendor_id{0x1002};
   const OrtHardwareDeviceType ort_hw_device_type;  // Supported OrtHardwareDevice
 };

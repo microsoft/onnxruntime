@@ -383,21 +383,27 @@ void addOrtValueMethods(pybind11::module& m) {
       // Converts Tensor into a numpy array
       .def("numpy", [](const OrtValue* ml_value) -> py::object {
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
-
+        const auto& device = ml_value->Get<Tensor>().Location().device;
+        switch (device.Vendor()) {
 #ifdef USE_CUDA
-        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction());
-#elif USE_ROCM
-        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetRocmToHostMemCpyFunction());
-#elif USE_CANN
-        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction());
-#elif USE_DML
-        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction());
-#elif USE_MIGRAPHX
-        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetMIGraphXToHostMemCpyFunction());
-#else
-        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, nullptr);
+          case OrtDevice::VendorIds::NVIDIA:
+            return GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction());
 #endif
-        return obj; })
+#ifdef USE_MIGRAPHX
+          case OrtDevice::VendorIds::AMD:
+            return GetPyObjFromTensor(*ml_value, nullptr, GetMIGraphXToHostMemCpyFunction());
+#endif
+#ifdef USE_DML
+          case OrtDevice::VendorIds::MICROSOFT:
+            return GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction());
+#endif
+#ifdef USE_CANN
+          case OrtDevice::VendorIds::HUAWEI:
+            return GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction());
+#endif
+          default:
+            return GetPyObjFromTensor(*ml_value, nullptr, nullptr);
+        } })
 #if defined(ENABLE_DLPACK)
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object { return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); },
            "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "

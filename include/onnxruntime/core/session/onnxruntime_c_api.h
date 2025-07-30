@@ -753,13 +753,13 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
   int migraphx_fp8_enable;                           // MIGraphX FP8 precision. Default 0 = false, nonzero = true
   int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
-  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
+  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, nonzero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
   int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, noznero = true
   const char* migraphx_save_model_path;              // migraphx model path name
   int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
   const char* migraphx_load_model_path;              // migraphx model path name
-  bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
+  int migraphx_exhaustive_tune;                      // MIGraphX tuned compile. Default = false, nonzero = true
 
   /** \brief MIGraphX memory limit (To use all possible memory pass in maximum size_t)
    *   Defaults to SIZE_MAX.
@@ -774,7 +774,11 @@ typedef struct OrtMIGraphXProviderOptions {
    *   \note If a ::OrtArenaCfg has been applied, it will override this field
    */
   int migraphx_arena_extend_strategy;
-
+  int migraphx_bf16_enable;             // MIGraphX BF16 precision. Default 0 = false, nonzero = true
+  const ORTCHAR_T* migraphx_cache_dir;  // MIGraphX model cache directory
+  void* migraphx_external_alloc;        // Pointer to an external Alloc() function (default is none)
+  void* migraphx_external_free;         // Pointer to an external Free() function (default is none)
+  void* migraphx_external_empty_cache;  // Pointer to an external EmptyCache() function (default is none)
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -6453,6 +6457,88 @@ struct OrtApi {
                   _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                   _In_opt_ OrtSyncStream* stream,
                   _In_ size_t num_tensors);
+
+  /// @}
+  /// \name OrtMIGraphXProviderOptions
+  /// @{
+
+  /** \brief Create an OrtMIGraphXProviderOptions
+   *
+   * \param[out] out Newly created ::OrtMIGraphXProviderOptions. Must be released with OrtApi::ReleaseMIGraphXProviderOptions
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.xx.
+   */
+  ORT_API2_STATUS(CreateMIGraphXProviderOptions, _Outptr_ OrtMIGraphXProviderOptions** out);
+
+  /** \brief Set options in a MIGraphX Execution Provider.
+   *
+   * For example, key="device_id" and value="0"
+   *
+   * \param[in] migraphx_options
+   * \param[in] provider_options_keys Array of UTF-8 null-terminated string for provider options keys
+   * \param[in] provider_options_values Array of UTF-8 null-terminated string for provider options values
+   * \param[in] num_keys Number of elements in the `provider_option_keys` and `provider_options_values` arrays
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.xx.
+   */
+  ORT_API2_STATUS(UpdateMIGraphXProviderOptions, _Inout_ OrtMIGraphXProviderOptions* migraphx_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /**
+   * Get serialized MIGraphX provider options string.
+   *
+   * For example, "device_id=0;;......"
+   *
+   * \param migraphx_options - OrtMIGraphXProviderOptions instance
+   * \param allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
+   *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
+   * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.xx.
+   */
+  ORT_API2_STATUS(GetMIGraphXProviderOptionsAsString, _In_ const OrtMIGraphXProviderOptions* migraphx_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+
+  /** \brief Release an ::OrtMIGraphXProviderOptions
+   *
+   * \note This is an exception in the naming convention of other Release* functions, as the name of the method does not have the V2 suffix, but the type does
+   *
+   * \since Version 1.xx.
+   */
+  void(ORT_API_CALL* ReleaseMIGraphXProviderOptions)(_Frees_ptr_opt_ OrtMIGraphXProviderOptions* input);
+
+  /**
+   * Update MIGraphX EP provider option where its data type is pointer, for example 'user_compute_stream'.
+   * If the data type of the provider option can be represented by string please use UpdateMIGraphXProviderOptions.
+   *
+   * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.
+   *
+   * \param migraphx_options - OrtMIGraphXProviderOptions instance
+   * \param key - Name of the provider option
+   * \param value - A pointer to the instance that will be assigned to this provider option
+   *
+   * \since Version 1.xx.
+   */
+  ORT_API2_STATUS(UpdateMIGraphXProviderOptionsWithValue, _Inout_ OrtMIGraphXProviderOptions* migraphx_options, _In_ const char* key, _In_ void* value);
+
+  /**
+   * Get MIGraphX EP provider option where its data type is pointer.
+   * If the data type of the provider option can be represented by string please use GetMIGraphXProviderOptionsAsString.
+   *
+   * \param migraphx_options - OrtMIGraphXProviderOptions instance
+   * \param key - Name of the provider option
+   * \param ptr - A pointer to the instance that is kept by the provider option
+   *
+   * \since Version 1.xx.
+   */
+  ORT_API2_STATUS(GetMIGraphXProviderOptionsByName, _In_ const OrtMIGraphXProviderOptions* migraphx_options, _In_ const char* key, _Outptr_ void** ptr);
 };
 
 /*

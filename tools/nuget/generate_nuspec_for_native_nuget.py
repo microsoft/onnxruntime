@@ -22,6 +22,8 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
             pkg_name += "-tensorrt"
         elif ep == "rocm":
             pkg_name += "-rocm"
+        elif ep == "migraphx":
+            pkg_name += "-migraphx"
     elif os == "linux":
         pkg_name += "-linux-"
         pkg_name += cpu_arch
@@ -31,6 +33,8 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
             pkg_name += "-tensorrt"
         elif ep == "rocm":
             pkg_name += "-rocm"
+        elif ep == "migraphx":
+            pkg_name += "-migraphx"
     elif os == "osx":
         pkg_name = "onnxruntime-osx-" + cpu_arch
     return pkg_name
@@ -44,7 +48,11 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
 def is_this_file_needed(ep, filename, package_name):
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
         return False
-    return (ep != "cuda" or "cuda" in filename) and (ep != "tensorrt" or "cuda" not in filename)
+    return (
+        (ep != "cuda" or "cuda" in filename)
+        and (ep != "tensorrt" or "cuda" not in filename)
+        and (ep != "migraphx" or "migraphx" not in filename)
+    )
 
 
 # nuget_artifacts_dir: the directory with uncompressed C API tarball/zip files
@@ -138,7 +146,7 @@ def parse_arguments():
         required=False,
         default="None",
         type=str,
-        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "qnn", "None"],
+        choices=["cuda", "dnnl", "openvino", "migraphx", "tensorrt", "snpe", "qnn", "None"],
         help="The selected execution provider for this build.",
     )
     parser.add_argument("--sdk_info", required=False, default="", type=str, help="dependency SDK information.")
@@ -182,6 +190,8 @@ def generate_description(line_list, package_name):
         description = "This package contains Linux native shared library artifacts for ONNX Runtime with CUDA."
     elif "Microsoft.ML.OnnxRuntime.Gpu.Windows" in package_name:
         description = "This package contains Windows native shared library artifacts for ONNX Runtime with CUDA."
+    elif "Microsoft.ML.OnnxRuntime.MIGraphX" in package_name:
+        description = "This package contains native shared library artifacts for ONNX Runtime with MIGraphX."
     elif "Intel.ML.OnnxRuntime" in package_name:
         description = "This package contains native shared library artifacts for ONNX Runtime with OpenVINO."
     elif "Microsoft.ML.OnnxRuntime" in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
@@ -359,6 +369,7 @@ def generate_files(line_list, args):
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
     is_snpe_package = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe"
     is_qnn_package = args.package_name == "Microsoft.ML.OnnxRuntime.QNN"
+    is_migraphx_package = args.package_name == "Microsoft.ML.OnnxRuntime.MIGraphX"
     is_training_package = args.package_name in [
         "Microsoft.ML.OnnxRuntime.Training",
         "Microsoft.ML.OnnxRuntime.Training.Gpu",
@@ -384,6 +395,24 @@ def generate_files(line_list, args):
             "openvino_ep_shared_lib": "onnxruntime_providers_openvino.dll",
             "cuda_ep_shared_lib": "onnxruntime_providers_cuda.dll",
             "qnn_ep_shared_lib": "onnxruntime_providers_qnn.dll",
+            "migraphx_ep_shared_lib": "onnxruntime_providers_migraphx.dll",
+            "amd_comgr0602": "amd_comgr0602.dll",
+            "amd_comgr0604": "amd_comgr0604.dll",
+            "amd_comgr0700": "amd_comgr0700.dll",
+            "hiprtc0602": "hiprtc0602.dll",
+            "hiprtc0604": "hiprtc0604.dll",
+            "hiprtc0700": "hiprtc0700.dll",
+            "hiprtc-builtins0602": "hiprtc-builtins0602.dll",
+            "hiprtc-builtins0604": "hiprtc-builtins0604.dll",
+            "hiprtc-builtins0700": "hiprtc-builtins0700.dll",
+            "migraphx-hiprtc-driver": "migraphx-hiprtc-driver.exe",
+            "migraphx": "migraphx.dll",
+            "migraphx_c": "migraphx_c.dll",
+            "migraphx_cpu": "migraphx_cpu.dll",
+            "migraphx_device": "migraphx_device.dll",
+            "migraphx_gpu": "migraphx_gpu.dll",
+            "migraphx_onnx": "migraphx_onnx.dll",
+            "migraphx_tf": "migraphx_tf",
             "onnxruntime_perf_test": "onnxruntime_perf_test.exe",
             "onnx_test_runner": "onnx_test_runner.exe",
         }
@@ -402,6 +431,7 @@ def generate_files(line_list, args):
             "openvino_ep_shared_lib": "libonnxruntime_providers_openvino.so",
             "cuda_ep_shared_lib": "libonnxruntime_providers_cuda.so",
             "rocm_ep_shared_lib": "libonnxruntime_providers_rocm.so",
+            "migraphx_ep_shared_lib": "libonnxruntime_providers_migraphx.so",
             "onnxruntime_perf_test": "onnxruntime_perf_test",
             "onnx_test_runner": "onnx_test_runner",
         }
@@ -421,7 +451,7 @@ def generate_files(line_list, args):
     include_dir = f"{build_dir}\\native\\include"
 
     # Sub.Gpu packages do not include the onnxruntime headers
-    if args.package_name != "Microsoft.ML.OnnxRuntime.Gpu":
+    if args.package_name != "Microsoft.ML.OnnxRuntime.Gpu" and args.package_name != "Microsoft.ML.OnnxRuntime.MIGraphX":
         files_list.append(
             "<file src="
             + '"'
@@ -581,6 +611,8 @@ def generate_files(line_list, args):
                 ep_list = ["tensorrt", "cuda", None]
             elif is_rocm_gpu_package:
                 ep_list = ["rocm", None]
+            elif is_migraphx_package:
+                ep_list = ["migraphx", None]
             else:
                 ep_list = [None]
             for ep in ep_list:
@@ -785,6 +817,52 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
+    if args.execution_provider == "migraphx":
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["migraphx_ep_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+
+        if is_windows_build:
+            native_build_path = Path(args.native_build_path)
+
+            def _files_list_append(key: str):
+                path = native_build_path / nuget_dependencies[key]
+                if path.exists():
+                    files_list.append(
+                        "<file src=" + '"' + str(path) + runtimes_target + args.target_architecture + '\\native" />'
+                    )
+
+            _files_list_append("amd_comgr0602")
+            _files_list_append("amd_comgr0604")
+            _files_list_append("amd_comgr0700")
+            _files_list_append("hiprtc0602")
+            _files_list_append("hiprtc0604")
+            _files_list_append("hiprtc0700")
+            _files_list_append("hiprtc-builtins0602")
+            _files_list_append("hiprtc-builtins0604")
+            _files_list_append("hiprtc-builtins0700")
+            _files_list_append("migraphx-hiprtc-driver")
+            _files_list_append("migraphx")
+            _files_list_append("migraphx_c")
+            _files_list_append("migraphx_cpu")
+            _files_list_append("migraphx_device")
+            _files_list_append("migraphx_gpu")
+            _files_list_append("migraphx_onnx")
+            _files_list_append("migraphx_tf")
+
     if is_dml_package:
         files_list.append(
             "<file src="
@@ -796,7 +874,7 @@ def generate_files(line_list, args):
         )
 
     # process all other library dependencies
-    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
+    if is_cpu_package or is_cuda_gpu_package or is_migraphx_package or is_dml_package or is_mklml_package:
         # Process dnnl dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies["dnnl"])):
             files_list.append(
@@ -899,6 +977,7 @@ def generate_files(line_list, args):
         or is_cuda_gpu_linux_sub_package
         or is_cuda_gpu_win_sub_package
         or is_rocm_gpu_package
+        or is_migraphx_package
         or is_dml_package
         or is_mklml_package
         or is_snpe_package
@@ -1124,6 +1203,7 @@ def validate_execution_provider(execution_provider):
             or execution_provider == "tensorrt"
             or execution_provider == "openvino"
             or execution_provider == "rocm"
+            or execution_provider == "migraphx"
         ):
             raise Exception(
                 "On Linux platform nuget generation is supported only "

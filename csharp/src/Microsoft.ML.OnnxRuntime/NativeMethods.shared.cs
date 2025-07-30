@@ -31,10 +31,12 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateStatus;
         public IntPtr GetErrorCode;
         public IntPtr GetErrorMessage;
+
         public IntPtr CreateEnv;
         public IntPtr CreateEnvWithCustomLogger;
         public IntPtr EnableTelemetryEvents;
         public IntPtr DisableTelemetryEvents;
+
         public IntPtr CreateSession;
         public IntPtr CreateSessionFromArray;
         public IntPtr Run;
@@ -70,6 +72,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionGetInputName;
         public IntPtr SessionGetOutputName;
         public IntPtr SessionGetOverridableInitializerName;
+
         public IntPtr CreateRunOptions;
         public IntPtr RunOptionsSetRunLogVerbosityLevel;
         public IntPtr RunOptionsSetRunLogSeverityLevel;
@@ -84,8 +87,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateTensorWithDataAsOrtValue;
         public IntPtr IsTensor;
         public IntPtr GetTensorMutableData;
-        public IntPtr FillStringTensor;
 
+        public IntPtr FillStringTensor;
         public IntPtr GetStringTensorDataLength;
         public IntPtr GetStringTensorContent;
 
@@ -139,6 +142,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseTensorTypeAndShapeInfo;
         public IntPtr ReleaseSessionOptions;
         public IntPtr ReleaseCustomOpDomain;
+        // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr GetDenotationFromTypeInfo;
         public IntPtr CastTypeInfoToMapTypeInfo;
         public IntPtr CastTypeInfoToSequenceTypeInfo;
@@ -148,7 +153,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseMapTypeInfo;
         public IntPtr ReleaseSequenceTypeInfo;
         public IntPtr SessionEndProfiling;
-
         public IntPtr SessionGetModelMetadata;
         public IntPtr ModelMetadataGetProducerName;
         public IntPtr ModelMetadataGetGraphName;
@@ -157,6 +161,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ModelMetadataLookupCustomMetadataMap;
         public IntPtr ModelMetadataGetVersion;
         public IntPtr ReleaseModelMetadata;
+        // End of Version 2 - DO NOT MODIFY ABOVE (see above text for more information)
 
         public IntPtr CreateEnvWithGlobalThreadPools;
         public IntPtr DisablePerSessionThreads;
@@ -164,9 +169,12 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseThreadingOptions;
         public IntPtr ModelMetadataGetCustomMetadataMapKeys;
         public IntPtr AddFreeDimensionOverrideByName;
+        // End of Version 3 - DO NOT MODIFY ABOVE (see above text for more information)
 
         public IntPtr GetAvailableProviders;
         public IntPtr ReleaseAvailableProviders;
+        // End of Version 4 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr GetStringTensorElementLength;
         public IntPtr GetStringTensorElement;
         public IntPtr FillStringTensorElement;
@@ -191,6 +199,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetGlobalIntraOpNumThreads;
         public IntPtr SetGlobalInterOpNumThreads;
         public IntPtr SetGlobalSpinControl;
+        // End of Version 5 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr AddInitializer;
         public IntPtr CreateEnvWithCustomLoggerAndGlobalThreadPools;
         public IntPtr SessionOptionsAppendExecutionProvider_CUDA;
@@ -199,10 +209,14 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetGlobalDenormalAsZero;
         public IntPtr CreateArenaCfg;
         public IntPtr ReleaseArenaCfg;
+        // End of Version 6 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr ModelMetadataGetGraphDescription;
         public IntPtr SessionOptionsAppendExecutionProvider_TensorRT;
         public IntPtr SetCurrentGpuDeviceId;
         public IntPtr GetCurrentGpuDeviceId;
+        // End of Version 7 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr KernelInfoGetAttributeArray_float;
         public IntPtr KernelInfoGetAttributeArray_int64;
         public IntPtr CreateArenaCfgV2;
@@ -211,6 +225,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleasePrepackedWeightsContainer;
         public IntPtr CreateSessionWithPrepackedWeightsContainer;
         public IntPtr CreateSessionFromArrayWithPrepackedWeightsContainer;
+        // End of Version 8 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr SessionOptionsAppendExecutionProvider_TensorRT_V2;
         public IntPtr CreateTensorRTProviderOptions;
         public IntPtr UpdateTensorRTProviderOptions;
@@ -233,6 +249,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetSparseTensorValues;
         public IntPtr GetSparseTensorIndicesTypeShape;
         public IntPtr GetSparseTensorIndices;
+        // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr HasValue;
         public IntPtr KernelContext_GetGPUComputeStream;
         public IntPtr GetTensorMemoryInfo;
@@ -245,12 +263,16 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetGlobalCustomJoinThreadFn;
         public IntPtr SynchronizeBoundInputs;
         public IntPtr SynchronizeBoundOutputs;
+        // End of Version 10 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr SessionOptionsAppendExecutionProvider_CUDA_V2;
         public IntPtr CreateCUDAProviderOptions;
         public IntPtr UpdateCUDAProviderOptions;
         public IntPtr GetCUDAProviderOptionsAsString;
         public IntPtr ReleaseCUDAProviderOptions;
         public IntPtr SessionOptionsAppendExecutionProvider_MIGraphX;
+        // End of Version 11 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr AddExternalInitializers;
         public IntPtr CreateOpAttr;
         public IntPtr ReleaseOpAttr;
@@ -260,6 +282,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionOptionsAppendExecutionProvider;
         public IntPtr CopyKernelInfo;
         public IntPtr ReleaseKernelInfo;
+        // End of Version 12 - DO NOT MODIFY ABOVE (see above text for more information)
 
         public IntPtr GetTrainingApi;
         public IntPtr SessionOptionsAppendExecutionProvider_CANN;
@@ -267,6 +290,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr UpdateCANNProviderOptions;
         public IntPtr GetCANNProviderOptionsAsString;
         public IntPtr ReleaseCANNProviderOptions;
+        // End of Version 13 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr MemoryInfoGetDeviceType;
         public IntPtr UpdateEnvWithCustomLogLevel;
         public IntPtr SetGlobalIntraOpThreadAffinity;
@@ -281,6 +306,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr KernelInfoGetAttribute_tensor;
         public IntPtr HasSessionConfigEntry;
         public IntPtr GetSessionConfigEntry;
+        // End of Version 14 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr SessionOptionsAppendExecutionProvider_Dnnl;
         public IntPtr CreateDnnlProviderOptions;
         public IntPtr UpdateDnnlProviderOptions;
@@ -297,6 +324,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetResizedStringTensorElementBuffer;
         public IntPtr KernelContext_GetAllocator;
         public IntPtr GetBuildInfoString;
+        // End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr CreateROCMProviderOptions;
         public IntPtr UpdateROCMProviderOptions;
         public IntPtr GetROCMProviderOptionsAsString;
@@ -308,6 +337,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr UpdateCUDAProviderOptionsWithValue;
         public IntPtr GetCUDAProviderOptionsByName;
         public IntPtr KernelContext_GetResource;
+        // End of Version 16 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr SetUserLoggingFunction;
         public IntPtr ShapeInferContext_GetInputCount;
         public IntPtr ShapeInferContext_GetInputTypeShape;
@@ -318,25 +349,35 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetDeterministicCompute;
         public IntPtr KernelContext_ParallelFor;
         public IntPtr SessionOptionsAppendExecutionProvider_OpenVINO_V2;
+        // End of Version 17 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr SessionOptionsAppendExecutionProvider_VitisAI;
         public IntPtr KernelContext_GetScratchBuffer;
         public IntPtr KernelInfoGetAllocator;
         public IntPtr AddExternalInitializersFromFilesInMemory;
+        // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
+        // End of Version 19 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr CreateLoraAdapter;
         public IntPtr CreateLoraAdapterFromArray;
         public IntPtr ReleaseLoraAdapter;
         public IntPtr RunOptionsAddActiveLoraAdapter;
+
         public IntPtr SetEpDynamicOptions;
+        // End of Version 20 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr ReleaseValueInfo;
         public IntPtr ReleaseNode;
         public IntPtr ReleaseGraph;
         public IntPtr ReleaseModel;
+
         public IntPtr GetValueInfoName;
         public IntPtr GetValueInfoTypeInfo;
+
         public IntPtr GetModelEditorApi;
+
         public IntPtr CreateTensorWithDataAndDeleterAsOrtValue;
         public IntPtr SessionOptionsSetLoadCancellationFlag;
-
         public IntPtr GetCompileApi;
 
         public IntPtr CreateKeyValuePairs;
@@ -348,9 +389,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public IntPtr RegisterExecutionProviderLibrary;
         public IntPtr UnregisterExecutionProviderLibrary;
-
         public IntPtr GetEpDevices;
-
         public IntPtr SessionOptionsAppendExecutionProvider_V2;
         public IntPtr SessionOptionsSetEpSelectionPolicy;
         public IntPtr SessionOptionsSetEpSelectionPolicyDelegate;
@@ -366,8 +405,95 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr EpDevice_EpMetadata;
         public IntPtr EpDevice_EpOptions;
         public IntPtr EpDevice_Device;
+
         public IntPtr GetEpApi;
+        // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr GetTensorSizeInBytes;
+        public IntPtr AllocatorGetStats;
+
+        public IntPtr CreateMemoryInfo_V2;
+        public IntPtr MemoryInfoGetDeviceMemType;
+        public IntPtr MemoryInfoGetVendorId;
+
+        public IntPtr ValueInfo_GetValueProducer;
+        public IntPtr ValueInfo_GetValueNumConsumers;
+        public IntPtr ValueInfo_GetValueConsumers;
+        public IntPtr ValueInfo_GetInitializerValue;
+        public IntPtr ValueInfo_GetExternalInitializerInfo;
+        public IntPtr ValueInfo_IsRequiredGraphInput;
+        public IntPtr ValueInfo_IsOptionalGraphInput;
+        public IntPtr ValueInfo_IsGraphOutput;
+        public IntPtr ValueInfo_IsConstantInitializer;
+        public IntPtr ValueInfo_IsFromOuterScope;
+        public IntPtr Graph_GetName;
+        public IntPtr Graph_GetModelPath;
+        public IntPtr Graph_GetOnnxIRVersion;
+        public IntPtr Graph_GetNumOperatorSets;
+        public IntPtr Graph_GetOperatorSets;
+        public IntPtr Graph_GetNumInputs;
+        public IntPtr Graph_GetInputs;
+        public IntPtr Graph_GetNumOutputs;
+        public IntPtr Graph_GetOutputs;
+        public IntPtr Graph_GetNumInitializers;
+        public IntPtr Graph_GetInitializers;
+        public IntPtr Graph_GetNumNodes;
+        public IntPtr Graph_GetNodes;
+        public IntPtr Graph_GetParentNode;
+        public IntPtr Graph_GetGraphView;
+        public IntPtr Node_GetId;
+        public IntPtr Node_GetName;
+        public IntPtr Node_GetOperatorType;
+        public IntPtr Node_GetDomain;
+        public IntPtr Node_GetSinceVersion;
+        public IntPtr Node_GetNumInputs;
+        public IntPtr Node_GetInputs;
+        public IntPtr Node_GetNumOutputs;
+        public IntPtr Node_GetOutputs;
+        public IntPtr Node_GetNumImplicitInputs;
+        public IntPtr Node_GetImplicitInputs;
+        public IntPtr Node_GetNumAttributes;
+        public IntPtr Node_GetAttributes;
+        public IntPtr Node_GetAttributeByName;
+        public IntPtr OpAttr_GetType;
+        public IntPtr OpAttr_GetName;
+        public IntPtr Node_GetNumSubgraphs;
+        public IntPtr Node_GetSubgraphs;
+        public IntPtr Node_GetGraph;
+        public IntPtr Node_GetEpName;
+        public IntPtr ReleaseExternalInitializerInfo;
+        public IntPtr ExternalInitializerInfo_GetFilePath;
+        public IntPtr ExternalInitializerInfo_GetFileOffset;
+        public IntPtr ExternalInitializerInfo_GetByteSize;
+
+        public IntPtr GetRunConfigEntry;
+
+        public IntPtr EpDevice_MemoryInfo;
+
+        public IntPtr CreateSharedAllocator;
+        public IntPtr GetSharedAllocator;
+        public IntPtr ReleaseSharedAllocator;
+
+        public IntPtr GetTensorData;
+
+        public IntPtr GetSessionOptionsConfigEntries;
+
+        public IntPtr SessionGetMemoryInfoForInputs;
+        public IntPtr SessionGetMemoryInfoForOutputs;
+        public IntPtr SessionGetEpDeviceForInputs;
+
+        public IntPtr CreateSyncStreamForEpDevice;
+        public IntPtr SyncStream_GetHandle;
+        public IntPtr ReleaseSyncStream;
+
+        public IntPtr CopyTensors;
+
+        public IntPtr CreateMIGraphXProviderOptions;
+        public IntPtr UpdateMIGraphXProviderOptions;
+        public IntPtr GetMIGraphXProviderOptionsAsString;
+        public IntPtr ReleaseMIGraphXProviderOptions;
+        public IntPtr UpdateMIGraphXProviderOptionsWithValue;
+        public IntPtr GetMIGraphXProviderOptionsByName;
     }
 
     internal static class NativeMethods
@@ -611,6 +737,18 @@ namespace Microsoft.ML.OnnxRuntime
             OrtUpdateROCMProviderOptions = (DOrtUpdateROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateROCMProviderOptions, typeof(DOrtUpdateROCMProviderOptions));
             OrtGetROCMProviderOptionsAsString = (DOrtGetROCMProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetROCMProviderOptionsAsString, typeof(DOrtGetROCMProviderOptionsAsString));
             OrtReleaseROCMProviderOptions = (DOrtReleaseROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseROCMProviderOptions, typeof(DOrtReleaseROCMProviderOptions));
+            SessionOptionsAppendExecutionProvider_MIGraphX = (DSessionOptionsAppendExecutionProvider_MIGraphX)Marshal.GetDelegateForFunctionPointer(
+                api_.SessionOptionsAppendExecutionProvider_MIGraphX, typeof(DSessionOptionsAppendExecutionProvider_MIGraphX));
+            OrtCreateMIGraphXProviderOptions = (DOrtCreateMIGraphXProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateMIGraphXProviderOptions, typeof(DOrtCreateMIGraphXProviderOptions));
+            OrtUpdateMIGraphXProviderOptions = (DOrtUpdateMIGraphXProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateMIGraphXProviderOptions, typeof(DOrtUpdateMIGraphXProviderOptions));
+            OrtGetMIGraphXProviderOptionsAsString = (DOrtGetMIGraphXProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetMIGraphXProviderOptionsAsString, typeof(DOrtGetMIGraphXProviderOptionsAsString));
+            OrtReleaseMIGraphXProviderOptions = (DOrtReleaseMIGraphXProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseMIGraphXProviderOptions, typeof(DOrtReleaseMIGraphXProviderOptions));
+            OrtUpdateMIGraphXProviderOptionsWithValue =
+                (DOrtUpdateMIGraphXProviderOptionsWithValue)Marshal.GetDelegateForFunctionPointer(
+                    api_.UpdateMIGraphXProviderOptionsWithValue, typeof(DOrtUpdateMIGraphXProviderOptionsWithValue));
+            OrtGetMIGraphXProviderOptionsByName =
+                (DOrtGetMIGraphXProviderOptionsByName)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetMIGraphXProviderOptionsByName, typeof(DOrtGetMIGraphXProviderOptionsByName));
             OrtCreateAndRegisterAllocatorV2 = (DCreateAndRegisterAllocatorV2)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocatorV2, typeof(DCreateAndRegisterAllocatorV2));
             OrtRunAsync = (DOrtRunAsync)Marshal.GetDelegateForFunctionPointer(api_.RunAsync, typeof(DOrtRunAsync));
             CreateLoraAdapter = (DCreateLoraAdapter)Marshal.GetDelegateForFunctionPointer(api_.CreateLoraAdapter,
@@ -919,6 +1057,80 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleaseROCMProviderOptions(IntPtr /*(OrtROCMProviderOptions*)*/ rocmProviderOptionsInstance);
         public static DOrtReleaseROCMProviderOptions OrtReleaseROCMProviderOptions;
 
+#endregion
+
+#region Provider Options API
+        /// <summary>
+        /// Creates native OrtMIGraphXProviderOptions instance
+        /// </summary>
+        /// <param name="trtProviderOptionsInstance">(output) native instance of OrtMIGraphXProviderOptions</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtCreateMIGraphXProviderOptions(
+            out IntPtr /*(OrtMIGraphXProviderOptions**)*/ migraphxProviderOptionsInstance);
+        public static DOrtCreateMIGraphXProviderOptions OrtCreateMIGraphXProviderOptions;
+
+        /// <summary>
+        /// Updates native OrtMIGraphXProviderOptions instance using given key/value pairs
+        /// </summary>
+        /// <param name="migraphxProviderOptionsInstance">native instance of OrtMIGraphXProviderOptions</param>
+        /// <param name="providerOptionsKeys">configuration keys of OrtMIGraphXProviderOptions</param>
+        /// <param name="providerOptionsValues">configuration values of OrtMIGraphXProviderOptions</param>
+        /// <param name="numKeys">number of configuration keys</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtUpdateMIGraphXProviderOptions(
+            IntPtr /*(OrtMIGraphXProviderOptions*)*/ migraphxProviderOptionsInstance,
+            IntPtr[] /*(const char* const *)*/ providerOptionsKeys,
+            IntPtr[] /*(const char* const *)*/ providerOptionsValues,
+            UIntPtr /*(size_t)*/ numKeys);
+        public static DOrtUpdateMIGraphXProviderOptions OrtUpdateMIGraphXProviderOptions;
+
+        /// <summary>
+        /// Get native OrtMIGraphXProviderOptions in serialized string
+        /// </summary>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="ptr">is a UTF-8 null terminated string allocated using 'allocator'</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetMIGraphXProviderOptionsAsString(
+            IntPtr /*(OrtMIGraphXProviderOptions**)*/ migraphxProviderOptionsInstance,
+            IntPtr /*(OrtAllocator*)*/ allocator,
+            out IntPtr /*(char**)*/ ptr);
+        public static DOrtGetMIGraphXProviderOptionsAsString OrtGetMIGraphXProviderOptionsAsString;
+
+        /// <summary>
+        /// Releases native OrtMIGraphXProviderOptions instance
+        /// </summary>
+        /// <param name="migraphxProviderOptionsInstance">native instance of OrtMIGraphXProviderOptions to be released</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtReleaseMIGraphXProviderOptions(IntPtr /*(OrtMIGraphXProviderOptions*)*/ migraphxProviderOptionsInstance);
+        public static DOrtReleaseMIGraphXProviderOptions OrtReleaseMIGraphXProviderOptions;
+
+        /// <summary>
+        /// Update native OrtMIGraphXProviderOptions with value
+        /// </summary>
+        /// <param name="migraphxProviderOptionsInstance">native instance of OrtMIGraphXProviderOptions to be released</param>
+        /// <param name="providerOptionsKey">configuration key of OrtMIGraphXProviderOptions</param>
+        /// <param name="providerOptionsValue">configuration value of OrtMIGraphXProviderOptions</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr DOrtUpdateMIGraphXProviderOptionsWithValue(
+            IntPtr /*(OrtMIGraphXProviderOptions**)*/ migraphxProviderOptionsInstance,
+            IntPtr /*(char*)*/ providerOptionsKey,
+            IntPtr /*(char*)*/ providerOptionsValue);
+        public static DOrtUpdateMIGraphXProviderOptionsWithValue OrtUpdateMIGraphXProviderOptionsWithValue;
+
+        /// <summary>
+        /// Get native OrtMIGraphXProviderOptions value by name
+        /// </summary>
+        /// <param name="migraphxProviderOptionsInstance">native instance of OrtMIGraphXProviderOptions to be released</param>
+        /// <param name="providerOptionsKey">configuration key of OrtMIGraphXProviderOptions</param>
+        /// <param name="providerOptionsValue">configuration value of OrtMIGraphXProviderOptions to return</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr DOrtGetMIGraphXProviderOptionsByName(
+            IntPtr /*(OrtMIGraphXProviderOptions**)*/ migraphxProviderOptionsInstance,
+            IntPtr /*(char*)*/ providerOptionsKey,
+            out IntPtr /*(char**)*/ providerOptionsValue);
+        public static DOrtGetMIGraphXProviderOptionsByName OrtGetMIGraphXProviderOptionsByName;
+
+        
 #endregion
 
 #region Status API
@@ -1287,6 +1499,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
+
+        [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int use_arena, int device_id);
 #endif
         /// <summary>
         /// Append a TensorRT EP instance (configured based on given provider options) to the native OrtSessionOptions instance
@@ -1347,6 +1562,18 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr /*(const OrtROCMProviderOptions*)*/ rocmProviderOptions);
 
         public static DSessionOptionsAppendExecutionProvider_ROCM SessionOptionsAppendExecutionProvider_ROCM;
+
+        /// <summary>
+        /// Append a MIGraphX EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="migraphxProviderOptions">Native OrtMIGraphXProviderOptions instance</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DSessionOptionsAppendExecutionProvider_MIGraphX(
+            IntPtr /*(OrtSessionOptions*)*/ options,
+            IntPtr /*(const OrtMIGraphXProviderOptions*)*/ migraphxProviderOptions);
+
+        public static DSessionOptionsAppendExecutionProvider_MIGraphX SessionOptionsAppendExecutionProvider_MIGraphX;
 
         /// <summary>
         /// Free Dimension override (by denotation)
