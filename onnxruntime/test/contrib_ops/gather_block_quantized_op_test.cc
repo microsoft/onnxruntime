@@ -10,6 +10,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/execution_provider.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -127,12 +128,22 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
 
     test.AddOutput<T2>("output", output_shape, output);
 
-    if (touch_on_device_data) {
-      // test would need to see data on device
-      test.Run(expect_result, "", {kWebGpuExecutionProvider}, nullptr);
-    } else {
-      test.Run(expect_result, "");
+    bool enable_cuda = HasCudaEnvironment(0);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    if (enable_cuda)
+    {
+      eps.push_back(DefaultCudaExecutionProvider());
     }
+    else if (touch_on_device_data)
+    {
+      eps.push_back(DefaultWebGpuExecutionProvider());
+    }
+    else
+    {
+      eps.push_back(DefaultCpuExecutionProvider());
+    }
+
+    test.Run(expect_result, "", {}, nullptr, &eps);
   };
 
   run_test(false);
