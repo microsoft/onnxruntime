@@ -16,38 +16,15 @@
 #include "core/session/onnxruntime_cxx_api.h"
 
 namespace OrtEpUtils {
+namespace QDQ {
 
-/**
-@class EdgeEnd
-Class representing the end of an edge. It could be an input or output edge end of a node.
-For the node's input edge end, it's the source end, as the destination end is the node itself.
-For the node's output edge end, it's the destination end, as the source end is the node itself.
-*/
 class EdgeEnd {
  public:
-  /**
-  Construct an EdgeEnd
-  @param node The source node if this is an input edge to the current node,
-  or the destination node if this is an output edge from the current node.
-  @param src_arg_index The node arg index of source node of the edge.
-  @param dst_arg_index The node arg index of destination node of the edge.
-  */
   EdgeEnd(const OrtNode& node, int src_arg_index, int dst_arg_index) noexcept;
-
-  /** Construct a control edge.
-  @param node The node the edge joins to the current node.
-  */
   explicit EdgeEnd(const OrtNode& node) noexcept;
 
-  /** Gets the Node that this EdgeEnd refers to. */
   const OrtNode& GetNode() const noexcept { return *node_; }
-
-  /** Gets the source arg index.
-  @returns the source arg index of <*this> edge.*/
   int GetSrcArgIndex() const { return src_arg_index_; }
-
-  /** Gets the destination arg index.
-  @returns the destination arg index of <*this> edge.*/
   int GetDstArgIndex() const { return dst_arg_index_; }
 
  private:
@@ -56,7 +33,6 @@ class EdgeEnd {
   const int dst_arg_index_;
 };
 
-/** Struct to provide sorting between EdgeEnd instances based on NodeIndex first, and NodeArg::Name second. */
 struct EdgeEndCompare {
   bool operator()(const EdgeEnd& lhs, const EdgeEnd& rhs) const;
 };
@@ -129,6 +105,7 @@ class NodeUnit {
   EdgeSet output_edges_;
 };
 
+}  // namespace QDQ
 }  // namespace OrtEpUtils
 
 // End of header
@@ -171,6 +148,7 @@ class NodeUnit {
 #endif
 
 namespace OrtEpUtils {
+namespace QDQ {
 bool EdgeEndCompare::operator()(const EdgeEnd& lhs, const EdgeEnd& rhs) const {
   const OrtApi& ort_api = Ort::GetApi();
   const OrtNode& l_node = lhs.GetNode();
@@ -260,13 +238,18 @@ NodeUnit::NodeUnit(const OrtNode& target_node, Type type, PrivateTag tag)
 
 /*static*/
 Ort::Status NodeUnit::MakeSingleNode(const OrtNode& node, /*out*/ std::unique_ptr<NodeUnit>& result) {
+  size_t num_input_edges = 0;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputEdgeCount(&node, num_input_edges));
+
   auto node_unit = std::make_unique<NodeUnit>(node, Type::SingleNode, PrivateTag{});
   node_unit->redundant_clip_node_ = nullptr;
+  node_unit->input_edge_count_ = num_input_edges;
 
   result = std::move(node_unit);
   return Ort::Status{nullptr};
 }
 
+}  // namespace QDQ
 }  // namespace OrtEpUtils
 
 #endif  // ORT_EP_UTILS_QDQ_UTILS_IMPL
