@@ -25,6 +25,7 @@ stages:
     PoolName: 'macOS-14'
 
 - stage: GPU_JAR_Testing
+  dependsOn: []
   jobs:
   - job: Final_Jar_Testing_Windows_GPU
     workspace:
