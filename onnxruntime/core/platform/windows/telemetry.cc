@@ -194,7 +194,7 @@ void WindowsTelemetry::LogProcessInfo() const {
   process_info_logged = true;
 }
 
-void WindowsTelemetry::LogSessionCreationStart() const {
+void WindowsTelemetry::LogSessionCreationStart(uint32_t session_id) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -203,23 +203,26 @@ void WindowsTelemetry::LogSessionCreationStart() const {
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                    TraceLoggingLevel(WINEVENT_LEVEL_INFO));
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    TraceLoggingUInt32(session_id, "sessionId"));
 }
 
-void WindowsTelemetry::LogEvaluationStop() const {
+void WindowsTelemetry::LogEvaluationStop(uint32_t session_id) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
-                    "EvaluationStop");
+                    "EvaluationStop",
+                    TraceLoggingUInt32(session_id, "sessionId"));
 }
 
-void WindowsTelemetry::LogEvaluationStart() const {
+void WindowsTelemetry::LogEvaluationStart(uint32_t session_id) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
-                    "EvaluationStart");
+                    "EvaluationStart",
+                    TraceLoggingUInt32(session_id, "sessionId"));
 }
 
 void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
