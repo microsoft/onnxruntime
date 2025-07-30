@@ -298,6 +298,9 @@ if(NOT TARGET Boost::config)
       target_include_directories(Boost::config INTERFACE $<BUILD_INTERFACE:${boost_config_SOURCE_DIR}/include>)
     endif()
   endif()
+  # On some platforms it does not get defined and boost compilaton fails.
+  # it is required internally by BOOST.
+  target_compile_definitions(Boost::config INTERFACE BOOST_NULLPTR=nullptr)
 endif()
 
 if(NOT TARGET Boost::core)
