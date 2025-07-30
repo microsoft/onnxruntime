@@ -36,59 +36,19 @@ namespace {
 
 constexpr int QBits = 2;
 
-// TODO: determine if this is necessary for 2bit unpacked B val??
-void QuantizeDequantize(std::vector<float>& raw_vals,
-                        std::vector<uint8_t>& quant_vals,
-                        std::vector<float>& scales,
-                        std::vector<uint8_t>* zp,
-                        int32_t N,
-                        int32_t K,
-                        int32_t block_size) {
-  auto& ortenv = **ort_env.get();
-  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
-
-  MlasQuantizeBlockwise<float, QBits>(
-      quant_vals.data(),
-      scales.data(),
-      zp != nullptr ? zp->data() : nullptr,
-      raw_vals.data(),
-      block_size,
-      true,
-      K,
-      N,
-      N,
-      tp);
-
-  // Note that raw_vals is NxK after dequant
-  MlasDequantizeBlockwise<float, QBits>(
-      raw_vals.data(),                       // dequantized output
-      quant_vals.data(),                     // quantized input
-      scales.data(),                         // quantization scales
-      zp != nullptr ? zp->data() : nullptr,  // quantization zero points
-      block_size,                            // quantization block size
-      true,                                  // columnwise quantization
-      K,                                     // number of rows
-      N,                                     // number of columns
-      tp);
-}
-
-// define test options
-// define run test (reference TestMatMul8BitsTyped)
-// it calls RunTest8Bits
-
 struct TestOptions2Bits {
-    int64_t M{1};
-    int64_t N{1};
-    int64_t K{1};
-    int64_t block_size{32};
-    int64_t accuracy_level{0};
+  int64_t M{1};
+  int64_t N{1};
+  int64_t K{1};
+  int64_t block_size{32};
+  int64_t accuracy_level{0};
 
-    bool has_zero_point{false};
-    bool has_g_idx{false};
-    bool has_bias{false};
+  bool has_zero_point{false};
+  bool has_g_idx{false};
+  bool has_bias{false};
 
-    std::optional<float> output_abs_error{};
-    std::optional<float> output_rel_error{};
+  std::optional<float> output_abs_error{};
+  std::optional<float> output_rel_error{};
 };
 
 [[maybe_unused]] std::ostream& operator<<(std::ostream& os, const TestOptions2Bits& opts) {
@@ -153,7 +113,7 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
       static_cast<int32_t>(N),
       tp);
 
-      const std::vector<int64_t> bias_shape = {N};
+  const std::vector<int64_t> bias_shape = {N};
   const auto bias = [&]() -> std::optional<std::vector<float>> {
     if (opts.has_bias) {
       return random.Uniform(bias_shape, 1.0f, 5.0f);
@@ -173,13 +133,13 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
   }
 
   OpTester test("MatMulNBits", 1, kMSDomain);
-    test.AddAttribute<int64_t>("K", K);
-    test.AddAttribute<int64_t>("N", N);
-    test.AddAttribute<int64_t>("block_size", opts.block_size);
-    test.AddAttribute<int64_t>("bits", QBits);
-    test.AddAttribute<int64_t>("accuracy_level", opts.accuracy_level);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", opts.block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", opts.accuracy_level);
 
-    if constexpr (std::is_same<T1, float>::value) {
+  if constexpr (std::is_same<T1, float>::value) {
     test.AddInput<T1>("A", {M, K}, input0_fp32_vals, false);
   } else if constexpr (std::is_same<T1, MLFloat16>::value) {
     test.AddInput<T1>("A", {M, K}, FloatsToMLFloat16s(input0_fp32_vals), false);
@@ -237,9 +197,9 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if constexpr (std::is_same<T1, float>::value) {
-      execution_providers.emplace_back(DefaultCpuExecutionProvider());
-      test.ConfigEps(std::move(execution_providers));
-      test.RunWithConfig();
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+    test.ConfigEps(std::move(execution_providers));
+    test.RunWithConfig();
   }
 }
 
@@ -282,7 +242,7 @@ void TestMatMul2BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
   }
 }
 
-} // namespace
+}  // namespace
 
 TEST(MatMulNBits, Float32_2Bits) {
   TestMatMul2BitsTyped<float, 1, 1, 16, 16, 0>();
@@ -292,7 +252,7 @@ TEST(MatMulNBits, Float32_2Bits) {
   TestMatMul2BitsTyped<float, 1, 32, 16, 128, 0>();
   TestMatMul2BitsTyped<float, 1, 288, 16, 16, 0>();
 }
-} // namespace test
-} // namespace onnxruntime
+}  // namespace test
+}  // namespace onnxruntime
 
-#endif // ORT_MINIMAL_BUILD
+#endif  // ORT_MINIMAL_BUILD
