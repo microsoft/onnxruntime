@@ -10,8 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-struct GatherBlockQuantizedParam
-{
+struct GatherBlockQuantizedParam {
   cudaStream_t stream;
   int64_t after_gather_dim;
   int64_t ind_dim;
@@ -25,7 +24,7 @@ template <typename T1, typename T2, typename Tind>
 void LaunchGatherBlockQuantizedKernel(const T1* data,
                                       const Tind* indices,
                                       const T2* scales,
-                                      const T1*  zero_points,
+                                      const T1* zero_points,
                                       T2* output,
                                       GatherBlockQuantizedParam param);
 

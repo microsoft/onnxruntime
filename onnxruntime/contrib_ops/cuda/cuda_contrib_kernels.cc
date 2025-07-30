@@ -23,7 +23,6 @@ using namespace onnxruntime::common;
 #define CUDA_ONNX_OP_VERSIONED_TYPED_CLASS_NAME(start_ver, end_ver, type, name) \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, start_ver, end_ver, type, name)
 
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -193,8 +192,8 @@ class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, uint8_t, int32_t, GatherBlockQuantized)
 class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, uint8_t, int64_t, GatherBlockQuantized);
 class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, UInt4x2, int32_t, GatherBlockQuantized);
 class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, UInt4x2, int64_t, GatherBlockQuantized);
-class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, Int4x2,  int32_t, GatherBlockQuantized);
-class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, Int4x2,  int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, Int4x2, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, Int4x2, int64_t, GatherBlockQuantized);
 
 #ifdef ENABLE_ATEN
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kPytorchAtenDomain, 1, ATen);
@@ -422,8 +421,8 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, uint8_t, int64_t, GatherBlockQuantized)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, UInt4x2, int32_t, GatherBlockQuantized)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, UInt4x2, int64_t, GatherBlockQuantized)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, Int4x2,  int32_t, GatherBlockQuantized)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, Int4x2,  int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, Int4x2, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, Int4x2, int64_t, GatherBlockQuantized)>,
 
 #ifdef ENABLE_ATEN
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kPytorchAtenDomain, 1, ATen)>,
