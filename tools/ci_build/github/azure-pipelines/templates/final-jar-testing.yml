@@ -105,13 +105,14 @@ stages:
         script: |
           set -e -x
           cd $(Pipeline.Workspace)/build/onnxruntime-java
+          rm -f *.asc
+          rm -f *.sha256
+          rm -f *.sha512
+          rm -f *.pom
           ls
           echo "Java Version"
           java -version
-          mkdir test
-          pushd test
-          jar xf ../testing.jar
-          popd
+          
           # Set the correct library path based on the OS
           os_name=$(uname)
           if [[ "$os_name" == "Linux" ]]; then
@@ -122,15 +123,7 @@ stages:
             export DYLD_LIBRARY_PATH="$(pwd):$DYLD_LIBRARY_PATH"
           fi
 
-          JUNIT_RUNNER_JAR=$(find . -name "junit-platform-console-standalone-*.jar")
-          if [[ -z "$JUNIT_RUNNER_JAR" ]]; then
-            echo "##[error]JUnit Platform Console Standalone JAR not found!"
-            exit 1
-          fi
-
-          echo "Running JUnit Tests..."
-          java -jar "$JUNIT_RUNNER_JAR" \
-            -cp $(Pipeline.Workspace)/build/onnxruntime-java --scan-classpath \
+          java -cp $(Pipeline.Workspace)/build/onnxruntime-java/* org.junit.platform.console.ConsoleLauncher --scan-classpath \
             --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
 
 
