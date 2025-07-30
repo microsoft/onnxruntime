@@ -2340,7 +2340,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           for (const auto& name : allInitializers) {
             const ONNX_NAMESPACE::TensorProto* tp = nullptr;
             graph_viewer->GetInitializedTensor(name, tp);
-            if(utils::HasRawData(*tp)) {
+            if (tp->has_raw_data()) {
               userWeights.emplace_back(tp->name(), tp->raw_data());
             } else if (utils::HasExternalDataInMemory(*tp)) {
               std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
@@ -3104,7 +3104,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     for (const auto& name : allInitializers) {
       const ONNX_NAMESPACE::TensorProto* tp = nullptr;
       graph_body_viewer.GetInitializedTensor(name, tp));
-      if(utils::HasRawData(*tp))) {
+      if (utils::HasRawData(*tp)) {
         userWeights->emplace_back(
             TensorrtUserWeights(tp->name(), tp->raw_data()));
       } else if (utils::HasExternalDataInMemory(*tp)) {

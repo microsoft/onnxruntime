@@ -9,7 +9,9 @@
 #include <unordered_map>
 #include <utility>
 
-#include "boost/iterator/transform_iterator.hpp"
+// This is included because on some platforms BOOST_NULLPTR is not resolved
+#include <boost/config.hpp>
+#include <boost/iterator/transform_iterator.hpp>
 
 namespace ONNX_NAMESPACE {
 // This header is being used in the provider bridge as is
@@ -22,7 +24,6 @@ struct TensorProto;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
-
 
 // Create a shallow class to act as a proxy for whatever container is currently used for the initialized tensors
 // in the graph. Exposing begin()/end(), size(), empty methods. Begin()/end() method pairs must return a

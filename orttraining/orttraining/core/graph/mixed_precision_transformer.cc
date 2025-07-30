@@ -509,7 +509,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
             const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
             graph.GetInitializedTensor(init_name, tensor_proto);
             mixed_precision_initializers.emplace_back(mixed_precision_weight_arg->Name(), tensor_proto);
-            if (weights_to_train.cound(init_name) > 0) {
+            if (weights_to_train.count(init_name) > 0) {
               fp32_weight_name_to_mixed_precision_node_arg_result[init_name] = mixed_precision_weight_arg;
             }
           }
