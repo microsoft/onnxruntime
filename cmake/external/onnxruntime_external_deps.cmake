@@ -366,25 +366,13 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-  if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
-      message(STATUS "Applying a patch for Windows ARM64/ARM64EC in cpuinfo")
-      onnxruntime_fetchcontent_declare(
-        pytorch_cpuinfo
-        URL ${DEP_URL_pytorch_cpuinfo}
-        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-        EXCLUDE_FROM_ALL
-        PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/9bb12d342fd9479679d505d93a478a6f9cd50a47.patch
-        FIND_PACKAGE_ARGS NAMES cpuinfo
-      )
-  else()
-      onnxruntime_fetchcontent_declare(
-        pytorch_cpuinfo
-        URL ${DEP_URL_pytorch_cpuinfo}
-        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-        EXCLUDE_FROM_ALL
-        FIND_PACKAGE_ARGS NAMES cpuinfo
-      )
-  endif()
+  onnxruntime_fetchcontent_declare(
+    pytorch_cpuinfo
+    URL ${DEP_URL_pytorch_cpuinfo}
+    URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+    EXCLUDE_FROM_ALL
+    FIND_PACKAGE_ARGS NAMES cpuinfo
+  )
   set(ONNXRUNTIME_CPUINFO_PROJ pytorch_cpuinfo)
   onnxruntime_fetchcontent_makeavailable(${ONNXRUNTIME_CPUINFO_PROJ})
   if(TARGET cpuinfo::cpuinfo AND NOT TARGET cpuinfo)
