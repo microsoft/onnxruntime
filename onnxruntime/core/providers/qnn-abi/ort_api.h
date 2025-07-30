@@ -60,12 +60,23 @@
 
 namespace onnxruntime {
 
-#define RETURN_IF_NOT_OK(fn, ort_api)                                     \
-  do {                                                                    \
-    Status status = (fn);                                                 \
-    if (!status.IsOK()) {                                                 \
-      (ort_api).CreateStatus(ORT_EP_FAIL, status.ErrorMessage().c_str()); \
-    }                                                                     \
+// Redefine this macro for convenience since it is widely used.
+// Original definition would try to log some message through default env which causes segfault.
+#undef ORT_RETURN_IF_ERROR
+#define ORT_RETURN_IF_ERROR(fn) \
+  do {                          \
+    Status _status = (fn);      \
+    if (!_status.IsOK()) {      \
+      return _status;           \
+    }                           \
+  } while (0)
+
+#define RETURN_IF_NOT_OK(fn, ort_api)                                            \
+  do {                                                                           \
+    Status status = (fn);                                                        \
+    if (!status.IsOK()) {                                                        \
+      return (ort_api).CreateStatus(ORT_EP_FAIL, status.ErrorMessage().c_str()); \
+    }                                                                            \
   } while (0)
 
 #define RETURN_IF_ERROR(fn)    \

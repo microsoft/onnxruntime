@@ -1333,14 +1333,13 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   //     return ss.str();
   // };
 
+  std::cout << "DEBUG: #supported nodes " << supported_nodes.size() << std::endl;
+
   // If no supported nodes, return empty
   if (supported_nodes.empty()) {
     ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
     return nullptr;
   }
-
-  size_t num_of_supported_nodes = supported_nodes.size();
-  std::cout << "DEBUG: #supported nodes " << num_of_supported_nodes << std::endl;
 
   OrtNodeFusionOptions node_fusion_options = {};
   node_fusion_options.ort_version_supported = ORT_API_VERSION;
