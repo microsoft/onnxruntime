@@ -519,12 +519,12 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
     opt_str = absl::GetFlag(FLAGS_select_ep_devices);
     if (!opt_str.empty()) test_config.selected_devices = opt_str;
 
-    if (positional.size() == 1) {
-      test_config.model_info.model_file_path = ToPathString(positional[0]);
+    if (positional.size() == 2) {
+      test_config.model_info.model_file_path = ToPathString(positional[1]);
       test_config.run_config.f_dump_statistics = true;
-    } else if (positional.size() == 2) {
-      test_config.model_info.model_file_path = ToPathString(positional[0]);
-      test_config.model_info.result_file_path = ToPathString(positional[1]);
+    } else if (positional.size() == 3) {
+      test_config.model_info.model_file_path = ToPathString(positional[1]);
+      test_config.model_info.result_file_path = ToPathString(positional[2]);
     } else {
       return false;
     }
