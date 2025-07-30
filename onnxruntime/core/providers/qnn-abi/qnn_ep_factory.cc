@@ -200,5 +200,4 @@ OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
   delete static_cast<onnxruntime::QnnEpFactory*>(factory);
   return nullptr;
 }
-
 }

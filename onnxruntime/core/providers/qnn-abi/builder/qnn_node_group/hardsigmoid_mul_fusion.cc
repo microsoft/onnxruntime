@@ -106,7 +106,6 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                                     const OrtNodeUnit& hardsigmoid_node_unit,
                                     const OrtNodeUnit& mul_node_unit,
                                     bool validate) {
-
   assert(hardsigmoid_node_unit.OpType() == "HardSigmoid" && mul_node_unit.OpType() == "Mul");
   const std::string& node_name = hardsigmoid_node_unit.Name();
   const OrtNodeUnitIODef& input_def = hardsigmoid_node_unit.Inputs()[0];

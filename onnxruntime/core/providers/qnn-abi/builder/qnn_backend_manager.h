@@ -29,7 +29,6 @@
 #include "core/providers/qnn-abi/builder/qnn_def.h"
 // #include "core/providers/qnn-abi/builder/qnn_node_group/qnn_node_group.h"
 
-
 namespace onnxruntime {
 namespace qnn {
 

@@ -305,10 +305,10 @@ Status QnnModel::ExecuteGraph(OrtKernelContext* context,
     const std::vector<int64_t>& output_shape = ort_output_info->shape_;
     OrtValue* ort_output_tensor = nullptr;
     api_ptrs_.ort_api.KernelContext_GetOutput(context,
-                                    qnn_output_info.ort_index,
-                                    output_shape.data(),
-                                    output_shape.size(),
-                                    &ort_output_tensor);
+                                              qnn_output_info.ort_index,
+                                              output_shape.data(),
+                                              output_shape.size(),
+                                              &ort_output_tensor);
     auto ort_tensor_size = TensorDataSize(ort_output_tensor);
     LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_output_info.tensor_byte_size
                           << " Ort tensor size: " << ort_tensor_size;

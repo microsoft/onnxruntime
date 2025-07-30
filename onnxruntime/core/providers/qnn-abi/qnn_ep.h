@@ -48,8 +48,8 @@ class QnnEp : public OrtEp, public ApiPtrs {
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;
   static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr,
-                                                  const OrtGraph* graph,
-                                                  OrtEpGraphSupportInfo* graph_support_info);
+                                                   const OrtGraph* graph,
+                                                   OrtEpGraphSupportInfo* graph_support_info);
   static OrtStatus* ORT_API_CALL CompileImpl(_In_ OrtEp* this_ptr,
                                              _In_ const OrtGraph** graphs,
                                              _In_ const OrtNode** fused_nodes,
@@ -100,10 +100,10 @@ class QnnEp : public OrtEp, public ApiPtrs {
     explicit QnnNodeComputeInfo(QnnEp& ep);
 
     static OrtStatus* ORT_API_CALL CreateStateImpl(OrtNodeComputeInfo* this_ptr,
-                                                  OrtNodeComputeContext* compute_context,
-                                                  void** compute_state);
+                                                   OrtNodeComputeContext* compute_context,
+                                                   void** compute_state);
     static OrtStatus* ORT_API_CALL ComputeImpl(OrtNodeComputeInfo* this_ptr, void* compute_state,
-                                              OrtKernelContext* kernel_context);
+                                               OrtKernelContext* kernel_context);
     static void ORT_API_CALL ReleaseStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state);
 
     QnnEp& ep;
@@ -178,10 +178,9 @@ class QnnEp : public OrtEp, public ApiPtrs {
   bool qnn_context_embed_mode_ = true;
   bool stop_share_ep_contexts_ = false;
   bool enable_spill_fill_buffer_ = false;
-  #if defined(_WIN32)
-    onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
-  #endif
-
+#if defined(_WIN32)
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
+#endif
 
   // Metadef ID generation state
   mutable std::unordered_map<uint64_t, uint64_t> main_graph_hash_;
@@ -208,4 +207,4 @@ class QnnEp : public OrtEp, public ApiPtrs {
   std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library_ = nullptr;
 };
 
-}
+}  // namespace onnxruntime

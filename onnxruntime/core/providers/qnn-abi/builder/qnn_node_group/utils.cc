@@ -12,10 +12,10 @@ namespace onnxruntime {
 namespace qnn {
 
 const OrtNodeUnit* GetOnlyChildOfType(const QnnModelWrapper& qnn_model_wrapper,
-                                   const OrtNodeUnit& parent_node_unit,
-                                   gsl::span<const std::string_view> child_op_types,
-                                   const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
-                                   const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map) {
+                                      const OrtNodeUnit& parent_node_unit,
+                                      gsl::span<const std::string_view> child_op_types,
+                                      const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
+                                      const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map) {
   // const OrtGraph& graph = qnn_model_wrapper.GetOrtGraph();
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
   const OrtNode& parent_node = parent_node_unit.GetNode();

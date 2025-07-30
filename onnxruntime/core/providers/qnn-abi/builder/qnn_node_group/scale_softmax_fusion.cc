@@ -191,7 +191,6 @@ Status CreateOrValidateOnQnn(
     const OrtNodeUnit& mul_node_unit,
     const OrtNodeUnit& softmax_node_unit,
     bool validate) {
-
   assert(mul_node_unit.OpType() == kOpMul && softmax_node_unit.OpType() == kOpSoftmax);
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
 
@@ -212,9 +211,9 @@ Status CreateOrValidateOnQnn(
       axis_scalar.dataType = QNN_DATATYPE_UINT_32;
       axis_scalar.uint32Value = axis.value();
       QnnParamWrapper param_wrapper(softmax_node_unit.GetNode().GetId(),
-                                   softmax_node_unit.Name(),
-                                   QNN_OP_SOFTMAX_PARAM_AXIS,
-                                   axis_scalar);
+                                    softmax_node_unit.Name(),
+                                    QNN_OP_SOFTMAX_PARAM_AXIS,
+                                    axis_scalar);
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddParamWrapper(std::move(param_wrapper)), "Failed to add axis param");
       param_tensor_names.push_back(param_wrapper.GetParamTensorName());
     }
@@ -227,9 +226,9 @@ Status CreateOrValidateOnQnn(
     beta_scalar.dataType = QNN_DATATYPE_FLOAT_32;
     beta_scalar.floatValue = scale * beta;
     QnnParamWrapper param_wrapper(softmax_node_unit.GetNode().GetId(),
-                                 softmax_node_unit.Name(),
-                                 QNN_OP_SOFTMAX_PARAM_BETA,
-                                 beta_scalar);
+                                  softmax_node_unit.Name(),
+                                  QNN_OP_SOFTMAX_PARAM_BETA,
+                                  beta_scalar);
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddParamWrapper(std::move(param_wrapper)), "Failed to add beta param");
     param_tensor_names.push_back(param_wrapper.GetParamTensorName());
   }
@@ -241,22 +240,22 @@ Status CreateOrValidateOnQnn(
 
   if (validate) {
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.ValidateQnnNode(softmax_node_unit.Name(),
-                                                         QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                         QNN_OP_SOFTMAX,
-                                                         {fused_softmax_input.GetQnnTensor()},
-                                                         {fused_softmax_output.GetQnnTensor()},
-                                                         {}));
+                                                          QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                          QNN_OP_SOFTMAX,
+                                                          {fused_softmax_input.GetQnnTensor()},
+                                                          {fused_softmax_output.GetQnnTensor()},
+                                                          {}));
   } else {
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(fused_softmax_input)), "Failed to add input");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(fused_softmax_output)), "Failed to add output");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(softmax_node_unit.Name(),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       QNN_OP_SOFTMAX,
-                                                     {mul_input_other.name},
-                                                     {softmax_output.name},
-                                                     std::move(param_tensor_names),
-                                                     validate),
-                     "Failed to add fused " + std::string(kOpSoftmax) + " node.");
+                                                      {mul_input_other.name},
+                                                      {softmax_output.name},
+                                                      std::move(param_tensor_names),
+                                                      validate),
+                      "Failed to add fused " + std::string(kOpSoftmax) + " node.");
   }
 
   return Status::OK();
@@ -270,7 +269,6 @@ std::unique_ptr<IQnnNodeGroup> ScaleSoftmaxFusion::TryFusion(
     const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_to_node_unit,
     const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
     [[maybe_unused]] const logging::Logger& logger) {
-
   if (mul_node_unit.OpType() != kOpMul || mul_node_unit.UnitType() != OrtNodeUnit::Type::SingleNode) {
     return nullptr;
   }
@@ -287,7 +285,7 @@ std::unique_ptr<IQnnNodeGroup> ScaleSoftmaxFusion::TryFusion(
   // Mul node must have a single Softmax node as child
   const std::array<std::string_view, 1> child_op_types{kOpSoftmax};
   const OrtNodeUnit* softmax = GetOnlyChildOfType(qnn_model_wrapper, mul_node_unit, child_op_types,
-                                                 node_to_node_unit, node_unit_to_qnn_node_group);
+                                                  node_to_node_unit, node_unit_to_qnn_node_group);
   if (softmax == nullptr) {
     return nullptr;
   }

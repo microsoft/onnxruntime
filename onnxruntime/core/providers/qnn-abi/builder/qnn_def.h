@@ -437,23 +437,23 @@ class QnnOpConfigWrapper {
     SetData(inputs_.data(), outputs_.data(), params_.data());
   }
 
-//   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnOpConfigWrapper);
+  //   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnOpConfigWrapper);
 
-//   QnnOpConfigWrapper(QnnOpConfigWrapper&& other) noexcept {
-//     std::swap(this->op_config_, other.op_config_);
-//     std::swap(name_, other.name_);
-//     std::swap(package_name_, other.package_name_);
-//     std::swap(type_name_, other.type_name_);
-//     std::swap(inputs_, other.inputs_);
-//     std::swap(outputs_, other.outputs_);
-//     std::swap(params_, other.params_);
-//     SetNames(name_.c_str(), package_name_.c_str(), type_name_.c_str());
-//     SetData(inputs_.data(), outputs_.data(), params_.data());
-//   }
+  //   QnnOpConfigWrapper(QnnOpConfigWrapper&& other) noexcept {
+  //     std::swap(this->op_config_, other.op_config_);
+  //     std::swap(name_, other.name_);
+  //     std::swap(package_name_, other.package_name_);
+  //     std::swap(type_name_, other.type_name_);
+  //     std::swap(inputs_, other.inputs_);
+  //     std::swap(outputs_, other.outputs_);
+  //     std::swap(params_, other.params_);
+  //     SetNames(name_.c_str(), package_name_.c_str(), type_name_.c_str());
+  //     SetData(inputs_.data(), outputs_.data(), params_.data());
+  //   }
 
-//   ~QnnOpConfigWrapper() = default;
+  //   ~QnnOpConfigWrapper() = default;
 
-//   const Qnn_OpConfig_t& GetQnnOpConfig() { return op_config_; }
+  //   const Qnn_OpConfig_t& GetQnnOpConfig() { return op_config_; }
 
   void SetNames(const char* op_name,
                 const char* package_name,

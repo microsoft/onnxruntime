@@ -42,7 +42,7 @@ std::unique_ptr<IQnnNodeGroup> DQQFusion::TryFusion(
   // DQ must have a single Q child (1 output edge) and must not produce a graph output.
   const std::array<std::string_view, 1> child_types = {QUANTIZE_LINEAR};
   const OrtNodeUnit* q_node_unit = GetOnlyChildOfType(qnn_model_wrapper, dq_node_unit, child_types,
-                                                     node_to_node_unit, node_unit_to_qnn_node_group);
+                                                      node_to_node_unit, node_unit_to_qnn_node_group);
 
   if (q_node_unit == nullptr) {
     return nullptr;
@@ -100,22 +100,22 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
 
   if (validate) {
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.ValidateQnnNode(node_name,
-                                                         QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                         QNN_OP_CONVERT,
-                                                         {input_tensor.GetQnnTensor()},
-                                                         {output_tensor.GetQnnTensor()},
-                                                         {}));
+                                                          QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                          QNN_OP_CONVERT,
+                                                          {input_tensor.GetQnnTensor()},
+                                                          {output_tensor.GetQnnTensor()},
+                                                          {}));
   } else {
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor)), "Failed to add input");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)), "Failed to add output");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(q_node_unit.Name(),
-                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                     QNN_OP_CONVERT,
-                                                     {input_def.name},
-                                                     {output_def.name},
-                                                     {},
-                                                     validate),
-                     "Failed to add fused Convert node.");
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                      QNN_OP_CONVERT,
+                                                      {input_def.name},
+                                                      {output_def.name},
+                                                      {},
+                                                      validate),
+                      "Failed to add fused Convert node.");
   }
 
   return Status::OK();

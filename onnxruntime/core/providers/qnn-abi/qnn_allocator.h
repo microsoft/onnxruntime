@@ -19,16 +19,16 @@ class HtpSharedMemoryAllocator : public OrtAllocator {
   HtpSharedMemoryAllocator(const OrtMemoryInfo* mem_info,
                            std::shared_ptr<RpcMemLibrary> rpcmem_lib,
                            const logging::Logger* logger = nullptr)
-    : memory_info_{mem_info},
-      rpcmem_lib_{std::move(rpcmem_lib)},
-      logger_(logger != nullptr ? *logger : logging::LoggingManager::DefaultLogger()) {
-  ORT_ENFORCE(rpcmem_lib_ != nullptr);
+      : memory_info_{mem_info},
+        rpcmem_lib_{std::move(rpcmem_lib)},
+        logger_(logger != nullptr ? *logger : logging::LoggingManager::DefaultLogger()) {
+    ORT_ENFORCE(rpcmem_lib_ != nullptr);
 
-  Alloc = AllocImpl;
-  Free = FreeImpl;
-  Info = InfoImpl;
-  Reserve = AllocImpl;
-}
+    Alloc = AllocImpl;
+    Free = FreeImpl;
+    Info = InfoImpl;
+    Reserve = AllocImpl;
+  }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(HtpSharedMemoryAllocator);
 

@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace QDQ {
 
 void OrtSelectors::RegisterSelector(const OrtOpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
-                                   std::unique_ptr<OrtNodeGroupSelector> selector_in) {
+                                    std::unique_ptr<OrtNodeGroupSelector> selector_in) {
   auto entry = std::make_unique<OrtOpVersionsAndSelector>(
       ops_and_versions_in,
       std::move(selector_in));
@@ -122,14 +122,14 @@ int32_t GetNodeIODataType(const OrtNode* node, const OrtApi& ort_api, bool is_in
 
 // Helper function to check if a data type is a 16-bit integer type
 bool Is16BitIntType(int32_t data_type) {
-  return (data_type == 5) || // INT16
-         (data_type == 17);  // UINT16
+  return (data_type == 5) ||  // INT16
+         (data_type == 17);   // UINT16
 }
 
 // Helper function to check if a data type is a 4-bit integer type
 bool Is4BitIntType(int32_t data_type) {
-  return (data_type == 20) || // INT4
-         (data_type == 21);   // UINT4
+  return (data_type == 20) ||  // INT4
+         (data_type == 21);    // UINT4
 }
 
 // Helper function to get a constant initializer from a node's input
@@ -228,7 +228,7 @@ bool IsQOrDQScalePositiveConstantScalar(const OrtGraph* graph, const OrtApi& ort
   status = ort_api.GetDimensionsCount(tensor_info, &num_dims);
   if (status != nullptr || num_dims != 0) {  // Scalar has 0 dimensions
     if (status != nullptr) ort_api.ReleaseStatus(status);
-  ort_api.ReleaseTensorTypeAndShapeInfo(tensor_info);
+    ort_api.ReleaseTensorTypeAndShapeInfo(tensor_info);
     ort_api.ReleaseArrayOfConstObjects(inputs);
     return false;
   }
@@ -560,11 +560,11 @@ bool IsQDQPairSupported(const OrtGraph* graph, const OrtApi& ort_api, const OrtN
 }
 
 bool OrtNodeGroupSelector::CheckQDQNodes(const OrtGraph* /*graph*/, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* /*redundant_clip_node*/,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes,
-                                        int num_dq_inputs,
-                                        bool is_empty_q_nodes_allowed) const {
+                                         const OrtNode* /*redundant_clip_node*/,
+                                         const std::vector<const OrtNode*>& dq_nodes,
+                                         const std::vector<const OrtNode*>& q_nodes,
+                                         int num_dq_inputs,
+                                         bool is_empty_q_nodes_allowed) const {
   if (num_dq_inputs == -1) {
     num_dq_inputs = NumActualValues(node, ort_api, true);
   }
@@ -644,11 +644,10 @@ bool OrtNodeGroupSelector::CheckQDQNodes(const OrtGraph* /*graph*/, const OrtApi
          !produces_graph_output;
 }
 
-
 bool OrtDropQDQNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                     const OrtNode* redundant_clip_node,
-                                     const std::vector<const OrtNode*>& dq_nodes,
-                                     const std::vector<const OrtNode*>& q_nodes) const {
+                                        const OrtNode* redundant_clip_node,
+                                        const std::vector<const OrtNode*>& dq_nodes,
+                                        const std::vector<const OrtNode*>& q_nodes) const {
   if (redundant_clip_node) {
     return false;
   }
@@ -688,10 +687,11 @@ bool OrtDropQDQNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort
 
 // Implementation of Check() for OrtDropDQNodeGroupSelector
 bool OrtDropDQNodeGroupSelector::Check(const OrtGraph* /*graph*/, const OrtApi& ort_api, const OrtNode* node,
-                                      const OrtNode* redundant_clip_node,
-                                      const std::vector<const OrtNode*>& dq_nodes,
-                                      const std::vector<const OrtNode*>& q_nodes) const {
-                                        q_nodes;node;
+                                       const OrtNode* redundant_clip_node,
+                                       const std::vector<const OrtNode*>& dq_nodes,
+                                       const std::vector<const OrtNode*>& q_nodes) const {
+  q_nodes;
+  node;
   // For drop DQ operations, we check if the node has exactly one DQ input
   if (redundant_clip_node) {
     return false;
@@ -721,9 +721,9 @@ bool OrtDropDQNodeGroupSelector::Check(const OrtGraph* /*graph*/, const OrtApi& 
 
 // Implementation of Check() for OrtUnaryNodeGroupSelector
 bool OrtUnaryNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                     const OrtNode* redundant_clip_node,
-                                     const std::vector<const OrtNode*>& dq_nodes,
-                                     const std::vector<const OrtNode*>& q_nodes) const {
+                                      const OrtNode* redundant_clip_node,
+                                      const std::vector<const OrtNode*>& dq_nodes,
+                                      const std::vector<const OrtNode*>& q_nodes) const {
   // For unary operations, we check if the node has exactly one DQ input and one Q output
   if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, 1)) {
     return false;
@@ -752,9 +752,9 @@ bool OrtUnaryNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_a
 
 // Implementation of Check() for OrtBinaryNodeGroupSelector
 bool OrtBinaryNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                      const OrtNode* redundant_clip_node,
-                                      const std::vector<const OrtNode*>& dq_nodes,
-                                      const std::vector<const OrtNode*>& q_nodes) const {
+                                       const OrtNode* redundant_clip_node,
+                                       const std::vector<const OrtNode*>& dq_nodes,
+                                       const std::vector<const OrtNode*>& q_nodes) const {
   // For binary operations, we check if the node has exactly two DQ inputs and one Q output
   if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, 2)) {
     return false;
@@ -785,9 +785,9 @@ bool OrtBinaryNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_
 
 // Implementation of Check() for OrtVariadicNodeGroupSelector
 bool OrtVariadicNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                         const OrtNode* redundant_clip_node,
+                                         const std::vector<const OrtNode*>& dq_nodes,
+                                         const std::vector<const OrtNode*>& q_nodes) const {
   // For variadic operations, we check if the node has at least one DQ input and one Q output
   if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes)) {
     return false;
@@ -828,9 +828,9 @@ bool OrtVariadicNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& or
 }
 
 bool OrtSplitNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                      const OrtNode* redundant_clip_node,
+                                      const std::vector<const OrtNode*>& dq_nodes,
+                                      const std::vector<const OrtNode*>& q_nodes) const {
   if (redundant_clip_node) {
     return false;
   }
@@ -864,9 +864,9 @@ bool OrtSplitNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_a
 }
 
 bool OrtConvNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                     const OrtNode* redundant_clip_node,
+                                     const std::vector<const OrtNode*>& dq_nodes,
+                                     const std::vector<const OrtNode*>& q_nodes) const {
   if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes)) {
     return false;
   }
@@ -905,12 +905,10 @@ bool OrtConvNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_ap
   return true;
 }
 
-
-
 bool OrtEinsumNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                       const OrtNode* redundant_clip_node,
+                                       const std::vector<const OrtNode*>& dq_nodes,
+                                       const std::vector<const OrtNode*>& q_nodes) const {
   if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, /*num_dq_inputs=*/-1,
                      /*is_empty_q_nodes_allowed=*/true)) {
     return false;
@@ -949,9 +947,9 @@ bool OrtEinsumNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_
 }
 
 bool OrtReciprocalNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                           const OrtNode* redundant_clip_node,
+                                           const std::vector<const OrtNode*>& dq_nodes,
+                                           const std::vector<const OrtNode*>& q_nodes) const {
   if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, /*num_dq_inputs=*/-1,
                      /*is_empty_q_nodes_allowed=*/true)) {
     return false;
@@ -980,9 +978,9 @@ bool OrtReciprocalNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& 
 }
 
 bool OrtMatMulNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                       const OrtNode* redundant_clip_node,
+                                       const std::vector<const OrtNode*>& dq_nodes,
+                                       const std::vector<const OrtNode*>& q_nodes) const {
   if (dq_nodes.size() != 2) {
     return false;
   }
@@ -1026,9 +1024,9 @@ bool OrtMatMulNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_
 }
 
 bool OrtDQMatMulNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                         const OrtNode* redundant_clip_node,
+                                         const std::vector<const OrtNode*>& dq_nodes,
+                                         const std::vector<const OrtNode*>& q_nodes) const {
   if (redundant_clip_node) {
     return false;
   }
@@ -1368,9 +1366,9 @@ bool OrtDQMatMulNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& or
 }
 
 bool OrtGemmNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                     const OrtNode* redundant_clip_node,
+                                     const std::vector<const OrtNode*>& dq_nodes,
+                                     const std::vector<const OrtNode*>& q_nodes) const {
   if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, -1 /*num_dq_inputs*/,
                      true /*is_empty_q_nodes_allowed*/)) {
     return false;
@@ -1429,11 +1427,10 @@ bool OrtGemmNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_ap
   return dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
 }
 
-
 bool OrtWhereNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                      const OrtNode* redundant_clip_node,
+                                      const std::vector<const OrtNode*>& dq_nodes,
+                                      const std::vector<const OrtNode*>& q_nodes) const {
   // Where has 1 boolean input and 2 dq inputs
   if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, 2)) {
     return false;
@@ -1465,9 +1462,9 @@ bool OrtWhereNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_a
 }
 
 bool OrtPadNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                    const OrtNode* redundant_clip_node,
+                                    const std::vector<const OrtNode*>& dq_nodes,
+                                    const std::vector<const OrtNode*>& q_nodes) const {
   // Pad can have 1 or 2 dq input, the optional input constant_value can be quantized or non-quantized.
   // QNN supports data input quantized with constant_value input non-quantized.
   int num_dq_inputs = static_cast<int>(dq_nodes.size());
@@ -1491,9 +1488,9 @@ bool OrtPadNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api
 }
 
 bool OrtInstanceAndLayerNormalizationNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                                              const OrtNode* redundant_clip_node,
+                                                              const std::vector<const OrtNode*>& dq_nodes,
+                                                              const std::vector<const OrtNode*>& q_nodes) const {
   if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes)) {
     return false;
   }
@@ -1513,13 +1510,13 @@ bool OrtInstanceAndLayerNormalizationNodeGroupSelector::Check(const OrtGraph* gr
   // Input, output, need to be the same type. The bias is int32.
   // Scale can be different with input for a16w8 case
   return (dt_input == dt_output) &&
-         (has_bias ? dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32 : true); // 6 is INT32 in ONNX_NAMESPACE::TensorProto_DataType
+         (has_bias ? dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32 : true);  // 6 is INT32 in ONNX_NAMESPACE::TensorProto_DataType
 }
 
 bool OrtBatchNormalizationNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                                   const OrtNode* redundant_clip_node,
+                                                   const std::vector<const OrtNode*>& dq_nodes,
+                                                   const std::vector<const OrtNode*>& q_nodes) const {
   if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, 3)) {
     return false;
   }
@@ -1543,9 +1540,9 @@ bool OrtBatchNormalizationNodeGroupSelector::Check(const OrtGraph* graph, const 
 }
 
 bool OrtLogicalComparisonNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                                  const OrtNode* redundant_clip_node,
+                                                  const std::vector<const OrtNode*>& dq_nodes,
+                                                  const std::vector<const OrtNode*>& q_nodes) const {
   if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, -1, true)) {
     return false;
   }
@@ -1556,9 +1553,9 @@ bool OrtLogicalComparisonNodeGroupSelector::Check(const OrtGraph* graph, const O
 }
 
 bool OrtTopKNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                     const OrtNode* redundant_clip_node,
+                                     const std::vector<const OrtNode*>& dq_nodes,
+                                     const std::vector<const OrtNode*>& q_nodes) const {
   // Not support for now. Need to handle the indices output if we want to support it.
   if (redundant_clip_node) {
     return false;
@@ -1593,9 +1590,9 @@ bool OrtTopKNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_ap
 }
 
 bool OrtCumSumNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                                        const OrtNode* redundant_clip_node,
-                                        const std::vector<const OrtNode*>& dq_nodes,
-                                        const std::vector<const OrtNode*>& q_nodes) const {
+                                       const OrtNode* redundant_clip_node,
+                                       const std::vector<const OrtNode*>& dq_nodes,
+                                       const std::vector<const OrtNode*>& q_nodes) const {
   // Only the first input has DQ node
   if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, 1)) {
     return false;
@@ -1611,10 +1608,9 @@ bool OrtCumSumNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_
   return true;
 }
 
-
 // Helper function to get QDQ selection for a node
 std::optional<OrtNodeGroup> GetOrtQDQSelection(const OrtGraph* graph, const OrtApi& ort_api,
-                                           const OrtNode* node, const OrtNodeGroupSelector* selector) {
+                                               const OrtNode* node, const OrtNodeGroupSelector* selector) {
   // Find DQ nodes that feed into this node
   std::vector<const OrtNode*> dq_nodes;
 
@@ -1728,7 +1724,7 @@ std::optional<OrtNodeGroup> GetOrtQDQSelection(const OrtGraph* graph, const OrtA
       if (num_consumers == 1) {
         // Get the consumer node
         const OrtNode* next_node = nullptr;
-        int64_t input_index = 0; // This value is not used, but necessary for the API call
+        int64_t input_index = 0;  // This value is not used, but necessary for the API call
         status = ort_api.ValueInfo_GetValueConsumers(value_info, &next_node, &input_index, 1);
         if (status != nullptr) {
           ort_api.ReleaseStatus(status);
@@ -1868,21 +1864,21 @@ std::optional<OrtNodeGroup> GetOrtQDQSelection(const OrtGraph* graph, const OrtA
       continue;
     }
 
-      if (num_consumers > 0) {
-        // Allocate arrays for consumer nodes and input indices
-        std::vector<const OrtNode*> consumer_nodes_vec(num_consumers);
-        std::vector<int64_t> input_indices_vec(num_consumers);
+    if (num_consumers > 0) {
+      // Allocate arrays for consumer nodes and input indices
+      std::vector<const OrtNode*> consumer_nodes_vec(num_consumers);
+      std::vector<int64_t> input_indices_vec(num_consumers);
 
-        // Get the consumer nodes
-        status = ort_api.ValueInfo_GetValueConsumers(value_info, consumer_nodes_vec.data(), input_indices_vec.data(), num_consumers);
-        if (status != nullptr) {
-          ort_api.ReleaseStatus(status);
-          continue;
-        }
+      // Get the consumer nodes
+      status = ort_api.ValueInfo_GetValueConsumers(value_info, consumer_nodes_vec.data(), input_indices_vec.data(), num_consumers);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
 
-        // Check each consumer node
-        for (size_t j = 0; j < num_consumers; ++j) {
-          const OrtNode* consumer_node = consumer_nodes_vec[j];
+      // Check each consumer node
+      for (size_t j = 0; j < num_consumers; ++j) {
+        const OrtNode* consumer_node = consumer_nodes_vec[j];
 
         // Check if this is a Q node
         if (consumer_node->GetOpType() == "QuantizeLinear") {
@@ -1943,176 +1939,157 @@ void OrtSelectorManager::CreateSelectors() {
 
   // Register misc ops
   OrtOpVersionsAndSelector::OpVersionsMap misc_ops = {
-    {"Gather", {}},
-    {"GatherElements", {}},
-    {"Reshape", {}},
-    {"Expand", {}},
-    {"Flatten", {}},
-    {"Transpose", {}},
-    {"MaxPool", {12}},
-    {"Resize", {}},
-    {"Squeeze", {}},
-    {"Unsqueeze", {}},
-    {"Tile", {}}
-  };
+      {"Gather", {}},
+      {"GatherElements", {}},
+      {"Reshape", {}},
+      {"Expand", {}},
+      {"Flatten", {}},
+      {"Transpose", {}},
+      {"MaxPool", {12}},
+      {"Resize", {}},
+      {"Squeeze", {}},
+      {"Unsqueeze", {}},
+      {"Tile", {}}};
   ort_selectors_.RegisterSelector(misc_ops, std::make_unique<OrtDropQDQNodeGroupSelector>());
 
   // Register drop DQ ops
   OrtOpVersionsAndSelector::OpVersionsMap drop_dq_ops = {
-    {"ArgMax", {}},
-    {"ArgMin", {}}
-  };
+      {"ArgMax", {}},
+      {"ArgMin", {}}};
   ort_selectors_.RegisterSelector(drop_dq_ops, std::make_unique<OrtDropDQNodeGroupSelector>());
 
   // Register unary ops
   OrtOpVersionsAndSelector::OpVersionsMap unary_ops = {
-    {"AveragePool", {}},
-    {"GlobalAveragePool", {}},
-    {"GlobalMaxPool", {}},
-    {"LeakyRelu", {}},
-    {"ReduceMean", {}},
-    {"ReduceMin", {}},
-    {"ReduceMax", {}},
-    {"ReduceProd", {}},
-    {"ReduceSum", {}},
-    {"Relu", {}},
-    {"Gelu", {}},
-    {"Elu", {}},
-    {"HardSigmoid", {}},
-    {"HardSwish", {}},
-    {"Sigmoid", {}},
-    {"Slice", {}},
-    {"LogSoftmax", {}},
-    {"Softmax", {}},
-    {"Sqrt", {}},
-    {"Atan", {}},
-    {"Asin", {}},
-    {"Sin", {}},
-    {"Cos", {}},
-    {"Sign", {}},
-    {"Tanh", {}},
-    {"Exp", {}},
-    {"Log", {}},
-    {"LRN", {}},
-    {"Ceil", {}},
-    {"Floor", {}},
-    {"Round", {}},
-    {"Abs", {}},
-    {"Neg", {}},
-    {"DepthToSpace", {}},
-    {"SpaceToDepth", {}},
-    {"Clip", {}},
-    {"LpNormalization", {}}
-  };
+      {"AveragePool", {}},
+      {"GlobalAveragePool", {}},
+      {"GlobalMaxPool", {}},
+      {"LeakyRelu", {}},
+      {"ReduceMean", {}},
+      {"ReduceMin", {}},
+      {"ReduceMax", {}},
+      {"ReduceProd", {}},
+      {"ReduceSum", {}},
+      {"Relu", {}},
+      {"Gelu", {}},
+      {"Elu", {}},
+      {"HardSigmoid", {}},
+      {"HardSwish", {}},
+      {"Sigmoid", {}},
+      {"Slice", {}},
+      {"LogSoftmax", {}},
+      {"Softmax", {}},
+      {"Sqrt", {}},
+      {"Atan", {}},
+      {"Asin", {}},
+      {"Sin", {}},
+      {"Cos", {}},
+      {"Sign", {}},
+      {"Tanh", {}},
+      {"Exp", {}},
+      {"Log", {}},
+      {"LRN", {}},
+      {"Ceil", {}},
+      {"Floor", {}},
+      {"Round", {}},
+      {"Abs", {}},
+      {"Neg", {}},
+      {"DepthToSpace", {}},
+      {"SpaceToDepth", {}},
+      {"Clip", {}},
+      {"LpNormalization", {}}};
   ort_selectors_.RegisterSelector(unary_ops, std::make_unique<OrtUnaryNodeGroupSelector>());
 
   // Register binary ops
   OrtOpVersionsAndSelector::OpVersionsMap binary_ops = {
-    {"Add", {}},
-    {"Div", {}},
-    {"Mul", {}},
-    {"Pow", {}},
-    {"Sub", {}},
-    {"PRelu", {}},
-    {"GridSample", {}}
-  };
+      {"Add", {}},
+      {"Div", {}},
+      {"Mul", {}},
+      {"Pow", {}},
+      {"Sub", {}},
+      {"PRelu", {}},
+      {"GridSample", {}}};
   ort_selectors_.RegisterSelector(binary_ops, std::make_unique<OrtBinaryNodeGroupSelector>());
 
   // Register variadic ops
   OrtOpVersionsAndSelector::OpVersionsMap variadic_ops = {
-    {"Concat", {}},
-    {"Max", {}},
-    {"Min", {}}
-  };
+      {"Concat", {}},
+      {"Max", {}},
+      {"Min", {}}};
   ort_selectors_.RegisterSelector(variadic_ops, std::make_unique<OrtVariadicNodeGroupSelector>());
 
   // Register split ops
   OrtOpVersionsAndSelector::OpVersionsMap split_ops = {
-    {"Split", {}}
-  };
+      {"Split", {}}};
   ort_selectors_.RegisterSelector(split_ops, std::make_unique<OrtSplitNodeGroupSelector>());
 
   // Register conv ops
   OrtOpVersionsAndSelector::OpVersionsMap conv_ops = {
-    {"Conv", {}}
-  };
+      {"Conv", {}}};
   ort_selectors_.RegisterSelector(conv_ops, std::make_unique<OrtConvNodeGroupSelector>());
 
   // Register conv transpose ops
   OrtOpVersionsAndSelector::OpVersionsMap conv_transpose_ops = {
-    {"ConvTranspose", {}}
-  };
+      {"ConvTranspose", {}}};
   ort_selectors_.RegisterSelector(conv_transpose_ops, std::make_unique<OrtConvNodeGroupSelector>());
 
   // Register einsum ops
   OrtOpVersionsAndSelector::OpVersionsMap einsum_ops = {
-    {"Einsum", {}}
-  };
+      {"Einsum", {}}};
   ort_selectors_.RegisterSelector(einsum_ops, std::make_unique<OrtEinsumNodeGroupSelector>());
 
   // Register reciprocal ops
   OrtOpVersionsAndSelector::OpVersionsMap reciprocal_ops = {
-    {"Reciprocal", {}}
-  };
+      {"Reciprocal", {}}};
   ort_selectors_.RegisterSelector(reciprocal_ops, std::make_unique<OrtReciprocalNodeGroupSelector>());
 
   // Register matmul ops
   OrtOpVersionsAndSelector::OpVersionsMap matmul_ops = {
-    {"MatMul", {}}
-  };
+      {"MatMul", {}}};
   ort_selectors_.RegisterSelector(matmul_ops, std::make_unique<OrtMatMulNodeGroupSelector>());
 
   // Register gemm ops
   OrtOpVersionsAndSelector::OpVersionsMap gemm_ops = {
-    {"Gemm", {}}
-  };
+      {"Gemm", {}}};
   ort_selectors_.RegisterSelector(gemm_ops, std::make_unique<OrtGemmNodeGroupSelector>());
 
   // Register instance and layer normalization ops
   OrtOpVersionsAndSelector::OpVersionsMap instance_layer_norm_ops = {
-    {"InstanceNormalization", {}},
-    {"LayerNormalization", {}}
-  };
+      {"InstanceNormalization", {}},
+      {"LayerNormalization", {}}};
   ort_selectors_.RegisterSelector(instance_layer_norm_ops, std::make_unique<OrtInstanceAndLayerNormalizationNodeGroupSelector>());
 
   // Register batch normalization ops
   OrtOpVersionsAndSelector::OpVersionsMap batch_norm_ops = {
-    {"BatchNormalization", {}}
-  };
+      {"BatchNormalization", {}}};
   ort_selectors_.RegisterSelector(batch_norm_ops, std::make_unique<OrtBatchNormalizationNodeGroupSelector>());
 
   // Register logical comparison ops
   OrtOpVersionsAndSelector::OpVersionsMap logical_comparison_ops = {
-    {"Equal", {}},
-    {"Greater", {}},
-    {"GreaterOrEqual", {}},
-    {"Less", {}},
-    {"LessOrEqual", {}}
-  };
+      {"Equal", {}},
+      {"Greater", {}},
+      {"GreaterOrEqual", {}},
+      {"Less", {}},
+      {"LessOrEqual", {}}};
   ort_selectors_.RegisterSelector(logical_comparison_ops, std::make_unique<OrtLogicalComparisonNodeGroupSelector>());
 
   // Register where ops
   OrtOpVersionsAndSelector::OpVersionsMap where_ops = {
-    {"Where", {}}
-  };
+      {"Where", {}}};
   ort_selectors_.RegisterSelector(where_ops, std::make_unique<OrtWhereNodeGroupSelector>());
 
   // Register pad ops
   OrtOpVersionsAndSelector::OpVersionsMap pad_ops = {
-    {"Pad", {}}
-  };
+      {"Pad", {}}};
   ort_selectors_.RegisterSelector(pad_ops, std::make_unique<OrtPadNodeGroupSelector>());
 
   // Register topk ops
   OrtOpVersionsAndSelector::OpVersionsMap topk_ops = {
-    {"TopK", {}}
-  };
+      {"TopK", {}}};
   ort_selectors_.RegisterSelector(topk_ops, std::make_unique<OrtTopKNodeGroupSelector>());
 
   // Register cumsum ops
   OrtOpVersionsAndSelector::OpVersionsMap cumsum_ops = {
-    {"CumSum", {}}
-  };
+      {"CumSum", {}}};
   ort_selectors_.RegisterSelector(cumsum_ops, std::make_unique<OrtCumSumNodeGroupSelector>());
 }
 
@@ -2211,10 +2188,10 @@ GetAllOrtNodeUnits(OrtApi ort_api, const OrtGraph* graph, const logging::Logger&
 
   const auto add_node_unit_to_map = [&](const std::vector<int>& node_indices) {
     for (auto node_idx : node_indices) {
-    const OrtNode* node = static_cast<const OrtNode*>(node_data[node_idx]);
-    auto node_unit = std::make_unique<OrtNodeUnit>(*node, ort_api);
-    node_unit_map[node] = node_unit.get();
-    node_unit_holder.push_back(std::move(node_unit));
+      const OrtNode* node = static_cast<const OrtNode*>(node_data[node_idx]);
+      auto node_unit = std::make_unique<OrtNodeUnit>(*node, ort_api);
+      node_unit_map[node] = node_unit.get();
+      node_unit_holder.push_back(std::move(node_unit));
     }
   };
 

@@ -83,7 +83,7 @@ std::optional<std::array<const OrtNodeUnit*, 5>> MatchChannelShufflePattern(
   auto GetChildOfType = [&](const OrtNodeUnit& node, std::string_view expect_type) -> const OrtNodeUnit* {
     const std::array<std::string_view, 1> child_op_types{expect_type};
     const OrtNodeUnit* child = GetOnlyChildOfType(qnn_model_wrapper, node, child_op_types,
-                                                 node_to_node_unit, node_unit_to_qnn_node_group);
+                                                  node_to_node_unit, node_unit_to_qnn_node_group);
     if (child == nullptr) {
       return nullptr;
     }
@@ -161,9 +161,9 @@ Status CreateOrValidateOnQnn(
     axis_scalar.dataType = QNN_DATATYPE_UINT_32;
     axis_scalar.uint32Value = channel_axis;
     QnnParamWrapper param_wrapper(transpose_tail->GetNode().GetId(),
-                                 transpose_tail->Name(),
-                                 QNN_OP_CHANNEL_SHUFFLE_PARAM_AXIS,
-                                 axis_scalar);
+                                  transpose_tail->Name(),
+                                  QNN_OP_CHANNEL_SHUFFLE_PARAM_AXIS,
+                                  axis_scalar);
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddParamWrapper(std::move(param_wrapper)), "Failed to add axis param");
     param_tensor_names.push_back(param_wrapper.GetParamTensorName());
 
@@ -194,9 +194,9 @@ Status CreateOrValidateOnQnn(
     num_groups_scalar.dataType = QNN_DATATYPE_UINT_32;
     num_groups_scalar.uint32Value = static_cast<uint32_t>(reshape1_output_dims[1]);
     QnnParamWrapper param_wrapper(transpose_tail->GetNode().GetId(),
-                                 transpose_tail->Name(),
-                                 QNN_OP_CHANNEL_SHUFFLE_PARAM_NUM_GROUPS,
-                                 num_groups_scalar);
+                                  transpose_tail->Name(),
+                                  QNN_OP_CHANNEL_SHUFFLE_PARAM_NUM_GROUPS,
+                                  num_groups_scalar);
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddParamWrapper(std::move(param_wrapper)), "Failed to add num_groups param");
     param_tensor_names.push_back(param_wrapper.GetParamTensorName());
 
@@ -211,22 +211,22 @@ Status CreateOrValidateOnQnn(
 
   if (validate) {
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.ValidateQnnNode(transpose_tail->Name(),
-                                                         QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                         QNN_OP_CHANNEL_SHUFFLE,
-                                                         {channel_shuffle_input.GetQnnTensor()},
-                                                         {channel_shuffle_output.GetQnnTensor()},
-                                                         {}));
+                                                          QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                          QNN_OP_CHANNEL_SHUFFLE,
+                                                          {channel_shuffle_input.GetQnnTensor()},
+                                                          {channel_shuffle_output.GetQnnTensor()},
+                                                          {}));
   } else {
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(channel_shuffle_input)), "Failed to add input");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(channel_shuffle_output)), "Failed to add output");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(transpose_tail->Name(),
-                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                     QNN_OP_CHANNEL_SHUFFLE,
-                                                     {cs_input_def.name},
-                                                     {cs_output_def.name},
-                                                     std::move(param_tensor_names),
-                                                     validate),
-                     "Failed to add fused " + std::string(kOpChannelShuffle) + " node.");
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                      QNN_OP_CHANNEL_SHUFFLE,
+                                                      {cs_input_def.name},
+                                                      {cs_output_def.name},
+                                                      std::move(param_tensor_names),
+                                                      validate),
+                      "Failed to add fused " + std::string(kOpChannelShuffle) + " node.");
   }
 
   return Status::OK();
@@ -240,7 +240,6 @@ std::unique_ptr<IQnnNodeGroup> ChannelShuffleFusion::TryFusion(
     const MapNodeToNodeUnit& node_to_node_unit,
     const MapNodeUnitToGroup& node_unit_to_qnn_node_group,
     [[maybe_unused]] const logging::Logger& logger) {
-
   std::optional<std::array<const OrtNodeUnit*, 5>> pattern = MatchChannelShufflePattern(
       qnn_model_wrapper, &transpose_head, node_to_node_unit, node_unit_to_qnn_node_group);
   if (!pattern.has_value()) {

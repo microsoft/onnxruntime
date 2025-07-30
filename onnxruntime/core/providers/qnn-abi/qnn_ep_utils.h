@@ -35,97 +35,100 @@ struct OrtNodeGroup {
                                    const OrtNode& target_node,
                                    const OrtNode* redundant_clip_node,
                                    gsl::span<const OrtNode* const> dq_nodes,
-                                   gsl::span<const OrtNode* const> q_nodes)  {
-                                    graph; target_node; redundant_clip_node; dq_nodes; q_nodes;
-  // // Within a QDQ node group, a target node input is the only consumer of each DQ.
-  // // This should have been ensured by the EnsureUniqueDQForNodeUnit graph transformer, but other graph modifications
-  // // may have happened since. Verify that this is still true.
-  // for (const auto* dq_node : dq_nodes) {
-  //   const bool dq_produces_graph_output = graph_viewer.NodeProducesGraphOutput(*dq_node);
-  //   ORT_RETURN_IF(dq_produces_graph_output,
-  //                 "QDQ node group cannot have DQ node that produces a graph output. DQ node: ", dq_node->Name(),
-  //                 ", target node: ", target_node.Name());
+                                   gsl::span<const OrtNode* const> q_nodes) {
+    graph;
+    target_node;
+    redundant_clip_node;
+    dq_nodes;
+    q_nodes;
+    // // Within a QDQ node group, a target node input is the only consumer of each DQ.
+    // // This should have been ensured by the EnsureUniqueDQForNodeUnit graph transformer, but other graph modifications
+    // // may have happened since. Verify that this is still true.
+    // for (const auto* dq_node : dq_nodes) {
+    //   const bool dq_produces_graph_output = graph_viewer.NodeProducesGraphOutput(*dq_node);
+    //   ORT_RETURN_IF(dq_produces_graph_output,
+    //                 "QDQ node group cannot have DQ node that produces a graph output. DQ node: ", dq_node->Name(),
+    //                 ", target node: ", target_node.Name());
 
-  //   const bool dq_has_single_output_edge_to_target =
-  //       dq_node->GetOutputEdgesCount() == 1 &&
-  //       dq_node->OutputEdgesBegin()->GetNode().Index() == target_node.Index();
-  //   ORT_RETURN_IF_NOT(dq_has_single_output_edge_to_target,
-  //                     "QDQ node group cannot have DQ that doesn't have a single output edge to the target node. "
-  //                     "DQ node: ",
-  //                     dq_node->Name(), ", target node: ", target_node.Name());
-  // }
+    //   const bool dq_has_single_output_edge_to_target =
+    //       dq_node->GetOutputEdgesCount() == 1 &&
+    //       dq_node->OutputEdgesBegin()->GetNode().Index() == target_node.Index();
+    //   ORT_RETURN_IF_NOT(dq_has_single_output_edge_to_target,
+    //                     "QDQ node group cannot have DQ that doesn't have a single output edge to the target node. "
+    //                     "DQ node: ",
+    //                     dq_node->Name(), ", target node: ", target_node.Name());
+    // }
 
-  // // If redundant_clip_node is present, currently we require target node has only one output edge, which is connected to
-  // // the redundant_clip_node. The redundant_clip_node's output is consumed by the Q node that can be fused with itself.
-  // if (redundant_clip_node) {
-  //   ORT_RETURN_IF_NOT(!graph_viewer.NodeProducesGraphOutput(target_node) && target_node.GetOutputEdgesCount() == 1 &&
-  //                         target_node.OutputEdgesBegin()->GetNode().Index() == redundant_clip_node->Index(),
-  //                     "QDQ node group cannot have target node with more than one output edge if there is redunant clip "
-  //                     "node. target node: ",
-  //                     target_node.Name());
-  //   ORT_RETURN_IF_NOT(
-  //       !graph_viewer.NodeProducesGraphOutput(*redundant_clip_node) && q_nodes.size() == 1 &&
-  //           redundant_clip_node->GetOutputEdgesCount() == 1 &&
-  //           redundant_clip_node->OutputEdgesBegin()->GetNode().Index() == q_nodes[0]->Index(),
-  //       "QDQ node group cannot have redudant clip node that doesn't have a single output edge to a Q node. "
-  //       "redundant clip node: ",
-  //       redundant_clip_node->Name());
-  //   return Status::OK();
-  // }
+    // // If redundant_clip_node is present, currently we require target node has only one output edge, which is connected to
+    // // the redundant_clip_node. The redundant_clip_node's output is consumed by the Q node that can be fused with itself.
+    // if (redundant_clip_node) {
+    //   ORT_RETURN_IF_NOT(!graph_viewer.NodeProducesGraphOutput(target_node) && target_node.GetOutputEdgesCount() == 1 &&
+    //                         target_node.OutputEdgesBegin()->GetNode().Index() == redundant_clip_node->Index(),
+    //                     "QDQ node group cannot have target node with more than one output edge if there is redunant clip "
+    //                     "node. target node: ",
+    //                     target_node.Name());
+    //   ORT_RETURN_IF_NOT(
+    //       !graph_viewer.NodeProducesGraphOutput(*redundant_clip_node) && q_nodes.size() == 1 &&
+    //           redundant_clip_node->GetOutputEdgesCount() == 1 &&
+    //           redundant_clip_node->OutputEdgesBegin()->GetNode().Index() == q_nodes[0]->Index(),
+    //       "QDQ node group cannot have redudant clip node that doesn't have a single output edge to a Q node. "
+    //       "redundant clip node: ",
+    //       redundant_clip_node->Name());
+    //   return Status::OK();
+    // }
 
-  // // an output from the target node can have either Q consumers or direct consumers. it cannot have both.
-  // // this must be checked on a per output basis.
-  // // e.g. TopK produces values and indices. The indices output won't be quantized, so even if we replace the TopK QDQ
-  // // node group with a quantized TopK, an int64_t indices value will be produced and can provide a graph output.
-  // if (!q_nodes.empty()) {
-  //   auto cur_edge = target_node.OutputEdgesBegin();
-  //   auto end_edge = target_node.OutputEdgesEnd();
-  //   std::vector<const Node*> output_consumers(target_node.OutputDefs().size(), nullptr);
+    // // an output from the target node can have either Q consumers or direct consumers. it cannot have both.
+    // // this must be checked on a per output basis.
+    // // e.g. TopK produces values and indices. The indices output won't be quantized, so even if we replace the TopK QDQ
+    // // node group with a quantized TopK, an int64_t indices value will be produced and can provide a graph output.
+    // if (!q_nodes.empty()) {
+    //   auto cur_edge = target_node.OutputEdgesBegin();
+    //   auto end_edge = target_node.OutputEdgesEnd();
+    //   std::vector<const Node*> output_consumers(target_node.OutputDefs().size(), nullptr);
 
-  //   for (; cur_edge != end_edge; ++cur_edge) {
-  //     auto output_idx = cur_edge->GetSrcArgIndex();
-  //     const Node& this_consumer = cur_edge->GetNode();
-  //     const Node* existing_consumer = output_consumers[output_idx];
+    //   for (; cur_edge != end_edge; ++cur_edge) {
+    //     auto output_idx = cur_edge->GetSrcArgIndex();
+    //     const Node& this_consumer = cur_edge->GetNode();
+    //     const Node* existing_consumer = output_consumers[output_idx];
 
-  //     if (existing_consumer != nullptr) {
-  //       // another edge for this output. either both are Q or both are not.
-  //       bool valid = true;
-  //       if (existing_consumer->OpType() == "QuantizeLinear") {
-  //         valid = this_consumer.OpType() == "QuantizeLinear";
-  //       } else {
-  //         valid = this_consumer.OpType() != "QuantizeLinear";
-  //       }
+    //     if (existing_consumer != nullptr) {
+    //       // another edge for this output. either both are Q or both are not.
+    //       bool valid = true;
+    //       if (existing_consumer->OpType() == "QuantizeLinear") {
+    //         valid = this_consumer.OpType() == "QuantizeLinear";
+    //       } else {
+    //         valid = this_consumer.OpType() != "QuantizeLinear";
+    //       }
 
-  //       ORT_RETURN_IF_NOT(valid,
-  //                         "QDQ node group cannot have an output from the target node being consumed by a Q node and "
-  //                         "a non-Q node. target node: ",
-  //                         target_node.Name());
-  //     } else {
-  //       output_consumers[output_idx] = &this_consumer;
-  //     }
-  //   }
+    //       ORT_RETURN_IF_NOT(valid,
+    //                         "QDQ node group cannot have an output from the target node being consumed by a Q node and "
+    //                         "a non-Q node. target node: ",
+    //                         target_node.Name());
+    //     } else {
+    //       output_consumers[output_idx] = &this_consumer;
+    //     }
+    //   }
 
-  //   const auto& graph_outputs = graph_viewer.GetOutputs();
-  //   for (size_t idx = 0, end = output_consumers.size(); idx < end; ++idx) {
-  //     // any output with a Q cannot be a graph output as it will disappear if the QDQ node unit is converted to
-  //     // a quantized op.
-  //     if (output_consumers[idx] != nullptr && output_consumers[idx]->OpType() == "QuantizeLinear") {
-  //       const auto& output_name = target_node.OutputDefs()[idx]->Name();
-  //       bool is_graph_output = std::any_of(graph_outputs.begin(), graph_outputs.end(),
-  //                                          [&output_name](const NodeArg* node_arg) {
-  //                                            return node_arg->Name() == output_name;
-  //                                          });
-  //       ORT_RETURN_IF(is_graph_output,
-  //                     "QDQ node group cannot have an output from the target node that is consumed by a Q node and "
-  //                     "a graph output. target node: ",
-  //                     target_node.Name(), " output idx:", idx);
-  //     }
-  //   }
-  // }
+    //   const auto& graph_outputs = graph_viewer.GetOutputs();
+    //   for (size_t idx = 0, end = output_consumers.size(); idx < end; ++idx) {
+    //     // any output with a Q cannot be a graph output as it will disappear if the QDQ node unit is converted to
+    //     // a quantized op.
+    //     if (output_consumers[idx] != nullptr && output_consumers[idx]->OpType() == "QuantizeLinear") {
+    //       const auto& output_name = target_node.OutputDefs()[idx]->Name();
+    //       bool is_graph_output = std::any_of(graph_outputs.begin(), graph_outputs.end(),
+    //                                          [&output_name](const NodeArg* node_arg) {
+    //                                            return node_arg->Name() == output_name;
+    //                                          });
+    //       ORT_RETURN_IF(is_graph_output,
+    //                     "QDQ node group cannot have an output from the target node that is consumed by a Q node and "
+    //                     "a graph output. target node: ",
+    //                     target_node.Name(), " output idx:", idx);
+    //     }
+    //   }
+    // }
 
-  return Status::OK();
-}
-
+    return Status::OK();
+  }
 };
 
 // Forward declaration
@@ -136,7 +139,7 @@ struct OrtOpVersionsAndSelector {
   using OpVersionsMap = std::unordered_map<std::string, std::vector<int>>;
 
   OrtOpVersionsAndSelector(const OpVersionsMap& ops_and_versions_in,
-                        std::unique_ptr<OrtNodeGroupSelector> selector_in)
+                           std::unique_ptr<OrtNodeGroupSelector> selector_in)
       : op_versions_map{ops_and_versions_in},
         selector{std::move(selector_in)} {}
 
@@ -167,18 +170,18 @@ class OrtNodeGroupSelector {
   virtual ~OrtNodeGroupSelector() = default;
   // Check if the node group is supported
   bool virtual Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                    const OrtNode* redundant_clip_node,
-                    const std::vector<const OrtNode*>& dq_nodes,
-                    const std::vector<const OrtNode*>& q_nodes) const = 0;
+                     const OrtNode* redundant_clip_node,
+                     const std::vector<const OrtNode*>& dq_nodes,
+                     const std::vector<const OrtNode*>& q_nodes) const = 0;
 
  protected:
   // Helper function to check if a node has the expected number of DQ inputs and Q outputs
   bool CheckQDQNodes(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-                    const OrtNode* redundant_clip_node,
-                    const std::vector<const OrtNode*>& dq_nodes,
-                    const std::vector<const OrtNode*>& q_nodes,
-                    int num_dq_inputs = -1,
-                    bool is_empty_q_nodes_allowed = false) const;
+                     const OrtNode* redundant_clip_node,
+                     const std::vector<const OrtNode*>& dq_nodes,
+                     const std::vector<const OrtNode*>& q_nodes,
+                     int num_dq_inputs = -1,
+                     bool is_empty_q_nodes_allowed = false) const;
 };
 
 // Single DQ -> node that does not change data -> Q.
@@ -186,14 +189,13 @@ class OrtNodeGroupSelector {
 class OrtDropQDQNodeGroupSelector : public OrtNodeGroupSelector {
  public:
   explicit OrtDropQDQNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
-                                    bool allow_nonpositive_scale = true)
+                                       bool allow_nonpositive_scale = true)
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), allow_nonpositive_scale_(allow_nonpositive_scale) {}
 
-
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-              const OrtNode* redundant_clip_node,
-              const std::vector<const OrtNode*>& dq_nodes,
-              const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 
  private:
   bool allow_16bit_;
@@ -207,14 +209,14 @@ class OrtDropDQNodeGroupSelector : public OrtNodeGroupSelector {
   explicit OrtDropDQNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
-   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+  bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 
-  private:
-    bool allow_16bit_;
-    bool allow_4bit_;
+ private:
+  bool allow_16bit_;
+  bool allow_4bit_;
 };
 
 // Selector for unary operations
@@ -224,9 +226,10 @@ class OrtUnaryNodeGroupSelector : public OrtNodeGroupSelector {
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
+
  private:
   bool allow_16bit_;
   bool allow_4bit_;
@@ -238,11 +241,11 @@ class OrtBinaryNodeGroupSelector : public OrtNodeGroupSelector {
   explicit OrtBinaryNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
-
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
+
  private:
   bool allow_16bit_;
   bool allow_4bit_;
@@ -254,11 +257,11 @@ class OrtVariadicNodeGroupSelector : public OrtNodeGroupSelector {
   explicit OrtVariadicNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
-
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
+
  private:
   bool allow_16bit_;
   bool allow_4bit_;
@@ -272,11 +275,11 @@ class OrtSplitNodeGroupSelector : public OrtNodeGroupSelector {
   explicit OrtSplitNodeGroupSelector(bool req_equal_quant_params = false, bool allow_4bit = true)
       : req_equal_quant_params_(req_equal_quant_params), allow_4bit_(allow_4bit) {}
 
-
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
+
  private:
   bool req_equal_quant_params_;  // If true, only selects a node group if the input and output
                                  // quantization parameters are all equal/constant, which enables the
@@ -291,29 +294,27 @@ class OrtConvNodeGroupSelector : public OrtNodeGroupSelector {
   OrtConvNodeGroupSelector(bool int8_allowed = true, bool allow_16bit = true, bool allow_4bit_weight = true)
       : int8_allowed_(int8_allowed), allow_16bit_(allow_16bit), allow_4bit_weight_(allow_4bit_weight) {}
 
-
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
+
  private:
   bool int8_allowed_;
   bool allow_16bit_;
   bool allow_4bit_weight_;
 };
 
-
-
 class OrtWhereNodeGroupSelector : public OrtNodeGroupSelector {
  public:
   explicit OrtWhereNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
-
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
+
  private:
   bool allow_16bit_;
   bool allow_4bit_;
@@ -324,9 +325,9 @@ class OrtPadNodeGroupSelector : public OrtNodeGroupSelector {
   OrtPadNodeGroupSelector() = default;
 
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 };
 
 // one ore more DQ nodes for each input -> node -> Q
@@ -335,11 +336,10 @@ class OrtEinsumNodeGroupSelector : public OrtNodeGroupSelector {
   explicit OrtEinsumNodeGroupSelector(bool allow_int8 = true, bool allow_16bit = true, bool allow_4bit = true)
       : allow_int8_(allow_int8), allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
-
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 
  private:
   bool allow_int8_;
@@ -352,11 +352,10 @@ class OrtReciprocalNodeGroupSelector : public OrtNodeGroupSelector {
   explicit OrtReciprocalNodeGroupSelector(bool allow_int8 = true, bool allow_16bit = true, bool allow_4bit = true)
       : allow_int8_(allow_int8), allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
-
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 
  private:
   bool allow_int8_;
@@ -369,20 +368,19 @@ class OrtReciprocalNodeGroupSelector : public OrtNodeGroupSelector {
 class OrtMatMulNodeGroupSelector : public OrtNodeGroupSelector {
  public:
   OrtMatMulNodeGroupSelector(bool int8_allowed = true,
-                          bool matmulintegertofloat_allowed = false,
-                          bool allow_16bit = true,
-                          bool allow_4bit = true)
+                             bool matmulintegertofloat_allowed = false,
+                             bool allow_16bit = true,
+                             bool allow_4bit = true)
       : int8_allowed_(int8_allowed),
         matmulintegertofloat_allowed_(matmulintegertofloat_allowed),
         allow_16bit_(allow_16bit),
         allow_4bit_(allow_4bit) {
   }
 
-
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 
  private:
   bool int8_allowed_;
@@ -394,9 +392,9 @@ class OrtMatMulNodeGroupSelector : public OrtNodeGroupSelector {
 // Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"
 class OrtDQMatMulNodeGroupSelector : public OrtNodeGroupSelector {
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 };
 
 // Input: DQ nodes for A, B and optional C
@@ -406,11 +404,10 @@ class OrtGemmNodeGroupSelector : public OrtNodeGroupSelector {
   explicit OrtGemmNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
-
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 
  private:
   bool allow_16bit_;
@@ -421,9 +418,9 @@ class OrtGemmNodeGroupSelector : public OrtNodeGroupSelector {
 // Output: Q node for output
 class OrtInstanceAndLayerNormalizationNodeGroupSelector : public OrtNodeGroupSelector {
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 };
 
 // DQ nodes for X, W and optionally B, not used for mean, var -> node -> Q
@@ -432,11 +429,10 @@ class OrtBatchNormalizationNodeGroupSelector : public OrtNodeGroupSelector {
   // default to 'true'
   OrtBatchNormalizationNodeGroupSelector(bool int8_allowed = true) : int8_allowed_(int8_allowed) {}
 
-
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 
  private:
   bool int8_allowed_;
@@ -446,26 +442,26 @@ class OrtBatchNormalizationNodeGroupSelector : public OrtNodeGroupSelector {
 // Example: Equal, Less, Greater.
 class OrtLogicalComparisonNodeGroupSelector : public OrtNodeGroupSelector {
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 };
 
 // TopK has 1 DQ input node and 1 Q output node.
 // Zero point and scale are constant scalars and must match
 class OrtTopKNodeGroupSelector : public OrtNodeGroupSelector {
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 };
 
 // one DQ node for first input -> node -> Q
 class OrtCumSumNodeGroupSelector : public OrtNodeGroupSelector {
   bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
-            const OrtNode* redundant_clip_node,
-            const std::vector<const OrtNode*>& dq_nodes,
-            const std::vector<const OrtNode*>& q_nodes) const override;
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
 };
 
 // SelectorManager for OrtGraph

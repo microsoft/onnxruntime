@@ -106,7 +106,7 @@ bool GraphHasEpContextNode(const OrtGraph* graph, const OrtApi& ort_api) {
               ort_api.ReleaseStatus(status);
               continue;
             }
-            cache_source_str.resize(string_len); // Remove null terminator if it was added
+            cache_source_str.resize(string_len);  // Remove null terminator if it was added
 
             std::string cache_source = qnn::utils::GetLowercaseString(cache_source_str);
 
@@ -217,7 +217,8 @@ Status GetEpContextFromMainNode(const OrtNode* main_context_node,
                 external_qnn_ctx_binary_file_name);
   if (external_qnn_ctx_binary_file_name.find("..", 0) != std::string::npos) {
     return ORT_MAKE_STATUS(ONNXRUNTIME,
-                           INVALID_GRAPH, "The file path in ep_cache_context field has '..'."
+                           INVALID_GRAPH,
+                           "The file path in ep_cache_context field has '..'."
                            "It's not allowed to point outside the directory.");
   }
   std::filesystem::path context_binary_path = folder_path.append(external_qnn_ctx_binary_file_name);

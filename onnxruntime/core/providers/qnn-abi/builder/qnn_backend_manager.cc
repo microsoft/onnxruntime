@@ -237,7 +237,7 @@ Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
     Qnn_Version_t interface_version = GetQnnInterfaceApiVersion(interface_providers[pIdx]);
 
     LOGS(logger_, VERBOSE) << lib_path << " interface version: " << interface_version.major << "."
-                            << interface_version.minor << "." << interface_version.patch;
+                           << interface_version.minor << "." << interface_version.patch;
 
     // Check the interface's API version against the required version.
     // Major versions must match. The interface's minor version must be greater OR equal with a suitable patch version.
@@ -299,9 +299,9 @@ Status QnnBackendManager::LoadBackend() {
 
   Qnn_Version_t backend_interface_version = GetQnnInterfaceApiVersion(backend_interface_provider);
   LOGS(logger_, INFO) << "Found valid interface, version: " << backend_interface_version.major
-                       << "." << backend_interface_version.minor << "." << backend_interface_version.patch
-                       << " backend provider name: " << backend_interface_provider->providerName
-                       << " backend id: " << backend_id;
+                      << "." << backend_interface_version.minor << "." << backend_interface_version.patch
+                      << " backend provider name: " << backend_interface_provider->providerName
+                      << " backend id: " << backend_id;
 
   return Status::OK();
 }
@@ -365,13 +365,13 @@ Status QnnBackendManager::LoadQnnSerializerBackend() {
   Qnn_Version_t serializer_interface_version = GetQnnInterfaceApiVersion(serializer_interface_provider);
 
   LOGS(logger_, INFO) << "Using QnnSaver/Ir version: " << serializer_interface_version.major << "."
-                       << serializer_interface_version.minor << "." << serializer_interface_version.patch
-                       << " provider name : " << serializer_interface_provider->providerName;
+                      << serializer_interface_version.minor << "." << serializer_interface_version.patch
+                      << " provider name : " << serializer_interface_provider->providerName;
 
   LOGS(logger_, INFO) << "Intended backend provider name: " << backend_interface_provider->providerName
-                       << " backend id: " << backend_id
-                       << " interface version: " << backend_interface_version.major
-                       << "." << backend_interface_version.minor << "." << backend_interface_version.patch;
+                      << " backend id: " << backend_id
+                      << " interface version: " << backend_interface_version.major
+                      << "." << backend_interface_version.minor << "." << backend_interface_version.patch;
 
   return Status::OK();
 }
@@ -399,8 +399,8 @@ Status QnnBackendManager::LoadQnnSystemLib() {
   qnn_sys_interface_ = system_interface_provider->QNN_SYSTEM_INTERFACE_VER_NAME;
 
   LOGS(logger_, INFO) << "Found valid system interface, version: " << system_interface_version.major
-                       << "." << system_interface_version.minor
-                       << " backend provider name: " << system_interface_provider->providerName;
+                      << "." << system_interface_version.minor
+                      << " backend provider name: " << system_interface_provider->providerName;
 
   return Status::OK();
 }
@@ -941,7 +941,7 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
 
   if (required_buffer_size < written_buffer_size) {
     LOGS(logger_, ERROR) << "Context written buffer size: " << written_buffer_size
-                          << " exceeds allocated buffer size: " << required_buffer_size;
+                         << " exceeds allocated buffer size: " << required_buffer_size;
     return nullptr;
   }
 
@@ -1159,7 +1159,6 @@ Status QnnBackendManager::SetupBackend(bool load_from_cached_context,
   if (backend_setup_completed_) {
     LOGS(logger_, VERBOSE) << "Backend setup already!";
 
-
     if (vtcm_backup_buffer_sharing_enabled_) {
       LOGS(logger_, VERBOSE) << "Mapping contexts to new EP main context nodes";
 
@@ -1198,7 +1197,7 @@ Status QnnBackendManager::SetupBackend(bool load_from_cached_context,
   if (status.IsOK()) {
     sdk_build_version_ = GetBackendBuildId();
     LOGS(logger_, VERBOSE) << "Backend build version: "
-                          << sdk_build_version_;
+                           << sdk_build_version_;
   }
 
   if (status.IsOK()) {
@@ -1546,7 +1545,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
       tracelogging_provider_ep_enabled = true;
     }
   }
-#endif // defined(_WIN32)
+#endif  // defined(_WIN32)
 
   // ETW disabled previously, but enabled now
   if (ProfilingLevel::INVALID == profiling_level_etw_ && tracelogging_provider_ep_enabled) {
@@ -1617,7 +1616,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
 
     if (outfile) {
       LOGS(logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to file ("
-                              << profiling_file_path_ << ")";
+                             << profiling_file_path_ << ")";
     }
     if (tracelogging_provider_ep_enabled) {
       LOGS(logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to ETW";
