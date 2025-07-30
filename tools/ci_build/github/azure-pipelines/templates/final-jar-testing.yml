@@ -90,14 +90,15 @@ stages:
           del *.sha256
           del *.sha512
           del *.pom
-          cd ../..
+          cd ..
           mkdir tests
           cd tests
           jar xf $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
           del $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
+          dir $(Pipeline.Workspace)/build/tests
           Write-Host "Running JUnit Tests..."
           & java `
-            -cp "$(Pipeline.Workspace)/build/tests;$(Pipeline.Workspace)/build/onnxruntime-java/*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests `
+            -cp "$(Pipeline.Workspace)\build\onnxruntime-java\*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)\build\tests `
             --fail-if-no-tests --disable-banner --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
 
     - task: Bash@3
@@ -113,6 +114,12 @@ stages:
           rm -f *.sha512
           rm -f *.pom
           ls
+          cd ..
+          mkdir tests
+          cd tests
+          jar xf $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
+          rm -f $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
+          ls $(Pipeline.Workspace)/build/tests
           echo "Java Version"
           java -version
           
@@ -126,7 +133,7 @@ stages:
             export DYLD_LIBRARY_PATH="$(pwd):$DYLD_LIBRARY_PATH"
           fi
 
-          java -cp '$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=testing.jar \
+          java -cp '$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
             --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
 
 
