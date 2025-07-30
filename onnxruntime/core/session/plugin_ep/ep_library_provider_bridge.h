@@ -5,8 +5,8 @@
 #include <memory>
 #include <mutex>
 
-#include "core/session/ep_library.h"
-#include "core/session/ep_factory_internal.h"
+#include "core/session/plugin_ep/ep_library.h"
+#include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/provider_bridge_library.h"
 
 namespace onnxruntime {

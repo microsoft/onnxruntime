@@ -87,6 +87,24 @@ static void ConvertNodeArgsToValueInfos(const EpGraph* ep_graph,
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+static bool IsOptionalAttribute(const Node& node, const std::string& attr_name) {
+  const ONNX_NAMESPACE::OpSchema* op_schema = node.Op();
+  if (op_schema == nullptr) {
+    return false;
+  }
+
+  auto attr_schema_iter = op_schema->attributes().find(attr_name);
+  if (attr_schema_iter == op_schema->attributes().end()) {
+    return false;  // Not an attribute for this operator type.
+  }
+
+  const ONNX_NAMESPACE::OpSchema::Attribute& attr_schema = attr_schema_iter->second;
+
+  return !attr_schema.required;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 //
 // EpNode
 //
@@ -268,13 +286,20 @@ gsl::span<const EpValueInfo* const> EpNode::GetOutputsSpan() const {
   return outputs_;
 }
 
-const OrtOpAttr* EpNode::GetAttribute(const std::string& name) const {
+const OrtOpAttr* EpNode::GetAttribute(const std::string& name, bool& is_unset_optional_attr) const {
   auto iter = attributes_map_.find(name);
-  if (iter == attributes_map_.end()) {
-    return nullptr;
-  } else {
+  if (iter != attributes_map_.end()) {
+    is_unset_optional_attr = false;
     return reinterpret_cast<const OrtOpAttr*>(iter->second.get());
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  is_unset_optional_attr = IsOptionalAttribute(node_, name);
+#else
+  // This is not properly set in a minimal build because it does not have access to the operator schema.
+  is_unset_optional_attr = false;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  return nullptr;
 }
 
 const std::string& EpNode::GetEpName() const {
