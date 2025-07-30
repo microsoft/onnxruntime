@@ -123,7 +123,7 @@ stages:
             export DYLD_LIBRARY_PATH="$(pwd):$DYLD_LIBRARY_PATH"
           fi
 
-          java -cp $(Pipeline.Workspace)/build/onnxruntime-java/* org.junit.platform.console.ConsoleLauncher --scan-classpath \
+          java -cp '$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath \
             --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
 
 
