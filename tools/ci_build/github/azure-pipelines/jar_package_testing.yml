@@ -9,17 +9,17 @@ variables:
   mavenVersion: '3.9.8'
   
 stages:
-- template: templates/final-jar-testing.yml
+- template: templates/final-jar-testing-win.yml
   parameters:
     OS: Windows
     PoolName: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/final-jar-testing.yml
+- template: templates/final-jar-testing-linux.yml
   parameters:
     OS: Linux
     PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
 
-- template: templates/final-jar-testing.yml
+- template: templates/final-jar-testing-linux.yml
   parameters:
     OS: MacOS
     PoolName: 'macOS-14'
@@ -45,37 +45,12 @@ stages:
         DownloadCUDA: true
         DownloadTRT: true
 
-    - pwsh: |
-        echo "Downloading and installing Maven $(mavenVersion) for Windows..."
-        $MAVEN_DIR = "$(Agent.TempDirectory)\apache-maven-$(mavenVersion)"
-        # Download Maven binary
-        Invoke-WebRequest -Uri "https://archive.apache.org/dist/maven/maven-3/$(mavenVersion)/binaries/apache-maven-$(mavenVersion)-bin.zip" -OutFile "$(Agent.TempDirectory)\maven.zip"
-
-        # Extract to the temp directory
-        Expand-Archive -Path "$(Agent.TempDirectory)\maven.zip" -DestinationPath "$(Agent.TempDirectory)"
-
-        # Add Maven's bin directory to the PATH for subsequent tasks in the job
-        echo "##vso[task.prependpath]$MAVEN_DIR\bin"
-
-
-    - script: |
-        echo "Maven is now on the PATH."
-        mvn --version
-
+    - template: templates/download_maven_for_tests.yml
     - download: build
       artifact: 'onnxruntime-java-gpu'
       displayName: 'Download Final Jar'
-
-    - task: Maven@4
-      displayName: 'Download Dependencies into App Folder'
-      inputs:
-        mavenPomFile: '$(Build.SourcesDirectory)/tools/ci_build/java/pom.xml'
-        goals: 'dependency:copy-dependencies'
-        options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java-gpu'
-        publishJUnitTestResults: false
-        javaHomeOption: 'JDKVersion'
-        jdkVersionOption: '1.17'
-        mavenVersionOption: 'Default'
+    - script: |
+        mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu/*.jar $(Pipeline.Workspace)/build/onnxruntime-java/
 
     - task: PowerShell@2
       displayName: 'Run Java Tests with PowerShell'
@@ -84,8 +59,8 @@ stages:
         script: |
           # Exit script on any error
           $ErrorActionPreference = "Stop"
-
-          cd $(Pipeline.Workspace)/build/onnxruntime-java-gpu
+          
+          cd $(Pipeline.Workspace)/build/onnxruntime-java
           del *.asc
           del *.sha256
           del *.sha512
@@ -93,12 +68,12 @@ stages:
           cd ..
           mkdir tests
           cd tests
-          jar xf $(Pipeline.Workspace)/build/onnxruntime-java-gpu/testing.jar
-          del $(Pipeline.Workspace)/build/onnxruntime-java-gpu/testing.jar
+          jar xf $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
+          del $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
           dir $(Pipeline.Workspace)/build/tests
           Write-Host "Running JUnit Tests..."
           & java `
-            -cp "$(Pipeline.Workspace)\build\tests;$(Pipeline.Workspace)\build\onnxruntime-java-gpu\*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)\build\tests `
+            -cp "$(Pipeline.Workspace)\build\tests;$(Pipeline.Workspace)\build\onnxruntime-java\*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)\build\tests `
             --fail-if-no-tests --disable-banner --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
           
     - task: PublishTestResults@2

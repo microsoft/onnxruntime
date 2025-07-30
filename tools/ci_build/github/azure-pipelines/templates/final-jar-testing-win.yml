@@ -1,48 +1,22 @@
 parameters:
-- name: OS
-  displayName: Opserating System
-  type: string
-
 - name: PoolName
   type: string
 
 stages:
-- stage: Final_Jar_Testing_${{parameters.OS}}
+- stage: Final_Jar_Testing_Windows
   dependsOn: []
   jobs:
-  - job: Final_Jar_Testing_${{parameters.OS}}
+  - job: Final_Jar_Testing_Windows
     workspace:
       clean: all
-    ${{ if eq(parameters.OS, 'MacOS') }}:
-      pool:
-        vmImage: 'macOS-15'
-    ${{ if eq(parameters.OS, 'Linux') }}:
-      pool:
-        name: ${{ parameters.PoolName }}
-    ${{ if eq(parameters.OS, 'Windows') }}:
-      pool:
-        name: ${{ parameters.PoolName }}
+    pool:
+      name: ${{ parameters.PoolName }}
     variables:
     - name: runCodesignValidationInjection
       value: false
     timeoutInMinutes: 60
     steps:
     - template: set-version-number-variables-step.yml
-
-    - bash: |
-        echo "Downloading and installing Maven $(mavenVersion) for Linux..."
-        MAVEN_DIR="$(Agent.TempDirectory)/apache-maven-$(mavenVersion)"
-        # Download Maven binary
-        wget https://archive.apache.org/dist/maven/maven-3/$(mavenVersion)/binaries/apache-maven-$(mavenVersion)-bin.tar.gz -O $(Agent.TempDirectory)/maven.tar.gz
-
-        # Extract to the temp directory
-        mkdir -p ${MAVEN_DIR}
-        tar -xzf $(Agent.TempDirectory)/maven.tar.gz -C $(Agent.TempDirectory)
-
-        # Add Maven's bin directory to the PATH for subsequent tasks in the job
-        echo "##vso[task.prependpath]${MAVEN_DIR}/bin"
-      displayName: 'Install Maven (Linux)'
-      condition: and(succeeded(), eq(variables['Agent.OS'], 'Linux'))
 
     - pwsh: |
         echo "Downloading and installing Maven $(mavenVersion) for Windows..."
@@ -56,7 +30,6 @@ stages:
         # Add Maven's bin directory to the PATH for subsequent tasks in the job
         echo "##vso[task.prependpath]$MAVEN_DIR\bin"
       displayName: 'Install Maven (Windows)'
-      condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
 
 
     - script: |
@@ -100,42 +73,6 @@ stages:
           & java `
             -cp "$(Pipeline.Workspace)\build\tests;$(Pipeline.Workspace)\build\onnxruntime-java\*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)\build\tests `
             --fail-if-no-tests --disable-banner --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
-
-    - task: Bash@3
-      displayName: 'Run Java Tests on Linux/macOS'
-      condition: and(succeeded(), in(variables['Agent.OS'], 'Linux', 'Darwin'))
-      inputs:
-        targetType: 'inline'
-        script: |
-          set -e -x
-          cd $(Pipeline.Workspace)/build/onnxruntime-java
-          rm -f *.asc
-          rm -f *.sha256
-          rm -f *.sha512
-          rm -f *.pom
-          ls
-          cd ..
-          mkdir tests
-          cd tests
-          jar xf $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
-          rm -f $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
-          ls $(Pipeline.Workspace)/build/tests
-          echo "Java Version"
-          java -version
-          
-          # Set the correct library path based on the OS
-          os_name=$(uname)
-          if [[ "$os_name" == "Linux" ]]; then
-            echo "Platform: Linux. Setting LD_LIBRARY_PATH."
-            export LD_LIBRARY_PATH="$(pwd):$LD_LIBRARY_PATH"
-          elif [[ "$os_name" == "Darwin" ]]; then
-            echo "Platform: macOS. Setting DYLD_LIBRARY_PATH."
-            export DYLD_LIBRARY_PATH="$(pwd):$DYLD_LIBRARY_PATH"
-          fi
-
-          java -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
-            --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
-
 
     - task: PublishTestResults@2
       displayName: 'Publish Test Results'
