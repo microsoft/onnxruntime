@@ -177,7 +177,6 @@ export class WebNNBackend {
     sessionIds.add(sessionId);
 
     if (!this.mlOpSupportLimitsBySessionId.has(sessionId)) {
-      // If support limits are not cached, get them from the context.
       this.mlOpSupportLimitsBySessionId.set(sessionId, mlContext.opSupportLimits());
     }
 
