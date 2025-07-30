@@ -41,12 +41,15 @@ void Telemetry::LogProcessInfo() const {
 }
 
 void Telemetry::LogSessionCreationStart(uint32_t session_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
 }
 
 void Telemetry::LogEvaluationStop(uint32_t session_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
 }
 
 void Telemetry::LogEvaluationStart(uint32_t session_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
 }
 
 void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
