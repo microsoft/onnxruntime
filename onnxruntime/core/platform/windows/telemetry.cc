@@ -203,8 +203,8 @@ void WindowsTelemetry::LogSessionCreationStart(uint32_t session_id) const {
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-                    TraceLoggingUInt32(session_id, "sessionId"));
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO));
 }
 
 void WindowsTelemetry::LogEvaluationStop(uint32_t session_id) const {
