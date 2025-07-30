@@ -85,19 +85,21 @@ stages:
           # Exit script on any error
           $ErrorActionPreference = "Stop"
 
-          # Find the JUnit Standalone Runner JAR using Get-ChildItem
-          $junitRunnerJar = Get-ChildItem -Path $(Pipeline.Workspace)/build/onnxruntime-java-gpu -Filter "junit-platform-console-standalone-*.jar" -Recurse | Select-Object -First 1
-
-          # Check if the JAR file was found and fail the task if not
-          if ($null -eq $junitRunnerJar) {
-            Write-Host "##vso[task.logissue type=error]JUnit Platform Console Standalone JAR not found in $(Pipeline.Workspace)/build/onnxruntime-java-gpu!"
-            exit 1
-          }
-
-          Write-Host "Found JUnit Runner: $($junitRunnerJar.FullName)"
-          dir "$(Pipeline.Workspace)/build/onnxruntime-java-gpu"
+          cd $(Pipeline.Workspace)/build/onnxruntime-java-gpu
+          del *.asc
+          del *.sha256
+          del *.sha512
+          del *.pom
+          cd ..
+          mkdir tests
+          cd tests
+          jar xf $(Pipeline.Workspace)/build/onnxruntime-java-gpu/testing.jar
+          del $(Pipeline.Workspace)/build/onnxruntime-java-gpu/testing.jar
+          dir $(Pipeline.Workspace)/build/tests
           Write-Host "Running JUnit Tests..."
-          java "-cp $(Pipeline.Workspace)/build/onnxruntime-java-gpu/*" org.junit.platform.console.ConsoleLauncher --scan-classpath=testing.jar --fail-if-no-tests --disable-banner --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
+          & java `
+            -cp "$(Pipeline.Workspace)\build\tests;$(Pipeline.Workspace)\build\onnxruntime-java-gpu\*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)\build\tests `
+            --fail-if-no-tests --disable-banner --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
           
     - task: PublishTestResults@2
       displayName: 'Publish Test Results'
