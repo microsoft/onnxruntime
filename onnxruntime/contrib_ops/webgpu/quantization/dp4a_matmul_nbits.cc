@@ -308,8 +308,17 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     )MAIN_FN";
   if (nbits_ == 8 && has_zero_points_) {
     shader.MainFunctionBody() << R"MAIN_FN(
-            if (sg_size == 16 || sg_size == 64)
+            if (sg_size == 16)
             {
+                let own_b0 = tile_B[0][base_B + sg_id];
+                let own_b1 = tile_B[1][base_B + sg_id];
+                let own_scale_b = scale_B[base_B + sg_id];
+                let zero = zeroes[base_B + sg_id];
+                // Step 2: Access registers across the subgroup using subgroupShuffle and perform the matmul.
+                for (var i = 0u; i < 16u; i++) {
+                  lane_outputs[i] += SDP8AI(own_a0, subgroupShuffle(own_b0, i), own_a1, subgroupShuffle(own_b1, i), subgroupShuffle(own_scale_b, i) * own_scale_a, subgroupShuffle(zero, i));
+                }
+            } else if (sg_size == 64) {
                 var own_b0: vec4<u32>;
                 var own_b1: vec4<u32>;
                 var own_scale_b: output_element_t;
@@ -337,19 +346,24 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     )MAIN_FN";
   } else {
     shader.MainFunctionBody() << R"MAIN_FN(
-            if (sg_size == 16 || sg_size == 64)
+            if (sg_size == 16)
             {
-                var own_b0: vec4<u32>;
-                var own_b1: vec4<u32>;
-                var own_scale_b: output_element_t;
-                if (sg_id < 16) {
-                    own_b0 = tile_B[0][base_B + sg_id];
-                    own_b1 = tile_B[1][base_B + sg_id];
-                    own_scale_b = scale_B[base_B + sg_id];
-                }
+                let own_b0 = tile_B[0][base_B + sg_id];
+                let own_b1 = tile_B[1][base_B + sg_id];
+                let own_scale_b = scale_B[base_B + sg_id];
                 // Step 2: Access registers across the subgroup using subgroupShuffle and perform the matmul.
                 for (var i = 0u; i < 16u; i++) {
                   lane_outputs[i] += SDP8AI(own_a0, subgroupShuffle(own_b0, i), own_a1, subgroupShuffle(own_b1, i), subgroupShuffle(own_scale_b, i) * own_scale_a);
+                }
+            } else if (sg_size == 64)
+            {
+                var own_b: vec4<u32>;
+                if (sg_id < 32) {
+                    own_b = tile_B[sg_id / 16][base_B + sg_id % 16];
+                }
+                // Step 2: Access registers across the subgroup using subgroupShuffle and perform the matmul.
+                for (var i = 0u; i < 16u; i++) {
+                  lane_outputs[i] += SDP8AI(own_a0, subgroupShuffle(own_b, i), own_a1, subgroupShuffle(own_b, 16 + i), scale_B[base_B + i] * own_scale_a);
                 }
             }
             else
