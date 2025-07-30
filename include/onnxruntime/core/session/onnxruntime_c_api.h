@@ -6070,8 +6070,8 @@ struct OrtApi {
    *
    * \param[in] node The OrtNode instance.
    * \param[in] attribute The OrtOpAttr instance.
-   * \param[out] attr_tensor Output parameter set to the 'TENSOR' attribute value or nullptr
-   *                         if it's not a 'TENSOR' attribute. Must be freed with OrtApi::ReleaseValue.
+   * \param[out] attr_tensor Returns the newly created OrtValue if it's a 'TENSOR' attribute.
+                             Must be freed with OrtApi::ReleaseValue.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

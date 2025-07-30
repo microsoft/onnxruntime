@@ -490,7 +490,7 @@ TEST(EpGraphTest, SerializeToProto_ConstantOfShape) {
                                                                       int64_t& offset) -> Ort::Status {
       // OrtValueInfo* could be used to query initializer's name, type, shape,
       // node consumers, etc.
-      (void)value_info;
+      static_cast<void>(value_info);
 
       if (bytes <= 127) {
         is_external = false;  // Keep small initializers stored inside the TensorProto.

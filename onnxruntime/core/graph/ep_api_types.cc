@@ -252,29 +252,19 @@ Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, OrtValue
   const auto* attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute);
 
   if (attr_proto->type() != onnx::AttributeProto::TENSOR) {
-    *result = nullptr;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This OrtOpAttr instance is not a 'TENSOR' attribute");
   }
 
-  auto tensor_proto_to_ort_value = [&](const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                       OrtValue** result) -> Status {
-    const auto& graph_viewer = ep_graph_->GetGraphViewer();
-
-    // Initialize OrtValue for tensor attribute.
-    // Note: using std::unique_ptr<OrtValue> because we return a OrtValue* to the user and we want it to be stable.
-    auto tensor_attribute_value = std::make_unique<OrtValue>();
-    AllocatorPtr tensor_attribute_allocator = CPUAllocator::DefaultInstance();
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), tensor_proto,
-                                                     tensor_attribute_allocator, *tensor_attribute_value));
-
-    *result = tensor_attribute_value.release();
-    return Status::OK();
-  };
-
+  const auto& graph_viewer = ep_graph_->GetGraphViewer();
   const auto& tensor_proto = attr_proto->t();
 
-  // Create and returns an OrtValue for the 'TENSOR' attribute
-  ORT_RETURN_IF_ERROR(tensor_proto_to_ort_value(tensor_proto, result));
+  // Initialize OrtValue for tensor attribute.
+  auto tensor_attribute_value = std::make_unique<OrtValue>();
+  AllocatorPtr tensor_attribute_allocator = CPUAllocator::DefaultInstance();
+  ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), tensor_proto,
+                                                   tensor_attribute_allocator, *tensor_attribute_value));
+
+  *result = tensor_attribute_value.release();
   return Status::OK();
 }
 

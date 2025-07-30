@@ -231,7 +231,6 @@ struct EpNode : public OrtNode {
 
   std::unordered_map<std::string, std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> attributes_map_;
   std::vector<OrtOpAttr*> attributes_;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue>> tensor_attribute_values_;  // The 'TENSOR' Attribute as an OrtValue
 
   std::vector<EpValueInfo*> implicit_inputs_;
   std::vector<SubgraphState> subgraphs_;
