@@ -1498,6 +1498,129 @@ TEST(MoETest, QMoETest_CPU_FC3_Error) {
   cpu_tester.Run(OpTester::ExpectResult::kExpectFailure, "FC3 gating is not yet implemented", {}, nullptr, &cpu_execution_providers);
 }
 
+TEST(MoETest, QMoETest_CPU_SwiGLU_Int4) {
+  // Test CPU implementation with 4-bit quantization and SwiGLU activation
+  int num_rows = 2;
+  int num_experts = 2;
+  int hidden_size = 16;
+  int inter_size = 16;
+
+  const std::vector<float> input = {
+      0.1f, -0.2f, 0.3f, -0.4f, 0.5f, -0.6f, 0.7f, -0.8f, 0.9f, -1.0f, 1.1f, -1.2f, 1.3f, -1.4f, 1.5f, -1.6f,
+      0.2f, -0.3f, 0.4f, -0.5f, 0.6f, -0.7f, 0.8f, -0.9f, 1.0f, -1.1f, 1.2f, -1.3f, 1.4f, -1.5f, 1.6f, -1.7f};
+
+  const std::vector<float> router_probs = {0.6f, 0.4f, 0.3f, 0.7f};
+
+  // For SwiGLU, FC1 weights need to be 2x inter_size (concatenated linear + gate weights)
+  // 4-bit: each uint8 stores 2 weights, so we need (hidden_size * inter_size * 2) / 2 uint8s per expert
+  const int fc1_weight_size_per_expert = hidden_size * inter_size * 2 / 2;  // For 4-bit SwiGLU
+  const int fc2_weight_size_per_expert = inter_size * hidden_size / 2;      // For 4-bit FC2
+
+  // Generate test weights near zero point (8 for 4-bit)
+  std::vector<uint8_t> fc1_experts_weights(num_experts * fc1_weight_size_per_expert, 0x89);  // 8,9 -> small positive weights
+  std::vector<uint8_t> fc2_experts_weights(num_experts * fc2_weight_size_per_expert, 0x78);  // 7,8 -> mixed weights
+  std::vector<uint8_t> fc3_experts_weights;                                                  // Empty for SwiGLU (gate weights concatenated with FC1)
+
+  // Scales: for SwiGLU, FC1 has 2*inter_size outputs (linear + gate)
+  std::vector<float> fc1_scales(num_experts * inter_size * 2, 0.05f);  // Small scale for reasonable outputs
+  std::vector<float> fc2_scales(num_experts * hidden_size, 0.05f);
+  std::vector<float> fc3_scales;
+
+  // Expected output should be small but non-zero due to SwiGLU nonlinearity
+  std::vector<float> output(num_rows * hidden_size, 0.0f);
+
+  OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
+  cpu_tester.AddAttribute<int64_t>("k", 2);
+  cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");  // Test SwiGLU activation
+  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+
+  std::vector<int64_t> input_dims = {num_rows, hidden_size};
+  std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size};  // 4-bit SwiGLU: stored as hidden x inter, but contains 2*inter data
+  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size / 2};
+  std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size * 2};  // 2x for SwiGLU (linear + gate)
+  std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
+  std::vector<int64_t> output_dims = {num_rows, hidden_size};
+
+  cpu_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
+  cpu_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
+  cpu_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
+  cpu_tester.AddInput<float>("fc1_scales", fc1_scales_dims, fc1_scales);
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc1_experts_bias
+  cpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
+  cpu_tester.AddInput<float>("fc2_scales", fc2_scales_dims, fc2_scales);
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc2_experts_bias
+  cpu_tester.AddOptionalInputEdge<uint8_t>();    // fc3_experts_weights (empty for SwiGLU)
+  cpu_tester.AddOptionalInputEdge<float>();      // fc3_scales
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc3_experts_bias
+  cpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output));
+  cpu_tester.SetOutputTolerance(0.02f);  // Higher tolerance for SwiGLU nonlinearity
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
+  cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
+  cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
+}
+
+TEST(MoETest, QMoETest_CPU_SwiGLU_Int8) {
+  // Test CPU implementation with 8-bit quantization and SwiGLU activation
+  int num_rows = 1;
+  int num_experts = 2;
+  int hidden_size = 8;
+  int inter_size = 8;
+
+  const std::vector<float> input = {0.2f, -0.3f, 0.4f, -0.5f, 0.6f, -0.7f, 0.8f, -0.9f};
+  const std::vector<float> router_probs = {0.0f, 0.0f};
+
+  // For SwiGLU with 8-bit: FC1 weights are 2x inter_size (concatenated linear + gate weights)
+  const int fc1_weight_size_per_expert = hidden_size * inter_size * 2;  // For 8-bit SwiGLU
+  const int fc2_weight_size_per_expert = inter_size * hidden_size;      // For 8-bit FC2
+
+  // Generate test weights at zero point (128 for 8-bit) to produce zero output
+  std::vector<uint8_t> fc1_experts_weights(num_experts * fc1_weight_size_per_expert, 128);  // Exactly at zero point
+  std::vector<uint8_t> fc2_experts_weights(num_experts * fc2_weight_size_per_expert, 128);  // Exactly at zero point
+  std::vector<uint8_t> fc3_experts_weights;                                                 // Empty for SwiGLU
+
+  // Scales: for SwiGLU, FC1 has 2*inter_size outputs
+  std::vector<float> fc1_scales(num_experts * inter_size * 2, 0.1f);
+  std::vector<float> fc2_scales(num_experts * hidden_size, 0.1f);
+  std::vector<float> fc3_scales;
+
+  std::vector<float> output(num_rows * hidden_size, 0.0f);
+
+  OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
+  cpu_tester.AddAttribute<int64_t>("k", 2);
+  cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");  // Test SwiGLU activation
+  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 8);
+
+  std::vector<int64_t> input_dims = {num_rows, hidden_size};
+  std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size * 2};  // 8-bit SwiGLU: explicit 2x
+  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size};
+  std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size * 2};  // 2x for SwiGLU
+  std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
+  std::vector<int64_t> output_dims = {num_rows, hidden_size};
+
+  cpu_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
+  cpu_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
+  cpu_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
+  cpu_tester.AddInput<float>("fc1_scales", fc1_scales_dims, fc1_scales);
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc1_experts_bias
+  cpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
+  cpu_tester.AddInput<float>("fc2_scales", fc2_scales_dims, fc2_scales);
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc2_experts_bias
+  cpu_tester.AddOptionalInputEdge<uint8_t>();    // fc3_experts_weights
+  cpu_tester.AddOptionalInputEdge<float>();      // fc3_scales
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc3_experts_bias
+  cpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output));
+  cpu_tester.SetOutputTolerance(0.02f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
+  cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
+  cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
+}
+
 #endif
 
 }  // namespace test

@@ -138,11 +138,11 @@ class MoEBaseCPU {
     // FC3 validation - match CUDA FasterTransformer behavior
     if (activation_type_ == ActivationType::SwiGLU && fc3_experts_weights_optional != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "SwiGLU activation is not supported with fc3. For SwiGLU, the gate weights should be concatenated with FC1 weights.");
+                             "SwiGLU activation is not supported with fc3.");
     }
     if (fc3_experts_weights_optional != nullptr && activation_type_ != ActivationType::SwiGLU) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "FC3 gating is not yet implemented for non-SwiGLU activations on CPU.");
+                             "FC3 gating is not yet implemented on CPU.");
     }
 
     // Set output parameters
@@ -165,11 +165,11 @@ class MoEBaseCPU {
     // SwiGLU should not use separate FC3 scales - weights are concatenated in FC1
     if (activation_type_ == ActivationType::SwiGLU && fc3_experts_scales_optional != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "SwiGLU should not use separate fc3_experts_scales. Gate weights should be concatenated with FC1 weights.");
+                             "SwiGLU activation is not supported with fc3.");
     }
     if (activation_type_ != ActivationType::SwiGLU && fc3_experts_scales_optional != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "FC3 gating is not yet implemented for non-SwiGLU activations on CPU.");
+                             "FC3 gating is not yet implemented on CPU.");
     }
 
     const auto& fc1_experts_scales_dims = fc1_experts_scales->Shape().GetDims();

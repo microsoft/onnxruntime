@@ -6,9 +6,6 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
 
-// Forward declarations for QMoE
-#include "contrib_ops/cpu/quantization/moe_quantization_cpu.h"
-
 namespace onnxruntime {
 namespace contrib {
 Status RegisterCpuContribKernels(KernelRegistry& kernel_registry);

@@ -1074,6 +1074,16 @@ class TestPhiMoE(unittest.TestCase):
         phi3_moe.to(device)
         phi3_moe.parity_check()
 
+    @parameterized.expand([(b, s, q) for b, s, q in phi3_test_params if q in (8, 4)])
+    def test_phi3_qmoe_cpu_parity(self, batch_size, sequence_length, quant_bits):
+        if "CPUExecutionProvider" not in onnxruntime.get_available_providers():
+            self.skipTest("CPUExecutionProvider is not available.")
+        config = PhiMoEConfig(hidden_size=256, intermediate_size=1024)
+        phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length, quant_bits)
+        if phi3_moe.ort_sess is not None:
+            phi3_moe.ort_sess.set_providers(["CPUExecutionProvider"])
+        phi3_moe.parity_check()
+
 
 # ---------------------------------------------
 # The following test are for swiglu activation
@@ -1442,6 +1452,17 @@ class TestSwigluMoEPerf(unittest.TestCase):
         moe = SwigluMoEBlock(config, batch_size, sequence_length, quant_bits)
         moe.to(device)
         moe.benchmark_ort()
+
+    @parameterized.expand([(b, s, q) for b, s, q in swiglu_test_params if q in (8, 4)])
+    def test_swiglu_qmoe_cpu_parity(self, batch_size, sequence_length, quant_bits):
+        if "CPUExecutionProvider" not in onnxruntime.get_available_providers():
+            self.skipTest("CPUExecutionProvider is not available.")
+        config = SwigluMoeConfig(hidden_size=128, intermediate_size=512, num_experts_per_token=1, num_local_experts=4)
+        moe = SwigluMoEBlock(config, batch_size, sequence_length, quant_bits)
+        # Force CPU provider for ort session
+        if moe.ort_sess is not None:
+            moe.ort_sess.set_providers(["CPUExecutionProvider"])
+        moe.parity_check()
 
 
 if __name__ == "__main__":
