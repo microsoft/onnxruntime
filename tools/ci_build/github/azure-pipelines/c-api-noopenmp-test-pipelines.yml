@@ -214,10 +214,9 @@ stages:
           }
 
           Write-Host "Found JUnit Runner: $($junitRunnerJar.FullName)"
-
+          dir "$(Pipeline.Workspace)/build/onnxruntime-java-gpu"
           Write-Host "Running JUnit Tests..."
 
-          # Execute the java command. Note the backtick (`) for line continuation in PowerShell.
           & java -jar "$($junitRunnerJar.FullName)" --scan-classpath "$(Pipeline.Workspace)/build/onnxruntime-java-gpu" --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
 
     - task: PublishTestResults@2
