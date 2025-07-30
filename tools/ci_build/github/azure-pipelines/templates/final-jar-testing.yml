@@ -14,67 +14,105 @@ stages:
       clean: all
     ${{ if eq(parameters.OS, 'MacOS') }}:
       pool:
-        name: 'Azure Pipelines'
-        image: macOS-14
-        os: macOS
+        vmImage: 'macOS-15'
     ${{ if eq(parameters.OS, 'Linux') }}:
       pool:
         name: ${{ parameters.PoolName }}
-        os: linux
     ${{ if eq(parameters.OS, 'Windows') }}:
       pool:
         name: ${{ parameters.PoolName }}
-        os: windows
     variables:
     - name: runCodesignValidationInjection
       value: false
     timeoutInMinutes: 60
+    variables:
+      # Define the Maven version to be used in the pipeline
+      mavenVersion: '3.9.8'
 
     steps:
     - template: set-version-number-variables-step.yml
 
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Final Jar'
-        ArtifactName: onnxruntime-java
-        TargetPath: '$(Build.BinariesDirectory)/final-jar'
+    - bash: |
+        echo "Downloading and installing Maven $(mavenVersion) for Linux..."
+        MAVEN_DIR="$(Agent.TempDirectory)/apache-maven-$(mavenVersion)"
+        # Download Maven binary
+        wget https://archive.apache.org/dist/maven/maven-3/$(mavenVersion)/binaries/apache-maven-$(mavenVersion)-bin.tar.gz -O $(Agent.TempDirectory)/maven.tar.gz
 
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Jar Tools'
-        ArtifactName: onnxruntime-java-tools
-        TargetPath: '$(Build.BinariesDirectory)/final-jar'
+        # Extract to the temp directory
+        mkdir -p ${MAVEN_DIR}
+        tar -xzf $(Agent.TempDirectory)/maven.tar.gz -C $(Agent.TempDirectory)
 
-    - ${{ if eq(parameters.OS, 'Windows') }}:
-      - task: CmdLine@2
-        inputs:
-          script: |
-            mkdir test
-            pushd test
-            jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
-            popd
-            java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.25.5.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
-          workingDirectory: '$(Build.BinariesDirectory)\final-jar'
-    - ${{ else }}:
-      - task: Bash@3
-        inputs:
-          targetType: 'inline'
-          script: |
-            set -e -x
-            echo "Java Version"
-            java -version
-            mkdir test
-            pushd test
-            jar xf '$(Build.BinariesDirectory)/final-jar/testing.jar'
-            popd
-            # if you want to run the tests in the power shell, you need to replace ':' to ';', that is,  "-cp .;.\test;protobuf-java-3.25.5.jar;onnxruntime-$(OnnxRuntimeVersion).jar"
-            java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.25.5.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
-          workingDirectory: '$(Build.BinariesDirectory)/final-jar'
+        # Add Maven's bin directory to the PATH for subsequent tasks in the job
+        echo "##vso[task.prependpath]${MAVEN_DIR}/bin"
+      displayName: 'Install Maven (Linux)'
+      condition: and(succeeded(), eq(variables['Agent.OS'], 'Linux'))
+
+    - pwsh: |
+        echo "Downloading and installing Maven $(mavenVersion) for Windows..."
+        $MAVEN_DIR = "$(Agent.TempDirectory)\apache-maven-$(mavenVersion)"
+        # Download Maven binary
+        Invoke-WebRequest -Uri "https://archive.apache.org/dist/maven/maven-3/$(mavenVersion)/binaries/apache-maven-$(mavenVersion)-bin.zip" -OutFile "$(Agent.TempDirectory)\maven.zip"
+
+        # Extract to the temp directory
+        Expand-Archive -Path "$(Agent.TempDirectory)\maven.zip" -DestinationPath "$(Agent.TempDirectory)"
+
+        # Add Maven's bin directory to the PATH for subsequent tasks in the job
+        echo "##vso[task.prependpath]$MAVEN_DIR\bin"
+      displayName: 'Install Maven (Windows)'
+      condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
+
+
+    - script: |
+        echo "Maven is now on the PATH."
+        mvn --version
+
+    - download: build
+      artifact: 'onnxruntime-java'
+      displayName: 'Download Final Jar'
+
+    - task: Maven@4
+      displayName: 'Download Dependencies into App Folder'
+      inputs:
+        mavenPomFile: '$(Build.SourcesDirectory)/tools/ci_build/java/pom.xml'
+        goals: 'dependency:copy-dependencies'
+        options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java'
+        publishJUnitTestResults: false
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.17'
+        mavenVersionOption: 'Default'
+
+    - task: PowerShell@2
+      displayName: 'Run Java Tests with PowerShell'
+      inputs:
         env:
           ${{ if eq(parameters.OS, 'MacOS') }}:
             DYLD_LIBRARY_PATH: '$(Build.BinariesDirectory)/final-jar/test:$(DYLD_LIBRARY_PATH)'
           ${{ if eq(parameters.OS, 'Linux') }}:
             LD_LIBRARY_PATH: '$(Build.BinariesDirectory)/final-jar/test:$(LD_LIBRARY_PATH)'
+        targetType: 'inline'
+        script: |
+          # Exit script on any error
+          $ErrorActionPreference = "Stop"
 
-    - ${{ if eq(parameters['OS'], 'MacOS') }}:
-      - template: use-xcode-version.yml
+          # Find the JUnit Standalone Runner JAR using Get-ChildItem
+          $junitRunnerJar = Get-ChildItem -Path $(Pipeline.Workspace)/build/onnxruntime-java -Filter "junit-platform-console-standalone-*.jar" -Recurse | Select-Object -First 1
+
+          # Check if the JAR file was found and fail the task if not
+          if ($null -eq $junitRunnerJar) {
+            Write-Host "##vso[task.logissue type=error]JUnit Platform Console Standalone JAR not found in $(Pipeline.Workspace)/build/onnxruntime-java!"
+            exit 1
+          }
+
+          Write-Host "Found JUnit Runner: $($junitRunnerJar.FullName)"
+
+          Write-Host "Running JUnit Tests..."
+
+          # Execute the java command. Note the backtick (`) for line continuation in PowerShell.
+          & java -jar "$($junitRunnerJar.FullName)" --scan-classpath "$(Pipeline.Workspace)/build/onnxruntime-java" --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
+
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results'
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '$(Build.ArtifactStagingDirectory)/TestResults/TEST-junit-jupiter.xml'
+        failTaskOnFailedTests: true
