@@ -1321,7 +1321,7 @@ TEST(MoETest, QMoETest_Mixtral_Int4) {
 
 // CPU-specific QMoE tests
 TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
-  // Test CPU implementation with 4-bit quantization (MLAS optimized path)
+  // Test CPU implementation with 4-bit quantization (MLAS optimized path) - CPU only
   int num_rows = 2;
   int num_experts = 2;
   int hidden_size = 32;
@@ -1348,13 +1348,42 @@ TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
   // Expected output should be close to zero with small weights around zero point
   std::vector<float> output(num_rows * hidden_size, 0.0f);
 
-  RunQMoETest(input, router_probs, fc1_experts_weights, fc2_experts_weights, fc3_experts_weights,
-              fc1_scales, fc2_scales, fc3_scales, output, num_rows, num_experts, hidden_size, inter_size,
-              "gelu", 1 /*normalize_routing_weights*/, 2 /*top_k*/, 4 /*expert_weight_bits*/);
+  // Test CPU execution provider ONLY (don't use RunQMoETest which tests both CUDA and CPU)
+  OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
+  cpu_tester.AddAttribute<int64_t>("k", 2);
+  cpu_tester.AddAttribute<std::string>("activation_type", "gelu");
+  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);  // Test 4-bit quantization
+
+  std::vector<int64_t> input_dims = {num_rows, hidden_size};
+  std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};  // /2 for 4-bit
+  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size / 2};
+  std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
+  std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
+  std::vector<int64_t> output_dims = {num_rows, hidden_size};
+
+  cpu_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
+  cpu_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
+  cpu_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
+  cpu_tester.AddInput<float>("fc1_scales", fc1_scales_dims, fc1_scales);  // Use float for CPU
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();                           // fc1_experts_bias
+  cpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
+  cpu_tester.AddInput<float>("fc2_scales", fc2_scales_dims, fc2_scales);  // Use float for CPU
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();                           // fc2_experts_bias
+  cpu_tester.AddOptionalInputEdge<uint8_t>();                             // fc3_experts_weights (skip FC3 for CPU)
+  cpu_tester.AddOptionalInputEdge<float>();                               // fc3_scales (use float for CPU)
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();                           // fc3_experts_bias
+  cpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output));
+  cpu_tester.SetOutputTolerance(0.01f);  // Higher tolerance since we expect near-zero output
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
+  cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
+  cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
 }
 
 TEST(MoETest, QMoETest_CPU_Int8_MLAS) {
-  // Test CPU implementation with 8-bit quantization
+  // Test CPU implementation with 8-bit quantization - CPU ONLY
   int num_rows = 1;
   int num_experts = 2;
   int hidden_size = 16;
@@ -1413,7 +1442,7 @@ TEST(MoETest, QMoETest_CPU_Int8_MLAS) {
 }
 
 TEST(MoETest, QMoETest_CPU_FC3_Error) {
-  // Test that CPU throws error when FC3 gating is provided
+  // Test that CPU throws error when FC3 gating is provided - CPU ONLY
   int num_rows = 1;
   int num_experts = 2;
   int hidden_size = 8;
@@ -1430,6 +1459,7 @@ TEST(MoETest, QMoETest_CPU_FC3_Error) {
   std::vector<float> fc2_scales(num_experts * hidden_size, 0.05f);
   std::vector<float> fc3_scales(num_experts * inter_size, 0.08f);  // FC3 scales provided
 
+  // Test CPU execution provider ONLY (designed to test CPU-specific error handling)
   OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
   cpu_tester.AddAttribute<int64_t>("k", 1);
   cpu_tester.AddAttribute<std::string>("activation_type", "relu");
