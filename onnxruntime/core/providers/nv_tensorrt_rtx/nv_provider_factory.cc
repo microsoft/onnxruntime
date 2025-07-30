@@ -557,6 +557,69 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     return ORT_VERSION;
   }
 
+  /**
+   * @brief Checks if a given OrtHardwareDevice is a supported NVIDIA GPU.
+   *
+   * This function verifies if the provided hardware device corresponds to a physical
+   * NVIDIA GPU that meets the minimum compute capability requirements for this execution provider.
+   *
+   * The check is performed by:
+   * 1. Extracting the LUID (Locally Unique Identifier) from the device's metadata.
+   * 2. Converting the string LUID to a 64-bit integer.
+   * 3. Iterating through all available CUDA devices on the system.
+   * 4. For each CUDA device, constructing its 64-bit LUID from its properties.
+   * 5. Comparing the LUIDs. If a match is found, it checks if the device's
+   *    compute capability is at least 8.0 (Ampere) or newer.
+   *
+   * @param device The OrtHardwareDevice to check.
+   * @return True if the device is a supported NVIDIA GPU, false otherwise.
+   */
+  bool IsOrtHardwareDeviceSupported(const OrtHardwareDevice& device) {
+    const auto& metadata_entries = device.metadata.Entries();
+    const auto it = metadata_entries.find("LUID");
+    if (it == metadata_entries.end()) {
+      return false;
+    }
+
+    uint64_t target_luid;
+    try {
+      target_luid = std::stoull(it->second);
+    } catch (const std::exception&) {
+      return false;
+    }
+
+    int device_count = 0;
+    if (cudaGetDeviceCount(&device_count) != cudaSuccess) {
+      return false;
+    }
+
+    for (int i = 0; i < device_count; ++i) {
+      cudaDeviceProp prop;
+      if (cudaGetDeviceProperties(&prop, i) != cudaSuccess) {
+        continue;
+      }
+
+      // The LUID is an 8-byte value, valid on Windows when luidDeviceNodeMask is non-zero.
+      // We reconstruct the 64-bit integer representation from the raw bytes.
+      if (prop.luidDeviceNodeMask == 0) {
+        continue;
+      }
+
+      uint32_t low_part, high_part;
+      static_assert(sizeof(prop.luid) == 8, "cudaDeviceProp::luid is expected to be 8 bytes");
+      memcpy(&low_part, prop.luid, sizeof(uint32_t));
+      memcpy(&high_part, prop.luid + sizeof(uint32_t), sizeof(uint32_t));
+      uint64_t current_luid = (static_cast<uint64_t>(high_part) << 32) | low_part;
+
+      if (current_luid == target_luid) {
+        // Ampere architecture or newer is required.
+        return prop.major >= 8;
+      }
+    }
+
+    return false;
+  }
+
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
   // An EP created with this factory is expected to be able to execute a model with *all* supported
   // hardware devices at once. A single instance of NvTensorRtRtx EP is not currently setup to partition a model among
@@ -579,11 +642,12 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     int16_t device_id = 0;
     for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
       const OrtHardwareDevice& device = *devices[i];
+
       if (factory->ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU &&
-          factory->ort_api.HardwareDevice_VendorId(&device) == factory->vendor_id) {
+          factory->ort_api.HardwareDevice_VendorId(&device) == factory->vendor_id &&
+          factory->IsOrtHardwareDeviceSupported(device)) {
         OrtKeyValuePairs* ep_options = nullptr;
         OrtKeyValuePairs* ep_metadata = nullptr;
-
         factory->ort_api.CreateKeyValuePairs(&ep_options);
         factory->ort_api.CreateKeyValuePairs(&ep_metadata);
         factory->ort_api.AddKeyValuePair(ep_options, "device_id", std::to_string(device_id).c_str());
