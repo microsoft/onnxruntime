@@ -8,6 +8,7 @@ parameters:
 
 stages:
 - stage: Final_Jar_Testing_${{parameters.OS}}
+  dependsOn: []
   jobs:
   - job: Final_Jar_Testing_${{parameters.OS}}
     workspace:
@@ -105,20 +106,18 @@ stages:
         script: |
           set -e
           cd $(Pipeline.Workspace)/build/onnxruntime-java
-          appPath="$(pwd)"
-          libPath="$(appPath)"
 
           # Set the correct library path based on the OS
           os_name=$(uname)
           if [[ "$os_name" == "Linux" ]]; then
             echo "Platform: Linux. Setting LD_LIBRARY_PATH."
-            export LD_LIBRARY_PATH="$libPath:$LD_LIBRARY_PATH"
+            export LD_LIBRARY_PATH="$(pwd):$LD_LIBRARY_PATH"
           elif [[ "$os_name" == "Darwin" ]]; then
             echo "Platform: macOS. Setting DYLD_LIBRARY_PATH."
-            export DYLD_LIBRARY_PATH="$libPath:$DYLD_LIBRARY_PATH"
+            export DYLD_LIBRARY_PATH="$(pwd):$DYLD_LIBRARY_PATH"
           fi
 
-          JUNIT_RUNNER_JAR=$(find "$libPath" -name "junit-platform-console-standalone-*.jar")
+          JUNIT_RUNNER_JAR=$(find . -name "junit-platform-console-standalone-*.jar")
           if [[ -z "$JUNIT_RUNNER_JAR" ]]; then
             echo "##[error]JUnit Platform Console Standalone JAR not found!"
             exit 1
@@ -126,7 +125,7 @@ stages:
 
           echo "Running JUnit Tests..."
           java -jar "$JUNIT_RUNNER_JAR" \
-            --scan-classpath "$libPath" \
+            --scan-classpath . \
             --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
 
 
