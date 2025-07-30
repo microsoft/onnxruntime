@@ -825,15 +825,7 @@ class DefaultWeightOnlyQuantizer:
             scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
             if qbits == 2:
                 quantize_matmul_2bits(
-                    packed,
-                    fp32weight,
-                    self.config.bits,
-                    scales,
-                    zero_point,
-                    block_size,
-                    cols,
-                    rows,
-                    self.config.is_symmetric,
+                    packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
                 )
             elif qbits == 8:
                 quantize_matmul_8bits(
@@ -1223,7 +1215,7 @@ class MatMulNBitsQuantizer:
     MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
     Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
 
-    Perform 4/8 bits quantization of constant weights for target nodes.
+    Perform 2/4/8 bits quantization of constant weights for target nodes.
     If algo_config.quant_format is QOperator:
       - nodes are replaced by the corresponding QOperator nodes.
       - quantized weights are stored in the contrib ops.
@@ -1241,7 +1233,7 @@ class MatMulNBitsQuantizer:
     def __init__(
         self,
         model: ModelProto | str,
-        bits: int,
+        bits: int = 4,  # default to 4bit
         block_size: int = 128,
         is_symmetric: bool = False,
         accuracy_level: int | None = None,
@@ -1273,13 +1265,13 @@ class MatMulNBitsQuantizer:
                 quant_format=quant_format,
                 op_types_to_quantize=op_types_to_quantize,
                 quant_axes=quant_axes,
-                bits=4,  # default to 4 bits
+                bits=bits,
                 channel_wised_quantize=channel_wised_quantize,
             )
 
         self.algo_config = algo_config
         if hasattr(self.algo_config, "bits"):
-            assert self.algo_config.bits in [4, 8], "Only support 4 or 8 bits quantization"
+            assert self.algo_config.bits in [2, 4, 8], "Only support 2, 4 or 8 bits quantization"
 
         if algo_config.algorithm == "HQQ":
             self.node_quantizer = HQQWeightOnlyQuantizer(self.algo_config)
