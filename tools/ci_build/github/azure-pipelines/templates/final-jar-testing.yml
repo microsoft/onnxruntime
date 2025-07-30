@@ -94,8 +94,8 @@ stages:
           cd ..
           Write-Host "Running JUnit Tests..."
           & java `
-            -cp $(Pipeline.Workspace)\build\* org.junit.platform.console.ConsoleLauncher --scan-classpath `
-            --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
+            -cp "$(Pipeline.Workspace)/build/onnxruntime-java/*" org.junit.platform.console.ConsoleLauncher --scan-classpath=testing.jar `
+            --fail-if-no-tests --disable-banner --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
 
     - task: Bash@3
       displayName: 'Run Java Tests on Linux/macOS'
@@ -123,8 +123,8 @@ stages:
             export DYLD_LIBRARY_PATH="$(pwd):$DYLD_LIBRARY_PATH"
           fi
 
-          java -cp '$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath \
-            --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
+          java -cp '$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=testing.jar \
+            --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
 
 
     - task: PublishTestResults@2
