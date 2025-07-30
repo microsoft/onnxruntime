@@ -107,10 +107,11 @@ def add_build_type(f, build_type: str) -> None:
             f"Invalid build type: {build_type}. Must be one of 'Debug', 'Release', 'RelWithDebInfo', or 'MinSizeRel'."
         )
 
-    f.write(
-        f"""set(VCPKG_BUILD_TYPE {"debug" if build_type == "Debug" else "release"})
+    if build_type != "Debug":
+        f.write(
+            """set(VCPKG_BUILD_TYPE release)
 """
-    )
+        )
 
 
 def generate_triplet_for_android(
