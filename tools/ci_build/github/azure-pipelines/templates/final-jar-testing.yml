@@ -25,14 +25,11 @@ stages:
     - name: runCodesignValidationInjection
       value: false
     timeoutInMinutes: 60
-    variables:
-      # Define the Maven version to be used in the pipeline
-      mavenVersion: '3.9.8'
-
     steps:
     - template: set-version-number-variables-step.yml
 
     - bash: |
+        mavenVersion="3.9.8"
         echo "Downloading and installing Maven $(mavenVersion) for Linux..."
         MAVEN_DIR="$(Agent.TempDirectory)/apache-maven-$(mavenVersion)"
         # Download Maven binary
@@ -48,6 +45,7 @@ stages:
       condition: and(succeeded(), eq(variables['Agent.OS'], 'Linux'))
 
     - pwsh: |
+        $MAVEN_DIR = "3.9.8"
         echo "Downloading and installing Maven $(mavenVersion) for Windows..."
         $MAVEN_DIR = "$(Agent.TempDirectory)\apache-maven-$(mavenVersion)"
         # Download Maven binary
