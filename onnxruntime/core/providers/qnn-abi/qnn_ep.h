@@ -61,6 +61,11 @@ class QnnEp : public OrtEp, public ApiPtrs {
                                                        size_t num_node_compute_infos);
   static OrtStatus* ORT_API_CALL GetPreferredDataLayoutImpl(_In_ OrtEp* this_ptr,
                                                             _Out_ OrtEpDataLayout* preferred_data_layout);
+  static OrtStatus* ORT_API_CALL ShouldConvertDataLayoutForOpImpl(_In_ OrtEp* this_ptr,
+                                                                  _In_z_ const char* domain,
+                                                                  _In_z_ const char* op_type,
+                                                                  _In_ OrtEpDataLayout target_data_layout,
+                                                                  _Outptr_ int* should_convert);
   static OrtStatus* ORT_API_CALL OnRunStartImpl(_In_ OrtEp* this_ptr, _In_ const OrtRunOptions* run_options);
   static OrtStatus* ORT_API_CALL OnRunEndImpl(_In_ OrtEp* this_ptr,
                                               _In_ const OrtRunOptions* run_options,

@@ -115,8 +115,7 @@ const std::string& OrtNodeAttrHelper::Get(const std::string& key, const std::str
   if (rt) {
     return def_val;
   }
-  static std::string result = api_node_attr->attr_proto.s();
-  return result;
+  return api_node_attr->attr_proto.s();
 }
 
 std::vector<std::string> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<std::string>& def_val) const {

@@ -340,6 +340,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   Compile = CompileImpl;
   ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
   GetPreferredDataLayout = GetPreferredDataLayoutImpl;
+  ShouldConvertDataLayoutForOp = ShouldConvertDataLayoutForOpImpl;
   OnRunStart = OnRunStartImpl;
   OnRunEnd = OnRunEndImpl;
 
@@ -1543,6 +1544,7 @@ OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
                                            _In_ size_t count,
                                            _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
                                            _Out_writes_(count) OrtNode** ep_context_nodes) {
+  std::cout << "DEBUG: QnnEp::CompileImpl" << std::endl;
   QnnEp* ep = static_cast<QnnEp*>(this_ptr);
 
   if (qnn::IsOrtGraphHasCtxNode(graphs, count, ep->ort_api)) {
@@ -1640,6 +1642,24 @@ OrtStatus* ORT_API_CALL QnnEp::GetPreferredDataLayoutImpl(_In_ OrtEp* this_ptr,
                                                           _Out_ OrtEpDataLayout* preferred_data_layout) {
   ORT_UNUSED_PARAMETER(this_ptr);
   *preferred_data_layout = OrtEpDataLayout::OrtEpDataLayout_NHWC;
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL QnnEp::ShouldConvertDataLayoutForOpImpl(_In_ OrtEp* this_ptr,
+                                                                _In_z_ const char* domain,
+                                                                _In_z_ const char* op_type,
+                                                                _In_ OrtEpDataLayout target_data_layout,
+                                                                _Outptr_ int* should_convert) {
+  ORT_UNUSED_PARAMETER(this_ptr);
+  ORT_UNUSED_PARAMETER(target_data_layout);
+
+  *should_convert = -1;
+
+  if (std::string(domain) == kOnnxDomain && std::string(op_type) == "Upsample") {
+    // Upsample is translated to QNN's Resize, which requires the NHWC layout for processing.
+    *should_convert = 1;
+  }
+
   return nullptr;
 }
 
