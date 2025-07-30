@@ -2369,7 +2369,7 @@ TEST(ReductionOpTest, ReduceSum_uint64) {
 
                           9, 10,
                           11, std::uint64_t(1) << 62});
-  test.AddOutput<int32_t>("reduced", {1, 2, 1}, {33, 33 + std::uint64_t(1) << 62});
+  test.AddOutput<uint64_t>("reduced", {1, 2, 1}, {33, 33 + std::uint64_t(1) << 62});
   test.Run();
 }
 
