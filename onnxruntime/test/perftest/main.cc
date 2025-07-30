@@ -68,7 +68,11 @@ int real_main(int argc, char* argv[]) {
   }
 
   std::random_device rd;
-  perftest::PerformanceRunner perf_runner(env, test_config, rd);
+  std::string registration_name = "";
+  if (test_config.machine_config.provider_type_name == "QnnAbiExecutionProvider") {
+    registration_name = "QnnAbiTestProvider";
+  }
+  perftest::PerformanceRunner perf_runner(env, test_config, rd, registration_name);
 
   // Exit if user enabled -n option so that user can measure session creation time
   if (test_config.run_config.exit_after_session_creation) {
@@ -83,6 +87,10 @@ int real_main(int argc, char* argv[]) {
   }
 
   perf_runner.SerializeResult();
+
+  if (test_config.machine_config.provider_type_name == "QnnAbiExecutionProvider") {
+    &env.UnregisterExecutionProviderLibrary(registration_name.c_str());
+  }
 
   return 0;
 }

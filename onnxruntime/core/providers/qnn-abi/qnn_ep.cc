@@ -1315,23 +1315,24 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
 
   // Helper function that returns a string that lists all unsupported nodes.
   // Ex: { name: mul_123, type: Mul }, {}, ...
-  // auto get_unsupported_node_names = [&node_unit_holder, &supported_nodes]() -> std::string {
-  //     std::stringstream ss;
-  //     const size_t num_node_units = node_unit_holder.size();
+  auto get_unsupported_node_names = [&node_unit_holder, &supported_nodes]() -> std::string {
+    std::stringstream ss;
+    const size_t num_node_units = node_unit_holder.size();
 
-  //     for (size_t i = 0; i < num_node_units; ++i) {
-  //     const auto& node_unit = node_unit_holder[i];
+    for (size_t i = 0; i < num_node_units; ++i) {
+      const auto& node_unit = node_unit_holder[i];
 
-  //     if (supported_nodes.find(&node_unit->GetNode()) == supported_nodes.end()) {
-  //         ss << "{ name: " << node_unit->Name() << ", type: " << node_unit->OpType() << " }";
-  //         if (i == num_node_units - 1) {
-  //         ss << ", ";
-  //         }
-  //     }
-  //     }
+      auto it = std::find(supported_nodes.begin(), supported_nodes.end(), &node_unit->GetNode());
+      if (it == supported_nodes.end()) {
+        ss << "{ name: " << node_unit->Name() << ", type: " << node_unit->OpType() << " }";
+        if (i == num_node_units - 1) {
+        ss << ", ";
+        }
+      }
+    }
 
-  //     return ss.str();
-  // };
+    return ss.str();
+  };
 
   std::cout << "DEBUG: #supported nodes " << supported_nodes.size() << std::endl;
 
@@ -1339,6 +1340,14 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   if (supported_nodes.empty()) {
     ep->ort_api.ReleaseArrayOfConstObjects(graph_nodes);
     return nullptr;
+  }
+
+  size_t num_of_supported_nodes = supported_nodes.size();
+
+  // Print list of unsupported nodes to the ERROR logger if the CPU EP
+  // has been disabled for this inference session.
+  if (!is_qnn_ctx_model && disable_cpu_ep_fallback_ && num_nodes_in_graph != num_of_supported_nodes) {
+    LOGS(ep->logger_in_, ERROR) << "Unsupported nodes in QNN EP: " << get_unsupported_node_names();
   }
 
   OrtNodeFusionOptions node_fusion_options = {};

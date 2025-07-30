@@ -41,7 +41,8 @@ struct PerformanceResult {
 
 class PerformanceRunner {
  public:
-  PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd);
+  PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd,
+                    const std::string& registration_name);
 
   ~PerformanceRunner();
   Status Run();

@@ -58,7 +58,7 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
 
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
                                                const PerformanceTestConfig& performance_test_config,
-                                               const TestModelInfo& m)
+                                               const TestModelInfo& m, const std::string& registration_name)
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
 
@@ -288,7 +288,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("NV TensorRT RTX is not supported in this build\n");
 #endif
-  } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kQnnExecutionProvider || provider_name_ == "QnnAbiExecutionProvider") {
 #ifdef USE_QNN
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -377,7 +377,27 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         }
       }
     }
-    session_options.AppendExecutionProvider("QNN", provider_options);
+    if (provider_name_ == "QnnAbiExecutionProvider") {
+      const std::filesystem::path& library_path = "onnxruntime_providers_qnn_abi.dll";
+      &env.RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+      {
+        std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
+
+        Ort::ConstEpDevice plugin_ep_device;
+        for (Ort::ConstEpDevice& device : ep_devices) {
+          if (std::string(device.EpName()) == registration_name) {
+            plugin_ep_device = device;
+            break;
+          }
+        }
+        if (plugin_ep_device == nullptr) {
+          ORT_THROW("Fail to find/get the plugin ep devices - QnnAbiTestProvider");
+        }
+        session_options.AppendExecutionProvider_V2(env, std::vector<Ort::ConstEpDevice>{plugin_ep_device}, provider_options);
+      }
+    } else {
+      session_options.AppendExecutionProvider("QNN", provider_options);
+    }
 #else
     ORT_THROW("QNN is not supported in this build\n");
 #endif

@@ -284,6 +284,8 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
         test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
       } else if (ep == "qnn") {
         test_config.machine_config.provider_type_name = onnxruntime::kQnnExecutionProvider;
+      } else if (ep == "qnn_abi") {
+        test_config.machine_config.provider_type_name = "QnnAbiExecutionProvider";
       } else if (ep == "snpe") {
         test_config.machine_config.provider_type_name = onnxruntime::kSnpeExecutionProvider;
       } else if (ep == "nnapi") {
