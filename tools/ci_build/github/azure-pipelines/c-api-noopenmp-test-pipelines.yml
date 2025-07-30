@@ -158,27 +158,27 @@ stages:
         DownloadCUDA: true
         DownloadTRT: true
 
-    - template: templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Final Jar'
-        ArtifactName: onnxruntime-java-gpu
-        TargetPath: '$(Build.BinariesDirectory)\final-jar'
+    - download: build
+      artifact: 'onnxruntime-java-gpu'
+      displayName: 'Download Final Jar'
 
-    - template: templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Jar Tools'
-        ArtifactName: onnxruntime-java-tools
-        TargetPath: '$(Build.BinariesDirectory)\final-jar'
+    - download: build
+      artifact: 'onnxruntime-java-tools'
+      displayName: 'Download Jar Tools'
 
     - task: CmdLine@2
       inputs:
         script: |
+          mkdir final-jar
+          move $(Pipeline.Workspace)/build/onnxruntime-java-gpu/* final-jar
+          move $(Pipeline.Workspace)/build/onnxruntime-java-tools/* final-jar
+          cd final-jar
           mkdir test
           pushd test
           jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
           popd
           java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.25.5.jar;onnxruntime_gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
-        workingDirectory: '$(Build.BinariesDirectory)\final-jar'
+        workingDirectory: '$(Build.BinariesDirectory)'
 
   - job: Final_Jar_Testing_Linux_GPU
     workspace:
@@ -278,13 +278,10 @@ stages:
           artifact: 'Windows_Packaging_cuda_build_artifacts'
           displayName: 'Download Windows GPU Packages Build'
 
-        - template: templates/flex-downloadPipelineArtifact.yml
-          parameters:
-            ArtifactName: "Windows_Packaging_cuda_build_artifacts"
-            StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
-            TargetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/'
-
-        - template: templates/telemetry-steps.yml
+        - task: CmdLine@2
+          inputs:
+            script: |
+              move $(Pipeline.Workspace)/build/Windows_Packaging_cuda_build_artifacts $(Build.BinariesDirectory)/RelWithDebInfo
 
         - template: templates/set-version-number-variables-step.yml
 
@@ -349,13 +346,15 @@ stages:
           clean: true
           submodules: none
 
-        - template: templates/flex-downloadPipelineArtifact.yml
-          parameters:
-            ArtifactName: "Windows_Packaging_tensorrt_build_artifacts"
-            StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
-            TargetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/'
 
-        - template: templates/telemetry-steps.yml
+        - download: build
+          artifact: 'Windows_Packaging_tensorrt_build_artifacts'
+          displayName: 'Download Windows GPU Packages Build'
+
+        - task: CmdLine@2
+          inputs:
+            script: |
+              move $(Pipeline.Workspace)/build/Windows_Packaging_tensorrt_build_artifacts $(Build.BinariesDirectory)/RelWithDebInfo
 
         - template: templates/set-version-number-variables-step.yml
 
