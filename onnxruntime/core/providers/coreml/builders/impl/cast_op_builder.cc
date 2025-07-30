@@ -135,11 +135,13 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
     if ((input_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
          input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
          input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
-         input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) &&
+         input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+         input_type == ONNX_NAMESPACE::TensorProto_DataType_BOOL) &&
         (output_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
          output_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
          output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
-         output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
+         output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+         output_type == ONNX_NAMESPACE::TensorProto_DataType_BOOL)) {
       return true;
     } else {
       LOGS(logger, VERBOSE) << "[" << node.OpType()
