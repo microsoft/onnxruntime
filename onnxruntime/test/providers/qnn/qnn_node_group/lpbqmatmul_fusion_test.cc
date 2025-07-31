@@ -106,7 +106,6 @@ ProviderOptions GetProviderOptions() {
 
 }  // namespace
 
-
 TEST_F(QnnHTPBackendTests, LPBQMatMulFusion) {
   ProviderOptions provider_options = GetProviderOptions();
   RunQnnModelTest(BuildLPBQMatMulTestCase(),
