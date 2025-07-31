@@ -65,7 +65,38 @@ stages:
         inputs:
           targetType: 'inline'
           script: |
-            dotnet test
+            try {
+              $job = Start-Job -ScriptBlock {
+                Set-Location "$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android"
+                dotnet test
+              }
+
+              # Wait for job to complete or timeout (4.5 minutes to leave buffer for cleanup)
+              $completed = Wait-Job -Job $job -Timeout 270
+
+              if ($completed) {
+                Receive-Job -Job $job
+                $exitCode = $job.State -eq 'Completed' ? 0 : 1
+              } else {
+                Write-Host "Test timed out, stopping job and cleaning up processes..."
+                Stop-Job -Job $job -Force
+
+                # Kill any remaining dotnet test processes
+                Get-Process -Name "dotnet" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq "dotnet" } | Stop-Process -Force -ErrorAction SilentlyContinue
+                Get-Process -Name "testhost*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+                Get-Process -Name "chromedriver*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+                # Wait a moment for file handles to be released
+                Start-Sleep -Seconds 5
+                $exitCode = 1
+              }
+
+              Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+              exit $exitCode
+            } catch {
+              Write-Host "Error during test execution: $_"
+              exit 1
+            }
           workingDirectory: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android'
         env:
           BROWSERSTACK_USERNAME: $(browserstack_username)
@@ -76,13 +107,5 @@ stages:
         condition: always()
         inputs:
           pathToPublish: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android\log'
-          artifactName: 'browserstack-test-logs-${{ parameters.ArtifactSuffix }}'
-          publishLocation: 'Container'
-
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish BrowserStack test logs'
-        condition: always()
-        inputs:
-          pathToPublish: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android\logs'
           artifactName: 'browserstack-test-logs-${{ parameters.ArtifactSuffix }}'
           publishLocation: 'Container'
