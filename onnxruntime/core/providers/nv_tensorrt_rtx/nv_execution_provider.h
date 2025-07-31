@@ -166,7 +166,7 @@ class TensorrtUserWeights {
     return static_cast<void const*>(data_.data());
   }
 
-  const int64_t Size() const {
+  int64_t Size() const {
     return static_cast<int64_t>(data_.size());
   }
 
@@ -190,7 +190,6 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
   std::mutex* tensorrt_mu_ptr = nullptr;
-  std::string trt_node_name_with_precision;
   bool engine_cache_enable = false;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
@@ -298,14 +297,12 @@ class NvExecutionProvider : public IExecutionProvider {
 
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,
-                                    std::string& weight_stripped_engine_cath_path,
                                     bool path_check,
                                     const void* onnx_model_bytestream,
                                     size_t onnx_model_bytestream_size,
                                     const void* onnx_external_data_bytestream,
                                     size_t onnx_external_data_bytestream_size,
                                     nvinfer1::ICudaEngine* trt_engine,
-                                    bool serialize_refitted_engine,
                                     bool detailed_build_log);
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
@@ -347,7 +344,7 @@ class NvExecutionProvider : public IExecutionProvider {
   std::string cache_prefix_;
   std::string op_types_to_exclude_;
   int nv_profile_index_ = 0;
-  std::vector<std::unique_ptr<onnxruntime::Model>> ep_context_models_;
+  std::unique_ptr<onnxruntime::Model> ep_context_model_;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
@@ -362,7 +359,6 @@ class NvExecutionProvider : public IExecutionProvider {
   std::string ep_context_file_path_;
   int ep_context_embed_mode_ = 0;
   std::string ctx_model_path_;
-  std::string ep_cache_context_attr_;
   std::string engine_cache_relative_path_to_context_model_dir;
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
@@ -387,7 +383,7 @@ class NvExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
   std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_maps_;
-  std::unordered_map<std::string, std::unique_ptr<std::vector<TensorrtUserWeights>>> weights_; // User provided weights
+  std::unordered_map<std::string, std::unique_ptr<std::vector<TensorrtUserWeights>>> weights_;  // User provided weights
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
   cudnnHandle_t external_cudnn_handle_ = nullptr;
@@ -582,6 +578,7 @@ class NvExecutionProvider : public IExecutionProvider {
    * going through the time-consuming processes of model parsing and engine building.
    */
   Status CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
+                                                    size_t node_idx,
                                                     const Node& fused_node,
                                                     std::unordered_map<std::string, size_t>& input_map,
                                                     std::unordered_map<std::string, size_t>& output_map,

@@ -31,11 +31,6 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
   std::vector<int> dims = {1, 3, 2};
 
   CreateBaseModel(model_name, graph_name, dims);
-
-  auto env = Ort::Env();
-  auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
-  env.UpdateEnvWithCustomLogLevel(logging_level);
-
   // AOT time
   {
     auto start = std::chrono::high_resolution_clock::now();
@@ -44,7 +39,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
     so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, model_name_ctx_str.c_str());
     so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
-    Ort::Session session_object(env, model_name.c_str(), so);
+    Ort::Session session_object(*ort_env, model_name.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation AOT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
 
@@ -59,7 +54,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
     Ort::RunOptions run_options;
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
     so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
-    Ort::Session session_object(env, model_name_ctx.c_str(), so);
+    Ort::Session session_object(*ort_env, model_name_ctx.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation JIT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
 
@@ -78,10 +73,6 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
 
   CreateBaseModel(model_name, graph_name, dims);
 
-  auto env = Ort::Env();
-  auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
-  env.UpdateEnvWithCustomLogLevel(logging_level);
-
   // AOT time
   {
     auto start = std::chrono::high_resolution_clock::now();
@@ -90,7 +81,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
     so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, model_name_ctx_str.c_str());
     so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
-    Ort::Session session_object(env, model_name.c_str(), so);
+    Ort::Session session_object(*ort_env, model_name.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation AOT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
 
@@ -105,7 +96,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
     Ort::RunOptions run_options;
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
     so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
-    Ort::Session session_object(env, model_name_ctx.c_str(), so);
+    Ort::Session session_object(*ort_env, model_name_ctx.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation JIT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
 
@@ -127,10 +118,6 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
 
   CreateBaseModel(model_name, graph_name, dims);
 
-  auto env = Ort::Env();
-  auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
-  env.UpdateEnvWithCustomLogLevel(logging_level);
-
   // AOT time
   {
     auto start = std::chrono::high_resolution_clock::now();
@@ -139,7 +126,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
     so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, model_name_ctx_str.c_str());
     so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
-    Ort::Session session_object(env, model_name.c_str(), so);
+    Ort::Session session_object(*ort_env, model_name.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation AOT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
 
@@ -154,7 +141,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
     Ort::RunOptions run_options;
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
     so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
-    Ort::Session session_object(env, model_name_ctx.c_str(), so);
+    Ort::Session session_object(*ort_env, model_name_ctx.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation JIT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
 
@@ -196,25 +183,21 @@ class TypeTests : public ::testing::TestWithParam<ONNX_NAMESPACE::TensorProto_Da
 };
 
 TEST_P(TypeTests, IOTypes) {
-  std::string dtype_name = getTypeAsName(GetParam());
+  const std::string dtype_name = getTypeAsName(GetParam());
   ASSERT_FALSE(dtype_name.empty());
   const std::string model_name_str = "nv_execution_provider_" + dtype_name + ".onnx";
   const PathString model_name = ToPathString(model_name_str);
-  std::string graph_name = "test" + dtype_name;
-  std::vector<int> dims = {1, -1, -1};
+  const std::string graph_name = "test" + dtype_name;
+  const std::vector<int> dims = {1, 5, 10};
 
   CreateBaseModel(model_name, graph_name, dims, false, GetParam());
-
-  auto env = Ort::Env();
-  auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
-  env.UpdateEnvWithCustomLogLevel(logging_level);
 
   // AOT time
   {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
     so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
-    Ort::Session session_object(env, model_name.c_str(), so);
+    Ort::Session session_object(*ort_env, model_name.c_str(), so);
 
     auto io_binding = generate_io_binding(session_object);
     session_object.Run(run_options, io_binding);
@@ -260,20 +243,16 @@ TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
 
   CreateBaseModel(model_name, graph_name, dims);
 
-  auto env = Ort::Env();
-  auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
-  env.UpdateEnvWithCustomLogLevel(logging_level);
-
   {
-    env.RegisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider, ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx.dll"));
+    ort_env->RegisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider, ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx.dll"));
 
     Ort::SessionOptions so;
     so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
-    Ort::Session session_object(env, model_name.c_str(), so);
+    Ort::Session session_object(*ort_env, model_name.c_str(), so);
     EXPECT_TRUE(SessionHasEp(session_object, kNvTensorRTRTXExecutionProvider));
   }
 
-  env.UnregisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider);
+  ort_env->UnregisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider);
 }
 
 TEST(NvExecutionProviderTest, GetSharedAllocator) {
