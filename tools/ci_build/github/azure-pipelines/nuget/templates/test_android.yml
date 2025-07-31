@@ -56,7 +56,7 @@ stages:
       - task: BrowserStackAppUploader@0
         inputs:
           appPath: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.MAUI\bin\Release\net8.0-android\publish\ORT.CSharp.Tests.MAUI-Signed.apk'
-          appCustomId: 'Appium Android CI'
+          appCustomId: 'Appium-Android-CI'
 
       - task: PowerShell@2
         displayName: Run BrowserStack test
