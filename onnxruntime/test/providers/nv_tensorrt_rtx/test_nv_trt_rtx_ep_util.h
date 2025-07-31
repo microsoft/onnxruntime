@@ -17,6 +17,7 @@
 #include "core/graph/constants.h"
 #include "core/common/path_string.h"
 #include "core/framework/tensor.h"
+#include "core/framework/ort_value.h"
 #include "test/util/include/api_asserts.h"
 
 namespace onnxruntime {
@@ -45,7 +46,7 @@ struct Utils {
   static void RegisterAndGetNvTensorRtRtxEp(Ort::Env& env, RegisteredEpDeviceUniquePtr& nv_tensorrt_rtx_ep);
 };
 
-static std::string PathToUTF8(const PathString& path) {
+[[maybe_unused]] static std::string PathToUTF8(const PathString& path) {
 #ifdef WIN32
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
   return converter.to_bytes(path);
@@ -54,7 +55,7 @@ static std::string PathToUTF8(const PathString& path) {
 #endif
 }
 
-static void clearFileIfExists(PathString path) {
+[[maybe_unused]] static void clearFileIfExists(PathString path) {
   if (std::filesystem::exists(path)) {
     std::filesystem::remove(path);
   }
