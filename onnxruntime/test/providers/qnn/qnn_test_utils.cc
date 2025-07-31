@@ -167,6 +167,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
 
   RunAndVerifyOutputsWithEPABI(AsByteSpan(model_data.data(), model_data.size()),
                                session_options,
+                               registration_name,
                                "QNN_EP_ABI_TestLogID",
                                helper.feeds_,
                                verification_params,

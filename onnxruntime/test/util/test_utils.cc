@@ -206,6 +206,7 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string
 
 void RunAndVerifyOutputsWithEPABI(ModelPathOrBytes model_path_or_bytes,
                                   Ort::SessionOptions& ort_so,
+                                  const std::string& provider_type,
                                   std::string_view log_id,
                                   const NameMLValMap& feeds,
                                   const EPVerificationParams& params,
@@ -244,11 +245,10 @@ void RunAndVerifyOutputsWithEPABI(ModelPathOrBytes model_path_or_bytes,
   // get output with EP enabled
   //
   ort_so.SetLogId(log_id.data());
-  Ort::Session ort_session(*GetOrtEnv(), model_data.data(), static_cast<int>(model_data.size()), ort_so);
+  OrtSessionWrapper ort_session(*GetOrtEnv(), model_data.data(), static_cast<int>(model_data.size()), ort_so);
 
-  // TODO: Get graph from Ort::Session.
-  // const auto& graph2 = session_object2.GetGraph();
-  // ASSERT_NO_FATAL_FAILURE(VerifyEPNodeAssignment(graph2, provider_type, params.ep_node_assignment));
+  const auto& graph2 = ort_session.GetGraph();
+  ASSERT_NO_FATAL_FAILURE(VerifyEPNodeAssignment(graph2, provider_type, params.ep_node_assignment));
 
   // fetch all inputs
   std::vector<const char*> ort_input_names;

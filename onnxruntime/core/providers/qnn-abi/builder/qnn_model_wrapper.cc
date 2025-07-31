@@ -355,7 +355,10 @@ bool QnnModelWrapper::GetOnnxShape(const std::vector<int64_t>& onnx_shape, std::
   }
 
   for (const int64_t& dim : onnx_shape) {
-    // TODO: Check what OrtApi.GetDimensions returns for dynamic shape.
+    // TODO: Check whether -1 really represents dynamic shape.
+    if (dim < 0) {
+      return false;
+    }
     shape.push_back(SafeInt<uint32_t>(dim));
   }
 

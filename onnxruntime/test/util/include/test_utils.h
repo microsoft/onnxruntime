@@ -75,6 +75,7 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes,
 
 void RunAndVerifyOutputsWithEPABI(ModelPathOrBytes model_path_or_bytes,
                                   Ort::SessionOptions& ort_so,
+                                  const std::string& provider_type,
                                   std::string_view log_id,
                                   const NameMLValMap& feeds,
                                   const EPVerificationParams& params = EPVerificationParams(),
