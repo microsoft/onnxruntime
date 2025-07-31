@@ -137,7 +137,8 @@ stages:
         goals: 'dependency:copy-dependencies'
         options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java'
         publishJUnitTestResults: false
-        javaHomeOption: 'JDKVersion'
+        javaHomeOption: 'Path'
+        jdkDirectory: '/usr/lib/jvm/msopenjdk-17-amd64'
         jdkVersionOption: 'Default'
         mavenVersionOption: 'Default'
 
