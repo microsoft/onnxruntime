@@ -7,7 +7,7 @@ resources:
 
 variables:
   mavenVersion: '3.9.8'
-  
+
 stages:
 - template: templates/final-jar-testing-win.yml
   parameters:
@@ -58,7 +58,7 @@ stages:
         script: |
           # Exit script on any error
           $ErrorActionPreference = "Stop"
-          
+
           cd $(Pipeline.Workspace)/build/onnxruntime-java
           del *.asc
           del *.sha256
@@ -74,7 +74,7 @@ stages:
           & java `
             -cp "$(Pipeline.Workspace)\build\tests;$(Pipeline.Workspace)\build\onnxruntime-java\*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)\build\tests `
             --fail-if-no-tests --disable-banner --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
-          
+
     - task: PublishTestResults@2
       displayName: 'Publish Test Results'
       inputs:
@@ -101,6 +101,9 @@ stages:
     - template: templates/set-version-number-variables-step.yml
 
     - bash: |
+       sudo apt-get install -y msopenjdk-17
+
+    - bash: |
         echo "Downloading and installing Maven $(mavenVersion) for Linux..."
         MAVEN_DIR="$(Agent.TempDirectory)/apache-maven-$(mavenVersion)"
         # Download Maven binary
@@ -113,11 +116,6 @@ stages:
         # Add Maven's bin directory to the PATH for subsequent tasks in the job
         echo "##vso[task.prependpath]${MAVEN_DIR}/bin"
       displayName: 'Install Maven (Linux)'
-
-    - task: JavaToolInstaller@0
-      inputs:
-        versionSpec: "17"
-        jdkArchitectureOption: x64
 
     - script: |
         echo "Maven is now on the PATH."
