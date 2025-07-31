@@ -43,16 +43,8 @@ class ModelBuilder {
   ~ModelBuilder();
 
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
-  InitializedTensorSet GetInitializerTensors() const {
-    InitializedTensorSet result;
-    const auto init_names = graph_viewer_.GetAllInitializersNames();
-    for (const auto& init_name : init_names) {
-      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-      if (graph_viewer_.GetConstantInitializer(init_name, tensor_proto)) {
-        result.emplace(init_name, tensor_proto);
-      }
-    }
-    return result;
+  const InitializedTensorSet& GetInitializerTensors() const {
+    return initialized_tensors_;
   }
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name) const {
     return graph_viewer_.GetConstantInitializer(name, true);
@@ -253,6 +245,8 @@ class ModelBuilder {
   // This means an op builder author doesn't need to be aware of the renaming.
   // https://github.com/apple/coremltools/blob/8b37641f243b1a3e81452feea311c6e30dcc9287/coremltools/converters/mil/mil/passes/defs/preprocess.py#L146-L149
   std::unordered_map<std::string, std::string> values_to_rename_;
+
+  InitializedTensorSet initialized_tensors_;  // Cached tensors so a reference can be returned.
 };
 
 }  // namespace coreml

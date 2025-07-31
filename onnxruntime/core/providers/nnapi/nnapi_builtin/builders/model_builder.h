@@ -95,7 +95,9 @@ class ModelBuilder {
   const std::unordered_set<std::string>&
   GetFusedActivations() const { return fused_activations_; }
 
-  InitializedTensorSet GetInitializerTensors() const;
+  const InitializedTensorSet& GetInitializerTensors() const {
+    return initialized_tensors_;
+  }
 
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name) const;
 
@@ -178,6 +180,8 @@ class ModelBuilder {
 #endif
 
   const logging::Logger& logger_;
+
+  InitializedTensorSet initialized_tensors_;  // Cached tensors so a reference can be returned.
 
   // Convert the ONNX model to ANeuralNetworksModel
   common::Status Prepare();

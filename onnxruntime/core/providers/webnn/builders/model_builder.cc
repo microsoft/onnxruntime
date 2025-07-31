@@ -36,6 +36,29 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
   if (wnn_limits["constant"]["dataTypes"].call<emscripten::val>("includes", emscripten::val("int64")).as<bool>()) {
     is_int64_supported_ = true;
   }
+
+  InitializedTensorSet initializers;
+  if (graph_viewer_.IsSubgraph()) {
+    auto all_initializers = CollectAllInitializedTensors(graph_viewer_);
+    const auto sub_graph_id = graph_viewer_.GetFilterInfo();
+    const auto subgraph_initializer_names = sub_graph_id->GetMetaDef()->constant_initializers;
+
+    for (const auto& name : subgraph_initializer_names) {
+      auto it = all_initializers.find(name);
+      if (it != all_initializers.end()) {
+        initializers.insert(*it);
+      }
+    }
+  } else {
+    const auto init_names = graph_viewer_.GetAllInitializersNames();
+    for (const auto& name : init_names) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+      if (graph_viewer_.GetInitializedTensor(name, tensor_proto)) {
+        initializers.emplace(name, *tensor_proto);
+      }
+    }
+  }
+  initialized_tensors_.swap(initializers);
 }
 
 Status ModelBuilder::Initialize() {
@@ -46,33 +69,6 @@ Status ModelBuilder::Initialize() {
   ORT_RETURN_IF_ERROR(RegisterModelOutputs());
 
   return Status::OK();
-}
-
-InitializedTensorSet ModelBuilder::GetInitializerTensors() {
-  if (graph_viewer_.IsSubgraph()) {
-    auto all_initializers = CollectAllInitializedTensors(graph_viewer_);
-    const auto sub_graph_id = graph_viewer_.GetFilterInfo();
-    const auto subgraph_initializer_names = sub_graph_id->GetMetaDef()->constant_initializers;
-    InitializedTensorSet subgraph_initializers;
-
-    for (const auto& name : subgraph_initializer_names) {
-      auto it = all_initializers.find(name);
-      if (it != all_initializers.end()) {
-        subgraph_initializers.insert(*it);
-      }
-    }
-    return subgraph_initializers;
-  } else {
-    InitializedTensorSet initializers;
-    const auto init_names = graph_viewer_.GetAllInitializersNames();
-    for (const auto& name : init_names) {
-      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-      if (graph_viewer_.GetInitializedTensor(name, tensor_proto)) {
-        initializers.emplace(name, *tensor_proto);
-      }
-    }
-    return initializers;
-  }
 }
 
 /* static */ const IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {

@@ -43,6 +43,16 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_h
       nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)),
       logger_(logger) {
   nnapi_model_->nnapi_effective_feature_level_ = nnapi_effective_feature_level_;
+
+  InitializedTensorSet initialized_tensors;
+  const auto init_names = graph_viewer_.GetAllInitializersNames();
+  for (const auto& init_name : init_names) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    if (graph_viewer_.GetConstantInitializer(init_name, tensor_proto)) {
+      initialized_tensors.emplace(init_name, tensor_proto);
+    }
+  }
+  initialized_tensors_.swap(initialized_tensors);
 }
 
 // Scalar operand is copied into the model, no need to persist
@@ -750,18 +760,6 @@ std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
 
 DataLayout ModelBuilder::GetPreferredLayout() const {
   return use_nchw_ ? DataLayout::NCHW : DataLayout::NHWC;
-}
-
-InitializedTensorSet ModelBuilder::GetInitializerTensors() const {
-  InitializedTensorSet result;
-  const auto init_names = graph_viewer_.GetAllInitializersNames();
-  for (const auto& init_name : init_names) {
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-    if (graph_viewer_.GetConstantInitializer(init_name, tensor_proto)) {
-      result.emplace(init_name, tensor_proto);
-    }
-  }
-  return result;
 }
 
 const ONNX_NAMESPACE::TensorProto* ModelBuilder::GetConstantInitializer(const std::string& name) const {

@@ -553,6 +553,16 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
       }
     }
   }
+
+  InitializedTensorSet initialized_tensors;
+  const auto init_names = graph_viewer_.GetAllInitializersNames();
+  for (const auto& init_name : init_names) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    if (graph_viewer_.GetConstantInitializer(init_name, tensor_proto)) {
+      initialized_tensors.emplace(init_name, tensor_proto);
+    }
+  }
+  initialized_tensors_.swap(initialized_tensors);
 }
 
 ModelBuilder::~ModelBuilder() = default;

@@ -1384,7 +1384,6 @@ bool TrainingSession::IsImmutableWeight(const ImmutableWeights& immutable_weight
 std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
     const ImmutableWeights& immutable_weights, const std::string& loss_name) const {
   const Graph& graph = model_->MainGraph();
-  const auto initialized_tensors = graph.GetAllInitializersNames();
   std::unordered_set<std::string> trainable_initializers;
 
   auto add_trainable_initializers = [&](const Node* node) {

@@ -75,8 +75,9 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   GetShape(*input_defs[0], input_shape, logger);
   const auto input_rank = onnxruntime::narrow<int64_t>(input_shape.size());
 
-  const auto& pads_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());            // pads
-  const auto& constant_value_tensor = *model_builder.GetInitializerTensors().at(input_defs[2]->Name());  // constant_value
+  const auto& initialized_tensors = *model_builder.GetInitializerTensors();
+  const auto& pads_tensor = initialized_tensors.at(input_defs[1]->Name());            // pads
+  const auto& constant_value_tensor = initialized_tensors.at(input_defs[2]->Name());  // constant_value
 
   Initializer constant_value_initializer(constant_value_tensor);
   float constant_value = constant_value_initializer.DataAsSpan<float>()[0];
@@ -85,7 +86,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   Initializer pads_initializer(pads_tensor);
   auto pads_span = pads_initializer.DataAsSpan<int64_t>();
 
-  InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(model_builder.GetInitializerTensors(), node, input_rank);
+  InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(initialized_tensors, node, input_rank);
   int64_t num_axes = axes_tensor_data.size();
 
   // Add padding
