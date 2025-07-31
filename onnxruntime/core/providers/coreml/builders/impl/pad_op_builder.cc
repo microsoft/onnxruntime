@@ -76,8 +76,8 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto input_rank = onnxruntime::narrow<int64_t>(input_shape.size());
 
   const auto& initialized_tensors = model_builder.GetInitializerTensors();
-  const auto& pads_tensor = initialized_tensors.at(input_defs[1]->Name());            // pads
-  const auto& constant_value_tensor = initialized_tensors.at(input_defs[2]->Name());  // constant_value
+  const auto& pads_tensor = *initialized_tensors.at(input_defs[1]->Name());            // pads
+  const auto& constant_value_tensor = *initialized_tensors.at(input_defs[2]->Name());  // constant_value
 
   Initializer constant_value_initializer(constant_value_tensor);
   float constant_value = constant_value_initializer.DataAsSpan<float>()[0];

@@ -21,7 +21,7 @@ Status MergeGraph(Graph& graph, Graph& graph_to_merge, int rank, std::vector<Nod
     const ONNX_NAMESPACE::TensorProto* tmp_tensor = nullptr;
     // For those initializers already existing, we assume every rank should have same value.
     if (!graph.GetInitializedTensor(tensor_name, tmp_tensor)) {
-      graph_to_merge.GetInitializedTensor(name, tmp_tensor);
+      graph_to_merge.GetInitializedTensor(tensor_name, tmp_tensor);
       graph.AddInitializedTensor(*(tmp_tensor));
     }
   }
