@@ -75,7 +75,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   GetShape(*input_defs[0], input_shape, logger);
   const auto input_rank = onnxruntime::narrow<int64_t>(input_shape.size());
 
-  const auto& initialized_tensors = *model_builder.GetInitializerTensors();
+  const auto& initialized_tensors = model_builder.GetInitializerTensors();
   const auto& pads_tensor = initialized_tensors.at(input_defs[1]->Name());            // pads
   const auto& constant_value_tensor = initialized_tensors.at(input_defs[2]->Name());  // constant_value
 
@@ -193,7 +193,8 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     // Check that only supports padding on last two dimensions - [H,W].
     // CoreML PaddinglayerParams: https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#paddinglayerparams
     const auto input_rank = onnxruntime::narrow<int64_t>(input_shape.size());
-    InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(initializers, node, input_rank);
+    InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(model_builder.GetInitializerTensors(), node,
+                                                                 input_rank);
     int64_t num_axes = axes_tensor_data.size();
 
     for (int64_t i = 0; i < num_axes; i++) {

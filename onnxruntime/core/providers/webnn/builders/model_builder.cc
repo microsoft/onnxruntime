@@ -54,7 +54,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
     for (const auto& name : init_names) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
       if (graph_viewer_.GetInitializedTensor(name, tensor_proto)) {
-        initializers.emplace(name, *tensor_proto);
+        initializers.emplace(name, tensor_proto);
       }
     }
   }
