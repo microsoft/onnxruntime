@@ -1353,15 +1353,12 @@ Graph::Graph(const Model& owning_model,
       if (is_sparse) {
         sparse_tensor_names_.erase(tensor.name());
       }
-      put_data_maybe_in_memory(tensor);
+      if (!tensor.has_raw_data()) {
+        put_data_maybe_in_memory(tensor);
+      }
       if (is_sparse) {
         sparse_tensor_names_.emplace(tensor.name());
       }
-    } else if (utils::HasExternalDataInMemory(tensor)) {
-      std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-      ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(tensor, full_init));
-      tensor.clear_external_data();
-      tensor.set_raw_data(full_init->raw_data());
     }
 
     auto p = name_to_initial_tensor_.emplace(tensor.name(), &tensor);
