@@ -35,7 +35,7 @@ __global__ void GatherBlockQuantizedKernel(
     int64_t bits,
     int64_t block_size,
     int64_t gather_axis,
-    const CUDA_LONG N) {
+    int64_t N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(out_idx, N);
 
   const int64_t idx_bg = out_idx / (after_gather_dim * ind_dim);
