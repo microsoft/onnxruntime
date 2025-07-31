@@ -60,6 +60,8 @@ stages:
 
       - task: PowerShell@2
         displayName: Run BrowserStack test
+        continueOnError: true
+        timeoutInMinutes: 5
         inputs:
           targetType: 'inline'
           script: |
@@ -68,3 +70,19 @@ stages:
         env:
           BROWSERSTACK_USERNAME: $(browserstack_username)
           BROWSERSTACK_ACCESS_KEY: $(browserstack_access_key)
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish BrowserStack test logs'
+        condition: always()
+        inputs:
+          pathToPublish: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android\log'
+          artifactName: 'browserstack-test-logs-${{ parameters.ArtifactSuffix }}'
+          publishLocation: 'Container'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish BrowserStack test logs'
+        condition: always()
+        inputs:
+          pathToPublish: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android\logs'
+          artifactName: 'browserstack-test-logs-${{ parameters.ArtifactSuffix }}'
+          publishLocation: 'Container'
