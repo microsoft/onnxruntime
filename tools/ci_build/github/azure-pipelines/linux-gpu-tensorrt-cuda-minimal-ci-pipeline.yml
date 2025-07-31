@@ -65,6 +65,12 @@ jobs:
     clean: true
     submodules: none
 
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.12'
+      addToPath: true
+      architecture: 'x64'
+
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
