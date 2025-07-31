@@ -149,7 +149,7 @@ TEST_F(ActivationOpTest, HardSigmoid_bfloat16) {
     return;
   }
 #endif
-  OpTester test("HardSwish", 22);
+  OpTester test("HardSigmoid", 22);
   float alpha = 0.3f;
   float beta = 0.5f;
 
