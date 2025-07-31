@@ -593,9 +593,9 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
     fetches_.clear();
 
     // IsAllowReleasedONNXOpsetsOnlySet() checks for the appropriate env var in the process (i.e.) process-wide
-    // `IsAllowReleasedONNXOpsetsOnlySetForThisTest()` is for this specific OpTester instance
-    // We will only support released opsets iff IsAllowReleasedONNXOpsetsOnlySet() and `IsAllowReleasedONNXOpsetsOnlySetForThisTest()`
-    // are both true
+    // `test_allow_released_onnx_opset_only_` is for this specific OpTester instance
+    // We will only support released opsets iff IsAllowReleasedONNXOpsetsOnlySet() and
+    // `test_allow_released_onnx_opset_only_` are both true
     auto allow_released_onnx_opset_only =
         test_allow_released_onnx_opset_only_ && model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
 
