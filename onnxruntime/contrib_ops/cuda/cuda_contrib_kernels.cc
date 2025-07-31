@@ -18,7 +18,7 @@ using namespace onnxruntime::common;
 #define CUDA_MS_OP_TWO_TYPED_CLASS_NAME(ver, type1, type2, name) \
   ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, ver, type1, type2, name)
 #define CUDA_MS_OP_THREE_TYPED_CLASS_NAME(ver, type1, type2, type3, name) \
-  ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, ver, type1, type2, type3, name)
+  ONNX_OPERATOR_THREE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, ver, type1, type2, type3, name)
 
 #define CUDA_ONNX_OP_TYPED_CLASS_NAME(ver, type, name) \
   ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, ver, type, name)
