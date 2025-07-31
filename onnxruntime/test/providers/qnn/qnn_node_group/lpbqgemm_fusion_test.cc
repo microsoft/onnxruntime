@@ -21,6 +21,8 @@
 namespace onnxruntime {
 namespace test {
 
+#if defined(__aarch64__) || defined(_M_ARM64)
+
 namespace {
 
 GetQDQTestCaseFn BuildLPBQGemmTestCase() {
@@ -104,8 +106,6 @@ ProviderOptions GetProviderOptions() {
 }
 
 }  // namespace
-
-#if defined(__aarch64__) || defined(_M_ARM64)
 
 TEST_F(QnnHTPBackendTests, LPBQGemmFusion) {
   ProviderOptions provider_options = GetProviderOptions();
