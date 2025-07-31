@@ -1907,21 +1907,32 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
 #endif
   model_path_[sizeof(model_path_) - 1] = '\0';
 
-  // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and
-  // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
-  // So, simply return the ComputeCapability here.
-  if (graph.NumberOfNodes() == 1 && GraphHasCtxNode(graph)) {
-    SubGraph_t supported_node_vector = {{0}, true};
-    std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph, std::to_string(trt_version_), std::to_string(cuda_version_)), 0);
-    result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-    return result;
-  }
+  const int number_of_ort_nodes = graph.NumberOfNodes();
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
 
   // Generate unique kernel name for TRT graph
   HashValue model_hash = TRTGenerateId(graph, std::to_string(trt_version_), std::to_string(cuda_version_));
 
-  // Get supported node list from TensorRT parser
-  const int number_of_ort_nodes = graph.NumberOfNodes();
+  // If there are "EPContext" contrib op nodes, it means TRT EP can fetch the precompiled engine info from the node and
+  // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT
+  // parser and engine compilation. So, simply return subgraphs consists of single ep context nodes here.
+  if (GraphHasCtxNode(graph)) {
+    int subgraph_idx = 0;
+    for (size_t i = 0; i < static_cast<size_t>(number_of_ort_nodes); i++) {
+      const auto& node = graph.GetNode(node_index[i]);
+      const bool is_context_node = node && !node->OpType().empty() && node->OpType() == "EPContext";
+      if (is_context_node) {
+        SubGraph_t supported_node_vector(std::make_pair(std::vector<size_t>{i}, true));
+        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, model_hash, subgraph_idx++);
+
+        result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+      }
+    }
+    return result;
+  }
+
+  // For regular ONNX nodes, get supported node list from TensorRT parser
+
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
@@ -1940,7 +1951,6 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
   auto exclude_ops_set = get_exclude_ops_set(op_types_to_exclude_);
 
   SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
-  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
   bool new_subgraph = true;
 
   /* Iterate all the nodes and exclude the node if:
@@ -2244,6 +2254,18 @@ common::Status NvExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>
   return Status::OK();
 }
 
+const InlinedVector<const Node*> NvExecutionProvider::GetEpContextNodes() const {
+  InlinedVector<const Node*> ep_context_nodes;
+  for (auto& model : ep_context_models_) {
+    auto& graph = model->MainGraph();
+    for (int i = 0; i < graph.MaxNodeIndex(); i++) {
+      auto node = graph.GetNode(i);
+      ep_context_nodes.push_back(node);
+    }
+  }
+  return ep_context_nodes;
+}
+
 Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& graph_body_viewer,
                                                            const Node& fused_node,
                                                            std::unordered_map<std::string, size_t>& input_map,
@@ -2541,15 +2563,16 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
       }
       std::string compute_capability_hw_compat = compute_capability_ + "+";
-      std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
-                                                                             ep_cache_context_attr_,
-                                                                             reinterpret_cast<char*>(serialized_engine->data()),
-                                                                             serialized_engine->size(),
-                                                                             ep_context_embed_mode_,
-                                                                             compute_capability_hw_compat,
-                                                                             model_path_,
-                                                                             GetLogger())};
-      DumpCtxModel(model_proto.get(), ctx_model_path_);
+
+      ep_context_models_.push_back(CreateCtxNode(graph_body_viewer,
+                                                 ep_cache_context_attr_,
+                                                 reinterpret_cast<char*>(serialized_engine->data()),
+                                                 serialized_engine->size(),
+                                                 ep_context_embed_mode_,
+                                                 compute_capability_hw_compat,
+                                                 model_path_,
+                                                 GetLogger(),
+                                                 fused_node.Name()));
     }
   }
 
