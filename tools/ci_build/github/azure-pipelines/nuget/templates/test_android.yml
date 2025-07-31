@@ -83,7 +83,8 @@ stages:
                 }
               } else {
                 Write-Host "Test timed out, stopping job and cleaning up processes..."
-                Stop-Job -Job $job -Force
+                Stop-Job -Job $job
+                Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
 
                 # Kill any remaining dotnet test processes
                 Get-Process -Name "dotnet" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq "dotnet" } | Stop-Process -Force -ErrorAction SilentlyContinue
