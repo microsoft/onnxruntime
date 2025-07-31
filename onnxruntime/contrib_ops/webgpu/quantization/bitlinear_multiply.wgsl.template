@@ -3,6 +3,7 @@ const k_step_size_in_u32: u32 = 5;  // Count of K, packed as u32 processed in on
 const k_in_u32_for_A: u32 = 4;
 const tile_size: u32 = 64;
 const subtile_size = 16;
+const lut_size : u32 = 86;          // Size of the LUT for dequantization.
 
 // Shared memory
 var<workgroup> tile_A  : array<vec4<u32>, tile_size>;                              // 4  x 64 x 4 bytes.
@@ -10,10 +11,11 @@ var<workgroup> tile_A5 : array<u32, tile_size>;                                 
 var<workgroup> tile_B  : array<array<u32, 4>, tile_size>;                          // 4  x 64 x 4 bytes.
 var<workgroup> tile_B5 : array<u32, tile_size>;                                    // 1  x 64 x 4 bytes.
 var<workgroup> scratch_B  : array<array<i32, 4>, tile_size>;                       // 1  x 64 x 4 bytes.
+var<workgroup> shared_memory_LUT  : array<u32, lut_size>;                          // 87 x 4 bytes.
 
 // Unpacks a uint8 into 4xI8 vector.
 // Since every 3 consecutive values are the same, index with /3.
-const dequantize_LUT = array<u32, 86>(
+const dequantize_LUT = array<u32, lut_size>(
     0xFFFFFFFF,
     0x00FFFFFF,
     0x01FFFFFF,
@@ -127,7 +129,7 @@ fn loadB(local_idx: u32, b_global_base: u32, kidx_v: u32) {
     // Extract the column byte from the u32.
     let b_byte = (b >> (b_col * 8)) & 0xFF;
     // Retrieve the first 4 dequantized values using the lookup table.
-    let b_dequantized: u32 = dequantize_LUT[b_byte / 3];
+    let b_dequantized: u32 = shared_memory_LUT[b_byte / 3];
     tile_B[b_row][b_col] = b_dequantized;
 
     // Retrieve the last dequantized value using math.
@@ -149,6 +151,11 @@ fn SDP5AI(a1: vec4<u32>, b1: vec4<u32>, a2: u32, b2: u32) -> i32 {
 }
 
 $MAIN {
+    // Initialize: Move the lookup table to shared memory.
+    if (local_idx < lut_size) {
+        shared_memory_LUT[local_idx] = dequantize_LUT[local_idx];
+    }
+
     // During the load phase we use all 256 threads to load 64 rows of A/B.
     // For each row we load k_step_size_in_u32 (5) u32 elements, which are total 20 elements of K per row.
     let a_global_base = u32(workgroup_idx / uniforms.num_N_tile) * tile_size;
