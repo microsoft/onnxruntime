@@ -35,9 +35,11 @@ jobs:
   build-and-test:
     strategy:
       matrix:
-        machine: ["x86_64", "arm64"]
-        target: ["x86_64", "arm64"]
-        build_config: ["Debug", "Release"]
+        # To avoid creating too many jobs, we explicitly specify the combinations to run.
+        #
+        # machine: ["x86_64", "arm64"]
+        # target: ["x86_64", "arm64"]
+        # build_config: ["Debug", "Release"]
         include: ${{ fromJSON(inputs.matrix_include) }}
 
     # "macos-13" is a x86_64 image, and "macos-15" is an arm64 image.
