@@ -94,7 +94,7 @@ stages:
           elif [[ "$os_name" == "Darwin" ]]; then
             echo "Platform: macOS. Setting DYLD_LIBRARY_PATH."
             export DYLD_LIBRARY_PATH="$(pwd):$DYLD_LIBRARY_PATH"
-            java -cp -DUSE_WEBGPU=1 -DUSE_COREML=1 '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
+            java -DUSE_WEBGPU=1 -DUSE_COREML=1 -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
             --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
           fi
 
