@@ -45,7 +45,7 @@ REGISTER_GATHERBLOCKQUANTIZED(Int4x2, BFloat16, int64_t);
 
 template <typename T1, typename T2, typename Tind>
 GatherBlockQuantized<T1, T2, Tind>::GatherBlockQuantized(const OpKernelInfo& info) : CudaKernel(info) {
-  info.GetAttr("bits", &bits_);
+  ORT_ENFORCE(info.GetAttr("bits", &bits_).IsOK());
 
   block_size_ = info.GetAttrOrDefault<int64_t>("block_size", 0);
   gather_axis_ = info.GetAttrOrDefault<int64_t>("gather_axis", 0);
