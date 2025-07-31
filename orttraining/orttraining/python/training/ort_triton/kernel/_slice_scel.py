@@ -79,7 +79,7 @@ def slice_scel(logit, label, ignore_index):
     logit_d = logit.shape[-2]
     d = logit_d - 1
     n = logit.numel() // (logit_d * c)
-    log_prob_shape = list(logit.shape)[:-2] + [d, c]
+    log_prob_shape = list(logit.shape)[:-2] + [d, c]  # noqa: RUF005
     log_prob = torch.empty(log_prob_shape, dtype=torch.float, device=logit.device)
     rblock = 4096 if c > 4096 else triton.next_power_of_2(c)
     num_warps = 16 if rblock >= 4096 else (8 if rblock >= 2048 else 4)
@@ -155,7 +155,7 @@ def slice_scel_backward(dloss, log_prob, label, factor, bias):
     c = log_prob.shape[-1]
     d = log_prob.shape[-2]
     dlogit_d = d + 1
-    dlogit_shape = list(log_prob.shape)[:-2] + [dlogit_d, c]
+    dlogit_shape = list(log_prob.shape)[:-2] + [dlogit_d, c]  # noqa: RUF005
     dlogit = (
         torch.empty(dlogit_shape, dtype=dloss.dtype, device=dloss.device)
         if bias is not None

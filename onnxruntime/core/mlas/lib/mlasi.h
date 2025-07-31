@@ -35,7 +35,7 @@ Abstract:
 #endif
 #endif  // MLAS_NO_EXCEPTION
 
-#include "mlas.h"
+#include "core/mlas/inc/mlas.h"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -118,9 +118,8 @@ Abstract:
 
 #ifdef MLAS_NO_EXCEPTION
 
-MLAS_FORCEINLINE
-void
-MlasPrintFinalMessage(const std::string& msg)
+MLAS_FORCEINLINE void
+    MlasPrintFinalMessage(const std::string& msg)
 {
 #if defined(__ANDROID__)
     __android_log_print(ANDROID_LOG_ERROR, "mlas", "%s", msg.c_str());
@@ -133,6 +132,7 @@ MlasPrintFinalMessage(const std::string& msg)
     std::cerr << msg << std::endl;
 #endif
 }
+
 
 #define MLAS_THROW_EX(ex, what)     \
     do {                            \
@@ -747,6 +747,24 @@ void
     float Scale,
     int8_t ZeroPoint);
 
+typedef
+void
+(MLASCALL MLAS_DEQUANTIZE_LINEAR_U8_KERNEL)(
+    const uint8_t* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint);
+
+typedef
+void
+(MLASCALL MLAS_DEQUANTIZE_LINEAR_S8_KERNEL)(
+    const int8_t* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint);
+
 template<typename InputType, typename FilterType>
 struct MLAS_QUANT_KERNEL
 {
@@ -763,6 +781,119 @@ struct MLAS_QUANT_KERNEL
         size_t KernelSize
         );
 };
+typedef
+void
+(MLASCALL MLAS_CONV_FLOAT_FN)(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    const float* Bias,
+    float* WorkingBuffer,
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
+    );
+typedef
+bool
+(MLASCALL MLAS_CONV_FLOAT_OVERRIDE)(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    const float* Bias,
+    float* WorkingBuffer,
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
+    );
+// TODO: Investigate if overridden typedefs can be removed
+typedef
+void
+(MLASCALL MLAS_CONV_PREPARE_FLOAT_FN)(
+    MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannels,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
+    size_t* WorkingBufferSize,
+    float Beta,
+    MLAS_THREADPOOL* ThreadPool
+    );
+typedef
+bool
+(MLASCALL MLAS_CONV_PREPARE_FLOAT_OVERRIDE)(
+    MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannels,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
+    size_t* WorkingBufferSize,
+    float Beta,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+typedef void (MLASCALL MLAS_GEMM_BATCH)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool);
+
+typedef bool (MLASCALL MLAS_GEMM_BATCH_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool);
+
+typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K);
+
+typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K);
+
+typedef void (MLASCALL MLAS_GEMM_PACK_B_KERNEL)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB);
+
+typedef bool (MLASCALL MLAS_GEMM_PACK_B_KERNEL_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB);
 
 extern "C" {
 
@@ -903,6 +1034,8 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_S4_KERNEL MlasQuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL MlasQuantizeLinearU4Kernel;
 #if defined(MLAS_TARGET_AMD64)
+    MLAS_DEQUANTIZE_LINEAR_S8_KERNEL MlasDequantizeLinearS8Kernel;
+    MLAS_DEQUANTIZE_LINEAR_U8_KERNEL MlasDequantizeLinearU8Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelAvx512F;
@@ -1167,6 +1300,13 @@ struct MLAS_PLATFORM {
     bool Avx512Supported_ = false;
     bool ArmNeonQuantAUnsigned = false;
 
+    // Mlas overrides initialisation
+    MLAS_GEMM_BATCH_OVERRIDE* MlasGemmBatchOverride = nullptr;
+    MLAS_GEMM_PACK_B_SIZE_OVERRIDE* MlasGemmPackBSizeOverride = nullptr;
+    MLAS_GEMM_PACK_B_KERNEL_OVERRIDE* MlasGemmPackBOverride = nullptr;
+    MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
+    MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
+
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
 #endif
@@ -1248,6 +1388,8 @@ struct MLAS_PLATFORM {
     MLAS_QUANTIZE_LINEAR_U16_KERNEL* QuantizeLinearU16Kernel;
     MLAS_QUANTIZE_LINEAR_S4_KERNEL* QuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL* QuantizeLinearU4Kernel;
+    MLAS_DEQUANTIZE_LINEAR_S8_KERNEL* DequantizeLinearS8Kernel;
+    MLAS_DEQUANTIZE_LINEAR_U8_KERNEL* DequantizeLinearU8Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     int32_t MaximumThreadCount;

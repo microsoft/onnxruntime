@@ -3,7 +3,7 @@ parameters:
 stages:
 - stage: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
   dependsOn:
-  - Nodejs_Packaging
+  - Setup
   condition: succeeded()
   jobs:
   - job: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
@@ -12,7 +12,7 @@ stages:
     timeoutInMinutes:  120
     pool:
       name: 'Azure Pipelines'
-      image: 'macOS-14'
+      image: 'macOS-15'
       os: 'macOS'
 
     variables:

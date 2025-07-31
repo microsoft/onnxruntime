@@ -31,6 +31,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/eltwise.cpp
   ${MLAS_SRC_DIR}/erf.cpp
   ${MLAS_SRC_DIR}/compute.cpp
+  ${MLAS_SRC_DIR}/dequantize.cpp
   ${MLAS_SRC_DIR}/quantize.cpp
   ${MLAS_SRC_DIR}/qgemm_kernel_default.cpp
   ${MLAS_SRC_DIR}/qladd.cpp
@@ -267,24 +268,23 @@ function(setup_mlas_source_for_windows)
 endfunction()
 
 function(setup_kleidiai)
-  target_compile_definitions(onnxruntime_mlas PRIVATE USE_KLEIDIAI)
-
-  # Disable the KleidiAI tests
-  set(KLEIDIAI_BUILD_TESTS  OFF)
-
-  # Fetch KleidiAI sources:
-  if (NOT TARGET kleidiai)
-    onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
-  endif()
-  onnxruntime_fetchcontent_makeavailable(kleidiai)
-
   target_sources(onnxruntime_mlas PRIVATE
     ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
+    ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
-
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
   set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS kleidiai EXPORT ${PROJECT_NAME}Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endfunction()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -311,7 +311,6 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 elseif(MSVC)
   setup_mlas_source_for_windows()
 else()
-
     if(APPLE)
         get_target_property(ONNXRUNTIME_MLAS_OSX_ARCH onnxruntime_mlas OSX_ARCHITECTURES)
 

@@ -28,6 +28,7 @@ class TestGraph {
   static std::unique_ptr<TestGraph> Load(const ORTCHAR_T* model_path);
   const OrtGraph& GetOrtGraph() const;
   const GraphViewer& GetGraphViewer() const;
+  const Model& GetModel() const;
 
  private:
   std::shared_ptr<Model> model;
@@ -35,31 +36,34 @@ class TestGraph {
   std::unique_ptr<OrtGraph> api_graph;
 };
 
-// Helper to release a C API Ort object at the end of its scope.
-// Useful when not using the public C++ API.
-//    Example:
-//      {
-//        OrtTensorTypeAndShapeInfo* info = nullptr;
-//        DeferOrtRelease<OrtTensorTypeAndShapeInfo> defer_release(&info, c_api.ReleaseTensorTypeAndShapeInfo);
-//        ...
-//      } /* Release is called at end of scope*/
-template <typename T>
-struct DeferOrtRelease {
-  DeferOrtRelease(T** obj_ptr, std::function<void(T*)> release_func) : obj_ptr_(obj_ptr), release_func_(release_func) {}
-  ~DeferOrtRelease() {
-    if (obj_ptr_ != nullptr && *obj_ptr_ != nullptr) {
-      release_func_(*obj_ptr_);
-      *obj_ptr_ = nullptr;
-    }
-  }
-  T** obj_ptr_ = nullptr;
-  std::function<void(T*)> release_func_ = nullptr;
-};
-
 struct NodeArgConsumer {
   NodeArgConsumer(const Node* node, int64_t index) : node(node), input_index(index) {}
   const Node* node = nullptr;
   int64_t input_index = -1;
+};
+
+// Helper to release Ort one or more objects obtained from the public C API at the end of their scope.
+template <typename T>
+struct DeferOrtRelease {
+  DeferOrtRelease(T** object_ptr, std::function<void(T*)> release_func)
+      : objects_(object_ptr), count_(1), release_func_(release_func) {}
+
+  DeferOrtRelease(T** objects, size_t count, std::function<void(T*)> release_func)
+      : objects_(objects), count_(count), release_func_(release_func) {}
+
+  ~DeferOrtRelease() {
+    if (objects_ != nullptr && count_ > 0) {
+      for (size_t i = 0; i < count_; ++i) {
+        if (objects_[i] != nullptr) {
+          release_func_(objects_[i]);
+          objects_[i] = nullptr;
+        }
+      }
+    }
+  }
+  T** objects_ = nullptr;
+  size_t count_ = 0;
+  std::function<void(T*)> release_func_ = nullptr;
 };
 
 // Returns consumers (i.e., consumer node + input index) of a NodeArg from the original graph.

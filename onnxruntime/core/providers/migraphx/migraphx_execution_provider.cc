@@ -323,9 +323,7 @@ AllocatorPtr MIGraphXExecutionProvider::CreateMIGraphXAllocator(OrtDevice::Devic
                                   : OrtArenaCfg(migx_mem_limit, static_cast<int>(arena_extend_strategy),
                                                 -1, -1, -1, -1L)},
         // make it stream aware
-        true,
-        // enable cross stream sharing?
-        false);
+        true);
 
     // ROCM malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
@@ -334,12 +332,13 @@ AllocatorPtr MIGraphXExecutionProvider::CreateMIGraphXAllocator(OrtDevice::Devic
 
 std::vector<AllocatorPtr> MIGraphXExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo default_memory_info(
-      [](OrtDevice::DeviceId device_id) { return std::make_unique<MIGraphXAllocator>(device_id, onnxruntime::CUDA); }, info_.device_id);
+      [](OrtDevice::DeviceId device_id) { return std::make_unique<MIGraphXAllocator>(device_id, onnxruntime::CUDA); },
+      info_.device_id);
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
-        return std::make_unique<HIPPinnedAllocator>(device_id, onnxruntime::CUDA_PINNED);
+        return std::make_unique<MIGraphXPinnedAllocator>(device_id, onnxruntime::CUDA_PINNED);
       },
-      0);
+      info_.device_id);
   return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
 
@@ -1620,8 +1619,8 @@ OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) 
   if (mem_type == OrtMemTypeCPUInput)
     return OrtDevice();
   if (mem_type == OrtMemTypeCPUOutput)
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD,
-                     0 /*CPU device id always be 0*/);
+    return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD,
+                     default_device_.Id());
   return default_device_;
 }
 

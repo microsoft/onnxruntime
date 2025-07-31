@@ -195,7 +195,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
 #if defined(MLAS_TARGET_ARM64)
     if (nbits_ == 8) {
-      // On ARM64, the scales should NOT be provided while packing the weights for nbits_ == 64.
+      // On ARM64, the scales should NOT be provided while packing the weights for nbits_ == 8.
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), nullptr,
                                   has_zp_input_, nullptr, nullptr);
     } else {  // nbits_ == 4

@@ -597,15 +597,10 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
       dispatch->QuantizeARowComputeBlkSum_CompInt8(BlkLen, inputA + i * K, K, quantAPtr + i * Lda, scaleAPtr + i * BlkCount, blkSumAPtr + i * BlkCount);
     }
 
-    // std::cout << "QuantA M " << M << " K " << K << " BlkLen " << BlkLen << std::endl;
     QuantA<M, K, BlkLen>(inputA, refQuantA, refScale, refBlkSum, quantAUnsigned);
-    // std::cout << "Finished QuantA ref " << std::endl;
     CheckQuantA<M, K, BlkLen>(reinterpret_cast<uint8_t*>(quantAPtr), refQuantA);
-    // std::cout << "Finished CheckQuantA" << std::endl;
     CheckScale<M, K, BlkLen>(scaleAPtr, refScale);
-    // std::cout << "Finished CheckScale" << std::endl;
     CheckScale<M, K, BlkLen>(blkSumAPtr, refBlkSum);
-    // std::cout << "Finished CheckBlkSum" << std::endl;
   }
 
  public:
@@ -683,7 +678,6 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     }
   }
 
-#include <iostream>
   template <size_t M, size_t K, size_t N, size_t BlkLen>
   void Check(const float* target, const float* ref, size_t ldc, float rtol, float atol) {
     for (size_t m = 0; m < M; ++m) {

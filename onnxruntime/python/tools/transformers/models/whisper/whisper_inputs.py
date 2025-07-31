@@ -94,14 +94,14 @@ def get_sample_past_key_values(
             torch.rand(batch_size, num_heads, past_seq_len, head_size, device=device, dtype=torch_dtype),
             torch.rand(batch_size, num_heads, past_seq_len, head_size, device=device, dtype=torch_dtype),
         )
-        for _ in range(config.num_hidden_layers)
+        for _ in range(config.decoder_layers)
     ]
     cross_attention_kv_caches = [
         (
             torch.rand(batch_size, num_heads, max_source_positions, head_size, device=device, dtype=torch_dtype),
             torch.rand(batch_size, num_heads, max_source_positions, head_size, device=device, dtype=torch_dtype),
         )
-        for _ in range(config.num_hidden_layers)
+        for _ in range(config.decoder_layers)
     ]
     return flatten_past_key_values(self_attention_kv_caches, cross_attention_kv_caches)
 
@@ -187,7 +187,7 @@ def get_sample_QKs(  # noqa: N802
         torch.rand(
             batch_size, num_heads, sequence_length, config.max_source_positions, device=device, dtype=torch_dtype
         )
-        for _ in range(config.num_hidden_layers)
+        for _ in range(config.decoder_layers)
     ]
     return QKs
 

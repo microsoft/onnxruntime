@@ -430,29 +430,6 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
   return Status::OK();
 }
 
-Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const {
-  const auto& graph_initializers = GetInitializerTensors();
-  auto iter = graph_initializers.find(initializer_name);
-  ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for scale(s): ",
-                initializer_name.c_str());
-  gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
-
-  ORT_RETURN_IF_NOT(scale_tensor_proto->has_data_type(), "Expected scale initializer ", initializer_name.c_str(),
-                    " to have a proto data type.");
-  ORT_RETURN_IF_NOT(scale_tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                    "Expected scale initializer to be of type FLOAT");
-
-  std::vector<uint8_t> initializer_bytes;
-
-  ORT_RETURN_IF_ERROR(UnpackInitializerData(*scale_tensor_proto, initializer_bytes));
-
-  gsl::span<const float> src = gsl::make_span(reinterpret_cast<const float*>(initializer_bytes.data()),
-                                              initializer_bytes.size() / sizeof(float));
-
-  scales.insert(scales.end(), src.begin(), src.end());
-  return Status::OK();
-}
-
 // Checks if a tensor in the ONNX graph is per-channel quantized.
 Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def,
                                               /*out*/ bool& is_per_channel,

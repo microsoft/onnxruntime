@@ -7,6 +7,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/allocator_stats.h"
+#include "core/session/abi_key_value_pairs.h"
 // some enums are defined in session/onnxruntime_c_api.h but used in ortdevice.h/ortmemory.h
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/ortdevice.h"
@@ -37,6 +38,26 @@ struct OrtArenaCfg {
   int max_dead_bytes_per_chunk;           // use -1 to allow ORT to choose the default
   int initial_growth_chunk_size_bytes;    // use -1 to allow ORT to choose the default
   int64_t max_power_of_two_extend_bytes;  // use -1 to allow ORT to choose the default
+
+  bool IsValid() {
+    return arena_extend_strategy >= -1 && arena_extend_strategy <= 1 &&
+           initial_chunk_size_bytes >= -1 &&
+           max_dead_bytes_per_chunk >= -1 &&
+           initial_growth_chunk_size_bytes >= -1 &&
+           max_power_of_two_extend_bytes >= -1;
+  }
+
+  // config key names that we parse in FromKeyValuePairs
+  struct ConfigKeyNames {
+    static constexpr const char* ArenaExtendStrategy = "arena.extend_strategy";
+    static constexpr const char* InitialChunkSizeBytes = "arena.initial_chunk_size_bytes";
+    static constexpr const char* MaxDeadBytesPerChunk = "arena.max_dead_bytes_per_chunk";
+    static constexpr const char* InitialGrowthChunkSizeBytes = "arena.initial_growth_chunk_size_bytes";
+    static constexpr const char* MaxPowerOfTwoExtendBytes = "arena.max_power_of_two_extend_bytes";
+    static constexpr const char* MaxMem = "arena.max_mem";
+  };
+
+  static onnxruntime::common::Status FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg& cfg);
 };
 
 namespace onnxruntime {
@@ -65,8 +86,11 @@ class Stream;
 namespace synchronize {
 class Notification;
 }
-using WaitNotificationFn = std::function<void(Stream&, synchronize::Notification&)>;
-void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
+
+using WaitNotificationFn = std::function<void(Stream*, synchronize::Notification&)>;
+void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream,
+                                // wait fn is for backwards compat with provider bridge
+                                WaitNotificationFn ignored = nullptr);
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
@@ -83,6 +107,43 @@ class IAllocator {
    * @remarks Use SafeInt when calculating the size of memory to allocate using Alloc.
    */
   virtual void* Alloc(size_t size) = 0;
+
+  /** Return true if the allocator implements Stream handling in AllocOnStream.
+   */
+  virtual bool IsStreamAware() const { return false; }
+
+  /** Allocate memory, handling usage across different Streams
+   *
+   * A device Stream may be available when executing a model on non-CPU devices. In this case operations are queued
+   * asynchronously and the allocation/free call is made when the operation is queued rather than executed.
+   * Due to this it is not safe to use the memory on another stream or with no stream unless synchronization has
+   * occurred.
+   *
+   * ORT currently handles the synchronization when executing the model using streams.
+   *
+   * When two streams are synchronized the event used is identified by the producer stream's latest sync id.
+   * This <producer stream:sync id> pair is copied into the sync information of the consumer stream.
+   * Each new event creates a new sync id.
+   *
+   * It is safe to re-use an allocated piece of memory if:
+   *   - the stream that currently owns the memory and the stream that wants to use the memory have been synchronized,
+   *   - and the sync id from when the memory was assigned to the stream that currently owns it is less than the
+   *     sync id from the last synchronization between the two streams.
+   *     - e.g. stream0 is assigned the memory when its sync id is 1.
+   *            stream0 (producer) and stream1 (consumer) are synchronized.
+   *              stream0 sync id will be incremented to 2 when creating the event used in the synchronization.
+   *              stream1 will copy this information into its sync info and now contains an entry for stream0
+   *              with a sync id of 2.
+   *            stream0 frees the memory
+   *              the memory is marked as not in use, but still assigned to stream0
+   *            stream1 is now able to use the memory as it is not in use, and the sync id from the allocation (1)
+   *            is less than the sync id (2) that is has for stream0.
+   *   or
+   *   - the inference session that owned the Stream has completed inferencing
+   *     - Stream::CleanUpOnRunEnd is called when this occurs
+   *     - any memory assigned to the Stream is now able to be used by other streams when it is not longer in use.
+   */
+  virtual void* AllocOnStream(size_t size, Stream* /*stream*/) { return Alloc(size); }
 
   /**
    * Free memory at p.
@@ -171,7 +232,7 @@ class IAllocator {
   template <typename T>
   static IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<IAllocator> allocator, size_t count_or_bytes,
                                               bool use_reserve = false,
-                                              Stream* stream = nullptr, WaitNotificationFn wait_fn = nullptr) {
+                                              Stream* stream = nullptr) {
     ValidateAllocator(allocator);
 
     // for now limit to fundamental types. we could support others, but to do so either we or the caller
@@ -189,7 +250,7 @@ class IAllocator {
     }
 
     // allocate
-    T* p = static_cast<T*>(AllocateBufferWithOptions(*allocator, alloc_size, use_reserve, stream, std::move(wait_fn)));
+    T* p = static_cast<T*>(AllocateBufferWithOptions(*allocator, alloc_size, use_reserve, stream, nullptr));
     ValidateAllocation(p, alloc_size);
 
     return IAllocatorUniquePtr<T>{p,

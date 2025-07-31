@@ -3,23 +3,11 @@ parameters:
   displayName: Opserating System
   type: string
 
-- name: SpecificArtifact
-  displayName: Specific Artifact
-  type: string
-  default: ''
-
-- name: BuildId
-  displayName: Build Id
-  type: string
-  default: ''
-
 - name: PoolName
   type: string
 
 stages:
 - stage: Final_Jar_Testing_${{parameters.OS}}
-  dependsOn:
-    Jar_Packaging
   jobs:
   - job: Final_Jar_Testing_${{parameters.OS}}
     workspace:
@@ -50,16 +38,12 @@ stages:
         StepName: 'Download Final Jar'
         ArtifactName: onnxruntime-java
         TargetPath: '$(Build.BinariesDirectory)/final-jar'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
 
     - template: flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Jar Tools'
         ArtifactName: onnxruntime-java-tools
         TargetPath: '$(Build.BinariesDirectory)/final-jar'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
 
     - ${{ if eq(parameters.OS, 'Windows') }}:
       - task: CmdLine@2
@@ -94,6 +78,3 @@ stages:
 
     - ${{ if eq(parameters['OS'], 'MacOS') }}:
       - template: use-xcode-version.yml
-
-
-

@@ -18,11 +18,12 @@ struct MIGraphXNotification : public synchronize::Notification {
 
   void Activate() override {
     // record event with hipEventBlockingSync so we can support sync on host without busy wait.
-    HIP_CALL_THROW(hipEventRecord(event_, static_cast<hipStream_t>(stream_.GetHandle())));
+    HIP_CALL_THROW(hipEventRecord(event_, static_cast<hipStream_t>(GetStream().GetHandle())));
   }
 
   void wait_on_device(Stream& device_stream) {
-    ORT_ENFORCE(device_stream.GetDevice().Type() == OrtDevice::GPU, "Unexpected device:", device_stream.GetDevice().ToString());
+    ORT_ENFORCE(device_stream.GetDevice().Type() == OrtDevice::GPU, "Unexpected device:",
+                device_stream.GetDevice().ToString());
     // launch a wait command to the migraphx stream
     HIP_CALL_THROW(hipStreamWaitEvent(static_cast<hipStream_t>(device_stream.GetHandle()), event_, 0));
   };
@@ -135,11 +136,11 @@ void* MIGraphXStream::GetResource(int version, int id) const {
 }
 
 // CPU Stream command handles
-void WaitMIGraphXNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
-  static_cast<MIGraphXNotification*>(&notification)->wait_on_device(stream);
+void WaitMIGraphXNotificationOnDevice(Stream* stream, synchronize::Notification& notification) {
+  static_cast<MIGraphXNotification*>(&notification)->wait_on_device(*stream);
 }
 
-void WaitMIGraphXNotificationOnHost(Stream& /*stream*/, synchronize::Notification& notification) {
+void WaitMIGraphXNotificationOnHost(Stream* /*stream*/, synchronize::Notification& notification) {
   static_cast<MIGraphXNotification*>(&notification)->wait_on_host();
 }
 

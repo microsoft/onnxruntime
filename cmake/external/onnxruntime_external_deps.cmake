@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 message(STATUS "Loading Dependencies URLs ...")
 
 include(external/helper_functions.cmake)
@@ -772,6 +775,27 @@ if (onnxruntime_USE_WEBGPU)
   if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES webgpu_glfw glfw)
   endif()
+
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
+    if(onnxruntime_USE_VCPKG)
+      find_package(unofficial-duktape CONFIG REQUIRED)
+      add_library(duktape_static ALIAS unofficial::duktape::duktape)
+    else()
+      onnxruntime_fetchcontent_declare(
+        duktape
+        URL ${DEP_URL_duktape}
+        URL_HASH SHA1=${DEP_SHA1_duktape}
+        EXCLUDE_FROM_ALL
+      )
+      onnxruntime_fetchcontent_makeavailable(duktape)
+
+      if(NOT TARGET duktape_static)
+        add_library(duktape_static STATIC "${duktape_SOURCE_DIR}/src/duktape.c")
+        target_compile_features(duktape_static PRIVATE c_std_99)
+        target_include_directories(duktape_static INTERFACE $<BUILD_INTERFACE:${duktape_SOURCE_DIR}/src>)
+      endif()
+    endif()
+  endif()
 endif()
 
 if(onnxruntime_USE_COREML)
@@ -796,6 +820,14 @@ if(onnxruntime_USE_COREML)
   # we don't build directly so use Populate. selected files are built from onnxruntime_providers_coreml.cmake
   FetchContent_Populate(coremltools)
 
+endif()
+
+if(onnxruntime_USE_KLEIDIAI)
+  # Disable the KleidiAI tests
+  set(KLEIDIAI_BUILD_TESTS  OFF)
+
+  onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
+  onnxruntime_fetchcontent_makeavailable(kleidiai)
 endif()
 
 set(onnxruntime_LINK_DIRS)

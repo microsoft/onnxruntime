@@ -46,7 +46,7 @@ struct OrtStatus {
 #define BACKEND_DNNL ""
 #endif
 
-#if USE_MIGRAPHX
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 #define BACKEND_MIGRAPHX "-MIGRAPHX"
 #else
 #define BACKEND_MIGRAPHX ""
@@ -132,7 +132,7 @@ struct OrtStatus {
 #if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
 #include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
 #endif
-#ifdef USE_MIGRAPHX
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #endif
@@ -248,10 +248,11 @@ extern OrtDevice::DeviceId cuda_device_id;
 extern size_t gpu_mem_limit;
 
 #if !defined(ORT_MINIMAL_BUILD)
-using PyEpSelectionDelegate = std::function<std::vector<const OrtEpDevice*>(const std::vector<const OrtEpDevice*>& ep_devices,
-                                                                            const std::unordered_map<std::string, std::string>& model_metadata,
-                                                                            const std::unordered_map<std::string, std::string>& runtime_metadata,
-                                                                            size_t max_selections)>;
+using PyEpSelectionDelegate =
+    std::function<std::vector<const OrtEpDevice*>(const std::vector<const OrtEpDevice*>& ep_devices,
+                                                  const std::map<std::string, std::string>& model_metadata,
+                                                  const std::map<std::string, std::string>& runtime_metadata,
+                                                  size_t max_selections)>;
 #endif
 
 // Thin wrapper over internal C OrtSessionOptions to store additional state.
