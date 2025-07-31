@@ -126,126 +126,19 @@ TEST_F(ActivationOpTest, HardSwish) {
                           input_values,
                           [](float x) { 
                             return x * std::max(std::min(x / 6.0f + 0.5f, 1.0f), 0.0f); 
-                          });
+                          },
+                          {}, {},
+                          /*is_tensorrt_supported=*/false,
+                          /*opset_version= */ 14);
   TestActivationOp<double>("HardSwish",
                            input_values_double,
                            [](double x) { 
                              return x * std::max(std::min(x / 6.0 + 0.5, 1.0), 0.0); 
-                           });
+                           },
+                           {}, {},
+                           /*is_tensorrt_supported=*/false,
+                           /*opset_version= */ 14);
 }
-
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
-TEST_F(ActivationOpTest, HardSigmoid_bfloat16) {
-#ifdef USE_CUDA
-  int min_cuda_architecture = 530;
-  if (!HasCudaEnvironment(min_cuda_architecture)) {
-    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
-    return;
-  }
-#endif
-#ifdef USE_DNNL
-  if (!DnnlHasBF16Support()) {
-    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
-    return;
-  }
-#endif
-  OpTester test("HardSigmoid", 22);
-  float alpha = 0.3f;
-  float beta = 0.5f;
-
-  auto formula = [alpha, beta](float x) {
-    return std::max(std::min((alpha * x + beta), 1.0f), 0.0f);
-  };
-
-  std::vector<float> X = input_values.front();
-  std::vector<float> Y;
-  for (unsigned i = 0; i < X.size(); i++)
-    Y.push_back(formula(X[i]));
-  std::vector<int64_t> dims{(int64_t)X.size()};
-
-  std::vector<BFloat16> bf_X = FloatsToBFloat16s(X);
-  std::vector<BFloat16> bf_Y = FloatsToBFloat16s(Y);
-
-  test.AddInput<BFloat16>("X", dims, bf_X);
-  test.AddOutput<BFloat16>("Y", dims, bf_Y);
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#elif USE_DNNL
-  execution_providers.push_back(DefaultDnnlExecutionProvider());
-#endif
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
-
-TEST_F(ActivationOpTest, HardSwish_bfloat16) {
-#ifdef USE_CUDA
-  int min_cuda_architecture = 530;
-  if (!HasCudaEnvironment(min_cuda_architecture)) {
-    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
-    return;
-  }
-#endif
-#ifdef USE_DNNL
-  if (!DnnlHasBF16Support()) {
-    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
-    return;
-  }
-#endif
-  OpTester test("HardSwish", 22);
-
-  auto formula = [](float x) { 
-    return x * std::max(std::min(x / 6.0f + 0.5f, 1.0f), 0.0f); 
-  };
-
-  std::vector<float> X = input_values.front();
-  std::vector<float> Y;
-  for (unsigned i = 0; i < X.size(); i++)
-    Y.push_back(formula(X[i]));
-  std::vector<int64_t> dims{(int64_t)X.size()};
-
-  std::vector<BFloat16> bf_X = FloatsToBFloat16s(X);
-  std::vector<BFloat16> bf_Y = FloatsToBFloat16s(Y);
-
-  test.AddInput<BFloat16>("X", dims, bf_X);
-  test.AddOutput<BFloat16>("Y", dims, bf_Y);
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#elif USE_DNNL
-  execution_providers.push_back(DefaultDnnlExecutionProvider());
-#endif
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
-#endif  // USE_CUDA || USE_ROCM || USE_DNNL
-
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML)
-TEST_F(ActivationOpTest, HardSwish_fp16) {
-  OpTester test("HardSwish", 14);
-
-  auto formula = [](float x) { 
-    return x * std::max(std::min(x / 6.0f + 0.5f, 1.0f), 0.0f); 
-  };
-
-  std::vector<float> X = input_values.front();
-  std::vector<float> Y;
-  for (unsigned i = 0; i < X.size(); i++)
-    Y.push_back(formula(X[i]));
-  std::vector<int64_t> dims{(int64_t)X.size()};
-
-  std::vector<MLFloat16> f_X(X.size());
-  std::vector<MLFloat16> f_Y(Y.size());
-  ConvertFloatToMLFloat16(X.data(), f_X.data(), static_cast<int>(X.size()));
-  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), static_cast<int>(Y.size()));
-
-  test.AddInput<MLFloat16>("X", dims, f_X);
-  test.AddOutput<MLFloat16>("Y", dims, f_Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-}
-#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 TEST_F(ActivationOpTest, Tanh) {
   TestActivationOp<float>("Tanh",

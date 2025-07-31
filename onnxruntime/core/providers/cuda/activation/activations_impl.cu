@@ -96,7 +96,7 @@ struct OP_ThresholdedRelu : public CtxThresholdedRelu {
 template <typename T>
 struct OP_HardSwish : public CtxHardSwish {
   __device__ __inline__ T operator()(const T& a) const {
-    return a * (_Min(_Max(a + (T)3, (T)0), (T)6) / (T)6);
+    return a * (_Min(_Max(a / (T)6 + (T)0.5, (T)0), (T)1));
   }
 };
 
