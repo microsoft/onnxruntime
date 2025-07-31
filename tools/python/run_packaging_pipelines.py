@@ -245,7 +245,11 @@ def evaluate_single_pipeline(
                             print("  - OK: Found pre-release versioning parameters.")
 
         print(f"  - MATCH: '{pipeline_name}' matches all criteria.")
-        return {"pipeline": pipeline_details, "packaging_type": packaging_type, "has_pre_release_params": has_pre_release_params}
+        return {
+            "pipeline": pipeline_details,
+            "packaging_type": packaging_type,
+            "has_pre_release_params": has_pre_release_params,
+        }
 
     except KeyError as e:
         print(f"  - SKIPPING '{pipeline_name}': Missing expected key {e} in pipeline details.")
@@ -448,7 +452,7 @@ def main():
             pipeline = result["pipeline"]
             packaging_type = result["packaging_type"]
             has_pre_release_params = result["has_pre_release_params"]
-            
+
             if not args.no_cancel_builds:
                 cancel_running_builds(pipeline["id"], branch_for_trigger, token, project)
             else:
