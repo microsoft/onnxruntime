@@ -21,16 +21,16 @@ namespace contrib {
   ONNX_OPERATOR_KERNEL_EX(QMoE, kMSDomain, 1, kCpuExecutionProvider,                       \
                           (*KernelDefBuilder::Create())                                    \
                               .MayInplace(0, 0)                                            \
-                              .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16>()) \
+                              .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float>()) \
                               .TypeConstraint("T1", BuildKernelDefConstraints<uint8_t>())  \
-                              .TypeConstraint("T2", BuildKernelDefConstraints<float>()),   \
+                              .TypeConstraint("T2", BuildKernelDefConstraints<MLFloat16, float>()),   \
                           QMoE);
 
 REGISTER_KERNEL();
 
 // QMoE CPU kernel registration is handled in cpu_contrib_kernels.cc
 
-QMoE::QMoE(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info), MoEBaseCPU(op_kernel_info) {
+QMoE::QMoE(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info), MoEBaseCPU(op_kernel_info), is_prepacked_(false) {
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
               "expert_weight_bits must be 4 or 8, but got ", expert_weight_bits_);
@@ -57,20 +57,39 @@ Status QMoE::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckInputScales(fc1_scales, fc2_scales, fc3_scales_optional, moe_params.num_experts,
                                        moe_params.hidden_size, moe_params.inter_size));
 
-  if (quant_type == MoEQuantType::UINT4) {
-    return QuantizedMoEImpl<true>(context, moe_params, input, router_probs,
-                                  fc1_experts_weights, fc1_experts_bias_optional, fc2_experts_weights,
-                                  fc2_experts_bias_optional, fc3_experts_weights_optional,
-                                  fc3_experts_bias_optional, fc1_scales, fc2_scales, fc3_scales_optional);
+  // Dispatch based on input data type
+  if (input->IsDataType<MLFloat16>()) {
+    if (quant_type == MoEQuantType::UINT4) {
+      return QuantizedMoEImpl<true, MLFloat16>(context, moe_params, input, router_probs,
+                                    fc1_experts_weights, fc1_experts_bias_optional, fc2_experts_weights,
+                                    fc2_experts_bias_optional, fc3_experts_weights_optional,
+                                    fc3_experts_bias_optional, fc1_scales, fc2_scales, fc3_scales_optional);
+    } else {
+      return QuantizedMoEImpl<false, MLFloat16>(context, moe_params, input, router_probs,
+                                     fc1_experts_weights, fc1_experts_bias_optional, fc2_experts_weights,
+                                     fc2_experts_bias_optional, fc3_experts_weights_optional,
+                                     fc3_experts_bias_optional, fc1_scales, fc2_scales, fc3_scales_optional);
+    }
+  } else if (input->IsDataType<float>()) {
+    if (quant_type == MoEQuantType::UINT4) {
+      return QuantizedMoEImpl<true, float>(context, moe_params, input, router_probs,
+                                fc1_experts_weights, fc1_experts_bias_optional, fc2_experts_weights,
+                                fc2_experts_bias_optional, fc3_experts_weights_optional,
+                                fc3_experts_bias_optional, fc1_scales, fc2_scales, fc3_scales_optional);
+    } else {
+      return QuantizedMoEImpl<false, float>(context, moe_params, input, router_probs,
+                                 fc1_experts_weights, fc1_experts_bias_optional, fc2_experts_weights,
+                                 fc2_experts_bias_optional, fc3_experts_weights_optional,
+                                 fc3_experts_bias_optional, fc1_scales, fc2_scales, fc3_scales_optional);
+    }
   } else {
-    return QuantizedMoEImpl<false>(context, moe_params, input, router_probs,
-                                   fc1_experts_weights, fc1_experts_bias_optional, fc2_experts_weights,
-                                   fc2_experts_bias_optional, fc3_experts_weights_optional,
-                                   fc3_experts_bias_optional, fc1_scales, fc2_scales, fc3_scales_optional);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                          "QMoE only supports float and MLFloat16 data types, but got ",
+                          DataTypeImpl::ToString(input->DataType()));
   }
 }
 
-template <bool UseUInt4x2>
+template <bool UseUInt4x2, typename T>
 Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
                               MoEParameters& moe_params,
                               const Tensor* input,
@@ -84,33 +103,40 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
                               const Tensor* fc1_scales,
                               const Tensor* fc2_scales,
                               const Tensor* fc3_scales_optional) const {
-  // Get thread pool
-  auto* thread_pool = context->GetOperatorThreadPool();
-
-  // Get input data pointers
-  const MLFloat16* input_data = input->Data<MLFloat16>();
-  const MLFloat16* router_probs_data = router_probs->Data<MLFloat16>();
-  const uint8_t* fc1_weights_data = fc1_experts_weights->Data<uint8_t>();
-  const uint8_t* fc2_weights_data = fc2_experts_weights->Data<uint8_t>();
-  const float* fc1_scales_data = fc1_scales->Data<float>();
-  const float* fc2_scales_data = fc2_scales->Data<float>();
-
-  const MLFloat16* fc1_bias_data = fc1_experts_bias_optional ? fc1_experts_bias_optional->Data<MLFloat16>() : nullptr;
-  const MLFloat16* fc2_bias_data = fc2_experts_bias_optional ? fc2_experts_bias_optional->Data<MLFloat16>() : nullptr;
-
   // SwiGLU validation - FC3 not supported
   bool is_swiglu = (activation_type_ == ActivationType::SwiGLU);
   if (is_swiglu && fc3_experts_weights_optional != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SwiGLU activation is not supported with fc3.");
+                         "SwiGLU activation is not supported with fc3.");
   }
   if (!is_swiglu && fc3_experts_weights_optional != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "FC3 gating is not yet implemented on CPU.");
+                         "FC3 gating is not yet implemented on CPU.");
   }
 
+  // Check if we need to repack weights
+  if (!is_prepacked_ ||
+      cached_num_experts_ != moe_params.num_experts ||
+      cached_hidden_size_ != moe_params.hidden_size ||
+      cached_inter_size_ != moe_params.inter_size ||
+      cached_is_swiglu_ != is_swiglu) {
+    // Need to prepack weights
+    Status status = const_cast<QMoE*>(this)->PrepackAndDequantizeWeights<UseUInt4x2>(
+      context, moe_params, fc1_experts_weights, fc2_experts_weights,
+      fc1_scales, fc2_scales, is_swiglu);
+    ORT_RETURN_IF_ERROR(status);
+  }
+  // Get thread pool
+  auto* thread_pool = context->GetOperatorThreadPool();
+
+  // Get input data pointers
+  const T* input_data = input->Data<T>();
+  const T* router_probs_data = router_probs->Data<T>();
+  const T* fc1_bias_data = fc1_experts_bias_optional ? fc1_experts_bias_optional->Data<T>() : nullptr;
+  const T* fc2_bias_data = fc2_experts_bias_optional ? fc2_experts_bias_optional->Data<T>() : nullptr;
+
   Tensor* output = context->Output(0, input->Shape());
-  MLFloat16* output_data = output->MutableData<MLFloat16>();
+  T* output_data = output->MutableData<T>();
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -122,6 +148,8 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   const int64_t total_output_size = moe_params.num_rows * moe_params.hidden_size;
   std::fill_n(output_data, total_output_size, MLFloat16(0.0f));
 
+  // Using prepacked weights - no need to convert scales
+
   auto thread_fc1_buffers = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads * moe_params.inter_size * (is_swiglu ? 2 : 1)));
   auto thread_fc2_buffers = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads * moe_params.hidden_size));
   auto thread_results = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads * moe_params.num_rows * moe_params.hidden_size));
@@ -129,93 +157,42 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   const int64_t max_bias_size = std::max(moe_params.inter_size * (is_swiglu ? 2 : 1), moe_params.hidden_size);
   auto thread_bias_buffers = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads * max_bias_size));
 
-  // Pre-convert all input data from MLFloat16 to float using parallel MLAS conversion
+  // Prepare float buffers for input data
   auto input_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(moe_params.num_rows * moe_params.hidden_size));
-  MlasConvertHalfToFloatBufferInParallel(reinterpret_cast<const MLAS_FP16*>(input_data),
-                                         input_float.get(),
-                                         static_cast<size_t>(moe_params.num_rows * moe_params.hidden_size),
-                                         thread_pool);
-
-  // Pre-convert all router probabilities to avoid repeated conversions
   auto router_probs_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(moe_params.num_rows * moe_params.num_experts));
-  MlasConvertHalfToFloatBufferInParallel(reinterpret_cast<const MLAS_FP16*>(router_probs_data),
-                                         router_probs_float.get(),
-                                         static_cast<size_t>(moe_params.num_rows * moe_params.num_experts),
-                                         thread_pool);
+
+  // Convert input and router_probs based on type
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    // For MLFloat16, convert to float
+    MlasConvertHalfToFloatBufferInParallel(reinterpret_cast<const MLAS_FP16*>(input_data),
+                                           input_float.get(),
+                                           static_cast<size_t>(moe_params.num_rows * moe_params.hidden_size),
+                                           thread_pool);
+
+    MlasConvertHalfToFloatBufferInParallel(reinterpret_cast<const MLAS_FP16*>(router_probs_data),
+                                           router_probs_float.get(),
+                                           static_cast<size_t>(moe_params.num_rows * moe_params.num_experts),
+                                           thread_pool);
+  } else {
+    // For float, copy directly
+    std::memcpy(input_float.get(), input_data,
+                static_cast<size_t>(moe_params.num_rows * moe_params.hidden_size) * sizeof(float));
+    std::memcpy(router_probs_float.get(), router_probs_data,
+                static_cast<size_t>(moe_params.num_rows * moe_params.num_experts) * sizeof(float));
+  }
 
   // Initialize thread results to zero using optimized memset
   std::memset(thread_results.get(), 0,
               static_cast<size_t>(num_threads * moe_params.num_rows * moe_params.hidden_size) * sizeof(float));
 
-  // Determine quantization parameters based on bit width
+  // Determine activation related parameters
   const bool is_4bit = UseUInt4x2;
-  const float zero_point = is_4bit ? 8.0f : 128.0f;
   const int64_t act_multiplier = is_swiglu ? 2 : 1;
   const int64_t fc1_output_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
 
-  // Calculate weight sizes and strides based on quantization type
-  const int64_t fc1_weight_stride = is_4bit ? (moe_params.hidden_size * fc1_output_size / 2) : (moe_params.hidden_size * moe_params.inter_size * act_multiplier);
-  const int64_t fc2_weight_stride = is_4bit ? (moe_params.inter_size * moe_params.hidden_size / 2) : (moe_params.inter_size * moe_params.hidden_size);
-
-  // Pre-dequantize all expert weights once (shared across all threads)
-  auto dequant_fc1_weights = IAllocator::MakeUniquePtr<float>(allocator,
-                                                              static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier)));
-  auto dequant_fc2_weights = IAllocator::MakeUniquePtr<float>(allocator,
-                                                              static_cast<size_t>(moe_params.num_experts * moe_params.inter_size * moe_params.hidden_size));
-
-  // Helper lambda for dequantizing a single weight value
-  auto DequantizeWeight = [&](const uint8_t* weights, size_t weight_idx, size_t linear_idx,
-                              const float* scales, int64_t scale_idx) -> float {
-    if (is_4bit) {
-      // For Int4, two values are packed in each uint8
-      size_t packed_idx = linear_idx / 2;
-      uint8_t packed_value = weights[packed_idx];
-      uint8_t quantized_weight = (linear_idx % 2 == 0) ? (packed_value & 0x0F) : ((packed_value >> 4) & 0x0F);
-      return (static_cast<float>(quantized_weight) - zero_point) * scales[scale_idx];
-    } else {
-      // For Int8, direct access
-      return (static_cast<float>(weights[weight_idx]) - zero_point) * scales[scale_idx];
-    }
-  };
-
-  // Dequantize FC1 weights for all experts
-  concurrency::ThreadPool::TryParallelFor(
-      thread_pool, static_cast<std::ptrdiff_t>(moe_params.num_experts),
-      static_cast<double>(std::max<int64_t>(1, moe_params.num_experts / num_threads)),
-      [&](ptrdiff_t expert_start, ptrdiff_t expert_end) {
-        for (std::ptrdiff_t expert_idx = expert_start; expert_idx < expert_end; ++expert_idx) {
-          const uint8_t* fc1_expert_weights = fc1_weights_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * fc1_weight_stride;
-          const float* fc1_expert_scales = fc1_scales_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier);
-          float* dequant_fc1_expert = dequant_fc1_weights.get() + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier);
-
-          const int64_t output_cols = is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier;
-          for (int64_t out_col = 0; out_col < output_cols; ++out_col) {
-            for (int64_t in_col = 0; in_col < moe_params.hidden_size; ++in_col) {
-              size_t linear_idx = static_cast<size_t>(out_col * moe_params.hidden_size + in_col);
-              dequant_fc1_expert[linear_idx] = DequantizeWeight(fc1_expert_weights, linear_idx, linear_idx, fc1_expert_scales, out_col);
-            }
-          }
-        }
-      });
-
-  // Dequantize FC2 weights for all experts
-  concurrency::ThreadPool::TryParallelFor(
-      thread_pool, static_cast<std::ptrdiff_t>(moe_params.num_experts),
-      static_cast<double>(std::max<int64_t>(1, moe_params.num_experts / num_threads)),
-      [&](ptrdiff_t expert_start, ptrdiff_t expert_end) {
-        for (std::ptrdiff_t expert_idx = expert_start; expert_idx < expert_end; ++expert_idx) {
-          const uint8_t* fc2_expert_weights = fc2_weights_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * fc2_weight_stride;
-          const float* fc2_expert_scales = fc2_scales_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size;
-          float* dequant_fc2_expert = dequant_fc2_weights.get() + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.inter_size * moe_params.hidden_size;
-
-          for (int64_t out_col = 0; out_col < moe_params.hidden_size; ++out_col) {
-            for (int64_t in_col = 0; in_col < moe_params.inter_size; ++in_col) {
-              size_t linear_idx = static_cast<size_t>(out_col * moe_params.inter_size + in_col);
-              dequant_fc2_expert[linear_idx] = DequantizeWeight(fc2_expert_weights, linear_idx, linear_idx, fc2_expert_scales, out_col);
-            }
-          }
-        }
-      });
+  // Use prepacked dequantized weights - no need to dequantize here
+  const float* dequant_fc1_weights = prepacked_fc1_weights_.data();
+  const float* dequant_fc2_weights = prepacked_fc2_weights_.data();
 
   // Process tokens in parallel
   concurrency::ThreadPool::TryParallelFor(
@@ -241,10 +218,12 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
             // FC1: input -> intermediate using pre-dequantized weights + MLAS SGEMM
             const int64_t fc1_weight_offset = is_4bit ? (static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size * fc1_output_size) : (static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size * moe_params.inter_size * act_multiplier);
-            const float* fc1_expert_weights = dequant_fc1_weights.get() + fc1_weight_offset;
+            const float* fc1_expert_weights = dequant_fc1_weights + fc1_weight_offset;
 
-            const int64_t fc1_bias_size = is_4bit ? fc1_output_size : (moe_params.inter_size * act_multiplier);
-            const MLFloat16* fc1_expert_bias_typed = fc1_bias_data ? fc1_bias_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * fc1_bias_size : nullptr;
+            // Bias size is always equal to output size (fc1_output_size), regardless of bit width
+            const int64_t fc1_bias_size = fc1_output_size;
+            // Handle bias pointer based on type T
+            const T* fc1_expert_bias_typed = fc1_bias_data ? fc1_bias_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * fc1_bias_size : nullptr;
 
             // Use MLAS SGEMM for FC1
             MLAS_SGEMM_DATA_PARAMS fc1_params;
@@ -263,10 +242,17 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
             if (is_swiglu) {
               // Add bias if present
               if (fc1_expert_bias_typed) {
-                MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc1_expert_bias_typed),
-                                             thread_bias_buffer, static_cast<size_t>(fc1_bias_size));
-                for (int64_t i = 0; i < fc1_bias_size; ++i) {
-                  thread_fc1_output[i] += thread_bias_buffer[i];
+                if constexpr (std::is_same_v<T, MLFloat16>) {
+                  MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc1_expert_bias_typed),
+                                               thread_bias_buffer, static_cast<size_t>(fc1_bias_size));
+                  for (int64_t i = 0; i < fc1_bias_size; ++i) {
+                    thread_fc1_output[i] += thread_bias_buffer[i];
+                  }
+                } else {
+                  // For float, convert directly
+                  for (int64_t i = 0; i < fc1_bias_size; ++i) {
+                    thread_fc1_output[i] += fc1_expert_bias_typed[i];
+                  }
                 }
               }
 
@@ -289,11 +275,19 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
             } else {
               // Standard activation (non-SwiGLU)
               if (fc1_expert_bias_typed) {
-                MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc1_expert_bias_typed),
-                                             thread_bias_buffer, static_cast<size_t>(moe_params.inter_size));
-                for (int64_t i = 0; i < moe_params.inter_size; ++i) {
-                  thread_fc1_output[i] += thread_bias_buffer[i];
-                  thread_fc1_output[i] = ApplyActivation(thread_fc1_output[i], activation_type_);
+                if constexpr (std::is_same_v<T, MLFloat16>) {
+                  MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc1_expert_bias_typed),
+                                               thread_bias_buffer, static_cast<size_t>(moe_params.inter_size));
+                  for (int64_t i = 0; i < moe_params.inter_size; ++i) {
+                    thread_fc1_output[i] += thread_bias_buffer[i];
+                    thread_fc1_output[i] = ApplyActivation(thread_fc1_output[i], activation_type_);
+                  }
+                } else {
+                  // For float, use directly
+                  for (int64_t i = 0; i < moe_params.inter_size; ++i) {
+                    thread_fc1_output[i] += fc1_expert_bias_typed[i];
+                    thread_fc1_output[i] = ApplyActivation(thread_fc1_output[i], activation_type_);
+                  }
                 }
               } else {
                 for (int64_t i = 0; i < moe_params.inter_size; ++i) {
@@ -303,8 +297,9 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
             }
 
             // FC2: intermediate -> output using pre-dequantized weights + MLAS SGEMM
-            const float* fc2_expert_weights = dequant_fc2_weights.get() + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.inter_size * moe_params.hidden_size;
-            const MLFloat16* fc2_expert_bias_typed = fc2_bias_data ? fc2_bias_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size : nullptr;
+            const float* fc2_expert_weights = dequant_fc2_weights + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.inter_size * moe_params.hidden_size;
+            // Handle bias pointer based on type T
+            const T* fc2_expert_bias_typed = fc2_bias_data ? fc2_bias_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size : nullptr;
 
             // Use MLAS SGEMM for FC2
             MLAS_SGEMM_DATA_PARAMS fc2_params;
@@ -321,10 +316,17 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
             // Add bias, apply routing weight, and accumulate to final result
             if (fc2_expert_bias_typed) {
-              MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc2_expert_bias_typed),
-                                           thread_bias_buffer, static_cast<size_t>(moe_params.hidden_size));
-              for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
-                token_result[i] += routing_weight * (thread_fc2_output[i] + thread_bias_buffer[i]);
+              if constexpr (std::is_same_v<T, MLFloat16>) {
+                MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc2_expert_bias_typed),
+                                             thread_bias_buffer, static_cast<size_t>(moe_params.hidden_size));
+                for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
+                  token_result[i] += routing_weight * (thread_fc2_output[i] + thread_bias_buffer[i]);
+                }
+              } else {
+                // For float, use directly
+                for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
+                  token_result[i] += routing_weight * (thread_fc2_output[i] + fc2_expert_bias_typed[i]);
+                }
               }
             } else {
               for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
@@ -362,8 +364,14 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
         }
       });
 
-  // Convert final float results to MLFloat16 using optimized MLAS conversion
-  MlasConvertFloatToHalfBuffer(float_output, reinterpret_cast<MLAS_FP16*>(output_data), static_cast<size_t>(total_output_size));
+  // Convert results back to the appropriate output type
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    // For MLFloat16, convert from float
+    MlasConvertFloatToHalfBuffer(float_output, reinterpret_cast<MLAS_FP16*>(output_data), static_cast<size_t>(total_output_size));
+  } else {
+    // For float, copy directly
+    std::memcpy(output_data, float_output, static_cast<size_t>(total_output_size) * sizeof(float));
+  }
 
   // Suppress unused parameter warnings for optional parameters that are not used in non-SwiGLU modes
   if (!is_swiglu) {
@@ -374,8 +382,140 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   return Status::OK();
 }
 
+template <bool UseUInt4x2>
+Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
+                               MoEParameters& moe_params,
+                               const Tensor* fc1_experts_weights,
+                               const Tensor* fc2_experts_weights,
+                               const Tensor* fc1_scales,
+                               const Tensor* fc2_scales,
+                               bool is_swiglu) {
+  // Get thread pool
+  auto* thread_pool = context->GetOperatorThreadPool();
+
+  // Get input data pointers
+  const uint8_t* fc1_weights_data = fc1_experts_weights->Data<uint8_t>();
+  const uint8_t* fc2_weights_data = fc2_experts_weights->Data<uint8_t>();
+  const void* fc1_scales_data_typed = fc1_scales->DataRaw();
+  const void* fc2_scales_data_typed = fc2_scales->DataRaw();
+  bool is_fp32_scales = fc1_scales->IsDataType<float>();
+
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+
+  const int64_t num_threads = std::min<int64_t>(
+      static_cast<int64_t>(concurrency::ThreadPool::DegreeOfParallelism(thread_pool)),
+      moe_params.num_experts);
+
+  // Prepare scales in float format
+  const int64_t fc1_scales_size = moe_params.num_experts * (is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size);
+  const int64_t fc2_scales_size = moe_params.num_experts * moe_params.hidden_size;
+
+  auto fc1_scales_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(fc1_scales_size));
+  auto fc2_scales_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(fc2_scales_size));
+
+  if (is_fp32_scales) {
+    // For float scales, just copy
+    std::memcpy(fc1_scales_float.get(), fc1_scales_data_typed, static_cast<size_t>(fc1_scales_size) * sizeof(float));
+    std::memcpy(fc2_scales_float.get(), fc2_scales_data_typed, static_cast<size_t>(fc2_scales_size) * sizeof(float));
+  } else {
+    // For MLFloat16 scales, convert to float
+    MlasConvertHalfToFloatBufferInParallel(reinterpret_cast<const MLAS_FP16*>(fc1_scales_data_typed),
+                                          fc1_scales_float.get(),
+                                          static_cast<size_t>(fc1_scales_size),
+                                          thread_pool);
+    MlasConvertHalfToFloatBufferInParallel(reinterpret_cast<const MLAS_FP16*>(fc2_scales_data_typed),
+                                          fc2_scales_float.get(),
+                                          static_cast<size_t>(fc2_scales_size),
+                                          thread_pool);
+  }
+
+  const float* fc1_scales_data = fc1_scales_float.get();
+  const float* fc2_scales_data = fc2_scales_float.get();
+
+  // Determine quantization parameters based on bit width
+  const bool is_4bit = UseUInt4x2;
+  const float zero_point = is_4bit ? 8.0f : 128.0f;
+  const int64_t act_multiplier = is_swiglu ? 2 : 1;
+  const int64_t fc1_output_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
+
+  // Calculate weight sizes and strides based on quantization type
+  const int64_t fc1_weight_stride = is_4bit ? (moe_params.hidden_size * fc1_output_size / 2) : (moe_params.hidden_size * moe_params.inter_size * act_multiplier);
+  const int64_t fc2_weight_stride = is_4bit ? (moe_params.inter_size * moe_params.hidden_size / 2) : (moe_params.inter_size * moe_params.hidden_size);
+
+  // Resize prepack vectors
+  const size_t fc1_weights_size = static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier));
+  const size_t fc2_weights_size = static_cast<size_t>(moe_params.num_experts * moe_params.inter_size * moe_params.hidden_size);
+
+  prepacked_fc1_weights_.resize(fc1_weights_size);
+  prepacked_fc2_weights_.resize(fc2_weights_size);
+
+  // Helper lambda for dequantizing a single weight value
+  auto DequantizeWeight = [&](const uint8_t* weights, size_t weight_idx, size_t linear_idx,
+                              const float* scales, int64_t scale_idx) -> float {
+    if (is_4bit) {
+      // For Int4, two values are packed in each uint8
+      size_t packed_idx = linear_idx / 2;
+      uint8_t packed_value = weights[packed_idx];
+      uint8_t quantized_weight = (linear_idx % 2 == 0) ? (packed_value & 0x0F) : ((packed_value >> 4) & 0x0F);
+      return (static_cast<float>(quantized_weight) - zero_point) * scales[scale_idx];
+    } else {
+      // For Int8, direct access
+      return (static_cast<float>(weights[weight_idx]) - zero_point) * scales[scale_idx];
+    }
+  };
+
+  // Dequantize FC1 weights for all experts
+  concurrency::ThreadPool::TryParallelFor(
+      thread_pool, static_cast<std::ptrdiff_t>(moe_params.num_experts),
+      static_cast<double>(std::max<int64_t>(1, moe_params.num_experts / num_threads)),
+      [&](ptrdiff_t expert_start, ptrdiff_t expert_end) {
+        for (std::ptrdiff_t expert_idx = expert_start; expert_idx < expert_end; ++expert_idx) {
+          const uint8_t* fc1_expert_weights = fc1_weights_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * fc1_weight_stride;
+          const float* fc1_expert_scales = fc1_scales_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier);
+          float* dequant_fc1_expert = prepacked_fc1_weights_.data() + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier);
+
+          const int64_t output_cols = is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier;
+          for (int64_t out_col = 0; out_col < output_cols; ++out_col) {
+            for (int64_t in_col = 0; in_col < moe_params.hidden_size; ++in_col) {
+              size_t linear_idx = static_cast<size_t>(out_col * moe_params.hidden_size + in_col);
+              dequant_fc1_expert[linear_idx] = DequantizeWeight(fc1_expert_weights, linear_idx, linear_idx, fc1_expert_scales, out_col);
+            }
+          }
+        }
+      });
+
+  // Dequantize FC2 weights for all experts
+  concurrency::ThreadPool::TryParallelFor(
+      thread_pool, static_cast<std::ptrdiff_t>(moe_params.num_experts),
+      static_cast<double>(std::max<int64_t>(1, moe_params.num_experts / num_threads)),
+      [&](ptrdiff_t expert_start, ptrdiff_t expert_end) {
+        for (std::ptrdiff_t expert_idx = expert_start; expert_idx < expert_end; ++expert_idx) {
+          const uint8_t* fc2_expert_weights = fc2_weights_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * fc2_weight_stride;
+          const float* fc2_expert_scales = fc2_scales_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size;
+          float* dequant_fc2_expert = prepacked_fc2_weights_.data() + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.inter_size * moe_params.hidden_size;
+
+          for (int64_t out_col = 0; out_col < moe_params.hidden_size; ++out_col) {
+            for (int64_t in_col = 0; in_col < moe_params.inter_size; ++in_col) {
+              size_t linear_idx = static_cast<size_t>(out_col * moe_params.inter_size + in_col);
+              dequant_fc2_expert[linear_idx] = DequantizeWeight(fc2_expert_weights, linear_idx, linear_idx, fc2_expert_scales, out_col);
+            }
+          }
+        }
+      });
+
+  // Update cached parameters
+  cached_num_experts_ = moe_params.num_experts;
+  cached_hidden_size_ = moe_params.hidden_size;
+  cached_inter_size_ = moe_params.inter_size;
+  cached_is_swiglu_ = is_swiglu;
+  is_prepacked_ = true;
+
+  return Status::OK();
+}
+
 // Explicit template instantiations
-template Status QMoE::QuantizedMoEImpl<true>(OpKernelContext* context,
+template Status QMoE::QuantizedMoEImpl<true, MLFloat16>(OpKernelContext* context,
                                              MoEParameters& moe_params,
                                              const Tensor* input,
                                              const Tensor* router_probs,
@@ -389,7 +529,35 @@ template Status QMoE::QuantizedMoEImpl<true>(OpKernelContext* context,
                                              const Tensor* fc2_scales,
                                              const Tensor* fc3_scales_optional) const;
 
-template Status QMoE::QuantizedMoEImpl<false>(OpKernelContext* context,
+template Status QMoE::QuantizedMoEImpl<false, MLFloat16>(OpKernelContext* context,
+                                              MoEParameters& moe_params,
+                                              const Tensor* input,
+                                              const Tensor* router_probs,
+                                              const Tensor* fc1_experts_weights,
+                                              const Tensor* fc1_experts_bias_optional,
+                                              const Tensor* fc2_experts_weights,
+                                              const Tensor* fc2_experts_bias_optional,
+                                              const Tensor* fc3_experts_weights_optional,
+                                              const Tensor* fc3_experts_bias_optional,
+                                              const Tensor* fc1_scales,
+                                              const Tensor* fc2_scales,
+                                              const Tensor* fc3_scales_optional) const;
+
+template Status QMoE::QuantizedMoEImpl<true, float>(OpKernelContext* context,
+                                             MoEParameters& moe_params,
+                                             const Tensor* input,
+                                             const Tensor* router_probs,
+                                             const Tensor* fc1_experts_weights,
+                                             const Tensor* fc1_experts_bias_optional,
+                                             const Tensor* fc2_experts_weights,
+                                             const Tensor* fc2_experts_bias_optional,
+                                             const Tensor* fc3_experts_weights_optional,
+                                             const Tensor* fc3_experts_bias_optional,
+                                             const Tensor* fc1_scales,
+                                             const Tensor* fc2_scales,
+                                             const Tensor* fc3_scales_optional) const;
+
+template Status QMoE::QuantizedMoEImpl<false, float>(OpKernelContext* context,
                                               MoEParameters& moe_params,
                                               const Tensor* input,
                                               const Tensor* router_probs,

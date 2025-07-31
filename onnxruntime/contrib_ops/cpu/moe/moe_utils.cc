@@ -29,8 +29,8 @@ float ApplyActivation(float x, ActivationType activation_type) {
 void ApplySwiGLU(const float* fc1_output, float* result, int64_t inter_size) {
   constexpr float swiglu_alpha = 1.702f;
   for (int64_t i = 0; i < inter_size; ++i) {
-    float linear_val = fc1_output[i];             // First half: linear projection
-    float gate_val = fc1_output[i + inter_size];  // Second half: gate projection
+    float linear_val = fc1_output[2 * i];       // Interleaved: even index
+    float gate_val = fc1_output[2 * i + 1];    // Interleaved: odd index
     // SwiGLU: gate * sigmoid(alpha * gate) * (linear + 1)
     float sigmoid_arg = swiglu_alpha * gate_val;
     float sigmoid_out = 1.0f / (1.0f + std::exp(-sigmoid_arg));

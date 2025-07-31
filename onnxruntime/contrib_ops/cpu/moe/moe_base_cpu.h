@@ -106,28 +106,31 @@ class MoEBaseCPU {
     }
 
     // Optional bias validation
-    if (fc1_experts_bias_optional != nullptr && fc2_experts_bias_optional != nullptr) {
+    if (fc1_experts_bias_optional != nullptr) {
       const auto& fc1_experts_bias_dims = fc1_experts_bias_optional->Shape().GetDims();
-      const auto& fc2_experts_bias_dims = fc2_experts_bias_optional->Shape().GetDims();
       if (fc1_experts_bias_dims.size() != 2) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_bias_dims must be 2D, got ",
                                fc1_experts_bias_dims.size());
-      }
-      if (fc2_experts_bias_dims.size() != 2) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc2_experts_bias_dims must be 2D, got ",
-                               fc2_experts_bias_dims.size());
       }
       if (fc1_experts_bias_dims[0] != local_num_experts) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_bias_dims[0] must be equal to local_num_experts, got ",
                                fc1_experts_bias_dims[0], " and ", local_num_experts);
       }
+      int64_t expected_fc1_bias_dim1 = activation_type_ == ActivationType::SwiGLU ? 2 * inter_size : inter_size;
+      if (fc1_experts_bias_dims[1] != expected_fc1_bias_dim1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_bias_dims[1] must be equal to ", expected_fc1_bias_dim1, ", got ",
+                               fc1_experts_bias_dims[1], " and inter_size=", inter_size, ". Activation type: ", static_cast<int>(activation_type_));
+      }
+    }
+    if (fc2_experts_bias_optional != nullptr) {
+      const auto& fc2_experts_bias_dims = fc2_experts_bias_optional->Shape().GetDims();
+      if (fc2_experts_bias_dims.size() != 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc2_experts_bias_dims must be 2D, got ",
+                               fc2_experts_bias_dims.size());
+      }
       if (fc2_experts_bias_dims[0] != local_num_experts) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc2_experts_bias_dims[0] must be equal to local_num_experts, got ",
                                fc2_experts_bias_dims[0], " and ", local_num_experts);
-      }
-      if (fc1_experts_bias_dims[1] != inter_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_bias_dims[1] must be equal to inter_size, got ",
-                               fc1_experts_bias_dims[1], " and ", inter_size);
       }
       if (fc2_experts_bias_dims[1] != hidden_size) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc2_experts_bias_dims[1] must be equal to hidden_size, got ",
