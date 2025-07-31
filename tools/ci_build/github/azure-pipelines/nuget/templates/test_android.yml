@@ -76,7 +76,11 @@ stages:
 
               if ($completed) {
                 Receive-Job -Job $job
-                $exitCode = $job.State -eq 'Completed' ? 0 : 1
+                if ($job.State -eq 'Completed') {
+                  $exitCode = 0
+                } else {
+                  $exitCode = 1
+                }
               } else {
                 Write-Host "Test timed out, stopping job and cleaning up processes..."
                 Stop-Job -Job $job -Force
