@@ -1,6 +1,8 @@
 name: Qualcomm Merge Upstream Workflow
 
 on:
+  schedule:
+    - cron: '0 9 * * 1' # Runs weekly Monday morning at 2am in San Diego/PDT (9am UTC)
   # Allows the workflow to be ran manually from the Actions tab
   workflow_dispatch:
 
@@ -72,4 +74,5 @@ jobs:
           -B $ORIGIN_BRANCH \
           -H $PR_BRANCH \
           --title "$PR_TITLE" \
-          --body "$PR_BODY"
+          --body "$PR_BODY" \
+          --reviewer jkilpat,kromero,muchhsu,tirupath
