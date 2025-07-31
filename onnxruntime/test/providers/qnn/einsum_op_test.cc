@@ -189,6 +189,19 @@ TEST_F(QnnCPUBackendTests, EinsumRank4MatMulTransposeAll1) {
       /*tolerance=*/1e-4f);
 }
 
+TEST_F(QnnCPUBackendTests, EinsumRank4MatMulTransposeAll2) {
+  const std::vector<int64_t> shape0{1, 7, 1, 7};
+  const std::vector<int64_t> shape1{1, 9, 1, 7};
+  const std::vector<float> data0 = GetSequentialFloatData(shape0, /*start=*/-0.1f, /*step=*/0.05f);
+  const std::vector<float> data1 = GetSequentialFloatData(shape1, /*start=*/-0.1f, /*step=*/0.05f);
+  RunQnnEinsum<float>(
+      /*backend=*/kQnnBackendTypeCpu,
+      /*in0=*/TestInputDef<float>(shape0, /*is_initializer=*/false, std::move(data0)),
+      /*in1=*/TestInputDef<float>(shape1, /*is_initializer=*/false, std::move(data1)),
+      /*equation=*/"bkhq,bchk->bchq",
+      /*tolerance=*/1e-4f);
+}
+
 TEST_F(QnnCPUBackendTests, EinsumMatMulBroadcastTransposeY) {
   const std::vector<int64_t> shape0{2, 3, 3, 4};
   const std::vector<int64_t> shape1{3, 3, 4};
@@ -202,16 +215,16 @@ TEST_F(QnnCPUBackendTests, EinsumMatMulBroadcastTransposeY) {
       /*tolerance=*/1e-4f);
 }
 
-TEST_F(QnnCPUBackendTests, EinsumRank4MatMulTransposeAll2) {
-  const std::vector<int64_t> shape0{1, 7, 1, 7};
-  const std::vector<int64_t> shape1{1, 9, 1, 7};
+TEST_F(QnnCPUBackendTests, EinsumReduceSumMulBroadcastX) {
+  const std::vector<int64_t> shape0{2, 3, 4, 5};
+  const std::vector<int64_t> shape1{4, 6, 5};
   const std::vector<float> data0 = GetSequentialFloatData(shape0, /*start=*/-0.1f, /*step=*/0.05f);
   const std::vector<float> data1 = GetSequentialFloatData(shape1, /*start=*/-0.1f, /*step=*/0.05f);
   RunQnnEinsum<float>(
       /*backend=*/kQnnBackendTypeCpu,
       /*in0=*/TestInputDef<float>(shape0, /*is_initializer=*/false, std::move(data0)),
       /*in1=*/TestInputDef<float>(shape1, /*is_initializer=*/false, std::move(data1)),
-      /*equation=*/"bkhq,bchk->bchq",
+      /*equation=*/"bhwc,wkc->bhwk",
       /*tolerance=*/1e-4f);
 }
 
@@ -299,6 +312,19 @@ TEST_F(QnnHTPBackendTests, EinsumF16MatMulBroadcastTransposeY) {
       /*tolerance=*/1e-2f);
 }
 
+TEST_F(QnnHTPBackendTests, EinsumF16ReduceSumMulBroadcastX) {
+  const std::vector<int64_t> shape0{1, 3, 2, 4};
+  const std::vector<int64_t> shape1{2, 3, 4};
+  const std::vector<float> data0 = GetSequentialFloatData(shape0, /*start=*/-0.1f, /*step=*/0.05f);
+  const std::vector<float> data1 = GetSequentialFloatData(shape1, /*start=*/-0.1f, /*step=*/0.05f);
+  RunQnnEinsum<float>(
+      /*backend=*/kQnnBackendTypeHtp,
+      /*in0=*/TestInputDef<float>(shape0, /*is_initializer=*/false, std::move(data0)),
+      /*in1=*/TestInputDef<float>(shape1, /*is_initializer=*/false, std::move(data1)),
+      /*equation=*/"bhwc,wkc->bhwk",
+      /*tolerance=*/1e-2f);
+}
+
 //
 // QNN HTP QDQ
 //
@@ -372,6 +398,19 @@ TEST_F(QnnHTPBackendTests, EinsumQdqMatMulBroadcastTransposeY) {
       /*in0=*/TestInputDef<float>(shape0, /*is_initializer=*/false, std::move(data0)),
       /*in1=*/TestInputDef<float>(shape1, /*is_initializer=*/false, std::move(data1)),
       /*equation=*/"bhwc,hkc->bhwk",
+      /*tolerance=*/QDQTolerance());
+}
+
+// TODO: Re-enable. QAIRT 3.36.1: failed to finalize QNN graph 1002.
+TEST_F(QnnHTPBackendTests, DISABLED_EinsumQdqReduceSumMulBroadcastX) {
+  const std::vector<int64_t> shape0{1, 3, 2, 4};
+  const std::vector<int64_t> shape1{2, 3, 4};
+  const std::vector<float> data0 = GetSequentialFloatData(shape0, /*start=*/-0.1f, /*step=*/0.05f);
+  const std::vector<float> data1 = GetSequentialFloatData(shape1, /*start=*/-0.1f, /*step=*/0.05f);
+  RunQnnHtpQdqEinsum<uint8_t, uint8_t>(
+      /*in0=*/TestInputDef<float>(shape0, /*is_initializer=*/false, std::move(data0)),
+      /*in1=*/TestInputDef<float>(shape1, /*is_initializer=*/false, std::move(data1)),
+      /*equation=*/"bhwc,wkc->bhwk",
       /*tolerance=*/QDQTolerance());
 }
 
@@ -471,6 +510,20 @@ TEST_F(QnnGPUBackendTests, DISABLED_EinsumMatMulBroadcastTransposeY) {
       /*in0=*/TestInputDef<float>(shape0, /*is_initializer=*/false, std::move(data0)),
       /*in1=*/TestInputDef<float>(shape1, /*is_initializer=*/false, std::move(data1)),
       /*equation=*/"bhwc,hkc->bhwk",
+      /*tolerance=*/1e-4f);
+}
+
+// TODO: Re-enable. Failed on QAIRT 3.36.1.
+TEST_F(QnnGPUBackendTests, DISABLED_EinsumReduceSumMulBroadcastX) {
+  const std::vector<int64_t> shape0{1, 3, 2, 4};
+  const std::vector<int64_t> shape1{2, 3, 4};
+  const std::vector<float> data0 = GetSequentialFloatData(shape0, /*start=*/-0.1f, /*step=*/0.05f);
+  const std::vector<float> data1 = GetSequentialFloatData(shape1, /*start=*/-0.1f, /*step=*/0.05f);
+  RunQnnEinsum<float>(
+      /*backend=*/kQnnBackendTypeGpu,
+      /*in0=*/TestInputDef<float>(shape0, /*is_initializer=*/false, std::move(data0)),
+      /*in1=*/TestInputDef<float>(shape1, /*is_initializer=*/false, std::move(data1)),
+      /*equation=*/"bhwc,wkc->bhwk",
       /*tolerance=*/1e-4f);
 }
 
