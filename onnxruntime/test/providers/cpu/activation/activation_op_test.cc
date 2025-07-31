@@ -135,7 +135,7 @@ TEST_F(ActivationOpTest, HardSwish) {
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
-TEST_F(ActivationOpTest, HardSimoid_bfloat16) {
+TEST_F(ActivationOpTest, HardSigmoid_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
