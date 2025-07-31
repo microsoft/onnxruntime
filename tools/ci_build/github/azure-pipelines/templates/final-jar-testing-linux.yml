@@ -1,6 +1,8 @@
+# Run Java tests on CPU machines with the CPU java package
+
 parameters:
 - name: OS
-  displayName: Opserating System
+  displayName: Operating System
   type: string
 
 - name: PoolName
@@ -87,13 +89,14 @@ stages:
           if [[ "$os_name" == "Linux" ]]; then
             echo "Platform: Linux. Setting LD_LIBRARY_PATH."
             export LD_LIBRARY_PATH="$(pwd):$LD_LIBRARY_PATH"
+            java -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
+            --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
           elif [[ "$os_name" == "Darwin" ]]; then
             echo "Platform: macOS. Setting DYLD_LIBRARY_PATH."
             export DYLD_LIBRARY_PATH="$(pwd):$DYLD_LIBRARY_PATH"
-          fi
-
-          java -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
+            java -cp -DUSE_WEBGPU=1 -DUSE_COREML=1 '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
             --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
+          fi
 
 
     - task: PublishTestResults@2

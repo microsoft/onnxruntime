@@ -409,6 +409,9 @@ def main():
     branch_for_yaml_fetch = args.branch
     is_pr_build = False
 
+    if (args.pre_release_suffix_string and not args.pre_release_suffix_number) or (not args.pre_release_suffix_string and args.pre_release_suffix_number):
+        parser.error("--pre-release-suffix-string and --pre-release-suffix-number must be used together.")
+
     if args.pr:
         print(f"--- Pull Request Mode Activated for PR #{args.pr} ---")
         project = "PublicPackages"
