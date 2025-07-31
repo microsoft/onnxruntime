@@ -388,6 +388,7 @@ QNBitGemmPerGemmWorkspaceSize(
     MLAS_UNREFERENCED_PARAMETER(N);
 #ifndef USE_KLEIDIAI
     MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
+    MLAS_UNREFERENCED_PARAMETER(BlkBitWidth);
 #endif
 
     switch (ComputeType) {
@@ -405,7 +406,6 @@ QNBitGemmPerGemmWorkspaceSize(
             } else
 #endif
             {
-                ORT_ENFORCE(BlkBitWidth == 8);
                 // workspace buffer is used for block quantization of A to int8
                 const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
                 // QuantData + Scale + BlkSum
