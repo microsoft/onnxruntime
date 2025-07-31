@@ -605,11 +605,9 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
         continue;
       }
 
-      uint32_t low_part, high_part;
-      static_assert(sizeof(prop.luid) == 8, "cudaDeviceProp::luid is expected to be 8 bytes");
-      memcpy(&low_part, prop.luid, sizeof(uint32_t));
-      memcpy(&high_part, prop.luid + sizeof(uint32_t), sizeof(uint32_t));
-      uint64_t current_luid = (static_cast<uint64_t>(high_part) << 32) | low_part;
+      // Ensure the LUID is 8 bytes and reinterpret it directly as a uint64_t for comparison.
+      static_assert(sizeof(prop.luid) == sizeof(uint64_t), "cudaDeviceProp::luid should be 8 bytes");
+      uint64_t current_luid = *reinterpret_cast<const uint64_t*>(prop.luid);
 
       if (current_luid == target_luid) {
         // Ampere architecture or newer is required.
