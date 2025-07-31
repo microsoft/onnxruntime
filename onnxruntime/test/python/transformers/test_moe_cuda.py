@@ -24,7 +24,7 @@ from torch import nn
 import onnxruntime
 
 # Reduces number of tests to run for faster pipeline checks
-pipeline_mode = os.getenv("PIPELINE_MODE", "0") == "1"
+pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
 
 onnxruntime.preload_dlls()
 
