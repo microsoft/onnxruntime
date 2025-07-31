@@ -22,36 +22,6 @@ namespace onnxruntime {
 
 namespace test {
 
-template <typename T>
-class NvExecutionProviderTest : public ::testing::Test {
- protected:
-  std::string getTypeAsName() {
-    std::string dtype_name = "";
-    if constexpr (std::is_same<T, double>::value) {
-      dtype_name = "fp64";
-    } else if constexpr (std::is_same<T, float>::value) {
-      dtype_name = "fp32";
-    } else if constexpr (std::is_same<T, BFloat16>::value) {
-      dtype_name = "bf16";
-    } else if constexpr (std::is_same<T, MLFloat16>::value) {
-      dtype_name = "fp16";
-    } else if constexpr (std::is_same<T, int8_t>::value) {
-      dtype_name = "int8";
-    } else if constexpr (std::is_same<T, uint8_t>::value) {
-      dtype_name = "uint8";
-    } else if constexpr (std::is_same<T, int32_t>::value) {
-      dtype_name = "int32";
-    } else if constexpr (std::is_same<T, int64_t>::value) {
-      dtype_name = "int64";
-    }
-    return dtype_name;
-  }
-};
-
-using NvExecutionProviderTestTypes = ::testing::Types<double, float, MLFloat16, BFloat16, uint8_t, int8_t, int32_t, int64_t>;  // double,
-TYPED_TEST_SUITE(NvExecutionProviderTest, NvExecutionProviderTestTypes);
-
-
 TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
   PathString model_name = ORT_TSTR("nv_execution_provider_test.onnx");
   PathString model_name_ctx = ORT_TSTR("nv_execution_provider_test_ctx.onnx");
@@ -196,15 +166,44 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
   }
 }
 
-TYPED_TEST(NvExecutionProviderTest, IOTypeTests) {
-  std::string dtype_name = this->getTypeAsName();
+std::string getTypeAsName(ONNX_NAMESPACE::TensorProto_DataType dtype) {
+  switch (dtype) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+      return "fp64";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      return "fp32";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+      return "fp16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      return "bf16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      return "int64";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+      return "int32";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      return "int8";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+      return "uint8";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
+      return "int4";
+    default:
+      return "Unkwon type";
+  }
+}
+
+class TypeTests : public ::testing::TestWithParam<ONNX_NAMESPACE::TensorProto_DataType> {
+ public:
+};
+
+TEST_P(TypeTests, IOTypes) {
+  std::string dtype_name = getTypeAsName(GetParam());
   ASSERT_FALSE(dtype_name.empty());
   const std::string model_name_str = "nv_execution_provider_" + dtype_name + ".onnx";
   const PathString model_name = ToPathString(model_name_str);
   std::string graph_name = "test" + dtype_name;
   std::vector<int> dims = {1, -1, -1};
 
-  CreateBaseModel(model_name, graph_name, dims);
+  CreateBaseModel(model_name, graph_name, dims, false, GetParam());
 
   auto env = Ort::Env();
   auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
@@ -221,6 +220,19 @@ TYPED_TEST(NvExecutionProviderTest, IOTypeTests) {
     session_object.Run(run_options, io_binding);
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(NvExecutionProviderTest, TypeTests,
+                         ::testing::Values(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                           ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
+                                           ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,
+                                           ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,
+                                           ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32
+                                           // disabled low precision integer types since a specific quantize/dequantize model is required
+                                           // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,
+                                           // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8,
+                                           // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4
+                                           ),
+                         [](const testing::TestParamInfo<TypeTests::ParamType>& info) { return getTypeAsName(info.param); });
 
 #if defined(WIN32)
 static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
