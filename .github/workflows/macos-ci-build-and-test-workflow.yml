@@ -37,9 +37,15 @@ jobs:
       matrix:
         # To avoid creating too many jobs, we explicitly specify the combinations to run.
         #
+        # # Specify the machine architecture to run the build on.
         # machine: ["x86_64", "arm64"]
+        #
+        # # Specify the target architecture for the build.
         # target: ["x86_64", "arm64"]
+        #
+        # # Specify the build configuration for the build.
         # build_config: ["Debug", "Release"]
+        #
         include: ${{ fromJSON(inputs.matrix_include) }}
 
     # "macos-13" is a x86_64 image, and "macos-15" is an arm64 image.
