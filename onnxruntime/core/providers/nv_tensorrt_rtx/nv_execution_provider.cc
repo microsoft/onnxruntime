@@ -836,7 +836,11 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
 
   cudaDeviceProp prop;
   CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
-  compute_capability_ = GetComputeCapacity(prop);
+  if (prop.major < 8 || prop.major == 9 || prop.major == 10) {
+    ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                       "[NvTensorRTRTX EP] The execution provider only supports RTX devices with compute capabilities =< 80."));
+  }
+  compute_capability_ = GetComputeCapability(prop);
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
@@ -872,8 +876,8 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   if ((onnx_external_data_bytestream_ != nullptr && onnx_external_data_bytestream_size_ == 0) ||
       (onnx_external_data_bytestream_ == nullptr && onnx_external_data_bytestream_size_ != 0)) {
     ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                        "When providing either 'onnx_external_data_bytestream_size' or "
-                                        "'onnx_external_data_bytestream' both have to be provided"));
+                                       "When providing either 'onnx_external_data_bytestream_size' or "
+                                       "'onnx_external_data_bytestream' both have to be provided"));
   }
   detailed_build_log_ = info.detailed_build_log;
   dump_ep_context_model_ = info.dump_ep_context_model;
@@ -1518,9 +1522,9 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         // needed for models > 2GB
         std::vector<TensorrtUserWeights> userWeights;
 
-        if(use_external_data_initializer_) {
+        if (use_external_data_initializer_) {
           auto allInitializers = graph_viewer->GetAllInitializedTensors();
-          for (auto &entry : allInitializers) {
+          for (auto& entry : allInitializers) {
             auto* tp = entry.second;
             if (tp->has_raw_data()) {
               userWeights.emplace_back(tp->name(), tp->raw_data());
@@ -1533,7 +1537,6 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         }
 
         graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, !use_external_data_initializer_ /*include raw initializers*/);
-
 
         model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
@@ -1561,12 +1564,11 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
 
           if (use_external_data_initializer_) {
             trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
-            for (auto const& userWeight : userWeights){
+            for (auto const& userWeight : userWeights) {
               trt_parser->loadInitializer(userWeight.Name(), userWeight.Data(), userWeight.Size());
             }
             is_model_supported = trt_parser->parseModelProto();
-          }
-          else {
+          } else {
             is_model_supported = trt_parser->supportsModelV2(string_buf.data(), string_buf.size(), model_path_);
           }
 
@@ -1760,13 +1762,14 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
   // If there are "EPContext" contrib op nodes, it means TRT EP can fetch the precompiled engine info from the node and
   // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT
   // parser and engine compilation. So, simply return subgraphs consists of single ep context nodes here.
-  if (GraphHasCtxNode(graph)) {
+  size_t node_idx = 0;
+  if (GraphHasCtxNode(graph, node_idx)) {
     int subgraph_idx = 0;
-    for (size_t i = 0; i < static_cast<size_t>(number_of_ort_nodes); i++) {
-      const auto& node = graph.GetNode(node_index[i]);
-      const bool is_context_node = node && !node->OpType().empty() && node->OpType() == "EPContext";
+    for (size_t node_idx : node_index) {
+      const auto& node = graph.GetNode(node_idx);
+      const bool is_context_node = node && !node->OpType().empty() && node->OpType() == EPCONTEXT_OP;
       if (is_context_node) {
-        SubGraph_t supported_node_vector(std::make_pair(std::vector<size_t>{i}, true));
+        SubGraph_t supported_node_vector(std::make_pair(std::vector<size_t>{node_idx}, true));
         std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, model_hash, subgraph_idx++);
 
         result.push_back(ComputeCapability::Create(std::move(sub_graph)));
@@ -1985,16 +1988,13 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
  */
 common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
                                                 std::string& onnx_model_folder_path,
-                                                std::string& weight_stripped_engine_cath_path,
                                                 bool path_check,
                                                 const void* onnx_model_bytestream,
                                                 size_t onnx_model_bytestream_size,
                                                 const void* onnx_external_data_bytestream,
                                                 size_t onnx_external_data_bytestream_size,
                                                 nvinfer1::ICudaEngine* trt_engine,
-                                                bool serialize_refitted_engine,
                                                 bool detailed_build_log) {
-
   bool refit_from_file = onnx_model_bytestream == nullptr && onnx_model_bytestream_size == 0;
   bool refit_with_external_data = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
   bool refit_complete = false;
@@ -2168,17 +2168,8 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
                            "NvTensorRTRTX EP's IRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
   }
 
-  // serialize the refitted engine to disk
-  if (serialize_refitted_engine) {
-    std::string refitted_engine_cache = GetWeightRefittedEnginePath(weight_stripped_engine_cath_path);
-    nvinfer1::IHostMemory* serialized_engine = trt_engine->serialize();
-    std::ofstream engine_file(refitted_engine_cache, std::ios::binary | std::ios::out);
-    engine_file.write(reinterpret_cast<const char*>(serialized_engine->data()), serialized_engine->size());
-    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Serialize the refitted engine to " << refitted_engine_cache;
-  }
   return Status::OK();
 }
-
 
 common::Status NvExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                             std::vector<NodeComputeInfo>& node_compute_funcs) {
@@ -2202,8 +2193,10 @@ common::Status NvExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>
     }
 
     Status status;
-    if (GraphHasCtxNode(graph_body_viewer)) {
+    size_t node_idx = 0;
+    if (GraphHasCtxNode(graph_body_viewer, node_idx)) {
       status = CreateNodeComputeInfoFromPrecompiledEngine(graph_body_viewer,
+                                                          node_idx,
                                                           fused_node,
                                                           input_map,
                                                           output_map,
@@ -2310,10 +2303,8 @@ static bool IsIOBindingRequired(TRTState* const trt_state, const Ort::KernelCont
 
 const InlinedVector<const Node*> NvExecutionProvider::GetEpContextNodes() const {
   InlinedVector<const Node*> ep_context_nodes;
-  for (auto& model : ep_context_models_) {
-    auto& graph = model->MainGraph();
-    for (int i = 0; i < graph.MaxNodeIndex(); i++) {
-      auto node = graph.GetNode(i);
+  if (ep_context_model_) {
+    for (auto* node : ep_context_model_->MainGraph().Nodes()) {
       ep_context_nodes.push_back(node);
     }
   }
@@ -2334,9 +2325,9 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
   if (use_external_data_initializer_) {
     auto allInitializers = graph_body_viewer.GetAllInitializedTensors();
-    for (auto& entry : allInitializers){
+    for (auto& entry : allInitializers) {
       auto* tp = entry.second;
-      if (tp->has_raw_data()){
+      if (tp->has_raw_data()) {
         userWeights->emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data()));
       } else if (utils::HasExternalDataInMemory(*tp)) {
         std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
@@ -2370,12 +2361,11 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
   if (use_external_data_initializer_) {
     trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
-    for (auto const& userWeight : *userWeights){
+    for (auto const& userWeight : *userWeights) {
       trt_parser->loadInitializer(userWeight.Name(), userWeight.Data(), userWeight.Size());
     }
     trt_parser->parseModelProto();
-  }
-  else {
+  } else {
     trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
   }
 
@@ -2542,7 +2532,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       ;
     }
   }
-  std::string trt_node_name_with_precision = fused_node.Name() + "_strong_typed";
 
   // enable sparse weights
   if (sparsity_enable_) {
@@ -2571,32 +2560,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
 
-  std::string cache_path = "";
-  std::string cache_suffix = "";
-  // Customize cache prefix if assigned
-  if (!cache_prefix_.empty()) {
-    // Generate cache suffix in case user would like to customize cache prefix
-    cache_suffix = "_" + GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
-    cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
-  } else {
-    cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
-  }
-
-  // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
-  // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-  const std::string cache_path_prefix = cache_path;
-  std::string engine_cache_path = cache_path_prefix + ".engine";
-  const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
-  const std::string profile_cache_path = cache_path_prefix + ".profile";
-
-  // If weight-stripped engine is enabled and refitted engine cache is not present,
-  // TRT EP will use the engine cache with ".stripped.engine" appended to the end.
-  const std::filesystem::path engine_cache_fs_path = engine_cache_path;
-  if (weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_fs_path)) {
-    engine_cache_path = cache_path_prefix + ".stripped.engine";
-    weight_stripped_engine_refit_ = true;
-  }
-
   // Generate file name for dumping ep context model
   if (dump_ep_context_model_ && ctx_model_path_.empty()) {
     ctx_model_path_ = GetCtxModelPath(ep_context_file_path_, model_path_);
@@ -2620,26 +2583,43 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     }
     if (detailed_build_log_) {
       auto engine_build_stop = std::chrono::steady_clock::now();
-      LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
+      LOGS_DEFAULT(INFO) << "TensorRT engine build for " << fused_node.Name() << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
     }
     // dump EP context node model
     if (dump_ep_context_model_) {
       // "ep_cache_context" node attribute should be a relative path to context model directory
-      if (ep_cache_context_attr_.empty()) {
-        auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
-        ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
-      }
-      std::string compute_capability_hw_compat = compute_capability_ + "+";
 
-      ep_context_models_.push_back(CreateCtxNode(graph_body_viewer,
-                                                 ep_cache_context_attr_,
-                                                 reinterpret_cast<char*>(serialized_engine->data()),
-                                                 serialized_engine->size(),
-                                                 ep_context_embed_mode_,
-                                                 compute_capability_hw_compat,
-                                                 model_path_,
-                                                 GetLogger(),
-                                                 fused_node.Name()));
+      std::string cache_path = "";
+      // Customize cache prefix if assigned
+      if (!cache_prefix_.empty()) {
+        // Generate cache suffix in case user would like to customize cache prefix
+        cache_path = GetCachePath(cache_path_, cache_prefix_) + fused_node.Name() + ".engine";
+        ;
+      } else {
+        cache_path = GetCachePath(cache_path_, fused_node.Name()) + ".engine";
+        ;
+      }
+      auto cache_file_name = std::filesystem::path(cache_path).filename();
+      cache_path = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
+      // NV TRT EP per default generates hardware compatible engines for any RTX device with compute capability > 80
+      std::string compute_capability_hw_compat = "80+";
+      if (!ep_context_model_) {
+        ep_context_model_ = Model::Create("nv_trt_rtx_ep_context_model", false, *GetLogger());
+      }
+
+      auto status = CreateCtxNode(graph_body_viewer,
+                                  ep_context_model_->MainGraph(),
+                                  cache_path,
+                                  reinterpret_cast<char*>(serialized_engine->data()),
+                                  serialized_engine->size(),
+                                  ep_context_embed_mode_,
+                                  compute_capability_hw_compat,
+                                  model_path_,
+                                  fused_node.Name(),
+                                  trt_version_);
+      if (status != Status::OK()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+      }
     }
   }
 
@@ -2647,14 +2627,12 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refit engine from main ONNX file after engine build";
     auto status = RefitEngine(model_path_,
                               onnx_model_folder_path_,
-                              engine_cache_path,
                               false /* path check for security */,
                               onnx_model_bytestream_,
                               onnx_model_bytestream_size_,
                               onnx_external_data_bytestream_,
                               onnx_external_data_bytestream_size_,
                               trt_engine.get(),
-                              false /* serialize refitted engine to disk */,
                               detailed_build_log_);
     if (status != Status::OK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
@@ -2714,12 +2692,12 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
           &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
           &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-          input_shape_ranges_[context->node_name], &tensorrt_mu_, trt_node_name_with_precision,
+          input_shape_ranges_[context->node_name], &tensorrt_mu_,
           engine_cache_enable_, cache_path_,
           runtime_.get(), profiles_[context->node_name],
           engine_decryption_enable_, engine_decryption_, engine_encryption_,
           detailed_build_log_, sparsity_enable_,
-          auxiliary_streams_, cuda_graph_enable_, is_dynamic_shape_context, cache_prefix_, cache_suffix, &weights_[context->node_name]};
+          auxiliary_streams_, cuda_graph_enable_, is_dynamic_shape_context, cache_prefix_, &weights_[context->node_name]};
     *state = p.release();
     return 0;
   };
@@ -2958,6 +2936,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 }
 
 Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
+                                                                       size_t node_idx,
                                                                        const Node& fused_node,
                                                                        std::unordered_map<std::string, size_t>& input_map,
                                                                        std::unordered_map<std::string, size_t>& output_map,
@@ -2980,7 +2959,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
                                                            onnx_external_data_bytestream_,
                                                            onnx_external_data_bytestream_size_,
                                                            detailed_build_log_);
-  auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
+  auto status = trt_cache_model_handler.GetEpContextFromGraph(*graph_body_viewer.GetNode(node_idx));
   if (status != Status::OK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
   }

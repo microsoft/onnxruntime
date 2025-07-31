@@ -13,6 +13,7 @@
 #include <onnxruntime_ep_device_ep_metadata_keys.h>
 #include <onnxruntime_run_options_config_keys.h>
 #include <onnxruntime_session_options_config_keys.h>
+#include <core/providers/nv_tensorrt_rtx/nv_provider_options.h>
 
 #include "core/graph/constants.h"
 #include "core/common/path_string.h"
@@ -63,7 +64,7 @@ struct Utils {
 
 template <typename T>
 static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
-                   const std::vector<T>& expected_values) {
+                          const std::vector<T>& expected_values) {
   ASSERT_EQ(1, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims);
@@ -78,6 +79,7 @@ static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vecto
  * \param graph_name - graph name
  * \param dims - input dimensions
  * \param add_fast_gelu - add FastGelu node which makes the whole model partition into TRT EP and CUDA EP subgraphs.
+ * \param external_initializer_file - file name to save external initializers to
  *
  * input: "X", "Y" and "Z"
  *        you can specify input dimensions, for example (1, 3, 2), (1, 2) or (1, -1, -1)). Note: -1 means the dimension is dynamic.
@@ -112,7 +114,8 @@ void CreateBaseModel(const PathString& model_name,
                      std::string graph_name,
                      std::vector<int> dims,
                      bool add_fast_gelu = false,
-                     ONNX_NAMESPACE::TensorProto_DataType dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+                     ONNX_NAMESPACE::TensorProto_DataType dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                     const PathString& external_initializer_file = {});
 
 Ort::IoBinding generate_io_binding(
     Ort::Session& session,

@@ -85,7 +85,8 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
     info.dump_ep_context_model = false;
   } else if (ep_context_enable == "1") {
     info.dump_ep_context_model = true;
-    info.weight_stripped_engine_enable = true;
+    // We want to reenable weightless engines as soon constant initializers are supported as inputs
+    info.weight_stripped_engine_enable = false;
   } else {
     ORT_THROW("Invalid ", kOrtSessionOptionEpContextEnable, " must 0 or 1");
   }

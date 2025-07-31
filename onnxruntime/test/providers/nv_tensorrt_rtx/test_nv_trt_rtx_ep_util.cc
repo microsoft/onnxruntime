@@ -3,7 +3,6 @@
 // Licensed under the MIT License.
 
 // registration/selection is only supported on windows as there's no device discovery on other platforms
-#ifdef _WIN32
 
 #include "test/providers/nv_tensorrt_rtx/test_nv_trt_rtx_ep_util.h"
 
@@ -13,6 +12,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/api_asserts.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/graph/model_saving_options.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/common/trt_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -63,7 +63,8 @@ void CreateBaseModel(const PathString& model_name,
                      std::string graph_name,
                      std::vector<int> dims,
                      bool add_fast_gelu,
-                     ONNX_NAMESPACE::TensorProto_DataType dtype) {
+                     ONNX_NAMESPACE::TensorProto_DataType dtype,
+                     const PathString& external_initializer_file) {
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -126,7 +127,12 @@ void CreateBaseModel(const PathString& model_name,
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  status = onnxruntime::Model::Save(model, model_name);
+  if (!external_initializer_file.empty()) {
+    ModelSavingOptions save_options(128);
+    status = Model::SaveWithExternalInitializers(model, model_name, external_initializer_file, save_options);
+  } else {
+    status = Model::Save(model, model_name);
+  }
   ASSERT_TRUE(status.IsOK());
 }
 
@@ -174,5 +180,3 @@ Ort::IoBinding generate_io_binding(
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  // _WIN32
