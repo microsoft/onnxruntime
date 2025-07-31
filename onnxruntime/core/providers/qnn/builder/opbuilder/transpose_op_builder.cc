@@ -154,7 +154,7 @@ Status TransposeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
       // Insert cast node.
       ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_node_info.node_name,
                                                         QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                        "Cast",
+                                                        QNN_OP_CAST,
                                                         {cast_node_info.input_name},
                                                         {cast_node_info.output_name},
                                                         {}),
