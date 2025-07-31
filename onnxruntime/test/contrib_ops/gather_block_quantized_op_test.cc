@@ -103,7 +103,7 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
                              const std::vector<int64_t>& output_shape,
                              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                              bool touch_on_device_data = false) {
-  void(touch_on_device_data);
+  (void)touch_on_device_data;
   CheckDataAndShape<T1>(data, data_shape, "data in RunGatherBlockQuantized");
   CheckDataAndShape<Tind>(indices, indices_shape, "indices in RunGatherBlockQuantized");
   CheckDataAndShape<T2>(scales, scales_shape, "scales in RunGatherBlockQuantized");
