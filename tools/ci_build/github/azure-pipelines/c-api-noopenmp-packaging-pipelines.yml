@@ -183,5 +183,3 @@ extends:
         sln_platform: 'arm64'
         DoEsrp: true
         DependsOnStageName: Windows_Nodejs_Packaging_x64
-
-    - template: c-api-noopenmp-test-pipelines.yml
