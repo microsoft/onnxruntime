@@ -125,8 +125,9 @@ stages:
       artifact: 'onnxruntime-java-gpu'
       displayName: 'Download Final Jar'
 
+    # Rename the downloaded folder
     - script: |
-        mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu/*.jar $(Pipeline.Workspace)/build/onnxruntime-java/
+        mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu $(Pipeline.Workspace)/build/onnxruntime-java
 
     - task: Maven@4
       displayName: 'Download Dependencies'
