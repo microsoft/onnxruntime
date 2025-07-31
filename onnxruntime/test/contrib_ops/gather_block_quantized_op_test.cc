@@ -132,8 +132,6 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
     std::vector<std::unique_ptr<IExecutionProvider>> eps;
     if (enable_cuda) {
       eps.push_back(DefaultCudaExecutionProvider());
-    } else if (touch_on_device_data) {
-      eps.push_back(kWebGpuExecutionProvider);
     } else {
       eps.push_back(DefaultCpuExecutionProvider());
     }
