@@ -138,15 +138,15 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
 
   const auto dequantized_type = scales->GetElementType();
   if (dequantized_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    const auto* scales_ptr = static_cast<const float*>(scales->Data());
+    const auto* scales_ptr = static_cast<const float*>(scales->DatRaw());
     auto* output_ptr = static_cast<float*>(output->MutableDataRaw());
     LaunchGatherBlockQuantizedKernel(data_ptr, indices_ptr, scales_ptr, zero_points_ptr, output_ptr, param);
   } else if (dequantized_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    const auto* scales_ptr = static_cast<const half*>(scales->Data());
+    const auto* scales_ptr = static_cast<const half*>(scales->DatRaw());
     auto* output_ptr = static_cast<half*>(output->MutableDataRaw());
     LaunchGatherBlockQuantizedKernel(data_ptr, indices_ptr, scales_ptr, zero_points_ptr, output_ptr, param);
   } else if (dequantized_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
-    const auto* scales_ptr = static_cast<const BFloat16*>(scales->Data());
+    const auto* scales_ptr = static_cast<const BFloat16*>(scales->DatRaw());
     auto* output_ptr = static_cast<BFloat16*>(output->MutableDataRaw());
     LaunchGatherBlockQuantizedKernel(data_ptr, indices_ptr, scales_ptr, zero_points_ptr, output_ptr, param);
   }
