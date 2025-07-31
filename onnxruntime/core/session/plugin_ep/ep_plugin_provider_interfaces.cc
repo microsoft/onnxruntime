@@ -644,4 +644,21 @@ void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistr
     registry.RegisterWaitFn(device_type, OrtDevice::CPU, plugin_ep::Notification::WaitNotificationOnHost);
   }
 }
+
+std::string PluginExecutionProvider::GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const {
+  if (ort_ep_->GetCompiledModelCompatibilityInfo == nullptr) {
+    // Plugin EP did not provide an implementation of this function, so we call a default implementation.
+    return Base::GetCompiledModelCompatibilityInfo(graph_viewer);
+  }
+  std::unique_ptr<EpGraph> ep_graph = nullptr;
+  auto ort_status = EpGraph::Create(graph_viewer, ep_graph);
+  if (!ort_status.IsOK()) {
+    LOGS(*GetLogger(), ERROR) << "Failed to create EpGraph: " << ort_status.ToString();
+    return {};
+  }
+  // Call EP plugin's OrtEp::GenerateCompiledModelCompatibilityInfo() function.
+  std::string compatibility_info_string;
+  compatibility_info_string = ort_ep_->GetCompiledModelCompatibilityInfo(ort_ep_.get(), ep_graph.get());
+  return compatibility_info_string;
+}
 }  // namespace onnxruntime

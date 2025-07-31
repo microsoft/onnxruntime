@@ -101,6 +101,8 @@ class PluginExecutionProvider : public IExecutionProvider {
   // needed based on matching against allocator_mem_infos_.
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
+  std::string GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const override;
+
  private:
   struct FusedNodeState {
     FusedNodeState() = default;

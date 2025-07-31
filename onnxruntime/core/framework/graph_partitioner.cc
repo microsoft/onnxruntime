@@ -22,6 +22,7 @@
 #include "core/graph/model.h"
 #include "core/graph/model_saving_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 // #define COUNT_NON_CUDA_OPS
@@ -864,6 +865,36 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
                          graph.DomainToVersionMap(), {}, logger);
   auto& ep_graph = ep_context_model.MainGraph();
   ep_graph.SetDescription(graph.Description());
+
+  // Generate EP compatibility strings for OrtEp types and add to model metadata
+  {
+    const GraphViewer graph_viewer(graph);
+    for (const auto& ep : execution_providers) {
+      try {
+        // Generate the compatibility string for this EP
+        std::string compatibility_string = ep->GetCompiledModelCompatibilityInfo(graph_viewer);
+        if (!compatibility_string.empty()) {
+          // Create a unique key for this EP's compatibility info
+          // Use format: "ep_compatibility_info.<EP_TYPE>"
+          // TODO: Will this guarantee uniqueness across all EPs?
+          std::string metadata_key = std::string(kOrtModelMetadata_EpCompatibilityInfoPrefix) + ep->Type();
+          auto& model_metadata = ep_context_model.MetaData();
+          auto [it, was_inserted] =
+              model_metadata.insert_or_assign(metadata_key, compatibility_string);
+          if (!was_inserted) {
+            LOGS(logger, WARNING) << "Overwriting existing EP compatibility info for key: " << metadata_key << " (EP: " << ep->Type() << ")";
+          }
+          LOGS(logger, INFO) << "Added EP compatibility info for " << ep->Type() << " with key: " << metadata_key;
+
+        } else {
+          LOGS(logger, WARNING) << "EP " << ep->Type() << " returned empty compatibility string";
+        }
+
+      } catch (const std::exception& ex) {
+        LOGS(logger, WARNING) << "Failed to generate compatibility string for EP " << ep->Type() << ": " << ex.what();
+      }
+    }
+  }
 
   // Set inputs outputs explicitly to make sure the order is same as the user model.
   auto inputs = graph.GetInputs();

@@ -317,6 +317,14 @@ class IExecutionProvider {
   virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                  std::vector<NodeComputeInfo>& node_compute_funcs);
 
+   // TODO: add documentation comment.
+  virtual std::string GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const {
+    // graph_viewer and model_metadata are not used in the default implementation.
+    ORT_UNUSED_PARAMETER(graph_viewer);
+    // Default implementation returns empty string
+    return std::string();
+  }
+
 #endif
 
   void SetLogger(const logging::Logger* logger) {
