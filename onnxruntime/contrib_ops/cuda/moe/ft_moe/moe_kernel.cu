@@ -43,6 +43,8 @@
 #include <cub/device/device_radix_sort.cuh>
 #include <cub/util_type.cuh>
 
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
+
 namespace ort_fastertransformer {
 static constexpr int WARP_SIZE = 32;
 
@@ -104,11 +106,16 @@ void invokeSwiGLU(T* output, T const* input, int intermediate_size, int num_rows
   dim3 block(std::min(intermediate_size, 1024));
   dim3 grid(num_rows);
 
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR("swiglu input", input, num_rows, 2 * intermediate_size);
+
   if constexpr (interleaved) {
     swiglu_kernel_interleaved<T><<<grid, block, 0, stream>>>(output, input, intermediate_size, num_rows, swiglu_alpha);
   } else {
     swiglu_kernel_chunked<T><<<grid, block, 0, stream>>>(output, input, intermediate_size, num_rows, swiglu_alpha);
   }
+
+  DUMP_TENSOR("swiglu output", output, num_rows, intermediate_size);
 }
 
 // ====================== Softmax things ===============================
