@@ -31,6 +31,7 @@ __global__ void GatherBlockQuantizedKernel(
     const T1* zero_points,
     T2* output,
     int64_t after_gather_dim,
+    int64_t gather_axis_dim,
     int64_t ind_dim,
     int64_t bits,
     int64_t block_size,
@@ -38,11 +39,16 @@ __global__ void GatherBlockQuantizedKernel(
     int64_t N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(out_idx, N);
 
-  const int64_t idx_bg = out_idx / (after_gather_dim * ind_dim);
-  const int64_t idx_ag = out_idx % after_gather_dim;
-  const int64_t idx_axis = (out_idx % (after_gather_dim * ind_dim)) / after_gather_dim;
+  const int64_t idx_before_gather = out_idx / (after_gather_dim * ind_dim);
+  const int64_t idx_after_gather = out_idx % after_gather_dim;
+  const int64_t idx = (out_idx % (after_gather_dim * ind_dim)) / after_gather_dim;
 
-  const int64_t in_idx = idx_bg * after_gather_dim + idx_axis * after_gather_dim + idx_ag;
+  const int64_t idx_at_gather = indices[idx];
+  assert(idx_at_gather < gather_axis_dim);
+
+  const int64_t in_idx = idx_before_gather * (gather_axis_dim + after_gather_dim) +
+                         idx_at_gather * after_gather_dim +
+                         idx_after_gather;
 
   int64_t offset = 0;
   if (zero_points != nullptr) {
@@ -64,7 +70,7 @@ void LaunchGatherBlockQuantizedKernel(const T1* data,
   int blocksPerGrid = (int)(ceil(static_cast<float>(param.N) / GridDim::maxThreadsPerBlock));
 
   GatherBlockQuantizedKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, param.stream>>>(data, indices, scales, zero_points, output,
-                                                                                              param.after_gather_dim, param.ind_dim, param.bits, param.block_size, param.gather_axis, param.N);
+                                                                                              param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.bits, param.block_size, param.gather_axis, param.N);
 }
 
 template void LaunchGatherBlockQuantizedKernel<uint8_t, float, int32_t>(const uint8_t*, const int32_t*, const float*, const uint8_t*, float*, GatherBlockQuantizedParam);

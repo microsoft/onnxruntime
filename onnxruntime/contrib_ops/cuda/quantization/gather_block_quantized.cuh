@@ -13,6 +13,7 @@ namespace cuda {
 struct GatherBlockQuantizedParam {
   cudaStream_t stream;
   int64_t after_gather_dim;
+  int64_t gather_axis_dim;
   int64_t ind_dim;
   int64_t bits;
   int64_t block_size;
