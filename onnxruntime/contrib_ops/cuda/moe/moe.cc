@@ -39,10 +39,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
   MoEParameters moe_params;
-  MoEQuantType quant_type = MoEQuantType::None;
-  ORT_RETURN_IF_ERROR(CheckInputs(moe_params, quant_type, input, router_probs, fc1_experts_weights,
-                                  fc1_experts_bias_optional, fc2_experts_weights, fc2_experts_bias_optional,
-                                  fc3_experts_weights_optional, fc3_experts_bias_optional));
+  ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
+      moe_params, input, router_probs,
+      fc1_experts_weights, fc1_experts_bias_optional, nullptr,
+      fc2_experts_weights, fc2_experts_bias_optional, nullptr,
+      fc3_experts_weights_optional, fc3_experts_bias_optional, nullptr,
+      1,  //  no quantization so pack size is 1
+      activation_type_ == ort_fastertransformer::ActivationType::SwiGLU));
 
   using CudaT = typename OrtToCudaType<T>::type;
   auto stream = context->GetComputeStream();
