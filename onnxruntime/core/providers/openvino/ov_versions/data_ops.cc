@@ -404,7 +404,7 @@ void DataOps::populate_op_mode_supported() {
   // populate unsupportedmode_t
   {
     UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1, V_2025_2},
-                             [this](const Node* node, const InitializedTensorSet&) {
+                             [this](const Node* node, const InitializersNames&) {
                                // If the Input of ReduceMax op is UINT8, it is rejected (Due to output mismatch)
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
                                  if ((node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() ==
@@ -421,7 +421,7 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
                               V_2025_2},
-                             [this](const Node* node, const InitializedTensorSet&) {
+                             [this](const Node* node, const InitializersNames&) {
                                const auto& input_args = node->InputDefs();
                                const auto& input_arg = (input_args.size() > 1) ? input_args[1] : input_args[0];
                                auto shape = input_arg->Shape();
@@ -441,7 +441,7 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
                               V_2025_2},
-                             [this](const Node* node, const InitializedTensorSet&) {
+                             [this](const Node* node, const InitializersNames&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph.
                                // Conversion fails in convert_function_to_cnn_network.
@@ -457,7 +457,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5,
                               V_2024_6, V_2025_0, V_2025_1, V_2025_2},
-                             [this](const Node* node, const InitializedTensorSet&) {
+                             [this](const Node* node, const InitializersNames&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
                                if (upsample_attr.count("scales") > 0) {

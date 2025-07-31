@@ -12,7 +12,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-using VarianceFunc = std::function<bool(const Node*, const InitializedTensorSet&)>;
+using VarianceFunc = std::function<bool(const Node*, const InitializersNames&)>;
 
 enum versionNum {
   V_2020_4,
