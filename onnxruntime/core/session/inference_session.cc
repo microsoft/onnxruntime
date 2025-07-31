@@ -2041,7 +2041,7 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     LOGS(*session_logger_, INFO) << "Initializing session.";
     const Env& env = Env::Default();
-    env.GetTelemetryProvider().LogSessionCreationStart();
+    env.GetTelemetryProvider().LogSessionCreationStart(session_id_);
 
     bool have_cpu_ep = false;
 
@@ -2980,7 +2980,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       }
 
       // log evaluation start to trace logging provider
-      env.GetTelemetryProvider().LogEvaluationStart();
+      env.GetTelemetryProvider().LogEvaluationStart(session_id_);
 
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
@@ -3133,7 +3133,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   // log evaluation stop to trace logging provider
-  env.GetTelemetryProvider().LogEvaluationStop();
+  env.GetTelemetryProvider().LogEvaluationStop(session_id_);
 
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {
