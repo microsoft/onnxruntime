@@ -156,15 +156,17 @@ ToType(const std::vector<T2>& vec) {
 template <typename T>
 typename std::enable_if<boost::mp11::mp_contains<TypeList<UInt4x2, Int4x2>, T>::value, std::vector<T>>::type
 ToType(const std::vector<int>& vec) {
+  using UnpackedType = T::UnpackedType;
+
   // UInt4x2 and Int4x2 uses global packing instead of per-row packing.
   size_t i = 0;
-  constexpr int offset = std::is_same<T, Int4x2>::value ? 0 : 8;
+  constexpr UnpackedType offset = std::is_same<T, Int4x2>::value ? 0 : 8;
   std::vector<T> result;
   for (i = 0; i + 1 < vec.size(); i += 2) {
-    result.push_back(T(vec[i] + offset, vec[i + 1] + offset));
+    result.push_back(T(static_cast<UnpackedType>(vec[i] + offset), static_cast<UnpackedType>(vec[i + 1] + offset)));
   }
   if (i < vec.size()) {
-    result.push_back(T(vec[i] + offset, 0 + offset));
+    result.push_back(T(static_cast<UnpackedType>(vec[i] + offset), static_cast<UnpackedType>(0 + offset)));
   }
   return result;
 }

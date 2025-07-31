@@ -728,13 +728,13 @@ TEST_F(ActivationOpTest, ONNX_Gelu) {
   TestActivationOp<float>(
       "Gelu",
       input_values,
-      [](float x) { return 0.5 * x * (1 + erf(x * M_SQRT1_2)); }, {},
+      [](float x) { return static_cast<float>(0.5 * x * (1 + erf(x * M_SQRT1_2))); }, {},
       {{"approximate", "none"}}, true, 20);
 
   TestActivationOp<float>(
       "Gelu",
       input_values,
-      [](float x) { return 0.5 * x * (1 + erf(x * M_SQRT1_2)); },
+      [](float x) { return static_cast<float>(0.5 * x * (1 + erf(x * M_SQRT1_2))); },
       {},
       {/*default value of approximate attribute is none */}, true, 20);
 
@@ -742,7 +742,7 @@ TEST_F(ActivationOpTest, ONNX_Gelu) {
       "Gelu",
       input_values,
       [](float x) {
-        return 0.5 * x * (1 + tanh(sqrt(2 / M_PI) * (x + 0.044715 * x * x * x)));
+        return static_cast<float>(0.5 * x * (1 + tanh(sqrt(2 / M_PI) * (x + 0.044715 * x * x * x))));
       },
       {},
       {{"approximate", "tanh"}}, true, 20);

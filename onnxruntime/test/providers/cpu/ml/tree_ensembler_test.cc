@@ -310,7 +310,7 @@ TEST(MLOpTest, TreeEnsembleBigSet) {
   std::vector<float> leaf_weights = {1.f, 10.f, 100.f, 1000.f};
   std::vector<float> member_ship_values(106);
   for (size_t i = 0; i < member_ship_values.size(); i++) {
-    member_ship_values[i] = i + 40;
+    member_ship_values[i] = static_cast<float>(i + 40);
   }
   member_ship_values[100] = std::numeric_limits<float>::quiet_NaN();
   member_ship_values[101] = 201;

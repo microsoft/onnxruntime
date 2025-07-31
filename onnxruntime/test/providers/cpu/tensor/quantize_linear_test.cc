@@ -920,7 +920,7 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int(int64_t block_size,
   for (int64_t i = 0, n = 2 * zero_point_block_count; i < n; ++i) x_zero_point.push_back(0);
   for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
   for (int i = 0; i < 8; ++i) {
-    x.push_back(i);
+    x.push_back(static_cast<Tin>(i));
     y.push_back(Tout(static_cast<float>(i) * 2.0f));
   }
 
@@ -965,7 +965,7 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   for (int64_t i = 0, n = zero_point_block_count; i < n; ++i) x_zero_point.push_back(Tin(0, 0));
   for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
   for (int i = 0; i < 8; ++i) {
-    if (i & 1) x.push_back(Tin(i - 1, i));
+    if (i & 1) x.push_back(Tin(static_cast<Tin::UnpackedType>(i - 1), static_cast<Tin::UnpackedType>(i)));
     y.push_back(Tout(static_cast<float>(i) * 2.0f));
   }
 
@@ -1188,13 +1188,14 @@ void DequantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
   }
 
   size_t i = 0, n = x_.size();
-  for (; i < n - 1; i += 2) x.push_back(Tin(x_[i], x_[i + 1]));
-  if (i < n) x.push_back(Tin(x_[i], 0xF));
+  for (; i < n - 1; i += 2) x.push_back(Tin(static_cast<Tin::UnpackedType>(x_[i]), static_cast<Tin::UnpackedType>(x_[i + 1])));
+  if (i < n) x.push_back(Tin(static_cast<Tin::UnpackedType>(x_[i]), 0xF));
 
   if (use_zero_point) {
     i = 0, n = x_zero_point_.size();
-    for (; i < n - 1; i += 2) x_zero_point.push_back(Tin(x_zero_point_[i], x_zero_point_[i + 1]));
-    if (i < n) x_zero_point.push_back(Tin(x_zero_point_[i], 0xF));
+    for (; i < n - 1; i += 2) x_zero_point.push_back(Tin(static_cast<Tin::UnpackedType>(x_zero_point_[i]),
+                                                         static_cast<Tin::UnpackedType>(x_zero_point_[i + 1])));
+    if (i < n) x_zero_point.push_back(Tin(static_cast<Tin::UnpackedType>(x_zero_point_[i]), 0xF));
   }
 
   test.AddInput<Tin>("x", dims, x);
@@ -1229,9 +1230,9 @@ void DequantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
   for (size_t i = 0, n = dims.size(); i < n; ++i) {
     x_scale_shape.push_back((int64_t)i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
   }
-  for (auto v : x_) x.push_back(v);
+  for (auto v : x_) x.push_back(static_cast<Tin>(v));
   if (use_zero_point)
-    for (auto v : x_zero_point_) x_zero_point.push_back(v);
+    for (auto v : x_zero_point_) x_zero_point.push_back(static_cast<Tin>(v));
 
   test.AddInput<Tin>("x", dims, x);
   test.AddAttribute<int64_t>("axis", axis);
@@ -1902,7 +1903,7 @@ void QuantizeLinearOp21BlockedTest_InvalidBlockSize_Int(int64_t block_size,
   for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tin(2.0f));
   for (int i = 0; i < 8; ++i) {
     x.push_back(Tin(static_cast<float>(i) * 2.0f));
-    y.push_back(i);
+    y.push_back(static_cast<Tout>(i));
   }
 
   test.AddInput<Tin>("x", dims, x);
@@ -1946,7 +1947,7 @@ void QuantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   for (int64_t i = 0, n = zero_point_block_count; i < n; ++i) x_zero_point.push_back(Tout(0, 0));
   for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tin(2.0f));
   for (int i = 0; i < 8; ++i) {
-    if (i & 1) y.push_back(Tout(i - 1, i));
+    if (i & 1) y.push_back(Tout(static_cast<Tout::UnpackedType>(i - 1), static_cast<Tout::UnpackedType>(i)));
     x.push_back(Tin(static_cast<float>(i) * 2.0f));
   }
 
@@ -2169,13 +2170,15 @@ void QuantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
   }
 
   size_t i = 0, n = y_.size();
-  for (; i < n - 1; i += 2) y.push_back(Tout(y_[i], y_[i + 1]));
-  if (i < n) y.push_back(Tout(y_[i], 0xF));
+  for (; i < n - 1; i += 2) y.push_back(Tout(static_cast<Tout::UnpackedType>(y_[i]),
+                                             static_cast<Tout::UnpackedType>(y_[i + 1])));
+  if (i < n) y.push_back(Tout(static_cast<Tout::UnpackedType>(y_[i]), 0xF));
 
   if (use_zero_point) {
     i = 0, n = zero_point_.size();
-    for (; i < n - 1; i += 2) zero_point.push_back(Tout(zero_point_[i], zero_point_[i + 1]));
-    if (i < n) zero_point.push_back(Tout(zero_point_[i], 0xF));
+    for (; i < n - 1; i += 2) zero_point.push_back(Tout(static_cast<Tout::UnpackedType>(zero_point_[i]),
+                                                        static_cast<Tout::UnpackedType>(zero_point_[i + 1])));
+    if (i < n) zero_point.push_back(Tout(static_cast<Tout::UnpackedType>(zero_point_[i]), 0xF));
   }
 
   test.AddInput<Tin>("x", dims, x);
@@ -2210,9 +2213,9 @@ void QuantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
   for (size_t i = 0, n = dims.size(); i < n; ++i) {
     scale_shape.push_back((int64_t)i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
   }
-  for (auto v : y_) y.push_back(v);
+  for (auto v : y_) y.push_back(static_cast<Tout>(v));
   if (use_zero_point)
-    for (auto v : zero_point_) zero_point.push_back(v);
+    for (auto v : zero_point_) zero_point.push_back(static_cast<Tout>(v));
 
   test.AddInput<Tin>("x", dims, x);
   test.AddAttribute<int64_t>("axis", axis);

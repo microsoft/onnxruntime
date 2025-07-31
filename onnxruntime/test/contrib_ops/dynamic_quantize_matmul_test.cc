@@ -50,7 +50,7 @@ static void CalculateDynamicQuantizeMatMul(const int64_t M, const int64_t N, con
   min = std::min(min, 0.0f);
 
   float scale = static_cast<float>(max - min) / (qmax - qmin);
-  T zeroPoint = std::round(std::clamp(qmin - min / scale, qmin, qmax));
+  T zeroPoint = static_cast<T>(std::round(std::clamp(qmin - min / scale, qmin, qmax)));
 
   A_scale.push_back(scale);
   A_zero_point.push_back(zeroPoint);
