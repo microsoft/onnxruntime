@@ -102,6 +102,7 @@ stages:
 
     - bash: |
        sudo apt-get install -y msopenjdk-17
+       dpkg -l msopenjdk-17
 
     - bash: |
         echo "Downloading and installing Maven $(mavenVersion) for Linux..."
@@ -137,7 +138,7 @@ stages:
         options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java'
         publishJUnitTestResults: false
         javaHomeOption: 'JDKVersion'
-        jdkVersionOption: '1.17'
+        jdkVersionOption: 'Default'
         mavenVersionOption: 'Default'
 
     # Now all the jars are in the $(Pipeline.Workspace)/build folder
