@@ -66,10 +66,4 @@ extends:
 
     - template: templates/stages/mac-ios-packaging-build-stage.yml
       parameters:
-        packageVariant: Full
-        buildType: ${{ parameters.buildType }}
-
-    - template: templates/stages/mac-ios-packaging-build-stage.yml
-      parameters:
-        packageVariant: Training
         buildType: ${{ parameters.buildType }}
