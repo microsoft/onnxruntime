@@ -127,16 +127,18 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
     std::string ep_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 
-    // A list of EP's associated provider options
+    // EP's associated provider option lists
     std::vector<std::unordered_map<std::string, std::string>> ep_options_list;
     ParseEpOptions(ep_option_string, ep_options_list);
 
-    // If user only provide the EPs' provider options for the first several EPs,
-    // add empty options for the rest EPs.
+    // If user only provide the EPs' provider option lists for the first several EPs,
+    // add empty provider option lists for the rest EPs.
     if (ep_options_list.size() < ep_list.size()) {
       for (size_t i = ep_options_list.size(); i < ep_list.size(); ++i) {
         ep_options_list.emplace_back();  // Adds a new empty map
       }
+    } else if (ep_options_list.size() > ep_list.size()) {
+      ORT_THROW("[ERROR] [Plugin EP]: Too many EP provider option lists provided.");
     }
 
     // EP -> associated provider options

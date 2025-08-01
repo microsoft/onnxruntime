@@ -152,13 +152,15 @@ ABSL_FLAG(bool, n, DefaultPerformanceTestConfig().run_config.exit_after_session_
 ABSL_FLAG(bool, l, DefaultPerformanceTestConfig().model_info.load_via_path, "Provides file as binary in memory by using fopen before session creation.");
 ABSL_FLAG(bool, g, DefaultPerformanceTestConfig().run_config.enable_cuda_io_binding, "[TensorRT RTX | TensorRT | CUDA] Enables tensor input and output bindings on CUDA before session run.");
 ABSL_FLAG(bool, X, DefaultPerformanceTestConfig().run_config.use_extensions, "Registers custom ops from onnxruntime-extensions.");
-ABSL_FLAG(std::string, plugin_ep_libs, "", "Specifies a list of plugin execution provider (EP) registration names and their corresponding shared libraries to register.\n"
-                                           "[Usage]: --plugin_ep_libs \"plugin_ep_name_1|plugin_ep_1.dll plugin_ep_name_2|plugin_ep_2.dll ... \"");
+ABSL_FLAG(std::string, plugin_ep_libs, "",
+          "Specifies a list of plugin execution provider (EP) registration names and their corresponding shared libraries to register.\n"
+          "[Usage]: --plugin_ep_libs \"plugin_ep_name_1|plugin_ep_1.dll plugin_ep_name_2|plugin_ep_2.dll ... \"");
 ABSL_FLAG(std::string, plugin_eps, "", "Specifies a semicolon-separated list of plugin execution providers (EPs) to use.");
-ABSL_FLAG(std::string, plugin_ep_options, "", "Specifies provider options for each EP listed in --plugin_eps. Options (key-value pairs) for each EP are separated by space and EPs are separated by semicolons.\n"
-                                              "[Usage]: --plugin_ep_options \"ep_1_option_1_key|ep_1_option_1_value ...;ep_2_option_1_key|ep_2_option_1_value ...;... \" or \n"
-                                                       "--plugin_ep_options \";ep_2_option_1_key|ep_2_option_1_value ...;... \" or \n"
-                                                       "--plugin_ep_options \"ep_1_option_1_key|ep_1_option_1_value ...;;ep_3_option_1_key|ep_3_option_1_value ...;... \"");
+ABSL_FLAG(std::string, plugin_ep_options, "",
+          "Specifies provider options for each EP listed in --plugin_eps. Options (key-value pairs) for each EP are separated by space and EPs are separated by semicolons.\n"
+          "[Usage]: --plugin_ep_options \"ep_1_option_1_key|ep_1_option_1_value ...;ep_2_option_1_key|ep_2_option_1_value ...;... \" or \n"
+          "--plugin_ep_options \";ep_2_option_1_key|ep_2_option_1_value ...;... \" or \n"
+          "--plugin_ep_options \"ep_1_option_1_key|ep_1_option_1_value ...;;ep_3_option_1_key|ep_3_option_1_value ...;... \"");
 ABSL_FLAG(bool, list_ep_devices, false, "Prints all available device indices and their properties (including metadata). This option makes the program exit early without performing inference.\n");
 ABSL_FLAG(std::string, select_ep_devices, "", "Specifies a semicolon-separated list of device indices to add to the session and run with.");
 
@@ -349,182 +351,192 @@ std::string CustomUsageMessage() {
 }
 
 bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
-  ORT_TRY {
-    // Following callback is to make sure all the ABSL flags defined above will be showed up when running with "--help".
-    // Note: By default abseil only wants flags in binary's main. It expects the main routine to reside in <program>.cc or <program>-main.cc or
-    // <program>_main.cc, where the <program> is the name of the binary (without .exe on Windows). See usage_config.cc in abseil for more details.
-    absl::FlagsUsageConfig config;
-    config.contains_help_flags = [](absl::string_view filename) {
-      auto suffix = utils::GetBasename(filename);
-      std::string_view file_has_the_flag_defs(__FILE__);
-      file_has_the_flag_defs = utils::GetBasename(file_has_the_flag_defs);
+  // Following callback is to make sure all the ABSL flags defined above will be showed up when running with "--help".
+  // Note: By default abseil only wants flags in binary's main. It expects the main routine to reside in <program>.cc or <program>-main.cc or
+  // <program>_main.cc, where the <program> is the name of the binary (without .exe on Windows). See usage_config.cc in abseil for more details.
+  absl::FlagsUsageConfig config;
+  config.contains_help_flags = [](absl::string_view filename) {
+    auto suffix = utils::GetBasename(filename);
+    std::string_view file_has_the_flag_defs(__FILE__);
+    file_has_the_flag_defs = utils::GetBasename(file_has_the_flag_defs);
 
-      return suffix == file_has_the_flag_defs;
-    };
+    return suffix == file_has_the_flag_defs;
+  };
 
-    config.normalize_filename = [](absl::string_view f) {
-      return std::string(f);
-    };
-    absl::SetFlagsUsageConfig(config);
-    absl::SetProgramUsageMessage(CustomUsageMessage());
+  config.normalize_filename = [](absl::string_view f) {
+    return std::string(f);
+  };
+  absl::SetFlagsUsageConfig(config);
+  absl::SetProgramUsageMessage(CustomUsageMessage());
 
 #ifdef _WIN32
-    auto utf8_strings = utils::ConvertArgvToUtf8Strings(argc, argv);
-    auto utf8_argv = utils::CStringsFromStrings(utf8_strings);
+  auto utf8_strings = utils::ConvertArgvToUtf8Strings(argc, argv);
+  auto utf8_argv = utils::CStringsFromStrings(utf8_strings);
 
-    auto positional = absl::ParseCommandLine(static_cast<int>(utf8_argv.size()), utf8_argv.data());
+  auto positional = absl::ParseCommandLine(static_cast<int>(utf8_argv.size()), utf8_argv.data());
 #else
-    auto positional = absl::ParseCommandLine(argc, argv);
+  auto positional = absl::ParseCommandLine(argc, argv);
 #endif
 
-    // -f
-    std::string opt_str = absl::GetFlag(FLAGS_f);
-    if (!opt_str.empty()) {
+  // -f
+  {
+    const auto& dim_override_str = absl::GetFlag(FLAGS_f);
+    if (!dim_override_str.empty()) {
       std::string dim_name;
       int64_t override_val;
-      if (!ParseDimensionOverride(dim_name, override_val, opt_str.c_str())) {
+      if (!ParseDimensionOverride(dim_name, override_val, dim_override_str.c_str())) {
         return false;
       }
       test_config.run_config.free_dim_name_overrides[dim_name] = override_val;
     }
+  }
 
-    // -F
-    opt_str = absl::GetFlag(FLAGS_F);
-    if (!opt_str.empty()) {
+  // -F
+  {
+    const auto& dim_override_str = absl::GetFlag(FLAGS_F);
+    if (!dim_override_str.empty()) {
       std::string dim_denotation;
       int64_t override_val;
-      if (!ParseDimensionOverride(dim_denotation, override_val, opt_str.c_str())) {
+      if (!ParseDimensionOverride(dim_denotation, override_val, dim_override_str.c_str())) {
         return false;
       }
       test_config.run_config.free_dim_denotation_overrides[dim_denotation] = override_val;
     }
+  }
 
-    // -m
-    opt_str = absl::GetFlag(FLAGS_m);
-    if (!opt_str.empty()) {
-      if (opt_str == "duration") {
+  // -m
+  {
+    const auto& test_mode_str = absl::GetFlag(FLAGS_m);
+    if (!test_mode_str.empty()) {
+      if (test_mode_str == "duration") {
         test_config.run_config.test_mode = TestMode::kFixDurationMode;
-      } else if (opt_str == "times") {
+      } else if (test_mode_str == "times") {
         test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
       } else {
         return false;
       }
     }
+  }
 
-    // -p
-    test_config.run_config.profile_file = ToPathString(absl::GetFlag(FLAGS_p));
+  // -p
+  {
+    const auto& profile_file = absl::GetFlag(FLAGS_p);
+    if (!profile_file.empty()) test_config.run_config.profile_file = ToPathString(profile_file);
+  }
 
-    // -M
-    test_config.run_config.enable_memory_pattern = absl::GetFlag(FLAGS_M);
+  // -M
+  test_config.run_config.enable_memory_pattern = absl::GetFlag(FLAGS_M);
 
-    // -A
-    test_config.run_config.enable_cpu_mem_arena = absl::GetFlag(FLAGS_A);
+  // -A
+  test_config.run_config.enable_cpu_mem_arena = absl::GetFlag(FLAGS_A);
 
-    // -e
-    opt_str = absl::GetFlag(FLAGS_e);
-    if (!opt_str.empty()) {
-      if (opt_str == "cpu") {
+  // -e
+  {
+    auto const& ep = absl::GetFlag(FLAGS_e);
+    if (!ep.empty()) {
+      if (ep == "cpu") {
         test_config.machine_config.provider_type_name = onnxruntime::kCpuExecutionProvider;
-      } else if (opt_str == "cuda") {
+      } else if (ep == "cuda") {
         test_config.machine_config.provider_type_name = onnxruntime::kCudaExecutionProvider;
-      } else if (opt_str == "dnnl") {
+      } else if (ep == "dnnl") {
         test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
-      } else if (opt_str == "openvino") {
+      } else if (ep == "openvino") {
         test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
-      } else if (opt_str == "tensorrt") {
+      } else if (ep == "tensorrt") {
         test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
-      } else if (opt_str == "qnn") {
+      } else if (ep == "qnn") {
         test_config.machine_config.provider_type_name = onnxruntime::kQnnExecutionProvider;
-      } else if (opt_str == "snpe") {
+      } else if (ep == "snpe") {
         test_config.machine_config.provider_type_name = onnxruntime::kSnpeExecutionProvider;
-      } else if (opt_str == "nnapi") {
+      } else if (ep == "nnapi") {
         test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
-      } else if (opt_str == "vsinpu") {
+      } else if (ep == "vsinpu") {
         test_config.machine_config.provider_type_name = onnxruntime::kVSINPUExecutionProvider;
-      } else if (opt_str == "coreml") {
+      } else if (ep == "coreml") {
         test_config.machine_config.provider_type_name = onnxruntime::kCoreMLExecutionProvider;
-      } else if (opt_str == "dml") {
+      } else if (ep == "dml") {
         test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
-      } else if (opt_str == "acl") {
+      } else if (ep == "acl") {
         test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
-      } else if (opt_str == "armnn") {
+      } else if (ep == "armnn") {
         test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
-      } else if (opt_str == "rocm") {
+      } else if (ep == "rocm") {
         test_config.machine_config.provider_type_name = onnxruntime::kRocmExecutionProvider;
-      } else if (opt_str == "migraphx") {
+      } else if (ep == "migraphx") {
         test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
-      } else if (opt_str == "xnnpack") {
+      } else if (ep == "xnnpack") {
         test_config.machine_config.provider_type_name = onnxruntime::kXnnpackExecutionProvider;
-      } else if (opt_str == "vitisai") {
+      } else if (ep == "vitisai") {
         test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
-      } else if (opt_str == "webgpu") {
+      } else if (ep == "webgpu") {
         test_config.machine_config.provider_type_name = onnxruntime::kWebGpuExecutionProvider;
-      } else if (opt_str == "nvtensorrtrtx") {
+      } else if (ep == "nvtensorrtrtx") {
         test_config.machine_config.provider_type_name = onnxruntime::kNvTensorRTRTXExecutionProvider;
       } else {
         return false;
       }
     }
+  }
 
-    auto is_option_specified = [&](std::string& option) {
-      for (int i = 1; i < argc; ++i) {
-        auto utf8_arg = ToUTF8String(argv[i]);
-        if (utf8_arg == ("-" + option) || utf8_arg == ("--" + option)) {
-          return true;
-        }
+  // Helper function to check if the option is explicitly specified.
+  // Abseil Flags does not provide this capability by default.
+  // It cannot distinguish between cases where:
+  //   - The user typed `-r 1000` (explicitly passing the default value), and
+  //   - The user omitted `-r` entirely.
+  // To determine this accurately, we must inspect argv directly.
+  auto is_option_specified = [&](std::string option) {
+    for (int i = 1; i < argc; ++i) {
+      auto utf8_arg = ToUTF8String(argv[i]);
+      if (utf8_arg == ("-" + option) || utf8_arg == ("--" + option)) {
+        return true;
       }
-      return false;
-    };
-
-    // -r
-    // 
-    // We can’t tell if:
-    // The user typed -r 1000 (default value) Or the user didn’t type -r at all.
-    // We need to parse the argv in order to properly set test_node.
-    opt_str = "r";
-    if (is_option_specified(opt_str)) {
-      if (absl::GetFlag(FLAGS_r) == static_cast<size_t>(0)) return false;
-      test_config.run_config.repeated_times = absl::GetFlag(FLAGS_r);
-      test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
     }
+    return false;
+  };
 
-    // -t
-    opt_str = "t";
-    if (is_option_specified(opt_str)) {
-      if (absl::GetFlag(FLAGS_t) <= static_cast<size_t>(0)) return false;
-      test_config.run_config.duration_in_seconds = absl::GetFlag(FLAGS_t);
-      test_config.run_config.test_mode = TestMode::kFixDurationMode;
-    }
+  // -r
+  if (is_option_specified("r")) {
+    if (absl::GetFlag(FLAGS_r) == static_cast<size_t>(0)) return false;
+    test_config.run_config.repeated_times = absl::GetFlag(FLAGS_r);
+    test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
+  }
 
-    // -s
-    test_config.run_config.f_dump_statistics = absl::GetFlag(FLAGS_s);
+  // -t
+  if (is_option_specified("t")) {
+    if (absl::GetFlag(FLAGS_t) <= static_cast<size_t>(0)) return false;
+    test_config.run_config.duration_in_seconds = absl::GetFlag(FLAGS_t);
+    test_config.run_config.test_mode = TestMode::kFixDurationMode;
+  }
 
-    // -S
-    test_config.run_config.random_seed_for_input_data = absl::GetFlag(FLAGS_S);
+  // -s
+  test_config.run_config.f_dump_statistics = absl::GetFlag(FLAGS_s);
 
-    // -v
-    test_config.run_config.f_verbose = absl::GetFlag(FLAGS_v);
+  // -S
+  test_config.run_config.random_seed_for_input_data = absl::GetFlag(FLAGS_S);
 
-    // -x
-    if (absl::GetFlag(FLAGS_x) < 0) return false;
-    test_config.run_config.intra_op_num_threads = absl::GetFlag(FLAGS_x);
-    
-    // -y
-    if (absl::GetFlag(FLAGS_y) < 0) return false;
-    test_config.run_config.inter_op_num_threads = absl::GetFlag(FLAGS_y);
+  // -v
+  test_config.run_config.f_verbose = absl::GetFlag(FLAGS_v);
 
-    // -P
-    if (absl::GetFlag(FLAGS_P)) test_config.run_config.execution_mode = ExecutionMode::ORT_PARALLEL;
+  // -x
+  if (absl::GetFlag(FLAGS_x) < 0) return false;
+  test_config.run_config.intra_op_num_threads = absl::GetFlag(FLAGS_x);
 
-    // -c
-    if (absl::GetFlag(FLAGS_c) <= static_cast<size_t>(0)) return false;
-    test_config.run_config.concurrent_session_runs = absl::GetFlag(FLAGS_c);
-   
+  // -y
+  if (absl::GetFlag(FLAGS_y) < 0) return false;
+  test_config.run_config.inter_op_num_threads = absl::GetFlag(FLAGS_y);
 
-    // -o
-    int val_int = absl::GetFlag(FLAGS_o);
-    if (val_int != 99) {
-      switch (val_int) {
+  // -P
+  if (absl::GetFlag(FLAGS_P)) test_config.run_config.execution_mode = ExecutionMode::ORT_PARALLEL;
+
+  // -c
+  if (absl::GetFlag(FLAGS_c) <= static_cast<size_t>(0)) return false;
+  test_config.run_config.concurrent_session_runs = absl::GetFlag(FLAGS_c);
+
+  // -o
+  {
+    const auto optimization_level = absl::GetFlag(FLAGS_o);
+    if (optimization_level != test_config.run_config.optimization_level) {
+      switch (optimization_level) {
         case ORT_DISABLE_ALL:
           test_config.run_config.optimization_level = ORT_DISABLE_ALL;
           break;
@@ -541,7 +553,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
           test_config.run_config.optimization_level = ORT_ENABLE_ALL;
           break;
         default: {
-          if (val_int > ORT_ENABLE_ALL) {  // relax constraint
+          if (optimization_level > ORT_ENABLE_ALL) {  // relax constraint
             test_config.run_config.optimization_level = ORT_ENABLE_ALL;
           } else {
             return false;
@@ -549,37 +561,42 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
         }
       }
     }
+  }
 
-    // -u
-    PathString opt_w_str = ToPathString(absl::GetFlag(FLAGS_u));
-    if (!opt_str.empty()) test_config.run_config.optimized_model_path = opt_w_str;
+  // -u
+  {
+    const auto& optimized_model_path = absl::GetFlag(FLAGS_u);
+    if (!optimized_model_path.empty()) test_config.run_config.optimized_model_path = ToPathString(optimized_model_path);
+  }
 
-    // -I
-    if (absl::GetFlag(FLAGS_I)) test_config.run_config.generate_model_input_binding = true;
+  // -I
+  test_config.run_config.generate_model_input_binding = absl::GetFlag(FLAGS_I);
 
-    // -d
-    if (absl::GetFlag(FLAGS_d) < 0) return false;
-    test_config.run_config.cudnn_conv_algo = absl::GetFlag(FLAGS_d);
+  // -d
+  if (absl::GetFlag(FLAGS_d) < 0) return false;
+  test_config.run_config.cudnn_conv_algo = absl::GetFlag(FLAGS_d);
 
-    // -q
-    if (absl::GetFlag(FLAGS_q)) test_config.run_config.do_cuda_copy_in_separate_stream = true;
+  // -q
+  test_config.run_config.do_cuda_copy_in_separate_stream = absl::GetFlag(FLAGS_q);
 
-    // -z
-    if (absl::GetFlag(FLAGS_z)) test_config.run_config.set_denormal_as_zero = true;
+  // -z
+  test_config.run_config.set_denormal_as_zero = absl::GetFlag(FLAGS_z);
 
-    // -i
-    opt_w_str = ToPathString(absl::GetFlag(FLAGS_i));
-    if (!opt_w_str.empty()) test_config.run_config.ep_runtime_config_string = opt_w_str;
+  // -i
+  {
+    const auto& ep_options = absl::GetFlag(FLAGS_i);
+    if (!ep_options.empty()) test_config.run_config.ep_runtime_config_string = ToPathString(ep_options);
+  }
 
-    // -T
-    opt_str = absl::GetFlag(FLAGS_T);
-    if (!opt_str.empty()) test_config.run_config.intra_op_thread_affinities = opt_str;
+  // -T
+  if (!absl::GetFlag(FLAGS_T).empty()) test_config.run_config.intra_op_thread_affinities = absl::GetFlag(FLAGS_T);
 
-    // -C
-    opt_str = absl::GetFlag(FLAGS_C);
-    if (!opt_str.empty()) {
+  // -C
+  {
+    const auto& session_configs = absl::GetFlag(FLAGS_C);
+    if (!session_configs.empty()) {
       ORT_TRY {
-        ParseSessionConfigs(opt_str, test_config.run_config.session_config_entries);
+        ParseSessionConfigs(session_configs, test_config.run_config.session_config_entries);
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {
@@ -588,65 +605,69 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
         return false;
       }
     }
-
-    // -D
-    if (absl::GetFlag(FLAGS_D)) test_config.run_config.disable_spinning = true;
-
-    // -Z
-    if (absl::GetFlag(FLAGS_Z)) test_config.run_config.disable_spinning_between_run = true;
-
-    // -n
-    if (absl::GetFlag(FLAGS_n)) test_config.run_config.exit_after_session_creation = true;
-
-    // -l
-    if (absl::GetFlag(FLAGS_l)) test_config.model_info.load_via_path = true;
-
-    // -R
-    opt_w_str = ToPathString(absl::GetFlag(FLAGS_R));
-    if (!opt_w_str.empty()) test_config.run_config.register_custom_op_path = opt_w_str;
-
-    // -g
-    if (absl::GetFlag(FLAGS_g)) test_config.run_config.enable_cuda_io_binding = true;
-
-    // -X
-    if (absl::GetFlag(FLAGS_X)) test_config.run_config.use_extensions = true;
-
-    // --plugin_ep_libs
-    opt_w_str = ToPathString(absl::GetFlag(FLAGS_plugin_ep_libs));
-    if (!opt_w_str.empty()) test_config.plugin_ep_names_and_libs = opt_w_str;
-
-    // --plugin_eps
-    opt_str = absl::GetFlag(FLAGS_plugin_eps);
-    if (!opt_str.empty()) ParseEpList(opt_str, test_config.machine_config.plugin_provider_type_list);
-
-    // --plugin_ep_options
-    opt_w_str = ToPathString(absl::GetFlag(FLAGS_plugin_ep_options));
-    if (!opt_w_str.empty()) test_config.run_config.ep_runtime_config_string = opt_w_str;
-
-    // --list_ep_devices
-    if (absl::GetFlag(FLAGS_list_ep_devices)) {
-      test_config.list_available_devices = true;
-      return true;
-    }
-
-    // --select_ep_devices
-    opt_str = absl::GetFlag(FLAGS_select_ep_devices);
-    if (!opt_str.empty()) test_config.selected_devices = opt_str;
-
-    if (positional.size() == 2) {
-      test_config.model_info.model_file_path = ToPathString(positional[1]);
-      test_config.run_config.f_dump_statistics = true;
-    } else if (positional.size() == 3) {
-      test_config.model_info.model_file_path = ToPathString(positional[1]);
-      test_config.model_info.result_file_path = ToPathString(positional[2]);
-    } else {
-      return false;
-    }
   }
-  ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      fprintf(stderr, "Error parsing options: %s\n", ex.what());
-    });
+
+  // -D
+  test_config.run_config.disable_spinning = absl::GetFlag(FLAGS_D);
+
+  // -Z
+  test_config.run_config.disable_spinning_between_run = absl::GetFlag(FLAGS_Z);
+
+  // -n
+  test_config.run_config.exit_after_session_creation = absl::GetFlag(FLAGS_n);
+
+  // -l
+  test_config.model_info.load_via_path = absl::GetFlag(FLAGS_l);
+
+  // -R
+  {
+    const auto& register_custom_op_path = absl::GetFlag(FLAGS_R);
+    if (!register_custom_op_path.empty()) test_config.run_config.register_custom_op_path = ToPathString(register_custom_op_path);
+  }
+
+  // -g
+  test_config.run_config.enable_cuda_io_binding = absl::GetFlag(FLAGS_g);
+
+  // -X
+  test_config.run_config.use_extensions = absl::GetFlag(FLAGS_X);
+
+  // --plugin_ep_libs
+  {
+    const auto& plugin_ep_names_and_libs = absl::GetFlag(FLAGS_plugin_ep_libs);
+    if (!plugin_ep_names_and_libs.empty()) test_config.plugin_ep_names_and_libs = ToPathString(plugin_ep_names_and_libs);
+  }
+
+  // --plugin_eps
+  {
+    const auto& plugin_eps = absl::GetFlag(FLAGS_plugin_eps);
+    if (!plugin_eps.empty()) ParseEpList(plugin_eps, test_config.machine_config.plugin_provider_type_list);
+  }
+
+  // --plugin_ep_options
+  {
+    const auto& plugin_ep_options = absl::GetFlag(FLAGS_plugin_ep_options);
+    if (!plugin_ep_options.empty()) test_config.run_config.ep_runtime_config_string = ToPathString(plugin_ep_options);
+  }
+
+  // --list_ep_devices
+  if (absl::GetFlag(FLAGS_list_ep_devices)) {
+    test_config.list_available_devices = true;
+    return true;
+  }
+
+  // --select_ep_devices
+  {
+    const auto& select_ep_devices = absl::GetFlag(FLAGS_select_ep_devices);
+    if (!select_ep_devices.empty()) test_config.selected_devices = select_ep_devices;
+  }
+
+  if (positional.size() == 2) {
+    test_config.model_info.model_file_path = ToPathString(positional[1]);
+    test_config.run_config.f_dump_statistics = true;
+  } else if (positional.size() == 3) {
+    test_config.model_info.model_file_path = ToPathString(positional[1]);
+    test_config.model_info.result_file_path = ToPathString(positional[2]);
+  } else {
     return false;
   }
 
