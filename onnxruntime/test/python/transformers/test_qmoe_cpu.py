@@ -314,8 +314,8 @@ def create_cpu_moe_onnx_graph(
     # Note: In QMoE mode, biases are not used at all
     # This code path is never executed since use_quant is always True
 
-    # Always use SiLU activation
-    activation = "silu"
+    # Use SwiGLU activation if specified, otherwise use SiLU
+    activation = "swiglu" if use_swiglu else "silu"
 
     nodes = [
         helper.make_node(
@@ -508,8 +508,34 @@ class MoEBlockSparseTop2MLP(nn.Module):
 
 
 class PhiMoEBlockSparseTop2MLP(MoEBlockSparseTop2MLP):
-    def __init__(self, config: PhiMoEConfig):
+    def __init__(self, config: PhiMoEConfig, use_swiglu=False):
         super().__init__(config)
+        self.use_swiglu = use_swiglu
+
+    def forward(self, hidden_states):
+        if self.use_swiglu:
+            # SwiGLU implementation matching C++ implementation exactly
+            gate_output = self.w1(hidden_states)  # Gate
+            value_output = self.w3(hidden_states)  # Value
+
+            # Apply SwiGLU exactly as in the C++ implementation
+            # C++ uses swiglu_alpha = 1.702f
+            swiglu_alpha = 1.702
+
+            # Compute gate activation: gate * sigmoid(alpha * gate)
+            sigmoid_input = swiglu_alpha * gate_output
+            sigmoid_output = torch.sigmoid(sigmoid_input)
+            swish_output = gate_output * sigmoid_output
+
+            # Multiply by (value + 1) as done in C++
+            current_hidden_states = swish_output * (value_output + 1.0)
+
+            # Apply FC2
+            current_hidden_states = self.w2(current_hidden_states)
+            return current_hidden_states
+        else:
+            # Original implementation with standard activation
+            return super().forward(hidden_states)
 
 
 class SparseMoeBlockORTHelper(nn.Module):
@@ -722,24 +748,28 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
     compatibility with the CUDA implementation and TensorRT.
     """
 
-    def __init__(self, config, batch_size, sequence_length, quant_bits=0, onnx_dtype=None):
+    def __init__(self, config, batch_size, sequence_length, quant_bits=0, onnx_dtype=None, use_swiglu=False):
+        # Ensure we always have a valid quantization bits value (4 or 8) before passing to parent
+        if quant_bits <= 0:
+            print("Warning: quant_bits was set to 0 or negative, forcing to 4-bit")
+            quant_bits = 4
+
+        # Now pass the validated quant_bits to parent constructor
         super().__init__(quant_bits, onnx_dtype)
         self.hidden_dim = config.hidden_size
         self.ffn_dim = config.intermediate_size
         self.num_experts = config.num_local_experts
         self.top_k = config.num_experts_per_tok
         self.router_jitter_noise = config.router_jitter_noise
-
-        # Ensure we always have a valid quantization bits value (4 or 8)
-        if self.quant_bits <= 0:
-            print("Warning: quant_bits was set to 0 or negative, forcing to 4-bit")
-            self.quant_bits = 4
+        self.use_swiglu = use_swiglu
 
         # gating
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
 
         # Use PhiMoEBlockSparseTop2MLP for all experts
-        self.experts = nn.ModuleList([PhiMoEBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
+        self.experts = nn.ModuleList(
+            [PhiMoEBlockSparseTop2MLP(config, use_swiglu=self.use_swiglu) for _ in range(self.num_experts)]
+        )
 
         w1_list, w2_list = [], []
         w1_scale_list, w2_scale_list = [], []
@@ -751,9 +781,36 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
             w1_scale, pre_qweight1, w1_qdq = quant_dequant(self.experts[i].w1.weight, is_4_bit)
             w2_scale, pre_qweight2, w2_qdq = quant_dequant(self.experts[i].w2.weight, is_4_bit)
 
+            # For SwiGLU, we also need to quantize w3 (value) weights
+            w3_qdq = None  # Initialize w3_qdq to avoid unbound variable error
+            if self.use_swiglu:
+                w3_scale, pre_qweight3, w3_qdq = quant_dequant(self.experts[i].w3.weight, is_4_bit)
+                # Combine gate (w1) and value (w3) for SwiGLU
+                if is_4_bit:
+                    # For 4-bit, we need to combine the packed weights in the right format
+                    # Double the intermediate size for SwiGLU (gate + value)
+                    # Each byte contains two 4-bit values
+                    gate_weights = pre_qweight1
+                    value_weights = pre_qweight3
+                    # Create a new tensor with double the last dimension
+                    combined_shape = list(gate_weights.shape)
+                    combined_shape[-1] *= 2  # Double the last dimension for gate+value
+                    combined_weights = torch.zeros(combined_shape, dtype=torch.uint8, device=gate_weights.device)
+                    combined_weights[..., : gate_weights.shape[-1]] = gate_weights
+                    combined_weights[..., gate_weights.shape[-1] :] = value_weights
+                    pre_qweight1 = combined_weights
+                else:
+                    # For 8-bit, we can just concatenate along the last dimension
+                    pre_qweight1 = torch.cat([pre_qweight1, pre_qweight3], dim=-1)
+
+                # Same for scales - combine gate and value scales
+                w1_scale = torch.cat([w1_scale, w3_scale], dim=-1)
+
             # Update the expert weights with dequantized values for PyTorch execution
             self.experts[i].w1.weight.data = w1_qdq
             self.experts[i].w2.weight.data = w2_qdq
+            if self.use_swiglu and w3_qdq is not None:
+                self.experts[i].w3.weight.data = w3_qdq
 
             # Store the quantized weights and scales for ONNX model
             w1_list.append(pre_qweight1)
@@ -789,7 +846,7 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
                 # Scales are used for dequantization
                 fc1_scales=moe_experts_weight_scale1,
                 fc2_scales=moe_experts_weight_scale2,
-                use_swiglu=False,  # No SwiGLU
+                use_swiglu=self.use_swiglu,  # Use SwiGLU if specified
                 use_quant=True,  # Always use QMoE
                 quant_bits=self.quant_bits,
             )
@@ -860,18 +917,31 @@ cpu_phi3_test_cases = list(
         [1, 4],  # batch_size
         [8, 32],  # sequence_length - smaller sequence lengths for CPU
         [4, 8],  # quant_bits - only test QMoE (4-bit and 8-bit)
+        [False],  # use_swiglu - standard SiLU cases
+    )
+)
+
+# Additional test cases for SwiGLU activation
+cpu_phi3_swiglu_test_cases = list(
+    itertools.product(
+        [1, 4],  # batch_size
+        [8, 32],  # sequence_length - smaller sequence lengths for CPU
+        [4, 8],  # quant_bits - only test QMoE (4-bit and 8-bit)
+        [True],  # use_swiglu - SwiGLU activation
     )
 )
 
 
 class TestPhiQMoECPU(unittest.TestCase):
-    @parameterized.expand(cpu_phi3_test_cases)
-    def test_phi3_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits):
+    @parameterized.expand(cpu_phi3_test_cases + cpu_phi3_swiglu_test_cases)
+    def test_phi3_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits, use_swiglu=False):
+        activation_type = "SwiGLU" if use_swiglu else "SiLU"
         print(
-            f"Running PhiMoE CPU test with batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}"
+            f"Running PhiMoE CPU test with batch_size={batch_size}, sequence_length={sequence_length}, "
+            f"quant_bits={quant_bits}, activation={activation_type}"
         )
-        config = PhiMoEConfig(hidden_size=256, intermediate_size=512)  # Smaller sizes for CPU tests
-        phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length, quant_bits)
+        config = PhiMoEConfig(hidden_size=256, intermediate_size=512, hidden_act="silu")  # Smaller sizes for CPU tests
+        phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length, quant_bits, use_swiglu=use_swiglu)
         phi3_moe.to(device)
 
         # Skip tests if ONNX is not available
@@ -890,13 +960,14 @@ class TestPhiQMoECPU(unittest.TestCase):
             else:
                 raise
 
-    @parameterized.expand([(8,), (4,)])
-    def test_phi3_qmoe_cpu_benchmark(self, quant_bits):
-        print(f"Benchmarking PhiMoE CPU with quant_bits={quant_bits}")
+    @parameterized.expand([(8, False), (4, False), (8, True), (4, True)])
+    def test_phi3_qmoe_cpu_benchmark(self, quant_bits, use_swiglu=False):
+        activation_type = "SwiGLU" if use_swiglu else "SiLU"
+        print(f"Benchmarking PhiMoE CPU with quant_bits={quant_bits}, activation={activation_type}")
         batch_size = 1
         sequence_length = 32
         config = PhiMoEConfig(hidden_size=256, intermediate_size=512)
-        phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length, quant_bits)
+        phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length, quant_bits, use_swiglu=use_swiglu)
         phi3_moe.to(device)
 
         # Skip tests if ONNX is not available or session creation failed
