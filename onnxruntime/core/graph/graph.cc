@@ -3815,6 +3815,48 @@ bool Graph::GetOrtValueInitializer(const std::string& name, OrtValue& value, boo
   return false;
 }
 
+Status Graph::LoadExternalInitializerAsOrtValue(const std::string& name, OrtValue& value) const {
+  auto tensor_proto_iter = name_to_initial_tensor_.find(name);
+  ORT_RETURN_IF(tensor_proto_iter == name_to_initial_tensor_.end(), "Cannot load unknown initializer named '",
+                name, "'.");
+  const ONNX_NAMESPACE::TensorProto& tensor_proto = *tensor_proto_iter->second;
+
+  // This only supports TensorProtos that currently have their external data in an actual file.
+  // This doesn't cache the new OrtValue because it would overwrite TensorProto.external_data and plugin EPs require
+  // every call to Graph::GetExternalInitializerInfo to return the actual external file info (path, offset, length).
+  ORT_RETURN_IF(!utils::HasExternalDataInFile(tensor_proto), "Initializer '", name,
+                "' does not have external data in a file.");
+
+  // Create OrtValue that memory maps external initializer from file.
+  ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), ModelPath(), tensor_proto, value));
+  assert(value.IsAllocated());
+
+  return Status::OK();
+}
+
+bool Graph::GetExternalInitializerInfo(const std::string& name, std::unique_ptr<ExternalDataInfo>& ext_info,
+                                       bool check_outer_scope) const {
+  // We want to make sure that the external data info is found on the same level as its tensor_proto
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (GetInitializedTensor(name, initializer)) {
+    if (utils::HasExternalDataInFile(*initializer)) {
+      std::unique_ptr<ExternalDataInfo> external_data_info;
+      ORT_THROW_IF_ERROR(ExternalDataInfo::Create(initializer->external_data(), external_data_info));
+
+      ext_info = std::move(external_data_info);
+      return true;
+    }
+  }
+
+  if (check_outer_scope && IsSubgraph()) {
+    if (IsOuterScopeValue(name)) {
+      // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
+      return parent_graph_->GetExternalInitializerInfo(name, ext_info, check_outer_scope);
+    }
+  }
+  return false;
+}
+
 void Graph::CleanAllInitializedTensors() noexcept {
   name_to_initial_tensor_.clear();
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -5202,7 +5244,7 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
   // In the constant node, we won't have symbolic dims.
   const auto tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
-  const size_t size_in_bytes = SafeInt<size_t>(ml_data->Size()) * tensor_shape.Size();
+  const size_t size_in_bytes = Tensor::CalculateTensorStorageSize(ml_data, tensor_shape);
 
   if (size_in_bytes > utils::kSmallTensorExternalDataThreshold) {
     OrtValue ort_value;

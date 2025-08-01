@@ -48,8 +48,6 @@ struct CudaStream : Stream {
 
   onnxruntime::IAllocator* GetCpuAllocator() const { return cpu_allocator_.get(); }
 
-  WaitNotificationFn GetWaitNotificationFn() const override { return WaitCudaNotificationOnDevice; }
-
  private:
   std::vector<void*> deferred_cpu_buffers_;
   AllocatorPtr cpu_allocator_;

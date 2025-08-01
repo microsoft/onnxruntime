@@ -75,6 +75,16 @@ stages:
       artifactName: 'onnxruntime-android-full-aar'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
+- stage: Final_AAR_Testing_Android_QNN
+  dependsOn: Setup
+  jobs:
+  - template: templates/android-java-api-aar-test.yml
+    parameters:
+      artifactName: 'onnxruntime-android-qnn-aar'
+      packageName: 'onnxruntime-android-qnn'
+      #TODO: get this information from the setup stage
+      QnnSDKVersion: '2.36.1.250708'
+
 - template: nuget/templates/test_win.yml
   parameters:
     AgentPool: 'onnxruntime-Win-CPU-2022'
@@ -110,109 +120,6 @@ stages:
 - template: nodejs/templates/test_macos.yml
   parameters:
     StageSuffix: 'macOS_CPU_x64'
-
-- template: templates/final-jar-testing.yml
-  parameters:
-    OS: Windows
-    PoolName: 'onnxruntime-Win-CPU-2022'
-
-- template: templates/final-jar-testing.yml
-  parameters:
-    OS: Linux
-    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-
-- template: templates/final-jar-testing.yml
-  parameters:
-    OS: MacOS
-    PoolName: 'macOS-14'
-
-
-- stage: GPU_JAR_Testing
-  dependsOn: Setup
-  jobs:
-  - job: Final_Jar_Testing_Windows_GPU
-    workspace:
-      clean: all
-    pool: 'onnxruntime-Win2022-GPU-A10'
-    timeoutInMinutes: 60
-    variables:
-    - name: runCodesignValidationInjection
-      value: false
-
-    steps:
-    - template: templates/set-version-number-variables-step.yml
-
-    - template: templates/jobs/download_win_gpu_library.yml
-      parameters:
-        CudaVersion: 12.2
-        DownloadCUDA: true
-        DownloadTRT: true
-
-    - template: templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Final Jar'
-        ArtifactName: onnxruntime-java-gpu
-        TargetPath: '$(Build.BinariesDirectory)\final-jar'
-
-    - template: templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Jar Tools'
-        ArtifactName: onnxruntime-java-tools
-        TargetPath: '$(Build.BinariesDirectory)\final-jar'
-
-    - task: CmdLine@2
-      inputs:
-        script: |
-          mkdir test
-          pushd test
-          jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
-          popd
-          java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.25.5.jar;onnxruntime_gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
-        workingDirectory: '$(Build.BinariesDirectory)\final-jar'
-
-  - job: Final_Jar_Testing_Linux_GPU
-    workspace:
-      clean: all
-    pool:
-      name: 'Onnxruntime-Linux-GPU-A10'
-      os: linux
-    variables:
-    - name: runCodesignValidationInjection
-      value: false
-    - name: docker_base_image
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
-    timeoutInMinutes: 60
-    steps:
-    - checkout: self
-      submodules: false
-    - template: templates/set-version-number-variables-step.yml
-
-    - template: templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Final Jar'
-        ArtifactName: onnxruntime-java-gpu
-        TargetPath: '$(Build.BinariesDirectory)/final-jar'
-
-    - template: templates/get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0
-        Context: tools/ci_build/github/linux/docker/
-        DockerBuildArgs: "
-        --build-arg BUILD_UID=$( id -u )
-        --build-arg BASEIMAGE=${{ variables.docker_base_image }}
-        --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
-        "
-        Repository: onnxruntimeubi8packagestest
-
-    - bash: |
-        docker run -e SYSTEM_COLLECTIONURI --rm \
-          --gpus all \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume /data/models:/build/models:ro \
-          onnxruntimeubi8packagestest \
-          /bin/bash /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -r /build -v $(OnnxRuntimeVersion)
-      displayName: 'Test'
 
 - template: nuget/templates/test_win.yml
   parameters:
@@ -264,13 +171,14 @@ stages:
           clean: true
           submodules: none
 
-        - template: templates/flex-downloadPipelineArtifact.yml
-          parameters:
-            ArtifactName: "Windows_Packaging_cuda_build_artifacts"
-            StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
-            TargetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/'
+        - download: build
+          artifact: 'Windows_Packaging_cuda_build_artifacts'
+          displayName: 'Download Windows GPU Packages Build'
 
-        - template: templates/telemetry-steps.yml
+        - task: CmdLine@2
+          inputs:
+            script: |
+              move $(Pipeline.Workspace)/build/Windows_Packaging_cuda_build_artifacts $(Build.BinariesDirectory)/RelWithDebInfo
 
         - template: templates/set-version-number-variables-step.yml
 
@@ -313,7 +221,7 @@ stages:
           displayName: 'test'
           inputs:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests'
             workingDirectory: '$(Build.BinariesDirectory)'
         # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
         - template: templates/make_java_win_binaries.yml
@@ -335,13 +243,15 @@ stages:
           clean: true
           submodules: none
 
-        - template: templates/flex-downloadPipelineArtifact.yml
-          parameters:
-            ArtifactName: "Windows_Packaging_tensorrt_build_artifacts"
-            StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
-            TargetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/'
 
-        - template: templates/telemetry-steps.yml
+        - download: build
+          artifact: 'Windows_Packaging_tensorrt_build_artifacts'
+          displayName: 'Download Windows GPU Packages Build'
+
+        - task: CmdLine@2
+          inputs:
+            script: |
+              move $(Pipeline.Workspace)/build/Windows_Packaging_tensorrt_build_artifacts $(Build.BinariesDirectory)/RelWithDebInfo
 
         - template: templates/set-version-number-variables-step.yml
 
@@ -384,7 +294,7 @@ stages:
           displayName: 'test'
           inputs:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests'
             workingDirectory: '$(Build.BinariesDirectory)'
         # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
         - template: templates/make_java_win_binaries.yml

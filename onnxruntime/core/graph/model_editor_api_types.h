@@ -49,6 +49,12 @@ struct ModelEditorValueInfo : public OrtValueInfo {
                            "OrtModelEditorApi does not support getting the initializer value for a OrtValueInfo");
   }
 
+  Status GetExternalInitializerInfo(std::unique_ptr<onnxruntime::ExternalDataInfo>& /*ext_info*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the external initializer information ",
+                           "for a OrtValueInfo");
+  }
+
   Status IsRequiredGraphInput(bool& /*is_required_graph_input*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support querying if a graph input is required for OrtValueInfo");
@@ -129,6 +135,11 @@ struct ModelEditorNode : public OrtNode {
   Status GetAttributes(gsl::span<const OrtOpAttr*> /*attrs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting attribute OrtOpAttr for OrtNode");
+  }
+
+  Status GetTensorAttributeAsOrtValue(const OrtOpAttr* /*attribute*/, OrtValue*& /*attr_tensor*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting 'TENSOR' attribute for OrtNode");
   }
 
   Status GetNumSubgraphs(size_t& /*num_subgraphs*/) const override {

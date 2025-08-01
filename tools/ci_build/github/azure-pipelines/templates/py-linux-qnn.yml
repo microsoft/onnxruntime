@@ -58,7 +58,7 @@ jobs:
     clean: true
     submodules: none
 
-  - template: jobs/download_linux_qnn_sdk.yml
+  - template: jobs/init_linux_qnn_sdk_x64.yml
     parameters:
       QnnSDKVersion: ${{ parameters.QnnSdk }}
 

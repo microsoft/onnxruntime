@@ -39,9 +39,9 @@ variables:
   - template: templates/common-variables.yml
   - name: docker_base_image
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250714.2
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250724.1
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250724.1
   - name: linux_trt_version
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: ${{ variables.linux_trt_version_cuda11 }}
@@ -64,6 +64,12 @@ jobs:
   - checkout: self
     clean: true
     submodules: none
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.12'
+      addToPath: true
+      architecture: 'x64'
 
   - template: templates/get-docker-image-steps.yml
     parameters:
