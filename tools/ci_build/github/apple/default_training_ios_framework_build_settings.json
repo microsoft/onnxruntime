@@ -33,7 +33,7 @@
         ],
         "macosx": [
             "--macos=MacOSX",
-            "--apple_deploy_target=13.3"
+            "--apple_deploy_target=13.4"
         ]
     }
 }
