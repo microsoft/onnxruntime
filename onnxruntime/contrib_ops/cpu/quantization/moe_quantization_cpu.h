@@ -41,8 +41,13 @@ class QMoE final : public OpKernel, public MoEBaseCPU {
                           const Tensor* fc3_scales_optional) const;
 
   // Prepacked dequantized weights stored for reuse
-  std::vector<float> prepacked_fc1_weights_;
-  std::vector<float> prepacked_fc2_weights_;
+  IAllocatorUniquePtr<float> prepacked_fc1_weights_;
+  IAllocatorUniquePtr<float> prepacked_fc2_weights_;
+  float* prepacked_fc1_weights_data_{nullptr};
+  float* prepacked_fc2_weights_data_{nullptr};
+
+  // Persistent allocator for weights
+  AllocatorPtr weights_allocator_;
 
   // Cached parameters to detect changes requiring repack
   mutable int64_t cached_num_experts_{0};

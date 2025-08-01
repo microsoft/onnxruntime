@@ -30,7 +30,13 @@ REGISTER_KERNEL();
 
 // QMoE CPU kernel registration is handled in cpu_contrib_kernels.cc
 
-QMoE::QMoE(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info), MoEBaseCPU(op_kernel_info), is_prepacked_(false) {
+QMoE::QMoE(const OpKernelInfo& op_kernel_info)
+    : OpKernel(op_kernel_info),
+      MoEBaseCPU(op_kernel_info),
+      prepacked_fc1_weights_data_(nullptr),
+      prepacked_fc2_weights_data_(nullptr),
+      weights_allocator_(nullptr),
+      is_prepacked_(false) {
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
               "expert_weight_bits must be 4 or 8, but got ", expert_weight_bits_);
@@ -153,40 +159,64 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   auto thread_fc1_buffers = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads * moe_params.inter_size * (is_swiglu ? 2 : 1)));
   auto thread_fc2_buffers = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads * moe_params.hidden_size));
 
-  // Allocate a single output buffer instead of per-thread buffers
-  auto output_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(total_output_size));
-  std::fill_n(output_float.get(), total_output_size, 0.0f);
+  // Set up output buffer
+  IAllocatorUniquePtr<float> output_float;
+  float* output_float_ptr = nullptr;
+
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    // For MLFloat16, we need a separate float buffer
+    output_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(total_output_size));
+    output_float_ptr = output_float.get();
+  } else {
+    // For float, we can write directly to output_data
+    output_float = IAllocatorUniquePtr<float>(output_data, [](float*) {});
+    output_float_ptr = output_data;
+  }
+
+  // Initialize output to zeros
+  std::fill_n(output_float_ptr, total_output_size, 0.0f);
 
   // Prepare float buffers for input data and biases
-  auto input_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(moe_params.num_rows * moe_params.hidden_size));
-  auto router_probs_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(moe_params.num_rows * moe_params.num_experts));
+  IAllocatorUniquePtr<float> input_float;
+  IAllocatorUniquePtr<float> router_probs_float;
+
+  // Pointers for easier access
+  float* input_float_ptr = nullptr;
+  float* router_probs_float_ptr = nullptr;
 
   // Pre-convert bias tensors to float (if they exist)
   const int64_t fc1_bias_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
   const int64_t fc2_bias_size = moe_params.hidden_size;
 
-  // Allocate buffers for converted biases
-  std::unique_ptr<float[]> fc1_bias_float;
-  std::unique_ptr<float[]> fc2_bias_float;
+  // Allocate buffers for converted biases using ORT allocator
+  IAllocatorUniquePtr<float> fc1_bias_float;
+  IAllocatorUniquePtr<float> fc2_bias_float;
 
   if (fc1_bias_data) {
-    fc1_bias_float = std::make_unique<float[]>(static_cast<size_t>(moe_params.num_experts * fc1_bias_size));
+    fc1_bias_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(moe_params.num_experts * fc1_bias_size));
   }
 
   if (fc2_bias_data) {
-    fc2_bias_float = std::make_unique<float[]>(static_cast<size_t>(moe_params.num_experts * fc2_bias_size));
+    fc2_bias_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(moe_params.num_experts * fc2_bias_size));
   }
 
   // Convert input and router_probs based on type
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    // For MLFloat16, convert to float
+    // For MLFloat16, convert to float - need to allocate buffers first
+    input_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(moe_params.num_rows * moe_params.hidden_size));
+    router_probs_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(moe_params.num_rows * moe_params.num_experts));
+
+    input_float_ptr = input_float.get();
+    router_probs_float_ptr = router_probs_float.get();
+
+    // Convert MLFloat16 to float
     MlasConvertHalfToFloatBufferInParallel(reinterpret_cast<const MLAS_FP16*>(input_data),
-                                           input_float.get(),
+                                           input_float_ptr,
                                            static_cast<size_t>(moe_params.num_rows * moe_params.hidden_size),
                                            thread_pool);
 
     MlasConvertHalfToFloatBufferInParallel(reinterpret_cast<const MLAS_FP16*>(router_probs_data),
-                                           router_probs_float.get(),
+                                           router_probs_float_ptr,
                                            static_cast<size_t>(moe_params.num_rows * moe_params.num_experts),
                                            thread_pool);
 
@@ -205,21 +235,28 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
                                              thread_pool);
     }
   } else {
-    // For float, copy directly
-    std::memcpy(input_float.get(), input_data,
-                static_cast<size_t>(moe_params.num_rows * moe_params.hidden_size) * sizeof(float));
-    std::memcpy(router_probs_float.get(), router_probs_data,
-                static_cast<size_t>(moe_params.num_rows * moe_params.num_experts) * sizeof(float));
+    // For float, point to original input and router_probs directly instead of copying
+    input_float = IAllocatorUniquePtr<float>(const_cast<float*>(input_data), [](float*) {});
+    router_probs_float = IAllocatorUniquePtr<float>(const_cast<float*>(router_probs_data), [](float*) {});
 
-    // For float, just point to the original data
+    // Set pointers to the original data
+    input_float_ptr = const_cast<float*>(input_data);
+    router_probs_float_ptr = const_cast<float*>(router_probs_data);
+
+    // For float, just point to the original bias data directly without copying
+    // No need to allocate or copy, just reuse the original pointers
     if (fc1_bias_data) {
-      std::memcpy(fc1_bias_float.get(), fc1_bias_data,
-                  static_cast<size_t>(moe_params.num_experts * fc1_bias_size) * sizeof(float));
+      // Release previously allocated memory if any
+      fc1_bias_float.reset();
+      // Direct pointer to original data
+      fc1_bias_float = IAllocatorUniquePtr<float>(const_cast<float*>(fc1_bias_data), [](float*) {});
     }
 
     if (fc2_bias_data) {
-      std::memcpy(fc2_bias_float.get(), fc2_bias_data,
-                  static_cast<size_t>(moe_params.num_experts * fc2_bias_size) * sizeof(float));
+      // Release previously allocated memory if any
+      fc2_bias_float.reset();
+      // Direct pointer to original data
+      fc2_bias_float = IAllocatorUniquePtr<float>(const_cast<float*>(fc2_bias_data), [](float*) {});
     }
   }
 
@@ -231,8 +268,8 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   const int64_t fc1_output_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
 
   // Use prepacked dequantized weights - no need to dequantize here
-  const float* dequant_fc1_weights = prepacked_fc1_weights_.data();
-  const float* dequant_fc2_weights = prepacked_fc2_weights_.data();
+  const float* dequant_fc1_weights = prepacked_fc1_weights_data_;
+  const float* dequant_fc2_weights = prepacked_fc2_weights_data_;
 
   // Process tokens in parallel
   concurrency::ThreadPool::TryParallelFor(
@@ -246,12 +283,12 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
         // Process each token in this thread's range
         for (std::ptrdiff_t token_idx = start_token; token_idx < end_token; ++token_idx) {
-          const float* token_input = input_float.get() + static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.hidden_size;
-          float* token_result = output_float.get() + static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.hidden_size;
+          const float* token_input = input_float_ptr + static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.hidden_size;
+          float* token_result = output_float_ptr + static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.hidden_size;
 
           // Process all experts for this token
           for (std::ptrdiff_t expert_idx = 0; expert_idx < moe_params.num_experts; ++expert_idx) {
-            float routing_weight = router_probs_float.get()[static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.num_experts + static_cast<int64_t>(SafeInt<int64_t>(expert_idx))];
+            float routing_weight = router_probs_float_ptr[static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.num_experts + static_cast<int64_t>(SafeInt<int64_t>(expert_idx))];
             if (routing_weight <= 1e-6f) continue;  // Skip experts with negligible routing weight
 
             // FC1: input -> intermediate using pre-dequantized weights + MLAS SGEMM
@@ -335,14 +372,12 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
   // No need for accumulation since threads write directly to output_float
 
-  // Convert results back to the appropriate output type
+  // Convert results back to the appropriate output type, if needed
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    // For MLFloat16, convert from float
-    MlasConvertFloatToHalfBuffer(output_float.get(), reinterpret_cast<MLAS_FP16*>(output_data), static_cast<size_t>(total_output_size));
-  } else {
-    // For float, copy directly
-    std::memcpy(output_data, output_float.get(), static_cast<size_t>(total_output_size) * sizeof(float));
+    // For MLFloat16, convert from float to half
+    MlasConvertFloatToHalfBuffer(output_float_ptr, reinterpret_cast<MLAS_FP16*>(output_data), static_cast<size_t>(total_output_size));
   }
+  // For float, no conversion needed as we directly wrote to output_data
 
   // Suppress unused parameter warnings for optional parameters that are not used in non-SwiGLU modes
   if (!is_swiglu) {
@@ -414,12 +449,21 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
   const int64_t fc1_weight_stride = is_4bit ? (moe_params.hidden_size * fc1_output_size / 2) : (moe_params.hidden_size * moe_params.inter_size * act_multiplier);
   const int64_t fc2_weight_stride = is_4bit ? (moe_params.inter_size * moe_params.hidden_size / 2) : (moe_params.inter_size * moe_params.hidden_size);
 
-  // Resize prepack vectors
+  // Get or create a persistent allocator for weights
+  if (weights_allocator_ == nullptr) {
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&weights_allocator_));
+  }
+
+  // Allocate prepacked weight buffers using ORT allocator
   const size_t fc1_weights_size = static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier));
   const size_t fc2_weights_size = static_cast<size_t>(moe_params.num_experts * moe_params.inter_size * moe_params.hidden_size);
 
-  prepacked_fc1_weights_.resize(fc1_weights_size);
-  prepacked_fc2_weights_.resize(fc2_weights_size);
+  prepacked_fc1_weights_ = IAllocator::MakeUniquePtr<float>(weights_allocator_, fc1_weights_size);
+  prepacked_fc2_weights_ = IAllocator::MakeUniquePtr<float>(weights_allocator_, fc2_weights_size);
+
+  // Store pointers for easy access
+  prepacked_fc1_weights_data_ = prepacked_fc1_weights_.get();
+  prepacked_fc2_weights_data_ = prepacked_fc2_weights_.get();
 
   // Helper lambda for dequantizing a single weight value
   auto DequantizeWeight = [&](const uint8_t* weights, size_t weight_idx, size_t linear_idx,
@@ -444,7 +488,7 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
         for (std::ptrdiff_t expert_idx = expert_start; expert_idx < expert_end; ++expert_idx) {
           const uint8_t* fc1_expert_weights = fc1_weights_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * fc1_weight_stride;
           const float* fc1_expert_scales = fc1_scales_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier);
-          float* dequant_fc1_expert = prepacked_fc1_weights_.data() + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier);
+          float* dequant_fc1_expert = prepacked_fc1_weights_data_ + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier);
 
           const int64_t output_cols = is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier;
           for (int64_t out_col = 0; out_col < output_cols; ++out_col) {
@@ -464,7 +508,7 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
         for (std::ptrdiff_t expert_idx = expert_start; expert_idx < expert_end; ++expert_idx) {
           const uint8_t* fc2_expert_weights = fc2_weights_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * fc2_weight_stride;
           const float* fc2_expert_scales = fc2_scales_data + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size;
-          float* dequant_fc2_expert = prepacked_fc2_weights_.data() + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.inter_size * moe_params.hidden_size;
+          float* dequant_fc2_expert = prepacked_fc2_weights_data_ + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.inter_size * moe_params.hidden_size;
 
           for (int64_t out_col = 0; out_col < moe_params.hidden_size; ++out_col) {
             for (int64_t in_col = 0; in_col < moe_params.inter_size; ++in_col) {
