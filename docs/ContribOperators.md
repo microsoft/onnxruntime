@@ -4571,12 +4571,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T1</tt> : tensor(uint8)</dt>
 <dd>Constrain weights type to uint8 tensors.</dd>
 <dt><tt>T2</tt> : tensor(float), tensor(float16)</dt>
-<dd>Constrain scales type to float tensors.</dd>
+<dd>Constrain scales type to float or float16 tensors.</dd>
 </dl>
 
 

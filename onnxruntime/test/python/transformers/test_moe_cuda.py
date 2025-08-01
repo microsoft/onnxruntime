@@ -1097,6 +1097,12 @@ def swiglu(x: torch.Tensor):
     dim = x.shape[-1]
     x = x.view(-1, dim // 2, 2)
     x_glu, x_linear = x[..., 0], x[..., 1]
+
+    # Apply clamping to match C++ implementation
+    clamp_limit = 7.0
+    x_glu = torch.clamp(x_glu, max=clamp_limit)  # Clamp gate max only
+    x_linear = torch.clamp(x_linear, min=-clamp_limit, max=clamp_limit)  # Clamp linear min/max
+
     y = x_glu * torch.sigmoid(1.702 * x_glu) * (x_linear + 1)
     return y
 

@@ -29,6 +29,7 @@ float ApplyActivation(float x, ActivationType activation_type) {
 // Helper method for applying SwiGLU activation with different memory layouts
 void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_format) {
   constexpr float swiglu_alpha = 1.702f;
+  constexpr float clamp_limit = 7.0f;  // Clamping limit as specified
 
   if (is_interleaved_format) {
     // For interleaved format [linear, gate, linear, gate, ...], process directly
@@ -41,6 +42,11 @@ void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_
       // Store original values
       float linear_val = data[linear_idx];  // Interleaved: even index
       float gate_val = data[gate_idx];      // Interleaved: odd index
+
+      // Apply clamping to the values
+      if (gate_val > clamp_limit) gate_val = clamp_limit;      // Clamp gate max only
+      if (linear_val > clamp_limit) linear_val = clamp_limit;  // Clamp linear min/max
+      if (linear_val < -clamp_limit) linear_val = -clamp_limit;
 
       // SwiGLU: gate * sigmoid(alpha * gate) * (linear + 1)
       float sigmoid_arg = swiglu_alpha * gate_val;
@@ -61,6 +67,9 @@ void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_
       const size_t idx = static_cast<size_t>(i);
       float gate_val = data[idx + static_cast<size_t>(inter_size)];
 
+      // Apply clamping to the gate value (max only)
+      if (gate_val > clamp_limit) gate_val = clamp_limit;
+
       // Compute the gate part of SwiGLU
       float sigmoid_arg = swiglu_alpha * gate_val;
       float sigmoid_out = 1.0f / (1.0f + std::exp(-sigmoid_arg));
@@ -71,6 +80,11 @@ void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_
     for (int64_t i = 0; i < inter_size; ++i) {
       const size_t idx = static_cast<size_t>(i);
       float linear_val = data[idx];
+
+      // Apply clamping to the linear value (min/max)
+      if (linear_val > clamp_limit) linear_val = clamp_limit;
+      if (linear_val < -clamp_limit) linear_val = -clamp_limit;
+
       data[idx] = computed_gates[idx] * (linear_val + 1.0f);
     }
   }

@@ -519,8 +519,13 @@ class PhiMoEBlockSparseTop2MLP(MoEBlockSparseTop2MLP):
             value_output = self.w3(hidden_states)  # Value
 
             # Apply SwiGLU exactly as in the C++ implementation
-            # C++ uses swiglu_alpha = 1.702f
+            # C++ uses swiglu_alpha = 1.702f and clamp_limit = 7.0f
             swiglu_alpha = 1.702
+            clamp_limit = 7.0
+
+            # Apply clamping to match C++ implementation
+            gate_output = torch.clamp(gate_output, max=clamp_limit)  # Clamp max only for gate
+            value_output = torch.clamp(value_output, min=-clamp_limit, max=clamp_limit)  # Clamp both for value
 
             # Compute gate activation: gate * sigmoid(alpha * gate)
             sigmoid_input = swiglu_alpha * gate_output
