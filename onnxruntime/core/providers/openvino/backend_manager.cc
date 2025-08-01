@@ -375,6 +375,18 @@ static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
   return false;
 }
 
+static bool IsModelBF16(const onnxruntime::GraphViewer& graph_viewer) {
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  for (std::size_t i = 0; i < node_indices.size(); i++) {
+    gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_indices[i]));
+    for (auto& output : node->OutputDefs()) {
+      if (output->ToProto().type().tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16)
+        return true;
+    }
+  }
+  return false;
+}
+
 static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& onnx_model_path_name,
                                 [[maybe_unused]] ONNX_NAMESPACE::ModelProto* model_proto,
                                 [[maybe_unused]] const onnxruntime::Node& fused_node) {
@@ -450,6 +462,16 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     // Create a copy of the model
     std::unique_ptr<onnxruntime::Model> model;
     Status status = qdq_scales_fix::Transform(subgraph, logger, model);
+    auto model_proto = model->ToProto();
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    print_model_proto_duration();
+    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+    return model_proto;
+  } else if (IsModelBF16(subgraph)) {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] OVEP bfloat16->float16 optimization pass is enabled";
+    std::unique_ptr<onnxruntime::Model> model;
+    Status status = bfloat16_fix::Transform(subgraph, logger, model);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     print_model_proto_duration();
