@@ -663,5 +663,47 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis2) {
 }
 #endif
 
+template <typename T1, typename T2, typename Tind>
+void Test_GatherAxis_WithZeroPoints_NoPading() {
+  std::vector<int> data = {
+      -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5,
+      -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1,
+      0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
+      4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7,
+      4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7,
+      -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1};
+
+  std::vector<int64_t> data_shape = {2, 3, 16};
+  std::vector<int> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+  std::vector<int> zero_points = {-1, 1, 0, 0, 1, -1};
+  std::vector<float> output = {
+      8, 10, 12, 14, 8, 10, 12, 14, 8, 10, 12, 14, 8, 10, 12, 14,
+      3, 4, 5, 6, 3, 4, 5, 6, 3, 4, 5, 6, 3, 4, 5, 6,
+      -6, -4, -2, 0, -6, -4, -2, 0, -6, -4, -2, 0, -6, -4, -2, 0};
+  std::vector<int64_t> output_shape = {1, 3, 16};
+
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 4;
+
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+}
+
+TEST(GatherBlockQuantizedOpTest, GatherAxis1) {
+  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, float, int32_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, float, int32_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, MLFloat16, int32_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, MLFloat16, int32_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, float, int64_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, float, int64_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, MLFloat16, int64_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, MLFloat16, int64_t>();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
