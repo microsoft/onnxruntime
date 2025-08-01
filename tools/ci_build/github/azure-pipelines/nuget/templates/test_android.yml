@@ -61,7 +61,7 @@ stages:
       - task: PowerShell@2
         displayName: Run BrowserStack test
         continueOnError: true
-        timeoutInMinutes: 5
+        timeoutInMinutes: 10
         inputs:
           targetType: 'inline'
           script: |
