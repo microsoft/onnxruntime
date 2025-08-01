@@ -29,6 +29,8 @@ Abstract:
 #include "sqnbitgemm_m1_sym_kernel_avx2_int8_blklen32.h"
 #include "sqnbitgemm_m1_sym_kernel_avx2_int8_blklen64.h"
 
+#include "sqnbitgemm_bitnet_kernel_avx2.h"
+
 void
 MlasCastF16ToF32KernelAvx2(const unsigned short* src_fp16, float* dst_fp32, size_t size)
 {
@@ -1444,6 +1446,9 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
 
     d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
     d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
+    d.Q2BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<2>;
+    d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
+
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum;
     d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum;
@@ -1458,6 +1463,9 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx2<false>;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
 
+    d.SQ2BitGemmKernel_CompInt8 = SQ2BitGemmKernel_CompInt8_avx2;
+    d.QuantizeARow_CompInt8 = QuantizeARow_CompInt8;
+
     return d;
 }();
 
@@ -1470,6 +1478,9 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum;
     d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum;
 
+    d.Q2BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<2>;
+    d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
+
     d.QNBitGemmPerGemmWorkspaceSize = QNBitGemmPerGemmWorkspaceSize;
     d.QNBitGemmPerGemmWorkspaceAlignment = QNBitGemmPerGemmWorkspaceAlignment;
 
@@ -1479,6 +1490,9 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni;
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx2<true>;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
+
+    d.SQ2BitGemmKernel_CompInt8 = SQ2BitGemmKernel_CompInt8_avx2;
+    d.QuantizeARow_CompInt8 = QuantizeARow_CompInt8;
 
     return d;
 }();

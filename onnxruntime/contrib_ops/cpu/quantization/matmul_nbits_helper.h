@@ -31,7 +31,7 @@ Status CheckInputs(const T* /*activation*/,
   // group_index          : (K) or (k_blocks * block_size), or null
   // bias                 : (N), or null
   // Note that scales and zero_points can be 1D for backward compatibility.
-  if (bits != 4 && bits != 8) {
+  if (bits != 2 && bits != 4 && bits != 8) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "bits should be 4 or 8, got ", bits);
   }
 

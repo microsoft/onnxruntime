@@ -16,7 +16,7 @@ import numpy.typing as npt
 import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 
-from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_matmul_8bits, quantize_qdq_matmul_4bits
+from onnxruntime.capi._pybind_state import quantize_matmul_nbits, quantize_matmul_4bits, quantize_matmul_8bits, quantize_qdq_matmul_4bits
 
 from .calibrate import CalibrationDataReader
 from .neural_compressor import gptq_quantize, rtn_quantize
@@ -818,7 +818,11 @@ class DefaultWeightOnlyQuantizer:
             packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
             zero_point = np.zeros(cols * ((k_blocks + kpack - 1) // kpack), dtype="uint8")
             scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
-            if qbits == 8:
+            if qbits == 2:
+                quantize_matmul_nbits(
+                    packed, fp32weight, self.config.bits, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
+                )
+            elif qbits == 8:
                 quantize_matmul_8bits(
                     packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
                 )
@@ -1224,6 +1228,7 @@ class MatMulNBitsQuantizer:
     def __init__(
         self,
         model: ModelProto | str,
+        bits: int,
         block_size: int = 128,
         is_symmetric: bool = False,
         accuracy_level: int | None = None,
@@ -1239,6 +1244,7 @@ class MatMulNBitsQuantizer:
             nodes_to_exclude = []
         self.model = ONNXModel(onnx.load(model)) if isinstance(model, str) else ONNXModel(model)
         self.model_path = model if isinstance(model, str) else None
+        self.bits = bits
         self.block_size = block_size
         self.is_symmetric = is_symmetric
         self.accuracy_level = accuracy_level
@@ -1248,6 +1254,7 @@ class MatMulNBitsQuantizer:
 
         if algo_config is None:
             algo_config = DefaultWeightOnlyQuantConfig(
+                bits=bits,
                 block_size=block_size,
                 is_symmetric=is_symmetric,
                 accuracy_level=accuracy_level,
@@ -1570,6 +1577,7 @@ if __name__ == "__main__":
         )
     elif args.quant_method == "default":
         quant_config = DefaultWeightOnlyQuantConfig(
+            bits=args.bits,
             block_size=args.block_size,
             is_symmetric=args.symmetric,
             accuracy_level=args.accuracy_level,
@@ -1609,6 +1617,7 @@ if __name__ == "__main__":
 
     quant = MatMulNBitsQuantizer(
         model=model,
+        bits=args.bits,
         accuracy_level=args.accuracy_level,
         nodes_to_exclude=args.nodes_to_exclude,
         nodes_to_include=args.nodes_to_include,
