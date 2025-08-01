@@ -1464,9 +1464,20 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
           SetGraphOuterScopeValuesAndInputs(graph_build, graph.GetGraph());
           SetAllGraphInputs(graph_build);
         }
+        // for (auto& tensor:graph.GetAllInitializedTensors()) {
+        //   if (utils::HasExternalDataInMemory(*tensor.second)) {
+        //     std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+        //     ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tensor.second, full_init));
+        //     (*tensor.second).clear_external_data();
+        //     (*tensor.second).set_raw_data(full_init->raw_data());
+        //   }
+        // }
 
-        ORT_ENFORCE(graph_build.Resolve().IsOK());
-
+        auto status = graph_build.Resolve();
+        if (!status.IsOK()) {
+          LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+          ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX graph resolve failed: " + status.ErrorMessage()));
+        }
         // Add parent graph output to the subgraph
         int i = 0;
         std::vector<const NodeArg*> subgraph_outputs;
@@ -1521,9 +1532,9 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         // save user provided external data in memory instead of writing to ModelProto
         // needed for models > 2GB
         std::vector<TensorrtUserWeights> userWeights;
+        auto allInitializers = graph_viewer->GetAllInitializedTensors();
 
         if (use_external_data_initializer_) {
-          auto allInitializers = graph_viewer->GetAllInitializedTensors();
           for (auto& entry : allInitializers) {
             auto* tp = entry.second;
             if (tp->has_raw_data()) {

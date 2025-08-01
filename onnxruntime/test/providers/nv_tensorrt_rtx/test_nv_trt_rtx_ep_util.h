@@ -117,6 +117,8 @@ void CreateBaseModel(const PathString& model_name,
                      ONNX_NAMESPACE::TensorProto_DataType dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                      const PathString& external_initializer_file = {});
 
+void CreateLargeLLMModel(const PathString& model_path, const PathString& external_data_path);
+
 Ort::IoBinding generate_io_binding(
     Ort::Session& session,
     std::map<std::string, std::vector<int64_t>> shape_overwrites = {},
