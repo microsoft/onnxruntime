@@ -75,8 +75,9 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   GetShape(*input_defs[0], input_shape, logger);
   const auto input_rank = onnxruntime::narrow<int64_t>(input_shape.size());
 
-  const auto& pads_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());            // pads
-  const auto& constant_value_tensor = *model_builder.GetInitializerTensors().at(input_defs[2]->Name());  // constant_value
+  const auto& initialized_tensors = model_builder.GetInitializerTensors();
+  const auto& pads_tensor = *initialized_tensors.at(input_defs[1]->Name());            // pads
+  const auto& constant_value_tensor = *initialized_tensors.at(input_defs[2]->Name());  // constant_value
 
   Initializer constant_value_initializer(constant_value_tensor);
   float constant_value = constant_value_initializer.DataAsSpan<float>()[0];
@@ -85,7 +86,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   Initializer pads_initializer(pads_tensor);
   auto pads_span = pads_initializer.DataAsSpan<int64_t>();
 
-  InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(model_builder.GetInitializerTensors(), node, input_rank);
+  InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(initialized_tensors, node, input_rank);
   int64_t num_axes = axes_tensor_data.size();
 
   // Add padding
@@ -113,7 +114,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                      const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
+  const auto initializers = input_params.graph_viewer.GetAllInitializersNames();
 
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
@@ -146,7 +147,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     }
 
     // only support if `constant_value` input is a constant initializer
-    if (!Contains(initializers, input_defs[2]->Name())) {
+    if (!initializers.contains(input_defs[2]->Name())) {
       LOGS(logger, VERBOSE) << "constant_value must be a constant initializer.";
       return false;
     }
@@ -163,14 +164,14 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
   {
     // only support if `pads` input is known and does not contain negative values and only applies padding values
     // for last two dimensions.
-    const auto pads_initializer_it = initializers.find(input_defs[1]->Name());
-    if (pads_initializer_it == initializers.end()) {
+    if (!initializers.contains(input_defs[1]->Name())) {
       LOGS(logger, VERBOSE) << "pads must be a constant initializer.";
       return false;
     }
 
-    const ONNX_NAMESPACE::TensorProto& pads_initializer = *pads_initializer_it->second;
-    Initializer unpacked_tensor(pads_initializer);
+    const ONNX_NAMESPACE::TensorProto* pads_initializer = nullptr;
+    input_params.graph_viewer.GetInitializedTensor(input_defs[1]->Name(), pads_initializer);
+    Initializer unpacked_tensor(*pads_initializer);
 
     auto pads_tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
     for (size_t i = 0; i < unpacked_tensor.size(); i++) {
@@ -183,8 +184,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
 
     // Check if provided, `axes` input must be a constant initializer
     if (input_defs.size() > 3) {
-      const auto axes_initializer_it = initializers.find(input_defs[3]->Name());
-      if (axes_initializer_it == initializers.end()) {
+      if (!initializers.contains(input_defs[3]->Name())) {
         LOGS(logger, VERBOSE) << "if provided, `axes` input is required to a constant initializer";
         return false;
       }
@@ -193,7 +193,8 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     // Check that only supports padding on last two dimensions - [H,W].
     // CoreML PaddinglayerParams: https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#paddinglayerparams
     const auto input_rank = onnxruntime::narrow<int64_t>(input_shape.size());
-    InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(initializers, node, input_rank);
+    InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(model_builder.GetInitializerTensors(), node,
+                                                                 input_rank);
     int64_t num_axes = axes_tensor_data.size();
 
     for (int64_t i = 0; i < num_axes; i++) {

@@ -52,6 +52,15 @@ class QnnModelWrapper {
         output_index_map_(output_index_map),
         qnn_backend_type_(qnn_backend_type),
         model_settings_(model_settings) {
+    InitializedTensorSet initialized_tensors;
+    const auto init_names = graph_viewer_.GetAllInitializersNames();
+    for (const auto& init_name : init_names) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+      if (graph_viewer_.GetConstantInitializer(init_name, tensor_proto)) {
+        initialized_tensors.emplace(init_name, tensor_proto);
+      }
+    }
+    initialized_tensors_.swap(initialized_tensors);
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
 
@@ -113,7 +122,11 @@ class QnnModelWrapper {
     return std::move(model_output_tensor_wrappers_);
   }
 
-  const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
+  const InitializedTensorSet& GetInitializerTensors() const {
+    return initialized_tensors_;
+  }
+
+  InitializersNames GetAllInitializersNames() const { return graph_viewer_.GetAllInitializersNames(); }
 
   const ONNX_NAMESPACE::TensorProto* GetConstantTensor(const std::string& tensor_name) const {
     return graph_viewer_.GetConstantInitializer(tensor_name);
@@ -349,6 +362,7 @@ class QnnModelWrapper {
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   ModelSettings model_settings_ = {};
   utils::QnnJSONGraph json_qnn_graph_;
+  InitializedTensorSet initialized_tensors_;  // Cached tensors so a reference can be returned.
 };  // QnnModelWrapper
 
 template <typename T>

@@ -1499,8 +1499,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   //   initializers and they are only enabled in an extended minimal build.
   {
     InlinedVector<std::string> unused_initializer_names;
-    for (const auto& [name, tensor_proto] : graph_.GetAllInitializedTensors()) {
-      ORT_UNUSED_PARAMETER(tensor_proto);
+    for (const auto& name : graph_.GetAllInitializersNames()) {
       int idx;
       if (!ort_value_name_idx_map_.GetIdx(name, idx).IsOK()) {
         unused_initializer_names.push_back(name);

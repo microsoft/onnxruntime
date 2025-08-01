@@ -10,6 +10,7 @@
 #include "rknpu_execution_provider.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
 #include "core/graph/model.h"
@@ -62,9 +63,10 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   }
 
   // Need access to model_path_
-  for (const auto& tensor : graph_viewer.GetAllInitializedTensors()) {
-    if (tensor.second->has_data_location() &&
-        tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+  for (const auto& tensor_name : graph_viewer.GetAllInitializersNames()) {
+    const ONNX_NAMESPACE::TensorProto* tensor = nullptr;
+    graph_viewer.GetConstantInitializer(tensor_name, tensor);
+    if (utils::HasExternalData(*tensor)) {
       LOGS_DEFAULT(WARNING) << "Rknpu: Initializers with external data"
                                " location are not currently supported";
       return result;
@@ -101,8 +103,8 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   }
   const auto graph_outputs = graph_viewer.GetOutputs();
   // Add initializer to graph_viewer
-  const auto& init_tensors = graph_viewer.GetAllInitializedTensors();
-  for (const auto& [name, _] : init_tensors) {
+  const auto init_tensors = graph_viewer.GetAllInitializersNames();
+  for (const auto& name : init_tensors) {
     graph_utils::MakeInitializerCopyIfNotExist(graph_viewer.GetGraph(), graph_build, name);
   }
 

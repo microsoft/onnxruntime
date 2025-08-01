@@ -94,10 +94,10 @@ TEST(GraphViewer, FilteredGraph) {
       << "GraphViewer is for a filtered set of nodes of a single graph and not a nested subgraph";
 
   // Verify the viewer's initializers are filtered as well
-  const auto& viewer_initializers = viewer.GetAllInitializedTensors();
+  const auto viewer_initializers = viewer.GetAllInitializersNames();
   EXPECT_EQ(viewer_initializers.size(), initializers.size());
   // We should have less initializers in the viewer than the underlying graph
-  EXPECT_LT(viewer_initializers.size(), graph.GetAllInitializedTensors().size());
+  EXPECT_LT(viewer_initializers.size(), graph.GetAllInitializersNames().size());
   // Pick a initializers which is not in the viewer, and check it is not part of the viewer's initializers
   EXPECT_TRUE(viewer_initializers.count("Constant15770PastValue16469") == 0);
 }

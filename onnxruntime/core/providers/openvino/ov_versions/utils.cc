@@ -214,7 +214,7 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
     original_graph_inputs.insert(node_arg->Name());
   }
 
-  const auto& initializers = graph_viewer.GetAllInitializedTensors();
+  const auto initializers = graph_viewer.GetAllInitializersNames();
   for (const auto& in_arg : ordered_input_args) {
     if ((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
         ng_required_initializers.count(in_arg)) {

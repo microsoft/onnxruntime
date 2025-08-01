@@ -297,9 +297,10 @@ Model* model_clone(const Model& original_model, int64_t external_data_threshold)
     return std::to_string((uintptr_t)(g));
   };
   auto graph_ptr = ptr_to_string(&original_graph);
-  for (auto& it : original_graph.GetAllInitializedTensors()) {
+  for (const auto& name : original_graph.GetAllInitializersNames()) {
     auto cloned_tensor = graph_proto->add_initializer();
-    auto original_tensor = it.second;
+    const ONNX_NAMESPACE::TensorProto* original_tensor = nullptr;
+    original_graph.GetInitializedTensor(name, original_tensor);
     cloned_tensor->set_name(original_tensor->name());
     cloned_tensor->set_data_type(original_tensor->data_type());
     auto& dims = original_tensor->dims();

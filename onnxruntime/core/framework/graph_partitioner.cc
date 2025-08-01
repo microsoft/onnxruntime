@@ -903,7 +903,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   }
 
   // handle initializers
-  for (const auto& [name, _] : graph.GetAllInitializedTensors()) {
+  for (const auto& name : graph.GetAllInitializersNames()) {
     if (ep_graph.GetNodeArg(name) != nullptr) {
       graph_utils::MakeInitializerCopyIfNotExist(graph, ep_graph, name);
     }

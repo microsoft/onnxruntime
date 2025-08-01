@@ -32,7 +32,9 @@ class ModelBuilder {
   // Accessors for members.
   bool IsFloat16ArrayAvailable() const { return is_float16array_available_; }
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
-  InitializedTensorSet GetInitializerTensors();
+  const InitializedTensorSet& GetInitializerTensors() const {
+    return initialized_tensors_;
+  }
 
   bool IsInt64Supported() const { return is_int64_supported_; }
 
@@ -100,6 +102,7 @@ class ModelBuilder {
 
   uint32_t name_token_{0};
   InlinedHashSet<std::string> unique_names_;
+  InitializedTensorSet initialized_tensors_;  // Cached tensors so a reference can be returned.
 
   // Convert the onnx model to WebNN operands
   Status Initialize() ORT_MUST_USE_RESULT;

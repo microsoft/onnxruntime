@@ -67,7 +67,7 @@ class BaseOpBuilder : public IOpBuilder {
 
  private:
   bool HasSupportedOpSet(const NodeUnit& node_unit) const;
-  bool HasSupportedInputOutputs(const InitializedTensorSet& initializers,
+  bool HasSupportedInputOutputs(const GraphViewer& graph_viewer,
                                 const NodeUnit& node_unit) const;
 };
 }  // namespace npu

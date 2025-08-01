@@ -657,8 +657,7 @@ class PlannerImpl {
     }
 
     // All initializers should be treated as input
-    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
-      const auto& initializer_name = pair.first;
+    for (const auto& initializer_name : graph_viewer_.GetAllInitializersNames()) {
       UseCount(initializer_name)++;
     }
 
@@ -724,10 +723,9 @@ class PlannerImpl {
     }
 
     // All initializers should be treated as input
-    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
-      const auto& initializer_name = pair.first;
+    for (const auto& initializer_name : graph_viewer_.GetAllInitializersNames()) {
       OrtValueIndex index = Index(initializer_name);
-      ProcessDef(index, graph_viewer_.GetNodeArg(pair.first));
+      ProcessDef(index, graph_viewer_.GetNodeArg(initializer_name));
     }
 
     // If both devices are OrtDevice::CPU or both are HOST_ACCESSIBLE we use the one with the higher alignment.
@@ -987,7 +985,7 @@ class PlannerImpl {
   }
 
   void GeneratePlanForWeightsHelper(const GraphViewer& graph_viewer,
-                                    const InitializedTensorSet& weights,
+                                    const InitializersNames& weights,
                                     const KernelCreateInfoMap& kernel_create_info_map,
                                     const std::string& subgraph_kernel_create_info_map_key_base,
                                     size_t graph_depth,
@@ -1102,8 +1100,7 @@ class PlannerImpl {
     // over to the appropriate device before the subgraphs are executed.
     std::vector<std::vector<OrtDevice>> locations(plan_.allocation_plan.size());
 
-    GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
-                                 kernel_create_info_map_, "", 0, locations);
+    GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializersNames(), kernel_create_info_map_, "", 0, locations);
 
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtDevice>& loc = locations[i];
@@ -2254,8 +2251,7 @@ class PlannerImpl {
       produced_values.insert(index);
     }
 
-    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
-      const auto& initializer_name = pair.first;
+    for (const auto& initializer_name : graph_viewer_.GetAllInitializersNames()) {
       OrtValueIndex index = Index(initializer_name);
       produced_values.insert(index);
     }

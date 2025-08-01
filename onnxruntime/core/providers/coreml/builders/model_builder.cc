@@ -533,13 +533,13 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
   }
 
   // populate names.
-  const auto& initializers = graph_viewer_.GetAllInitializedTensors();
+  const auto initializers = graph_viewer_.GetAllInitializersNames();
   const auto& inputs = graph_viewer_.GetInputs();
   // rough guess to try and avoid reallocs. most nodes produce one output but some have more so allow for that.
   // also need to convert attributes to constants so allow for that
   unique_names_.reserve(initializers.size() + inputs.size() + size_t(graph_viewer_.NumberOfNodes() * 1.5));
-  for (const auto& pair : initializers) {
-    unique_names_.insert(pair.first);
+  for (const auto& name : initializers) {
+    unique_names_.insert(name);
   }
 
   for (const auto* input : inputs) {
@@ -553,6 +553,16 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
       }
     }
   }
+
+  InitializedTensorSet initialized_tensors;
+  const auto init_names = graph_viewer_.GetAllInitializersNames();
+  for (const auto& init_name : init_names) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    if (graph_viewer_.GetConstantInitializer(init_name, tensor_proto)) {
+      initialized_tensors.emplace(init_name, tensor_proto);
+    }
+  }
+  initialized_tensors_.swap(initialized_tensors);
 }
 
 ModelBuilder::~ModelBuilder() = default;
@@ -755,9 +765,9 @@ std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::st
  * General implementation
  */
 void ModelBuilder::PreprocessInitializers() {
-  // TODO: We should be using GetConstantInitializer not GetAllInitializedTensors in all places.
+  // TODO: We should be using GetConstantInitializer not GetAllInitializersNames in all places.
   // non-constant initializers need to be passed in as model inputs in case they're overridden at runtime.
-  const auto& initializers = graph_viewer_.GetAllInitializedTensors();
+  const auto initializers = graph_viewer_.GetAllInitializersNames();
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
 
   for (size_t i = 0; i < node_indices.size(); i++) {
@@ -765,7 +775,7 @@ void ModelBuilder::PreprocessInitializers() {
 
     // find all initializers consumed. AddInitializersToSkip will potentially decrement the usage count.
     for (const auto* input : node.InputDefs()) {
-      if (input->Exists() && Contains(initializers, input->Name())) {
+      if (input->Exists() && initializers.contains(input->Name())) {
         initializer_usage_[input->Name()]++;
       }
     }

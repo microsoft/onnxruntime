@@ -150,9 +150,9 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     }
   }
 
-  for (auto entry : graph.GetAllInitializedTensors()) {
-    if (graph.GetConsumerNodes(entry.first).size() > 1) {
-      auto node_arg = graph.GetNodeArg(entry.first);
+  for (const auto& initializer_name : graph.GetAllInitializersNames()) {
+    if (graph.GetConsumerNodes(initializer_name).size() > 1) {
+      auto node_arg = graph.GetNodeArg(initializer_name);
       if (node_arg) {
         candidate_args.push_back(node_arg);
       }

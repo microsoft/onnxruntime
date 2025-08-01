@@ -643,12 +643,12 @@ TEST(InferenceSessionTests, ModelMetadata) {
   {
     // 2. test inputs
     auto& inputs = graph.GetInputs();
-    auto weights = graph.GetAllInitializedTensors();
+    auto weights = graph.GetAllInitializersNames();
 
     // skip the weights
     InputDefList inputs_no_weights;
     for (auto& elem : inputs) {
-      if (weights.find(elem->Name()) != weights.end()) {
+      if (weights.contains(elem->Name())) {
         continue;
       } else {
         inputs_no_weights.push_back(elem);

@@ -401,8 +401,7 @@ void DnnlSubgraph::Build(const GraphViewer& graph_viewer) {
     outputs_.push_back(dnnl_tensors_[node_arg->Name()].get());
   }
 
-  for (auto& initializer : graph_viewer.GetAllInitializedTensors()) {
-    auto& name = initializer.first;
+  for (const auto& name : graph_viewer.GetAllInitializersNames()) {
     initializers_.push_back(dnnl_tensors_[name].get());
   }
 }

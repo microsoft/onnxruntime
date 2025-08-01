@@ -145,7 +145,10 @@ target_include_directories(onnxruntime_common
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
 
-target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET} ${ABSEIL_LIBS} date::date)
+set(BOOST_LIBS Boost::config Boost::core Boost::detail Boost::iterator Boost::mpl Boost::preprocessor Boost::static_assert
+ Boost::type_traits Boost::utility)
+
+target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET} ${ABSEIL_LIBS} date::date ${BOOST_LIBS})
 
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 

@@ -633,18 +633,21 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
   std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> outer_scope_initializer_values;
 
   // Create OrtValueInfo and OrtValue instances for each initializer.
-  const InitializedTensorSet initializers = graph_viewer.GetAllInitializedTensors();
+  auto initializers_names = graph_viewer.GetAllInitializersNames();
   std::vector<EpValueInfo*> initializer_value_infos;
   std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values;
 
-  initializer_value_infos.reserve(initializers.size());
-  initializer_values.reserve(initializers.size());
+  initializer_value_infos.reserve(initializers_names.size());
+  initializer_values.reserve(initializers_names.size());
 
-  for (const auto& [initializer_name, tensor_proto] : initializers) {
+  for (const auto& initializer_name : initializers_names) {
     EpValueInfo* value_info = nullptr;
     EpValueInfo::Flags flag = graph_viewer.IsConstantInitializer(initializer_name, /*check_outer_scope*/ false)
                                   ? EpValueInfo::kIsConstantInitializer
                                   : EpValueInfo::kIsOptionalGraphInput;
+
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    graph_viewer.GetInitializedTensor(initializer_name, tensor_proto);
 
     auto iter = value_infos_map.find(initializer_name);
     if (iter != value_infos_map.end()) {

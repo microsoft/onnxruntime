@@ -49,7 +49,7 @@ class PadOpBuilder : public BaseOpBuilder {
     size_t num_inputs = input_defs.size();
     auto input_shape = vsi::npu::util::GetTensorShape(*input_defs[0]);
     int32_t rank = input_shape.NumDimensions();
-    const auto& initializers = graph_viewer.GetAllInitializedTensors();
+    const auto initializers = graph_viewer.GetAllInitializersNames();
 
     if (mode == "wrap") {
       LOGS_DEFAULT(WARNING) << "`wrap` mode Pad is not currently supported for now.";
@@ -58,7 +58,7 @@ class PadOpBuilder : public BaseOpBuilder {
     if (mode == "constant") {
       if (num_inputs > 2 && input_defs[2]->Exists()) {
         // only support if `constant_value` input is a constant initializer
-        if (!Contains(initializers, input_defs[2]->Name())) {
+        if (!initializers.contains(input_defs[2]->Name())) {
           LOGS_DEFAULT(WARNING) << "constant_value must be a constant initializer.";
           return false;
         }

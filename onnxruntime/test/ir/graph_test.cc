@@ -1286,7 +1286,7 @@ TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
   initializer_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
   graph.AddInitializedTensor(initializer_tensor);
-  ASSERT_TRUE(graph.GetAllInitializedTensors().size() == 1);
+  ASSERT_TRUE(graph.GetAllInitializersNames().size() == 1);
   ASSERT_NE(nullptr, graph.GetNodeArg(unused_initializer_name));
 
   // Add unused NodeArgs
@@ -1297,7 +1297,7 @@ TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-  ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
+  ASSERT_TRUE(graph.GetAllInitializersNames().empty());
   ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
 
   // Verify NodeArg from the unused initializer is deleted as well
@@ -1321,7 +1321,7 @@ TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
   auto& graph2 = p_tmp_model->MainGraph();
   status = graph2.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
+  ASSERT_TRUE(graph.GetAllInitializersNames().empty());
   ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
   // TODO, enable this when we can remove unused NodeArgs with type
   // See Graph::CleanUnusedInitializersAndNodeArgs
@@ -1355,7 +1355,7 @@ TEST_F(GraphTest, UnusedSparseInitializerIsIgnored) {
   EXPECT_STATUS_OK(graph2.Resolve());
   // Because the sparse initializer was unused, it was also removed
   // from initializer as well as from sparse_initializer
-  ASSERT_TRUE(graph2.GetAllInitializedTensors().empty());
+  ASSERT_TRUE(graph2.GetAllInitializersNames().empty());
   auto& graph_proto = graph2.ToGraphProto();
   ASSERT_TRUE(graph_proto.sparse_initializer().empty());
 }
@@ -1816,7 +1816,7 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
   Graph& graph = m.MainGraph();
   graph.AddInitializedTensor(tensor_proto);
 
-  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 1U);
+  ASSERT_EQ(graph.GetAllInitializersNames().size(), 1U);
 
   const TensorProto* external_data = nullptr;
   ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, external_data));
@@ -1831,7 +1831,7 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
   // Replace things.
   ASSERT_STATUS_OK(graph.InjectExternalInitializedTensors(injection_initializers));
 
-  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 1U);
+  ASSERT_EQ(graph.GetAllInitializersNames().size(), 1U);
 
   const TensorProto* with_data = nullptr;
   ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, with_data));
@@ -1877,7 +1877,7 @@ TEST_F(GraphTest, AddRemoveInitializerHandling) {
   graph.RemoveInitializedTensor(init.name());
   graph.AddInitializedTensor(init);
 
-  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 2u);
+  ASSERT_EQ(graph.GetAllInitializersNames().size(), 2u);
 
   // check the values coming from name_to_initial_tensor_ are good;
   const TensorProto* i = nullptr;
@@ -1909,7 +1909,7 @@ TEST_F(GraphTest, AddRemoveInitializerHandling) {
 
   // Call Graph::Resolve which should remove the initializers from the Graph instance and proto as they're unused.
   ASSERT_STATUS_OK(graph.Resolve());
-  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 0u);
+  ASSERT_EQ(graph.GetAllInitializersNames().size(), 0u);
 
   ONNX_NAMESPACE::GraphProto graph_proto_from_resolved_graph = graph.ToGraphProto();
   auto num_initializers = graph_proto_from_resolved_graph.initializer_size();
@@ -1948,8 +1948,8 @@ TEST_F(GraphTest, SparseInitializerHandling) {
   auto& graph2 = p_tmp_model->MainGraph();
   EXPECT_STATUS_OK(graph2.Resolve());
   // Sparse initializer got converted to dense and appears on the list of initializers
-  ASSERT_EQ(graph2.GetAllInitializedTensors().size(), 1U);
-  ASSERT_EQ(graph2.GetAllInitializedTensors().cbegin()->first.compare(input_initializer_name), 0);
+  ASSERT_EQ(graph2.GetAllInitializersNames().size(), 1U);
+  ASSERT_EQ(graph2.GetAllInitializersNames().begin()->compare(input_initializer_name), 0);
 
   auto& graph_proto = graph2.ToGraphProto();
   // Got propagated to initializers list
@@ -2565,6 +2565,58 @@ TEST_F(GraphTest, GraphConstruction_MemoryEfficientTopologicalSort_SubgraphGener
 }
 
 #endif
+
+// Test fixture for InitializersNames tests
+class InitializersNamesTest : public ::testing::Test {
+ protected:
+  using container_type = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
+  container_type empty_set_;
+  container_type non_empty_set_;
+  TensorProto tp1_, tp2_;
+
+  void SetUp() override {
+    tp1_.set_name("tensor1");
+    tp2_.set_name("tensor2");
+    non_empty_set_["tensor1"] = &tp1_;
+    non_empty_set_["tensor2"] = &tp2_;
+  }
+};
+
+TEST_F(InitializersNamesTest, EmptySet) {
+  InitializersNames proxy(empty_set_);
+
+  EXPECT_TRUE(proxy.empty());
+  EXPECT_EQ(proxy.size(), 0u);
+  EXPECT_EQ(proxy.count("any_tensor"), 0u);
+  EXPECT_EQ(proxy.begin(), proxy.end());
+  EXPECT_EQ(std::distance(proxy.begin(), proxy.end()), 0);
+}
+
+TEST_F(InitializersNamesTest, NonEmptySet) {
+  InitializersNames proxy(non_empty_set_);
+
+  EXPECT_FALSE(proxy.empty());
+  EXPECT_EQ(proxy.size(), 2u);
+  EXPECT_EQ(proxy.count("tensor1"), 1u);
+  EXPECT_EQ(proxy.count("tensor2"), 1u);
+  EXPECT_EQ(proxy.count("non_existent_tensor"), 0u);
+}
+
+TEST_F(InitializersNamesTest, ConstCorrectness) {
+  const container_type const_set = {{"tensor1", &tp1_}};
+  const InitializersNames proxy(const_set);
+
+  EXPECT_FALSE(proxy.empty());
+  EXPECT_EQ(proxy.size(), 1u);
+  EXPECT_EQ(proxy.count("tensor1"), 1u);
+
+  int count = 0;
+  for (const auto& name : proxy) {
+    EXPECT_EQ(name, "tensor1");
+    count++;
+  }
+  EXPECT_EQ(count, 1);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

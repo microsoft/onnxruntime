@@ -1322,6 +1322,9 @@ struct ProviderHostImpl : ProviderHost {
     return p->GetConstantInitializer(name, check_outer_scope);
   }
   const InitializedTensorSet& Graph__GetAllInitializedTensors(const Graph* p) override { return p->GetAllInitializedTensors(); }
+  InitializersNames Graph__GetAllInitializersNames(const Graph* p) override {
+    return p->GetAllInitializersNames();
+  }
   int Graph__MaxNodeIndex(const Graph* p) const noexcept override { return p->MaxNodeIndex(); }
   Node* Graph__GetNode(Graph* p, NodeIndex node_index) noexcept override { return p->GetNode(node_index); }
   const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const override { return p->GetNode(node_index); }
@@ -1367,7 +1370,13 @@ struct ProviderHostImpl : ProviderHost {
   }
   const std::unordered_set<const NodeArg*>& GraphViewer__GetValueInfo(const GraphViewer* p) noexcept override { return p->GetValueInfo(); }
 
-  const InitializedTensorSet& GraphViewer__GetAllInitializedTensors(const GraphViewer* p) override { return p->GetAllInitializedTensors(); }
+  const InitializedTensorSet& GraphViewer__GetAllInitializedTensors(const GraphViewer* p) override {
+    return p->GetAllInitializedTensors();
+  }
+  InitializersNames GraphViewer__GetAllInitializersNames(const GraphViewer* p) override {
+    return p->GetAllInitializersNames();
+  }
+
   bool GraphViewer__GetInitializedTensor(const GraphViewer* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
   const std::unordered_set<std::string>& GraphViewer__GetOuterScopeNodeArgNames(const GraphViewer* p) const noexcept override {
 #if !defined(ORT_MINIMAL_BUILD)

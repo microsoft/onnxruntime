@@ -404,7 +404,7 @@ void DataOps::populate_op_mode_supported() {
   // populate unsupportedmode_t
   {
     UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1, V_2025_2},
-                             [this](const Node* node, const InitializedTensorSet&) {
+                             [this](const Node* node, const InitializersNames&) {
                                // If the Input of ReduceMax op is UINT8, it is rejected (Due to output mismatch)
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
                                  if ((node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() ==
@@ -421,7 +421,7 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
                               V_2025_2},
-                             [this](const Node* node, const InitializedTensorSet&) {
+                             [this](const Node* node, const InitializersNames&) {
                                const auto& input_args = node->InputDefs();
                                const auto& input_arg = (input_args.size() > 1) ? input_args[1] : input_args[0];
                                auto shape = input_arg->Shape();
@@ -441,7 +441,7 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
                               V_2025_2},
-                             [this](const Node* node, const InitializedTensorSet&) {
+                             [this](const Node* node, const InitializersNames&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph.
                                // Conversion fails in convert_function_to_cnn_network.
@@ -457,7 +457,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5,
                               V_2024_6, V_2025_0, V_2025_1, V_2025_2},
-                             [this](const Node* node, const InitializedTensorSet&) {
+                             [this](const Node* node, const InitializersNames&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
                                if (upsample_attr.count("scales") > 0) {
@@ -635,10 +635,11 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
 bool DataOps::unsupported_op_mode(const Node* node, bool& has_external_weights_) {
   bool result = false;
   const auto& optype = node->OpType();
-  const auto& initializers = graph_viewer_.GetAllInitializedTensors();
+  const auto initializers = graph_viewer_.GetAllInitializersNames();
 
-  for (const auto& tensor_pair : initializers) {
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = tensor_pair.second;
+  for (const auto& name : initializers) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    graph_viewer_.GetInitializedTensor(name, tensor_proto);
     // Check if the tensor exists and if it has an external data location
     if (tensor_proto && tensor_proto->has_data_location() &&
         tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
@@ -846,7 +847,7 @@ std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std
       // Collect inputs that are initializers
       graph_viewer_.GetNode(node_idx)->ForEachDef([&ng_required_initializers, this](const NodeArg& node_arg,
                                                                                     bool is_input) {
-            if (is_input && this->graph_viewer_.GetAllInitializedTensors().count(node_arg.Name())) {
+            if (is_input && this->graph_viewer_.GetAllInitializersNames().count(node_arg.Name())) {
                 ng_required_initializers.insert(node_arg.Name());
               } },
                                                   true);
