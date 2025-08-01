@@ -124,8 +124,8 @@ MemCpyFunc CreateDataTransferMemCpy([[maybe_unused]] const OrtDevice& src_device
     OrtMemoryInfo src_memory_info("ignored", OrtDeviceAllocator, src_device);
     OrtMemoryInfo dst_memory_info("ignored", OrtDeviceAllocator, dst_device);
 
-    // real shape doesn't matter as the Tensor instances are temporary here so we can set the shape to `bytes` and
-    // the data type to uint8_t to copy the correct number of bytes.
+    // real shape doesn't matter as the Tensor instances here are temporary in order to be able to call CopyTensor.
+    // we set the shape to `bytes` and the data type to uint8_t to copy the correct number of bytes.
     TensorShape shape = {narrow<int64_t>(bytes)};
     Tensor src_tensor{DataTypeImpl::GetType<uint8_t>(), shape, const_cast<void*>(src), src_memory_info};
     Tensor dst_tensor{DataTypeImpl::GetType<uint8_t>(), shape, dst, dst_memory_info};
@@ -624,7 +624,7 @@ using OrtPybindSingleUseAllocatorPtr = std::shared_ptr<OrtPybindSingleUseAllocat
 // Does not manage darray life-cycle
 
 static void CopyDataToTensor(PyArrayObject* darray, int npy_type, Tensor& tensor,
-                             MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
+                             const MemCpyFunc& mem_cpy_to_device = CpuToCpuMemCpy) {
   const auto total_items = tensor.Shape().Size();
   if (npy_type == NPY_UNICODE) {
     // Copy string data which needs to be done after Tensor is allocated.
@@ -686,11 +686,11 @@ static void CopyDataToTensor(PyArrayObject* darray, int npy_type, Tensor& tensor
 }
 
 inline void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_ptr<Tensor>& p_tensor,
-                             MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
+                             const MemCpyFunc& mem_cpy_to_device = CpuToCpuMemCpy) {
   CopyDataToTensor(darray, npy_type, *p_tensor, mem_cpy_to_device);
 }
 
-void CopyDataToTensor(const py::array& py_array, int npy_type, Tensor& tensor, MemCpyFunc mem_cpy_to_device) {
+void CopyDataToTensor(const py::array& py_array, int npy_type, Tensor& tensor, const MemCpyFunc& mem_cpy_to_device) {
   CopyDataToTensor(reinterpret_cast<PyArrayObject*>(py_array.ptr()), npy_type, tensor, mem_cpy_to_device);
 }
 
@@ -699,7 +699,7 @@ void CopyDataToTensor(const py::array& py_array, int npy_type, Tensor& tensor, M
 // The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope
 static std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std::string& name_input,
                                             PyArrayObject* pyObject, bool use_numpy_data_memory = true,
-                                            MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
+                                            const MemCpyFunc& mem_cpy_to_device = CpuToCpuMemCpy) {
   PyArrayObject* darray = PyArray_GETCONTIGUOUS(pyObject);
   ORT_ENFORCE(darray != nullptr, "The object must be a contiguous array for input '", name_input, "'.");
 
@@ -789,7 +789,8 @@ static void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_
 // as the backing data buffer for the ORT Tensor where applicable (for numeric tensors)
 // The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope
 static void CreateTensorMLValue(const AllocatorPtr& alloc, const std::string& name_input, PyArrayObject* pyObject,
-                                OrtValue* p_mlvalue, bool use_numpy_data_memory = true, MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
+                                OrtValue* p_mlvalue, bool use_numpy_data_memory = true,
+                                const MemCpyFunc& mem_cpy_to_device = CpuToCpuMemCpy) {
   auto p_tensor = CreateTensor(alloc, name_input, pyObject, use_numpy_data_memory, mem_cpy_to_device);
 
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
@@ -1039,7 +1040,8 @@ static void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc,
 // The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope
 void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc,
                           const std::string& name_input, const py::object& value, OrtValue* p_mlvalue,
-                          bool accept_only_numpy_array, bool use_numpy_data_memory, MemCpyFunc mem_cpy_to_device) {
+                          bool accept_only_numpy_array, bool use_numpy_data_memory,
+                          const MemCpyFunc& mem_cpy_to_device) {
   onnx::TypeProto type_proto;
   if (PyObjectCheck_NumpyArray(value.ptr())) {
     // The most frequent case: input comes as an array.

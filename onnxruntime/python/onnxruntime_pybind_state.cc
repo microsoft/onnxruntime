@@ -294,8 +294,12 @@ py::object GetPyObjFromTensor(const OrtValue& ort_value,
       auto it = std::find_if(mem_cpy_to_host_functions->begin(), mem_cpy_to_host_functions->end(),
                              [&device](const auto& entry) {
                                const auto& copy_device = entry.first;
-                               // We're ignoring OrtDevice.Id() currently.
-                               // We leave that up to the copy function to deal with.
+                               // We're ignoring OrtDevice.Id() currently for historical reasons.
+                               // The key to mem_cpy_to_host_functions was previously the device type (CPU/GPU/NPU).
+                               // This changed to be OrtDevice to get the vendor id.
+                               // Assumably it would be better to also match on device id, but that was not possible
+                               // previously and to preserve existing behavior we keep the old logic and expect the
+                               // copy function to handle the device id correctly.
                                return device.Type() == copy_device.Type() &&
                                       device.MemType() == copy_device.MemType() &&
                                       device.Vendor() == copy_device.Vendor();

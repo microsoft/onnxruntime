@@ -431,11 +431,13 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 }
 
 Environment::~Environment() {
-  // need to make sure all the OrtAllocator instances are released prior to any plugin EPs being freed
+  // need to make sure all the OrtAllocator instances are released prior to any plugin EPs being freed.
+  // this is because any entry in shared_allocators_ wrapping an OrtAllocator from a plugin EP owns the OrtAllocator
+  // instance and will call Release on it. If the plugin EP has been freed the Release will fail.
   shared_allocators_.clear();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // unregister any remaining EP libraries
+  // unregister any remaining EP libraries so they're cleaned up in a determistic way.
   while (!ep_libraries_.empty()) {
     auto it = ep_libraries_.begin();
     ORT_IGNORE_RETURN_VALUE(UnregisterExecutionProviderLibrary(it->first));

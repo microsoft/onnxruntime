@@ -108,7 +108,10 @@ class Environment {
 
   /**
    * Returns an AllocatorPtr for a shared IAllocator based allocator if it matches the memory info.
-   * OrtMemoryInfo.name and whether it's an arena or device allocator is ignored in the lookup.
+   * The OrtMemoryInfo name and whether it's an arena or device allocator is ignored in the lookup, as is the
+   * alignment.
+   * The user calling this function is not expected to know the alignment, and we expect the allocator instance to be
+   * created with a valid alignment for the device.
    */
   AllocatorPtr GetRegisteredSharedAllocator(const OrtMemoryInfo& mem_info) const;
 

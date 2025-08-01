@@ -28,53 +28,51 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& s
     allocator = GetAllocator();
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
-    // if a plugin EP has been registered we can get a shared allocator from the environment.
-    // we use this as the fallback option.
+    // prefer a shared allocator from the environment.
+    // these are provided by plugin EPs or custom allocators explicitly registered by the user.
     allocator = GetSharedAllocator(device);
 #endif
 
-    if (strcmp(GetDeviceName(device), CUDA) == 0) {
+    if (!allocator) {
+      if (strcmp(GetDeviceName(device), CUDA) == 0) {
 #ifdef USE_CUDA
-      if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-        throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-      }
+        if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+          throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+        }
 
-      allocator = GetCudaAllocator(device.Id());
-#endif
-      if (!allocator) {
+        allocator = GetCudaAllocator(device.Id());
+#else
         throw std::runtime_error(
             "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
             "Please use the CUDA package of OnnxRuntime to use this feature.");
-      }
-    } else if (strcmp(GetDeviceName(device), HIP) == 0) {
+#endif
+      } else if (strcmp(GetDeviceName(device), HIP) == 0) {
 #if USE_ROCM
-      if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-        throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-      }
-      allocator = GetRocmAllocator(device.Id());
+        if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+          throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+        }
+
+        allocator = GetRocmAllocator(device.Id());
 #elif USE_MIGRAPHX
-      allocator = GetMIGraphXAllocator(device.Id());
+        allocator = GetMIGraphXAllocator(device.Id());
 #else
-      if (!allocator) {
         throw std::runtime_error(
             "Can't allocate memory on the AMD device using this package of OnnxRuntime. "
             "Please use the ROCm package of OnnxRuntime to use this feature.");
-      }
 #endif
-    } else if (strcmp(GetDeviceName(device), DML) == 0) {
+      } else if (strcmp(GetDeviceName(device), DML) == 0) {
 #if USE_DML
-      allocator = GetDmlAllocator(device.Id());
+        allocator = GetDmlAllocator(device.Id());
 #else
-      if (!allocator) {
         throw std::runtime_error(
             "Can't allocate memory on the DirectML device using this package of OnnxRuntime. "
             "Please use the DirectML package of OnnxRuntime to use this feature.");
-      }
 #endif
-    } else {
-      if (!allocator) {
-        throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
       }
+    }
+
+    if (!allocator) {
+      throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
     }
   }
 
