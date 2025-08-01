@@ -787,10 +787,12 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
 
   std::vector<QnnContext_Params_t> context_params_list;
   std::vector<QnnContext_ParamsV1_t> context_paramsv1_list;
-  std::vector<const QnnContext_Params_t*> context_params_ptr_list(context_bin_map.size() + 1);
+  std::vector<const QnnContext_Params_t*> context_params_ptr_list;
   std::vector<std::unique_ptr<char[]>> buffer_list;
 
-  size_t idx = 0;
+  context_params_list.reserve(context_bin_map.size());
+  context_params_ptr_list.reserve(context_bin_map.size() + 1);
+
   for (auto& it : context_bin_map) {
     auto context_bin_filepath = it.first;
 
@@ -821,9 +823,9 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
     buffer_list.push_back(std::move(buffer));
     context_params_list.push_back(std::move(context_params));
     context_paramsv1_list.push_back(std::move(context_params_v1));
-    context_params_ptr_list[idx++] = &context_params_list.back();
+    context_params_ptr_list.push_back(&context_params_list.back());
   }
-  context_params_ptr_list[idx] = nullptr;
+  context_params_ptr_list.push_back(nullptr);
   auto result = qnn_interface_.contextCreateFromBinaryListAsync(backend_handle_,
                                                                 device_handle_,
                                                                 context_params_ptr_list.data(),
@@ -1178,6 +1180,14 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
 
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 26)
     if (vtcm_backup_buffer_sharing_enabled_) {
+      // If a context bin filepath has not been processed yet,
+      // then a new context must be created for the set of context bins
+      auto first_mapping_it = ep_context_handle_map_.find(context_bin_map.begin()->first);
+      if (first_mapping_it == ep_context_handle_map_.end()) {
+        LOGS(logger, VERBOSE) << "Creating context for new set of context binaries";
+        return CreateContextVtcmBackupBufferSharingEnabled(context_bin_map);
+      }
+
       LOGS(logger, VERBOSE) << "Mapping contexts to new EP main context nodes";
 
       for (auto& it : context_bin_map) {
