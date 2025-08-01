@@ -64,8 +64,8 @@ LoggingManager* LoggingManager::GetDefaultInstance() {
 #pragma warning(disable : 26426)
 #endif
 
-static std::mutex& DefaultLoggerMutex() noexcept {
-  static std::mutex mutex;
+static std::mutex* DefaultLoggerMutex() noexcept {
+  static std::mutex* mutex = new std::mutex();
   return mutex;
 }
 
@@ -107,7 +107,7 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
 
     // lock mutex to create instance, and enable logging
     // this matches the mutex usage in Shutdown
-    std::lock_guard<std::mutex> guard(DefaultLoggerMutex());
+    std::lock_guard<std::mutex> guard(*DefaultLoggerMutex());
 
     if (DefaultLoggerManagerInstance().load() != nullptr) {
       ORT_THROW("Only one instance of LoggingManager created with InstanceType::Default can exist at any point in time.");
@@ -127,7 +127,7 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
 LoggingManager::~LoggingManager() {
   if (owns_default_logger_) {
     // lock mutex to reset DefaultLoggerManagerInstance() and free default logger from this instance.
-    std::lock_guard<std::mutex> guard(DefaultLoggerMutex());
+    std::lock_guard<std::mutex> guard(*DefaultLoggerMutex());
 #if ((__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)))
     DefaultLoggerManagerInstance().store(nullptr, std::memory_order_release);
 #else
