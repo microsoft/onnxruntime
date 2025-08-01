@@ -122,20 +122,10 @@ TEST_F(ActivationOpTest, HardSigmoid) {
 }
 
 TEST_F(ActivationOpTest, HardSwish) {
-  TestActivationOp<float>("HardSwish",
-                          input_values,
-                          [](float x) { 
-                            return x * std::max(std::min(x / 6.0f + 0.5f, 1.0f), 0.0f); 
-                          },
-                          {}, {},
+  TestActivationOp<float>("HardSwish", input_values, [](float x) { return x * std::max(std::min(x / 6.0f + 0.5f, 1.0f), 0.0f); }, {}, {},
                           /*is_tensorrt_supported=*/false,
                           /*opset_version= */ 14);
-  TestActivationOp<double>("HardSwish",
-                           input_values_double,
-                           [](double x) { 
-                             return x * std::max(std::min(x / 6.0 + 0.5, 1.0), 0.0); 
-                           },
-                           {}, {},
+  TestActivationOp<double>("HardSwish", input_values_double, [](double x) { return x * std::max(std::min(x / 6.0 + 0.5, 1.0), 0.0); }, {}, {},
                            /*is_tensorrt_supported=*/false,
                            /*opset_version= */ 14);
 }

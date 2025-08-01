@@ -64,10 +64,10 @@ namespace cuda {
   UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, double)       \
   UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, BFloat16)
 
-#define UNARY_ACTIVATION_OP_HFD_WITH_BF16(name, ver)        \
-  UNARY_ACTIVATION_OP_TYPED(name, ver, MLFloat16) \
-  UNARY_ACTIVATION_OP_TYPED(name, ver, float)     \
-  UNARY_ACTIVATION_OP_TYPED(name, ver, double)    \
+#define UNARY_ACTIVATION_OP_HFD_WITH_BF16(name, ver) \
+  UNARY_ACTIVATION_OP_TYPED(name, ver, MLFloat16)    \
+  UNARY_ACTIVATION_OP_TYPED(name, ver, float)        \
+  UNARY_ACTIVATION_OP_TYPED(name, ver, double)       \
   UNARY_ACTIVATION_OP_TYPED(name, ver, BFloat16)
 
 UNARY_ACTIVATION_OP_HFD_WITH_BF16(Elu, 6);
