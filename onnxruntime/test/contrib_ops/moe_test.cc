@@ -1668,7 +1668,7 @@ TEST(MoETest, QMoETest_CPU_Float32) {
   cpu_tester.AddOptionalInputEdge<float>();  // fc1_experts_bias
   cpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
   cpu_tester.AddInput<float>("fc2_scales", fc2_scales_dims, fc2_scales);
-  cpu_tester.AddOptionalInputEdge<float>();  // fc2_experts_bias
+  cpu_tester.AddOptionalInputEdge<float>();    // fc2_experts_bias
   cpu_tester.AddOptionalInputEdge<uint8_t>();  // fc3_experts_weights
   cpu_tester.AddOptionalInputEdge<float>();    // fc3_scales
   cpu_tester.AddOptionalInputEdge<float>();    // fc3_experts_bias

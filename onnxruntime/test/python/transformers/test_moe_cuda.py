@@ -1445,6 +1445,5 @@ class TestSwigluMoEPerf(unittest.TestCase):
         moe.benchmark_ort()
 
 
-
 if __name__ == "__main__":
     unittest.main()

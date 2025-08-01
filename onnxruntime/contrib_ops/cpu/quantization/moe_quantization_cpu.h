@@ -18,12 +18,12 @@ class QMoE final : public OpKernel, public MoEBaseCPU {
  private:
   template <bool UseUInt4x2>
   Status PrepackAndDequantizeWeights(OpKernelContext* context,
-                          MoEParameters& moe_params,
-                          const Tensor* fc1_experts_weights,
-                          const Tensor* fc2_experts_weights,
-                          const Tensor* fc1_scales,
-                          const Tensor* fc2_scales,
-                          bool is_swiglu);
+                                     MoEParameters& moe_params,
+                                     const Tensor* fc1_experts_weights,
+                                     const Tensor* fc2_experts_weights,
+                                     const Tensor* fc1_scales,
+                                     const Tensor* fc2_scales,
+                                     bool is_swiglu);
 
   template <bool UseUInt4x2, typename T>
   Status QuantizedMoEImpl(OpKernelContext* context,
