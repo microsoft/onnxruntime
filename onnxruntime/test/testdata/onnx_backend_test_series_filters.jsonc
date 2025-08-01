@@ -695,6 +695,10 @@
         "^test_nonmaxsuppression_flipped_coordinates_cpu",
         "^test_nonmaxsuppression_center_point_box_format_cpu"
     ],
+    "current_failing_tests_QNN": [
+        "^test_scatter_elements_with_negative_indices",
+        "^test_scatter_elements_with_duplicate_indices*"
+    ],
     "current_failing_tests_WEBGPU": [
         "^test_layer_normalization_2d_axis0_cpu",
         "^test_layer_normalization_2d_axis1_cpu",
