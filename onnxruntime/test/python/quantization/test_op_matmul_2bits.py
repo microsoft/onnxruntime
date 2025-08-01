@@ -225,5 +225,6 @@ class TestOpMatMul2Bits(unittest.TestCase):
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test(model_fp32_path, data_reader, 32, False, rtol=0.02, atol=0.1)
 
+
 if __name__ == "__main__":
     unittest.main()
