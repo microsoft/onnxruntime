@@ -11,6 +11,67 @@ or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 __version__ = "1.23.0"
 __author__ = "Microsoft"
 
+import os
+import platform
+import sys
+
+# Function to automatically patch LD_LIBRARY_PATH for nvidia-cudnn libraries
+def _patch_nvidia_library_path():
+    """Automatically add nvidia library paths to LD_LIBRARY_PATH on Linux when using CUDAExecutionProvider."""
+    # Only apply this patch on Linux systems
+    if platform.system() != "Linux":
+        return
+    
+    # Check if we've already patched the path to avoid doing it multiple times
+    if os.environ.get("ORT_NVIDIA_PATH_PATCHED") == "1":
+        return
+    
+    try:
+        # Try to find the nvidia package
+        import importlib.util
+        spec = importlib.util.find_spec("nvidia")
+        if spec is None or not spec.submodule_search_locations:
+            return
+            
+        # Get the nvidia package path
+        nvidia_path = spec.submodule_search_locations[0]
+        
+        # Check for cudnn library path
+        import pathlib
+        cudnn_lib_path = pathlib.Path(nvidia_path) / "cudnn" / "lib"
+        if not cudnn_lib_path.exists():
+            return
+            
+        # Convert to string path
+        cudnn_lib_str = str(cudnn_lib_path.resolve())
+        
+        # Get current LD_LIBRARY_PATH
+        current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+        
+        # If path is not already in LD_LIBRARY_PATH, add it
+        if cudnn_lib_str not in current_ld_path.split(":"):
+            if current_ld_path:
+                os.environ["LD_LIBRARY_PATH"] = f"{cudnn_lib_str}:{current_ld_path}"
+            else:
+                os.environ["LD_LIBRARY_PATH"] = cudnn_lib_str
+                
+            # Mark that we've patched the path
+            os.environ["ORT_NVIDIA_PATH_PATCHED"] = "1"
+            
+            # Restart the process to make sure the library loading takes effect
+            # Only do this if we're importing the main onnxruntime package (not in a subprocess)
+            if __name__ == "__main__" or (__package__ and "onnxruntime" in __package__):
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+                
+    except Exception:
+        # If anything goes wrong, just continue without patching
+        # This is a best-effort approach
+        pass
+
+
+# Apply the patch when the module is imported
+_patch_nvidia_library_path()
+
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
 # in order to know whether the onnxruntime package is for training it needs
 # to do import onnxruntime.training.ortmodule first.
