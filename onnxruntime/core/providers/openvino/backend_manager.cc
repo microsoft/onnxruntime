@@ -517,6 +517,16 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
+  } else if (IsModelBF16(subgraph)) {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] OVEP bfloat16->float16 optimization pass is enabled";
+    std::unique_ptr<onnxruntime::Model> model;
+    Status status = bfloat16_fix::Transform(subgraph, logger, model);
+    auto model_proto = model->ToProto();
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    print_model_proto_duration();
+    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+    return model_proto;
   } else {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] OVEP QDQ optimization pass is disabled";
     auto model = subgraph.CreateModel(logger);

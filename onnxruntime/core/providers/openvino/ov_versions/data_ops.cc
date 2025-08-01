@@ -566,7 +566,6 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
       dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16)
     return true;
   if (is_initializer) {
-    auto dtype = type_proto->tensor_type().elem_type();
     for (auto const& var : supported_types_initializer_) {
       if ((var.first <= version_id_) &&
           (var.second == dtype)) {
@@ -581,8 +580,6 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
 #endif
     return false;
   } else {
-    auto dtype = type_proto->tensor_type().elem_type();
-
     if (device_id_.find("HETERO") != std::string::npos ||
         device_id_.find("MULTI") != std::string::npos || device_id_.find("AUTO") != std::string::npos) {
       for (auto const& var : supported_types_npu_) {

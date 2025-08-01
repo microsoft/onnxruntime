@@ -931,5 +931,54 @@ Status Transform(const GraphViewer& src_graph_viewer,
   return status;
 }
 }  // namespace qdq_scales_fix
+
+namespace bfloat16_fix {
+void replace_bf16_with_fp16(qdq_scales_fix::CustomGraph& gen_graph) {
+  for (auto& const_node : gen_graph.original_graph.Nodes()) {
+    auto node = const_cast<ONNX_NAMESPACE::Node*>(const_node);
+    if (node->OpType() == "Cast") {
+      for (auto& [name, const_attribute] : node->GetAttributes()) {
+        auto& attribute = const_cast<ONNX_NAMESPACE::AttributeProto&>(const_attribute);
+        if (name == "to" && attribute.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_INT)
+          if (attribute.i() == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16)
+            attribute.set_i(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+      }
+    }
+    for (auto& output : node->OutputDefs()) {
+      auto& output_proto = const_cast<ONNX_NAMESPACE::TypeProto&>(output->ToProto().type());
+      if (output_proto.mutable_tensor_type()->elem_type() == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16)
+        output_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    }
+  }
+
+  const auto& init_set = gen_graph.original_graph.GetAllInitializedTensors();
+  for (auto& [key, const_tensor_proto] : init_set) {
+    auto tensor_proto = const_cast<ONNX_NAMESPACE::TensorProto*>(const_tensor_proto);
+    auto dt = tensor_proto->data_type();
+    if (dt == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+      auto raw_data = tensor_proto->has_raw_data() ? reinterpret_cast<std::uint16_t*>(tensor_proto->mutable_raw_data()->data()) : nullptr;
+      if (raw_data) {
+        tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+        std::int64_t size = 1;
+        for (int i = 0; i < tensor_proto->dims_size(); ++i)
+          size *= tensor_proto->dims()[i];
+        for (std::int64_t i = 0; i < size; ++i) {
+          raw_data[i] = onnxruntime::MLFloat16(onnxruntime::BFloat16::FromBits(raw_data[i])).val;
+        }
+      }
+    }
+  }
+}
+
+Status Transform(const GraphViewer& src_graph_viewer,
+                 const logging::Logger& logger,
+                 /*out*/ std::unique_ptr<onnxruntime::Model>& model) {
+  auto status = qdq_scales_fix::copy_model(src_graph_viewer, logger, model);
+  auto g = qdq_scales_fix::generate_graph_from_onnx(model->MainGraph());
+
+  replace_bf16_with_fp16(g);
+  return status;
+}
+}  // namespace bfloat16_fix
 }  // namespace openvino_ep
 }  // namespace onnxruntime
