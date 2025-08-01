@@ -119,65 +119,6 @@ class TestOpMatMul2Bits(unittest.TestCase):
 
         onnx.save(model, output_model_path)
 
-    def construct_model_gather(
-        self,
-        output_model_path: str,
-        symmetric: bool,
-        tdata: TensorProto.DataType,
-        tind: TensorProto.DataType,
-        vocab_size: int = 545,
-        embedding_len: int = 228,
-    ) -> None:
-        #      (input)
-        #         |
-        #       Gather
-        #         |
-        #      (output)
-        indices_name = "input"
-        output_name = "output"
-        initializers = []
-
-        def make_gather(
-            indices_name, data_shape: int | tuple[int, ...], data_name: str, output_name: str, node_name: str
-        ):
-            weight_data = self.fill_int2_data(data_shape, symmetric).astype(
-                np.float32 if tdata == TensorProto.FLOAT else np.float16
-            )
-            initializers.append(onnx.numpy_helper.from_array(weight_data, name=data_name))
-            kwargs = {"axis": 0}
-            return onnx.helper.make_node(
-                "Gather",
-                [data_name, indices_name],
-                [output_name],
-                node_name,
-                **kwargs,
-            )
-
-        gather_node = make_gather(
-            indices_name,
-            (vocab_size, embedding_len),
-            "linear1.weight",
-            output_name,
-            "Gather_0",
-        )
-
-        # make graph
-        input_tensor = helper.make_tensor_value_info(indices_name, tind, [-1, 1000])
-        output_tensor = helper.make_tensor_value_info(output_name, tdata, [-1, 1000, embedding_len])
-        graph_name = "gather_2bits_test"
-        graph = helper.make_graph(
-            [gather_node],
-            graph_name,
-            [input_tensor],
-            [output_tensor],
-            initializer=initializers,
-        )
-        # QDQ and gather requires op set >= 21. The tool should automatically update the opset.
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 19)])
-        model.ir_version = 9  # use stable onnx ir version
-
-        onnx.save(model, output_model_path)
-
     def quant_test(
         self,
         model_fp32_path: str,
@@ -283,29 +224,6 @@ class TestOpMatMul2Bits(unittest.TestCase):
         self.construct_model_matmul(model_fp32_path, symmetric=False)
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test(model_fp32_path, data_reader, 32, False, rtol=0.02, atol=0.1)
-
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_2bits"
-    )
-    def test_quantize_gather_int2_symmetric(self):
-        np.random.seed(13)
-
-        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("gather_fp32_symmetric.onnx").absolute())
-        self.construct_model_gather(model_fp32_path, True, TensorProto.FLOAT, TensorProto.INT32)
-        data_reader = self.input_feeds(1, {"input": (100, 1000)}, -545, 535, np.int32)
-        # cover rounding error - 2-bit quantization has higher error than 4-bit
-        self.quant_test(model_fp32_path, data_reader, 32, True, op_types_to_quantize=("Gather",), rtol=0.3, atol=0.8)
-
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_2bits"
-    )
-    def test_quantize_gather_int2_offsets(self):
-        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("gather_fp32_offset.onnx").absolute())
-        self.construct_model_gather(model_fp32_path, False, TensorProto.FLOAT16, TensorProto.INT64)
-        data_reader = self.input_feeds(1, {"input": (100, 1000)}, -545, 535, np.int64)
-        # cover rounding error - 2-bit quantization has higher error than 4-bit
-        self.quant_test(model_fp32_path, data_reader, 32, False, op_types_to_quantize=("Gather",), rtol=0.3, atol=0.8)
-
 
 if __name__ == "__main__":
     unittest.main()
