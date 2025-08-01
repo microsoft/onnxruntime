@@ -619,6 +619,11 @@ Currently Linux support is only enabled for AMD Adapable SoCs.  Please refer to 
 
 See more information on the MIGraphX Execution Provider [here](../execution-providers/MIGraphX-ExecutionProvider.md).
 
+### Installation
+
+The external [`onnxruntime-rocm-build` repository](https://github.com/Looong01/onnxruntime-rocm-build) provides Compiled packages for C/C++ and Wheels for Python (for Python 3.10~3.13) and detailed instructions on how to install ONNXRuntime for MIGraphX.
+If you have any questions about it, please open an issue [here](https://github.com/Looong01/onnxruntime-rocm-build/issues).
+
 ### Prerequisites
 {: .no_toc }
 
@@ -638,7 +643,7 @@ See more information on the MIGraphX Execution Provider [here](../execution-prov
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles#migraphx).
 
-#### Build Phython Wheel
+#### Build Python Wheel
 
 `./build.sh --config Release --build_wheel --parallel --use_migraphx --migraphx_home /opt/rocm`
 
@@ -649,6 +654,11 @@ Then the python wheels(*.whl) could be found at ```./build/Linux/Release/dist```
 ## AMD ROCm
 
 See more information on the ROCm Execution Provider [here](../execution-providers/ROCm-ExecutionProvider.md).
+
+### Installation
+
+The external [`onnxruntime-rocm-build` repository](https://github.com/Looong01/onnxruntime-rocm-build) provides Compiled packages for C/C++ and Wheels for Python (for Python 3.10~3.13) and detailed instructions on how to install ONNXRuntime for ROCm.
+If you have any questions about it, please open an issue [here](https://github.com/Looong01/onnxruntime-rocm-build/issues).
 
 ### Prerequisites
 {: .no_toc }
@@ -667,7 +677,7 @@ See more information on the ROCm Execution Provider [here](../execution-provider
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#rocm).
 
-#### Build Phython Wheel
+#### Build Python Wheel
 
 `./build.sh --config Release --build_wheel --parallel --use_rocm --rocm_home /opt/rocm`
 
