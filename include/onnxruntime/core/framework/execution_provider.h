@@ -36,6 +36,7 @@ class GraphOptimizerRegistry;
 #include "core/framework/framework_provider_common.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
+#include "core/session/onnxruntime_c_api.h"
 
 struct OrtEpDevice;
 struct OrtRunOptions;
@@ -323,6 +324,16 @@ class IExecutionProvider {
     ORT_UNUSED_PARAMETER(graph_viewer);
     // Default implementation returns empty string
     return std::string();
+  }
+
+  /**
+   * Validate the compatibility of a compiled model with this execution provider.
+   */
+  virtual common::Status ValidateCompiledModelCompatibilityInfo(const std::string& /*compatibility_info*/,
+                                                                OrtCompiledModelCompatibility& model_compatibility) const {
+    // Default implementation indicates this EP does not support model compatibility validation
+    model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return Status::OK();
   }
 
 #endif

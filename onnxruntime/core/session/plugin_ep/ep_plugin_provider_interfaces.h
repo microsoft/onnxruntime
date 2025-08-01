@@ -103,6 +103,9 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   std::string GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const override;
 
+  Status ValidateCompiledModelCompatibilityInfo(const std::string& compatibility_info,
+                                                OrtCompiledModelCompatibility& model_compatibility) const override;
+
  private:
   struct FusedNodeState {
     FusedNodeState() = default;
