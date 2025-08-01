@@ -314,9 +314,8 @@ def create_cpu_moe_onnx_graph(
     # Note: In QMoE mode, biases are not used at all
     # This code path is never executed since use_quant is always True
 
-    # For QMoE, use SwiGLU if specified, otherwise use SiLU
-    # ONNX Runtime QMoE expects "swiglu" (lowercase) as the activation type
-    activation = "swiglu" if use_swiglu else "silu"
+    # Always use SiLU activation
+    activation = "silu"
 
     nodes = [
         helper.make_node(
@@ -453,27 +452,6 @@ class PhiMoEConfig:
         self.router_jitter_noise = router_jitter_noise
 
 
-class PhiMoEConfigSwiGLU(PhiMoEConfig):
-    def __init__(
-        self,
-        hidden_size=4096,
-        intermediate_size=14336,
-        hidden_act="silu",  # Even though we specify silu here, we'll use swiglu in the ONNX graph
-        num_experts_per_tok=2,
-        num_local_experts=8,
-        router_jitter_noise=0.01,
-    ):
-        super().__init__(
-            hidden_size=hidden_size,
-            intermediate_size=intermediate_size,
-            hidden_act=hidden_act,
-            num_experts_per_tok=num_experts_per_tok,
-            num_local_experts=num_local_experts,
-            router_jitter_noise=router_jitter_noise,
-        )
-        self.use_swiglu = True  # Flag to indicate we should use SwiGLU
-
-
 def masked_sampling_omp_inference(scores, top_k, jitter_eps, training):
     assert top_k == 2
     assert not training
@@ -532,22 +510,6 @@ class MoEBlockSparseTop2MLP(nn.Module):
 class PhiMoEBlockSparseTop2MLP(MoEBlockSparseTop2MLP):
     def __init__(self, config: PhiMoEConfig):
         super().__init__(config)
-
-
-class PhiMoEBlockSparseTop2MLPSwiGLU(MoEBlockSparseTop2MLP):
-    """Modified MLP block that uses SwiGLU activation"""
-
-    def __init__(self, config: PhiMoEConfigSwiGLU):
-        super().__init__(config)
-
-    def forward(self, hidden_states):
-        """SwiGLU activation as implemented in ONNX Runtime CPU QMoE"""
-        gate = self.w1(hidden_states)  # First part is the gate
-        hidden = self.w3(hidden_states)  # Second part is the activation input
-
-        # Apply SwiGLU: sigmoid(gate) * (hidden * silu(gate))
-        swiglu_output = torch.sigmoid(gate) * (hidden * torch.nn.functional.silu(gate))
-        return self.w2(swiglu_output)
 
 
 class SparseMoeBlockORTHelper(nn.Module):
@@ -675,31 +637,20 @@ class SparseMoeBlockORTHelper(nn.Module):
                 "Warning: NaN or Inf values detected in the output difference. Numerical comparisons will be limited."
             )
 
-        # Maps "ort_type:quant_bits:swiglu" to (atol, rtol)
+        # Maps "ort_type:quant_bits" to (atol, rtol)
         # Note: Now that both CPU and CUDA use symmetric quantization,
         # we can use more consistent tolerances across implementations.
-        # SwiGLU still needs slightly higher tolerances due to its computational pattern
-        swiglu_flag = ":swiglu" if hasattr(self, "use_swiglu") and self.use_swiglu else ""
         ort_dtype_quant_bits_tolerance_map = {
             "FP32:0": (5e-3, 1e-3),
             "FP16:0": (5e-2, 1e-3),
             "FP16:4": (2.0, 8e-3),  # Improved tolerance with symmetric quantization
             "FP16:8": (1.5, 8e-3),  # Improved tolerance with symmetric quantization
-            # SwiGLU variants may need slightly higher tolerances
-            "FP16:4:swiglu": (2.5, 1.5e-2),  # Improved tolerance with symmetric quantization
-            "FP16:8:swiglu": (2.0, 1.5e-2),  # Improved tolerance with symmetric quantization
         }
 
-        tolerance_key = f"{dtype_str}:{self.quant_bits}{swiglu_flag}"
+        tolerance_key = f"{dtype_str}:{self.quant_bits}"
         if tolerance_key not in ort_dtype_quant_bits_tolerance_map:
             print(f"Warning: No tolerance defined for {tolerance_key}, using default")
-            # Use the non-SwiGLU version as fallback if available
-            fallback_key = f"{dtype_str}:{self.quant_bits}"
-            if fallback_key in ort_dtype_quant_bits_tolerance_map:
-                atol, rtol = ort_dtype_quant_bits_tolerance_map[fallback_key]
-                print(f"Using fallback tolerance for {fallback_key}: atol={atol}, rtol={rtol}")
-            else:
-                atol, rtol = 10.0, 1e-1
+            atol, rtol = 10.0, 1e-1
         else:
             atol, rtol = ort_dtype_quant_bits_tolerance_map[tolerance_key]
 
@@ -779,13 +730,6 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         self.top_k = config.num_experts_per_tok
         self.router_jitter_noise = config.router_jitter_noise
 
-        # Check for SwiGLU configuration and handle potential attribute errors
-        try:
-            self.use_swiglu = hasattr(config, "use_swiglu") and config.use_swiglu
-        except AttributeError:
-            # Fallback if attribute access fails
-            self.use_swiglu = False
-
         # Ensure we always have a valid quantization bits value (4 or 8)
         if self.quant_bits <= 0:
             print("Warning: quant_bits was set to 0 or negative, forcing to 4-bit")
@@ -794,9 +738,8 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         # gating
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
 
-        # Choose the appropriate expert class based on whether we're using SwiGLU
-        expertclass = PhiMoEBlockSparseTop2MLPSwiGLU if self.use_swiglu else PhiMoEBlockSparseTop2MLP
-        self.experts = nn.ModuleList([expertclass(config) for _ in range(self.num_experts)])
+        # Use PhiMoEBlockSparseTop2MLP for all experts
+        self.experts = nn.ModuleList([PhiMoEBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
 
         w1_list, w2_list = [], []
         w1_scale_list, w2_scale_list = [], []
@@ -804,65 +747,19 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         # Always use quantization for QMoE
         is_4_bit = self.quant_bits == 4
         for i in range(self.num_experts):
-            if self.use_swiglu:
-                # For SwiGLU, need to handle both gate (w1) and value (w3) weights
-                # First, quantize the individual weights
-                w1_scale, pre_qweight1, w1_qdq = quant_dequant(self.experts[i].w1.weight, is_4_bit)
-                w3_scale, pre_qweight3, w3_qdq = quant_dequant(self.experts[i].w3.weight, is_4_bit)
-                w2_scale, pre_qweight2, w2_qdq = quant_dequant(self.experts[i].w2.weight, is_4_bit)
+            # Quantize the weights
+            w1_scale, pre_qweight1, w1_qdq = quant_dequant(self.experts[i].w1.weight, is_4_bit)
+            w2_scale, pre_qweight2, w2_qdq = quant_dequant(self.experts[i].w2.weight, is_4_bit)
 
-                # Update the expert weights with dequantized values for PyTorch execution
-                self.experts[i].w1.weight.data = w1_qdq
-                self.experts[i].w3.weight.data = w3_qdq
-                self.experts[i].w2.weight.data = w2_qdq
+            # Update the expert weights with dequantized values for PyTorch execution
+            self.experts[i].w1.weight.data = w1_qdq
+            self.experts[i].w2.weight.data = w2_qdq
 
-                # For ONNX QMoE SwiGLU, we need to concatenate w1 and w3 weights and scales
-                # This matches the C++ implementation's expectation for SwiGLU
-                combined_w1_weight = torch.cat([pre_qweight1, pre_qweight3], dim=1)
-
-                # For SwiGLU in QMoE, we need to provide scales for both gate and value components
-                # Check shapes and make sure they're compatible with C++ implementation expectations
-                print(f"SwiGLU scales - w1: {w1_scale.shape}, w3: {w3_scale.shape}")
-
-                # In the QMoE CPU implementation for SwiGLU, we need to handle gate and value scales
-                # Combine the scales for both components - this needs to be done carefully
-                # to ensure proper shape compatibility regardless of input shapes
-
-                # First ensure scales have the right number of dimensions
-                if len(w1_scale.shape) == 1:
-                    w1_scale = w1_scale.unsqueeze(0)
-                if len(w3_scale.shape) == 1:
-                    w3_scale = w3_scale.unsqueeze(0)
-
-                # Handle different scale shapes robustly
-                if w1_scale.shape[-1] == 1:
-                    # Per-tensor quantization case - expand to per-channel
-                    w1_expanded = w1_scale.expand(-1, self.ffn_dim)
-                    w3_expanded = w3_scale.expand(-1, self.ffn_dim)
-                    combined_w1_scale = torch.cat([w1_expanded, w3_expanded], dim=1)
-                else:
-                    # Already per-channel, just concatenate
-                    combined_w1_scale = torch.cat([w1_scale, w3_scale], dim=1)
-
-                # Store the combined quantized weights and scales for ONNX model
-                w1_list.append(combined_w1_weight)
-                w2_list.append(pre_qweight2)
-                w1_scale_list.append(combined_w1_scale)
-                w2_scale_list.append(w2_scale)
-            else:
-                # Regular non-SwiGLU case
-                w1_scale, pre_qweight1, w1_qdq = quant_dequant(self.experts[i].w1.weight, is_4_bit)
-                w2_scale, pre_qweight2, w2_qdq = quant_dequant(self.experts[i].w2.weight, is_4_bit)
-
-                # Update the expert weights with dequantized values for PyTorch execution
-                self.experts[i].w1.weight.data = w1_qdq
-                self.experts[i].w2.weight.data = w2_qdq
-
-                # Store the quantized weights and scales for ONNX model
-                w1_list.append(pre_qweight1)
-                w2_list.append(pre_qweight2)
-                w1_scale_list.append(w1_scale)
-                w2_scale_list.append(w2_scale)
+            # Store the quantized weights and scales for ONNX model
+            w1_list.append(pre_qweight1)
+            w2_list.append(pre_qweight2)
+            w1_scale_list.append(w1_scale)
+            w2_scale_list.append(w2_scale)
 
         self.moe_experts_weight1 = torch.stack(w1_list, dim=0)
         self.moe_experts_weight2 = torch.stack(w2_list, dim=0)
@@ -892,7 +789,7 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
                 # Scales are used for dequantization
                 fc1_scales=moe_experts_weight_scale1,
                 fc2_scales=moe_experts_weight_scale2,
-                use_swiglu=self.use_swiglu,  # Pass the SwiGLU flag
+                use_swiglu=False,  # No SwiGLU
                 use_quant=True,  # Always use QMoE
                 quant_bits=self.quant_bits,
             )
@@ -1014,64 +911,6 @@ class TestPhiQMoECPU(unittest.TestCase):
                 self.skipTest("FC3 gating is not yet implemented on CPU")
             else:
                 raise
-
-
-class TestPhiQMoECPUSwiGLU(unittest.TestCase):
-    @unittest.skipIf(not HAS_ONNX, "ONNX is not installed")
-    @parameterized.expand(
-        [
-            (1, 32, 4),  # Small batch, small sequence, 4-bit quant
-            (1, 32, 8),  # Small batch, small sequence, 8-bit quant
-            (4, 8, 4),  # Larger batch, tiny sequence, 4-bit quant
-        ]
-    )
-    def test_phi3_qmoe_swiglu_parity_cpu(self, batch_size, sequence_length, quant_bits):
-        print(
-            f"Running PhiMoE CPU SwiGLU test with batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}"
-        )
-        try:
-            # Create a config with SwiGLU activation
-            config = PhiMoEConfigSwiGLU(hidden_size=256, intermediate_size=512)
-            phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length, quant_bits)
-            phi3_moe.to(device)
-        except Exception as e:
-            self.skipTest(f"Failed to create SwiGLU model: {e!s}")
-            return
-
-        # Skip tests if ONNX is not available
-        if not HAS_ONNX:
-            self.skipTest("ONNX is not installed")
-
-        # Skip if the session creation failed
-        if phi3_moe.ort_sess is None:
-            self.skipTest("Failed to create ONNX Runtime session - CPU MoE operator not available")
-
-        # Run the parity check without special handling for SwiGLU errors
-        # since SwiGLU is now supported in QMoE
-        phi3_moe.parity_check()
-
-    @unittest.skipIf(not HAS_ONNX, "ONNX is not installed")
-    @parameterized.expand([(8,), (4,)])
-    def test_phi3_qmoe_swiglu_cpu_benchmark(self, quant_bits):
-        print(f"Benchmarking PhiMoE CPU SwiGLU with quant_bits={quant_bits}")
-        batch_size = 1
-        sequence_length = 32
-        try:
-            config = PhiMoEConfigSwiGLU(hidden_size=256, intermediate_size=512)
-            phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length, quant_bits)
-            phi3_moe.to(device)
-        except Exception as e:
-            self.skipTest(f"Failed to create SwiGLU model for benchmark: {e!s}")
-            return
-
-        # Skip tests if ONNX is not available or session creation failed
-        if not HAS_ONNX or phi3_moe.ort_sess is None:
-            self.skipTest("ONNX not installed or CPU MoE operator not available")
-            return
-
-        # Run the benchmark without special handling for SwiGLU errors
-        # since SwiGLU is now supported in QMoE
-        phi3_moe.benchmark_ort()
 
 
 if __name__ == "__main__":

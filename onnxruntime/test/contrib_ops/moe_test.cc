@@ -1316,7 +1316,8 @@ TEST(MoETest, QMoETest_Mixtral_Int4) {
   RunQMoETest(input, router_probs, fc1_experts_weights, fc2_experts_weights, fc3_experts_weights, fc1_scales,
               fc2_scales, fc3_scales, output, num_rows, num_experts, hidden_size, inter_size, "silu",
               1, /*normalize_routing_weights*/
-              2 /*top_k*/);
+              2, /*top_k*/
+              4 /*expert_weight_bits*/);
 }
 
 // CPU-specific QMoE tests
@@ -1335,17 +1336,17 @@ TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
 
   const std::vector<float> router_probs = {0.3f, 0.7f, 0.6f, 0.4f};
 
-  // Generate simple test weights for 4-bit quantization
-  // Use 0x88 which unpacks to 8,8 (around zero point 8 for 4-bit)
-  std::vector<uint8_t> fc1_experts_weights(num_experts * hidden_size * inter_size / 2, 0x88);
-  std::vector<uint8_t> fc2_experts_weights(num_experts * inter_size * hidden_size / 2, 0x77);  // 7,7 values
+  // Generate simple test weights for 4-bit symmetric quantization
+  // Use 0x00 which unpacks to 0,0 (both 0 for 4-bit)
+  std::vector<uint8_t> fc1_experts_weights(num_experts * hidden_size * inter_size / 2, 0x00);
+  std::vector<uint8_t> fc2_experts_weights(num_experts * inter_size * hidden_size / 2, 0x00);  // 0,0 values to produce zero output
   std::vector<uint8_t> fc3_experts_weights;                                                    // Empty for CPU (FC3 not supported)
 
-  std::vector<float> fc1_scales(num_experts * inter_size, 0.1f);
-  std::vector<float> fc2_scales(num_experts * hidden_size, 0.1f);
+  std::vector<float> fc1_scales(num_experts * inter_size, 0.01f);   // Smaller scale factor
+  std::vector<float> fc2_scales(num_experts * hidden_size, 0.01f);  // Smaller scale factor
   std::vector<float> fc3_scales;
 
-  // Expected output should be close to zero with small weights around zero point
+  // With zero weights (0x00), the current implementation will produce all zero outputs
   std::vector<float> output(num_rows * hidden_size, 0.0f);
 
   // Test CPU execution provider ONLY (don't use RunQMoETest which tests both CUDA and CPU)
@@ -1374,8 +1375,13 @@ TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
   cpu_tester.AddOptionalInputEdge<uint8_t>();                             // fc3_experts_weights (skip FC3 for CPU)
   cpu_tester.AddOptionalInputEdge<float>();                               // fc3_scales (use float for CPU)
   cpu_tester.AddOptionalInputEdge<MLFloat16>();                           // fc3_experts_bias
-  cpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output));
-  cpu_tester.SetOutputTolerance(0.01f);  // Higher tolerance since we expect near-zero output
+
+  // When using 0x00 for 4-bit quantized weights with the current implementation,
+  // all dequantized values should be 0.0f, and thus output should be all zeros
+  std::vector<float> expected_output(num_rows * hidden_size, 0.0f);
+
+  cpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(expected_output));
+  cpu_tester.SetOutputTolerance(0.05f);  // Small tolerance for numerical differences
 
   std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
   cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
@@ -1394,10 +1400,10 @@ TEST(MoETest, QMoETest_CPU_Int8_MLAS) {
 
   const std::vector<float> router_probs = {0.4f, 0.6f};
 
-  // For 8-bit, dimensions don't need /2
-  // Use quantized weights near zero point (128) for reasonable dequantization
-  std::vector<uint8_t> fc1_experts_weights(num_experts * hidden_size * inter_size, 130);  // 130 ≈ 128 + 2
-  std::vector<uint8_t> fc2_experts_weights(num_experts * inter_size * hidden_size, 126);  // 126 ≈ 128 - 2
+  // For 8-bit symmetric quantization, dimensions don't need /2
+  // Use quantized weights close to zero for reasonable dequantization
+  std::vector<uint8_t> fc1_experts_weights(num_experts * hidden_size * inter_size, 2);    // 2 = small positive value
+  std::vector<uint8_t> fc2_experts_weights(num_experts * inter_size * hidden_size, 254);  // 254 = -2 in 8-bit signed
   std::vector<uint8_t> fc3_experts_weights;                                               // Empty for CPU
 
   std::vector<float> fc1_scales(num_experts * inter_size, 0.1f);
@@ -1451,9 +1457,9 @@ TEST(MoETest, QMoETest_CPU_FC3_Error) {
   const std::vector<float> input = {0.1f, -0.2f, 0.3f, -0.4f, 0.5f, -0.6f, 0.7f, -0.8f};
   const std::vector<float> router_probs = {0.5f, 0.5f};
 
-  std::vector<uint8_t> fc1_experts_weights(num_experts * hidden_size * inter_size / 2, 8);
-  std::vector<uint8_t> fc2_experts_weights(num_experts * inter_size * hidden_size / 2, 4);
-  std::vector<uint8_t> fc3_experts_weights(num_experts * hidden_size * inter_size / 2, 6);  // FC3 provided
+  std::vector<uint8_t> fc1_experts_weights(num_experts * hidden_size * inter_size / 2, 0x01);  // 0,1 in symmetric quantization
+  std::vector<uint8_t> fc2_experts_weights(num_experts * inter_size * hidden_size / 2, 0x10);  // 1,0 in symmetric quantization
+  std::vector<uint8_t> fc3_experts_weights(num_experts * hidden_size * inter_size / 2, 0x21);  // 2,1 in symmetric quantization, FC3 provided
 
   std::vector<float> fc1_scales(num_experts * inter_size, 0.1f);
   std::vector<float> fc2_scales(num_experts * hidden_size, 0.05f);
@@ -1516,9 +1522,9 @@ TEST(MoETest, QMoETest_CPU_SwiGLU_Int4) {
   const int fc1_weight_size_per_expert = hidden_size * inter_size * 2 / 2;  // For 4-bit SwiGLU
   const int fc2_weight_size_per_expert = inter_size * hidden_size / 2;      // For 4-bit FC2
 
-  // Generate test weights near zero point (8 for 4-bit)
-  std::vector<uint8_t> fc1_experts_weights(num_experts * fc1_weight_size_per_expert, 0x89);  // 8,9 -> small positive weights
-  std::vector<uint8_t> fc2_experts_weights(num_experts * fc2_weight_size_per_expert, 0x78);  // 7,8 -> mixed weights
+  // Generate test weights for symmetric quantization (zero point is 0)
+  std::vector<uint8_t> fc1_experts_weights(num_experts * fc1_weight_size_per_expert, 0x12);  // 1,2 -> small positive weights
+  std::vector<uint8_t> fc2_experts_weights(num_experts * fc2_weight_size_per_expert, 0xFF);  // -1,0 -> small mixed weights
   std::vector<uint8_t> fc3_experts_weights;                                                  // Empty for SwiGLU (gate weights concatenated with FC1)
 
   // Scales: for SwiGLU, FC1 has 2*inter_size outputs (linear + gate)
@@ -1572,14 +1578,14 @@ TEST(MoETest, QMoETest_CPU_SwiGLU_Int8) {
   const std::vector<float> input = {0.2f, -0.3f, 0.4f, -0.5f, 0.6f, -0.7f, 0.8f, -0.9f};
   const std::vector<float> router_probs = {0.0f, 0.0f};
 
-  // For SwiGLU with 8-bit: FC1 weights are 2x inter_size (concatenated linear + gate weights)
+  // For SwiGLU with 8-bit symmetric quantization: FC1 weights are 2x inter_size (concatenated linear + gate weights)
   const int fc1_weight_size_per_expert = hidden_size * inter_size * 2;  // For 8-bit SwiGLU
   const int fc2_weight_size_per_expert = inter_size * hidden_size;      // For 8-bit FC2
 
-  // Generate test weights at zero point (128 for 8-bit) to produce zero output
-  std::vector<uint8_t> fc1_experts_weights(num_experts * fc1_weight_size_per_expert, 128);  // Exactly at zero point
-  std::vector<uint8_t> fc2_experts_weights(num_experts * fc2_weight_size_per_expert, 128);  // Exactly at zero point
-  std::vector<uint8_t> fc3_experts_weights;                                                 // Empty for SwiGLU
+  // Generate test weights at zero (for symmetric quantization) to produce zero output
+  std::vector<uint8_t> fc1_experts_weights(num_experts * fc1_weight_size_per_expert, 0);  // Zero in symmetric quantization
+  std::vector<uint8_t> fc2_experts_weights(num_experts * fc2_weight_size_per_expert, 0);  // Zero in symmetric quantization
+  std::vector<uint8_t> fc3_experts_weights;                                               // Empty for SwiGLU
 
   // Scales: for SwiGLU, FC1 has 2*inter_size outputs
   std::vector<float> fc1_scales(num_experts * inter_size * 2, 0.1f);

@@ -441,7 +441,6 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
 
   // Determine quantization parameters based on bit width - using symmetric quantization for TensorRT compatibility
   const bool is_4bit = UseUInt4x2;
-  const float zero_point = 0.0f;  // Symmetric quantization has zero point = 0
   const int64_t act_multiplier = is_swiglu ? 2 : 1;
   const int64_t fc1_output_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
 
@@ -466,7 +465,7 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
   prepacked_fc2_weights_data_ = prepacked_fc2_weights_.get();
 
   // Helper lambda for dequantizing a single weight value - updated for symmetric quantization
-  auto DequantizeWeight = [&](const uint8_t* weights, size_t weight_idx, size_t linear_idx,
+  auto DequantizeWeight = [&](const uint8_t* weights, size_t linear_idx,
                               const float* scales, int64_t scale_idx) -> float {
     if (is_4bit) {
       // For Int4, two values are packed in each uint8
@@ -481,7 +480,7 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
       return static_cast<float>(signed_weight) * scales[scale_idx];
     } else {
       // For Int8, convert uint8 to int8 for symmetric quantization
-      int8_t signed_weight = static_cast<int8_t>(weights[weight_idx]);
+      int8_t signed_weight = static_cast<int8_t>(weights[linear_idx]);
       return static_cast<float>(signed_weight) * scales[scale_idx];
     }
   };
@@ -500,7 +499,7 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
           for (int64_t out_col = 0; out_col < output_cols; ++out_col) {
             for (int64_t in_col = 0; in_col < moe_params.hidden_size; ++in_col) {
               size_t linear_idx = static_cast<size_t>(out_col * moe_params.hidden_size + in_col);
-              dequant_fc1_expert[linear_idx] = DequantizeWeight(fc1_expert_weights, linear_idx, linear_idx, fc1_expert_scales, out_col);
+              dequant_fc1_expert[linear_idx] = DequantizeWeight(fc1_expert_weights, linear_idx, fc1_expert_scales, out_col);
             }
           }
         }
@@ -519,7 +518,7 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
           for (int64_t out_col = 0; out_col < moe_params.hidden_size; ++out_col) {
             for (int64_t in_col = 0; in_col < moe_params.inter_size; ++in_col) {
               size_t linear_idx = static_cast<size_t>(out_col * moe_params.inter_size + in_col);
-              dequant_fc2_expert[linear_idx] = DequantizeWeight(fc2_expert_weights, linear_idx, linear_idx, fc2_expert_scales, out_col);
+              dequant_fc2_expert[linear_idx] = DequantizeWeight(fc2_expert_weights, linear_idx, fc2_expert_scales, out_col);
             }
           }
         }
