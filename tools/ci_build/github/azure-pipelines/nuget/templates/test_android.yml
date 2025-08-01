@@ -82,24 +82,34 @@ stages:
                   $exitCode = 1
                 }
               } else {
-                Write-Host "Test timed out, stopping job and cleaning up processes..."
+                Write-Host "Android App Automate test timed out, stopping job and cleaning up processes..."
                 Stop-Job -Job $job
                 Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
 
-                # Kill any remaining dotnet test processes
-                Get-Process -Name "dotnet" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq "dotnet" } | Stop-Process -Force -ErrorAction SilentlyContinue
+                # Kill Android/Appium specific processes
+                Write-Host "Killing .NET test processes..."
+                Get-Process -Name "dotnet" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
                 Get-Process -Name "testhost*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-                Get-Process -Name "chromedriver*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+                Get-Process -Name "VSTest*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
-                # Wait a moment for file handles to be released
-                Start-Sleep -Seconds 5
+                Write-Host "Killing Appium/Android automation processes..."
+                Get-Process -Name "appium*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+                Get-Process -Name "node*" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*appium*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+                Get-Process -Name "adb*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+                Write-Host "Killing any remaining test framework processes..."
+                Get-Process | Where-Object { $_.ProcessName -match "(selenium|webdriver|browserstack)" } | Stop-Process -Force -ErrorAction SilentlyContinue
+
+                # Wait longer for Android emulator/device connections to close and file handles to release
+                Write-Host "Waiting for Android connections and file handles to be released..."
+                Start-Sleep -Seconds 15
                 $exitCode = 1
               }
 
               Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
               exit $exitCode
             } catch {
-              Write-Host "Error during test execution: $_"
+              Write-Host "Error during Android App Automate test execution: $_"
               exit 1
             }
           workingDirectory: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android'
