@@ -32,9 +32,9 @@ Please reference table below for official CANN packages dependencies for the ONN
 
 |ONNX Runtime|CANN|
 |---|---|
-|v1.18.0|8.0.0|
-|v1.19.0|8.0.0|
-|v1.20.0|8.0.0|
+|v1.20.0|8.2.0|
+|v1.21.0|8.2.0|
+|v1.22.1|8.2.0|
 
 ## Build
 
