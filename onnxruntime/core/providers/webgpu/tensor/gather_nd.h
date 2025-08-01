@@ -12,8 +12,8 @@ namespace webgpu {
 class GatherNDProgram final : public Program<GatherNDProgram> {
  public:
   GatherNDProgram(const uint32_t batch_dims, const uint32_t indices_innerest_dim) : Program{"GatherND"},
-                                                                                  batch_dims_{batch_dims},
-                                                                                  indices_innerest_dim_{indices_innerest_dim} {}
+                                                                                    batch_dims_{batch_dims},
+                                                                                    indices_innerest_dim_{indices_innerest_dim} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
