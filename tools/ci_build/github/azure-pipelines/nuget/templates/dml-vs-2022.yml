@@ -6,11 +6,8 @@ parameters:
   DoNugetPack:  'false'
   NuPackScript : ''
   ArtifactName: 'drop-nuget'
-  DoNodejsPack: 'false'
-  BuildNodejs: 'true'
   DoEsrp: 'false'
   DoTestCoverage: 'false'
-  BuildArch: 'x64' # Optional. Options: x86, x64
   sln_platform: 'x64' # Options: Win32, x64, arm, arm64
   EnvSetupScript: 'setup_env.bat'
   AgentDemands: []
@@ -37,11 +34,9 @@ stages:
       clean: all
     pool:
       name: onnxruntime-Win-CPU-2022
-      demands: ${{ parameters.AgentDemands }}
     variables:
       buildDirectory: '$(Build.BinariesDirectory)'
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-      runCodesignValidationInjection: and(${{ parameters.DoNodejsPack }},${{ parameters. DoEsrp}}) #For the others, code sign is in a separated job
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
       BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
@@ -54,41 +49,34 @@ stages:
         clean: true
         submodules: none
 
-      - powershell: |
-          if($env:TELEMETRYGUID)
-          {
-            $length = $env:TELEMETRYGUID.length
-            $fileContent = "#define TraceLoggingOptionMicrosoftTelemetry() \
-              TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
-            New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
-            Write-Output "Enabling TELEMETRY"
-          }
-        displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
-        env:
-          TELEMETRYGUID: $(TELEMETRYGUID)
+      - template: ../../templates/telemetry-steps.yml
 
       - task: NodeTool@0
         inputs:
-          versionSpec: '20.x'
+          versionSpec: '22.x'
 
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.12'
           addToPath: true
-          architecture: ${{ parameters.BuildArch }}
+          architecture: x64
+      - task: PipAuthenticate@1
+        displayName: 'Pip Authenticate'
+        inputs:
+          artifactFeeds: 'Lotus'
 
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - task: UseDotNet@2
         inputs:
           version: 8.x
         env:
-          PROCESSOR_ARCHITECTURE: ${{ parameters.BuildArch }}
+          PROCESSOR_ARCHITECTURE: x64
 
       - task: BatchScript@1
         displayName: 'Setup VS2022 env vars'
         inputs:
           filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-          arguments: ${{ parameters.BuildArch }}
+          arguments: x64
           modifyEnvironment: true
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
@@ -122,7 +110,7 @@ stages:
           inputs:
             version: 6.x
           env:
-            PROCESSOR_ARCHITECTURE: ${{ parameters.BuildArch }}
+            PROCESSOR_ARCHITECTURE: x64
 
         - template: ../../templates/win-esrp-dll.yml
           parameters:
@@ -156,64 +144,10 @@ stages:
               ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
                 symbolExpiryTime: 60
               includePublicSymbolServer: true
-              symbolsArtifactName: onnxruntime-dml-nuget-${{ parameters.BuildArch }}
+              symbolsArtifactName: onnxruntime-dml-nuget-${{ parameters.sln_platform }}
               symbolsVersion: $(Build.BuildId)
               symbolProject: 'ONNX Runtime'
               subscription: 'OnnxrunTimeCodeSign_20240611'
               searchPattern: |
                 $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.pdb
                 $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_*.pdb
-
-      # Node.js Publish
-      - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
-        - task: BatchScript@1
-          displayName: 'Setup VS env vars'
-          inputs:
-            filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-            arguments: ${{ parameters.BuildArch }}
-            modifyEnvironment: true
-        - template: ../../templates/win-esrp-dll.yml
-          parameters:
-            FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\x64'
-            DisplayName: 'ESRP - Sign Node.js binding binaries'
-            DoEsrp: ${{ parameters.DoEsrp }}
-            Pattern: '*.dll,*.node'
-
-        - script: |
-           del /Q $(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\x64\CodeSignSummary-*.*
-           call npm pack
-           copy $(Build.SourcesDirectory)\js\node\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-           xcopy /E /I $(Build.SourcesDirectory)\js\node\prebuilds $(Build.ArtifactStagingDirectory)\prebuilds
-          workingDirectory: '$(Build.SourcesDirectory)\js\node'
-          displayName: 'Create NPM Package'
-
-        - task: 1ES.PublishPipelineArtifact@1
-          displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
-          inputs:
-            artifactName: ${{ parameters.ArtifactName }}
-            targetPath: '$(Build.ArtifactStagingDirectory)'
-
-        # Put an unzipped version there to check if all the binaries are signed.
-        - script: |
-           7z x $(Build.ArtifactStagingDirectory)\prebuilds\onnxruntime-*.tar.gz
-           7z x $(Build.ArtifactStagingDirectory)\onnxruntime-*.tar
-          displayName: 'Unzip package to test'
-          workingDirectory: '$(Build.ArtifactStagingDirectory)'
-
-      - ${{ if eq(parameters.BuildNodejs, 'true') }}:
-        - task: CopyFiles@2
-          displayName: 'Copy DirectML binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
-          inputs:
-            SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-            Contents: 'DirectML.dll'
-            TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
-        - template: ../../templates/win-esrp-dll.yml
-          parameters:
-            FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
-            DisplayName: 'ESRP - Sign Node.js binding binaries'
-            DoEsrp: ${{ parameters.DoEsrp }}
-            Pattern: '*.node'
-        - task: 1ES.PublishPipelineArtifact@1
-          inputs:
-            targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
-            artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.sln_platform }}-dml'

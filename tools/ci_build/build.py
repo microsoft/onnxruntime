@@ -191,7 +191,7 @@ def use_dev_mode(args):
     if args.use_qnn:
         return True
     SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
-    if SYSTEM_COLLECTIONURI and SYSTEM_COLLECTIONURI != "https://dev.azure.com/onnxruntime/":
+    if SYSTEM_COLLECTIONURI:
         return False
     return True
 
@@ -456,6 +456,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_OPENVINO_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_VITISAI_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_MIGRAPHX_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
@@ -514,7 +515,6 @@ def generate_build_tree(
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
-        "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),
         "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
         "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
@@ -620,6 +620,7 @@ def generate_build_tree(
             )
             generate_vcpkg_triplets_for_emscripten(
                 build_dir,
+                configs,
                 emscripten_root_path,
                 not args.disable_rtti,
                 not args.disable_wasm_exception_catching,
@@ -627,25 +628,21 @@ def generate_build_tree(
                 args.enable_address_sanitizer,
             )
         elif args.android:
-            generate_android_triplets(build_dir, args.android_cpp_shared, args.android_api)
+            generate_android_triplets(build_dir, configs, args.android_cpp_shared, args.android_api)
         elif is_windows():
-            generate_windows_triplets(build_dir, args.msvc_toolset)
+            generate_windows_triplets(build_dir, configs, args.msvc_toolset)
         elif is_macOS():
             osx_target = args.apple_deploy_target
             if args.apple_deploy_target is None:
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, osx_target)
+            generate_macos_triplets(build_dir, configs, osx_target)
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir)
+            generate_linux_triplets(build_dir, configs)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
-        vcpkg_install_options = generate_vcpkg_install_options(build_dir, args)
-        # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
-        # Therefore, if any of the option string contains a semicolon, it must be escaped
-        add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ";".join(vcpkg_install_options))
         # Choose the cmake triplet
         triplet = None
         if args.build_wasm:
@@ -748,17 +745,20 @@ def generate_build_tree(
             add_default_definition(
                 cmake_extra_defines, "CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreaded$<$<CONFIG:Debug>:Debug>"
             )
-            add_default_definition(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "ON")
-            add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "ON")
-            # The following build option was added in ABSL 20240722.0 and it must be explicitly set
-            add_default_definition(cmake_extra_defines, "ABSL_MSVC_STATIC_RUNTIME", "ON")
-            add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "OFF")
-        else:
-            # CMAKE_MSVC_RUNTIME_LIBRARY is default to MultiThreaded$<$<CONFIG:Debug>:Debug>DLL
-            add_default_definition(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "OFF")
-            add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "OFF")
-            add_default_definition(cmake_extra_defines, "ABSL_MSVC_STATIC_RUNTIME", "OFF")
-            add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "ON")
+        # Set flags for 3rd-party libs
+        if not args.use_vcpkg:
+            if args.enable_msvc_static_runtime:
+                add_default_definition(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "ON")
+                add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "ON")
+                # The following build option was added in ABSL 20240722.0 and it must be explicitly set
+                add_default_definition(cmake_extra_defines, "ABSL_MSVC_STATIC_RUNTIME", "ON")
+                add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "OFF")
+            else:
+                # CMAKE_MSVC_RUNTIME_LIBRARY is default to MultiThreaded$<$<CONFIG:Debug>:Debug>DLL
+                add_default_definition(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "OFF")
+                add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "OFF")
+                add_default_definition(cmake_extra_defines, "ABSL_MSVC_STATIC_RUNTIME", "OFF")
+                add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "ON")
 
     if acl_home and os.path.exists(acl_home):
         cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
@@ -884,7 +884,22 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    cmake_args += ["-Donnxruntime_USE_KLEIDIAI=" + ("OFF" if args.no_kleidiai else "ON")]
+    # Set onnxruntime_USE_KLEIDIAI based on:
+    # * Default value above is NO.
+    # * Leave disabled if "no_kleidiai" argument was specified.
+    # * Enable if the target is Android and args.android_abi contains arm64*
+    # * Enable for a Windows cross compile build if compile target is an Arm one.
+    # * Finally enable if platform.machine contains "arm64". This should cover the following cases:
+    #     *  Linux on Arm
+    #     *  MacOs (case must be ignored)
+    # * TODO Delegate responsibility for Onnxruntime_USE_KLEIDIAI = ON to CMake logic
+    if not args.no_kleidiai:
+        if (
+            (args.android and "arm64" in args.android_abi.lower())
+            or (is_windows() and (args.arm64 or args.arm64ec or args.arm) and platform.architecture()[0] != "AMD64")
+            or ("arm64" in platform.machine().lower())
+        ):
+            cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
 
     if is_macOS() and (args.macos or args.ios or args.visionos or args.tvos):
         # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.
@@ -1233,6 +1248,16 @@ def generate_build_tree(
             ]
         env = {}
         if args.use_vcpkg:
+            # append VCPKG_INSTALL_OPTIONS
+            #
+            # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
+            # Therefore, if any of the option string contains a semicolon, it must be escaped
+            temp_cmake_args += [
+                "-DVCPKG_INSTALL_OPTIONS={}".format(
+                    ";".join(generate_vcpkg_install_options(Path(build_dir) / config, args))
+                )
+            ]
+
             vcpkg_keep_env_vars = ["TRT_UPLOAD_AUTH_TOKEN"]
 
             if args.build_wasm:

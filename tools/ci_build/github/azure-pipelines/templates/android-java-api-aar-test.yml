@@ -29,7 +29,7 @@ parameters:
 jobs:
 - job: Final_AAR_Testing_Android
   pool:
-    name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    name: 'onnxruntime-Ubuntu2404-AMD-CPU'
     os: linux
   workspace:
     clean: all
@@ -40,12 +40,9 @@ jobs:
   steps:
   - template: set-version-number-variables-step.yml
 
-  - task: DownloadPipelineArtifact@2
+  - download: build
     displayName: 'Download Final Android AAR'
-    inputs:
-      buildType: 'current'
-      artifactName: '${{parameters.artifactName}}'
-      targetPath: '$(Build.BinariesDirectory)/final-android-aar'
+    artifact: '${{parameters.artifactName}}'
 
   - task: JavaToolInstaller@0
     displayName: Use jdk 17
@@ -61,7 +58,7 @@ jobs:
         mkdir -p android_test/android/app/libs
         cd android_test/android
         cp -av $(Build.SourcesDirectory)/java/src/test/android/* ./
-        cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
+        cp $(Pipeline.Workspace)/build/${{parameters.artifactName}}/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
     displayName: Copy Android test files and AAR to android_test directory
     workingDirectory: $(Build.BinariesDirectory)
 
@@ -87,11 +84,9 @@ jobs:
         start: true
 
     - script: |
-        set -e -x
-        cd android_test/android
         $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
       displayName: Run E2E test using Emulator
-      workingDirectory: $(Build.BinariesDirectory)
+      workingDirectory: $(Build.BinariesDirectory)/android_test/android
 
     - template: use-android-emulator.yml
       parameters:
@@ -118,22 +113,3 @@ jobs:
         fi
       displayName: Build APK for QNN and WebGPU package
       workingDirectory: $(Build.BinariesDirectory)/android_test/android
-
-  # we run e2e tests on one older device (Pixel 3) and one newer device (Galaxy 23)
-  - script: |
-      set -e -x
-      pip install requests
-
-      python $(Build.SourcesDirectory)/tools/python/upload_and_run_browserstack_tests.py \
-        --test_platform espresso \
-        --app_path "debug/app-debug.apk" \
-        --test_path "androidTest/debug/app-debug-androidTest.apk" \
-        --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0" \
-        --build_tag "${{ parameters.packageName }}"
-
-    displayName: Run E2E tests using Browserstack
-    workingDirectory: $(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk
-    timeoutInMinutes: 15
-    env:
-      BROWSERSTACK_ID: $(browserstack_username)
-      BROWSERSTACK_TOKEN: $(browserstack_access_key)

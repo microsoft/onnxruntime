@@ -18,14 +18,14 @@ stages:
           machine_pool: 'Onnxruntime-Linux-GPU'
           python_wheel_suffix: '_gpu'
           timeout: 480
-          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
+          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250724.1
           cuda_version: '12.2'
 
   - stage: Republish_Wheels
     dependsOn:
     jobs:
     - job: Python_Publishing_GPU
-      pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
       steps:
       - checkout: none
       - download: build

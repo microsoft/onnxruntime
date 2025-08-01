@@ -416,6 +416,8 @@ else:
     libs.extend(["onnxruntime_providers_qnn.dll"])
     # DirectML Libs
     libs.extend(["DirectML.dll"])
+    # WebGPU/Dawn Libs
+    libs.extend(["dxcompiler.dll", "dxil.dll"])
     # QNN V68/V73 dependencies
     qnn_deps = [
         "QnnCpu.dll",
@@ -476,7 +478,7 @@ examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join("datasets", x) for x in examples_names]
 
 # Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)
-extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm AI Hub Proprietary License.pdf"]
+extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm_LICENSE.pdf"]
 
 # Description
 readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"

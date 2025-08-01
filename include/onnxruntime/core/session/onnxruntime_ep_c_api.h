@@ -338,8 +338,14 @@ struct OrtEpApi {
    * The registered values will be used in calls to OrtEpFactory::CreateAllocator to ensure the required allocator/s
    * are available for EP usage.
    *
-   * At most one DEFAULT and one HOST_ACCESSIBLE entry can be added.
-   * Multiple calls for the same memory type will replace a previous entry.
+   * Multiple calls for the same entry type will replace a previous entry.
+   *
+   * Available entries:
+   *   - OrtDeviceAllocator with type of OrtDeviceMemoryType_DEFAULT
+   *   - OrtDeviceAllocator with type of OrtDeviceMemoryType_HOST_ACCESSIBLE
+   *   - OrtReadOnlyAllocator with type of OrtDeviceMemoryType_DEFAULT
+   *     - if provided this allocator will only be used to copy initializers to the device the EP uses.
+   *       ORT will use the OrtDeviceAllocator if not provided.
    *
    * \param[in] ep_device The OrtEpDevice instance to register the OrtMemoryInfo with.
    * \param[in] allocator_memory_info The OrtMemoryInfo information for the allocator.
@@ -424,6 +430,41 @@ struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API_T(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
+
+  /** \brief Get the OrtSyncStreamImpl associated with an OrtSyncStream instance.
+   *
+   * This allows an the plugin library to connect its OrtSyncStreamImpl instance with an OrtSyncStream if needed.
+   *
+   * \param[in] stream The OrtSyncStream instance to find an OrtSyncStreamImpl for.
+   * \return The associated OrtSyncStreamImpl if found. nullptr otherwise.
+   *
+   * \since Version 1.23.
+   *
+   * \remarks There should always be an OrtSyncStreamImpl associated with an OrtSyncStream instance that the EP gets.
+   */
+  ORT_API_T(const OrtSyncStreamImpl*, SyncStream_GetImpl, _In_ const OrtSyncStream* stream);
+
+  /** \brief Get the current sync ID for a stream.
+   *
+   * \param[in] stream The OrtSyncStream to get the sync ID for.
+   * \return Current sync ID.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(uint64_t, SyncStream_GetSyncId, _In_ const OrtSyncStream* stream);
+
+  /** \brief Get the sync ID for the last time the consumer_stream waited on the producer_stream.
+   *
+   * When two streams are synchronized, the sync id represents the event used in that synchronization.
+   *
+   * \param[in] producer_stream The OrtSyncStream that produced the data.
+   * \param[in] consumer_stream The OrtSyncStream that waited on the producer_stream.
+   * \return ID for last sync. 0 if no sync has occurred between the two streams.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(uint64_t, GetSyncIdForLastWaitOnSyncStream,
+            _In_ const OrtSyncStream* producer_stream, _In_ const OrtSyncStream* consumer_stream);
 };
 
 /**

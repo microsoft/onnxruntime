@@ -196,7 +196,7 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
     return Status::OK();
   }
 
-  const size_t packed_weights_size = MlasGemmPackBSize(N, K);
+  const size_t packed_weights_size = MlasGemmPackBSize(CblasNoTrans, CblasTrans, N, K);
   if (packed_weights_size == 0) {
     return Status::OK();
   }
@@ -217,7 +217,7 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
 
   const auto* weights_data = weights.Data<float>();
   for (int i = 0; i < num_directions_; i++) {
-    MlasGemmPackB(CblasTrans, N, K, weights_data, K, packed_weights_data);
+    MlasGemmPackB(CblasNoTrans, CblasTrans, N, K, weights_data, K, packed_weights_data);
     packed_weights_data = static_cast<uint8_t*>(packed_weights_data) + packed_weights_size;
     weights_data += N * K;
   }

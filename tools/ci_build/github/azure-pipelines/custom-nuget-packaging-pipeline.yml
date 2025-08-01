@@ -40,10 +40,33 @@ extends:
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
+    featureFlags:
+      binskimScanAllExtensions: true
     sdl:
+      binskim:
+        enabled: true
+        scanOutputDirectoryOnly: true
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
         os: windows
+      componentgovernance:
+        ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
+      spotBugs:
+        enabled: false
+        justificationForDisabling: "Getting ##[error]1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
+      codeql:
+        compiled:
+          enabled: false
+          justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
+      tsa:
+        enabled: true
+      codeSignValidation:
+        enabled: true
+        break: true
+        additionalTargetsGlobPattern: -|**\QnnCpu.dll;-|**\QnnGpu.dll;-|**\QnnHtp*.dll;-|**\QnnSystem.dll
+      policheck:
+        enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
 
     stages:
       - template: templates/win-ci.yml
@@ -75,6 +98,7 @@ extends:
           StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
           build_config: 'RelWithDebInfo'
           PublishArchive: true
+          PublishNugetToFeed: false
 
       - template: templates/mac-cpu-packaging-pipeline.yml
         parameters:
@@ -98,6 +122,10 @@ extends:
             inputs:
               versionSpec: '3.12'
               addToPath: true
+          - task: PipAuthenticate@1
+            displayName: 'Pip Authenticate'
+            inputs:
+              artifactFeeds: 'Lotus'
 
           - task: DownloadPipelineArtifact@0
             displayName: 'Download Pipeline Artifact - managed nuget'
@@ -129,7 +157,7 @@ extends:
               targetType: 'inline'
               script: |
                 mkdir -p $(Build.BinariesDirectory)/osx-x64
-                 Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-x86_64* -Destination $(Build.BinariesDirectory)/osx-x64
+                Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-x86_64* -Destination $(Build.BinariesDirectory)/osx-x64
 
                 mkdir -p $(Build.BinariesDirectory)/osx-arm64
                 Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-arm64* -Destination $(Build.BinariesDirectory)/osx-arm64
