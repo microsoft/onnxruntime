@@ -1111,90 +1111,93 @@ auto run_gemm_optimize_packed_test = [](int64_t M, int64_t K, int64_t N, BiasTyp
       .RunWithConfig();
 };
 
-TEST(GemmOpTest, GemmOptimizePacked) {
-  // Test different matrix sizes with all bias types and alpha/beta combinations
-  std::vector<std::tuple<int64_t, int64_t, int64_t>> test_sizes = {
-      {32, 32, 32}, {64, 64, 64}, {60, 16, 92}, {8, 8, 8}, {128, 128, 128}, {128, 32, 64}, {96, 24, 48}, {48, 48, 120}, {72, 80, 84}, {33, 67, 99}, {1, 1, 1}, {31, 31, 31}, {37, 64, 256}, {256, 64, 1024}, {1, 64, 448}};
+// Parameterized test for GEMM optimize packed variants
+struct GemmOptimizePackedParams {
+  int64_t M, K, N;
+  BiasType bias_type;
+  float alpha, beta;
+  bool transA, transB;
 
-  std::vector<BiasType> bias_types = {
-      BiasType::noBias, BiasType::MBias, BiasType::ScalarBias,
-      BiasType::MNBias, BiasType::NBias};
+  // Helper for readable test names
+  std::string ToString() const {
+    std::string name = std::to_string(M) + "x" + std::to_string(K) + "x" + std::to_string(N);
 
-  std::vector<std::pair<float, float>> alpha_beta_values = {
-      {1.0f, 1.0f}, {0.5f, 1.0f}, {1.0f, 2.0f}, {0.5f, 2.0f}, {2.0f, 0.5f}, {0.0f, 1.0f}, {1.0f, 0.0f}, {2.0f, 2.0f}, {0.0f, 0.0f}};
+    // Bias type names
+    const char* bias_names[] = {"noBias", "MBias", "ScalarBias", "MNBias", "NBias"};
+    name += "_" + std::string(bias_names[static_cast<int>(bias_type)]);
 
-  // Run tests with different combinations of matrix sizes, bias types, and alpha/beta values
-  for (const auto& size : test_sizes) {
-    for (const auto& bias_type : bias_types) {
-      for (const auto& [alpha, beta] : alpha_beta_values) {
-        run_gemm_optimize_packed_test(std::get<0>(size), std::get<1>(size), std::get<2>(size), bias_type, alpha, beta, false, false);
+    // Convert alpha to valid test name (replace . with p for point)
+    auto alpha_str = std::to_string(alpha);
+    std::replace(alpha_str.begin(), alpha_str.end(), '.', 'p');
+    // Remove trailing zeros but keep one decimal place
+    while (alpha_str.size() > 3 && alpha_str.back() == '0') {
+      alpha_str.pop_back();
+    }
+    name += "_a" + alpha_str;
+
+    // Convert beta to valid test name
+    auto beta_str = std::to_string(beta);
+    std::replace(beta_str.begin(), beta_str.end(), '.', 'p');
+    // Remove trailing zeros but keep one decimal place
+    while (beta_str.size() > 3 && beta_str.back() == '0') {
+      beta_str.pop_back();
+    }
+    name += "_b" + beta_str;
+
+    name += (transA ? "_transA" : "");
+    name += (transB ? "_transB" : "");
+    return name;
+  }
+};
+
+class GemmOptimizePackedTest : public ::testing::TestWithParam<GemmOptimizePackedParams> {};
+
+TEST_P(GemmOptimizePackedTest, TestVariants) {
+  const auto& params = GetParam();
+  run_gemm_optimize_packed_test(params.M, params.K, params.N, params.bias_type,
+                                params.alpha, params.beta, params.transA, params.transB);
+}
+
+// Test parameter generation
+std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
+  std::vector<GemmOptimizePackedParams> params;
+
+  std::vector<std::tuple<int64_t, int64_t, int64_t>> test_sizes = {{1, 1, 1}, {1, 64, 448}, {2, 3, 4}, {8, 8, 8}, {31, 31, 31}, {32, 32, 32}, {33, 67, 99}, {37, 64, 256}, {48, 48, 120}, {60, 16, 92}, {63, 64, 65}, {64, 64, 64}, {64, 64, 65}, {72, 80, 84}, {96, 24, 48}, {128, 32, 64}, {128, 128, 128}, {129, 129, 129}, {256, 64, 1024}};
+
+  std::vector<BiasType>
+      bias_types = {BiasType::noBias, BiasType::MBias, BiasType::ScalarBias, BiasType::MNBias, BiasType::NBias};
+
+  std::vector<std::pair<float, float>> alpha_beta_values = {{1.0f, 1.0f}, {0.5f, 1.0f}, {1.0f, 2.0f}, {0.5f, 2.0f}, {2.0f, 0.5f}, {0.0f, 1.0f}, {1.0f, 0.0f}, {2.0f, 2.0f}, {0.0f, 0.0f}};
+
+  // Test all four transpose combinations: (transA, transB)
+  std::vector<std::pair<bool, bool>> transpose_combinations = {
+      {false, false},  // No transpose
+      {true, false},   // Transpose A
+      {false, true},   // Transpose B
+      {true, true}     // Transpose A and B
+  };
+
+  // Generate all combinations
+  for (const auto& [transA, transB] : transpose_combinations) {
+    for (const auto& size : test_sizes) {
+      for (const auto& bias_type : bias_types) {
+        for (const auto& [alpha, beta] : alpha_beta_values) {
+          params.push_back({std::get<0>(size), std::get<1>(size), std::get<2>(size),
+                            bias_type, alpha, beta, transA, transB});
+        }
       }
     }
   }
+  return params;
 }
 
-TEST(GemmOpTest, GemmOptimizePackedTransA) {
-  std::vector<std::tuple<int64_t, int64_t, int64_t>> test_sizes = {
-      {32, 32, 32}, {64, 64, 64}, {60, 16, 92}, {8, 8, 8}, {128, 128, 128}, {128, 32, 64}, {96, 24, 48}, {48, 48, 120}, {72, 80, 84}, {33, 67, 99}, {1, 1, 1}, {31, 31, 31}, {2, 3, 4}, {63, 64, 65}, {129, 129, 129}, {37, 64, 256}, {256, 64, 1024}, {1, 64, 448}};
-
-  std::vector<BiasType> bias_types = {
-      BiasType::noBias, BiasType::MBias, BiasType::ScalarBias,
-      BiasType::MNBias, BiasType::NBias};
-
-  std::vector<std::pair<float, float>> alpha_beta_values = {
-      {1.0f, 1.0f}, {0.5f, 1.0f}, {1.0f, 2.0f}, {0.5f, 2.0f}, {2.0f, 0.5f}, {0.0f, 1.0f}, {1.0f, 0.0f}, {2.0f, 2.0f}, {0.0f, 0.0f}};
-
-  // Run tests with different combinations of matrix sizes, bias types, and alpha/beta values
-  for (const auto& size : test_sizes) {
-    for (const auto& bias_type : bias_types) {
-      for (const auto& [alpha, beta] : alpha_beta_values) {
-        run_gemm_optimize_packed_test(std::get<0>(size), std::get<1>(size), std::get<2>(size), bias_type, alpha, beta, true, false);
-      }
-    }
-  }
-}
-
-TEST(GemmOpTest, GemmOptimizePackedTransB) {
-  std::vector<std::tuple<int64_t, int64_t, int64_t>> test_sizes = {
-      {32, 32, 32}, {64, 64, 64}, {60, 16, 92}, {8, 8, 8}, {128, 128, 128}, {128, 32, 64}, {96, 24, 48}, {48, 48, 120}, {72, 80, 84}, {33, 67, 99}, {1, 1, 1}, {31, 31, 31}, {2, 3, 4}, {63, 64, 65}, {129, 129, 129}, {37, 64, 256}, {256, 64, 1024}, {1, 64, 448}};
-
-  std::vector<BiasType> bias_types = {
-      BiasType::noBias, BiasType::MBias, BiasType::ScalarBias,
-      BiasType::MNBias, BiasType::NBias};
-
-  std::vector<std::pair<float, float>> alpha_beta_values = {
-      {1.0f, 1.0f}, {0.5f, 1.0f}, {1.0f, 2.0f}, {0.5f, 2.0f}, {2.0f, 0.5f}, {0.0f, 1.0f}, {1.0f, 0.0f}, {2.0f, 2.0f}, {0.0f, 0.0f}};
-
-  // Run tests with different combinations of matrix sizes, bias types, and alpha/beta values
-  for (const auto& size : test_sizes) {
-    for (const auto& bias_type : bias_types) {
-      for (const auto& [alpha, beta] : alpha_beta_values) {
-        run_gemm_optimize_packed_test(std::get<0>(size), std::get<1>(size), std::get<2>(size), bias_type, alpha, beta, false, true);
-      }
-    }
-  }
-}
-
-TEST(GemmOpTest, GemmOptimizePackedTransAB) {
-  std::vector<std::tuple<int64_t, int64_t, int64_t>> test_sizes = {
-      {32, 32, 32}, {64, 64, 64}, {60, 16, 92}, {8, 8, 8}, {128, 128, 128}, {128, 32, 64}, {96, 24, 48}, {48, 48, 120}, {72, 80, 84}, {33, 67, 99}, {1, 1, 1}, {31, 31, 31}, {2, 3, 4}, {63, 64, 65}, {64, 64, 65}, {129, 129, 129}, {37, 64, 256}, {256, 64, 1024}, {1, 64, 448}};
-
-  std::vector<BiasType> bias_types = {
-      BiasType::noBias, BiasType::MBias, BiasType::ScalarBias,
-      BiasType::MNBias, BiasType::NBias};
-
-  std::vector<std::pair<float, float>> alpha_beta_values = {
-      {1.0f, 1.0f}, {0.5f, 1.0f}, {1.0f, 2.0f}, {0.5f, 2.0f}, {2.0f, 0.5f}, {0.0f, 1.0f}, {1.0f, 0.0f}, {2.0f, 2.0f}, {0.0f, 0.0f}};
-
-  // Run tests with different combinations of matrix sizes, bias types, and alpha/beta values
-  for (const auto& size : test_sizes) {
-    for (const auto& bias_type : bias_types) {
-      for (const auto& [alpha, beta] : alpha_beta_values) {
-        run_gemm_optimize_packed_test(std::get<0>(size), std::get<1>(size), std::get<2>(size), bias_type, alpha, beta, true, true);
-      }
-    }
-  }
-}
+INSTANTIATE_TEST_SUITE_P(
+    GemmOptimizePackedVariants,
+    GemmOptimizePackedTest,
+    ::testing::ValuesIn(GenerateGemmParams()),
+    [](const ::testing::TestParamInfo<GemmOptimizePackedParams>& info) {
+      return info.param.ToString();
+    });
 
 #if defined(USE_WEBGPU)
 // Test int32 with M=128, K=128, N=128, transA=True
