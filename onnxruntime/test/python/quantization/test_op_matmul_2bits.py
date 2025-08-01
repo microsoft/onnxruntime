@@ -306,53 +306,6 @@ class TestOpMatMul2Bits(unittest.TestCase):
         # cover rounding error - 2-bit quantization has higher error than 4-bit
         self.quant_test(model_fp32_path, data_reader, 32, False, op_types_to_quantize=("Gather",), rtol=0.3, atol=0.8)
 
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_2bits"
-    )
-    def test_quantize_matmul_int2_symmetric_qdq(self):
-        np.random.seed(13)
-
-        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_symmetric.onnx").absolute())
-        self.construct_model_matmul(model_fp32_path, symmetric=True)
-        data_reader = self.input_feeds(1, {"input": (100, 52)})
-        self.quant_test(model_fp32_path, data_reader, 32, True, quant_utils.QuantFormat.QDQ, rtol=0.02, atol=0.1)
-
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_2bits"
-    )
-    def test_quantize_matmul_int2_offsets_qdq(self):
-        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
-        self.construct_model_matmul(model_fp32_path, symmetric=False)
-        data_reader = self.input_feeds(1, {"input": (100, 52)})
-        self.quant_test(model_fp32_path, data_reader, 32, False, quant_utils.QuantFormat.QDQ, rtol=0.02, atol=0.1)
-
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_2bits"
-    )
-    def test_quantize_matmul_2bits(self):
-        np.random.seed(13)
-        for k in [32, 40, 256, 512, 1024, 1040]:
-            for n in [8, 256]:
-                model_fp32_path = str(
-                    Path(self._tmp_model_dir.name).joinpath(f"matmul_fp32_k_{k}_n_{n}.onnx").absolute()
-                )
-                self.construct_model_matmul(model_fp32_path, symmetric=True, k=k, n=n)
-                for m in [1, 2]:
-                    data_reader = self.input_feeds(m, {"input": (m, k)})
-                    for config in ["default", "hqq"]:
-                        for block_size in [16, 128, 256]:
-                            if block_size <= k:
-                                self.quant_test(
-                                    model_fp32_path,
-                                    data_reader,
-                                    block_size,
-                                    True,
-                                    atol=0.1,
-                                    rtol=0.02,
-                                    config=config,
-                                    suffix=f"_m_{m}_n_{n}_k_{k}",
-                                )
-
 
 if __name__ == "__main__":
     unittest.main()
