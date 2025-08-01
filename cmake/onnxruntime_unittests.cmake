@@ -1272,7 +1272,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         target_link_libraries(onnxruntime_perf_test PRIVATE debug dbghelp advapi32)
       endif()
     else()
-      target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+      target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common absl::flags absl::flags_parse ${onnx_test_libs})
     endif()
     set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 

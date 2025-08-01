@@ -35,7 +35,7 @@ void UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& te
 
 void ListDevices(const Ort::Env& env);
 
-std::string_view Basename(std::string_view filename);
+std::string_view GetBasename(std::string_view filename);
 
 }  // namespace utils
 }  // namespace perftest

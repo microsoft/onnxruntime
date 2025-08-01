@@ -64,6 +64,15 @@ void UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& te
   }
 }
 
+// This helper function returns the basename of the filename passed as an argument
+std::string_view GetBasename(std::string_view filename) {
+  auto last_slash_pos = filename.find_last_of("/\\");
+
+  return last_slash_pos == absl::string_view::npos
+             ? filename
+             : filename.substr(last_slash_pos + 1);
+}
+
 }  // namespace utils
 }  // namespace perftest
 }  // namespace onnxruntime

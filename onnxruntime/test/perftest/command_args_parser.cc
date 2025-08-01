@@ -355,9 +355,9 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
     // <program>_main.cc, where the <program> is the name of the binary (without .exe on Windows). See usage_config.cc in abseil for more details.
     absl::FlagsUsageConfig config;
     config.contains_help_flags = [](absl::string_view filename) {
-      auto suffix = utils::Basename(filename);
+      auto suffix = utils::GetBasename(filename);
       std::string_view file_has_the_flag_defs(__FILE__);
-      file_has_the_flag_defs = utils::Basename(file_has_the_flag_defs);
+      file_has_the_flag_defs = utils::GetBasename(file_has_the_flag_defs);
 
       return suffix == file_has_the_flag_defs;
     };
@@ -366,7 +366,6 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
       return std::string(f);
     };
     absl::SetFlagsUsageConfig(config);
-
     absl::SetProgramUsageMessage(CustomUsageMessage());
 
 #ifdef _WIN32
