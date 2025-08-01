@@ -367,7 +367,7 @@ class NvExecutionProvider : public IExecutionProvider {
   // Call cudaStreamSynchronize() after TRT enqueueV3()
   mutable bool sync_stream_after_enqueue_ = true;
 
- 
+
   // [Note] We don't use PerThreadContext for now since it has issue with multithreading
   //
   // TRT or CUDA objects that must be maintained on a per thread basis will be put under this PerThreadContext data structure.
@@ -380,7 +380,7 @@ class NvExecutionProvider : public IExecutionProvider {
     cublasHandle_t CublasHandle() const {
       return external_cublas_handle_;
     }
-    
+
     cudnnHandle_t CudnnHandle() const {
       return external_cudnn_handle_;
     }

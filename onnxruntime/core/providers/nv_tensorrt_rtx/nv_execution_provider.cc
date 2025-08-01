@@ -255,7 +255,8 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes,
-                                           ShapeRangesMap& input_explicit_shape_ranges) {
+                                           ShapeRangesMap& input_explicit_shape_ranges,
+                                           bool* cuda_graph_flag) {
   if (trt_profiles.size() == 0) {
     LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Number of optimization profiles should be greater than 0, but it's 0.";
     return false;
@@ -282,6 +283,10 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
 
     // Shape tensor
     if (input->isShapeTensor()) {
+      if(*cuda_graph_flag){
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Shape tensor detected on input '" << input->getName() << "'. Disabling CUDA Graph.";
+        *cuda_graph_flag = false;
+      }
       int shape_size = nb_dims == 0 ? 1 : static_cast<int>(profile_min_shapes[input_name][i].size());
       std::vector<int64_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
 
@@ -360,8 +365,11 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                      \
       data = const_cast<SrcT*>(input_tensor_ptr);                                           \
     } else {                                                                                \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1)); \
-      data = scratch_buffers.back().get();                                                  \
+      if (buffer_index >= scratch_buffers.size()) {                                         \
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));       \
+      }                                                                                     \
+      data = scratch_buffers[buffer_index].get();                                           \
+      buffer_index++;                                                                       \
     }                                                                                       \
     break;                                                                                  \
   }
@@ -371,13 +379,18 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                   \
     skip_input_binding_allowed = false;                                                                           \
     if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                            \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
-      data = scratch_buffers.back().get();                                                                        \
+      if (buffer_index >= scratch_buffers.size()) {                                                               \
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
+      }                                                                                                           \
+      data = scratch_buffers[buffer_index].get();                                                                 \
       cuda::Impl_Cast<SrcT, DstT>(stream, input_tensor_ptr, reinterpret_cast<DstT*>(data), elem_cnt);             \
     } else {                                                                                                      \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                       \
-      data = scratch_buffers.back().get();                                                                        \
+      if (buffer_index >= scratch_buffers.size()) {                                                               \
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                     \
+      }                                                                                                           \
+      data = scratch_buffers[buffer_index].get();                                                                 \
     }                                                                                                             \
+    buffer_index++;                                                                                               \
     break;                                                                                                        \
   }
 
@@ -388,8 +401,11 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                     \
       buffers[output_name] = output_tensor_ptr;                                             \
     } else {                                                                                \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1)); \
-      buffers[output_name] = scratch_buffers.back().get();                                  \
+      if (buffer_index >= scratch_buffers.size()) {                                                               \
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                     \
+      }                                                                                     \
+      buffers[output_name] = scratch_buffers[buffer_index].get();                           \
+      buffer_index++;                                                                       \
     }                                                                                       \
     break;                                                                                  \
   }
@@ -400,14 +416,19 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     data_ptr = output_tensor_ptr;                                                                                 \
     skip_output_binding_allowed = false;                                                                          \
     if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                           \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
-      buffers[output_name] = scratch_buffers.back().get();                                                        \
+      if (buffer_index >= scratch_buffers.size()) {                                                               \
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
+      }                                                                                                           \
+      buffers[output_name] = scratch_buffers[buffer_index].get();                                                 \
       output_dim_sizes[i] = static_cast<int>(elem_cnt);                                                           \
     } else {                                                                                                      \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                       \
-      buffers[output_name] = scratch_buffers.back().get();                                                        \
+      if (buffer_index >= scratch_buffers.size()) {                                                               \
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                     \
+      }                                                                                                           \
+      buffers[output_name] = scratch_buffers[buffer_index].get();                                                 \
       output_dim_sizes[i] = 1;                                                                                    \
     }                                                                                                             \
+    buffer_index++;                                                                                               \
     break;                                                                                                        \
   }
 
@@ -446,6 +467,7 @@ Status BindContextInput(Ort::KernelContext& ctx,
                         std::unordered_map<std::string, std::vector<int32_t>>& shape_tensor_values,
                         std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64,
                         std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
+                        size_t& buffer_index,
                         OrtAllocator* alloc,
                         cudaStream_t stream,
                         bool& skip_input_binding_allowed) {
@@ -594,6 +616,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
                          std::unordered_map<size_t, int>& output_dim_sizes,
                          DDSOutputAllocatorMap& dds_output_allocator_map,
                          std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
+                         size_t& buffer_index,
                          OrtAllocator* alloc,
                          std::unordered_map<char const*, void*>& buffers,
                          nvinfer1::Dims& dims,
@@ -2344,11 +2367,13 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
       // Apply explicit optimization profiles provided by user
       bool apply_profile = false;
+      bool cuda_graph_flag = cuda_graph_enable_;
       bool tensor_has_profile = profile_min_shapes_.find(input_name) != profile_min_shapes_.end() &&
                                 profile_opt_shapes_.find(input_name) != profile_opt_shapes_.end() &&
                                 profile_max_shapes_.find(input_name) != profile_max_shapes_.end();
       if (has_explicit_profile && tensor_has_profile) {
-        apply_profile = ApplyProfileShapesFromProviderOptions(trt_profiles, input, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_, input_explicit_shape_ranges);
+        apply_profile = ApplyProfileShapesFromProviderOptions(trt_profiles, input, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_, input_explicit_shape_ranges, &cuda_graph_flag);
+        cuda_graph_enable_ = cuda_graph_flag;
       } else {
         LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Creating implicit profile for tensor " << input_name;
         profile_min_shapes_[input_name] = std::vector<std::vector<int64_t>>{{}};
@@ -2375,7 +2400,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
             profile_max_shapes_[input_name][0][idx_dim] = dim_value;
           }
         }
-        apply_profile = ApplyProfileShapesFromProviderOptions(trt_profiles, input, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_, input_explicit_shape_ranges);
+        apply_profile = ApplyProfileShapesFromProviderOptions(trt_profiles, input, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_, input_explicit_shape_ranges, &cuda_graph_flag);
+        cuda_graph_enable_ = cuda_graph_flag;
       }
       if (!apply_profile) {
         std::ostringstream msg;
@@ -2718,6 +2744,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         nvinfer1::Dims dims;
         void* data_ptr = nullptr;
 
+
         Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
                                           dds_output_allocator_map, scratch_buffers, alloc, buffers, dims, data_ptr, skip_output_binding_allowed);
         if (status != Status::OK()) {
@@ -3044,15 +3071,15 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
         void* data_ptr = nullptr;
 
         Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
-                                          dds_output_allocator_map, scratch_buffers, alloc, buffers, dims, data_ptr, skip_output_binding_allowed);
-        if (status != Status::OK()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-        }
+          dds_output_allocator_map, scratch_buffers, alloc, buffers, dims, data_ptr, skip_output_binding_allowed);
+if (status != Status::OK()) {
+return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+}
 
-        trt_state->output_tensors[output_index] = TensorParams{data_ptr, dims};
-      }
+trt_state->output_tensors[output_index] = TensorParams{data_ptr, dims};
+}
 
-      trt_state->skip_io_binding_allowed = trt_state->skip_io_binding_allowed | skip_output_binding_allowed;
+trt_state->skip_io_binding_allowed = trt_state->skip_io_binding_allowed | skip_output_binding_allowed;
     }
 
     // Set execution context memory
