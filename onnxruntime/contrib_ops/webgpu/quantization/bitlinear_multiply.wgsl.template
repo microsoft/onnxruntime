@@ -3,7 +3,8 @@ const k_step_size_in_u32: u32 = 5;  // Count of K, packed as u32 processed in on
 const k_in_u32_for_A: u32 = 4;
 const tile_size: u32 = 64;
 const subtile_size = 16;
-const lut_size : u32 = 86;          // Size of the LUT for dequantization.
+
+#include "quantization/bitlinear_dequantize_lut.wgsl.template"
 
 // Shared memory
 var<workgroup> tile_A  : array<vec4<u32>, tile_size>;                              // 4  x 64 x 4 bytes.
@@ -11,97 +12,7 @@ var<workgroup> tile_A5 : array<u32, tile_size>;                                 
 var<workgroup> tile_B  : array<array<u32, 4>, tile_size>;                          // 4  x 64 x 4 bytes.
 var<workgroup> tile_B5 : array<u32, tile_size>;                                    // 1  x 64 x 4 bytes.
 var<workgroup> scratch_B  : array<array<i32, 4>, tile_size>;                       // 1  x 64 x 4 bytes.
-var<workgroup> shared_memory_LUT  : array<u32, lut_size>;                          // 87 x 4 bytes.
-
-// Unpacks a uint8 into 4xI8 vector.
-// Since every 3 consecutive values are the same, index with /3.
-const dequantize_LUT = array<u32, lut_size>(
-    0xFFFFFFFF,
-    0x00FFFFFF,
-    0x01FFFFFF,
-    0xFF00FFFF,
-    0x0000FFFF,
-    0x0100FFFF,
-    0xFF01FFFF,
-    0x0001FFFF,
-    0x0101FFFF,
-    0xFFFF00FF,
-    0x00FF00FF,
-    0x01FF00FF,
-    0xFF0000FF,
-    0x000000FF,
-    0x010000FF,
-    0xFF0100FF,
-    0x000100FF,
-    0x010100FF,
-    0xFFFF01FF,
-    0x00FF01FF,
-    0x01FF01FF,
-    0xFF0001FF,
-    0x000001FF,
-    0x010001FF,
-    0xFF0101FF,
-    0x000101FF,
-    0x010101FF,
-    0xFFFFFF00,
-    0x00FFFF00,
-    0x01FFFF00,
-    0xFF00FF00,
-    0x0000FF00,
-    0x0100FF00,
-    0xFF01FF00,
-    0x0001FF00,
-    0x0101FF00,
-    0xFFFF0000,
-    0x00FF0000,
-    0x01FF0000,
-    0xFF000000,
-    0x00000000,
-    0x01000000,
-    0xFF010000,
-    0x00010000,
-    0x01010000,
-    0xFFFF0100,
-    0x00FF0100,
-    0x01FF0100,
-    0xFF000100,
-    0x00000100,
-    0x01000100,
-    0xFF010100,
-    0x00010100,
-    0x01010100,
-    0xFFFFFF01,
-    0x00FFFF01,
-    0x01FFFF01,
-    0xFF00FF01,
-    0x0000FF01,
-    0x0100FF01,
-    0xFF01FF01,
-    0x0001FF01,
-    0x0101FF01,
-    0xFFFF0001,
-    0x00FF0001,
-    0x01FF0001,
-    0xFF000001,
-    0x00000001,
-    0x01000001,
-    0xFF010001,
-    0x00010001,
-    0x01010001,
-    0xFFFF0101,
-    0x00FF0101,
-    0x01FF0101,
-    0xFF000101,
-    0x00000101,
-    0x01000101,
-    0xFF010101,
-    0x00010101,
-    0x01010101,
-    0xFFFFFF00,
-    0xFFFFFF00,
-    0xFFFFFF00,
-    0x00FFFF00,
-    0x00FFFF00);
+var<workgroup> shared_memory_LUT  : array<u32, lut_size>;                          // 86 x 4 bytes.
 
 fn loadA(local_idx: u32, a_global_base: u32, kidx_v: u32) {
     // Load A and Scales using 128 threads.

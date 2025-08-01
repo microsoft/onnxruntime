@@ -45,6 +45,27 @@ Status BitLinearMultiplyProgram::GenerateShaderCode(ShaderHelper& shader) const 
   return WGSL_TEMPLATE_APPLY(shader, "quantization/bitlinear_multiply.wgsl.template");
 }
 
+Status BitLinearMultiplySmallMProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("input_a", ShaderUsage::UseUniform);
+  shader.AddInput("input_a5", ShaderUsage::UseUniform);
+  shader.AddInput("scales_a", ShaderUsage::UseUniform);
+  shader.AddInput("input_b", ShaderUsage::UseUniform);
+  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+
+  ORT_ENFORCE(WorkgroupSizeX() % tile_size_k_vec_ == 0 && tile_size_k_vec_ % 4 == 0,
+              "tile_size_k_vec_ must evenly divide workgroup size X and be divisible by 4");
+  const uint32_t kSubtileCount = WorkgroupSizeX() / tile_size_k_vec_;
+  ORT_ENFORCE(tile_size_ % kSubtileCount == 0, "tile_size_ must be divisible by sub_tile_count");
+
+  // This algorithm processes K in chunks for efficient computation with BitLinear's ternary quantization
+  // Each workgroup handles one row of matrix A and tile_size rows of matrix B
+  // Uses the BitLinear-specific packing where 5 ternary weights are packed per uint8
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/bitlinear_multiply_small_m.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
+                             WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_),
+                             WGSL_TEMPLATE_PARAMETER(sub_tile_count, kSubtileCount));
+}
+
 Status BitLinear::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* a = context.Input(0);
   const Tensor* b = context.Input(1);
@@ -100,8 +121,36 @@ Status BitLinear::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
     ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
   }
 
-  // Step 2: Matrix multiplication using BitLinearMultiplyProgram
-  {
+  // Step 2: Matrix multiplication using appropriate program based on M size
+  const uint32_t min_M_for_tile_optimization = 32;  // Similar to DP4A implementation
+
+  if (M < min_M_for_tile_optimization) {
+    // Use small M optimized program for generation mode (small batch sizes)
+    uint32_t tile_size_k_vec = 16;
+    uint32_t tile_size = 32;
+
+    if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
+      tile_size_k_vec = 32;
+      tile_size = 4;
+    }
+
+    BitLinearMultiplySmallMProgram multiply_program(tile_size_k_vec, tile_size);
+    uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
+    const uint32_t input_a_stride = (K_PADDED - (K_PADDED / 5)) / 16;
+
+    multiply_program
+        .SetWorkgroupSize(128)
+        .SetDispatchGroupSize(M * num_N_tile)
+        .AddInputs({{&quantized_a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
+                    {&quantized_a5, ProgramTensorMetadataDependency::TypeAndRank},
+                    {&scales_a, ProgramTensorMetadataDependency::TypeAndRank},
+                    {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kU32Components)}})
+        .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddUniformVariables({{M}, {N}, {K_PADDED}, {K_PADDED / 20}, {input_a_stride}, {scale_b_}, {num_N_tile}})
+        .CacheHint(tile_size_k_vec, tile_size);
+    ORT_RETURN_IF_ERROR(context.RunProgram(multiply_program));
+  } else {
+    // Use original tiled program for larger batch sizes
     BitLinearMultiplyProgram multiply_program;
     // input_a is vectorized as vec4<u32> which gives a packing of 16 elements per value.
     // Support for cases where (K_PADDED - (K_PADDED / 5)) is not divisible by 16, is not implemented.
