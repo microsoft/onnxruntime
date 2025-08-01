@@ -48,7 +48,6 @@ Status CheckInputs(MoEParameters& parameters,
                    const Tensor* fc3_experts_scales,   // required for qMoE; NULL for MOE
                    const int pack_size,                // number of weights packed together (like 2 for uint4 packed to uint8)
                    const bool is_fused_swiglu) {
-
   // Check dimensions of input to avoid input_dims index out of range. CHECK_TENSOR_SHAPE will verify each tensor later.
   ASSERT_TENSOR_2D_OR_3D(input);
   ASSERT_TENSOR_3D(fc1_experts_weights);
@@ -93,8 +92,8 @@ Status CheckInputs(MoEParameters& parameters,
 
   if (fc3_experts_weights == nullptr) {
     ORT_ENFORCE(fc3_experts_bias == nullptr && fc3_experts_scales == nullptr);
-  } else { // fc3 exists
-    ORT_ENFORCE(fc1_experts_scales == nullptr || fc3_experts_scales != nullptr); // MOE no scale, or qMOE need scales
+  } else {                                                                        // fc3 exists
+    ORT_ENFORCE(fc1_experts_scales == nullptr || fc3_experts_scales != nullptr);  // MOE no scale, or qMOE need scales
   }
 
   parameters.num_rows = num_rows;
