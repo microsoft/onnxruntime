@@ -157,7 +157,6 @@ bool DepthwiseConvKleidiAI(const size_t batches, const size_t in_height, const s
     }
 
     Shape out_shape{batches, static_cast<size_t>(out_h), static_cast<size_t>(out_w), channels};
-    Shape wei_shape{batches, filter_height, filter_width, channels};
 
     // -------------------------------------------------
     // 2. Calculate Reference Depthwise Values.
@@ -207,6 +206,7 @@ bool DepthwiseConvKleidiAI(const size_t batches, const size_t in_height, const s
         // f32_f32_f32p1vl -> f32 output, f32 LHS, packed F32 rhs as 1VL blocks.
         // 3x3_s : 3x3 filter with stride 1
         // 4xc : 4 output channels across the plane(c) is produced.
+
         kai_run_dw_conv_f32_f32_f32p1vl_3x3_s1_4xc_planar_sme2_mla(
             inptr, in_row_stride_elements * sizeof(float), channels * sizeof(float), static_cast<unsigned int>(pad_top),
             padding.left, static_cast<unsigned int>(valid_input_rows), weights_packed.data(), bias, outptr,

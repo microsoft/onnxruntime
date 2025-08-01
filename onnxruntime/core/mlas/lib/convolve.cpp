@@ -921,118 +921,124 @@ Return Value:
     }
 
 #endif
+    if(Algorithm == MlasConvAlgorithmExpandThenGemmSegmented){
+        if(!DepthwiseConvKleidiAI(BatchCount, Parameters->InputShape[0], Parameters->InputShape[1],
+            Parameters->InputChannels, Parameters->KernelShape[0], Parameters->KernelShape[1],
+            Input,Filter,Bias,Output, 0.0f /*<-Chosen ReLU Bound Values->*/, 6.0f)){
 
+        };
+    }
     //
     // Iterate over each batch and group.
     //
-    for (size_t batch = 0; batch < BatchCount; batch++) {
+    else{
+        for (size_t batch = 0; batch < BatchCount; batch++) {
 
-        const float* filter = Filter;
-        const float* bias = Bias;
+            const float* filter = Filter;
+            const float* bias = Bias;
 
-        for (size_t group = 0; group < GroupCount; group++) {
+            for (size_t group = 0; group < GroupCount; group++) {
 
-            //
-            // Dispatch the convolution.
-            //
+                //
+                // Dispatch the convolution.
+                //
 
-            switch (Algorithm) {
+                switch (Algorithm) {
 
-                case MlasConvAlgorithmGemmDirect:
-                {
-                    //
-                    // Invoke the threaded GEMM directly with the input tensor.
-                    //
+                    case MlasConvAlgorithmGemmDirect:
+                    {
+                        //
+                        // Invoke the threaded GEMM directly with the input tensor.
+                        //
 
-                    MlasGemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount, OutputSize,
-                             K, 1.0f, filter, K, Input, Parameters->u.GemmDirect.ldb,
-                             Parameters->Beta, Output, OutputSize, ThreadPool);
+                        MlasGemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount, OutputSize,
+                                K, 1.0f, filter, K, Input, Parameters->u.GemmDirect.ldb,
+                                Parameters->Beta, Output, OutputSize, ThreadPool);
 
-                    //
-                    // Apply the activation with optional bias.
-                    //
+                        //
+                        // Apply the activation with optional bias.
+                        //
 
-                    MlasActivation(Parameters->Activation, Output, bias, FilterCount,
-                        OutputSize, OutputSize);
+                        MlasActivation(Parameters->Activation, Output, bias, FilterCount,
+                            OutputSize, OutputSize);
 
-                    break;
-                }
-
-                case MlasConvAlgorithmExpandThenGemm:
-                {
-                    //
-                    // Expand the input tensor to the working buffer and then invoke the
-                    // threaded GEMM.
-                    //
-
-                    if (Parameters->Dimensions == 2) {
-                        MlasConvIm2Col(Parameters, Input, WorkingBuffer, 0, K, 0, OutputSize);
-                    } else {
-                        MlasConvVol2Col(Parameters, Input, WorkingBuffer, 0, K, 0, OutputSize);
+                        break;
                     }
 
-                    MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f, filter,
-                             K, WorkingBuffer, OutputSize, Parameters->Beta, Output, OutputSize,
-                             ThreadPool);
+                    case MlasConvAlgorithmExpandThenGemm:
+                    {
+                        //
+                        // Expand the input tensor to the working buffer and then invoke the
+                        // threaded GEMM.
+                        //
 
-                    //
-                    // Apply the activation with optional bias.
-                    //
-
-                    MlasActivation(Parameters->Activation, Output, bias, FilterCount,
-                        OutputSize, OutputSize);
-
-                    break;
-                }
-
-#if defined(MLAS_TARGET_WASM_SCALAR)
-
-                case MlasConvAlgorithmDepthwise:
-                {
-                    MlasConvDepthwiseFloat_CHW(Parameters, Input, filter, Output, WorkingBuffer);
-                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
-                    break;
-                }
-
-#endif
-
-                case MlasConvAlgorithmExpandThenGemmSegmented:
-                {
-                    //
-                    // Attempt to launch the convolution across multiple threads or fall
-                    // back to a single thread.
-                    //
-
-                    //Damo - 29/7/25 - Let's try the latest depthwise 3x3 stride 1
-                    //DepthwiseReference(BatchCount, Parameters->InputShape[0], Parameters->InputShape[1],
-                    //    Parameters->InputChannels, Parameters->KernelShape[0], Parameters->KernelShape[1],
-                    //    Input,filter,bias,Output, 0.0f /*<-Chosen ReLU Bound Values->*/, 6.0f);
-
-                    if(!DepthwiseConvKleidiAI(BatchCount, Parameters->InputShape[0], Parameters->InputShape[1],
-                        Parameters->InputChannels, Parameters->KernelShape[0], Parameters->KernelShape[1],
-                        Input,filter,bias,Output, 0.0f /*<-Chosen ReLU Bound Values->*/, 6.0f)){
-                        if (!MlasConvTryMultithread(Parameters, Input, filter, bias, WorkingBuffer,
-                            Output, ThreadPool)) {
-                            MlasConvOperation(Parameters, Input, filter, bias, WorkingBuffer,
-                                Output, 0, OutputSize);
+                        if (Parameters->Dimensions == 2) {
+                            MlasConvIm2Col(Parameters, Input, WorkingBuffer, 0, K, 0, OutputSize);
+                        } else {
+                            MlasConvVol2Col(Parameters, Input, WorkingBuffer, 0, K, 0, OutputSize);
                         }
+
+                        MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f, filter,
+                                K, WorkingBuffer, OutputSize, Parameters->Beta, Output, OutputSize,
+                                ThreadPool);
+
+                        //
+                        // Apply the activation with optional bias.
+                        //
+
+                        MlasActivation(Parameters->Activation, Output, bias, FilterCount,
+                            OutputSize, OutputSize);
+
                         break;
-                    };
-                    //break;
+                    }
+
+    #if defined(MLAS_TARGET_WASM_SCALAR)
+
+                    case MlasConvAlgorithmDepthwise:
+                    {
+                        MlasConvDepthwiseFloat_CHW(Parameters, Input, filter, Output, WorkingBuffer);
+                        MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
+                        break;
+                    }
+
+    #endif
+
+                    case MlasConvAlgorithmExpandThenGemmSegmented:
+                    {
+                        //
+                        // Attempt to launch the convolution across multiple threads or fall
+                        // back to a single thread.
+                        //
+
+                        //Damo - 29/7/25 - Let's try the latest depthwise 3x3 stride 1
+                        //DepthwiseReference(BatchCount, Parameters->InputShape[0], Parameters->InputShape[1],
+                        //    Parameters->InputChannels, Parameters->KernelShape[0], Parameters->KernelShape[1],
+                        //    Input,filter,bias,Output, 0.0f /*<-Chosen ReLU Bound Values->*/, 6.0f);
+
+
+                            //if (!MlasConvTryMultithread(Parameters, Input, filter, bias, WorkingBuffer,
+                            //    Output, ThreadPool)) {
+                            //    MlasConvOperation(Parameters, Input, filter, bias, WorkingBuffer,
+                            //        Output, 0, OutputSize);
+                            //}
+                            break;
+                        //};
+                        //break;
+                    }
                 }
+
+                //
+                // Advance the buffer pointers.
+                //
+
+                if (bias != nullptr) {
+                    bias += FilterCount;
+                }
+
+                filter += FilterGroupSize;
+                Input += InputGroupSize;
+                Output += OutputGroupSize;
             }
-
-            //
-            // Advance the buffer pointers.
-            //
-
-            if (bias != nullptr) {
-                bias += FilterCount;
-            }
-
-            filter += FilterGroupSize;
-            Input += InputGroupSize;
-            Output += OutputGroupSize;
         }
     }
 }
