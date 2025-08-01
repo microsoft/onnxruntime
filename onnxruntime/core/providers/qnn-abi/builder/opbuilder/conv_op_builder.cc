@@ -93,7 +93,7 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
   OrtNodeAttrHelper node_helper(qnn_model_wrapper.GetOrtApi(), node_unit);
   auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
-  ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
+  ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER" && auto_pad != "VALID",
                 "QNN Conv operators do not support 'auto_pad' value: ", auto_pad.c_str());
 
   OnnxConvType conv_type = {};
@@ -672,7 +672,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     pads.assign(kernel_shape.size() * 2, 0);
     pads = node_helper.Get("pads", pads);
     auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
-    ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
+    ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER" && auto_pad != "VALID",
                   "QNN Conv operators do not support 'auto_pad' value: ", auto_pad.c_str());
 
     if (auto_pad != "NOTSET") {

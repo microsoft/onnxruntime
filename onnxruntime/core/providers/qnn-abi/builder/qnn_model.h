@@ -60,7 +60,7 @@ class QnnModel {
                                  const OrtNode& fused_node,
                                  const logging::Logger& logger);
   Status ParseGraphInputOrOutput(const OrtGraph& ort_graph,
-                                 OrtArrayOfConstObjects* input_output_defs,
+                                 std::vector<const OrtValueInfo*> input_output_defs,
                                  std::vector<std::string>& input_output_names,
                                  std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
                                  std::unordered_map<std::string, size_t>& input_output_index,
@@ -93,20 +93,15 @@ class QnnModel {
 
   bool IsConstantInitializer(const OrtGraph& ort_graph,
                              const std::string& tensor_name) const {
-    std::unique_ptr<OrtArrayOfConstObjects> initializers_ptr;
-    Status status = ort_graph.GetInitializers(initializers_ptr);
+    size_t num_initializers = 0;
+    api_ptrs_.ort_api.Graph_GetNumInitializers(&ort_graph, &num_initializers);
+    std::vector<const OrtValueInfo*> initializers(num_initializers);
+    Status status = ort_graph.GetInitializers(initializers);
     if (!status.IsOK()) {
       return false;
     }
 
-    const OrtArrayOfConstObjects* initializers = initializers_ptr.get();
-    size_t num_initializers = 0;
-    api_ptrs_.ort_api.ArrayOfConstObjects_GetSize(initializers, &num_initializers);
-    const void* const* initializers_data = nullptr;
-    api_ptrs_.ort_api.ArrayOfConstObjects_GetData(initializers, &initializers_data);
-
-    for (size_t i = 0; i < num_initializers; ++i) {
-      const OrtValueInfo* value_info = static_cast<const OrtValueInfo*>(initializers_data[i]);
+    for (const OrtValueInfo* value_info : initializers) {
       const char* value_info_name = nullptr;
       api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name);
 

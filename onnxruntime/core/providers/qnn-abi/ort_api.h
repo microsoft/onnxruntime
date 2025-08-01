@@ -296,7 +296,6 @@ class OrtNodeAttrHelper {
  private:
   const OrtNode& node_;
   const OrtApi& ort_api_;
-  const OrtArrayOfConstObjects** attributes;
 };
 
 OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,

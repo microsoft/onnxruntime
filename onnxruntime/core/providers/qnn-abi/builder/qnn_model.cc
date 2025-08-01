@@ -34,13 +34,17 @@ bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper& model_wrapper, const loggi
 Status QnnModel::SetGraphInputOutputInfo(const OrtGraph& ort_graph,
                                          const OrtNode& fused_node,
                                          const logging::Logger& logger) {
-  OrtArrayOfConstObjects* input_defs;
-  api_ptrs_.ort_api.Node_GetInputs(&fused_node, &input_defs);
+  size_t num_inputs = 0;
+  api_ptrs_.ort_api.Node_GetNumInputs(&fused_node, &num_inputs);
+  std::vector<const OrtValueInfo*> input_defs(num_inputs);
+  api_ptrs_.ort_api.Node_GetInputs(&fused_node, input_defs.data(), input_defs.size());
   ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(ort_graph, input_defs, input_names_, inputs_info_,
                                               model_input_index_map_, logger, true));
 
-  OrtArrayOfConstObjects* output_defs;
-  api_ptrs_.ort_api.Node_GetOutputs(&fused_node, &output_defs);
+  size_t num_outputs = 0;
+  api_ptrs_.ort_api.Node_GetNumOutputs(&fused_node, &num_outputs);
+  std::vector<const OrtValueInfo*> output_defs(num_outputs);
+  api_ptrs_.ort_api.Node_GetOutputs(&fused_node, output_defs.data(), output_defs.size());
   ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(ort_graph, output_defs, output_names_, outputs_info_,
                                               model_output_index_map_, logger));
 
@@ -48,24 +52,17 @@ Status QnnModel::SetGraphInputOutputInfo(const OrtGraph& ort_graph,
 }
 
 Status QnnModel::ParseGraphInputOrOutput(const OrtGraph& ort_graph,
-                                         OrtArrayOfConstObjects* input_output_defs,
+                                         std::vector<const OrtValueInfo*> input_output_defs,
                                          std::vector<std::string>& input_output_names,
                                          std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
                                          std::unordered_map<std::string, size_t>& input_output_index_map,
                                          const logging::Logger& logger,
                                          bool is_input) {
-  const OrtArrayOfConstObjects* input_output_defs_const = const_cast<OrtArrayOfConstObjects*>(input_output_defs);
-  size_t input_output_defs_size;
-  api_ptrs_.ort_api.ArrayOfConstObjects_GetSize(input_output_defs_const, &input_output_defs_size);
-  const void* const* input_output_defs_data = nullptr;
-  api_ptrs_.ort_api.ArrayOfConstObjects_GetData(input_output_defs_const, &input_output_defs_data);
-
-  for (size_t i = 0, end = input_output_defs_size, index = 0; i < end; ++i) {
-    const OrtValueInfo* input_output_def_data = static_cast<const OrtValueInfo*>(input_output_defs_data[i]);
+  for (size_t i = 0, end = input_output_defs.size(), index = 0; i < end; ++i) {
+    const OrtValueInfo* input_output_def_data = input_output_defs[i];
     const char* input_output_def_name = nullptr;
     api_ptrs_.ort_api.GetValueInfoName(input_output_def_data, &input_output_def_name);
     const auto name = std::string(input_output_def_name);
-    // const auto& name = input_output_defs[i]->Name();
     if (is_input) {
       if (IsConstantInitializer(ort_graph, name)) {
         continue;  // exclude initializer inputs

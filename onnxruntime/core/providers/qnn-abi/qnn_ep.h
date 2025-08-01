@@ -49,27 +49,27 @@ class QnnEp : public OrtEp, public ApiPtrs {
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;
   static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr,
                                                    const OrtGraph* graph,
-                                                   OrtEpGraphSupportInfo* graph_support_info);
+                                                   OrtEpGraphSupportInfo* graph_support_info) noexcept;
   static OrtStatus* ORT_API_CALL CompileImpl(_In_ OrtEp* this_ptr,
                                              _In_ const OrtGraph** graphs,
                                              _In_ const OrtNode** fused_nodes,
                                              _In_ size_t count,
                                              _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
-                                             _Out_writes_(count) OrtNode** ep_context_nodes);
+                                             _Out_writes_(count) OrtNode** ep_context_nodes) noexcept;
   static void ORT_API_CALL ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
                                                        OrtNodeComputeInfo** node_compute_infos,
-                                                       size_t num_node_compute_infos);
+                                                       size_t num_node_compute_infos) noexcept;
   static OrtStatus* ORT_API_CALL GetPreferredDataLayoutImpl(_In_ OrtEp* this_ptr,
-                                                            _Out_ OrtEpDataLayout* preferred_data_layout);
+                                                            _Out_ OrtEpDataLayout* preferred_data_layout) noexcept;
   static OrtStatus* ORT_API_CALL ShouldConvertDataLayoutForOpImpl(_In_ OrtEp* this_ptr,
                                                                   _In_z_ const char* domain,
                                                                   _In_z_ const char* op_type,
                                                                   _In_ OrtEpDataLayout target_data_layout,
-                                                                  _Outptr_ int* should_convert);
-  static OrtStatus* ORT_API_CALL OnRunStartImpl(_In_ OrtEp* this_ptr, _In_ const OrtRunOptions* run_options);
+                                                                  _Outptr_ int* should_convert) noexcept;
+  static OrtStatus* ORT_API_CALL OnRunStartImpl(_In_ OrtEp* this_ptr, _In_ const OrtRunOptions* run_options) noexcept;
   static OrtStatus* ORT_API_CALL OnRunEndImpl(_In_ OrtEp* this_ptr,
                                               _In_ const OrtRunOptions* run_options,
-                                              _In_ bool sync_stream);
+                                              _In_ bool sync_stream) noexcept;
 
   OrtStatus* GetSupportedNodes(OrtEp* this_ptr,
                                const OrtGraph* graph,

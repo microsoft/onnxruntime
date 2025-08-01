@@ -21,26 +21,20 @@ const OrtNodeUnit* GetOnlyChildOfType(const QnnModelWrapper& qnn_model_wrapper,
   const OrtNode& parent_node = parent_node_unit.GetNode();
 
   // Parent must have a single child (1 output edge) and must not produce a graph output.
-  OrtArrayOfConstObjects* outputs = nullptr;
-  ort_api.Node_GetOutputs(&parent_node, &outputs);
-
   size_t num_outputs = 0;
-  ort_api.ArrayOfConstObjects_GetSize(outputs, &num_outputs);
-
+  ort_api.Node_GetNumOutputs(&parent_node, &num_outputs);
   if (num_outputs != 1) {
-    ort_api.ReleaseArrayOfConstObjects(outputs);
     return nullptr;
   }
+  std::vector<const OrtValueInfo*> outputs(num_outputs);
+  ort_api.Node_GetOutputs(&parent_node, outputs.data(), outputs.size());
 
   // Check if any of the node's outputs are graph outputs
-  const void* const* outputs_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(outputs, &outputs_data);
-  const OrtValueInfo* output_info = static_cast<const OrtValueInfo*>(outputs_data[0]);
+  const OrtValueInfo* output_info = outputs[0];
 
   bool is_graph_output = false;
   Status status = output_info->IsGraphOutput(is_graph_output);
   if (status.IsOK() && is_graph_output) {
-    ort_api.ReleaseArrayOfConstObjects(outputs);
     return nullptr;
   }
 
@@ -48,24 +42,19 @@ const OrtNodeUnit* GetOnlyChildOfType(const QnnModelWrapper& qnn_model_wrapper,
   std::vector<OrtValueInfo::ConsumerInfo> consumer_infos;
   status = output_info->GetConsumerInfos(consumer_infos);
   if (!status.IsOK() || consumer_infos.empty()) {
-    ort_api.ReleaseArrayOfConstObjects(outputs);
     return nullptr;
   }
 
   // We should have exactly one consumer
   if (consumer_infos.size() != 1) {
-    ort_api.ReleaseArrayOfConstObjects(outputs);
     return nullptr;
   }
 
   // Get the child node
   const OrtNode* child_node_ptr = consumer_infos[0].node;
   if (child_node_ptr == nullptr) {
-    ort_api.ReleaseArrayOfConstObjects(outputs);
     return nullptr;
   }
-
-  ort_api.ReleaseArrayOfConstObjects(outputs);
 
   // Child must be of a valid type.
   const std::string& child_type = child_node_ptr->GetOpType();

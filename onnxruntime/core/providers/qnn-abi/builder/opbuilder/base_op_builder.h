@@ -14,6 +14,8 @@
 namespace onnxruntime {
 namespace qnn {
 
+class QnnModelWrapper;
+
 class BaseOpBuilder : public IOpBuilder {
  public:
   BaseOpBuilder(const std::string& op_builder_type) : op_builder_type_(op_builder_type) {}
@@ -68,6 +70,18 @@ class BaseOpBuilder : public IOpBuilder {
     ORT_UNUSED_PARAMETER(quant_param);
     return Status::OK();
   }
+
+  Status ProcessDataTypes(QnnModelWrapper& qnn_model_wrapper,
+                          const OrtNodeUnit& node_unit) const ORT_MUST_USE_RESULT;
+
+  virtual Status CheckCpuDataTypes(const std::vector<Qnn_DataType_t>,
+                                   const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
+
+  virtual Status CheckHtpDataTypes(const std::vector<Qnn_DataType_t>,
+                                   const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
+
+  virtual Status CheckGpuDataTypes(const std::vector<Qnn_DataType_t>,
+                                   const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
 
   virtual Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                const OrtNodeUnit& node_unit,

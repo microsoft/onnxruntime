@@ -40,14 +40,13 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper, const Or
 /// @return The index of the scalar input (0 or 1) if found, otherwise std::nullopt
 std::optional<size_t> GetMulScalarInputIndex(const OrtNodeUnit& mul, const OrtApi& ort_api) {
   // Get inputs of mul node
-  OrtArrayOfConstObjects* inputs = nullptr;
-  ort_api.Node_GetInputs(&mul.GetNode(), &inputs);
+  size_t num_inputs = 0;
+  ort_api.Node_GetNumInputs(&mul.GetNode(), &num_inputs);
+  std::vector<const OrtValueInfo*> inputs(num_inputs);
+  ort_api.Node_GetInputs(&mul.GetNode(), inputs.data(), inputs.size());
 
-  const void* const* inputs_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(inputs, &inputs_data);
-
-  const OrtValueInfo* mul_x = static_cast<const OrtValueInfo*>(inputs_data[0]);
-  const OrtValueInfo* mul_y = static_cast<const OrtValueInfo*>(inputs_data[1]);
+  const OrtValueInfo* mul_x = inputs[0];
+  const OrtValueInfo* mul_y = inputs[1];
 
   // Get type info for inputs
   const OrtTypeInfo* x_type_info = mul_x->GetTypeInfo();
@@ -67,8 +66,6 @@ std::optional<size_t> GetMulScalarInputIndex(const OrtNodeUnit& mul, const OrtAp
 
   bool is_x_scalar = (x_dims_count == 0);
   bool is_y_scalar = (y_dims_count == 0);
-
-  ort_api.ReleaseArrayOfConstObjects(inputs);
 
   if (is_y_scalar) {
     return 1U;
@@ -97,21 +94,18 @@ std::optional<uint32_t> GetPositiveSoftmaxAxis(const OrtNodeUnit& mul, const Ort
     size_t input_other_index = 1U - input_scale_index.value();
 
     // Get the other input's shape
-    OrtArrayOfConstObjects* inputs = nullptr;
-    ort_api.Node_GetInputs(&mul.GetNode(), &inputs);
+    size_t num_inputs = 0;
+    ort_api.Node_GetNumInputs(&mul.GetNode(), &num_inputs);
+    std::vector<const OrtValueInfo*> inputs(num_inputs);
+    ort_api.Node_GetInputs(&mul.GetNode(), inputs.data(), inputs.size());
 
-    const void* const* inputs_data = nullptr;
-    ort_api.ArrayOfConstObjects_GetData(inputs, &inputs_data);
-
-    const OrtValueInfo* other_input = static_cast<const OrtValueInfo*>(inputs_data[input_other_index]);
+    const OrtValueInfo* other_input = inputs[input_other_index];
     const OrtTypeInfo* type_info = other_input->GetTypeInfo();
     const OrtTensorTypeAndShapeInfo* tensor_info = nullptr;
     ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_info);
 
     size_t dims_count = 0;
     ort_api.GetDimensionsCount(tensor_info, &dims_count);
-
-    ort_api.ReleaseArrayOfConstObjects(inputs);
 
     axis_value += static_cast<int64_t>(dims_count);
   }
@@ -131,19 +125,16 @@ std::optional<float> ExtractScalarValueFromMul(const QnnModelWrapper& qnn_model_
   }
 
   // Get inputs of mul node
-  OrtArrayOfConstObjects* inputs = nullptr;
-  ort_api.Node_GetInputs(&mul.GetNode(), &inputs);
+  size_t num_inputs = 0;
+  ort_api.Node_GetNumInputs(&mul.GetNode(), &num_inputs);
+  std::vector<const OrtValueInfo*> inputs(num_inputs);
+  ort_api.Node_GetInputs(&mul.GetNode(), inputs.data(), inputs.size());
 
-  const void* const* inputs_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(inputs, &inputs_data);
-
-  const OrtValueInfo* scalar_input = static_cast<const OrtValueInfo*>(inputs_data[input_scale_index.value()]);
+  const OrtValueInfo* scalar_input = inputs[input_scale_index.value()];
 
   // Get the name of the scalar input
   const char* scalar_name = nullptr;
   ort_api.GetValueInfoName(scalar_input, &scalar_name);
-
-  ort_api.ReleaseArrayOfConstObjects(inputs);
 
   // Check if it's a constant initializer
   if (!qnn_model_wrapper.IsConstantInput(scalar_name)) {

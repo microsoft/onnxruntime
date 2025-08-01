@@ -59,18 +59,15 @@ Status UDOBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrappe
     output_names.emplace_back(output_name);
   }
 
-  OrtArrayOfConstObjects* attributes = nullptr;
-  ort_api.Node_GetAttributes(&(node_unit.GetNode()), &attributes);
-  const OrtArrayOfConstObjects* attributes_const = static_cast<const OrtArrayOfConstObjects*>(attributes);
-  size_t num_attrs = 0;
-  ort_api.ArrayOfConstObjects_GetSize(attributes_const, &num_attrs);
-  const void* const* attrs_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(attributes_const, &attrs_data);
+  size_t num_attributes = 0;
+  ort_api.Node_GetNumAttributes(&(node_unit.GetNode()), &num_attributes);
+  std::vector<const OrtOpAttr*> attributes(num_attributes);
+  ort_api.Node_GetAttributes(&(node_unit.GetNode()), attributes.data(), attributes.size());
 
   std::vector<std::string> param_names;
   OrtNodeAttrHelper node_helper(ort_api, node_unit);
-  for (size_t i = 0; i < num_attrs; ++i) {
-    const OrtOpAttr* attr = static_cast<const OrtOpAttr*>(attrs_data[i]);
+  for (size_t i = 0; i < num_attributes; ++i) {
+    const OrtOpAttr* attr = attributes[i];
     OrtOpAttrType attr_type = ORT_OP_ATTR_UNDEFINED;
     ort_api.OpAttr_GetType(attr, &attr_type);
     const char* attribute_name;

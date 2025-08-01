@@ -53,13 +53,11 @@ QnnEpFactory::QnnEpFactory(const char* ep_name,
                                        OrtAllocatorType::OrtDeviceAllocator,
                                        &mem_info);
   assert(status == nullptr);  // should never fail.
-  host_accessible_npu_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
 
   // if we were to use NPU we'd create it like this
   data_transfer_impl_ = std::make_unique<QnnDataTransfer>(
       ort_api_in,
-      ep_api.MemoryInfo_GetMemoryDevice(default_npu_memory_info_.get()),         // device memory
-      ep_api.MemoryInfo_GetMemoryDevice(host_accessible_npu_memory_info_.get())  // shared memory
+      ep_api.MemoryInfo_GetMemoryDevice(default_npu_memory_info_.get())  // device memory
   );
 }
 

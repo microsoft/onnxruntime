@@ -17,25 +17,19 @@ OrtNodeUnit::OrtNodeUnit(const OrtNode& node, const OrtApi& ort_api) : target_no
 }
 
 void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
-  OrtArrayOfConstObjects* inputs_array = nullptr;
-  OrtArrayOfConstObjects* outputs_array = nullptr;
-
-  ort_api.Node_GetInputs(&target_node_, &inputs_array);
-  ort_api.Node_GetOutputs(&target_node_, &outputs_array);
-
   size_t num_inputs = 0;
   size_t num_outputs = 0;
-  ort_api.ArrayOfConstObjects_GetSize(inputs_array, &num_inputs);
-  ort_api.ArrayOfConstObjects_GetSize(outputs_array, &num_outputs);
+  ort_api.Node_GetNumInputs(&target_node_, &num_inputs);
+  ort_api.Node_GetNumOutputs(&target_node_, &num_outputs);
 
-  const void* const* inputs_data = nullptr;
-  const void* const* outputs_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(inputs_array, &inputs_data);
-  ort_api.ArrayOfConstObjects_GetData(outputs_array, &outputs_data);
+  std::vector<const OrtValueInfo*> inputs_data(num_inputs);
+  std::vector<const OrtValueInfo*> outputs_data(num_outputs);
+  ort_api.Node_GetInputs(&target_node_, inputs_data.data(), inputs_data.size());
+  ort_api.Node_GetOutputs(&target_node_, outputs_data.data(), outputs_data.size());
 
-  auto add_io_def = [&](std::vector<OrtNodeUnitIODef>& io_defs, const void* const* data, size_t num_data) {
+  auto add_io_def = [&](std::vector<OrtNodeUnitIODef>& io_defs, std::vector<const OrtValueInfo*> data, size_t num_data) {
     for (size_t idx = 0; idx < num_data; ++idx) {
-      const OrtValueInfo* io = static_cast<const OrtValueInfo*>(data[idx]);
+      const OrtValueInfo* io = data[idx];
 
       // Get name.
       const char* name = nullptr;
@@ -70,9 +64,6 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
 
   outputs_.reserve(num_outputs);
   add_io_def(outputs_, outputs_data, num_outputs);
-
-  ort_api.ReleaseArrayOfConstObjects(inputs_array);
-  ort_api.ReleaseArrayOfConstObjects(outputs_array);
 }
 
 // std::vector<const Node*> Graph__Nodes(const Graph& graph) {

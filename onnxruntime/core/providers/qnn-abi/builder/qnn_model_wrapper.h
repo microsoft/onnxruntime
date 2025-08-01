@@ -115,28 +115,22 @@ class QnnModelWrapper {
     return std::move(model_output_tensor_wrappers_);
   }
 
-  Status GetInitializerTensors(std::unique_ptr<OrtArrayOfConstObjects>& initializers) const {
+  Status GetInitializerTensors(gsl::span<const OrtValueInfo*> initializers) const {
     return ort_graph_.GetInitializers(initializers);
   }
 
   // Find an initializer by name
   Status FindInitializer(const std::string& tensor_name,
                          const OrtValueInfo** found_value_info = nullptr) const {
-    std::unique_ptr<OrtArrayOfConstObjects> initializers_ptr;
-    Status status = GetInitializerTensors(initializers_ptr);
+    size_t num_initializers = 0;
+    api_ptrs_.ort_api.Graph_GetNumInitializers(&ort_graph_, &num_initializers);
+    std::vector<const OrtValueInfo*> initializers(num_initializers);
+    Status status = GetInitializerTensors(initializers);
     if (!status.IsOK()) {
       return status;
     }
 
-    const OrtArrayOfConstObjects* initializers = initializers_ptr.get();
-    size_t num_initializers = 0;
-    api_ptrs_.ort_api.ArrayOfConstObjects_GetSize(initializers, &num_initializers);
-
-    const void* const* initializers_data = nullptr;
-    api_ptrs_.ort_api.ArrayOfConstObjects_GetData(initializers, &initializers_data);
-
-    for (size_t i = 0; i < num_initializers; ++i) {
-      const OrtValueInfo* value_info = static_cast<const OrtValueInfo*>(initializers_data[i]);
+    for (const OrtValueInfo* value_info : initializers) {
       const char* value_info_name = nullptr;
       api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name);
 

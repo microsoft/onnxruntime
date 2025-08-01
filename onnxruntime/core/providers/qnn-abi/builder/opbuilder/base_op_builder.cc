@@ -17,9 +17,12 @@ std::string BaseOpBuilder::GetOpBuilderType() const {
   return op_builder_type_;
 }
 
+// Add operator related
 Status BaseOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const OrtNodeUnit& node_unit,
                                     const logging::Logger& logger) const {
+  // // General Datatype checks on various QNN backend (HTP, CPU, GPU)
+  // ORT_RETURN_IF_ERROR(ProcessDataTypes(qnn_model_wrapper, node_unit));
   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
 }
 
@@ -37,6 +40,47 @@ Status BaseOpBuilder::AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_ERROR(ProcessInt64Tensors(qnn_model_wrapper, node_unit, input_names));
   ORT_RETURN_IF_ERROR(ProcessAttributesAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names),
                                                   logger, do_op_validation));
+  return Status::OK();
+}
+
+Status BaseOpBuilder::ProcessDataTypes(QnnModelWrapper& qnn_model_wrapper,
+                                       const OrtNodeUnit& node_unit) const {
+  std::vector<Qnn_DataType_t> input_qnn_dtypes;
+  std::vector<Qnn_DataType_t> output_qnn_dtypes;
+  const auto& inputs = node_unit.Inputs();
+  const auto& outputs = node_unit.Outputs();
+  for (auto input : inputs) {
+    TensorInfo tensor_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, tensor_info));
+    Qnn_DataType_t qnn_data_type = tensor_info.qnn_data_type;
+    input_qnn_dtypes.push_back(qnn_data_type);
+  }
+  for (auto output : outputs) {
+    TensorInfo tensor_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(output, tensor_info));
+    Qnn_DataType_t qnn_data_type = tensor_info.qnn_data_type;
+    output_qnn_dtypes.push_back(qnn_data_type);
+  }
+  if (IsCpuBackend(qnn_model_wrapper.GetQnnBackendType())) {
+    return CheckCpuDataTypes(input_qnn_dtypes, output_qnn_dtypes);
+  } else if (IsNpuBackend(qnn_model_wrapper.GetQnnBackendType())) {
+    return CheckHtpDataTypes(input_qnn_dtypes, output_qnn_dtypes);
+  } else if (IsGpuBackend(qnn_model_wrapper.GetQnnBackendType())) {
+    return CheckGpuDataTypes(input_qnn_dtypes, output_qnn_dtypes);
+  }
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Only support backend: CPU, HTP and GPU");
+}
+
+Status BaseOpBuilder::CheckCpuDataTypes(const std::vector<Qnn_DataType_t>,
+                                        const std::vector<Qnn_DataType_t>) const {
+  return Status::OK();
+}
+Status BaseOpBuilder::CheckHtpDataTypes(const std::vector<Qnn_DataType_t>,
+                                        const std::vector<Qnn_DataType_t>) const {
+  return Status::OK();
+}
+Status BaseOpBuilder::CheckGpuDataTypes(const std::vector<Qnn_DataType_t>,
+                                        const std::vector<Qnn_DataType_t>) const {
   return Status::OK();
 }
 
@@ -376,6 +420,8 @@ Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrap
 Status DataTypeCheckForCpuBackend(QnnModelWrapper& qnn_model_wrapper,
                                   ONNXTensorElementDataType onnx_tensor_data_type,
                                   std::string error_msg = "") {
+  // TODO: Retire the DataTypeCheckForCpuBackend once all Ops transition to using BaseOpBuilder::ProcessDataTypes
+  // Due to varying datatype support for each op in Qnn CPU backend, we need to implement CheckCpuDataTypes for each op.
   if (error_msg.empty()) {
     error_msg = "QNN CPU backend only support float data type.";
   }

@@ -123,14 +123,10 @@ static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeG
   const OrtGraph& graph = qnn_model_wrapper.GetOrtGraph();
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
 
-  OrtArrayOfConstObjects* nodes = nullptr;
-  ort_api.Graph_GetNodes(&graph, &nodes);
-
   size_t num_nodes = 0;
-  ort_api.ArrayOfConstObjects_GetSize(nodes, &num_nodes);
-
-  const void* const* node_data = nullptr;
-  ort_api.ArrayOfConstObjects_GetData(nodes, &node_data);
+  ort_api.Graph_GetNumNodes(&graph, &num_nodes);
+  std::vector<const OrtNode*> nodes(num_nodes);
+  ort_api.Graph_GetNodes(&graph, nodes.data(), nodes.size());
 
   sorted_qnn_node_group_indices.reserve(num_node_units);
   qnn_node_groups.reserve(num_node_units);
@@ -143,7 +139,7 @@ static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeG
   // Process just the fusions of NodeUnits first to ensure a correct topological order of all IQnnNodeGroups.
   // This is the same approach taken by ORT utilities for grouping Nodes into NodeUnits.
   for (size_t node_index = 0; node_index < num_nodes; ++node_index) {
-    gsl::not_null<const OrtNode*> node = static_cast<const OrtNode*>(node_data[node_index]);
+    gsl::not_null<const OrtNode*> node = nodes[node_index];
 
     // Get the NodeUnit associated with the node.
     const auto node_unit_it = node_to_node_unit.find(node);

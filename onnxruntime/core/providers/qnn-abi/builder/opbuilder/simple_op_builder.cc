@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace qnn {
 
-// Operator which only need to hanle node inputs & outputs, no attributes or no need to handle attributes
+// Operator which only need to handle node inputs & outputs, no attributes or no need to handle attributes
 class SimpleOpBuilder : public BaseOpBuilder {
  public:
   SimpleOpBuilder() : BaseOpBuilder("SimpleOpBuilder") {}
@@ -38,7 +38,7 @@ class SimpleOpBuilder : public BaseOpBuilder {
                                     const logging::Logger& logger,
                                     bool do_op_validation) const ORT_MUST_USE_RESULT;
 
-  static constexpr std::array<std::string_view, 2> gridsample_supported_modes = {"bilinear", "nearest"};
+  static constexpr std::array<std::string_view, 3> gridsample_supported_modes = {"bilinear", "nearest", "linear"};
   static constexpr std::array<std::string_view, 3> gridsample_supported_padding_modes = {"zeros", "border", "reflection"};
   static constexpr std::array<std::string_view, 3> scatternd_supported_reduction = {"none", "add", "mul"};
 };
@@ -60,8 +60,8 @@ Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
   // To DO: Remove once QNN CPU supports ScatterND
   const auto qnn_backend_type = qnn_model_wrapper.GetQnnBackendType();
   if (op_type == "ScatterND") {
-    ORT_RETURN_IF_NOT(qnn_backend_type == QnnBackendType::HTP,
-                      "QNN EP only supports ScatterND op on HTP backend. Falling back to ORT CPU.");
+    ORT_RETURN_IF(qnn_backend_type == QnnBackendType::CPU,
+                  "QNN EP does not support ScatterND op on CPU backend. Falling back to ORT CPU.");
   }
 
   // ONNX's Min, Max, and Sum operators accept a variable number of inputs (i.e., variadic).
@@ -233,12 +233,12 @@ Status ProcessGridSampleAttributes(QnnModelWrapper& qnn_model_wrapper,
   std::string mode = node_helper.Get("mode", "linear");
   Qnn_Scalar_t mode_qnn_scalar = QNN_SCALAR_INIT;
   mode_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
-  if ("bilinear" == mode) {
+  if ("linear" == mode || "bilinear" == mode) {
     mode_qnn_scalar.uint32Value = QNN_OP_GRID_SAMPLE_MODE_BILINEAR;
   } else if ("nearest" == mode) {
     mode_qnn_scalar.uint32Value = QNN_OP_GRID_SAMPLE_MODE_NEAREST;
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GridSample mode only support bilinear & nearest.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GridSample mode only support [linear, bilinear, nearest].");
   }
   QnnParamWrapper mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_GRID_SAMPLE_PARAM_MODE, mode_qnn_scalar);
   param_tensor_names.push_back(mode_param.GetParamTensorName());
@@ -254,7 +254,7 @@ Status ProcessGridSampleAttributes(QnnModelWrapper& qnn_model_wrapper,
   } else if ("reflection" == padding_mode) {
     padding_mode_qnn_scalar.uint32Value = QNN_OP_GRID_SAMPLE_PADDING_MODE_REFLECTION;
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GridSample padding_mode only support zeros, border & reflection.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GridSample padding_mode only support [zeros, border, reflection].");
   }
   QnnParamWrapper padding_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_GRID_SAMPLE_PARAM_PADDING_MODE, padding_mode_qnn_scalar);
   param_tensor_names.push_back(padding_mode_param.GetParamTensorName());
