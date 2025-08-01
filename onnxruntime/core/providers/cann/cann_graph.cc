@@ -71,7 +71,7 @@ std::vector<NodeIndex> SupportONNXModel(const GraphViewer& graph_viewer) {
     // Therefore, the Constant nodes must be run on single operator inference mode.
     bool is_all_constant = true;
     for (const auto& input : node->InputDefs()) {
-      if (!graph_viewer.GetAllInitializedTensors().count(input->Name())) {
+      if (!graph_viewer.GetAllInitializersNames().count(input->Name())) {
         is_all_constant = false;
         break;
       }

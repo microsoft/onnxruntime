@@ -1384,17 +1384,19 @@ bool TrainingSession::IsImmutableWeight(const ImmutableWeights& immutable_weight
 std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
     const ImmutableWeights& immutable_weights, const std::string& loss_name) const {
   const Graph& graph = model_->MainGraph();
-  const auto& initialized_tensors = graph.GetAllInitializedTensors();
+  const auto initialized_tensors = graph.GetAllInitializersNames();
   std::unordered_set<std::string> trainable_initializers;
 
   auto add_trainable_initializers = [&](const Node* node) {
-    for (auto input : node->InputDefs()) {
-      std::string initializer_name = input->Name();
-      if (initialized_tensors.count(initializer_name) == 0)
+    for (const auto& input : node->InputDefs()) {
+      const std::string& initializer_name = input->Name();
+
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+      if (!graph.GetInitializedTensor(initializer_name, tensor_proto))
         continue;
 
       if (IsUntrainable(node, initializer_name, session_logger_) ||
-          IsImmutableWeight(immutable_weights, node, initialized_tensors.at(initializer_name), session_logger_))
+          IsImmutableWeight(immutable_weights, node, tensor_proto, session_logger_))
         continue;
 
       trainable_initializers.insert(initializer_name);

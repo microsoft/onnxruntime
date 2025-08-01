@@ -1838,16 +1838,17 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
 #endif
 
 #ifdef _WIN32
-[[maybe_unused]] static std::string ComputeModelWeightHash(const InitializedTensorSet& initializers) {
+[[maybe_unused]] static std::string ComputeModelWeightHash(const Graph& graph) {
   std::size_t final_hash = 0;
   const std::size_t node_hash_count = TelemetrySampleCount;
 
   // Weight Hash
+  const auto initializers = graph.GetAllInitializersNames();
   const size_t total_initializers = initializers.size();
   const size_t initializer_step = (total_initializers > node_hash_count) ? (total_initializers / node_hash_count) : 1;
 
   size_t index = 0;
-  for (const auto& [tensor_name, tensor] : initializers) {
+  for (const auto& tensor_name : initializers) {
     if (index % initializer_step != 0) {
       ++index;
       continue;
@@ -1855,6 +1856,9 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
 
     // Combine the hash of each tensor component using GetStringHash
     final_hash = GetStringHash(tensor_name, final_hash);
+
+    const ONNX_NAMESPACE::TensorProto* tensor = nullptr;
+    graph.GetInitializedTensor(tensor_name, tensor);
 
     if (tensor->has_data_type()) {
       final_hash = GetStringHash(std::to_string(tensor->data_type()), final_hash);
@@ -2040,9 +2044,11 @@ common::Status InferenceSession::Initialize() {
     onnxruntime::Graph& graph = model_->MainGraph();
 
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
-    const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
-    for (const auto& it : initializers) {
-      if (utils::HasExternalData(*it.second) && !utils::HasExternalDataInMemory(*it.second)) {
+    const auto initializers = graph.GetAllInitializersNames();
+    for (const auto& name : initializers) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+      graph.GetInitializedTensor(name, tensor_proto);
+      if (utils::HasExternalData(*tensor_proto) && !utils::HasExternalDataInMemory(*tensor_proto)) {
         return common::Status(common::ONNXRUNTIME, common::FAIL,
                               "Initializer tensors with external data is not allowed.");
       }
@@ -2089,7 +2095,6 @@ common::Status InferenceSession::Initialize() {
     std::string model_weight_type, model_graph_hash, model_weight_hash;
 #ifdef ORT_CALLER_FRAMEWORK
     if (std::string_view(ORT_CALLER_FRAMEWORK) == "WinAI") {
-      InitializedTensorSet initializers = graph.GetAllInitializedTensors();
 #if !defined(ORT_MINIMAL_BUILD)
       model_weight_type = ModelWeightDataType(graph);
       SetWeightDataType(model_weight_type);
@@ -2106,7 +2111,7 @@ common::Status InferenceSession::Initialize() {
       } else {
         // Compute hashes
         model_graph_hash = ComputeModelGraphHash(graph);
-        model_weight_hash = (model_graph_hash == "0") ? "0" : ComputeModelWeightHash(initializers);
+        model_weight_hash = (model_graph_hash == "0") ? "0" : ComputeModelWeightHash(graph);
       }
 
       SetGraphHash(model_graph_hash);

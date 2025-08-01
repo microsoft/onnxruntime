@@ -1739,6 +1739,12 @@ else()
         find_dependency(cpuinfo)\n\
         find_dependency(protobuf)\n\
         find_dependency(Boost COMPONENTS mp11)\n\
+        find_dependency(Boost COMPONENTS mpl)\n\
+        find_dependency(Boost COMPONENTS config)\n\
+        find_dependency(Boost COMPONENTS core)\n\
+        find_dependency(Boost COMPONENTS preprocessor)\n\
+        find_dependency(Boost COMPONENTS static_assert)\n\
+        find_dependency(Boost COMPONENTS iterator)\n\
         find_dependency(Microsoft.GSL 4.0)\n\
         if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL \"Android\")\n\
         find_dependency(Iconv)\n\

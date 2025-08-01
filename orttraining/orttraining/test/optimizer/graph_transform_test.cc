@@ -1535,7 +1535,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs) {
     TEST_RETURN_IF_NOT(op_count_pre["Div"] == 3);
     TEST_RETURN_IF_NOT(op_count_pre["Add"] == 2);
     TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
-    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 3U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializersNames().size() == 3U);
     return Status::OK();
   };
 
@@ -1627,7 +1627,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs_LastAddNotHaveScaleI
     TEST_RETURN_IF_NOT(op_count_pre["Add"] == 2);
     TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
     TEST_RETURN_IF_NOT(op_count_pre["Sub"] == 1);
-    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 3U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializersNames().size() == 3U);
     return Status::OK();
   };
 
@@ -1719,7 +1719,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
     TEST_RETURN_IF_NOT(op_count_pre["Div"] == 3);
     TEST_RETURN_IF_NOT(op_count_pre["Add"] == 2);
     TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 2);
-    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 3U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializersNames().size() == 3U);
     return Status::OK();
   };
 

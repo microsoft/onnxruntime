@@ -71,13 +71,15 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   std::vector<ONNX_NAMESPACE::TensorProto> trainable_param_values;
   trainable_param_values.reserve(expected_trainable_param_names.size());
   std::vector<ONNX_NAMESPACE::TensorProto> non_trainable_param_values;
-  const auto& initializer_tensors = graph.GetAllInitializedTensors();
-  for (const auto& [initializer_name, tensor_proto] : initializer_tensors) {
+  const auto initializer_tensors = graph.GetAllInitializersNames();
+  for (const auto& initializer_name : initializer_tensors) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    graph.GetInitializedTensor(initializer_name, tensor_proto);
     if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), initializer_name) !=
         expected_trainable_param_names.end()) {
-      trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
+      trainable_param_values.emplace_back(*tensor_proto);
     } else {
-      non_trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
+      non_trainable_param_values.emplace_back(*tensor_proto);
     }
   }
 
@@ -170,13 +172,15 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpointThenLoadFromBufferCPU) {
   std::vector<ONNX_NAMESPACE::TensorProto> trainable_param_values;
   trainable_param_values.reserve(expected_trainable_param_names.size());
   std::vector<ONNX_NAMESPACE::TensorProto> non_trainable_param_values;
-  const auto& initializer_tensors = graph.GetAllInitializedTensors();
-  for (const auto& [initializer_name, tensor_proto] : initializer_tensors) {
+  const auto initializer_tensors = graph.GetAllInitializersNames();
+  for (const auto& initializer_name : initializer_tensors) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    graph.GetInitializedTensor(initializer_name, tensor_proto);
     if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), initializer_name) !=
         expected_trainable_param_names.end()) {
-      trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
+      trainable_param_values.emplace_back(*tensor_proto);
     } else {
-      non_trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
+      non_trainable_param_values.emplace_back(*tensor_proto);
     }
   }
 
@@ -502,13 +506,15 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_WithExternalData) {
   std::vector<ONNX_NAMESPACE::TensorProto> trainable_param_values;
   trainable_param_values.reserve(expected_trainable_param_names.size());
   std::vector<ONNX_NAMESPACE::TensorProto> non_trainable_param_values;
-  const auto& initializer_tensors = graph.GetAllInitializedTensors();
-  for (const auto& [initializer_name, tensor_proto] : initializer_tensors) {
+  const auto initializer_tensors = graph.GetAllInitializersNames();
+  for (const auto& initializer_name : initializer_tensors) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    graph.GetInitializedTensor(initializer_name, tensor_proto);
     if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), initializer_name) !=
         expected_trainable_param_names.end()) {
-      trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
+      trainable_param_values.emplace_back(*tensor_proto);
     } else {
-      non_trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
+      non_trainable_param_values.emplace_back(*tensor_proto);
     }
   }
 

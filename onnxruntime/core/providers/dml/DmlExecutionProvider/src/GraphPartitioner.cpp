@@ -439,10 +439,10 @@ namespace Dml
         // by GetInputsIncludingInitializers above.  Such models would be invalid, however they loaded
         // in RS5.  For compatibility, this ensures that such models continue to load.  This is
         // verified by an ONNX conformance test for Add.
-        for (const auto& arg : graph.GetAllInitializedTensors())
+        for (const auto& name : graph.GetAllInitializersNames())
         {
             // This adds the initializer to the input set if it didn't already exist.
-            graphInputs.insert(arg.first);
+            graphInputs.insert(name);
         }
 
         for (const auto* arg : graph.GetOutputs())

@@ -180,18 +180,18 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   // > The key is a string representation of initializer's data type, value and rank.
   // > The value is newly created initializer NodeArg* to be shared.
   InlinedHashMap<std::string, NodeArg*> pattern_key_to_shared_arg_map;
-  const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+  const auto initialized_tensor_set = graph.GetAllInitializersNames();
   InlinedVector<std::string> original_initializer_names;
   original_initializer_names.reserve(initialized_tensor_set.size());
-  for (const auto& entry : initialized_tensor_set) {
+  for (const auto& name : initialized_tensor_set) {
     // Ignore if the initializer exists in graph output,
     // or not a constant initializer (implicitly excludes the graph input).
-    if (!graph_utils::IsConstantInitializer(graph, entry.first) ||
-        graph.IsOutput(graph.GetNodeArg(entry.first)) ||
-        excluded_initializers_.find(entry.first) != excluded_initializers_.end()) {
+    if (!graph_utils::IsConstantInitializer(graph, name) ||
+        graph.IsOutput(graph.GetNodeArg(name)) ||
+        excluded_initializers_.find(name) != excluded_initializers_.end()) {
       continue;
     }
-    original_initializer_names.push_back(entry.first);
+    original_initializer_names.push_back(name);
   }
 
   // Avoid using the scalar value directly in pattern_key because the value for example INT_MAX can be super big

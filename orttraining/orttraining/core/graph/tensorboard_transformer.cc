@@ -75,11 +75,10 @@ Status TransformGraphForTensorboard(Graph& graph,
 
   // If user wants to output gradient norm.
   if (dump_convergence_metrics) {
-    auto initializer_set = graph.GetAllInitializedTensors();
+    auto initializer_set = graph.GetAllInitializersNames();
     std::vector<ArgDef> squared_grad_sum_arg_defs;
-    for (const auto& pair : initializer_set) {
-      auto name = pair.first;
-      auto grad_node = graph.GetNodeArg(name + "_grad");
+    for (const auto& init_name : initializer_set) {
+      auto grad_node = graph.GetNodeArg(init_name + "_grad");
 
       // Gradient node doesn't exist.
       if (grad_node == nullptr) {

@@ -43,7 +43,17 @@ class ModelBuilder {
   ~ModelBuilder();
 
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
-  const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
+  InitializedTensorSet GetInitializerTensors() const {
+    InitializedTensorSet result;
+    const auto init_names = graph_viewer_.GetAllInitializersNames();
+    for (const auto& init_name : init_names) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+      if (graph_viewer_.GetConstantInitializer(init_name, tensor_proto)) {
+        result.emplace(init_name, tensor_proto);
+      }
+    }
+    return result;
+  }
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name) const {
     return graph_viewer_.GetConstantInitializer(name, true);
   }

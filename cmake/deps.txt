@@ -33,7 +33,16 @@ json;https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.zip;5e88795165cc
 microsoft_gsl;https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.zip;cf368104cd22a87b4dd0c80228919bb2df3e2a14
 microsoft_wil;https://github.com/microsoft/wil/archive/refs/tags/v1.0.230629.1.zip;e4a542a323c070376f7c2d1973d0f7ddbc1d2fa5
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
-mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01dffb64d9e0773b2e44d2f22c51aace063
+boost_detail;https://github.com/boostorg/detail/archive/refs/tags/boost-1.86.0.zip;fa4e1402a4bbd0919c3edd59ad066478485b21f6
+boost_core;https://github.com/boostorg/core/archive/refs/tags/boost-1.86.0.zip;71f9aeeaf3692e7e4322c9fc13178b7228966917
+boost_config;https://github.com/boostorg/config/archive/refs/tags/boost-1.79.0.zip;b4a568621d97e90a68c3b02eb914459887742a39
+boost_iterator;https://github.com/boostorg/iterator/archive/refs/tags/boost-1.86.0.zip;36cf95206965cbf5ce6b9662e12d14b724663aeb
+boost_mpl;https://github.com/boostorg/mpl/archive/refs/tags/boost-1.86.0.zip;d51d7b354b91ae93b6834dfc8382b8b34d0f3b12
+mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.86.0.zip;c780ab8ffc4f0b5e281be6af4d0fe0d725b0ab36
+boost_preprocessor;https://github.com/boostorg/preprocessor/archive/refs/tags/boost-1.86.0.zip;d3bef60ff7913ab94e56aea95f4cb65734f4733e
+boost_static_assert;https://github.com/boostorg/static_assert/archive/refs/tags/boost-1.86.0.beta1.zip;dbd1f1f7d4fd80a98b9718c0965d8727970215e9
+boost_type_traits;https://github.com/boostorg/type_traits/archive/refs/tags/boost-1.86.0.zip;dadba880fc3b3a761318aa0fb2b765ebadb84736
+boost_utility;https://github.com/boostorg/utility/archive/refs/tags/boost-1.86.0.zip;f76326735f294a6eeef1126ac68206b229ca707b
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.18.0.zip;f156d032a3af91b66d554e11158b33ca77bbb1f2
 # Use the latest commit of 10.9-GA
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/d5dce67db7c2e64b07e055571f5ec06f7f254de2.zip;01114d3b67650857281fa50faa2e412130a63b69

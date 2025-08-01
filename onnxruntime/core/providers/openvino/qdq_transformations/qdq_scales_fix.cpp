@@ -902,7 +902,9 @@ Status copy_model(const GraphViewer& src_graph_viewer,
                       input_args, output_args, nullptr, "");
   }
 
-  for (auto& [name, tensor_proto] : src_graph.GetAllInitializedTensors()) {
+  for (const auto& name : src_graph.GetAllInitializersNames()) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    src_graph.GetInitializedTensor(name, tensor_proto);
     dst_graph.AddInitializedTensor(*tensor_proto);
   }
 
@@ -915,7 +917,7 @@ Status copy_model(const GraphViewer& src_graph_viewer,
 
     auto src_tensor_proto = src_graph.GetConstantInitializer(node_arg->Name(), true);
     if (src_tensor_proto) {
-      auto dst_tensor_proto = onnx::TensorProto::Create();
+      auto dst_tensor_proto = ONNX_NAMESPACE::TensorProto::Create();
       dst_tensor_proto->copy_from(src_tensor_proto);
       dst_graph.AddInitializedTensor(*dst_tensor_proto);
     }

@@ -289,7 +289,7 @@ TEST(CseTests, MergeConstants) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1,
                                                               DefaultLoggingManager().DefaultLogger()));
 
-  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 1U);
+  ASSERT_EQ(graph.GetAllInitializersNames().size(), 1U);
   auto op_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_count.size(), 1U);
   ASSERT_EQ(op_count["Add"], 2);

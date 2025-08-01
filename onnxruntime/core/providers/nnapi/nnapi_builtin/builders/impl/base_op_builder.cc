@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_builder.h"
 
@@ -8,17 +9,16 @@ namespace onnxruntime {
 namespace nnapi {
 
 namespace {
-bool HasExternalInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit) {
+bool HasExternalInitializer(const GraphViewer& graph_viewer, const NodeUnit& node_unit) {
   const auto is_ext_initializer =
       [&](const NodeArg& node_arg) {
         const auto& input_name(node_arg.Name());
-        const auto initializer = initializers.find(input_name);
-        if (initializer == initializers.end())
+
+        const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+        if (!graph_viewer.GetInitializedTensor(input_name, initializer))
           return false;
 
-        const auto& tensor = *initializer->second;
-        if (tensor.has_data_location() &&
-            tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+        if (utils::HasExternalData(*initializer)) {
           LOGS_DEFAULT(VERBOSE) << "Initializer [" << input_name
                                 << "] with external data location are not currently supported";
           return true;
@@ -87,7 +87,7 @@ bool BaseOpBuilder::IsOpSupported(const GraphViewer& graph_viewer, const NodeUni
     return false;
 
   // We do not support external initializers for now
-  if (HasExternalInitializer(graph_viewer.GetAllInitializedTensors(), node_unit))
+  if (HasExternalInitializer(graph_viewer, node_unit))
     return false;
 
   if (!HasSupportedOpSet(node_unit))

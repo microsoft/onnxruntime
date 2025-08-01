@@ -384,7 +384,16 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.graph_remove_node = vaip::graph_remove_node;
   the_global_api.graph_add_node = vaip::graph_add_node;
   the_global_api.graph_get_all_initialized_tensors = [](const Graph& graph) -> const InitializedTensorSet& {
-    return graph.GetAllInitializedTensors();
+    static thread_local InitializedTensorSet cache_value;
+    cache_value.clear();
+    for (auto& name : graph.GetAllInitializersNames()) {
+      const ONNX_NAMESPACE::TensorProto* tensor = nullptr;
+       auto ok = graph.GetInitializedTensor(name, tensor);
+      if (ok) {
+        cache_value.insert({name, tensor});
+      }
+    }
+    return cache_value;
   };
   the_global_api.graph_resolve = [](Graph& graph, bool force) {
     if (force) {
