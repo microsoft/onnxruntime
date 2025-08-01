@@ -2510,6 +2510,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     if(trt_runtime_config && cuda_graph_enable_) {
         trt_runtime_config->setDynamicShapesKernelSpecializationStrategy(nvinfer1::DynamicShapesKernelSpecializationStrategy::kEAGER);
     }
+    trt_runtime_config->setExecutionContextAllocationStrategy(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED);
 
     if (detailed_build_log_) {
       auto engine_build_stop = std::chrono::steady_clock::now();
