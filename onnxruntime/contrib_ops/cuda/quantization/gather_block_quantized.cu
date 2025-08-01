@@ -12,23 +12,28 @@ namespace contrib {
 namespace cuda {
 
 template <typename T1>
-inline __device__ int64_t get_val(const T1* data, int64_t idx, int64_t bits) {
+__device__ inline int64_t get_val(const T1* data, int64_t idx, int64_t bits) {
   const uint32_t mask = (1U << bits) - 1;
-
   const int64_t elems_per_byte = 8 / bits;
   const int64_t byte_idx = idx / elems_per_byte;
   const int64_t bit_offset = (idx % elems_per_byte) * bits;
-
   const uint8_t byte = reinterpret_cast<const uint8_t*>(data)[byte_idx];
-  return (byte >> bit_offset) & mask;
+  int64_t val = (byte >> bit_offset) & mask;
+
+  // Sign-extend based on bit width
+  if (val & (1 << (bits - 1))) {
+    val |= -1LL << bits;
+  }
+
+  return val;
 }
 
 template <typename T1, typename T2, typename Tind>
 __global__ void GatherBlockQuantizedKernel(
-    const T1* data,
+    const T1* data,  // packed 4-bit codes, one code per element
     const Tind* indices,
-    const T2* scales,
-    const T1* zero_points,
+    const T2* scales,       // one float scale per block
+    const T1* zero_points,  // packed 4-bit zero-points, one per block
     T2* output,
     int64_t after_gather_dim,
     int64_t gather_axis_dim,
@@ -37,26 +42,29 @@ __global__ void GatherBlockQuantizedKernel(
     int64_t block_size,
     int64_t gather_axis,
     int64_t N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(out_idx, N);
+  int64_t out_idx = blockDim.x * blockIdx.x + threadIdx.x;
+  if (out_idx >= N) return;
 
-  const int64_t idx_before_gather = out_idx / (after_gather_dim * ind_dim);
-  const int64_t idx_after_gather = out_idx % after_gather_dim;
-  const int64_t idx = (out_idx % (after_gather_dim * ind_dim)) / after_gather_dim;
+  // compute which input element this thread corresponds to:
+  int64_t idx_before = out_idx / (after_gather_dim * ind_dim);
+  int64_t idx_after = out_idx % after_gather_dim;
+  int64_t idx = (out_idx % (after_gather_dim * ind_dim)) / after_gather_dim;
+  int64_t idx_at_g = indices[idx];
+  int64_t in_idx = idx_before * gather_axis_dim * after_gather_dim + idx_at_g * after_gather_dim + idx_after;
 
-  const int64_t idx_at_gather = indices[idx];
-  assert(idx_at_gather < gather_axis_dim);
+  int64_t block_id = in_idx / block_size;
 
-  const int64_t in_idx = idx_before_gather * (gather_axis_dim + after_gather_dim) +
-                         idx_at_gather * after_gather_dim +
-                         idx_after_gather;
-
+  // unpack zero_point for this block:
   int64_t offset = 0;
-  if (zero_points != nullptr) {
-    offset = get_val(zero_points, in_idx, bits);
+  if (zero_points) {
+    offset = get_val(zero_points, block_id, bits);
   }
 
-  const int64_t weight = get_val(data, in_idx / block_size, bits);
-  output[out_idx] = static_cast<T2>(weight - offset) * scales[in_idx / block_size];
+  // unpack the raw quantized code for this element:
+  int64_t weight = get_val(data, in_idx, bits);
+
+  // apply dequantization:
+  output[out_idx] = static_cast<T2>((weight - offset) * scales[block_id]);
 }
 
 template <typename T1, typename T2, typename Tind>
