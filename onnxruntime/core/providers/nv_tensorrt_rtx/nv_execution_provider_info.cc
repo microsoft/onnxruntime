@@ -51,24 +51,6 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
           .AddAssignmentToReference(nv::provider_option_names::kCudaGraphEnable, info.cuda_graph_enable)
           .AddAssignmentToReference(nv::provider_option_names::kUseExternalDataInitializer, info.use_external_data_initializer)
           .AddAssignmentToReference(nv::provider_option_names::kMultiProfileEnable, info.multi_profile_enable)
-          .AddValueParser(
-              nv::provider_option_names::kONNXBytestream,
-              [&onnx_bytestream](const std::string& value_str) -> Status {
-                size_t address;
-                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
-                onnx_bytestream = reinterpret_cast<void*>(address);
-                return Status::OK();
-              })
-          .AddAssignmentToReference(nv::provider_option_names::kONNXBytestreamSize, info.onnx_bytestream_size)
-          .AddValueParser(
-              nv::provider_option_names::kExternalDataBytestream,
-              [&external_data_bytestream](const std::string& value_str) -> Status {
-                size_t address;
-                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
-                external_data_bytestream = reinterpret_cast<void*>(address);
-                return Status::OK();
-              })
-          .AddAssignmentToReference(nv::provider_option_names::kExternalDataBytestreamSize, info.external_data_bytestream_size)
           .Parse(options));  // add new provider option here.
 
   info.user_compute_stream = user_compute_stream;
@@ -123,11 +105,7 @@ ProviderOptions NvExecutionProviderInfo::ToProviderOptions(const NvExecutionProv
       {nv::provider_option_names::kProfilesMaxShapes, MakeStringWithClassicLocale(info.profile_max_shapes)},
       {nv::provider_option_names::kProfilesOptShapes, MakeStringWithClassicLocale(info.profile_opt_shapes)},
       {nv::provider_option_names::kCudaGraphEnable, MakeStringWithClassicLocale(info.cuda_graph_enable)},
-      {nv::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(info.onnx_bytestream)},
-      {nv::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.onnx_bytestream_size)},
-      {nv::provider_option_names::kUseExternalDataInitializer, MakeStringWithClassicLocale(info.use_external_data_initializer)},
-      {nv::provider_option_names::kExternalDataBytestream, MakeStringWithClassicLocale(info.external_data_bytestream)},
-      {nv::provider_option_names::kExternalDataBytestreamSize, MakeStringWithClassicLocale(info.external_data_bytestream_size)},
+      {nv::provider_option_names::kUseExternalDataInitializer, MakeStringWithClassicLocale(info.use_external_data_initializer)}
   };
   return options;
 }
