@@ -466,13 +466,11 @@ class SparseMoeBlockORTHelper(nn.Module):
         self.np_type = numpy.float16 if self.onnx_dtype == TensorProto.FLOAT16 else numpy.float32
 
     def create_ort_session(self, moe_onnx_graph):
-        from onnxruntime import InferenceSession, SessionOptions  # noqa: PLC0415
-
-        sess_options = SessionOptions()
+        sess_options = onnxruntime.SessionOptions()
         sess_options.log_severity_level = 2
 
         try:
-            ort_session = InferenceSession(moe_onnx_graph, sess_options, providers=ort_provider)
+            ort_session = onnxruntime.InferenceSession(moe_onnx_graph, sess_options, providers=ort_provider)
         except Exception as e:
             print(f"Failed to create ONNX Runtime session with provider {ort_provider}: {e}")
             print("Skipping ONNX Runtime execution for this test case.")
