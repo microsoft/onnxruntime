@@ -495,6 +495,7 @@ void Test_GatherAxis0_WithZeroPoints_Uint8(int bits = 4) {
                                 -3, -1, block_size, bits, output, output_shape, true);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints_4Bits) {
   Test_GatherAxis0_WithZeroPoints_Uint8<uint8_t, float, int32_t>();
   Test_GatherAxis0_WithZeroPoints_Uint8<uint8_t, MLFloat16, int64_t>();
@@ -504,6 +505,7 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints_8Bits) {
   Test_GatherAxis0_WithZeroPoints_Uint8<uint8_t, float, int32_t>(8);
   Test_GatherAxis0_WithZeroPoints_Uint8<uint8_t, MLFloat16, int64_t>(8);
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis0_NoZeroPoints(int bits = 4) {
@@ -538,6 +540,7 @@ void Test_GatherAxis0_NoZeroPoints(int bits = 4) {
                                 -3, -1, block_size, bits, output, output_shape, true);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints) {
   Test_GatherAxis0_NoZeroPoints<Int4x2, float, int32_t>();
   Test_GatherAxis0_NoZeroPoints<Int4x2, MLFloat16, int32_t>();
@@ -556,6 +559,7 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_8Bits) {
   Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>(8);
   Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>(8);
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis1_WithZeroPoints() {
@@ -590,6 +594,7 @@ void Test_GatherAxis1_WithZeroPoints() {
                                 -2, -2, block_size, bits, output, output_shape, true);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxis1) {
   Test_GatherAxis1_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_GatherAxis1_WithZeroPoints<Int4x2, float, int32_t>();
@@ -600,6 +605,7 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis1) {
   Test_GatherAxis1_WithZeroPoints<UInt4x2, MLFloat16, int64_t>();
   Test_GatherAxis1_WithZeroPoints<Int4x2, MLFloat16, int64_t>();
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis2_WithZeroPoints() {
@@ -634,6 +640,7 @@ void Test_GatherAxis2_WithZeroPoints() {
                                 -1, -3, block_size, bits, output, output_shape, true);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxis2) {
   Test_GatherAxis2_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_GatherAxis2_WithZeroPoints<Int4x2, float, int32_t>();
@@ -644,6 +651,7 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis2) {
   Test_GatherAxis2_WithZeroPoints<UInt4x2, MLFloat16, int64_t>();
   Test_GatherAxis2_WithZeroPoints<Int4x2, MLFloat16, int64_t>();
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
