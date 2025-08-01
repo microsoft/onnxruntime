@@ -95,6 +95,15 @@ std::vector<char*> CStringsFromStrings(std::vector<std::string>& utf8_args) {
   }
   return utf8_argv;
 }
+
+// This helper function returns the basename of the filename passed as an argument
+std::string_view Basename(std::string_view filename) {
+  auto last_slash_pos = filename.find_last_of("/\\");
+
+  return last_slash_pos == absl::string_view::npos
+             ? filename
+             : filename.substr(last_slash_pos + 1);
+}
 }  // namespace utils
 }  // namespace perftest
 }  // namespace onnxruntime
