@@ -3647,6 +3647,15 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
   ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
                     "Replacement tensor's data type does not match.");
 
+  bool is_sparse = false;
+  {
+    auto sparse_tensor_it = sparse_tensor_names_.find(initializer_name);
+    if (sparse_tensor_it != sparse_tensor_names_.end()) {
+      sparse_tensor_names_.erase(sparse_tensor_it);
+      is_sparse = true;
+    }
+  }
+
   auto& mutable_initializers = *(graph_proto_->mutable_initializer());
   // use cheaper pointer comparison to find old entry
   auto existing_entry = std::find(mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(),
@@ -3663,6 +3672,9 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
   }
 
   **existing_entry = std::move(new_initializer);
+  if (is_sparse) {
+    sparse_tensor_names_.insert((**existing_entry).name());
+  }
 
   return Status::OK();
 }
@@ -3708,7 +3720,7 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
 Status Graph::InjectExternalInitializersFromFilesInMemory(
     const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files) {
   for (const auto& [tensor_name, tensor_proto] : name_to_initial_tensor_) {
-    if (utils::HasExternalData(*tensor_proto) && !utils::HasExternalDataInMemory(*tensor_proto)) {
+    if (utils::HasExternalDataInFile(*tensor_proto)) {
       std::unique_ptr<ExternalDataInfo> external_data_info;
       ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto->external_data(), external_data_info));
 
@@ -3725,18 +3737,18 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
       SafeInt<FileOffsetType> end_of_read(file_offset);
       end_of_read += tensor_byte_size;
 
-      auto user_provided_hit = external_initializer_files.find(external_file);
-      ORT_RETURN_IF(user_provided_hit == external_initializer_files.end(),
+      auto user_provided_entry = external_initializer_files.find(external_file);
+      ORT_RETURN_IF(user_provided_entry == external_initializer_files.end(),
                     "External file: ", ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(external_file),
                     " not found from the table user provided.");
 
-      auto user_provided_length = user_provided_hit->second.second;
+      auto user_provided_length = user_provided_entry->second.second;
 
       ORT_RETURN_IF(file_offset < 0 || end_of_read > narrow<FileOffsetType>(user_provided_length),
                     "External initializer: ", tensor_name,
                     " offset: ", file_offset, " size to read: ", external_data_length,
                     " given file_length: ", user_provided_length, " are out of bounds or can not be read in full.");
-      char* user_provided_file_buffer = static_cast<char*>(user_provided_hit->second.first);
+      char* user_provided_file_buffer = static_cast<char*>(user_provided_entry->second.first);
       char* user_provided_tensor_buffer = user_provided_file_buffer + file_offset;
 
       const auto& old_initializer = *(tensor_proto);
