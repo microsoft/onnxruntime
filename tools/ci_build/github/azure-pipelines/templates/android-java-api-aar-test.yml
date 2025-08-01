@@ -29,7 +29,7 @@ parameters:
 jobs:
 - job: Final_AAR_Testing_Android
   pool:
-    name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    name: 'onnxruntime-Ubuntu2404-AMD-CPU'
     os: linux
   workspace:
     clean: all
@@ -58,7 +58,7 @@ jobs:
         mkdir -p android_test/android/app/libs
         cd android_test/android
         cp -av $(Build.SourcesDirectory)/java/src/test/android/* ./
-        cp $(Pipeline.Workspace)/build/onnxruntime-android-full-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
+        cp $(Pipeline.Workspace)/build/${{parameters.artifactName}}/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
     displayName: Copy Android test files and AAR to android_test directory
     workingDirectory: $(Build.BinariesDirectory)
 
