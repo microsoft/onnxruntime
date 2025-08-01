@@ -439,9 +439,9 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
   const float* fc1_scales_data = fc1_scales_float.get();
   const float* fc2_scales_data = fc2_scales_float.get();
 
-  // Determine quantization parameters based on bit width
+  // Determine quantization parameters based on bit width - using symmetric quantization for TensorRT compatibility
   const bool is_4bit = UseUInt4x2;
-  const float zero_point = is_4bit ? 8.0f : 128.0f;
+  const float zero_point = 0.0f;  // Symmetric quantization has zero point = 0
   const int64_t act_multiplier = is_swiglu ? 2 : 1;
   const int64_t fc1_output_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
 
@@ -465,7 +465,7 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
   prepacked_fc1_weights_data_ = prepacked_fc1_weights_.get();
   prepacked_fc2_weights_data_ = prepacked_fc2_weights_.get();
 
-  // Helper lambda for dequantizing a single weight value
+  // Helper lambda for dequantizing a single weight value - updated for symmetric quantization
   auto DequantizeWeight = [&](const uint8_t* weights, size_t weight_idx, size_t linear_idx,
                               const float* scales, int64_t scale_idx) -> float {
     if (is_4bit) {
@@ -473,10 +473,16 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
       size_t packed_idx = linear_idx / 2;
       uint8_t packed_value = weights[packed_idx];
       uint8_t quantized_weight = (linear_idx % 2 == 0) ? (packed_value & 0x0F) : ((packed_value >> 4) & 0x0F);
-      return (static_cast<float>(quantized_weight) - zero_point) * scales[scale_idx];
+      // Convert uint4 to int4 with proper mapping for symmetric quantization
+      int8_t signed_weight = static_cast<int8_t>(quantized_weight);
+      if (signed_weight >= 8) {
+        signed_weight -= 16;  // Map [8, 15] to [-8, -1] for proper signed representation
+      }
+      return static_cast<float>(signed_weight) * scales[scale_idx];
     } else {
-      // For Int8, direct access
-      return (static_cast<float>(weights[weight_idx]) - zero_point) * scales[scale_idx];
+      // For Int8, convert uint8 to int8 for symmetric quantization
+      int8_t signed_weight = static_cast<int8_t>(weights[weight_idx]);
+      return static_cast<float>(signed_weight) * scales[scale_idx];
     }
   };
 

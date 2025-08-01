@@ -12,18 +12,18 @@
 #
 # Note on QMoE quantization approaches:
 #
-# The CPU and CUDA implementations of QMoE use different quantization approaches:
+# Both CPU and CUDA implementations of QMoE use symmetric quantization:
 #
-# 1. CPU (this file): Asymmetric quantization with zero points
-#    - 4-bit: zero point = 8, range = [0, 15]
-#    - 8-bit: zero point = 128, range = [0, 255]
+# 1. CPU (this file): Symmetric quantization
+#    - 4-bit: range = [-8, 7]
+#    - 8-bit: range = [-128, 127]
 #
 # 2. CUDA: Symmetric quantization
 #    - 4-bit: range = [-8, 7]
 #    - 8-bit: range = [-128, 127]
 #
-# These different approaches may cause small numerical differences in the outputs.
-# The tolerance values used in testing account for these expected differences.
+# This aligned approach ensures better compatibility with TensorRT.
+# The tolerance values used in testing account for minor numerical differences.
 # --------------------------------------------------------------------------
 import itertools
 import os
@@ -92,12 +92,12 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
     Quantize and dequantize weights for testing purposes.
     This function exactly matches the C++ implementation in QMoE CPU.
 
-    This uses asymmetric quantization with zero point to match the C++ implementation:
-    - 4-bit: zero point = 8, range = [0, 15]
-    - 8-bit: zero point = 128, range = [0, 255]
+    This uses symmetric quantization to match the C++ implementation and for TensorRT compatibility:
+    - 4-bit: range = [-8, 7]
+    - 8-bit: range = [-128, 127]
 
     This implementation aims to precisely match the C++ implementation by:
-    1. Using the same zero points (8 for 4-bit, 128 for 8-bit)
+    1. Using symmetric quantization (zero point = 0)
     2. Using the same scale calculation methodology
     3. Using consistent rounding behavior
     4. Properly handling edge cases
@@ -108,9 +108,8 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
             packed_size = (weights.shape[-1] + 1) // 2
             return (
                 torch.zeros_like(weights[..., 0:1]),
-                torch.full(
+                torch.zeros(
                     (weights.shape[0], weights.shape[1], packed_size),
-                    fill_value=8 | (8 << 4),
                     dtype=torch.uint8,
                     device=weights.device,
                 ),
@@ -119,7 +118,7 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
         else:
             return (
                 torch.zeros_like(weights[..., 0:1]),
-                torch.full_like(weights, fill_value=128, dtype=torch.uint8),
+                torch.zeros_like(weights, dtype=torch.uint8),
                 torch.zeros_like(weights),
             )
 
@@ -127,28 +126,48 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
     abs_max = weights.abs().max(dim=-1, keepdim=True)[0]
 
     if is_4_bit_quantization:
-        # Zero point is 8 for 4-bit quantization in the C++ implementation
-        zero_point = 8
-        # Maximum quantized value
-        max_quant_val = 15
+        # For 4-bit symmetric quantization, range is [-8, 7]
+        scale = abs_max / 7.0  # Scale factor ensures max value maps to 7
 
-        # Calculate scale more precisely - dividing by actual range (15-8=7)
-        # Scale = abs_max / (qmax - zero_point)
-        scale = abs_max / 7.0
+        # Handle potential edge cases for zero or very small weights
+        if torch.max(abs_max) < 1e-10:
+            # For extremely small values, avoid division by near-zero
+            packed_size = (weights.shape[-1] + 1) // 2
+            # Just return zeros with appropriate scale to avoid numerical issues
+            return (
+                torch.ones_like(weights[..., 0:1]) * 1e-6,  # Very small non-zero scale
+                torch.full(
+                    (weights.shape[0], weights.shape[1], packed_size),
+                    fill_value=8 | (8 << 4),  # 8 = 0 in symmetric quantization
+                    dtype=torch.uint8,
+                    device=weights.device,
+                ),
+                torch.zeros_like(weights),
+            )
 
-        # Better quantization with proper rounding
-        scaled_weights = weights / scale
-        quant_weights = torch.round(scaled_weights + zero_point).clamp(0, max_quant_val).to(torch.uint8)
+        # Convert to int4 range (-8 to 7)
+        scaled_weights = torch.round(weights / scale)
+        clipped_weights = torch.clamp(scaled_weights, -8, 7)
+
+        # Convert from int4 signed range [-8,7] to uint4 storage range [0,15]
+        # by adding 8 to map -8->0, -7->1, ..., 7->15
+        quant_weights = (clipped_weights + 8).to(torch.uint8)
 
         # Pack 4-bit values into uint8 (every two elements)
-        # Keep using the original approach which works reliably
         even_indices = torch.arange(0, weights.shape[-1], 2)
         odd_indices = torch.arange(1, weights.shape[-1], 2)
 
         # Handle odd length by padding
         if odd_indices.shape[0] < even_indices.shape[0]:
-            # Pad with zero_point for consistent behavior
-            quant_weights = torch.nn.functional.pad(quant_weights, (0, 1), value=zero_point)
+            # Pad with 8 (which represents 0 in symmetric quantization)
+            # Create a new padding tensor for more predictable behavior
+            padding = torch.full(
+                (quant_weights.shape[0], quant_weights.shape[1], 1),
+                fill_value=8,
+                dtype=torch.uint8,
+                device=quant_weights.device,
+            )
+            quant_weights = torch.cat([quant_weights, padding], dim=-1)
             odd_indices = torch.arange(1, quant_weights.shape[-1], 2)
 
         even_weights = quant_weights[..., even_indices]
@@ -161,30 +180,60 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
         lower = packed_weights & 0xF
         upper = (packed_weights >> 4) & 0xF
 
-        # Restore original shape
+        # Restore original shape, taking care to handle dimensions correctly
         unpacked_weights = torch.zeros_like(weights, dtype=torch.uint8)
-        unpacked_weights[..., even_indices] = lower
-        unpacked_weights[..., odd_indices[: min(odd_indices.shape[0], weights.shape[-1] - even_indices.shape[0])]] = (
-            upper
-        )
 
-        # Dequantize with improved precision - exactly matching C++ implementation
-        result = ((unpacked_weights.float() - zero_point) * scale.float()).to(dtype=weights.dtype)
+        # Assign values ensuring we don't go out of bounds
+        unpacked_weights[..., even_indices] = lower
+
+        # Calculate valid odd indices that fit within our original tensor dimensions
+        valid_odd_length = min(odd_indices.shape[0], weights.shape[-1] - even_indices.shape[0])
+        valid_odd_indices = odd_indices[:valid_odd_length]
+
+        # Only assign upper bits to valid positions
+        if valid_odd_length > 0:
+            unpacked_weights[..., valid_odd_indices] = upper[..., :valid_odd_length]
+
+        # Convert back from uint4 to int4 by subtracting 8
+        int4_weights = unpacked_weights.float() - 8
+
+        # Dequantize with proper broadcasting
+        # Make sure scale has the right shape for broadcasting
+        scale_expanded = scale.float()
+        if scale_expanded.dim() < int4_weights.dim():
+            for _ in range(int4_weights.dim() - scale_expanded.dim()):
+                scale_expanded = scale_expanded.unsqueeze(-1)
+        result = (int4_weights * scale_expanded).to(dtype=weights.dtype)
         return scale.to(torch.float16), packed_weights, result
     else:
-        # 8-bit quantization with zero point 128 to match C++ implementation
-        zero_point = 128
-        max_quant_val = 255
+        # 8-bit symmetric quantization, range is [-128, 127]
+        scale = abs_max / 127.0  # Scale factor ensures max value maps to 127
 
-        # Calculate scale more precisely
-        scale = abs_max / 127.0
+        # Handle potential edge cases for zero or very small weights
+        if torch.max(abs_max) < 1e-10:
+            # For extremely small values, avoid division by near-zero
+            # Just return zeros with appropriate scale to avoid numerical issues
+            return (
+                torch.ones_like(weights[..., 0:1]) * 1e-6,  # Very small non-zero scale
+                torch.full_like(weights, fill_value=128, dtype=torch.uint8),  # 128 = 0 in symmetric
+                torch.zeros_like(weights),
+            )
 
-        # Better quantization with proper rounding
-        scaled_weights = weights / scale
-        quant_weights = torch.round(scaled_weights + zero_point).clamp(0, max_quant_val).to(torch.uint8)
+        # Convert to int8 range (-128 to 127)
+        scaled_weights = torch.round(weights / scale)
+        clipped_weights = torch.clamp(scaled_weights, -128, 127)
 
-        # Dequantize with improved precision - exactly matching C++ implementation
-        result = ((quant_weights.float() - zero_point) * scale.float()).to(dtype=weights.dtype)
+        # Convert from int8 signed range [-128,127] to uint8 storage range [0,255]
+        # by adding 128 to map -128->0, -127->1, ..., 127->255
+        quant_weights = (clipped_weights + 128).to(torch.uint8)
+
+        # Dequantize - convert back from uint8 to int8 by subtracting 128, then multiply by scale
+        # Make sure scale has the right shape for broadcasting
+        scale_expanded = scale.float()
+        if scale_expanded.dim() < quant_weights.dim():
+            for _ in range(quant_weights.dim() - scale_expanded.dim()):
+                scale_expanded = scale_expanded.unsqueeze(-1)
+        result = ((quant_weights.float() - 128) * scale_expanded).to(dtype=weights.dtype)
         return scale.to(torch.float16), quant_weights, result
 
 
@@ -216,14 +265,14 @@ def create_cpu_moe_onnx_graph(
     topk = top_k
     # Note: SwiGLU requires 2 components (gate and value)
 
+    # Force use_quant to True - we only want to test QMoE
+    use_quant = True
+
+    # Note: In QMoE, biases are not used at all, only scales
+    # The following parameters are only relevant when use_quant=False (which is never the case here)
+    # fc1_bias and fc2_bias are completely ignored for QMoE
+
     # Ensure all variables are properly initialized for safety
-    if fc1_bias is None and not use_quant:
-        print("Warning: fc1_bias is None but quantization is not enabled")
-        # For SwiGLU, the FC1 bias needs to be doubled in dimension
-        fc1_bias = torch.zeros(num_experts, 2 * inter_size if use_swiglu else inter_size)
-    if fc2_bias is None and not use_quant:
-        print("Warning: fc2_bias is None but quantization is not enabled")
-        fc2_bias = torch.zeros(num_experts, hidden_size)
     if fc1_scales is None and use_quant:
         print("Warning: fc1_scales is None but quantization is enabled")
         return None
@@ -234,12 +283,9 @@ def create_cpu_moe_onnx_graph(
         print("ONNX not found, skipping graph creation")
         return None
 
-    # Force use_quant to True - we only want to test QMoE
-    use_quant = True
-
-    # Using uint8 storage type with asymmetric quantization
-    # 4-bit: zero point = 8, range = [0, 15]
-    # 8-bit: zero point = 128, range = [0, 255]
+    # Using uint8 storage type with symmetric quantization
+    # 4-bit: range = [-8, 7] (stored as uint8 values [0, 15])
+    # 8-bit: range = [-128, 127] (stored as uint8 values [0, 255])
     assert fc1_experts_weights.dtype == torch.uint8, "FC1 weights must be uint8 for QMoE"
     assert fc2_experts_weights.dtype == torch.uint8, "FC2 weights must be uint8 for QMoE"
     assert fc1_scales is not None, "FC1 scales must be provided for QMoE"
@@ -265,11 +311,8 @@ def create_cpu_moe_onnx_graph(
         "",
     ]
 
-    # Create a dummy bias with correct dimensions for SwiGLU
-    if not use_quant:
-        # For SwiGLU, the FC1 bias needs to be doubled in dimension
-        fc1_bias = torch.zeros(num_experts, 2 * inter_size if use_swiglu else inter_size)
-        fc2_bias = torch.zeros(num_experts, hidden_size)
+    # Note: In QMoE mode, biases are not used at all
+    # This code path is never executed since use_quant is always True
 
     # For QMoE, use SwiGLU if specified, otherwise use SiLU
     # ONNX Runtime QMoE expects "swiglu" (lowercase) as the activation type
@@ -633,20 +676,18 @@ class SparseMoeBlockORTHelper(nn.Module):
             )
 
         # Maps "ort_type:quant_bits:swiglu" to (atol, rtol)
-        # Note: Due to implementation differences between CPU (asymmetric quantization)
-        # and CUDA (symmetric quantization), we use tolerances that balance between:
-        # 1. Being strict enough to catch real issues
-        # 2. Being lenient enough to accommodate expected differences
-        # SwiGLU typically needs slightly higher tolerances due to its computational pattern
+        # Note: Now that both CPU and CUDA use symmetric quantization,
+        # we can use more consistent tolerances across implementations.
+        # SwiGLU still needs slightly higher tolerances due to its computational pattern
         swiglu_flag = ":swiglu" if hasattr(self, "use_swiglu") and self.use_swiglu else ""
         ort_dtype_quant_bits_tolerance_map = {
             "FP32:0": (5e-3, 1e-3),
             "FP16:0": (5e-2, 1e-3),
-            "FP16:4": (3.0, 1e-2),
-            "FP16:8": (2.0, 1e-2),
+            "FP16:4": (2.0, 8e-3),  # Improved tolerance with symmetric quantization
+            "FP16:8": (1.5, 8e-3),  # Improved tolerance with symmetric quantization
             # SwiGLU variants may need slightly higher tolerances
-            "FP16:4:swiglu": (3.5, 2e-2),
-            "FP16:8:swiglu": (2.5, 2e-2),
+            "FP16:4:swiglu": (2.5, 1.5e-2),  # Improved tolerance with symmetric quantization
+            "FP16:8:swiglu": (2.0, 1.5e-2),  # Improved tolerance with symmetric quantization
         }
 
         tolerance_key = f"{dtype_str}:{self.quant_bits}{swiglu_flag}"
@@ -723,11 +764,11 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
 
     CPU version: Modified to use only FC1 and FC2 for CPU compatibility.
 
-    Quantization: Uses asymmetric quantization to exactly match the C++ implementation:
-    - 4-bit: zero point = 8, range = [0, 15]
-    - 8-bit: zero point = 128, range = [0, 255]
-    This ensures the test exactly simulates the C++ implementation while maintaining
-    reasonable numerical consistency with CUDA implementation.
+    Quantization: Uses symmetric quantization to exactly match the C++ implementation:
+    - 4-bit: range = [-8, 7] (stored as uint8 values [0, 15])
+    - 8-bit: range = [-128, 127] (stored as uint8 values [0, 255])
+    This ensures the test exactly simulates the C++ implementation with full
+    compatibility with the CUDA implementation and TensorRT.
     """
 
     def __init__(self, config, batch_size, sequence_length, quant_bits=0, onnx_dtype=None):
@@ -784,25 +825,24 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
                 print(f"SwiGLU scales - w1: {w1_scale.shape}, w3: {w3_scale.shape}")
 
                 # In the QMoE CPU implementation for SwiGLU, we need to handle gate and value scales
-                # Combine the scales for both components
-                if w1_scale.numel() == 1:
-                    # If scales are single values, create a tensor of the right shape
-                    combined_w1_scale = torch.cat(
-                        [
-                            torch.full(
-                                (1, self.ffn_dim), w1_scale.item(), dtype=w1_scale.dtype, device=w1_scale.device
-                            ),
-                            torch.full(
-                                (1, self.ffn_dim), w3_scale.item(), dtype=w3_scale.dtype, device=w3_scale.device
-                            ),
-                        ],
-                        dim=1,
-                    ).squeeze(0)
+                # Combine the scales for both components - this needs to be done carefully
+                # to ensure proper shape compatibility regardless of input shapes
+
+                # First ensure scales have the right number of dimensions
+                if len(w1_scale.shape) == 1:
+                    w1_scale = w1_scale.unsqueeze(0)
+                if len(w3_scale.shape) == 1:
+                    w3_scale = w3_scale.unsqueeze(0)
+
+                # Handle different scale shapes robustly
+                if w1_scale.shape[-1] == 1:
+                    # Per-tensor quantization case - expand to per-channel
+                    w1_expanded = w1_scale.expand(-1, self.ffn_dim)
+                    w3_expanded = w3_scale.expand(-1, self.ffn_dim)
+                    combined_w1_scale = torch.cat([w1_expanded, w3_expanded], dim=1)
                 else:
-                    # If scales already have a shape, concatenate them appropriately
-                    combined_w1_scale = torch.cat(
-                        [w1_scale.expand(-1, self.ffn_dim), w3_scale.expand(-1, self.ffn_dim)], dim=1
-                    )
+                    # Already per-channel, just concatenate
+                    combined_w1_scale = torch.cat([w1_scale, w3_scale], dim=1)
 
                 # Store the combined quantized weights and scales for ONNX model
                 w1_list.append(combined_w1_weight)
@@ -846,8 +886,10 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
                 onnx_dtype=self.onnx_dtype,
                 fc1_experts_weights=self.moe_experts_weight1,
                 fc2_experts_weights=self.moe_experts_weight2,
+                # Biases are not used in QMoE, only passed as None for API compatibility
                 fc1_bias=None,
                 fc2_bias=None,
+                # Scales are used for dequantization
                 fc1_scales=moe_experts_weight_scale1,
                 fc2_scales=moe_experts_weight_scale2,
                 use_swiglu=self.use_swiglu,  # Pass the SwiGLU flag
