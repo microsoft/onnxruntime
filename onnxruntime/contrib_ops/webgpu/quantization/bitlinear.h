@@ -35,6 +35,26 @@ class BitLinearMultiplyProgram final : public Program<BitLinearMultiplyProgram> 
                                           {"num_N_tile", ProgramUniformVariableDataType::Uint32});
 };
 
+class BitLinearMultiplySmallMProgram final : public Program<BitLinearMultiplySmallMProgram> {
+ public:
+  BitLinearMultiplySmallMProgram(uint32_t tile_size_k_vec, uint32_t tile_size) : Program{"BitLinearMultiplySmallM"},
+                                                                                 tile_size_k_vec_(tile_size_k_vec),
+                                                                                 tile_size_(tile_size) {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"K", ProgramUniformVariableDataType::Uint32},
+                                          {"K5", ProgramUniformVariableDataType::Uint32},
+                                          {"InputAStride", ProgramUniformVariableDataType::Uint32},
+                                          {"scale_B", ProgramUniformVariableDataType::Float32},
+                                          {"num_N_tile", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  uint32_t tile_size_k_vec_;
+  uint32_t tile_size_;
+};
+
 class BitLinear final : public WebGpuKernel {
  public:
   BitLinear(const OpKernelInfo& info) : WebGpuKernel(info) {
