@@ -1353,7 +1353,9 @@ Graph::Graph(const Model& owning_model,
       if (is_sparse) {
         sparse_tensor_names_.erase(tensor.name());
       }
-      put_data_maybe_in_memory(tensor);
+      if (!tensor.has_raw_data()) {
+        put_data_maybe_in_memory(tensor);
+      }
       if (is_sparse) {
         sparse_tensor_names_.emplace(tensor.name());
       }
@@ -3720,7 +3722,7 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
 Status Graph::InjectExternalInitializersFromFilesInMemory(
     const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files) {
   for (const auto& [tensor_name, tensor_proto] : name_to_initial_tensor_) {
-    if (tensor_proto->data_location() == TensorProto_DataLocation_EXTERNAL) {
+    if (tensor_proto->data_location() == TensorProto_DataLocation_EXTERNAL && !utils::HasExternalDataInMemory(*tensor_proto)) {
       std::unique_ptr<ExternalDataInfo> external_data_info;
       ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto->external_data(), external_data_info));
 
