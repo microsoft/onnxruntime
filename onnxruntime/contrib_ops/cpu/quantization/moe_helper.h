@@ -48,10 +48,11 @@ Status CheckInputs(MoEParameters& parameters,
                    const Tensor* fc3_experts_scales,   // required for qMoE; NULL for MOE
                    const int pack_size,                // number of weights packed together (like 2 for uint4 packed to uint8)
                    const bool is_fused_swiglu) {
+
+  // Check dimensions of input to avoid input_dims index out of range. CHECK_TENSOR_SHAPE will verify each tensor later.
   ASSERT_TENSOR_2D_OR_3D(input);
   ASSERT_TENSOR_3D(fc1_experts_weights);
   ASSERT_TENSOR_3D(fc2_experts_weights);
-  ASSERT_TENSOR_2D(router_probs);
   ASSERT_TENSOR_2D(router_probs);
 
   const auto& input_dims = input->Shape().GetDims();
