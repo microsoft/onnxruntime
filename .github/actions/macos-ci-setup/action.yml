@@ -3,9 +3,8 @@ description: "Common setup steps for macOS CI pipelines"
 
 inputs:
   platform_machine:
-    required: false
+    required: true
     type: string
-    default: "arm64"
   python_version:
     required: false
     type: string

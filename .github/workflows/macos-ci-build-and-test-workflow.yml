@@ -79,7 +79,7 @@ jobs:
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup
         with:
-          platform_machine: ${{ matrix.platform_machine }}
+          platform_machine: ${{ matrix.machine }}
           python_version: ${{ inputs.python_version }}
           xcode_version: ${{ env.xcode_version }}
           use_cache: true
