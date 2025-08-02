@@ -129,8 +129,10 @@ struct Clip::ComputeImpl {
 
           EigenVectorMap<T>(Y->MutableData<T>() + start, count) =
               ConstEigenVectorMap<T>(X->Data<T>() + start, count)
-                  .cwiseMax(min_val)
-                  .cwiseMin(max_val);
+                  .array()
+                  .unaryExpr([=](auto x) {
+                    return std::clamp(x, min_val, max_val);
+                  });
         },
         0);
   }
