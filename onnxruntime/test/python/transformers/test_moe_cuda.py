@@ -57,11 +57,13 @@ ort_dtype_name_map = {
 
 
 def quant_dequant(weights, is_4_bit_quantization: bool = True):
-    # use the test version `_symmetric_...` to get the non-interleaved weights
     type = torch.quint4x2 if is_4_bit_quantization else torch.int8
-    # This import is needed to use torch.ops.trtllm._symmetric_quantize_last_axis_of_batched_matrix()
-    # Comment out this line for passing the lintrunner check in the CI.
-    # import tensorrt_llm
+
+    import tensorrt_llm  # noqa: PLC0415
+
+    # Avoid lint false alert that the package is not used. Note that this function will not be called in pipeline.
+    if pipeline_mode:
+        print("Tensorrt LLM version", tensorrt_llm.__version__)
 
     quant_weights, processed_q_weight, torch_weight_scales = (
         torch.ops.trtllm._symmetric_quantize_last_axis_of_batched_matrix(weights.T.cpu().contiguous(), type)
@@ -1069,7 +1071,6 @@ phi3_test_cases = list(
 class TestPhiMoE(unittest.TestCase):
     @parameterized.expand(phi3_test_cases)
     def test_phi3_moe_parity(self, batch_size, sequence_length, quant_bits):
-        print("Running")
         config = PhiMoEConfig(hidden_size=256, intermediate_size=1024)
         phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length, quant_bits)
         phi3_moe.to(device)
@@ -1093,12 +1094,16 @@ class SwigluMoeConfig:
         self.num_local_experts = num_local_experts
 
 
-def swiglu(x: torch.Tensor):
+def swiglu(x: torch.Tensor, alpha: float = 1.702, limit: float = 7.0):
     dim = x.shape[-1]
     x = x.view(-1, dim // 2, 2)
     x_glu, x_linear = x[..., 0], x[..., 1]
 
-    y = x_glu * torch.sigmoid(1.702 * x_glu) * (x_linear + 1)
+    if limit is not None:
+        x_glu = x_glu.clamp(max=limit)
+        x_linear = x_linear.clamp(min=-limit, max=limit)
+
+    y = x_glu * torch.sigmoid(alpha * x_glu) * (x_linear + 1)
     return y
 
 
@@ -1117,7 +1122,7 @@ class SwigluMlp(nn.Module):
         return y
 
 
-# Note that the shape might not match the tensor shape. See Attention note in this file.
+# Note that the weight shape might not match the tensor shape in legacy operator spec.
 def make_onnx_intializer(name: str, tensor: torch.Tensor, shape, onnx_dtype):
     torch_dtype = onnx_to_torch_type_map[onnx_dtype]
     if torch_dtype == torch.bfloat16:
@@ -1199,13 +1204,11 @@ def create_swiglu_moe_onnx_graph(
         nodes[0].attribute.extend([helper.make_attribute("expert_weight_bits", quant_bits)])
 
     components = 2 if quant_bits == 4 else 1
-    # ATTENTION: Actual weight layout is like [num_experts, 2 * inter_size, hidden_size // components]
-    #            Here we claim a different shape for the initializer to match the operator spec for weight tensor!
-    fc1_weight_shape = [num_experts, hidden_size, 2 * inter_size // components]
+    fc1_weight_shape = [num_experts, 2 * inter_size, hidden_size // components]
     fc1_bias_shape = [num_experts, 2 * inter_size]
     fc1_experts_weight_scale_shape = [num_experts, 2 * inter_size]
 
-    fc2_weight_shape = [num_experts, inter_size, hidden_size // components]
+    fc2_weight_shape = [num_experts, hidden_size, inter_size // components]
     fc2_bias_shape = [num_experts, hidden_size]
     fc2_experts_weight_scale_shape = [num_experts, hidden_size]
 
@@ -1296,8 +1299,6 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
             fc1_b_list.append(expert.w1.bias)
             fc2_b_list.append(expert.w2.bias)
             if not use_quant:
-                # ATTENTION: Weight tensor for CUDA shall have [E, out, in] memory layout just like Linear.
-                # But the initializer shape shall be [E, in, out] to match op spec.
                 fc1_w_list.append(expert.w1.weight)
                 fc2_w_list.append(expert.w2.weight)
             else:
