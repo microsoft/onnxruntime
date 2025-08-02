@@ -188,6 +188,7 @@ void CPUIDInfo::ArmLinuxInit() {
     has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
     has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
+    has_arm_sve_ = cpuinfo_has_arm_sve();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
     has_arm_sme_ = cpuinfo_has_arm_sme();
@@ -219,6 +220,7 @@ void CPUIDInfo::ArmLinuxInit() {
     has_fp16_ |= has_arm_neon_dot_;
 
     has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
+    has_arm_sve_ = ((getauxval(AT_HWCAP) & HWCAP_SVE) != 0);
     has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
 
     has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
@@ -319,6 +321,7 @@ void CPUIDInfo::ArmWindowsInit() {
     // has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && has_arm_neon_i8mm_;
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+    has_arm_sve_ = cpuinfo_has_arm_sve();
   }
 #endif  // defined(CPUINFO_SUPPORTED)
 }
