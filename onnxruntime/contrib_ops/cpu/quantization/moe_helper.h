@@ -19,18 +19,20 @@ enum class MoEParallelType {
 };
 
 struct MoEParameters {
-  MoEParameters() {}
-  explicit MoEParameters(int64_t tensor_shards) : tensor_shards(tensor_shards) {}
-  int64_t num_rows;
-  int64_t num_experts;
-  int64_t local_num_experts;
-  int64_t hidden_size;
-  int64_t inter_size;
+  MoEParameters() = default;
 
-  MoEParallelType parallel_type;
+  explicit MoEParameters(int64_t tensor_shards)
+      : tensor_shards(tensor_shards) {}
+
+  int64_t num_rows{0};
+  int64_t num_experts{0};
+  int64_t local_num_experts{0};
+  int64_t hidden_size{0};
+  int64_t inter_size{0};
+
+  MoEParallelType parallel_type{MoEParallelType::None};
   int64_t tensor_shards{1};
 };
-
 namespace moe_helper {
 
 template <typename Tensor>
@@ -94,7 +96,7 @@ Status CheckInputs(MoEParameters& parameters,
 
   if (fc3_experts_weights == nullptr) {
     ORT_ENFORCE(fc3_experts_bias == nullptr && fc3_experts_scales == nullptr);
-  } else {                                                                        // fc3 exists
+  } else {
     ORT_ENFORCE(fc1_experts_scales == nullptr || fc3_experts_scales != nullptr);  // MOE no scale, or qMOE need scales
   }
 

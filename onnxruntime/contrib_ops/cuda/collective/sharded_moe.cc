@@ -71,7 +71,6 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
   MoEParameters moe_params(tensor_shards_);
-  MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
       fc1_experts_weights, fc1_experts_bias_optional, nullptr,
