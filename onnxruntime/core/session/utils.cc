@@ -351,8 +351,8 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
 }
 
 Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
-                                    gsl::span<const char* const> ep_options_keys,
-                                    gsl::span<const char* const> ep_options_vals,
+                                    gsl::span<const char* const> ep_option_keys,
+                                    gsl::span<const char* const> ep_option_vals,
                                     SessionOptions& session_options) {
   const size_t num_ep_options = ep_option_keys.size();
   if (ep_option_vals.size() != num_ep_options) {
@@ -377,6 +377,8 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
       ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
     }
   }
+
+  return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace onnxruntime
