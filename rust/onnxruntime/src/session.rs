@@ -1,6 +1,6 @@
 //! Module containing session types
 
-use std::{convert::TryFrom, ffi::CString, fmt::Debug, path::Path};
+use std::{convert::TryFrom, ffi::CString, fmt::Debug, path::Path, ptr::null_mut};
 
 #[cfg(not(target_family = "windows"))]
 use std::os::unix::ffi::OsStrExt;
@@ -158,6 +158,27 @@ impl<'a> SessionBuilder<'a> {
     /// Defaults to [`MemType::Default`](../enum.MemType.html#variant.Default)
     pub fn with_memory_type(mut self, memory_type: MemType) -> Result<SessionBuilder<'a>> {
         self.memory_type = memory_type;
+        Ok(self)
+    }
+
+    /// Append a CUDA execution provider
+    pub fn with_execution_provider_cuda(self) -> Result<SessionBuilder<'a>> {
+        let mut cuda_options: *mut sys::OrtCUDAProviderOptionsV2 = null_mut();
+        let status = unsafe { self.env.env().api().CreateCUDAProviderOptions.unwrap()(&mut cuda_options) };
+        status_to_result(status).map_err(OrtError::CudaProviderOptions)?;
+
+        let status = unsafe {
+            self.env
+                .env()
+                .api()
+                .SessionOptionsAppendExecutionProvider_CUDA_V2
+                .unwrap()(self.session_options_ptr, cuda_options)
+        };
+        status_to_result(status).map_err(OrtError::AppendExecutionProviderCuda)?;
+
+        unsafe {
+            self.env.env().api().ReleaseCUDAProviderOptions.unwrap()(cuda_options);
+        };
         Ok(self)
     }
 
