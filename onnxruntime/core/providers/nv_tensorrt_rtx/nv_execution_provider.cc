@@ -123,10 +123,11 @@ void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /
   // even for empty tensors, so allocate a dummy byte.
   size = std::max(size, static_cast<uint64_t>(1));
   if (size > allocated_size) {
-    cudaFree(outputPtr);
+    alloc_->Free(alloc_, outputPtr);
     outputPtr = nullptr;
     allocated_size = 0;
-    if (cudaMalloc(&outputPtr, size) == cudaSuccess) {
+    outputPtr = alloc_->Alloc(alloc_, size);
+    if (outputPtr) {
       allocated_size = size;
     }
   }
@@ -800,7 +801,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
   // Otherwise, if the shape of the output tensor is known prior to the runtime, ORT will pre-allocate memory buffer for the output tensor for enqueueV3.
   if (is_DDS || known_DDS) {
     if (!known_DDS) {
-      auto allocatorPtr = std::make_unique<OutputAllocator>();
+      auto allocatorPtr = std::make_unique<OutputAllocator>(alloc);
       trt_context->setOutputAllocator(output_name, allocatorPtr.get());
       dds_output_allocator_map[output_name] = std::move(allocatorPtr);
     }
@@ -1081,7 +1082,6 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     engine_decryption_lib_path_ = info.engine_decryption_lib_path;
   }
   force_sequential_engine_build_ = info.force_sequential_engine_build;
-  context_memory_sharing_enable_ = info.context_memory_sharing_enable;
   sparsity_enable_ = info.sparsity_enable;
   auxiliary_streams_ = info.auxiliary_streams;
   profile_min_shapes = info.profile_min_shapes;
@@ -1225,7 +1225,6 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
                         << ", nv_engine_decryption_enable: " << engine_decryption_enable_
                         << ", nv_engine_decryption_lib_path: " << engine_decryption_lib_path_
                         << ", nv_force_sequential_engine_build: " << force_sequential_engine_build_
-                        << ", nv_context_memory_sharing_enable: " << context_memory_sharing_enable_
                         << ", nv_sparsity_enable: " << sparsity_enable_
                         << ", nv_auxiliary_streams: " << auxiliary_streams_
                         << ", nv_cuda_graph_enable: " << cuda_graph_enable_
@@ -1298,9 +1297,15 @@ void NvExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
 }
 
 std::vector<AllocatorPtr> NvExecutionProvider::CreatePreferredAllocators() {
+  OrtArenaCfg arena_cfg(0, static_cast<int>(ArenaExtendStrategy::kSameAsRequested),
+                        -1, -1, -1, -1);
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId device_id) { return std::make_unique<CUDAAllocator>(device_id, CUDA); },
-      narrow<OrtDevice::DeviceId>(device_id_));
+      narrow<OrtDevice::DeviceId>(device_id_),
+      true,
+      arena_cfg,
+      // make it stream aware
+      true);
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
@@ -2349,21 +2354,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   ShapeRangesMap input_explicit_shape_ranges;
   ShapeRangesMap input_implicit_shape_ranges;
 
-  auto tensor_is_dynamic = [&](nvinfer1::ITensor* tensor) -> bool {
-    if (tensor->isShapeTensor()) {
-      return true;
-    } else {
-      nvinfer1::Dims dims = tensor->getDimensions();
-      // Execution tensor
-      for (int j = 0, end = dims.nbDims; j < end; ++j) {
-        if (dims.d[j] == -1) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-
   bool has_dynamic_shape = false;  // True if input tensor has dynamic shape and no explicit profile is specified, otherwise false
   if ((!profile_min_shapes_.empty()) && (!profile_max_shapes_.empty()) && (!profile_opt_shapes_.empty())) {
     has_explicit_profile = true;
@@ -2375,7 +2365,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   } else {
     for (unsigned int i = 0, end = num_inputs; i < end; ++i) {
       auto input = trt_network->getInput(i);
-      has_dynamic_shape |= tensor_is_dynamic(input);
+      has_dynamic_shape |= checkTrtTensorIsDynamic(input);
     }
     if (has_dynamic_shape) {
       LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] No explicit optimization profile was specified. "
@@ -2574,31 +2564,18 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   // Build context
   // Note: Creating an execution context from an engine is thread safe per TRT doc
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-  if (context_memory_sharing_enable_) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
-    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-    if (mem_size > max_ctx_mem_size_) {
-      max_ctx_mem_size_ = mem_size;
-    }
-    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
-  } else {
-    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
-  }
+  trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
   if (!trt_context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "Nv EP could not build execution context for fused node: " + fused_node.Name());
   }
 
+  bool is_dynamic_shape_context = false;
   // Create input to index map
   for (int i = 0; i < num_inputs; ++i) {
     auto input = trt_network->getInput(i);
     const std::string& input_name = input->getName();
+    is_dynamic_shape_context |= checkTrtDimIsDynamic(trt_engine->getTensorShape(input_name.c_str()));
     const auto& iter = input_map.find(input_name);
     if (iter != input_map.end()) {
       input_indexes[input_name] = iter->second;
@@ -2639,10 +2616,9 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
           input_shape_ranges_[context->node_name], &tensorrt_mu_, trt_node_name_with_precision,
           engine_cache_enable_, cache_path_,
           runtime_.get(), profiles_[context->node_name],
-          context_memory_sharing_enable_, &max_ctx_mem_size_,
           engine_decryption_enable_, engine_decryption_, engine_encryption_,
           detailed_build_log_, sparsity_enable_,
-          auxiliary_streams_, cuda_graph_enable_, cache_prefix_, cache_suffix};
+          auxiliary_streams_, cuda_graph_enable_, is_dynamic_shape_context, cache_prefix_, cache_suffix};
     *state = p.release();
     return 0;
   };
@@ -2676,7 +2652,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
     auto trt_profiles = trt_state->profiles;
-    auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
     int num_inputs = static_cast<int>(input_indexes.size());
     int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_set<std::string> input_names;
@@ -2785,9 +2760,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       if (iter != input_indexes.end()) {
         input_index = iter->second;
       }
-      auto input_tensor = ctx.GetInput(input_index);
-      auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
-      const auto tensor_shapes = tensor_info.GetShape();
 
       auto status = BindContextInput(ctx, trt_engine, trt_context, input_name, input_index, shape_tensor_values, shape_tensor_values_int64, scratch_buffers, alloc, stream);
       if (status != Status::OK()) {
@@ -2829,20 +2801,16 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     }
 
     // Set execution context memory
-    if (trt_state->context_memory_sharing_enable) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
-      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-      if (mem_size > *max_context_mem_size_ptr) {
-        *max_context_mem_size_ptr = mem_size;
-      }
-      trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
+    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
+    if (trt_state->is_dynamic_shape) {
+      mem_size = trt_context->updateDeviceMemorySizeForShapes();
     }
+    if (trt_state->context_memory_size != mem_size) {
+      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] A new context memory was allocated with size " << mem_size;
+      trt_state->context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, mem_size, false /*use_reserve*/);
+      trt_state->context_memory_size = mem_size;
+    }
+    trt_context->setDeviceMemoryV2(trt_state->context_memory.get(), mem_size);
 
     // Start CUDA graph capture.
     // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
@@ -2961,33 +2929,19 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
   //
   // Note: Creating an execution context from an engine is thread safe per TRT doc
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-  if (context_memory_sharing_enable_) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
-    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-    if (mem_size > max_ctx_mem_size_) {
-      max_ctx_mem_size_ = mem_size;
-    }
-    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
-
-  } else {
-    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
-  }
+  trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
   if (!trt_context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "Nv EP could not build execution context for fused node: " + fused_node.Name());
   }
 
+  bool is_dynamic_shape_context = false;
   // Create input/output to index maps
   for (int32_t i = 0; i < trt_engine->getNbIOTensors(); ++i) {
     auto const& name = trt_engine->getIOTensorName(i);
     auto const& mode = trt_engine->getTensorIOMode(name);
     if (mode == nvinfer1::TensorIOMode::kINPUT) {
+      is_dynamic_shape_context |= checkTrtDimIsDynamic(trt_engine->getTensorShape(name));
       const auto& iter = input_map.find(name);
       if (iter != input_map.end()) {
         input_indexes[name] = iter->second;
@@ -3027,9 +2981,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
           &contexts_[context->node_name],
           input_info_[context->node_name],
           output_info_[context->node_name],
-          context_memory_sharing_enable_,
-          &max_ctx_mem_size_,
-          &tensorrt_mu_};
+          &tensorrt_mu_,
+          is_dynamic_shape_context};
     *state = p.release();
     return 0;
   };
@@ -3056,7 +3009,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
-    auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
     int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
     std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
@@ -3144,20 +3096,17 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     }
 
     // Set execution context memory
-    if (trt_state->context_memory_sharing_enable) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
-      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-      if (mem_size > *max_context_mem_size_ptr) {
-        *max_context_mem_size_ptr = mem_size;
-      }
-      trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
+    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
+    if (trt_state->is_dynamic_shape) {
+      mem_size = trt_context->updateDeviceMemorySizeForShapes();
     }
+    if (trt_state->context_memory_size != mem_size) {
+      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] A new context memory was allocated with size " << mem_size;
+      trt_state->context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, mem_size, false /*use_reserve*/);
+      // trt_state->context_memory = IAllocator::MakeUniquePtr<void>(alloc, mem_size, false /*use_reserve*/, stream);
+      trt_state->context_memory_size = mem_size;
+    }
+    trt_context->setDeviceMemoryV2(trt_state->context_memory.get(), mem_size);
 
     // Start CUDA graph capture.
     // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
