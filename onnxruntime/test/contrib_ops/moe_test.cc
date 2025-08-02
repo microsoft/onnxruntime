@@ -1358,7 +1358,7 @@ TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};  // /2 for 4-bit
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};  // legacy shape
   std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size / 2};
   std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
   std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
@@ -1422,7 +1422,7 @@ TEST(MoETest, QMoETest_CPU_Int8_MLAS) {
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size};  // No /2 for 8-bit
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size};  // legacy shape
   std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size};
   std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
   std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
@@ -1474,7 +1474,7 @@ TEST(MoETest, QMoETest_CPU_FC3_Error) {
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};  // legacy shape
   std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size / 2};
   std::vector<int64_t> fc3_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};
   std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
@@ -1543,8 +1543,8 @@ TEST(MoETest, QMoETest_CPU_SwiGLU_Int4) {
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size};  // 4-bit SwiGLU: stored as hidden x inter, but contains 2*inter data
-  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size / 2};
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, 2 * inter_size, hidden_size / 2};
+  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};
   std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size * 2};  // 2x for SwiGLU (linear + gate)
   std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
   std::vector<int64_t> output_dims = {num_rows, hidden_size};
@@ -1602,8 +1602,8 @@ TEST(MoETest, QMoETest_CPU_SwiGLU_Int8) {
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size * 2};  // 8-bit SwiGLU: explicit 2x
-  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size};
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, inter_size * 2, hidden_size};  // 8-bit SwiGLU: explicit 2x
+  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, hidden_size, inter_size};
   std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size * 2};  // 2x for SwiGLU
   std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
   std::vector<int64_t> output_dims = {num_rows, hidden_size};
@@ -1660,7 +1660,7 @@ TEST(MoETest, QMoETest_CPU_Float32) {
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size};
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size};  // legacy shape
   std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size};
   std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
   std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
