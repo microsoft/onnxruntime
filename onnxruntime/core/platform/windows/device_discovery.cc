@@ -635,19 +635,6 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
       }
     }
 
-    std::ostringstream oss;
-    oss << "Adding OrtHardwareDevice {vendor_id:0x" << std::hex << ortdevice.vendor_id
-        << ", device_id:0x" << ortdevice.device_id
-        << ", vendor:" << ortdevice.vendor
-        << ", type:" << std::dec << static_cast<int>(ortdevice.type)
-        << ", metadata: [";
-    for (auto& [key, value] : ortdevice.metadata.Entries()) {
-      oss << key << "=" << value << ", ";
-    }
-
-    oss << "]}" << std::endl;
-    LOGS_DEFAULT(INFO) << oss.str();
-
     return ortdevice;
   };
 
