@@ -375,7 +375,7 @@ common::Status SaveInitializedTensors(
       // TODO: if the tensor need be copied, does it have enough room?
       ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, memory_buffer, alloc));
 
-      // ??? Should we ignore this session option if the EP is explictly providing the read only allocator?
+      // ??? Should we ignore this session option if the EP is explicitly providing the read only allocator?
       // bool have_readonly_initializer_allocator = alloc->Info().alloc_type == OrtReadOnlyAllocator;
       const bool use_device_allocator_for_initializers =
           session_options.config_options.GetConfigOrDefault(
@@ -402,9 +402,11 @@ common::Status SaveInitializedTensors(
                                                         std::move(tensor), ort_value));
         }
       } else {
+        // if in memory we were expecting to find it above.
+        ORT_ENFORCE(!utils::HasExternalDataInMemory(tensor_proto));
+
         // We need to deserialize the tensor proto into an OrtValue
         // using the preallocated buffer or allocator.
-
         Status st = DeserializeTensorProto(env, graph_loc, tensor_proto,
                                            (memory_buffer.has_value()) ? &*memory_buffer : nullptr,
                                            alloc, default_cpu_alloc, ort_value, data_transfer_mgr,
