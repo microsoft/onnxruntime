@@ -1069,6 +1069,7 @@ phi3_test_cases = list(
 class TestPhiMoE(unittest.TestCase):
     @parameterized.expand(phi3_test_cases)
     def test_phi3_moe_parity(self, batch_size, sequence_length, quant_bits):
+        print("Running")
         config = PhiMoEConfig(hidden_size=256, intermediate_size=1024)
         phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length, quant_bits)
         phi3_moe.to(device)
@@ -1096,6 +1097,7 @@ def swiglu(x: torch.Tensor):
     dim = x.shape[-1]
     x = x.view(-1, dim // 2, 2)
     x_glu, x_linear = x[..., 0], x[..., 1]
+
     y = x_glu * torch.sigmoid(1.702 * x_glu) * (x_linear + 1)
     return y
 
