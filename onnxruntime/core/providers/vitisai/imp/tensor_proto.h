@@ -37,4 +37,5 @@ ONNX_NAMESPACE::TensorProto* tensor_proto_new_fp16(const std::string& name, cons
                                                    const std::vector<int16_t>& data);
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_doubles(const std::string& name, const std::vector<int64_t>& shape,
                                                       const std::vector<double>& data);
+gsl::span<const char> process_ext_address(const ONNX_NAMESPACE::TensorProto& tensor);
 }  // namespace vaip

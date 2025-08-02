@@ -15,7 +15,7 @@
 
 #include "vaip/node.h"
 #include "vaip/node_arg.h"
-
+#include "./tensor_proto.h"
 namespace vaip {
 
 struct NodeEdgeT {
@@ -309,7 +309,14 @@ Model* model_clone(const Model& original_model, int64_t external_data_threshold)
       cloned_tensor->add_dims(dim);
       size = size * dim;
     }
-    if (size >= external_data_threshold) {
+    auto ORT_MEM_ADDR_tag = process_ext_address(*original_tensor);
+    if (!ORT_MEM_ADDR_tag.empty()) {
+      cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+      auto external_data = cloned_tensor->mutable_external_data();
+      auto p = external_data->Add();
+      *p->mutable_key() = "location";
+      *p->mutable_value() = std::string("<") + graph_ptr;
+    } else if (size >= external_data_threshold) {
       cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
       auto external_data = cloned_tensor->mutable_external_data();
       auto p = external_data->Add();
