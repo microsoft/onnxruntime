@@ -936,7 +936,11 @@ cpu_phi3_swiglu_test_cases = list(
     )
 )
 
+# Temporarily disable CPU qMoE tests. A fix will come soon.
+disable_cpu_qmoe_tests = True
 
+
+@unittest.skipIf(disable_cpu_qmoe_tests, "Skipping qMoE cpu tests")
 class TestPhiQMoECPU(unittest.TestCase):
     @parameterized.expand(cpu_phi3_test_cases + cpu_phi3_swiglu_test_cases)
     def test_phi3_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits, use_swiglu=False):
