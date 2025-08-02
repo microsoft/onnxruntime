@@ -340,8 +340,9 @@ def create_cpu_moe_onnx_graph(
     act_factor = 2 if use_swiglu else 1
 
     # FC1 shape needs to account for both SwiGLU and quantization packing
-    fc1_shape = [num_experts, hidden_size, (act_factor * inter_size) // pack_factor]
-    fc2_shape = [num_experts, inter_size, hidden_size // pack_factor]
+    # Weights are store in column major order. Need pack 2 int4 values into uint8.
+    fc1_shape = [num_experts, (act_factor * inter_size), hidden_size // pack_factor]
+    fc2_shape = [num_experts, hidden_size, inter_size // pack_factor]
 
     torch_dtype = onnx_to_torch_type_map[onnx_dtype]
 
@@ -753,7 +754,16 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
     compatibility with the CUDA implementation and TensorRT.
     """
 
-    def __init__(self, config, batch_size, sequence_length, quant_bits=0, onnx_dtype=None, use_swiglu=False):
+    def __init__(
+        self,
+        config,
+        batch_size,
+        sequence_length,
+        quant_bits=0,
+        onnx_dtype=None,
+        use_swiglu=False,
+        swiglu_interleaved=True,
+    ):
         # Ensure we always have a valid quantization bits value (4 or 8) before passing to parent
         if quant_bits <= 0:
             print("Warning: quant_bits was set to 0 or negative, forcing to 4-bit")
@@ -767,6 +777,7 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         self.top_k = config.num_experts_per_tok
         self.router_jitter_noise = config.router_jitter_noise
         self.use_swiglu = use_swiglu
+        self.swiglu_interleaved = swiglu_interleaved
 
         # gating
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
@@ -787,35 +798,37 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
             w2_scale, pre_qweight2, w2_qdq = quant_dequant(self.experts[i].w2.weight, is_4_bit)
 
             # For SwiGLU, we also need to quantize w3 (value) weights
-            w3_qdq = None  # Initialize w3_qdq to avoid unbound variable error
             if self.use_swiglu:
                 w3_scale, pre_qweight3, w3_qdq = quant_dequant(self.experts[i].w3.weight, is_4_bit)
-                # Combine gate (w1) and value (w3) for SwiGLU
-                if is_4_bit:
-                    # For 4-bit, we need to combine the packed weights in the right format
-                    # Double the intermediate size for SwiGLU (gate + value)
-                    # Each byte contains two 4-bit values
-                    gate_weights = pre_qweight1
-                    value_weights = pre_qweight3
-                    # Create a new tensor with double the last dimension
-                    combined_shape = list(gate_weights.shape)
-                    combined_shape[-1] *= 2  # Double the last dimension for gate+value
-                    combined_weights = torch.zeros(combined_shape, dtype=torch.uint8, device=gate_weights.device)
-                    combined_weights[..., : gate_weights.shape[-1]] = gate_weights
-                    combined_weights[..., gate_weights.shape[-1] :] = value_weights
-                    pre_qweight1 = combined_weights
-                else:
-                    # For 8-bit, we can just concatenate along the last dimension
-                    pre_qweight1 = torch.cat([pre_qweight1, pre_qweight3], dim=-1)
+                self.experts[i].w3.weight.data = w3_qdq
 
-                # Same for scales - combine gate and value scales
-                w1_scale = torch.cat([w1_scale, w3_scale], dim=-1)
+                gate_weights = pre_qweight1
+                value_weights = pre_qweight3
+                gate_scales = w1_scale
+                value_scales = w3_scale
+
+                if self.swiglu_interleaved:
+                    # Create interleaved layout: [gate, value, gate, value, ...]
+                    # This is done by alternating rows from the gate and value tensors.
+                    # Weights and scales are combined along the inter_size dimension (dim=0).
+                    combined_weights = torch.empty_like(torch.cat([gate_weights, value_weights], dim=0))
+                    combined_weights[0::2] = gate_weights
+                    combined_weights[1::2] = value_weights
+                    pre_qweight1 = combined_weights
+
+                    combined_scales = torch.empty_like(torch.cat([gate_scales, value_scales], dim=0))
+                    combined_scales[0::2] = gate_scales
+                    combined_scales[1::2] = value_scales
+                    w1_scale = combined_scales
+                else:
+                    # Create chunked layout: [gate..., value...]
+                    # Concatenate along the inter_size dimension (dim=0).
+                    pre_qweight1 = torch.cat([gate_weights, value_weights], dim=0)
+                    w1_scale = torch.cat([gate_scales, value_scales], dim=0)
 
             # Update the expert weights with dequantized values for PyTorch execution
             self.experts[i].w1.weight.data = w1_qdq
             self.experts[i].w2.weight.data = w2_qdq
-            if self.use_swiglu and w3_qdq is not None:
-                self.experts[i].w3.weight.data = w3_qdq
 
             # Store the quantized weights and scales for ONNX model
             w1_list.append(pre_qweight1)
@@ -933,20 +946,30 @@ cpu_phi3_swiglu_test_cases = list(
         [8, 32],  # sequence_length - smaller sequence lengths for CPU
         [4, 8],  # quant_bits - only test QMoE (4-bit and 8-bit)
         [True],  # use_swiglu - SwiGLU activation
+        [True],  # swiglu_interleaved - # Kernel only supports interleaved right now.
     )
 )
 
 
 class TestPhiQMoECPU(unittest.TestCase):
     @parameterized.expand(cpu_phi3_test_cases + cpu_phi3_swiglu_test_cases)
-    def test_phi3_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits, use_swiglu=False):
-        activation_type = "SwiGLU" if use_swiglu else "SiLU"
+    def test_phi3_qmoe_parity_cpu(
+        self, batch_size, sequence_length, quant_bits, use_swiglu=False, swiglu_interleaved=True
+    ):
+        activation_type = f"SwiGLU(interleaved={swiglu_interleaved})" if use_swiglu else "SiLU"
         print(
             f"Running PhiMoE CPU test with batch_size={batch_size}, sequence_length={sequence_length}, "
             f"quant_bits={quant_bits}, activation={activation_type}"
         )
         config = PhiMoEConfig(hidden_size=256, intermediate_size=512, hidden_act="silu")  # Smaller sizes for CPU tests
-        phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length, quant_bits, use_swiglu=use_swiglu)
+        phi3_moe = PhiMoESparseMoeBlock(
+            config,
+            batch_size,
+            sequence_length,
+            quant_bits,
+            use_swiglu=use_swiglu,
+            swiglu_interleaved=swiglu_interleaved,
+        )
         phi3_moe.to(device)
 
         # Skip tests if ONNX is not available
@@ -963,30 +986,47 @@ class TestPhiQMoECPU(unittest.TestCase):
             if "FC3 gating is not yet implemented on CPU" in str(e):
                 self.skipTest("FC3 gating is not yet implemented on CPU")
             else:
-                raise
+                raise e
 
-    @parameterized.expand([(8, False), (4, False), (8, True), (4, True)])
-    def test_phi3_qmoe_cpu_benchmark(self, quant_bits, use_swiglu=False):
-        activation_type = "SwiGLU" if use_swiglu else "SiLU"
-        print(f"Benchmarking PhiMoE CPU with quant_bits={quant_bits}, activation={activation_type}")
-        batch_size = 1
-        sequence_length = 32
-        config = PhiMoEConfig(hidden_size=256, intermediate_size=512)
-        phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length, quant_bits, use_swiglu=use_swiglu)
-        phi3_moe.to(device)
+    run_performance_test = False
 
-        # Skip tests if ONNX is not available or session creation failed
-        if not HAS_ONNX or phi3_moe.ort_sess is None:
-            self.skipTest("ONNX not installed or CPU MoE operator not available")
-            return
+    @unittest.skipIf(not run_performance_test, "Skipping qMoE CPU performance test")
+    def test_phi3_qmoe_cpu_benchmark(self):
+        for quant_bits in [4, 8]:
+            # Kernel only supports SwiGLU interleaved right now.
+            for use_swiglu, swiglu_interleaved in itertools.product([False, True], [True]):
+                if not use_swiglu and not swiglu_interleaved:
+                    continue  # Skip redundant non-swiglu case
 
-        try:
-            phi3_moe.benchmark_ort()
-        except RuntimeError as e:
-            if "FC3 gating is not yet implemented on CPU" in str(e):
-                self.skipTest("FC3 gating is not yet implemented on CPU")
-            else:
-                raise
+                activation_type = f"SwiGLU(interleaved={swiglu_interleaved})" if use_swiglu else "SiLU"
+                print(
+                    f"Benchmarking PhiMoE CPU with quant_bits={quant_bits}, activation={activation_type}, interleaved={swiglu_interleaved}"
+                )
+                batch_size = 1
+                sequence_length = 32
+                config = PhiMoEConfig(hidden_size=256, intermediate_size=512)
+                phi3_moe = PhiMoESparseMoeBlock(
+                    config,
+                    batch_size,
+                    sequence_length,
+                    quant_bits,
+                    use_swiglu=use_swiglu,
+                    swiglu_interleaved=swiglu_interleaved,
+                )
+                phi3_moe.to(device)
+
+                # Skip tests if ONNX is not available or session creation failed
+                if not HAS_ONNX or phi3_moe.ort_sess is None:
+                    self.skipTest("ONNX not installed or CPU MoE operator not available")
+                    return
+
+                try:
+                    phi3_moe.benchmark_ort()
+                except RuntimeError as e:
+                    if "FC3 gating is not yet implemented on CPU" in str(e):
+                        self.skipTest("FC3 gating is not yet implemented on CPU")
+                    else:
+                        raise
 
 
 if __name__ == "__main__":

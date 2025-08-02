@@ -284,20 +284,17 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
         // Process each token in this thread's range
         for (std::ptrdiff_t token_idx = start_token; token_idx < end_token; ++token_idx) {
-          const float* token_input = input_float_ptr + static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.hidden_size;
-          float* token_result = output_float_ptr + static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.hidden_size;
+          const float* token_input = input_float_ptr + static_cast<ptrdiff_t>(token_idx) * moe_params.hidden_size;
+          float* token_result = output_float_ptr + static_cast<ptrdiff_t>(token_idx) * moe_params.hidden_size;
 
           // Process all experts for this token
           for (std::ptrdiff_t expert_idx = 0; expert_idx < moe_params.num_experts; ++expert_idx) {
-            float routing_weight = router_probs_float_ptr[static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.num_experts + static_cast<int64_t>(SafeInt<int64_t>(expert_idx))];
+            float routing_weight = router_probs_float_ptr[static_cast<ptrdiff_t>(token_idx) * moe_params.num_experts + static_cast<ptrdiff_t>(expert_idx)];
             if (routing_weight <= 1e-6f) continue;  // Skip experts with negligible routing weight
 
             // FC1: input -> intermediate using pre-dequantized weights + MLAS SGEMM
-            const int64_t fc1_weight_offset = is_4bit ? (static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size * fc1_output_size) : (static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size * moe_params.inter_size * act_multiplier);
+            const int64_t fc1_weight_offset = static_cast<ptrdiff_t>(expert_idx) * moe_params.hidden_size * fc1_output_size;
             const float* fc1_expert_weights = dequant_fc1_weights + fc1_weight_offset;
-
-            // Bias size is always equal to output size (fc1_output_size), regardless of bit width
-            const int64_t fc1_bias_size = fc1_output_size;
 
             // Use MLAS SGEMM for FC1
             MLAS_SGEMM_DATA_PARAMS fc1_params;
@@ -306,28 +303,32 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
             fc1_params.B = fc1_expert_weights;
             fc1_params.ldb = static_cast<size_t>(moe_params.hidden_size);
             fc1_params.C = thread_fc1_output;
-            fc1_params.ldc = static_cast<size_t>(fc1_bias_size);
+            fc1_params.ldc = static_cast<size_t>(fc1_output_size);
             fc1_params.alpha = 1.0f;
             fc1_params.beta = 0.0f;
 
-            MlasGemm(CblasNoTrans, CblasNoTrans, 1, static_cast<size_t>(fc1_bias_size), static_cast<size_t>(moe_params.hidden_size), fc1_params, nullptr);
+            MlasGemm(CblasNoTrans, CblasTrans, 1, static_cast<size_t>(fc1_output_size), static_cast<size_t>(moe_params.hidden_size), fc1_params, nullptr);
 
             // Handle different activation types
             if (is_swiglu) {
               // Add bias if present
               if (fc1_bias_data) {
+                // Bias size is always equal to output size (fc1_output_size), regardless of bit width
+                const int64_t fc1_bias_size = fc1_output_size;
                 // Use the pre-converted float bias data
-                const float* fc1_expert_bias_float = fc1_bias_float.get() + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * fc1_bias_size;
+                const float* fc1_expert_bias_float = fc1_bias_float.get() + static_cast<ptrdiff_t>(expert_idx) * fc1_bias_size;
                 for (int64_t i = 0; i < fc1_bias_size; ++i) {
                   thread_fc1_output[i] += fc1_expert_bias_float[i];
                 }
               }
-              contrib::ApplySwiGLUActivation(thread_fc1_output, moe_params.inter_size, is_4bit);
+
+              constexpr bool is_interleaved_format = true;  // Only support interleaved format for SwiGLU right now.
+              contrib::ApplySwiGLUActivation(thread_fc1_output, moe_params.inter_size, is_interleaved_format);
             } else {
               // Standard activation (non-SwiGLU)
               if (fc1_bias_data) {
                 // Use the pre-converted float bias data
-                const float* fc1_expert_bias_float = fc1_bias_float.get() + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.inter_size;
+                const float* fc1_expert_bias_float = fc1_bias_float.get() + static_cast<ptrdiff_t>(expert_idx) * moe_params.inter_size;
                 for (int64_t i = 0; i < moe_params.inter_size; ++i) {
                   thread_fc1_output[i] += fc1_expert_bias_float[i];
                   thread_fc1_output[i] = ApplyActivation(thread_fc1_output[i], activation_type_);
@@ -340,7 +341,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
             }
 
             // FC2: intermediate -> output using pre-dequantized weights + MLAS SGEMM
-            const float* fc2_expert_weights = dequant_fc2_weights + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.inter_size * moe_params.hidden_size;
+            const float* fc2_expert_weights = dequant_fc2_weights + static_cast<ptrdiff_t>(expert_idx) * moe_params.inter_size * moe_params.hidden_size;
 
             // Use MLAS SGEMM for FC2
             MLAS_SGEMM_DATA_PARAMS fc2_params;
@@ -353,12 +354,12 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
             fc2_params.alpha = 1.0f;
             fc2_params.beta = 0.0f;
 
-            MlasGemm(CblasNoTrans, CblasNoTrans, 1, static_cast<size_t>(moe_params.hidden_size), static_cast<size_t>(moe_params.inter_size), fc2_params, nullptr);
+            MlasGemm(CblasNoTrans, CblasTrans, 1, static_cast<size_t>(moe_params.hidden_size), static_cast<size_t>(moe_params.inter_size), fc2_params, nullptr);
 
             // Add bias, apply routing weight, and accumulate to final result
             if (fc2_bias_data) {
               // Use the pre-converted float bias data
-              const float* fc2_expert_bias_float = fc2_bias_float.get() + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.hidden_size;
+              const float* fc2_expert_bias_float = fc2_bias_float.get() + static_cast<ptrdiff_t>(expert_idx) * moe_params.hidden_size;
               for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
                 token_result[i] += routing_weight * (thread_fc2_output[i] + fc2_expert_bias_float[i]);
               }
