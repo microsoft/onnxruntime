@@ -343,5 +343,9 @@ WEBGPU_BINARY_IMPL(LessOrEqual, "vec4<u32>(vec4<input_a_element_t>(a) <= vec4<in
 WEBGPU_BINARY_VERSIONED_KERNEL(LessOrEqual, 12, 15, LessOrEqual, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(LessOrEqual, 16, LessOrEqual, WebGpuSupportedNumberTypes())
 
+GemmQuickGelu::GemmQuickGelu(const OpKernelInfo& info)
+    : BinaryElementwise{info, "GemmQuickGelu", "a * b / (1.0 + exp(-a))"} {}
+
+
 }  // namespace webgpu
 }  // namespace onnxruntime

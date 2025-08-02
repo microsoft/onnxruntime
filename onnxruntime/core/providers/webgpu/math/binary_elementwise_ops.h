@@ -60,5 +60,11 @@ class BinaryElementwise : public WebGpuKernel {
   const GetAdditionalImplementationFunction get_additional_impl_;
 };
 
+class GemmQuickGelu: public BinaryElementwise {
+  public:
+  GemmQuickGelu(const OpKernelInfo& info);
+};
+
+
 }  // namespace webgpu
 }  // namespace onnxruntime
