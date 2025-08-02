@@ -11,12 +11,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-enum class MoEQuantType {
-  None = 0,
-  UINT4 = 1,
-  UINT8 = 2,
-};
-
 enum class ActivationType {
   Relu = 0,
   Gelu = 1,

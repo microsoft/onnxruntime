@@ -55,8 +55,6 @@ Status QMoE::Compute(OpKernelContext* context) const {
   const Tensor* fc3_scales_optional = context->Input<Tensor>(9);
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(10);
 
-  MoEQuantType quant_type = expert_weight_bits_ == 4 ? MoEQuantType::UINT4 : MoEQuantType::UINT8;
-
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
@@ -68,7 +66,7 @@ Status QMoE::Compute(OpKernelContext* context) const {
 
   // Dispatch based on input data type
   if (input->IsDataType<MLFloat16>()) {
-    if (quant_type == MoEQuantType::UINT4) {
+    if (expert_weight_bits_ == 4) {
       return QuantizedMoEImpl<true, MLFloat16>(context, moe_params, input, router_probs,
                                                fc1_experts_weights, fc1_experts_bias_optional, fc2_experts_weights,
                                                fc2_experts_bias_optional, fc3_experts_weights_optional,
@@ -80,7 +78,7 @@ Status QMoE::Compute(OpKernelContext* context) const {
                                                 fc3_experts_bias_optional, fc1_scales, fc2_scales, fc3_scales_optional);
     }
   } else if (input->IsDataType<float>()) {
-    if (quant_type == MoEQuantType::UINT4) {
+    if (expert_weight_bits_ == 4) {
       return QuantizedMoEImpl<true, float>(context, moe_params, input, router_probs,
                                            fc1_experts_weights, fc1_experts_bias_optional, fc2_experts_weights,
                                            fc2_experts_bias_optional, fc3_experts_weights_optional,
