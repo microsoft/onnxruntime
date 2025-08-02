@@ -154,8 +154,8 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
         quant_weights = (clipped_weights + 8).to(torch.uint8)
 
         # Pack 4-bit values into uint8 (every two elements)
-        even_indices = torch.arange(0, weights.shape[-1], 2)
-        odd_indices = torch.arange(1, weights.shape[-1], 2)
+        even_indices = torch.arange(0, weights.shape[-1], 2, device=weights.device)
+        odd_indices = torch.arange(1, weights.shape[-1], 2, device=weights.device)
 
         # Handle odd length by padding
         if odd_indices.shape[0] < even_indices.shape[0]:
@@ -168,7 +168,7 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
                 device=quant_weights.device,
             )
             quant_weights = torch.cat([quant_weights, padding], dim=-1)
-            odd_indices = torch.arange(1, quant_weights.shape[-1], 2)
+            odd_indices = torch.arange(1, quant_weights.shape[-1], 2, device=weights.device)
 
         even_weights = quant_weights[..., even_indices]
         odd_weights = quant_weights[..., odd_indices]
@@ -200,9 +200,6 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
         # Dequantize with proper broadcasting
         # Make sure scale has the right shape for broadcasting
         scale_expanded = scale.float()
-        if scale_expanded.dim() < int4_weights.dim():
-            for _ in range(int4_weights.dim() - scale_expanded.dim()):
-                scale_expanded = scale_expanded.unsqueeze(-1)
         result = (int4_weights * scale_expanded).to(dtype=weights.dtype)
         return scale.to(torch.float16), packed_weights, result
     else:
@@ -230,9 +227,6 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
         # Dequantize - convert back from uint8 to int8 by subtracting 128, then multiply by scale
         # Make sure scale has the right shape for broadcasting
         scale_expanded = scale.float()
-        if scale_expanded.dim() < quant_weights.dim():
-            for _ in range(quant_weights.dim() - scale_expanded.dim()):
-                scale_expanded = scale_expanded.unsqueeze(-1)
         result = ((quant_weights.float() - 128) * scale_expanded).to(dtype=weights.dtype)
         return scale.to(torch.float16), quant_weights, result
 
@@ -243,16 +237,12 @@ def create_cpu_moe_onnx_graph(
     num_experts,
     top_k,
     intermediate_size,
-    torch_dtype,
     onnx_dtype,
     fc1_experts_weights,
     fc2_experts_weights,
-    fc1_bias=None,
-    fc2_bias=None,
     fc1_scales=None,
     fc2_scales=None,
     use_swiglu=False,
-    use_quant=False,
     quant_bits=4,
 ):
     # Make sure we have onnx available before proceeding
@@ -263,40 +253,18 @@ def create_cpu_moe_onnx_graph(
     # Define intermediate_size variable consistently
     inter_size = intermediate_size
     topk = top_k
-    # Note: SwiGLU requires 2 components (gate and value)
-
-    # Force use_quant to True - we only want to test QMoE
-    use_quant = True
 
     # Note: In QMoE, biases are not used at all, only scales
-    # The following parameters are only relevant when use_quant=False (which is never the case here)
-    # fc1_bias and fc2_bias are completely ignored for QMoE
-
-    # Ensure all variables are properly initialized for safety
-    if fc1_scales is None and use_quant:
-        print("Warning: fc1_scales is None but quantization is enabled")
-        return None
-    if fc2_scales is None and use_quant:
-        print("Warning: fc2_scales is None but quantization is enabled")
-        return None
-    if not HAS_ONNX:
-        print("ONNX not found, skipping graph creation")
-        return None
+    assert fc1_scales is not None, "FC1 scales must be provided for QMoE"
+    assert fc2_scales is not None, "FC2 scales must be provided for QMoE"
 
     # Using uint8 storage type with symmetric quantization
     # 4-bit: range = [-8, 7] (stored as uint8 values [0, 15])
     # 8-bit: range = [-128, 127] (stored as uint8 values [0, 255])
     assert fc1_experts_weights.dtype == torch.uint8, "FC1 weights must be uint8 for QMoE"
     assert fc2_experts_weights.dtype == torch.uint8, "FC2 weights must be uint8 for QMoE"
-    assert fc1_scales is not None, "FC1 scales must be provided for QMoE"
-    assert fc2_scales is not None, "FC2 scales must be provided for QMoE"
     assert fc1_scales.dtype == torch.float16, "FC1 scales must be float16 for QMoE"
     assert fc2_scales.dtype == torch.float16, "FC2 scales must be float16 for QMoE"
-
-    # Make sure we have onnx available before proceeding
-    if not HAS_ONNX:
-        print("ONNX not found, skipping graph creation")
-        return None
 
     # Always use QMoE, never MoE
     op_name = "QMoE"
@@ -310,9 +278,6 @@ def create_cpu_moe_onnx_graph(
         "fc2_scales",
         "",
     ]
-
-    # Note: In QMoE mode, biases are not used at all
-    # This code path is never executed since use_quant is always True
 
     # Use SwiGLU activation if specified, otherwise use SiLU
     activation = "swiglu" if use_swiglu else "silu"
@@ -330,8 +295,7 @@ def create_cpu_moe_onnx_graph(
         ),
     ]
 
-    if use_quant:
-        nodes[0].attribute.extend([helper.make_attribute("expert_weight_bits", quant_bits)])
+    nodes[0].attribute.extend([helper.make_attribute("expert_weight_bits", quant_bits)])
 
     # For 4-bit quantization, we need to pack 2 values into each byte
     pack_factor = 2 if quant_bits == 4 else 1
@@ -346,8 +310,8 @@ def create_cpu_moe_onnx_graph(
 
     torch_dtype = onnx_to_torch_type_map[onnx_dtype]
 
-    weight_numpy_type = numpy.uint8 if use_quant else ort_to_numpy_type_map[onnx_dtype]
-    weight_onnx_type = TensorProto.UINT8 if use_quant else onnx_dtype
+    weight_numpy_type = numpy.uint8
+    weight_onnx_type = TensorProto.UINT8
 
     initializers = [
         helper.make_tensor(
@@ -376,18 +340,14 @@ def create_cpu_moe_onnx_graph(
                 "fc1_scales",
                 onnx_dtype,
                 fc1_scale_shape,
-                fc1_scales.to(torch_dtype).flatten().tolist()
-                if fc1_scales is not None
-                else [1.0] * (num_experts * inter_size),
+                fc1_scales.to(torch_dtype).flatten().tolist(),
                 raw=False,
             ),
             helper.make_tensor(
                 "fc2_scales",
                 onnx_dtype,
                 fc2_scale_shape,
-                fc2_scales.to(torch_dtype).flatten().tolist()
-                if fc2_scales is not None
-                else [1.0] * (num_experts * hidden_size),
+                fc2_scales.to(torch_dtype).flatten().tolist(),
                 raw=False,
             ),
         ]
@@ -545,14 +505,11 @@ class PhiMoEBlockSparseTop2MLP(MoEBlockSparseTop2MLP):
 
 
 class SparseMoeBlockORTHelper(nn.Module):
-    def __init__(self, quant_bits=0, onnx_dtype=None):
+    def __init__(self, quant_bits, onnx_dtype):
         super().__init__()
         self.quant_bits = quant_bits
-        if onnx_dtype is None:
-            self.onnx_dtype = TensorProto.FLOAT16 if self.quant_bits > 0 else TensorProto.FLOAT
-        else:
-            self.onnx_dtype = onnx_dtype
-        self.np_type = numpy.float16 if self.onnx_dtype == TensorProto.FLOAT16 else numpy.float32
+        self.onnx_dtype = onnx_dtype
+        self.np_type = ort_to_numpy_type_map[self.onnx_dtype]
 
     def create_ort_session(self, moe_onnx_graph):
         if moe_onnx_graph is None:
@@ -655,7 +612,6 @@ class SparseMoeBlockORTHelper(nn.Module):
 
         dtype_str = ort_dtype_name_map[self.onnx_dtype]
         max_diff = (torch_output.cpu() - ort_output.cpu()).abs().max()
-        non_finite = torch.isnan(max_diff) or torch.isinf(max_diff)
 
         print(
             f"name: {self.__class__.__name__}, quant_bits: {self.quant_bits}, dtype: {dtype_str},"
@@ -663,71 +619,22 @@ class SparseMoeBlockORTHelper(nn.Module):
             f" max_diff: {max_diff}"
         )
 
-        # Report if NaN or Inf values are detected
-        if non_finite:
-            print(
-                "Warning: NaN or Inf values detected in the output difference. Numerical comparisons will be limited."
-            )
-
-        # Maps "ort_type:quant_bits" to (atol, rtol)
-        # Note: Now that both CPU and CUDA use symmetric quantization,
-        # we can use more consistent tolerances across implementations.
+        # TODO: set proper threshold after kernel accuracy issue is resolved.
         ort_dtype_quant_bits_tolerance_map = {
-            "FP32:0": (5e-3, 1e-3),
-            "FP16:0": (5e-2, 1e-3),
-            "FP16:4": (2.0, 8e-3),  # Improved tolerance with symmetric quantization
-            "FP16:8": (1.5, 8e-3),  # Improved tolerance with symmetric quantization
+            "FP32:4": (100.0, 8e-3),
+            "FP32:8": (100.0, 8e-3),
+            "FP16:4": (100.0, 8e-3),
+            "FP16:8": (100.0, 8e-3),
         }
 
         tolerance_key = f"{dtype_str}:{self.quant_bits}"
         if tolerance_key not in ort_dtype_quant_bits_tolerance_map:
-            print(f"Warning: No tolerance defined for {tolerance_key}, using default")
-            atol, rtol = 10.0, 1e-1
-        else:
-            atol, rtol = ort_dtype_quant_bits_tolerance_map[tolerance_key]
+            self.fail(f"No tolerance defined for {tolerance_key}")
 
-        # Report stats but don't assert (just for information)
-        # Handle NaN/Inf values more gracefully
-        try:
-            diff = (torch_output.cpu() - ort_output.cpu()).abs()
-            mean_diff = diff.mean().item() if not torch.isnan(diff.mean()) else float("nan")
-            median_diff = diff.median().item() if not torch.isnan(diff.median()) else float("nan")
-            p95_diff = (
-                torch.quantile(diff, 0.95).item() if not torch.isnan(torch.quantile(diff, 0.95)) else float("nan")
-            )
-
-            print(f"Stats - Mean diff: {mean_diff}, Median diff: {median_diff}, 95th percentile: {p95_diff}")
-
-            # Check if results are within tolerance
-            max_diff_val = max_diff.item()
-            if not non_finite and max_diff_val > atol:
-                print(f"Warning: Maximum difference ({max_diff_val:.6f}) exceeds absolute tolerance ({atol:.6f})")
-            elif not non_finite:
-                print(f"Success: All values within absolute tolerance ({atol:.6f})")
-
-            # For quantized models, the relative difference can be very large for small values
-            # This is because quantization has a greater effect on small values than large ones
-            # Add a larger epsilon to prevent misleading large relative differences for near-zero values
-            # Safely compute relative differences
-            if not non_finite:
-                relative_diff = diff / torch.max(torch_output.cpu().abs(), torch.tensor(1e-3))
-                max_rel_diff = relative_diff.max().item()
-                rel_exceeds = (relative_diff > rtol).float().mean().item() * 100
-
-                if max_rel_diff > rtol:
-                    print(
-                        f"Warning: Maximum relative difference ({max_rel_diff:.6f}) exceeds relative tolerance ({rtol:.6f})"
-                    )
-                    print(f"Percentage of values exceeding relative tolerance: {rel_exceeds:.2f}%")
-                else:
-                    print(f"Success: All relative differences within relative tolerance ({rtol:.6f})")
-        except Exception as e:
-            # If any calculation fails, just log it but don't crash the test
-            print(f"Warning: Error calculating statistics: {e}")
-
-        # Note: Higher relative differences are expected in quantized models
-        # This is because quantization inherently introduces error, especially for small values
-        # The key metric is the absolute difference, which we've significantly improved
+        atol, rtol = ort_dtype_quant_bits_tolerance_map[tolerance_key]
+        torch.testing.assert_close(
+            ort_output.cpu().to(torch.float32), torch_output.cpu().to(torch.float32), rtol=rtol, atol=atol
+        )
 
     def benchmark_ort(self):
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim).to(device)
@@ -740,10 +647,7 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
     strictly equivalent to standard MoE with full capacity (no
     dropped tokens). It's faster since it formulates MoE operations
     in terms of block-sparse operations to accommodate imbalanced
-    assignments of tokens to experts, whereas standard MoE either
-    (1) drop tokens at the cost of reduced performance or (2) set
-    capacity factor to number of experts and thus waste computation
-    and memory on padding.
+    assignments of tokens to experts.
 
     CPU version: Modified to use only FC1 and FC2 for CPU compatibility.
 
@@ -759,15 +663,14 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         config,
         batch_size,
         sequence_length,
-        quant_bits=0,
-        onnx_dtype=None,
+        quant_bits,
+        onnx_dtype,
         use_swiglu=False,
         swiglu_interleaved=True,
     ):
-        # Ensure we always have a valid quantization bits value (4 or 8) before passing to parent
-        if quant_bits <= 0:
-            print("Warning: quant_bits was set to 0 or negative, forcing to 4-bit")
-            quant_bits = 4
+        # Ensure we always have a valid quantization bits value (4 or 8)
+        if quant_bits not in [4, 8]:
+            raise ValueError(f"Invalid quant_bits: {quant_bits}. Must be 4 or 8.")
 
         # Now pass the validated quant_bits to parent constructor
         super().__init__(quant_bits, onnx_dtype)
@@ -809,20 +712,21 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
 
                 if self.swiglu_interleaved:
                     # Create interleaved layout: [gate, value, gate, value, ...]
-                    # This is done by alternating rows from the gate and value tensors.
-                    # Weights and scales are combined along the inter_size dimension (dim=0).
-                    combined_weights = torch.empty_like(torch.cat([gate_weights, value_weights], dim=0))
-                    combined_weights[0::2] = gate_weights
-                    combined_weights[1::2] = value_weights
+                    combined_weights = torch.empty(
+                        gate_weights.shape[0] * 2, gate_weights.shape[1], dtype=gate_weights.dtype
+                    )
+                    combined_weights[0::2, :] = gate_weights
+                    combined_weights[1::2, :] = value_weights
                     pre_qweight1 = combined_weights
 
-                    combined_scales = torch.empty_like(torch.cat([gate_scales, value_scales], dim=0))
-                    combined_scales[0::2] = gate_scales
-                    combined_scales[1::2] = value_scales
+                    combined_scales = torch.empty(
+                        gate_scales.shape[0] * 2, gate_scales.shape[1], dtype=gate_scales.dtype
+                    )
+                    combined_scales[0::2, :] = gate_scales
+                    combined_scales[1::2, :] = value_scales
                     w1_scale = combined_scales
                 else:
                     # Create chunked layout: [gate..., value...]
-                    # Concatenate along the inter_size dimension (dim=0).
                     pre_qweight1 = torch.cat([gate_weights, value_weights], dim=0)
                     w1_scale = torch.cat([gate_scales, value_scales], dim=0)
 
@@ -854,18 +758,12 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
                 num_experts=self.num_experts,
                 top_k=self.top_k,
                 intermediate_size=self.ffn_dim,
-                torch_dtype=torch.float32,  # Assuming float32 as default
                 onnx_dtype=self.onnx_dtype,
                 fc1_experts_weights=self.moe_experts_weight1,
                 fc2_experts_weights=self.moe_experts_weight2,
-                # Biases are not used in QMoE, only passed as None for API compatibility
-                fc1_bias=None,
-                fc2_bias=None,
-                # Scales are used for dequantization
                 fc1_scales=moe_experts_weight_scale1,
                 fc2_scales=moe_experts_weight_scale2,
-                use_swiglu=self.use_swiglu,  # Use SwiGLU if specified
-                use_quant=True,  # Always use QMoE
+                use_swiglu=self.use_swiglu,
                 quant_bits=self.quant_bits,
             )
         except Exception as e:
@@ -893,7 +791,6 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         )
 
         # One hot encode the selected experts to create an expert mask
-        # this will be used to easily index which expert is going to be sollicitated
         expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
 
         # Loop over all available experts in the model and perform the computation on each expert
@@ -908,65 +805,63 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
             top_x_list = top_x.tolist()
             idx_list = idx.tolist()
 
-            # Index the correct hidden states and compute the expert hidden state for
-            # the current expert. We need to make sure to multiply the output hidden
-            # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
             current_state = hidden_states[None, top_x_list].reshape(-1, hidden_dim)
             current_hidden_states = expert_layer(current_state) * routing_weights[top_x_list, idx_list, None]
 
-            # However `index_add_` only support torch tensors for indexing so we'll use
-            # the `top_x` tensor here.
             final_hidden_states.index_add_(0, top_x, current_hidden_states.to(hidden_states.dtype))
         final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
 
         return final_hidden_states
 
 
-def small_test_cases():
-    for batch_size in [1, 4]:
-        for sequence_length in [32, 128]:
-            yield batch_size, sequence_length
-
-
-# Define our test cases for QMoE (4-bit and 8-bit quantization)
-# Only test QMoE since standard MoE is not supported on CPU
-cpu_phi3_test_cases = list(
-    itertools.product(
-        [1, 4],  # batch_size
-        [8, 32],  # sequence_length - smaller sequence lengths for CPU
-        [4, 8],  # quant_bits - only test QMoE (4-bit and 8-bit)
-        [False],  # use_swiglu - standard SiLU cases
+# Define our test cases for QMoE (4-bit and 8-bit quantization) for both FP16 and FP32 inputs
+cpu_test_cases = []
+# SiLU cases (swiglu=False)
+cpu_test_cases.extend(
+    list(
+        itertools.product(
+            [1, 4],  # batch_size
+            [8, 32],  # sequence_length
+            [4, 8],  # quant_bits
+            [TensorProto.FLOAT16, TensorProto.FLOAT],  # onnx_dtype
+            [False],  # use_swiglu
+            [False],  # swiglu_interleaved (placeholder, not used for SiLU)
+        )
     )
 )
-
-# Additional test cases for SwiGLU activation
-cpu_phi3_swiglu_test_cases = list(
-    itertools.product(
-        [1, 4],  # batch_size
-        [8, 32],  # sequence_length - smaller sequence lengths for CPU
-        [4, 8],  # quant_bits - only test QMoE (4-bit and 8-bit)
-        [True],  # use_swiglu - SwiGLU activation
-        [True],  # swiglu_interleaved - # Kernel only supports interleaved right now.
+# SwiGLU cases (swiglu=True, interleaved=True)
+cpu_test_cases.extend(
+    list(
+        itertools.product(
+            [1, 4],  # batch_size
+            [8, 32],  # sequence_length
+            [4, 8],  # quant_bits
+            [TensorProto.FLOAT16, TensorProto.FLOAT],  # onnx_dtype
+            [True],  # use_swiglu
+            [True],  # swiglu_interleaved (Kernel only supports interleaved)
+        )
     )
 )
 
 
 class TestPhiQMoECPU(unittest.TestCase):
-    @parameterized.expand(cpu_phi3_test_cases + cpu_phi3_swiglu_test_cases)
+    @parameterized.expand(cpu_test_cases)
     def test_phi3_qmoe_parity_cpu(
-        self, batch_size, sequence_length, quant_bits, use_swiglu=False, swiglu_interleaved=True
+        self, batch_size, sequence_length, quant_bits, onnx_dtype, use_swiglu, swiglu_interleaved
     ):
+        dtype_str = ort_dtype_name_map[onnx_dtype]
         activation_type = f"SwiGLU(interleaved={swiglu_interleaved})" if use_swiglu else "SiLU"
         print(
-            f"Running PhiMoE CPU test with batch_size={batch_size}, sequence_length={sequence_length}, "
-            f"quant_bits={quant_bits}, activation={activation_type}"
+            f"Running PhiMoE CPU test with: batch={batch_size}, seq_len={sequence_length}, "
+            f"quant={quant_bits}, dtype={dtype_str}, activation={activation_type}"
         )
-        config = PhiMoEConfig(hidden_size=256, intermediate_size=512, hidden_act="silu")  # Smaller sizes for CPU tests
+        config = PhiMoEConfig(hidden_size=256, intermediate_size=512, hidden_act="silu")
         phi3_moe = PhiMoESparseMoeBlock(
             config,
             batch_size,
             sequence_length,
             quant_bits,
+            onnx_dtype,
             use_swiglu=use_swiglu,
             swiglu_interleaved=swiglu_interleaved,
         )
@@ -980,28 +875,17 @@ class TestPhiQMoECPU(unittest.TestCase):
         if phi3_moe.ort_sess is None:
             self.skipTest("Failed to create ONNX Runtime session - CPU MoE operator not available")
 
-        try:
-            phi3_moe.parity_check()
-        except RuntimeError as e:
-            if "FC3 gating is not yet implemented on CPU" in str(e):
-                self.skipTest("FC3 gating is not yet implemented on CPU")
-            else:
-                raise e
+        phi3_moe.parity_check()
 
     run_performance_test = False
 
     @unittest.skipIf(not run_performance_test, "Skipping qMoE CPU performance test")
     def test_phi3_qmoe_cpu_benchmark(self):
         for quant_bits in [4, 8]:
-            # Kernel only supports SwiGLU interleaved right now.
-            for use_swiglu, swiglu_interleaved in itertools.product([False, True], [True]):
-                if not use_swiglu and not swiglu_interleaved:
-                    continue  # Skip redundant non-swiglu case
-
+            for use_swiglu in [False, True]:
+                swiglu_interleaved = True  # Kernel only supports interleaved
                 activation_type = f"SwiGLU(interleaved={swiglu_interleaved})" if use_swiglu else "SiLU"
-                print(
-                    f"Benchmarking PhiMoE CPU with quant_bits={quant_bits}, activation={activation_type}, interleaved={swiglu_interleaved}"
-                )
+                print(f"Benchmarking PhiMoE CPU with quant_bits={quant_bits}, activation={activation_type}")
                 batch_size = 1
                 sequence_length = 32
                 config = PhiMoEConfig(hidden_size=256, intermediate_size=512)
@@ -1010,23 +894,17 @@ class TestPhiQMoECPU(unittest.TestCase):
                     batch_size,
                     sequence_length,
                     quant_bits,
+                    TensorProto.FLOAT,  # Benchmark with FP32
                     use_swiglu=use_swiglu,
                     swiglu_interleaved=swiglu_interleaved,
                 )
                 phi3_moe.to(device)
 
-                # Skip tests if ONNX is not available or session creation failed
                 if not HAS_ONNX or phi3_moe.ort_sess is None:
                     self.skipTest("ONNX not installed or CPU MoE operator not available")
                     return
 
-                try:
-                    phi3_moe.benchmark_ort()
-                except RuntimeError as e:
-                    if "FC3 gating is not yet implemented on CPU" in str(e):
-                        self.skipTest("FC3 gating is not yet implemented on CPU")
-                    else:
-                        raise
+                phi3_moe.benchmark_ort()
 
 
 if __name__ == "__main__":
