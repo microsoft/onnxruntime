@@ -41,6 +41,85 @@ static Status AddNcclAllReduceForGradients(
   return Status::OK();
 }
 
+static Status AddDowncastForNcclAllReduce(
+    std::vector<ArgDef>& gradient_bf16_argdefs,
+    const std::vector<ArgDef>& gradient_argdefs,
+    GraphAugmenter::GraphDefs& graph_defs) {
+    
+    if (gradient_argdefs.empty())
+    {
+      ORT_THROW("Number of gradients must be at least 1");
+    }
+    
+    gradient_bf16_argdefs = gradient_argdefs;
+    const auto bf16_type = TensorProto::BFLOAT16;
+
+    for (size_t i = 0; i < gradient_argdefs.size(); i++)
+    {
+      const auto& grad_argdef = gradient_argdefs[i];
+      if (grad_argdef.type_proto->tensor_type().elem_type() == TensorProto::BFLOAT16)
+      {
+        continue;
+      }
+      else 
+      {
+        auto& grad_bf16_argdef = gradient_bf16_argdefs[i];
+        TypeProto* bf16_type_proto = graph_defs.CopyTypeProto(grad_argdef);  
+        bf16_type_proto->mutable_tensor_type()->set_elem_type(bf16_type);
+
+        auto name = "Downcast_" + grad_argdef.name;
+        grad_bf16_argdef.name = name; 
+        grad_bf16_argdef.type_proto = bf16_type_proto;
+        NodeDef castNode(OpDef{"Cast", kOnnxDomain, 13},
+                                  {grad_argdef},
+                                  {grad_bf16_argdef},
+                                  {ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(bf16_type))},
+                                  name);
+        graph_defs.AddNodeDefs({castNode});
+      }
+    }
+    return Status::OK();
+}
+
+static Status AddUpcastForNcclAllReduce(
+    std::vector<ArgDef>& gradient_argdefs,
+    const std::vector<ArgDef>& all_reduce_output_argdefs,
+    GraphAugmenter::GraphDefs& graph_defs) {
+    if (all_reduce_output_argdefs.size() != gradient_argdefs.size())
+    {
+      ORT_THROW("Number of outputs from AllReduce must match the number of gradients.");
+    }
+    
+    const auto fp32_type = TensorProto::FLOAT;
+
+    for (size_t i = 0; i < gradient_argdefs.size(); i++)
+    {
+      auto& grad_argdef = gradient_argdefs[i];
+      const auto& grad_bf16_argdef = all_reduce_output_argdefs[i];
+      if (grad_argdef.type_proto->tensor_type().elem_type() == TensorProto::BFLOAT16)
+      {
+        grad_argdef = grad_bf16_argdef;
+      }
+      else
+      {
+        TypeProto* fp32_type_proto = graph_defs.CopyTypeProto(grad_argdef);  
+        fp32_type_proto->mutable_tensor_type()->set_elem_type(fp32_type);
+
+        auto name = "Upcast_" + grad_argdef.name;
+        grad_argdef.name = name; 
+        grad_argdef.type_proto = fp32_type_proto;
+        NodeDef castNode(OpDef{"Cast", kOnnxDomain, 13},
+                                {grad_bf16_argdef},
+                                {grad_argdef},
+                                {ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(fp32_type))},
+                                name);
+        graph_defs.AddNodeDefs({castNode});
+      }
+    }
+    return Status::OK();
+}
+
+
 AllreduceOptimizerGraphBuilder::AllreduceOptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
@@ -80,10 +159,17 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
       opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
   ORT_RETURN_IF_NOT(total_num_accumulations > 0, "total_num_accumulations <= 0");
   const float scale = 1.0f / total_num_accumulations;
-  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, output_gradient_argdef, graph_defs,
-                                              opt_graph_config_.AllReduceDataType()));
 
-  ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, output_gradient_argdef, graph_defs));
+  // Add scale nodes to grads in BFloat16
+  std::vector<ArgDef> gradient_bf16_argdefs;
+  ORT_RETURN_IF_ERROR(AddDowncastForNcclAllReduce(gradient_bf16_argdefs, gradient_argdefs, graph_defs));
+  
+  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_bf16_argdefs, output_gradient_argdef, graph_defs,
+                                              ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16));
+
+  ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_bf16_argdefs, output_gradient_argdef, graph_defs));
+
+  ORT_RETURN_IF_ERROR(AddUpcastForNcclAllReduce(gradient_argdefs, gradient_bf16_argdefs, graph_defs));
 
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;
