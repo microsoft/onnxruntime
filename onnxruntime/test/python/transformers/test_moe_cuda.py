@@ -1094,11 +1094,16 @@ class SwigluMoeConfig:
         self.num_local_experts = num_local_experts
 
 
-def swiglu(x: torch.Tensor):
+def swiglu(x: torch.Tensor, alpha: float = 1.702, limit: float = 7.0):
     dim = x.shape[-1]
     x = x.view(-1, dim // 2, 2)
     x_glu, x_linear = x[..., 0], x[..., 1]
-    y = x_glu * torch.sigmoid(1.702 * x_glu) * (x_linear + 1)
+
+    if limit is not None:
+        x_glu = x_glu.clamp(max=limit)
+        x_linear = x_linear.clamp(min=-limit, max=limit)
+
+    y = x_glu * torch.sigmoid(alpha * x_glu) * (x_linear + 1)
     return y
 
 
