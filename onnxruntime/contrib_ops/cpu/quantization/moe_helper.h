@@ -46,7 +46,7 @@ Status CheckInputs(MoEParameters& parameters,
                    const Tensor* fc3_experts_weights,  // optional
                    const Tensor* fc3_experts_bias,     // optional
                    const Tensor* fc3_experts_scales,   // required for qMoE; NULL for MOE
-                   const int pack_size,                // number of weights packed together (like 2 for uint4 packed to uint8)
+                   const int64_t pack_size,            // number of weights packed together (like 2 for uint4 packed to uint8)
                    const bool is_fused_swiglu) {
   // Check dimensions of input to avoid input_dims index out of range. CHECK_TENSOR_SHAPE will verify each tensor later.
   ASSERT_TENSOR_2D_OR_3D(input);
@@ -67,7 +67,7 @@ Status CheckInputs(MoEParameters& parameters,
   const bool legacy_shape = hidden_size != inter_size && fc2_experts_weights_dims[1] == inter_size;
 
   // Fused swiglu doubles the output dimension of FC1 since it fused two GEMMs into one.
-  const int fc1_inter_size = is_fused_swiglu ? 2 * inter_size : inter_size;
+  const int64_t fc1_inter_size = is_fused_swiglu ? (inter_size + inter_size) : inter_size;
 
   if (legacy_shape) {
     // legacy shape does not match the memory layout. This is for backward compatible
