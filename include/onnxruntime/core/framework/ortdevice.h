@@ -150,6 +150,13 @@ struct OrtDevice {
     return alignment < other.alignment;
   }
 
+  bool EqualIgnoringAlignment(const OrtDevice& other) const {
+    return device_type == other.device_type &&
+           memory_type == other.memory_type &&
+           vendor_id == other.vendor_id &&
+           device_id == other.device_id;
+  }
+
  private:
   // Device type.
   int32_t device_type : 8;
