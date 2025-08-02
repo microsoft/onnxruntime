@@ -122,6 +122,7 @@ int NumberOfComponents(ProgramVariableDataType type) {
     case ProgramVariableDataType::Uint32:
     case ProgramVariableDataType::Int64:
     case ProgramVariableDataType::Uint64:
+    case ProgramVariableDataType::Bool:
     case ProgramVariableDataType::Float16:
       return 1;
     case ProgramVariableDataType::Float32x2:
@@ -165,6 +166,8 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
         return ProgramVariableDataType::Int64;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
         return ProgramVariableDataType::Uint64;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+        return ProgramVariableDataType::Bool;
       default:
         return ProgramVariableDataType::InvalidType;
     }
