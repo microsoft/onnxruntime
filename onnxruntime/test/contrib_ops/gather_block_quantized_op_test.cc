@@ -694,15 +694,140 @@ void Test_GatherAxis_WithZeroPoints_NoPading() {
                                 gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
 }
 
-TEST(GatherBlockQuantizedOpTest, GatherAxis1) {
-  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, float, int32_t>();
+TEST(GatherBlockQuantizedOpTest, GatherAxisWithZeroPointsNoPading) {
   Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, float, int32_t>();
-  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, MLFloat16, int32_t>();
   Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, MLFloat16, int32_t>();
-  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, float, int64_t>();
   Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, float, int64_t>();
-  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, MLFloat16, int64_t>();
   Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, MLFloat16, int64_t>();
+}
+
+template <typename T1, typename T2, typename Tind>
+void Test_GatherAxis_NoPading_8bit() {
+  std::vector<int> data = {
+      127,
+      126,
+      125,
+      124,
+      123,
+      122,
+      121,
+      120,
+      119,
+      118,
+      117,
+      116,
+      115,
+      114,
+      113,
+      112,
+      127,
+      126,
+      125,
+      124,
+      123,
+      122,
+      121,
+      120,
+      119,
+      118,
+      117,
+      116,
+      115,
+      114,
+      113,
+      112,
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      127,
+      126,
+      125,
+      124,
+      123,
+      122,
+      121,
+      120,
+      119,
+      118,
+      117,
+      116,
+      115,
+      114,
+      113,
+      112,
+      127,
+      126,
+      125,
+      124,
+      123,
+      122,
+      121,
+      120,
+      119,
+      118,
+      117,
+      116,
+      115,
+      114,
+      113,
+      112,
+  };
+
+  std::vector<int64_t> data_shape = {2, 3, 16};
+  std::vector<int> indices = {0};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+  std::vector<int> zero_points = {};
+  std::vector<float> output = {
+      255, 254, 253, 252, 251, 250, 249, 248, 247, 246, 245, 244, 243, 242, 241, 240,
+      510, 508, 506, 504, 502, 500, 498, 496, 494, 492, 490, 488, 486, 484, 482, 480,
+      128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143};
+  std::vector<int64_t> output_shape = {1, 3, 16};
+
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 8;
+
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+}
+
+TEST(GatherBlockQuantizedOpTest, GatherAxisNoPadingUInt8) {
+  Test_GatherAxis_NoPading_8bit<uint8_t, float, int32_t>();
+  Test_GatherAxis_NoPading_8bit<uint8_t, MLFloat16, int32_t>();
+  Test_GatherAxis_NoPading_8bit<uint8_t, float, int64_t>();
+  Test_GatherAxis_NoPading_8bit<uint8_t, MLFloat16, int64_t>();
 }
 
 }  // namespace test
