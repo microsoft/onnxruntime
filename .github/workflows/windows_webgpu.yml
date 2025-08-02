@@ -128,7 +128,7 @@ jobs:
             ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg' || '' }} `
             --cmake_extra_defines `
             onnxruntime_BUILD_UNIT_TESTS=ON `
-            onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=ON
+            onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }

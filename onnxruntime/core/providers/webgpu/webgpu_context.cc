@@ -10,7 +10,7 @@
 #endif
 
 #if !defined(__wasm__)
-#if !defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#if !defined(BUILD_DAWN_SHARED_LIBRARY)
 #include "dawn/dawn_proc.h"
 #endif
 #if !defined(USE_EXTERNAL_DAWN)
@@ -860,7 +860,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 
 #if !defined(__wasm__)
     const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
-#if defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
     ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
 #else
 #if !defined(USE_EXTERNAL_DAWN)
@@ -875,8 +875,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 #endif
 
     // Step.2 - Create wgpu::Instance
+    wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
     wgpu::InstanceDescriptor instance_desc{};
-    instance_desc.capabilities.timedWaitAnyEnable = true;
+    instance_desc.requiredFeatures = required_instance_features;
+    instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
     default_instance_ = wgpu::CreateInstance(&instance_desc);
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
