@@ -1481,11 +1481,14 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
 
   std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
   ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(env,
-                                                                  py_sess_options.value,
                                                                   ep_devices,
-                                                                  ep_option_keys,
-                                                                  ep_option_vals,
                                                                   /*output*/ provider_factory));
+
+  ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(ep_devices,
+                                                   ep_option_keys,
+                                                   ep_option_valus,
+                                                   py_sess_options.value));
+
   py_sess_options.provider_factories.push_back(std::move(provider_factory));
   return Status::OK();
 }

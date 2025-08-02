@@ -321,20 +321,11 @@ Status LoadPluginOrProviderBridge(const std::string& registration_name,
 }
 
 Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
-                                                   SessionOptions& session_options,
                                                    gsl::span<const OrtEpDevice* const> ep_devices,
-                                                   gsl::span<const char* const> ep_option_keys,
-                                                   gsl::span<const char* const> ep_option_vals,
                                                    /*output*/ std::unique_ptr<IExecutionProviderFactory>& out) {
   if (ep_devices.empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Must provide one or more OrtEpDevice instances.");
-  }
-
-  const size_t num_ep_options = ep_option_keys.size();
-  if (ep_option_vals.size() != num_ep_options) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Must provide the same number of keys and values for EP options.");
   }
 
   const auto& ep_name = ep_devices[0]->ep_name;
@@ -346,6 +337,27 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
   if (!all_match) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "All OrtEpDevice values in ep_devices must have the same execution provider.");
+  }
+
+  EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_factory);
+
+  if (internal_factory) {
+    out = std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices);
+  } else {
+    out = std::make_unique<PluginExecutionProviderFactory>(*ep_factory, ep_devices);
+  }
+
+  return Status::OK();
+}
+
+Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
+                                    gsl::span<const char* const> ep_options_keys,
+                                    gsl::span<const char* const> ep_options_vals,
+                                    SessionOptions& session_options) {
+  const size_t num_ep_options = ep_option_keys.size();
+  if (ep_option_vals.size() != num_ep_options) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Must provide the same number of keys and values for EP options.");
   }
 
   for (const OrtEpDevice* ep_device : ep_devices) {
@@ -365,16 +377,6 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
       ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
     }
   }
-
-  EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_factory);
-
-  if (internal_factory) {
-    out = std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices);
-  } else {
-    out = std::make_unique<PluginExecutionProviderFactory>(*ep_factory, ep_devices);
-  }
-
-  return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace onnxruntime

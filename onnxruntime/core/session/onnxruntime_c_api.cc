@@ -3228,13 +3228,21 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
   API_IMPL_BEGIN
   std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
 
+  const auto ep_devices_span = gsl::span<const OrtEpDevice* const>(ep_devices, num_ep_devices);
+  const auto ep_option_keys_span = gsl::span<const char* const>(ep_option_keys, num_ep_options);
+  const auto ep_option_vals_span = gsl::span<const char* const>(ep_option_vals, num_ep_options);
+
   ORT_API_RETURN_IF_STATUS_NOT_OK(CreateIExecutionProviderFactoryForEpDevices(
       env->GetEnvironment(),
-      session_options->value,
-      gsl::span<const OrtEpDevice* const>(ep_devices, num_ep_devices),
-      gsl::span<const char* const>(ep_option_keys, num_ep_options),
-      gsl::span<const char* const>(ep_option_vals, num_ep_options),
+      ep_devices_span,
       /*output*/ provider_factory));
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(AddEpOptionsToSessionOptions(
+      ep_devices_span,
+      ep_option_keys_span,
+      ep_option_vals_span,
+      session_options->value));
+
   session_options->provider_factories.push_back(std::move(provider_factory));
 
   return nullptr;
