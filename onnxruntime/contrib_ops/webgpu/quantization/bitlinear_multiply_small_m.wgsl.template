@@ -1,16 +1,15 @@
 #param tile_size
-#param tile_size_k_vec
-#param sub_tile_count
+#param tile_size_k
 
 #include "quantization/bitlinear_dequantize_lut.wgsl.template"
 
 // Shared memory for intermediate results and LUT
-var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
+var<workgroup> inter_results: array<array<output_element_t, tile_size_k>, tile_size>;
 var<workgroup> shared_memory_LUT: array<u32, lut_size>;
 // Storage for quantized A values and 5th elements
-var<workgroup> tile_A: array<vec4<u32>, tile_size_k_vec>;
-var<workgroup> tile_A5: array<u32, tile_size_k_vec>;
-var<workgroup> tile_scales_A: array<output_element_t, tile_size_k_vec>;
+var<workgroup> tile_A: array<vec4<u32>, tile_size_k>;
+var<workgroup> tile_A5: array<u32, tile_size_k>;
+var<workgroup> scale_A: output_element_t;
 
 // Scaled dot product of 5 packed integers for BitLinear.
 fn SDP5AI(a1: vec4<u32>, b1: vec4<u32>, a2: u32, b2: u32) -> i32 {
@@ -22,76 +21,61 @@ fn SDP5AI(a1: vec4<u32>, b1: vec4<u32>, a2: u32, b2: u32) -> i32 {
     return i32(local_sum);
 }
 
-fn loadSharedMemoryA(a_global: u32, k_offset: u32, local_col: u32) {
-    if (k_offset >= uniforms.K5) {
-        return;
-    }
-
-    // Load quantized A values (excluding every 5th element)
-    tile_A[local_col] = input_a[a_global * uniforms.InputAStride + k_offset];
-
-    // Load every 5th element for A
-    tile_A5[local_col] = input_a5[a_global * (uniforms.K / 20) + k_offset];
-
-    // Load scale for A
-    tile_scales_A[local_col] = scales_a[a_global];
-}
 
 $MAIN {
     // Initialize: Move the lookup table to shared memory
     if (local_idx < lut_size) {
         shared_memory_LUT[local_idx] = dequantize_LUT[local_idx];
+    } else if ( local_idx == workgroup_size_x-1) {
+        scale_A = scales_a[0];
     }
+    let b_global_base = (workgroup_idx) * tile_size;
 
-    let a_global = u32(workgroup_idx / uniforms.num_N_tile);
-    let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
-
-    // Handle each workgroup threads as a block of [sub_tile_count][tile_size_k_vec]
-    let local_col = local_idx % tile_size_k_vec;
-    let local_row = local_idx / tile_size_k_vec;
+    // Handle each workgroup threads as a block of [tile_size][tile_size_k]
+    let local_col = local_idx % tile_size_k; // column of k
+    let local_row = local_idx / tile_size_k; // row of b
 
     // Process K in chunks. Each k_idx represents 4 uint32 values (16 i8 elements) from A
     // and corresponds to processing 4 bytes (20 ternary weights) from B
-    for (var k_idx: u32 = 0; k_idx < uniforms.K5; k_idx += tile_size_k_vec) {
+    for (var k_idx: u32 = 0; k_idx < uniforms.K20; k_idx += tile_size_k) {
         // Load Phase: Populate shared memory for the workgroup
-        if (local_idx < tile_size_k_vec) {
-            loadSharedMemoryA(a_global, k_idx + local_idx, local_idx);
+        let k_load_offset = k_idx + local_idx;
+        if (k_load_offset < uniforms.K20 && local_idx < tile_size_k) {
+            tile_A[local_idx] = input_a[k_load_offset];
+            tile_A5[local_idx] = input_a5[k_load_offset];
         }
         workgroupBarrier();
 
         let k_offset = k_idx + local_col;
-        if (k_offset < uniforms.K5) {
+        if (k_offset < uniforms.K20) {
             var own_a: vec4<u32> = tile_A[local_col];
             var own_a5: u32 = tile_A5[local_col];
-            var own_scale_a = tile_scales_A[local_col];
 
             // Calculate intermediate results for multiple B rows
-            for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
-                let b_global = b_global_base + row_offset + local_row;
-                if (b_global < uniforms.N && k_offset < uniforms.K5) {
-                    // B matrix layout: each row has K/20 uint32 values
-                    // Each uint32 contains 4 bytes, each byte has 5 ternary weights
-                    let b_offset = b_global * uniforms.K5 + k_offset;
-                    let b_value = input_b[b_offset];
+            let b_global = b_global_base + local_row;
+            if (b_global < uniforms.N) {
+                // B matrix layout: each row has K/20 uint32 values
+                // Each uint32 contains 4 bytes, each byte has 5 ternary weights
+                let b_offset = b_global * uniforms.K20 + k_offset;
+                let b_value = input_b[b_offset];
 
-                    // Process each of the 4 bytes in the uint32
-                    var accumulated_result = i32(0);
-                    for (var byte_idx = 0u; byte_idx < 4u; byte_idx++) {
-                        let b_byte = (b_value >> (byte_idx * 8)) & 0xFF;
-                        // Get the first 4 dequantized values using LUT
-                        let b_dequantized: u32 = shared_memory_LUT[b_byte / 3];
-                        // Get the 5th value using modulo
-                        let b5_value = i32((b_byte % 3) - 1);
-                        let b5_packed = pack4xI8(vec4<i32>(b5_value, b5_value, b5_value, b5_value));
-
-                        // Compute partial dot product for this byte
-                        accumulated_result += SDP5AI(own_a, vec4<u32>(b_dequantized), own_a5, b5_packed);
-                    }
-
-                    inter_results[row_offset + local_row][local_col] +=
-                        output_element_t(accumulated_result) * own_scale_a * output_element_t(uniforms.scale_B);
+                // Process each of the 4 bytes in the uint32
+                var own_b: vec4<u32>;
+                var own_b5: vec4<i32>;
+                for (var byte_idx = 0u; byte_idx < 4u; byte_idx++) {
+                    let b_byte = (b_value >> (byte_idx * 8)) & 0xFF;
+                    // Get the first 4 dequantized values using LUT
+                    let b_dequantized: u32 = shared_memory_LUT[b_byte / 3];
+                    own_b[byte_idx] = b_dequantized;
+                    // Get the 5th value using modulo
+                    let b5_value = i32((b_byte % 3) - 1);
+                    own_b5[byte_idx] = b5_value;
                 }
+                // Compute partial dot product for this byte
+                var accumulated_result = SDP5AI(own_a, vec4<u32>(own_b), own_a5, pack4xI8(own_b5));
+                inter_results[local_row][local_col] += output_element_t(accumulated_result);
             }
+
         }
         workgroupBarrier();
     }
@@ -99,14 +83,14 @@ $MAIN {
     if (local_idx < tile_size) {
         // Reduce sum to get final output
         var output_value = output_element_t(0);
-        for (var k_vec = 0u; k_vec < tile_size_k_vec; k_vec++) {
+        for (var k_vec = 0u; k_vec < tile_size_k; k_vec++) {
             output_value += inter_results[local_idx][k_vec];
         }
 
         let b_global = b_global_base + local_idx;
-        let output_idx = a_global * uniforms.N + b_global;
+        let output_idx = b_global;
         if (b_global < uniforms.N) {
-            output[output_idx] = output_value;
+            output[output_idx] = output_value * scale_A * output_element_t(uniforms.scale_B);
         }
     }
 }
