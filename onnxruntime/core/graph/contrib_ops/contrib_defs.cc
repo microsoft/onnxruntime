@@ -1483,10 +1483,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(2,
                "fc1_experts_weights",
                "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / pack_size), "
-               "The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits."
+               "The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits.",
                "T1")
         .Input(3, "fc1_scales",
-               "2D tensor with shape (num_experts, fusion_size * inter_size), or ",
+               "2D tensor with shape (num_experts, fusion_size * inter_size), or "
                "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided.",
                "T2")
         .Input(4,
@@ -1494,7 +1494,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "2D optional tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
         .Input(5,
                "fc2_experts_weights",
-               "3D tensor with shape (num_experts, hidden_size, inter_size / pack_size)"
+               "3D tensor with shape (num_experts, hidden_size, inter_size / pack_size)",
                "T1")
         .Input(6, "fc2_scales", "2D tensor with shape (num_experts, hidden_size), or ",
                "3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided.",
@@ -1506,13 +1506,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(8,
                "fc3_experts_weights",
-               "3D optional tensor with shape (num_experts, inter_size, hidden_size  / pack_size)"
+               "3D optional tensor with shape (num_experts, inter_size, hidden_size / pack_size)",
                "T1",
                OpSchema::Optional)
         .Input(9,
                "fc3_scales",
-               "2D optional tensor with shape (num_experts, inter_size), or ",
-               "3D optional tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided.",
+               "2D optional tensor with shape (num_experts, inter_size), or "
+               "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size) when block_size is provided.",
                "T2",
                OpSchema::Optional)
         .Input(10,
