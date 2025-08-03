@@ -250,9 +250,9 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
   // Initialize output with optimized pattern based on data type
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    std::fill_n(output_data, total_output_size, MLFloat16(0.0f));
+    std::fill_n(output_data, static_cast<size_t>(total_output_size), MLFloat16(0.0f));
   } else {
-    std::memset(output_data, 0, total_output_size * sizeof(T));
+    std::memset(output_data, 0, static_cast<size_t>(total_output_size) * sizeof(T));
   }
 
   // Using prepacked weights - no need to convert scales
@@ -286,7 +286,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   }
 
   // Initialize output to zeros
-  std::fill_n(output_float_ptr, total_output_size, 0.0f);
+  std::fill_n(output_float_ptr, static_cast<size_t>(total_output_size), 0.0f);
 
   // Prepare float buffers for input data and biases
   IAllocatorUniquePtr<float> input_float;
@@ -422,7 +422,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
             const float* token_input = input_float_ptr + token_idx * moe_params.hidden_size;
 
             // Initialize accumulation buffer for this expert's contribution
-            std::fill_n(thread_accumulation_buffer, moe_params.hidden_size, 0.0f);
+            std::fill_n(thread_accumulation_buffer, static_cast<size_t>(moe_params.hidden_size), 0.0f);
 
             // Process this expert for this token with optimized pointer access
             ProcessSingleExpert(token_input, thread_fc1_output, thread_fc2_output, thread_accumulation_buffer,
@@ -473,7 +473,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
             // Optimize expert processing order based on routing weights for better cache utilization
             // Create array of expert indices sorted by routing weight (descending)
             std::vector<std::pair<float, int64_t>> expert_weights;
-            expert_weights.reserve(moe_params.num_experts);
+            expert_weights.reserve(static_cast<size_t>(moe_params.num_experts));
 
             for (std::ptrdiff_t expert_idx = 0; expert_idx < moe_params.num_experts; ++expert_idx) {
               float routing_weight = router_probs_float_ptr[static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.num_experts + static_cast<int64_t>(SafeInt<int64_t>(expert_idx))];

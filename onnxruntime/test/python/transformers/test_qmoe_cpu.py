@@ -914,7 +914,6 @@ class SparseMoeBlockORTHelper(nn.Module):
             f"Test result [bs={self.batch_size}, seq={self.sequence_length}, bits={self.quant_bits}, act={act_type}]: {max_diff}"
         )
 
-        # Maps "ort_type:quant_bits" to (atol, rtol) - keep this for test passing criteria
         ort_dtype_quant_bits_tolerance_map = {
             "FP32:0": (5e-3, 1e-3),
             "FP16:0": (5e-2, 1e-3),
@@ -922,10 +921,27 @@ class SparseMoeBlockORTHelper(nn.Module):
             "FP16:8": (2.5, 0.15),  # 8-bit quantization error tolerance - improved with bug fixes
         }
 
-        # Get tolerance values but don't print anything
         dtype_str = ort_dtype_name_map[self.onnx_dtype]
         tolerance_key = f"{dtype_str}:{self.quant_bits}"
-        atol, rtol = ort_dtype_quant_bits_tolerance_map[tolerance_key]
+        if tolerance_key in ort_dtype_quant_bits_tolerance_map:
+            atol, rtol = ort_dtype_quant_bits_tolerance_map[tolerance_key]
+
+            # Check if max_diff exceeds absolute tolerance
+            if max_diff > atol:
+                raise AssertionError(
+                    f"QMoE parity check failed: max difference {max_diff:.6f} exceeds "
+                    f"absolute tolerance {atol:.6f} for {tolerance_key}"
+                )
+
+            print(f"✓ Passed tolerance check: {max_diff:.6f} <= {atol:.6f} (atol)")
+        else:
+            # Fallback for unknown configurations
+            fallback_atol = 1.0
+            if max_diff > fallback_atol:
+                raise AssertionError(
+                    f"QMoE parity check failed: max difference {max_diff:.6f} exceeds "
+                    f"fallback tolerance {fallback_atol:.6f} for unknown config {tolerance_key}"
+                )
 
     def benchmark_ort(self):
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim).to(device)
