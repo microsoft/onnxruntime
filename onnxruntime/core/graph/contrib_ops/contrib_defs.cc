@@ -1459,33 +1459,51 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Whether to normalize routing weights",
               AttributeProto::INT,
               static_cast<int64_t>(0))
-        .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("use_sparse_mixer",
+              "Whether to use sparse mixer",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Attr("expert_weight_bits",
               "Number of bits used in quantized weights. Default is 4 bits",
               AttributeProto::INT,
               static_cast<int64_t>(4))
-        .Attr("swiglu_fusion", "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("swiglu_limit", "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided.", AttributeProto::FLOAT, OPTIONAL_VALUE)
-        .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
-        .Attr("activation_beta", "Beta parameter used in activation function.", AttributeProto::FLOAT, 0.0f)
+        .Attr("swiglu_fusion",
+              "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("swiglu_limit",
+              "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("activation_alpha",
+              "Alpha parameter used in activation function.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("activation_beta",
+              "Beta parameter used in activation function.",
+              AttributeProto::FLOAT, 0.0f)
         .Attr("block_size",
               "Size of each quantization block along the K (input feature) dimension. "
               "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
               "If provided, both hidden_size and inter_size must be divisible by the block size. "
               "Otherwise, there is no blocking and a whole column shares one scaling factor. ",
-              AttributeProto::INT, OPTIONAL_VALUE)
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
                "2D tensor with shape (num_tokens, hidden_size), or "
                "3D tensor with shape (batch_size, sequence_length, hidden_size)",
                "T")
-        .Input(1, "router_probs", "2D tensor with shape (num_tokens, num_experts)", "T")
+        .Input(1,
+               "router_probs",
+               "2D tensor with shape (num_tokens, num_experts)",
+               "T")
         .Input(2,
                "fc1_experts_weights",
                "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / pack_size), "
                "The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits.",
                "T1")
-        .Input(3, "fc1_scales",
+        .Input(3,
+               "fc1_scales",
                "2D tensor with shape (num_experts, fusion_size * inter_size), or "
                "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided.",
                "T2")
@@ -1496,7 +1514,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "fc2_experts_weights",
                "3D tensor with shape (num_experts, hidden_size, inter_size / pack_size)",
                "T1")
-        .Input(6, "fc2_scales", "2D tensor with shape (num_experts, hidden_size), or ",
+        .Input(6,
+               "fc2_scales",
+               "2D tensor with shape (num_experts, hidden_size), or "
                "3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided.",
                "T2")
         .Input(7,
