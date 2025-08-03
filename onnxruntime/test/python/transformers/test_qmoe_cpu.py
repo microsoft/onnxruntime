@@ -33,6 +33,7 @@
 # --------------------------------------------------------------------------
 import itertools
 import os
+import time
 import unittest
 from collections import OrderedDict
 
@@ -245,7 +246,7 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
         correction_factor = 1.0  # No correction needed
 
         # Use a more careful rounding approach for improved numerical stability
-        double_precision_result = (int4_weights.double() * scale_expanded.double() * correction_factor)
+        double_precision_result = int4_weights.double() * scale_expanded.double() * correction_factor
 
         # Round to nearest even to match C++ implementation's behavior
         if weights.dtype == torch.float16:
@@ -253,9 +254,9 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
             double_precision_result = torch.round(double_precision_result * 2048.0) / 2048.0
 
         # Check for NaN values and replace with zeros if found
-        double_precision_result = torch.where(torch.isnan(double_precision_result),
-                                             torch.zeros_like(double_precision_result),
-                                             double_precision_result)
+        double_precision_result = torch.where(
+            torch.isnan(double_precision_result), torch.zeros_like(double_precision_result), double_precision_result
+        )
 
         result = double_precision_result.to(dtype=weights.dtype)
 
@@ -317,9 +318,9 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
             double_precision_result = torch.round(double_precision_result * 2048.0) / 2048.0
 
         # Check for NaN values and replace with zeros if found
-        double_precision_result = torch.where(torch.isnan(double_precision_result),
-                                             torch.zeros_like(double_precision_result),
-                                             double_precision_result)
+        double_precision_result = torch.where(
+            torch.isnan(double_precision_result), torch.zeros_like(double_precision_result), double_precision_result
+        )
 
         result = double_precision_result.to(dtype=weights.dtype)
 
@@ -607,7 +608,7 @@ class PhiMoEBlockSparseTop2MLP(MoEBlockSparseTop2MLP):
             # Use double precision temporarily to improve numerical stability
             hidden_fp64 = hidden_states.to(torch.float64)
             # Also convert the weights to double precision to match input type
-            with torch.autocast(device_type='cpu', enabled=False):
+            with torch.autocast(device_type="cpu", enabled=False):
                 gate_output = torch.nn.functional.linear(hidden_fp64, self.w1.weight.to(torch.float64))
                 value_output = torch.nn.functional.linear(hidden_fp64, self.w3.weight.to(torch.float64))
 
@@ -655,7 +656,7 @@ class PhiMoEBlockSparseTop2MLP(MoEBlockSparseTop2MLP):
             current_hidden_states = current_hidden_states.to(hidden_states.dtype)
 
             # Apply FC2 (also handle the weight dtype conversion if needed)
-            with torch.autocast(device_type='cpu', enabled=False):
+            with torch.autocast(device_type="cpu", enabled=False):
                 current_hidden_states = torch.nn.functional.linear(current_hidden_states, self.w2.weight)
             return current_hidden_states
         else:
@@ -744,8 +745,6 @@ class SparseMoeBlockORTHelper(nn.Module):
             iobinding.synchronize_outputs()
 
             if enable_performance_test:
-                import time  # noqa: PLC0415
-
                 repeat = 100  # Using fewer repeats for CPU tests
                 s = time.time()
                 for _ in range(repeat):
@@ -755,10 +754,12 @@ class SparseMoeBlockORTHelper(nn.Module):
                 e = time.time()
                 # Print the benchmark identifier and time value
                 time_ms = (e - s) / repeat * 1000
-                is_swiglu = hasattr(self, 'use_swiglu') and self.use_swiglu
-                is_interleaved = hasattr(self, 'swiglu_interleaved') and self.swiglu_interleaved
+                is_swiglu = hasattr(self, "use_swiglu") and self.use_swiglu
+                is_interleaved = hasattr(self, "swiglu_interleaved") and self.swiglu_interleaved
                 act_type = f"SwiGLU(interleaved={is_interleaved})" if is_swiglu else "SiLU"
-                print(f"Benchmark result [bs={self.batch_size}, seq={self.sequence_length}, bits={self.quant_bits}, act={act_type}]: {time_ms} ms")
+                print(
+                    f"Benchmark result [bs={self.batch_size}, seq={self.sequence_length}, bits={self.quant_bits}, act={act_type}]: {time_ms} ms"
+                )
 
             # The output tensor is on `device`. Reshape and return it.
             return tensors["output"].reshape(batch_size, sequence_length, hidden_dim)
@@ -797,8 +798,12 @@ class SparseMoeBlockORTHelper(nn.Module):
                     # interleave the weights along the output dimension (columns)
                     # Weight matrix is [intermediate_size, hidden_size], and we want to interleave
                     # columns in the output, which means interleaving rows in the weight matrix
-                    combined_weights = torch.zeros(2 * gate_weights.shape[0], gate_weights.shape[1],
-                                                 dtype=gate_weights.dtype, device=gate_weights.device)
+                    combined_weights = torch.zeros(
+                        2 * gate_weights.shape[0],
+                        gate_weights.shape[1],
+                        dtype=gate_weights.dtype,
+                        device=gate_weights.device,
+                    )
                     # Interleave along the output dimension (first dimension of weight matrix)
                     combined_weights[0::2] = gate_weights  # Even indices: gate weights
                     combined_weights[1::2] = value_weights  # Odd indices: value weights
@@ -807,10 +812,11 @@ class SparseMoeBlockORTHelper(nn.Module):
                     # Handle scale shapes properly - flatten if needed
                     gate_scales_flat = gate_scales.squeeze() if gate_scales.dim() > 1 else gate_scales
                     value_scales_flat = value_scales.squeeze() if value_scales.dim() > 1 else value_scales
-                    combined_scales = torch.zeros(2 * gate_scales_flat.shape[0],
-                                                dtype=gate_scales_flat.dtype, device=gate_scales_flat.device)
-                    combined_scales[0::2] = gate_scales_flat    # Even indices: gate scales
-                    combined_scales[1::2] = value_scales_flat   # Odd indices: value scales
+                    combined_scales = torch.zeros(
+                        2 * gate_scales_flat.shape[0], dtype=gate_scales_flat.dtype, device=gate_scales_flat.device
+                    )
+                    combined_scales[0::2] = gate_scales_flat  # Even indices: gate scales
+                    combined_scales[1::2] = value_scales_flat  # Odd indices: value scales
                     w1_scale = combined_scales.unsqueeze(-1) if gate_scales.dim() > 1 else combined_scales
                 else:
                     # Create chunked layout: [gate..., value...]
@@ -901,10 +907,12 @@ class SparseMoeBlockORTHelper(nn.Module):
             max_diff = (torch_output.cpu() - ort_output.cpu()).abs().max()
 
         # Print the test identifier and max diff value
-        is_swiglu = hasattr(self, 'use_swiglu') and self.use_swiglu
-        is_interleaved = hasattr(self, 'swiglu_interleaved') and self.swiglu_interleaved
+        is_swiglu = hasattr(self, "use_swiglu") and self.use_swiglu
+        is_interleaved = hasattr(self, "swiglu_interleaved") and self.swiglu_interleaved
         act_type = f"SwiGLU(interleaved={is_interleaved})" if is_swiglu else "SiLU"
-        print(f"Test result [bs={self.batch_size}, seq={self.sequence_length}, bits={self.quant_bits}, act={act_type}]: {max_diff}")
+        print(
+            f"Test result [bs={self.batch_size}, seq={self.sequence_length}, bits={self.quant_bits}, act={act_type}]: {max_diff}"
+        )
 
         # Maps "ort_type:quant_bits" to (atol, rtol) - keep this for test passing criteria
         ort_dtype_quant_bits_tolerance_map = {
@@ -917,10 +925,7 @@ class SparseMoeBlockORTHelper(nn.Module):
         # Get tolerance values but don't print anything
         dtype_str = ort_dtype_name_map[self.onnx_dtype]
         tolerance_key = f"{dtype_str}:{self.quant_bits}"
-        if tolerance_key not in ort_dtype_quant_bits_tolerance_map:
-            atol, rtol = 10.0, 1e-1
-        else:
-            atol, rtol = ort_dtype_quant_bits_tolerance_map[tolerance_key]
+        atol, rtol = ort_dtype_quant_bits_tolerance_map[tolerance_key]
 
     def benchmark_ort(self):
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim).to(device)
@@ -977,8 +982,10 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
 
         # Use PhiMoEBlockSparseTop2MLP for all experts
         self.experts = nn.ModuleList(
-            [PhiMoEBlockSparseTop2MLP(config, use_swiglu=self.use_swiglu, swiglu_interleaved=self.swiglu_interleaved)
-             for _ in range(self.num_experts)]
+            [
+                PhiMoEBlockSparseTop2MLP(config, use_swiglu=self.use_swiglu, swiglu_interleaved=self.swiglu_interleaved)
+                for _ in range(self.num_experts)
+            ]
         )
 
         w1_list, w2_list = [], []
@@ -1007,8 +1014,12 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
                     # interleave the weights along the output dimension (columns)
                     # Weight matrix is [intermediate_size, hidden_size], and we want to interleave
                     # columns in the output, which means interleaving rows in the weight matrix
-                    combined_weights = torch.zeros(2 * gate_weights.shape[0], gate_weights.shape[1],
-                                                 dtype=gate_weights.dtype, device=gate_weights.device)
+                    combined_weights = torch.zeros(
+                        2 * gate_weights.shape[0],
+                        gate_weights.shape[1],
+                        dtype=gate_weights.dtype,
+                        device=gate_weights.device,
+                    )
                     # Interleave along the output dimension (first dimension of weight matrix)
                     combined_weights[0::2] = gate_weights  # Even indices: gate weights
                     combined_weights[1::2] = value_weights  # Odd indices: value weights
@@ -1017,10 +1028,11 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
                     # Handle scale shapes properly - flatten if needed
                     gate_scales_flat = gate_scales.squeeze() if gate_scales.dim() > 1 else gate_scales
                     value_scales_flat = value_scales.squeeze() if value_scales.dim() > 1 else value_scales
-                    combined_scales = torch.zeros(2 * gate_scales_flat.shape[0],
-                                                dtype=gate_scales_flat.dtype, device=gate_scales_flat.device)
-                    combined_scales[0::2] = gate_scales_flat    # Even indices: gate scales
-                    combined_scales[1::2] = value_scales_flat   # Odd indices: value scales
+                    combined_scales = torch.zeros(
+                        2 * gate_scales_flat.shape[0], dtype=gate_scales_flat.dtype, device=gate_scales_flat.device
+                    )
+                    combined_scales[0::2] = gate_scales_flat  # Even indices: gate scales
+                    combined_scales[1::2] = value_scales_flat  # Odd indices: value scales
                     w1_scale = combined_scales.unsqueeze(-1) if gate_scales.dim() > 1 else combined_scales
                 else:
                     # Create chunked layout: [gate..., value...]
@@ -1196,14 +1208,16 @@ class TestPhiQMoECPU(unittest.TestCase):
         for quant_bits in [4, 8]:
             for batch_size in batch_sizes:
                 for sequence_length in sequence_lengths:
-                    print(f"Benchmarking QMoE CPU with quant_bits={quant_bits}, batch_size={batch_size}, sequence_length={sequence_length}, use_swiglu={use_swiglu}")
+                    print(
+                        f"Benchmarking QMoE CPU with quant_bits={quant_bits}, batch_size={batch_size}, sequence_length={sequence_length}, use_swiglu={use_swiglu}"
+                    )
 
                     # Create MoE config
                     config = PhiMoEConfig(
                         hidden_size=256,
                         intermediate_size=512,
                         hidden_act="silu",  # This doesn't matter for SwiGLU
-                        num_local_experts=8
+                        num_local_experts=8,
                     )
 
                     # Create MoE model
@@ -1218,11 +1232,12 @@ class TestPhiQMoECPU(unittest.TestCase):
                     phi3_moe.to(device)
 
                     if phi3_moe.ort_sess is None:
-                        print(f"Skipping benchmark with quant_bits={quant_bits}, use_swiglu={use_swiglu} - no ORT session")
+                        print(
+                            f"Skipping benchmark with quant_bits={quant_bits}, use_swiglu={use_swiglu} - no ORT session"
+                        )
                         continue
 
                     # Run benchmark and calculate tokens/sec
-                    import time
                     num_runs = 100
 
                     # Warmup
@@ -1240,7 +1255,7 @@ class TestPhiQMoECPU(unittest.TestCase):
                     elapsed_time = end_time - start_time
                     tokens_per_second = total_tokens / elapsed_time
 
-                    print(f"Performance results:")
+                    print("Performance results:")
                     print(f"  Batch size: {batch_size}")
                     print(f"  Sequence length: {sequence_length}")
                     print(f"  Quantization: {quant_bits}-bit")
