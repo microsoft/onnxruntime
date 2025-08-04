@@ -23,8 +23,8 @@ namespace Microsoft.ML.OnnxRuntime
         ModelLoaded = 8,
         NotImplemented = 9,
         InvalidGraph = 10,
-        ShapeInferenceNotRegistered = 11,
-        RequirementNotRegistered = 12,
+        ShapeInferenceNotRegistered = 11,  // TODO: should be ORT_EP_FAIL
+        RequirementNotRegistered = 12,     // TODO: should be ORT_MODEL_LOAD_CANCELED
     }
 
     /// <summary>

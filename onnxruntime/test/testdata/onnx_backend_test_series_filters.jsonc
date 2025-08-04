@@ -31,6 +31,7 @@
     "current_failing_tests": [
         "^test_adagrad",
         "^test_adagrad_multiple",
+        "^test_attention_3d.*",  // wrong expected values in onnx==1.18.0, fixed in 1.19.0
         "^test_batchnorm_epsilon_training_mode",
         "^test_batchnorm_example_training_mode",
         "^test_col2im_pads",  // still one wrong value coming from the backtest example
@@ -693,6 +694,10 @@
         "^test_nonmaxsuppression_identical_boxes_cpu",
         "^test_nonmaxsuppression_flipped_coordinates_cpu",
         "^test_nonmaxsuppression_center_point_box_format_cpu"
+    ],
+    "current_failing_tests_QNN": [
+        "^test_scatter_elements_with_negative_indices",
+        "^test_scatter_elements_with_duplicate_indices*"
     ],
     "current_failing_tests_WEBGPU": [
         "^test_layer_normalization_2d_axis0_cpu",
