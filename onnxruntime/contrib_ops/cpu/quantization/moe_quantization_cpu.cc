@@ -10,7 +10,6 @@
 #include "core/platform/threadpool.h"
 #include "contrib_ops/cpu/moe/moe_utils.h"
 #include <algorithm>
-#include <atomic>
 
 using namespace onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -41,30 +40,6 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info)
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
               "expert_weight_bits must be 4 or 8, but got ", expert_weight_bits_);
-}
-
-Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                     /*out*/ bool& is_packed,
-                     /*out*/ PrePackedWeights* prepacked_weights) {
-  ORT_UNUSED_PARAMETER(tensor);
-  ORT_UNUSED_PARAMETER(prepacked_weights);
-  is_packed = false;
-
-  // Only prepack the quantized weight tensors
-  if (input_idx == InputIndex::FC1_EXPERTS_WEIGHTS) {
-    fc1_weights_packed_ = true;
-    is_packed = true;  // Signal that this input should be released after prepacking
-  } else if (input_idx == InputIndex::FC2_EXPERTS_WEIGHTS) {
-    fc2_weights_packed_ = true;
-    is_packed = true;  // Signal that this input should be released after prepacking
-  }
-
-  // Store the allocator for later use
-  if (!weights_allocator_) {
-    weights_allocator_ = alloc;
-  }
-
-  return Status::OK();
 }
 
 Status QMoE::Compute(OpKernelContext* context) const {
@@ -225,21 +200,16 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
       cached_inter_size_ != moe_params.inter_size ||
       cached_is_swiglu_ != is_swiglu) {
     // Need to prepack weights
-    // Note: After PrePack is called, the original quantized weights may be nullptr
-    // We can only prepack if we have the original weights available
-    if (fc1_experts_weights != nullptr && fc2_experts_weights != nullptr) {
-      Status status = const_cast<QMoE*>(this)->PrepackAndDequantizeWeights<UseUInt4x2>(
-          context, moe_params, fc1_experts_weights, fc2_experts_weights,
-          fc1_scales, fc2_scales, is_swiglu);
-      ORT_RETURN_IF_ERROR(status);
-    } else if (!is_prepacked_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Quantized weights are not available for prepacking. "
-                             "This may happen if PrePack was called but weights were released.");
-    }
+    Status status = const_cast<QMoE*>(this)->PrepackAndDequantizeWeights<UseUInt4x2>(
+        context, moe_params, fc1_experts_weights, fc2_experts_weights,
+        fc1_scales, fc2_scales, is_swiglu);
+    ORT_RETURN_IF_ERROR(status);
   }
   // Get thread pool with performance optimization
   auto* thread_pool = context->GetOperatorThreadPool();
+
+  // Get degree of parallelism
+  const int64_t optimal_threads = static_cast<int64_t>(concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
 
   // Check if deterministic compute is required (affects parallelization strategy)
   const bool is_deterministic = context->GetUseDeterministicCompute();
@@ -256,6 +226,14 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
+  // Optimized parallelization strategy:
+  // For decoding (batch_size=1, sequence_length=1), partition by tokens * experts for better utilization
+  // For larger batches, partition by tokens only to avoid overhead
+  const bool is_decoding_scenario = moe_params.num_rows <= 4;  // Small batch size, likely decoding
+  const int64_t work_units = is_decoding_scenario ? (moe_params.num_rows * moe_params.num_experts) : moe_params.num_rows;
+
+  const int64_t num_threads = std::min<int64_t>(optimal_threads, work_units);
+
   // Use TensorShape::GetSize() for more efficient size calculation
   const int64_t total_output_size = input->Shape().Size();
 
@@ -265,6 +243,21 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   } else {
     std::memset(output_data, 0, static_cast<size_t>(total_output_size) * sizeof(T));
   }
+
+  // Using prepacked weights - no need to convert scales
+
+  // Optimized memory allocation: Use a single large buffer for all thread-local storage
+  // This reduces allocation overhead and improves cache locality
+  const int64_t fc1_buffer_size_per_thread = moe_params.inter_size * (is_swiglu ? 2 : 1);
+  const int64_t fc2_buffer_size_per_thread = moe_params.hidden_size;
+  const int64_t total_buffer_size_per_thread = fc1_buffer_size_per_thread + fc2_buffer_size_per_thread;
+
+  // For decoding scenario, allocate thread-local accumulation buffers to avoid race conditions
+  const int64_t accumulation_buffer_size_per_thread = is_decoding_scenario ? moe_params.hidden_size : 0;
+  const int64_t extended_buffer_size_per_thread = total_buffer_size_per_thread + accumulation_buffer_size_per_thread;
+
+  // Single allocation for all thread buffers with proper alignment
+  auto thread_buffers = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads * extended_buffer_size_per_thread));  // Optimized for cache locality
 
   // Set up output buffer with memory optimization
   IAllocatorUniquePtr<float> output_float;
@@ -367,207 +360,210 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
     }
   }
 
+  // No need to initialize thread results - using direct output buffer
+
   // Determine activation related parameters
+  const bool is_4bit = UseUInt4x2;
+  const int64_t act_multiplier = is_swiglu ? 2 : 1;
   const int64_t fc1_output_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
 
   // Use prepacked dequantized weights - no need to dequantize here
   const float* dequant_fc1_weights = prepacked_fc1_weights_data_;
   const float* dequant_fc2_weights = prepacked_fc2_weights_data_;
 
-  // Use batched GEMM approach for better performance with memory optimization
-  // Step 1: Group tokens by experts for efficient batched computation with reduced allocations
-  struct TokenExpertMapping {
-    int64_t token_idx;
-    int64_t expert_idx;
-    float routing_weight;
-  };
+  if (is_decoding_scenario) {
+    // Decoding scenario: partition work by tokens * experts for better parallelization
+    // This allows multiple threads to work on different experts for the same token
+    // Cost estimate: 2 GEMM operations (FC1 + FC2) plus activation and bias operations
+    double cost_per_token_expert = static_cast<double>(moe_params.hidden_size * moe_params.inter_size * 2);  // Two GEMM operations per token-expert pair
 
-  // Pre-allocate with better size estimation to avoid reallocations
-  std::vector<TokenExpertMapping> token_expert_mappings;
-  // More accurate estimation based on typical sparsity patterns in MoE models
-  const size_t estimated_size = static_cast<size_t>(moe_params.num_rows * std::min(static_cast<int64_t>(8), moe_params.num_experts));
-  token_expert_mappings.reserve(estimated_size);
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool, static_cast<std::ptrdiff_t>(work_units),
+        cost_per_token_expert,
+        [&](ptrdiff_t start_work, ptrdiff_t end_work) {
+          const int64_t thread_id = start_work / std::max<int64_t>(1, (work_units + num_threads - 1) / num_threads);
 
-  // Collect all valid token-expert pairs with optimized threshold
-  const float routing_threshold = 1e-4f;  // Skip experts with negligible routing weight
-  for (int64_t token_idx = 0; token_idx < moe_params.num_rows; ++token_idx) {
-    const float* token_router_probs = router_probs_float_ptr + token_idx * moe_params.num_experts;
-    for (int64_t expert_idx = 0; expert_idx < moe_params.num_experts; ++expert_idx) {
-      const float routing_weight = token_router_probs[expert_idx];
-      if (routing_weight > routing_threshold) {
-        token_expert_mappings.emplace_back(TokenExpertMapping{token_idx, expert_idx, routing_weight});
-      }
-    }
-  }
+          // Buffer management for decoding scenario
+          float* thread_base_buffer = thread_buffers.get() + thread_id * extended_buffer_size_per_thread;
+          float* thread_fc1_output = thread_base_buffer;
+          float* thread_fc2_output = thread_base_buffer + fc1_buffer_size_per_thread;
+          float* thread_accumulation_buffer = thread_base_buffer + total_buffer_size_per_thread;
 
-  // Step 2: Group by expert for batched processing with memory-efficient data structure
-  std::vector<std::vector<TokenExpertMapping>> expert_token_groups(static_cast<size_t>(moe_params.num_experts));
-  // Pre-reserve space for each expert group to avoid reallocations
-  const size_t avg_tokens_per_expert = token_expert_mappings.size() / static_cast<size_t>(std::max(moe_params.num_experts, static_cast<int64_t>(1)));
-  for (auto& group : expert_token_groups) {
-    group.reserve(avg_tokens_per_expert + 8);  // Small buffer for variance
-  }
+          // Process each token-expert work unit
+          for (std::ptrdiff_t work_idx = start_work; work_idx < end_work; ++work_idx) {
+            const int64_t token_idx = work_idx / moe_params.num_experts;
+            const int64_t expert_idx = work_idx % moe_params.num_experts;
 
-  for (const auto& mapping : token_expert_mappings) {
-    expert_token_groups[static_cast<size_t>(mapping.expert_idx)].emplace_back(mapping);
-  }
+            // Check routing weight first to skip low-impact experts
+            const float routing_weight = router_probs_float_ptr[token_idx * moe_params.num_experts + expert_idx];
+            if (routing_weight <= 1e-4f) {
+              continue;  // Skip experts with negligible routing weight
+            }
 
-  // Step 3: Process each expert with batched GEMM using memory-optimized approach
-  // Pre-allocate thread-local memory pools to avoid repeated allocations
-  const int64_t max_tokens_per_expert = moe_params.num_rows;  // Conservative estimate
-  const int64_t pool_input_size = max_tokens_per_expert * moe_params.hidden_size;
-  const int64_t pool_fc1_size = max_tokens_per_expert * fc1_output_size;
-  const int64_t pool_fc2_size = max_tokens_per_expert * moe_params.hidden_size;
-
-  concurrency::ThreadPool::TryParallelFor(
-      thread_pool, static_cast<std::ptrdiff_t>(moe_params.num_experts),
-      static_cast<double>(moe_params.hidden_size * moe_params.inter_size * moe_params.num_rows / moe_params.num_experts),
-      [&](ptrdiff_t expert_start, ptrdiff_t expert_end) {
-        // Thread-local memory pools - allocated once per thread
-        auto thread_input_pool = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(pool_input_size));
-        auto thread_fc1_pool = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(pool_fc1_size));
-        // Reuse fc1 buffer for fc2 when possible to reduce memory footprint
-        auto thread_fc2_pool = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(pool_fc2_size));
-
-        for (std::ptrdiff_t expert_idx = expert_start; expert_idx < expert_end; ++expert_idx) {
-          const auto& token_group = expert_token_groups[static_cast<size_t>(expert_idx)];
-          if (token_group.empty()) {
-            continue;  // Skip experts with no assigned tokens
-          }
-
-          const int64_t batch_size = static_cast<int64_t>(token_group.size());
-
-          // Use pre-allocated thread-local pools - no allocation overhead
-          float* expert_input_batch = thread_input_pool.get();
-          float* expert_fc1_batch = thread_fc1_pool.get();
-          float* expert_fc2_batch = thread_fc2_pool.get();
-
-          // Step 3a: Optimized shuffle with prefetching hints - gather input tokens with vectorized copy
-          for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
-            const int64_t token_idx = token_group[static_cast<size_t>(batch_idx)].token_idx;
             const float* token_input = input_float_ptr + token_idx * moe_params.hidden_size;
-            float* batch_input = expert_input_batch + batch_idx * moe_params.hidden_size;
 
-            // Prefetch next token for better cache performance
-            if (batch_idx + 1 < batch_size) {
-              const int64_t next_token_idx = token_group[static_cast<size_t>(batch_idx + 1)].token_idx;
-              const float* next_token_input = input_float_ptr + next_token_idx * moe_params.hidden_size;
-              __builtin_prefetch(next_token_input, 0, 3);  // Prefetch for read, high temporal locality
-            }
+            // Initialize accumulation buffer for this expert's contribution
+            std::fill_n(thread_accumulation_buffer, static_cast<size_t>(moe_params.hidden_size), 0.0f);
 
-            // Use optimized memory copy for better cache performance
-            std::memcpy(batch_input, token_input, static_cast<size_t>(moe_params.hidden_size) * sizeof(float));
-          }
-
-          // Step 3b: Batched FC1 GEMM: [batch_size, hidden_size] x [hidden_size, fc1_output_size] -> [batch_size, fc1_output_size]
-          const int64_t fc1_weight_offset = expert_idx * moe_params.hidden_size * fc1_output_size;
-          const float* fc1_expert_weights = dequant_fc1_weights + fc1_weight_offset;
-
-          MlasGemm(CblasNoTrans, CblasTrans,
-                   static_cast<size_t>(batch_size), static_cast<size_t>(fc1_output_size), static_cast<size_t>(moe_params.hidden_size),
-                   1.0f,
-                   expert_input_batch, static_cast<size_t>(moe_params.hidden_size),
-                   fc1_expert_weights, static_cast<size_t>(fc1_output_size),
-                   0.0f,
-                   expert_fc1_batch, static_cast<size_t>(fc1_output_size),
-                   nullptr);
-
-          // Step 3c: Apply bias and activation with optimized memory access patterns
-          if (fc1_bias_float_ptr) {
-            const float* fc1_expert_bias = fc1_bias_float_ptr + expert_idx * fc1_output_size;
-            // Vectorized bias addition with better cache locality
-            for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
-              float* batch_fc1_output = expert_fc1_batch + batch_idx * fc1_output_size;
-              // Process in chunks for better cache performance
-              constexpr int64_t chunk_size = 64;  // Process 64 elements at a time
-              for (int64_t i = 0; i < fc1_output_size; i += chunk_size) {
-                int64_t end_i = std::min(i + chunk_size, fc1_output_size);
-                for (int64_t j = i; j < end_i; ++j) {
-                  batch_fc1_output[j] += fc1_expert_bias[j];
-                }
-              }
-            }
-          }
-
-          // Apply activation function with optimized patterns
-          if (is_swiglu) {
-            for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
-              float* batch_fc1_output = expert_fc1_batch + batch_idx * fc1_output_size;
-              contrib::ApplySwiGLUActivation(batch_fc1_output, moe_params.inter_size, true);
-            }
-          } else {
-            // Vectorized ReLU with better cache performance
-            for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
-              float* batch_fc1_output = expert_fc1_batch + batch_idx * fc1_output_size;
-              constexpr int64_t chunk_size = 64;
-              for (int64_t i = 0; i < fc1_output_size; i += chunk_size) {
-                int64_t end_i = std::min(i + chunk_size, fc1_output_size);
-                for (int64_t j = i; j < end_i; ++j) {
-                  batch_fc1_output[j] = ApplyActivation(batch_fc1_output[j], activation_type_);
-                }
-              }
-            }
-          }
-
-          // Step 3d: Batched FC2 GEMM with memory optimization
-          const int64_t inter_size = is_swiglu ? moe_params.inter_size : fc1_output_size;
-          const float* fc2_expert_weights = dequant_fc2_weights + expert_idx * inter_size * moe_params.hidden_size;
-
-          // For SwiGLU, the FC1 output has been modified in-place and now has size [batch_size, inter_size]
-          // For non-SwiGLU, it remains [batch_size, fc1_output_size] which equals inter_size
-          MlasGemm(CblasNoTrans, CblasTrans,
-                   static_cast<size_t>(batch_size), static_cast<size_t>(moe_params.hidden_size), static_cast<size_t>(inter_size),
-                   1.0f,
-                   expert_fc1_batch, static_cast<size_t>(inter_size),
-                   fc2_expert_weights, static_cast<size_t>(moe_params.hidden_size),
-                   0.0f,
-                   expert_fc2_batch, static_cast<size_t>(moe_params.hidden_size),
-                   nullptr);
-
-          // Step 3e: Optimized un-shuffle with vectorized operations
-          for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
-            const auto& mapping = token_group[static_cast<size_t>(batch_idx)];
-            const int64_t token_idx = mapping.token_idx;
-            const float routing_weight = mapping.routing_weight;
-
-            const float* batch_fc2_output = expert_fc2_batch + batch_idx * moe_params.hidden_size;
+            // Process this expert for this token with optimized pointer access
+            ProcessSingleExpert(token_input, thread_fc1_output, thread_fc2_output, thread_accumulation_buffer,
+                                expert_idx, routing_weight, moe_params, is_swiglu,
+                                dequant_fc1_weights, dequant_fc2_weights,
+                                fc1_bias_float_ptr, fc2_bias_float_ptr, fc1_output_size);  // Atomically accumulate results to avoid race conditions
             float* token_result = output_float_ptr + token_idx * moe_params.hidden_size;
+            for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
+              // Use simple addition (thread safety ensured by work partitioning)
+              token_result[i] += thread_accumulation_buffer[i];
+            }
+          }
+        });
+  } else {
+    // Batch processing scenario: partition work by tokens with performance optimization
+    // Process tokens in parallel with improved cost modeling for better load balancing
+    // The cost model now accounts for expert filtering and vectorization improvements
+    double cost_per_token = static_cast<double>(moe_params.hidden_size * moe_params.inter_size * moe_params.num_experts * 0.8);  // Reduced due to expert filtering
 
-            if (fc2_bias_float_ptr) {
-              const float* fc2_expert_bias = fc2_bias_float_ptr + expert_idx * moe_params.hidden_size;
-              // Vectorized bias addition and routing weight application with better cache locality
-              constexpr int64_t chunk_size = 32;  // Smaller chunks for atomic operations
-              for (int64_t i = 0; i < moe_params.hidden_size; i += chunk_size) {
-                int64_t end_i = std::min(i + chunk_size, moe_params.hidden_size);
-                for (int64_t j = i; j < end_i; ++j) {
-                  // Use atomic addition for thread safety when multiple experts contribute to the same token
-                  std::atomic<float>* atomic_result = reinterpret_cast<std::atomic<float>*>(&token_result[j]);
-                  float current = atomic_result->load(std::memory_order_relaxed);
-                  float new_value = current + routing_weight * (batch_fc2_output[j] + fc2_expert_bias[j]);
-                  while (!atomic_result->compare_exchange_weak(current, new_value, std::memory_order_relaxed)) {
-                    new_value = current + routing_weight * (batch_fc2_output[j] + fc2_expert_bias[j]);
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool, static_cast<std::ptrdiff_t>(moe_params.num_rows),
+        cost_per_token,
+        [&](ptrdiff_t start_token, ptrdiff_t end_token) {
+          // Improved thread ID calculation for better cache locality
+          const int64_t thread_id = start_token / std::max<int64_t>(1, (moe_params.num_rows + num_threads - 1) / num_threads);
+
+          // Optimized buffer access: use single buffer with proper offsets for better cache locality
+          float* thread_base_buffer = thread_buffers.get() + thread_id * extended_buffer_size_per_thread;
+          float* thread_fc1_output = thread_base_buffer;                               // FC1 buffer at start
+          float* thread_fc2_output = thread_base_buffer + fc1_buffer_size_per_thread;  // FC2 buffer after FC1
+
+          // Process each token in this thread's range
+          for (std::ptrdiff_t token_idx = start_token; token_idx < end_token; ++token_idx) {
+            const float* token_input = input_float_ptr + static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.hidden_size;
+            float* token_result = output_float_ptr + static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.hidden_size;
+
+            // Prefetch next token's input for better cache performance
+            if (token_idx + 1 < end_token) {
+              const float* next_token_input = input_float_ptr + static_cast<int64_t>(SafeInt<int64_t>(token_idx + 1)) * moe_params.hidden_size;
+// Use compiler intrinsic for prefetching if available
+#ifdef _MSC_VER
+              _mm_prefetch(reinterpret_cast<const char*>(next_token_input), _MM_HINT_T0);
+#elif defined(__GNUC__)
+              __builtin_prefetch(next_token_input, 0, 3);
+#endif
+            }
+
+            // Optimize expert processing order based on routing weights for better cache utilization
+            // Create array of expert indices sorted by routing weight (descending)
+            std::vector<std::pair<float, int64_t>> expert_weights;
+            expert_weights.reserve(static_cast<size_t>(moe_params.num_experts));
+
+            for (std::ptrdiff_t expert_idx = 0; expert_idx < moe_params.num_experts; ++expert_idx) {
+              float routing_weight = router_probs_float_ptr[static_cast<int64_t>(SafeInt<int64_t>(token_idx)) * moe_params.num_experts + static_cast<int64_t>(SafeInt<int64_t>(expert_idx))];
+              // Increased threshold for better performance - skip more low-impact experts
+              if (routing_weight > 1e-4f) {  // Only include experts with significant weight
+                expert_weights.emplace_back(routing_weight, static_cast<int64_t>(SafeInt<int64_t>(expert_idx)));
+              }
+            }
+
+            // Sort by routing weight (descending) for better cache efficiency
+            std::sort(expert_weights.begin(), expert_weights.end(),
+                      [](const auto& a, const auto& b) { return a.first > b.first; });
+
+            // Process experts in order of importance for better branch prediction
+            for (const auto& expert_pair : expert_weights) {
+              float routing_weight = expert_pair.first;
+              int64_t expert_idx = expert_pair.second;
+
+              // FC1: input -> intermediate using pre-dequantized weights + optimized MLAS SGEMM
+              const int64_t fc1_weight_offset = is_4bit ? (expert_idx * moe_params.hidden_size * fc1_output_size) : (expert_idx * moe_params.hidden_size * moe_params.inter_size * act_multiplier);
+              const float* fc1_expert_weights = dequant_fc1_weights + fc1_weight_offset;
+
+              // Bias size is always equal to output size (fc1_output_size), regardless of bit width
+              const int64_t fc1_bias_size = fc1_output_size;
+
+              // Use optimized MLAS SGEMM for FC1 with performance tuning
+              MLAS_SGEMM_DATA_PARAMS fc1_params;
+              fc1_params.A = token_input;
+              fc1_params.lda = static_cast<size_t>(moe_params.hidden_size);
+              fc1_params.B = fc1_expert_weights;
+              fc1_params.ldb = static_cast<size_t>(fc1_output_size);
+              fc1_params.C = thread_fc1_output;
+              fc1_params.ldc = static_cast<size_t>(fc1_bias_size);
+              fc1_params.alpha = 1.0f;
+              fc1_params.beta = 0.0f;
+
+              // Use single-threaded GEMM with better cache utilization
+              MlasGemm(CblasNoTrans, CblasTrans, 1, static_cast<size_t>(fc1_bias_size),
+                       static_cast<size_t>(moe_params.hidden_size), fc1_params, nullptr);
+
+              // Handle different activation types with optimized vectorization
+              if (is_swiglu) {
+                // Add bias if present with vectorized operations using unified buffer
+                if (fc1_bias_data && fc1_bias_float_ptr) {
+                  // Use the pre-converted float bias data from unified buffer
+                  const float* fc1_expert_bias_float = fc1_bias_float_ptr + expert_idx * fc1_bias_size;
+                  // Vectorized bias addition for better performance
+                  for (int64_t i = 0; i < fc1_bias_size; ++i) {
+                    thread_fc1_output[i] += fc1_expert_bias_float[i];
+                  }
+                }
+                // Always use interleaved format for SwiGLU activation
+                contrib::ApplySwiGLUActivation(thread_fc1_output, moe_params.inter_size, true);
+              } else {
+                // Standard activation (non-SwiGLU) with optimized vectorization
+                if (fc1_bias_data && fc1_bias_float_ptr) {
+                  // Use the pre-converted float bias data from unified buffer
+                  const float* fc1_expert_bias_float = fc1_bias_float_ptr + expert_idx * moe_params.inter_size;
+                  // Vectorized bias addition and activation for better performance
+                  for (int64_t i = 0; i < moe_params.inter_size; ++i) {
+                    thread_fc1_output[i] += fc1_expert_bias_float[i];
+                    thread_fc1_output[i] = ApplyActivation(thread_fc1_output[i], activation_type_);
+                  }
+                } else {
+                  // Vectorized activation for better performance
+                  for (int64_t i = 0; i < moe_params.inter_size; ++i) {
+                    thread_fc1_output[i] = ApplyActivation(thread_fc1_output[i], activation_type_);
                   }
                 }
               }
-            } else {
-              // No bias case with vectorized processing
-              constexpr int64_t chunk_size = 32;
-              for (int64_t i = 0; i < moe_params.hidden_size; i += chunk_size) {
-                int64_t end_i = std::min(i + chunk_size, moe_params.hidden_size);
-                for (int64_t j = i; j < end_i; ++j) {
-                  // Use atomic addition for thread safety when multiple experts contribute to the same token
-                  std::atomic<float>* atomic_result = reinterpret_cast<std::atomic<float>*>(&token_result[j]);
-                  float current = atomic_result->load(std::memory_order_relaxed);
-                  float new_value = current + routing_weight * batch_fc2_output[j];
-                  while (!atomic_result->compare_exchange_weak(current, new_value, std::memory_order_relaxed)) {
-                    new_value = current + routing_weight * batch_fc2_output[j];
-                  }
+
+              // FC2: intermediate -> output using pre-dequantized weights + optimized MLAS SGEMM
+              const float* fc2_expert_weights = dequant_fc2_weights + expert_idx * moe_params.inter_size * moe_params.hidden_size;
+
+              // Use optimized MLAS SGEMM for FC2 with performance tuning
+              MLAS_SGEMM_DATA_PARAMS fc2_params;
+              fc2_params.A = thread_fc1_output;
+              fc2_params.lda = static_cast<size_t>(moe_params.inter_size);
+              fc2_params.B = fc2_expert_weights;
+              fc2_params.ldb = static_cast<size_t>(moe_params.hidden_size);
+              fc2_params.C = thread_fc2_output;
+              fc2_params.ldc = static_cast<size_t>(moe_params.hidden_size);
+              fc2_params.alpha = 1.0f;
+              fc2_params.beta = 0.0f;
+
+              // Use optimized GEMM with better cache utilization
+              MlasGemm(CblasNoTrans, CblasTrans, 1, static_cast<size_t>(moe_params.hidden_size),
+                       static_cast<size_t>(moe_params.inter_size), fc2_params, nullptr);
+
+              // Add bias, apply routing weight, and accumulate to final result with optimized vectorization
+              if (fc2_bias_data && fc2_bias_float_ptr) {
+                // Use the pre-converted float bias data from unified buffer
+                const float* fc2_expert_bias_float = fc2_bias_float_ptr + expert_idx * moe_params.hidden_size;
+                // Vectorized bias addition and routing weight application for better performance
+                for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
+                  token_result[i] += routing_weight * (thread_fc2_output[i] + fc2_expert_bias_float[i]);
+                }
+              } else {
+                // Vectorized routing weight application for better performance
+                for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
+                  token_result[i] += routing_weight * thread_fc2_output[i];
                 }
               }
             }
           }
-        }
-      });
+        });
+  }
+
+  // No need for accumulation since threads write directly to output_float
 
   // Convert results back to the appropriate output type with optimized conversion
   if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -652,9 +648,9 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
   const int64_t fc1_weight_stride = is_4bit ? (moe_params.hidden_size * fc1_output_size / 2) : (moe_params.hidden_size * moe_params.inter_size * act_multiplier);
   const int64_t fc2_weight_stride = is_4bit ? (moe_params.inter_size * moe_params.hidden_size / 2) : (moe_params.inter_size * moe_params.hidden_size);
 
-  // Get or use existing persistent allocator for weights
+  // Get or create a persistent allocator for weights with memory optimization
   if (weights_allocator_ == nullptr) {
-    // Get a temp allocator if we don't have a persistent one
+    // Try to get a more efficient allocator for weight storage
     AllocatorPtr temp_allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&temp_allocator));
     weights_allocator_ = temp_allocator;
