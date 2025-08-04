@@ -131,7 +131,7 @@ struct Clip::ComputeImpl {
               ConstEigenVectorMap<T>(X->Data<T>() + start, count)
                   .array()
                   .unaryExpr([=](auto x) {
-                    return std::clamp(x, min_val, max_val);
+		    return std::min(max_val, std::max(x, min_val));
                   });
         },
         0);
