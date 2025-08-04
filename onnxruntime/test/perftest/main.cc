@@ -89,7 +89,7 @@ int real_main(int argc, char* argv[]) {
   perf_runner.SerializeResult();
 
   if (test_config.machine_config.provider_type_name == "QnnAbiExecutionProvider") {
-    &env.UnregisterExecutionProviderLibrary(registration_name.c_str());
+    Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str());
   }
 
   return 0;

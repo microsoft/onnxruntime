@@ -427,7 +427,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
 
     // TODO: Fix key with prefix.
     GetSessionConfigEntryOrDefault(ort_api, session_options_, "ep.qnnabitestprovider.backend_type", "", backend_type);
-    GetSessionConfigEntryOrDefault(ort_api, session_options_, "backend_path", "", backend_path_option);
+    GetSessionConfigEntryOrDefault(ort_api, session_options_, "ep.qnnabitestprovider.backend_path", "", backend_path_option);
     std::cout << "DEBUG: BackendType " << backend_type << std::endl;
 
     // Check if both options are provided

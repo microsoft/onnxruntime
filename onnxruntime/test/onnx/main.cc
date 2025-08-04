@@ -640,24 +640,53 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         qnn_options[key] = value;
       }
       if (enable_qnn_abi) {
+        const OrtApi& c_api = Ort::GetApi();
         const std::filesystem::path& library_path = "onnxruntime_providers_qnn_abi.dll";
         registration_name = "QnnAbiTestProvider";
-        &env.RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
-        {
-          std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
-
-          Ort::ConstEpDevice plugin_ep_device;
-          for (Ort::ConstEpDevice& device : ep_devices) {
-            if (std::string(device.EpName()) == registration_name) {
-              plugin_ep_device = device;
-              break;
-            }
-          }
-          if (plugin_ep_device == nullptr) {
-            ORT_THROW("Fail to find/get the plugin ep devices - QnnAbiTestProvider");
-          }
-          sf.AppendExecutionProvider_V2(env, std::vector<Ort::ConstEpDevice>{plugin_ep_device}, qnn_options);
+        OrtStatusPtr status = c_api.RegisterExecutionProviderLibrary(env,
+                                                                     registration_name.c_str(),
+                                                                     library_path.c_str());
+        if (status != nullptr) {
+          fprintf(stderr, "Failed to register execution provider library: %s\n",
+                  Ort::GetApi().GetErrorMessage(status));
+          Ort::GetApi().ReleaseStatus(status);
+          return -1;
         }
+
+        const OrtEpDevice* const* ep_devices = nullptr;
+        size_t num_devices;
+        status = c_api.GetEpDevices(env, &ep_devices, &num_devices);
+        if (status != nullptr) {
+          fprintf(stderr, "Failed to get EP devices: %s\n",
+                  Ort::GetApi().GetErrorMessage(status));
+          Ort::GetApi().ReleaseStatus(status);
+          return -1;
+        }
+
+        auto target_hw_device_type = OrtHardwareDeviceType_CPU;
+        if ((qnn_options.find("backend_type") != qnn_options.end() && qnn_options.at("backend_type") == "htp") ||
+            (qnn_options.find("backend_path") != qnn_options.end() && qnn_options.at("backend_path") ==
+#if _WIN32
+                                                                          "QnnHtp.dll"
+#else
+                                                                          "libQnnHtp.so"
+#endif
+             )) {
+          target_hw_device_type = OrtHardwareDeviceType_NPU;
+        }
+
+        auto it = std::find_if(ep_devices, ep_devices + num_devices,
+                               [&c_api, &registration_name, &target_hw_device_type](const OrtEpDevice* ep_device) {
+                                 return (c_api.EpDevice_EpName(ep_device) == registration_name &&
+                                         c_api.HardwareDevice_Type(c_api.EpDevice_Device(ep_device)) == target_hw_device_type);
+                               });
+
+        if (it == ep_devices + num_devices) {
+          fprintf(stderr, "Failed to find QNN ABI test provider device\n");
+          return -1;
+        }
+
+        sf.AppendExecutionProvider_V2(env, {Ort::ConstEpDevice(*it)}, qnn_options);
       } else {
         // old version
         sf.AppendExecutionProvider("QNN", qnn_options);
@@ -1002,7 +1031,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     result = -1;
   }
   if (enable_qnn_abi) {
-    &env.UnregisterExecutionProviderLibrary(registration_name.c_str());
+    Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str());
   }
   return result;
 }
