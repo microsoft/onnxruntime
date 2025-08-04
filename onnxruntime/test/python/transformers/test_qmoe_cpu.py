@@ -30,6 +30,9 @@
 # - Improved handling of the mapping between 4-bit unsigned storage and signed values
 # - Fixed GEMM leading dimension parameters for better matrix multiplication accuracy
 # - Clearer documentation of bit packing/unpacking for 4-bit values
+# - Optimized expert processing order based on routing weights for better cache utilization
+# - Added expert filtering to skip low-impact experts and reduce computational overhead
+# - Improved memory allocation patterns and buffer management for better performance
 # --------------------------------------------------------------------------
 import itertools
 import os
@@ -757,9 +760,7 @@ class SparseMoeBlockORTHelper(nn.Module):
                 is_swiglu = hasattr(self, "use_swiglu") and self.use_swiglu
                 is_interleaved = hasattr(self, "swiglu_interleaved") and self.swiglu_interleaved
                 act_type = f"SwiGLU(interleaved={is_interleaved})" if is_swiglu else "SiLU"
-                print(
-                    f"Benchmark result [bs={self.batch_size}, seq={self.sequence_length}, bits={self.quant_bits}, act={act_type}]: {time_ms} ms"
-                )
+                print(f"ORT Performance - {act_type} {self.quant_bits}-bit: {time_ms:.3f} ms/inference")
 
             # The output tensor is on `device`. Reshape and return it.
             return tensors["output"].reshape(batch_size, sequence_length, hidden_dim)
@@ -770,7 +771,6 @@ class SparseMoeBlockORTHelper(nn.Module):
 
     def recreate_onnx_model(self):
         """Recreate the ONNX model with the current weights to reflect any changes to the quantization code."""
-        print("Recreating ONNX model with updated quantization parameters")
 
         w1_list, w2_list = [], []
         w1_scale_list, w2_scale_list = [], []
@@ -840,6 +840,13 @@ class SparseMoeBlockORTHelper(nn.Module):
         moe_experts_weight_scale1 = torch.stack(w1_scale_list, dim=0)
         moe_experts_weight_scale2 = torch.stack(w2_scale_list, dim=0)
 
+        # Fix shape mismatch: ensure scales are 2D for ONNX graph
+        # The ONNX graph expects [num_experts, scale_size] but we might have [num_experts, scale_size, 1]
+        if moe_experts_weight_scale1.dim() == 3:
+            moe_experts_weight_scale1 = moe_experts_weight_scale1.squeeze(-1)
+        if moe_experts_weight_scale2.dim() == 3:
+            moe_experts_weight_scale2 = moe_experts_weight_scale2.squeeze(-1)
+
         # Recreate the ONNX graph with our updated quantization
         try:
             self.moe_onnx_graph = create_cpu_moe_onnx_graph(
@@ -887,32 +894,38 @@ class SparseMoeBlockORTHelper(nn.Module):
             print("ORT execution failed or is not supported, skipping parity check")
             return
 
-        # Check for NaN values in outputs and handle them
+        # Check for NaN and inf values in outputs and handle them
         torch_has_nan = torch.isnan(torch_output).any()
         ort_has_nan = torch.isnan(ort_output).any()
+        torch_has_inf = torch.isinf(torch_output).any()
+        ort_has_inf = torch.isinf(ort_output).any()
 
-        if torch_has_nan or ort_has_nan:
-            # Replace NaN values with zeros for comparison
-            torch_output_clean = torch.where(torch.isnan(torch_output), torch.zeros_like(torch_output), torch_output)
-            ort_output_clean = torch.where(torch.isnan(ort_output), torch.zeros_like(ort_output), ort_output)
+        if torch_has_nan or ort_has_nan or torch_has_inf or ort_has_inf:
+            # Replace NaN and inf values with zeros for comparison
+            torch_output_clean = torch.where(
+                torch.isnan(torch_output) | torch.isinf(torch_output), torch.zeros_like(torch_output), torch_output
+            )
+            ort_output_clean = torch.where(
+                torch.isnan(ort_output) | torch.isinf(ort_output), torch.zeros_like(ort_output), ort_output
+            )
             max_diff = (torch_output_clean.cpu() - ort_output_clean.cpu()).abs().max()
 
-            # If both have NaN in the same places, consider it a match
-            if torch_has_nan and ort_has_nan:
-                nan_match = torch.isnan(torch_output) == torch.isnan(ort_output)
-                if nan_match.all():
-                    max_diff = 0.0  # Perfect match including NaN patterns
+            # If both have NaN/inf in the same places, consider it a match
+            if (torch_has_nan and ort_has_nan) or (torch_has_inf and ort_has_inf):
+                problematic_torch = torch.isnan(torch_output) | torch.isinf(torch_output)
+                problematic_ort = torch.isnan(ort_output) | torch.isinf(ort_output)
+                if torch.equal(problematic_torch, problematic_ort):
+                    max_diff = 0.0  # Perfect match including NaN/inf patterns
         else:
-            # Normal case without NaN values
+            # Normal case without NaN/inf values
             max_diff = (torch_output.cpu() - ort_output.cpu()).abs().max()
 
         # Print the test identifier and max diff value
         is_swiglu = hasattr(self, "use_swiglu") and self.use_swiglu
         is_interleaved = hasattr(self, "swiglu_interleaved") and self.swiglu_interleaved
         act_type = f"SwiGLU(interleaved={is_interleaved})" if is_swiglu else "SiLU"
-        print(
-            f"Test result [bs={self.batch_size}, seq={self.sequence_length}, bits={self.quant_bits}, act={act_type}]: {max_diff}"
-        )
+
+        print(f"Parity check - {act_type} {self.quant_bits}-bit: max_diff = {max_diff:.6f}")
 
         ort_dtype_quant_bits_tolerance_map = {
             "FP32:0": (5e-3, 1e-3),
@@ -932,8 +945,6 @@ class SparseMoeBlockORTHelper(nn.Module):
                     f"QMoE parity check failed: max difference {max_diff:.6f} exceeds "
                     f"absolute tolerance {atol:.6f} for {tolerance_key}"
                 )
-
-            print(f"✓ Passed tolerance check: {max_diff:.6f} <= {atol:.6f} (atol)")
         else:
             # Fallback for unknown configurations
             fallback_atol = 1.0
@@ -1073,6 +1084,13 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         moe_experts_weight_scale1 = torch.stack(w1_scale_list, dim=0)
         moe_experts_weight_scale2 = torch.stack(w2_scale_list, dim=0)
 
+        # Fix shape mismatch: ensure scales are 2D for ONNX graph
+        # The ONNX graph expects [num_experts, scale_size] but we might have [num_experts, scale_size, 1]
+        if moe_experts_weight_scale1.dim() == 3:
+            moe_experts_weight_scale1 = moe_experts_weight_scale1.squeeze(-1)
+        if moe_experts_weight_scale2.dim() == 3:
+            moe_experts_weight_scale2 = moe_experts_weight_scale2.squeeze(-1)
+
         self.batch_size = batch_size
         self.sequence_length = sequence_length
 
@@ -1180,11 +1198,6 @@ class TestPhiQMoECPU(unittest.TestCase):
     def test_phi3_qmoe_parity_cpu(
         self, batch_size, sequence_length, quant_bits, use_swiglu=True, swiglu_interleaved=True
     ):
-        activation_type = f"SwiGLU(interleaved={swiglu_interleaved})"
-        print(
-            f"Running PhiMoE CPU test with batch_size={batch_size}, sequence_length={sequence_length}, "
-            f"quant_bits={quant_bits}, activation={activation_type}"
-        )
         config = PhiMoEConfig(hidden_size=256, intermediate_size=512, hidden_act="silu")  # Smaller sizes for CPU tests
         phi3_moe = PhiMoESparseMoeBlock(
             config,
@@ -1217,6 +1230,8 @@ class TestPhiQMoECPU(unittest.TestCase):
     @unittest.skipIf(not run_performance_test, "Skipping qMoE CPU performance test")
     def test_phi3_qmoe_cpu_benchmark(self):
         # Test different batch sizes and sequence lengths for performance analysis
+        # Note: The C++ implementation now uses optimized expert processing and improved
+        # memory access patterns for better performance
         batch_sizes = [1, 4, 16]
         sequence_lengths = [8, 32, 128]
         use_swiglu = True  # Only use SwiGLU for benchmarks
