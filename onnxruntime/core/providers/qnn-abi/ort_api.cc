@@ -31,6 +31,12 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
     for (size_t idx = 0; idx < num_data; ++idx) {
       const OrtValueInfo* io = data[idx];
 
+      // Optional input.
+      if (io == nullptr) {
+        io_defs.push_back(OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}});
+        continue;
+      }
+
       // Get name.
       const char* name = nullptr;
       ort_api.GetValueInfoName(io, &name);

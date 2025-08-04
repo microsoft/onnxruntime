@@ -1564,6 +1564,7 @@ OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
     RETURN_IF_ERROR(ep->CreateEPContextNodes(fused_nodes, count, ep_context_nodes));
   }
 
+  std::cout << "DEBUG: QnnEp::CompileImpl complete" << std::endl;
   return nullptr;
 }
 

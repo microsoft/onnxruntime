@@ -5,6 +5,7 @@
 
 #include "test/providers/qnn/qnn_test_utils.h"
 #include <cassert>
+#include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
@@ -102,6 +103,7 @@ void RegisterQnnEpLibrary(Ort::SessionOptions& session_options,
                           const std::string& registration_name,
                           const std::unordered_map<std::string, std::string>& ep_options) {
   Ort::Env* ort_env = GetOrtEnv();
+  const OrtApi& c_api = Ort::GetApi();
 
   const std::filesystem::path& library_path =
 #if _WIN32
@@ -110,20 +112,22 @@ void RegisterQnnEpLibrary(Ort::SessionOptions& session_options,
       "libonnxruntime_providers_qnn_abi.so";
 #endif
 
-  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+  ASSERT_ORTSTATUS_OK(c_api.RegisterExecutionProviderLibrary(*ort_env,
+                                                             registration_name.c_str(),
+                                                             library_path.c_str()));
 
-  std::vector<Ort::ConstEpDevice> ep_devices = ort_env->GetEpDevices();
+  const OrtEpDevice* const* ep_devices = nullptr;
+  size_t num_devices;
+  ASSERT_ORTSTATUS_OK(c_api.GetEpDevices(*ort_env, &ep_devices, &num_devices));
 
-  Ort::ConstEpDevice plugin_ep_device;
-  for (Ort::ConstEpDevice& device : ep_devices) {
-    if (std::string(device.EpName()) == registration_name) {
-      plugin_ep_device = device;
-      break;
-    }
-  }
-  ASSERT_NE(plugin_ep_device, nullptr);
+  auto it = std::find_if(ep_devices, ep_devices + num_devices,
+                         [&c_api, &registration_name](const OrtEpDevice* ep_device) {
+                           return c_api.EpDevice_EpName(ep_device) == registration_name;
+                         });
 
-  session_options.AppendExecutionProvider_V2(*ort_env, std::vector<Ort::ConstEpDevice>{plugin_ep_device}, ep_options);
+  ASSERT_NE(it, ep_devices + num_devices);
+
+  session_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(*it)}, ep_options);
 }
 
 void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
@@ -173,7 +177,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
                                verification_params,
                                verify_outputs);
 
-  GetOrtEnv()->UnregisterExecutionProviderLibrary(registration_name.c_str());
+  Ort::GetApi().UnregisterExecutionProviderLibrary(*GetOrtEnv(), registration_name.c_str());
 #endif  // !BUILD_QNN_EP_STATIC_LIB
 }
 

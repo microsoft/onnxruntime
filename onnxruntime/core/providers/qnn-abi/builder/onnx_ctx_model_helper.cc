@@ -311,7 +311,7 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
     const OrtNode* fused_node = fused_nodes[idx];
 
     const char* fused_node_name = nullptr;
-    RETURN_STATUS_IF_ERROR(ort_api.Node_GetName(fused_node, &fused_node_name), ort_api, "Failed to get node name.");
+    RETURN_STATUS_IF_ERROR(ort_api.Node_GetName(fused_node, &fused_node_name), ort_api);
     const std::string graph_name(fused_node_name);
 
     auto qnn_model_kv = qnn_models.find(graph_name);
@@ -338,8 +338,7 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
                                                     static_cast<int>(cache_payload.length()),
                                                     ORT_OP_ATTR_STRING,
                                                     &attributes[0]),
-                               ort_api,
-                               "Failed to create op attribute.");
+                               ort_api);
       } else {
         onnxruntime::PathString context_bin_path;
         std::string context_cache_name;
@@ -387,8 +386,7 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
                                                     static_cast<int>(context_cache_name.length()),
                                                     ORT_OP_ATTR_STRING,
                                                     &attributes[0]),
-                               ort_api,
-                               "Failed to create op attribute.");
+                               ort_api);
         if (share_ep_contexts && stop_share_ep_contexts) {
           SharedContext::GetInstance().ResetSharedCtxBinFileName();
         }
@@ -401,29 +399,25 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
                                                 1,
                                                 ORT_OP_ATTR_INT,
                                                 &attributes[1]),
-                           ort_api,
-                           "Failed to create op attribute.");
+                           ort_api);
 
     int64_t embed_mode = qnn_context_embed_mode ? static_cast<int64_t>(1) : static_cast<int64_t>(0);
     RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EMBED_MODE.c_str(), &embed_mode, 1, ORT_OP_ATTR_INT, &attributes[2]),
-                           ort_api,
-                           "Failed to create op attribute.");
+                           ort_api);
 
     RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EP_SDK_VER.c_str(),
                                                 sdk_build_version.c_str(),
                                                 static_cast<int>(sdk_build_version.length()),
                                                 ORT_OP_ATTR_STRING,
                                                 &attributes[3]),
-                           ort_api,
-                           "Failed to create op attribute.");
+                           ort_api);
 
     RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(PARTITION_NAME.c_str(),
                                                 graph_name.c_str(),
                                                 static_cast<int>(graph_name.length()),
                                                 ORT_OP_ATTR_STRING,
                                                 &attributes[4]),
-                           ort_api,
-                           "Failed to create op attribute.");
+                           ort_api);
 
     std::string source(kQnnExecutionProvider);
     RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(SOURCE.c_str(),
@@ -431,16 +425,14 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
                                                 static_cast<int>(source.length()),
                                                 ORT_OP_ATTR_STRING,
                                                 &attributes[5]),
-                           ort_api,
-                           "Failed to create op attribute.");
+                           ort_api);
 
     RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(MAX_SIZE.c_str(),
                                                 &max_spill_fill_buffer_size,
                                                 1,
                                                 ORT_OP_ATTR_INT,
                                                 &attributes[6]),
-                           ort_api,
-                           "Failed to create op attribute.");
+                           ort_api);
 
     RETURN_STATUS_IF_ERROR(model_editor_api.CreateNode(EPCONTEXT_OP.c_str(),
                                                        kMSDomain,
@@ -452,8 +444,7 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
                                                        attributes.data(),
                                                        attributes.size(),
                                                        &ep_context_nodes[idx]),
-                           ort_api,
-                           "Failsed to create node.");
+                           ort_api);
   }
 
   return Status::OK();

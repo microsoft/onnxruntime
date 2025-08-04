@@ -284,9 +284,9 @@ void RunAndVerifyOutputsWithEPABI(ModelPathOrBytes model_path_or_bytes,
     VerifyOutputs(output_names, expected_fetches, fetches, params);
   }
 
-  // if (params.graph_verifier) {
-  //   (*params.graph_verifier)(graph2);
-  // }
+  if (params.graph_verifier) {
+    (*params.graph_verifier)(graph2);
+  }
 }
 
 void TestModelLoad(ModelPathOrBytes model_path_or_bytes,

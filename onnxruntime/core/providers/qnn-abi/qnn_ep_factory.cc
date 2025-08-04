@@ -26,11 +26,12 @@ QnnEpFactory::QnnEpFactory(const char* ep_name,
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
+  GetVersion = GetVersionImpl;
   GetSupportedDevices = GetSupportedDevicesImpl;
   CreateEp = CreateEpImpl;
   ReleaseEp = ReleaseEpImpl;
-
   CreateDataTransfer = CreateDataTransferImpl;
+  IsStreamAware = IsStreamAwareImpl;
 
   // setup the OrtMemoryInfo instances required by the EP.
   // NPU allocator OrtMemoryInfo
@@ -73,6 +74,11 @@ const char* ORT_API_CALL QnnEpFactory::GetVendorImpl(const OrtEpFactory* this_pt
   return factory->vendor_.c_str();
 }
 
+const char* ORT_API_CALL QnnEpFactory::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
+  const auto* factory = static_cast<const QnnEpFactory*>(this_ptr);
+  return factory->ep_version_.c_str();
+}
+
 // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
 // An EP created with this factory is expected to be able to execute a model with *all* supported
 // hardware devices at once. A single instance of QNN EP is not currently setup to partition a model among
@@ -97,7 +103,8 @@ OrtStatus* ORT_API_CALL QnnEpFactory::GetSupportedDevicesImpl(OrtEpFactory* this
               << " factory_type=" << factory->ort_hw_device_type_ << " factory_vendor=" << factory->vendor_id_ << std::endl;
     // For CPU devices, accept vendor ID 0 (generic CPU) as well as Qualcomm vendor ID
     bool vendor_match = (vendor_id == factory->vendor_id_) ||
-                        (device_type == OrtHardwareDeviceType_CPU && vendor_id == 0);
+                        (device_type == OrtHardwareDeviceType_CPU && vendor_id == 4130);
+                        // (device_type == OrtHardwareDeviceType_CPU && vendor_id == 0);
     if (device_type == factory->ort_hw_device_type_ && vendor_match) {
       std::cout << "DEBUG: Device " << i << " matches! Creating EpDevice..." << std::endl;
       OrtKeyValuePairs* ep_options = nullptr;
@@ -160,14 +167,22 @@ OrtStatus* ORT_API_CALL QnnEpFactory::CreateDataTransferImpl(OrtEpFactory* this_
   return nullptr;
 }
 
+bool ORT_API_CALL QnnEpFactory::IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+  return false;
+}
+
 }  // namespace onnxruntime
 
 extern "C" {
 //
 // Public symbols
 //
-OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
-                             OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
+OrtStatus* CreateEpFactories(const char* /*registration_name*/,
+                             const OrtApiBase* ort_api_base,
+                             const OrtLogger* /*default_logger*/,
+                             OrtEpFactory** factories,
+                             size_t max_factories,
+                             size_t* num_factories) {
   std::cout << "DEBUG: QNN-ABI CreateEpFactories called!" << std::endl;
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   const OrtEpApi* ep_api = ort_api->GetEpApi();

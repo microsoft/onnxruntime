@@ -694,65 +694,28 @@ Status QnnModelWrapper::TransposeTensor(std::vector<uint32_t>& data_shape,
 
   // Get the type info from the initializer
   const OrtTypeInfo* type_info = nullptr;
-  OrtStatusPtr status = api_ptrs_.ort_api.GetValueInfoTypeInfo(&initializer, &type_info);
-  if (status != nullptr) {
-    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, error_message);
-  }
+  RETURN_STATUS_IF_ERROR(api_ptrs_.ort_api.GetValueInfoTypeInfo(&initializer, &type_info), api_ptrs_.ort_api);
 
   // Cast to tensor type info
   const OrtTensorTypeAndShapeInfo* tensor_info = nullptr;
-  status = api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_info);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, error_message);
-  }
+  RETURN_STATUS_IF_ERROR(api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_info), api_ptrs_.ort_api);
 
   // Get the tensor element type
   ONNXTensorElementDataType data_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  status = api_ptrs_.ort_api.GetTensorElementType(tensor_info, &data_type);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, error_message);
-  }
+  RETURN_STATUS_IF_ERROR(api_ptrs_.ort_api.GetTensorElementType(tensor_info, &data_type), api_ptrs_.ort_api);
 
   // Get the initializer value
   const OrtValue* initializer_value = nullptr;
-  status = api_ptrs_.ort_api.ValueInfo_GetInitializerValue(&initializer, &initializer_value);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, error_message);
-  }
+  RETURN_STATUS_IF_ERROR(api_ptrs_.ort_api.ValueInfo_GetInitializerValue(&initializer, &initializer_value),
+                         api_ptrs_.ort_api);
 
   // Get the raw data from the initializer value
   const void* raw_data = nullptr;
-  status = api_ptrs_.ort_api.GetTensorData(initializer_value, &raw_data);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, error_message);
-  }
+  RETURN_STATUS_IF_ERROR(api_ptrs_.ort_api.GetTensorData(initializer_value, &raw_data), api_ptrs_.ort_api);
 
   // Get the tensor size in bytes
   size_t raw_data_size = 0;
-  status = api_ptrs_.ort_api.GetTensorSizeInBytes(initializer_value, &raw_data_size);
-  if (status != nullptr) {
-    api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
-    const char* error_message = api_ptrs_.ort_api.GetErrorMessage(status);
-    api_ptrs_.ort_api.ReleaseStatus(status);
-    return Status(common::ONNXRUNTIME, common::FAIL, error_message);
-  }
-
-  // Release the type info
-  api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+  RETURN_STATUS_IF_ERROR(api_ptrs_.ort_api.GetTensorSizeInBytes(initializer_value, &raw_data_size), api_ptrs_.ort_api);
 
   // Calculate element size based on data type
   size_t elem_size = 0;

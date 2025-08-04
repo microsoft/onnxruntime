@@ -87,13 +87,14 @@ namespace onnxruntime {
     }                          \
   } while (0)
 
-#define RETURN_STATUS_IF_ERROR(fn, ort_api, msg)      \
-  do {                                                \
-    OrtStatus* _status = (fn);                        \
-    if (_status != nullptr) {                         \
-      (ort_api).ReleaseStatus(_status);               \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, msg); \
-    }                                                 \
+#define RETURN_STATUS_IF_ERROR(fn, ort_api)            \
+  do {                                                      \
+    OrtStatus* _status = (fn);                              \
+    if (_status != nullptr) {                               \
+      const char* msg = (ort_api).GetErrorMessage(_status); \
+      (ort_api).ReleaseStatus(_status);                     \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, msg);       \
+    }                                                       \
   } while (0)
 
 #define RETURN_IF(cond, ort_api, msg)                    \
