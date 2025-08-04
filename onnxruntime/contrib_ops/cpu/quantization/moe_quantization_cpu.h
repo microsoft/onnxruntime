@@ -15,7 +15,25 @@ class QMoE final : public OpKernel, public MoEBaseCPU {
   explicit QMoE(const OpKernelInfo& op_kernel_info);
   Status Compute(OpKernelContext* ctx) const override;
 
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
  private:
+  // Input indices for PrePack
+  enum InputIndex : int {
+    INPUT = 0,
+    ROUTER_PROBS = 1,
+    FC1_EXPERTS_WEIGHTS = 2,
+    FC1_SCALES = 3,
+    FC1_EXPERTS_BIAS = 4,
+    FC2_EXPERTS_WEIGHTS = 5,
+    FC2_SCALES = 6,
+    FC2_EXPERTS_BIAS = 7,
+    FC3_EXPERTS_WEIGHTS = 8,
+    FC3_SCALES = 9,
+    FC3_EXPERTS_BIAS = 10
+  };
   template <bool UseUInt4x2>
   Status PrepackAndDequantizeWeights(OpKernelContext* context,
                                      MoEParameters& moe_params,
@@ -48,6 +66,10 @@ class QMoE final : public OpKernel, public MoEBaseCPU {
 
   // Persistent allocator for weights
   AllocatorPtr weights_allocator_;
+
+  // Track which inputs are prepacked
+  bool fc1_weights_packed_{false};
+  bool fc2_weights_packed_{false};
 
   // Cached parameters to detect changes requiring repack
   mutable int64_t cached_num_experts_{0};
