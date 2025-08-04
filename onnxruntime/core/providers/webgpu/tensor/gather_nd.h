@@ -22,7 +22,6 @@ class GatherNDProgram final : public Program<GatherNDProgram> {
  private:
   uint32_t batch_dims_;
   uint32_t indices_innerest_dim_;
-
 };
 
 class GatherNDBase : public WebGpuKernel {

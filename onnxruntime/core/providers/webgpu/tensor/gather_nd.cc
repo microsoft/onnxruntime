@@ -30,7 +30,7 @@ Status GatherNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   shader.MainFunctionBody() << "  var indice_value = i32(0);\n";
-  for (uint32_t i = 0; i < indices_innerest_dim_ ; i++) {
+  for (uint32_t i = 0; i < indices_innerest_dim_; i++) {
     shader.MainFunctionBody() << "  " << indices.IndicesSet("indices_indices", indices.Rank() - 1, std::to_string(i)) << "\n"
                               << "  indice_value = " << indices.GetByIndices("indices_indices") << ";\n"
                               << "  if (indice_value < 0) {\n"
@@ -50,11 +50,11 @@ Status GatherNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status CheckBatchDimensionsMatch(size_t num_batch_dimensions, const TensorShape& input_shape,
-    const TensorShape& indices_shape) {
+                                 const TensorShape& indices_shape) {
   ORT_RETURN_IF_NOT(
-        num_batch_dimensions <= input_shape.NumDimensions() && num_batch_dimensions <= indices_shape.NumDimensions(),
-        "Number of batch dimensions exceeds tensor rank. ", "Batch dimension count: ", num_batch_dimensions,
-        ", input tensor rank: ", input_shape.NumDimensions(), ", indices tensor rank: ", indices_shape.NumDimensions());
+      num_batch_dimensions <= input_shape.NumDimensions() && num_batch_dimensions <= indices_shape.NumDimensions(),
+      "Number of batch dimensions exceeds tensor rank. ", "Batch dimension count: ", num_batch_dimensions,
+      ", input tensor rank: ", input_shape.NumDimensions(), ", indices tensor rank: ", indices_shape.NumDimensions());
 
   for (size_t batch_dimension_idx = 0; batch_dimension_idx < num_batch_dimensions; ++batch_dimension_idx) {
     ORT_RETURN_IF_NOT(
@@ -85,7 +85,7 @@ Status GatherND::ComputeInternal(ComputeContext& context) const {
   }
 
   ORT_RETURN_IF_ERROR(CheckBatchDimensionsMatch(static_cast<size_t>(batch_dims_),
-      input_shape, indices_shape));
+                                                input_shape, indices_shape));
 
   // Output shape
   std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end() - 1);
