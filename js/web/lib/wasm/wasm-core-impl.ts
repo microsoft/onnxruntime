@@ -869,6 +869,12 @@ export const run = async (
       if (tensor === outputTensorHandles[i] || preAllocatedOutputs.includes(outputTensorHandles[i])) {
         // output tensor is pre-allocated. no need to copy data.
         output.push(outputTensors[i]!);
+        if (tensor !== outputTensorHandles[i]) {
+          // release redundant tensor earlier.
+          if (wasm._OrtReleaseTensor(tensor) !== 0) {
+            checkLastError("Can't release tensor.");
+          }
+        }
         continue;
       }
 
