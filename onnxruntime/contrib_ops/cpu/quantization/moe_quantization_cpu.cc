@@ -226,17 +226,6 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
-  // Use arena allocator for better memory management and reduced fragmentation
-  // This is especially beneficial for repeated kernel invocations
-  AllocatorPtr arena_allocator;
-  if (context->GetUseDeterministicCompute()) {
-    // For deterministic compute, use the standard temp allocator
-    arena_allocator = allocator;
-  } else {
-    // Try to get arena allocator for better performance
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&arena_allocator));
-  }
-
   // Optimized parallelization strategy:
   // For decoding (batch_size=1, sequence_length=1), partition by tokens * experts for better utilization
   // For larger batches, partition by tokens only to avoid overhead
@@ -268,7 +257,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   const int64_t extended_buffer_size_per_thread = total_buffer_size_per_thread + accumulation_buffer_size_per_thread;
 
   // Single allocation for all thread buffers with proper alignment
-  auto thread_buffers = IAllocator::MakeUniquePtr<float>(arena_allocator, static_cast<size_t>(num_threads * extended_buffer_size_per_thread));  // Optimized for cache locality
+  auto thread_buffers = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads * extended_buffer_size_per_thread));  // Optimized for cache locality
 
   // Set up output buffer with memory optimization
   IAllocatorUniquePtr<float> output_float;
@@ -276,8 +265,8 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
   if constexpr (std::is_same_v<T, MLFloat16>) {
     // For MLFloat16, we need a separate float buffer
-    // Use arena allocator for better memory management
-    output_float = IAllocator::MakeUniquePtr<float>(arena_allocator, static_cast<size_t>(total_output_size));
+    // Use allocator for better memory management
+    output_float = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(total_output_size));
     output_float_ptr = output_float.get();
   } else {
     // For float, we can write directly to output_data
@@ -288,13 +277,12 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   // Initialize output to zeros
   std::fill_n(output_float_ptr, static_cast<size_t>(total_output_size), 0.0f);
 
-  // Prepare float buffers for input data and biases
-  IAllocatorUniquePtr<float> input_float;
-  IAllocatorUniquePtr<float> router_probs_float;
-
   // Pointers for easier access
   float* input_float_ptr = nullptr;
   float* router_probs_float_ptr = nullptr;
+
+  // Buffer for MLFloat16 to float conversion - declared at outer scope to ensure proper lifetime
+  IAllocatorUniquePtr<float> unified_conversion_buffer;
 
   // Pre-convert bias tensors to float (if they exist) with unified memory allocation
   const int64_t fc1_bias_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
@@ -312,7 +300,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
   if (total_bias_buffer_size > 0) {
     // Use context's reusable buffer if available for better memory management
-    unified_bias_buffer = IAllocator::MakeUniquePtr<float>(arena_allocator, static_cast<size_t>(total_bias_buffer_size));
+    unified_bias_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(total_bias_buffer_size));
 
     if (fc1_bias_data) {
       fc1_bias_float_ptr = unified_bias_buffer.get();
@@ -324,20 +312,16 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
   // Convert input and router_probs based on type with memory optimization and fast math
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    // For MLFloat16, convert to float - use arena allocator with optimized conversion
+    // For MLFloat16, convert to float - use allocator with optimized conversion
     // Calculate total size for unified allocation
     const size_t input_size = static_cast<size_t>(moe_params.num_rows * moe_params.hidden_size);
     const size_t router_probs_size = static_cast<size_t>(moe_params.num_rows * moe_params.num_experts);
     const size_t total_conversion_size = input_size + router_probs_size;
 
     // Single allocation for input and router_probs conversion
-    auto unified_conversion_buffer = IAllocator::MakeUniquePtr<float>(arena_allocator, total_conversion_size);
+    unified_conversion_buffer = IAllocator::MakeUniquePtr<float>(allocator, total_conversion_size);
     input_float_ptr = unified_conversion_buffer.get();
     router_probs_float_ptr = unified_conversion_buffer.get() + input_size;
-
-    // Set up smart pointers with custom deleters to avoid double-free
-    input_float = IAllocatorUniquePtr<float>(input_float_ptr, [](float*) {});
-    router_probs_float = IAllocatorUniquePtr<float>(router_probs_float_ptr, [](float*) {});
 
     // Use optimized parallel conversion with better thread utilization
     // Convert MLFloat16 to float with optimized parallel conversion
@@ -363,10 +347,6 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
     }
   } else {
     // For float, point to original input and router_probs directly for zero-copy optimization
-    input_float = IAllocatorUniquePtr<float>(const_cast<float*>(input_data), [](float*) {});
-    router_probs_float = IAllocatorUniquePtr<float>(const_cast<float*>(router_probs_data), [](float*) {});
-
-    // Set pointers to the original data for zero-copy access
     input_float_ptr = const_cast<float*>(input_data);
     router_probs_float_ptr = const_cast<float*>(router_probs_data);
 
@@ -394,7 +374,8 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   if (is_decoding_scenario) {
     // Decoding scenario: partition work by tokens * experts for better parallelization
     // This allows multiple threads to work on different experts for the same token
-    double cost_per_token_expert = static_cast<double>(moe_params.hidden_size * moe_params.inter_size * 0.6);  // Cost per token-expert pair
+    // Cost estimate: 2 GEMM operations (FC1 + FC2) plus activation and bias operations
+    double cost_per_token_expert = static_cast<double>(moe_params.hidden_size * moe_params.inter_size * 2);  // Two GEMM operations per token-expert pair
 
     concurrency::ThreadPool::TryParallelFor(
         thread_pool, static_cast<std::ptrdiff_t>(work_units),
