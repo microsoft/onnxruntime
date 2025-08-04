@@ -16,7 +16,12 @@ import numpy.typing as npt
 import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 
-from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_matmul_8bits, quantize_qdq_matmul_4bits
+from onnxruntime.capi._pybind_state import (
+    quantize_matmul_2bits,
+    quantize_matmul_4bits,
+    quantize_matmul_8bits,
+    quantize_qdq_matmul_4bits,
+)
 
 from .calibrate import CalibrationDataReader
 from .neural_compressor import gptq_quantize, rtn_quantize
@@ -818,7 +823,11 @@ class DefaultWeightOnlyQuantizer:
             packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
             zero_point = np.zeros(cols * ((k_blocks + kpack - 1) // kpack), dtype="uint8")
             scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
-            if qbits == 8:
+            if qbits == 2:
+                quantize_matmul_2bits(
+                    packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
+                )
+            elif qbits == 8:
                 quantize_matmul_8bits(
                     packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
                 )
@@ -1206,7 +1215,7 @@ class MatMulNBitsQuantizer:
     MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
     Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
 
-    Perform 4/8 bits quantization of constant weights for target nodes.
+    Perform 2/4/8 bits quantization of constant weights for target nodes.
     If algo_config.quant_format is QOperator:
       - nodes are replaced by the corresponding QOperator nodes.
       - quantized weights are stored in the contrib ops.
@@ -1224,6 +1233,7 @@ class MatMulNBitsQuantizer:
     def __init__(
         self,
         model: ModelProto | str,
+        bits: int = 4,  # default to 4bit
         block_size: int = 128,
         is_symmetric: bool = False,
         accuracy_level: int | None = None,
@@ -1239,6 +1249,7 @@ class MatMulNBitsQuantizer:
             nodes_to_exclude = []
         self.model = ONNXModel(onnx.load(model)) if isinstance(model, str) else ONNXModel(model)
         self.model_path = model if isinstance(model, str) else None
+        self.bits = bits
         self.block_size = block_size
         self.is_symmetric = is_symmetric
         self.accuracy_level = accuracy_level
@@ -1254,13 +1265,13 @@ class MatMulNBitsQuantizer:
                 quant_format=quant_format,
                 op_types_to_quantize=op_types_to_quantize,
                 quant_axes=quant_axes,
-                bits=4,  # default to 4 bits
+                bits=bits,
                 channel_wised_quantize=channel_wised_quantize,
             )
 
         self.algo_config = algo_config
         if hasattr(self.algo_config, "bits"):
-            assert self.algo_config.bits in [4, 8], "Only support 4 or 8 bits quantization"
+            assert self.algo_config.bits in [2, 4, 8], "Only support 2, 4 or 8 bits quantization"
 
         if algo_config.algorithm == "HQQ":
             self.node_quantizer = HQQWeightOnlyQuantizer(self.algo_config)
@@ -1609,6 +1620,7 @@ if __name__ == "__main__":
 
     quant = MatMulNBitsQuantizer(
         model=model,
+        bits=args.bits,
         accuracy_level=args.accuracy_level,
         nodes_to_exclude=args.nodes_to_exclude,
         nodes_to_include=args.nodes_to_include,

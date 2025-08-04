@@ -114,8 +114,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   emscripten::val output = reverse_output;
   if (is_slice_required) {
-    std::vector<uint32_t> starts = GetNarrowedIntfromInt64<uint32_t>(compute_metadata.starts_);
-    std::vector<uint32_t> steps = GetNarrowedIntfromInt64<uint32_t>(compute_metadata.steps_);
+    std::vector<uint32_t> starts = GetNarrowedIntFromInt64<uint32_t>(compute_metadata.starts_);
+    std::vector<uint32_t> steps = GetNarrowedIntFromInt64<uint32_t>(compute_metadata.steps_);
     std::vector<uint32_t> sizes(rank);
     std::transform(compute_metadata.ends_.cbegin(), compute_metadata.ends_.cend(), compute_metadata.starts_.cbegin(),
                    sizes.begin(), [](int64_t i, int64_t j) { return SafeInt<uint32_t>(i - j); });

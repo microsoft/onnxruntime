@@ -53,7 +53,7 @@ Status DropoutOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (output_defs.size() > 1) {
     std::vector<int64_t> mask_shape;
     ORT_RETURN_IF_NOT(GetShape(*output_defs[1], mask_shape, logger), "Cannot get mask output's shape");
-    std::vector<uint32_t> dims = GetNarrowedIntfromInt64<uint32_t>(mask_shape);
+    std::vector<uint32_t> dims = GetNarrowedIntFromInt64<uint32_t>(mask_shape);
     emscripten::val one_constant = model_builder.CreateOrGetConstant<uint8_t>(
         ONNX_NAMESPACE::TensorProto_DataType_BOOL, 1, dims);
 

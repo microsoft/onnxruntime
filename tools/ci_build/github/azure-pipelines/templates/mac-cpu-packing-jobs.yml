@@ -31,7 +31,7 @@ jobs:
   workspace:
     clean: all
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '13.3'
+    MACOSX_DEPLOYMENT_TARGET: '13.4'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/ccache_proto
@@ -53,7 +53,7 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '20.x'
+      versionSpec: '22.x'
 
   - task: JavaToolInstaller@0
     inputs:

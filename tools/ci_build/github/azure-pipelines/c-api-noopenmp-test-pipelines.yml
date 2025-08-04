@@ -1,0 +1,304 @@
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
+    trigger: true
+    branch: main
+
+stages:
+- stage: Setup
+  jobs:
+  - job: Restore_And_Use_Variables
+    displayName: 'Restore and Use Build Parameters'
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    steps:
+    - download: build # This refers to the 'build' pipeline alias defined in resources.
+      artifact: 'parameters_artifact' # This must match the ArtifactName from the source pipeline.
+      displayName: 'Download Parameters Artifact'
+
+    # Read the downloaded file and set the key-value pairs as pipeline variables.
+    - bash: |
+        echo "Loading parameters from downloaded artifact..."
+        # The download task places the artifact in a directory named after the pipeline resource alias.
+        FILE_PATH="$(Pipeline.Workspace)/build/parameters_artifact/parameters.txt"
+
+        if [ -f "$FILE_PATH" ]; then
+          echo "Found parameters file at: $FILE_PATH"
+          echo "--- File Content ---"
+          cat "$FILE_PATH"
+          echo "--------------------"
+
+          # Read each line, splitting it into a key and value at the '=' character.
+          while IFS='=' read -r key value || [[ -n "$key" ]]; do
+            if [ -n "$key" ]; then
+              echo "Setting pipeline variable: '$key' to '$value'"
+              # The 'task.setvariable' logging command creates a variable available to subsequent steps in the job.
+              echo "##vso[task.setvariable variable=$key]$value"
+            fi
+          done < "$FILE_PATH"
+
+          echo "Variables have been restored."
+        else
+          echo "ERROR: Parameters file not found at '$FILE_PATH'"
+          exit 1
+        fi
+      displayName: 'Restore Parameters as Pipeline Variables'
+
+    - script: |
+        echo "Verifying the restored variables:"
+        echo "IsReleaseBuild is: $(IsReleaseBuild)"
+        echo "PreReleaseVersionSuffixString is: $(PreReleaseVersionSuffixString)"
+        echo "PreReleaseVersionSuffixNumber is: $(PreReleaseVersionSuffixNumber)"
+      displayName: 'Verify Restored Variables'
+
+    # Almost the same as the step in set_packaging_variables_stage.yml except the following one use vars instead of parameters as input
+    - bash: |
+        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+        set +x
+        if [[ "$(IsReleaseBuild)" = True && "$(PreReleaseVersionSuffixString)" != "none"  ]]; then
+          if [[ "$(PreReleaseVersionSuffixNumber)" -eq 0 ]]; then
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-$(PreReleaseVersionSuffixString)"
+          else
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-$(PreReleaseVersionSuffixString).$(PreReleaseVersionSuffixNumber)"
+          fi
+        else
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
+        fi
+      name: Set_Release_Version_Suffix
+
+- stage: Android_Java_API_AAR_Testing_Full
+  dependsOn: Setup
+  jobs:
+  - template: templates/android-java-api-aar-test.yml
+    parameters:
+      artifactName: 'onnxruntime-android-full-aar'
+      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+
+- stage: Final_AAR_Testing_Android_QNN
+  dependsOn: Setup
+  jobs:
+  - template: templates/android-java-api-aar-test.yml
+    parameters:
+      artifactName: 'onnxruntime-android-qnn-aar'
+      packageName: 'onnxruntime-android-qnn'
+      #TODO: get this information from the setup stage
+      QnnSDKVersion: '2.36.1.250708'
+
+- template: nuget/templates/test_win.yml
+  parameters:
+    AgentPool: 'onnxruntime-Win-CPU-2022'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+
+- template: nuget/templates/test_android.yml
+  parameters:
+    AgentPool : 'onnxruntime-Win-CPU-2022'
+    ArtifactSuffix: 'CPU'
+
+- template: nuget/templates/test_linux.yml
+  parameters:
+    AgentPool: onnxruntime-Ubuntu2204-AMD-CPU
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+
+- template: nuget/templates/test_macos.yml
+  parameters:
+    AgentPool: macOS-14
+    ArtifactSuffix: 'CPU'
+
+- template: nodejs/templates/test_win.yml
+  parameters:
+    AgentPool: 'onnxruntime-Win-CPU-2022'
+    StageSuffix: 'Win_CPU_x64'
+
+- template: nodejs/templates/test_linux.yml
+  parameters:
+    AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    StageSuffix: 'Linux_CPU_x64'
+
+- template: nodejs/templates/test_macos.yml
+  parameters:
+    StageSuffix: 'macOS_CPU_x64'
+
+- template: nuget/templates/test_win.yml
+  parameters:
+    AgentPool: 'onnxruntime-Win2022-GPU-A10'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+    ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
+    CudaVersion: 12.2
+
+- template: nuget/templates/test_win.yml
+  parameters:
+    AgentPool: 'onnxruntime-Win2022-GPU-A10'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
+    ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
+    MoreSuffix: '_Windows'
+    CudaVersion: 12.2
+
+- template: nuget/templates/test_linux.yml
+  parameters:
+    AgentPool: Onnxruntime-Linux-GPU-A10
+    ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+    CudaVersion: 12.2
+
+- template: nuget/templates/test_linux.yml
+  parameters:
+    AgentPool: Onnxruntime-Linux-GPU-A10
+    ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
+    MoreSuffix: '_Linux'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
+    CudaVersion: 12.2
+
+
+
+# Run GPU tests.
+- stage: Windows_Packaging_cuda_Testing
+  dependsOn: Setup
+  jobs:
+    - job: Windows_Packaging_cuda_Testing
+      workspace:
+        clean: all
+      pool: onnxruntime-Win2022-GPU-A10
+      timeoutInMinutes: 180
+      steps:
+        - checkout: self
+          clean: true
+          submodules: none
+
+        - download: build
+          artifact: 'Windows_Packaging_cuda_build_artifacts'
+          displayName: 'Download Windows GPU Packages Build'
+
+        - task: CmdLine@2
+          inputs:
+            script: |
+              move $(Pipeline.Workspace)/build/Windows_Packaging_cuda_build_artifacts $(Build.BinariesDirectory)/RelWithDebInfo
+
+        - template: templates/set-version-number-variables-step.yml
+
+        - task: JavaToolInstaller@0
+          inputs:
+            versionSpec: "17"
+            jdkArchitectureOption: x64
+            jdkSourceOption: 'PreInstalled'
+
+        - task: UsePythonVersion@0
+          inputs:
+            versionSpec: '3.12'
+            addToPath: true
+            architecture: x64
+
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
+
+        - task: PythonScript@0
+          displayName: 'Update CTest Path References'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\python\update_ctest_path.py'
+            arguments: >
+              "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake"
+              "$(Build.BinariesDirectory)/RelWithDebInfo"
+
+        - task: NodeTool@0
+          inputs:
+            versionSpec: '22.x'
+
+        - template: templates/jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: 12.2
+            DownloadCUDA: true
+            DownloadTRT: true
+
+        - task: PythonScript@0
+          displayName: 'test'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests'
+            workingDirectory: '$(Build.BinariesDirectory)'
+        # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
+        - template: templates/make_java_win_binaries.yml
+          parameters:
+            msbuildPlatform: x64
+            java_artifact_id: onnxruntime_gpu
+            buildOnly: false
+
+- stage: Windows_Packaging_Tensorrt_Testing
+  dependsOn: Setup
+  jobs:
+    - job: Windows_Packaging_tensorrt_Testing
+      workspace:
+        clean: all
+      pool: onnxruntime-Win2022-GPU-A10
+      timeoutInMinutes: 180
+      steps:
+        - checkout: self
+          clean: true
+          submodules: none
+
+
+        - download: build
+          artifact: 'Windows_Packaging_tensorrt_build_artifacts'
+          displayName: 'Download Windows GPU Packages Build'
+
+        - task: CmdLine@2
+          inputs:
+            script: |
+              move $(Pipeline.Workspace)/build/Windows_Packaging_tensorrt_build_artifacts $(Build.BinariesDirectory)/RelWithDebInfo
+
+        - template: templates/set-version-number-variables-step.yml
+
+        - task: JavaToolInstaller@0
+          inputs:
+            versionSpec: "17"
+            jdkArchitectureOption: x64
+            jdkSourceOption: 'PreInstalled'
+
+        - task: UsePythonVersion@0
+          inputs:
+            versionSpec: '3.12'
+            addToPath: true
+            architecture: x64
+
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
+
+        - task: PythonScript@0
+          displayName: 'Update CTest Path References'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\python\update_ctest_path.py'
+            arguments: >
+              "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake"
+              "$(Build.BinariesDirectory)/RelWithDebInfo"
+
+        - task: NodeTool@0
+          inputs:
+            versionSpec: '22.x'
+
+        - template: templates/jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: 12.2
+            DownloadCUDA: true
+            DownloadTRT: true
+
+        - task: PythonScript@0
+          displayName: 'test'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests'
+            workingDirectory: '$(Build.BinariesDirectory)'
+        # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
+        - template: templates/make_java_win_binaries.yml
+          parameters:
+            msbuildPlatform: x64
+            java_artifact_id: onnxruntime_gpu
+            buildOnly: false
