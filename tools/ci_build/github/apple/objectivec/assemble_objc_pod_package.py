@@ -85,7 +85,7 @@ training_only_objc_files = {
 
 def get_pod_files():
     """
-    Gets the source and header files for the given package variant.
+    Gets the source and header files.
     """
     # return files that are in pod_files but not in training_only_objc_files
     filtered_pod_files = {}
@@ -96,7 +96,7 @@ def get_pod_files():
 
 def get_pod_config_file():
     """
-    Gets the pod configuration file path for the given package variant.
+    Gets the pod configuration file path.
     """
     return _script_dir / "onnxruntime-objc.config.json"
 
@@ -108,7 +108,6 @@ def assemble_objc_pod_package(staging_dir: pathlib.Path, pod_version: str, frame
     :param staging_dir Path to the staging directory for the Objective-C pod files.
     :param pod_version Objective-C pod version.
     :param framework_info_file Path to the framework_info.json or xcframework_info.json file containing additional values for the podspec.
-    :param package_variant The pod package variant.
     :return Tuple of (package name, path to the podspec file).
     """
     staging_dir = staging_dir.resolve()

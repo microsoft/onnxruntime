@@ -22,7 +22,7 @@ from package_assembly_utils import (  # noqa: E402
 
 def get_pod_config_file():
     """
-    Gets the pod configuration file path for the given package variant.
+    Gets the pod configuration file path.
     """
     return _script_dir / "onnxruntime-c.config.json"
 
@@ -42,7 +42,6 @@ def assemble_c_pod_package(
     :param framework_info_file Path to the framework_info.json or xcframework_info.json file containing additional values for the podspec.
     :param public_headers_dir Path to the public headers directory to include in the pod.
     :param framework_dir Path to the onnxruntime framework directory to include in the pod.
-    :param package_variant The pod package variant.
     :return Tuple of (package name, path to the podspec file).
     """
     staging_dir = staging_dir.resolve()
