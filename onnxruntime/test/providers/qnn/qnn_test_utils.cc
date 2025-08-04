@@ -120,9 +120,22 @@ void RegisterQnnEpLibrary(Ort::SessionOptions& session_options,
   size_t num_devices;
   ASSERT_ORTSTATUS_OK(c_api.GetEpDevices(*ort_env, &ep_devices, &num_devices));
 
+  auto target_hw_device_type = OrtHardwareDeviceType_CPU;
+  if ((ep_options.find("backend_type") != ep_options.end() && ep_options.at("backend_type") == "htp") ||
+      (ep_options.find("backend_path") != ep_options.end() && ep_options.at("backend_path") ==
+#if _WIN32
+          "QnnHtp.dll"
+#else
+          "libQnnHtp.so"
+#endif
+    )) {
+    target_hw_device_type = OrtHardwareDeviceType_NPU;
+  }
+
   auto it = std::find_if(ep_devices, ep_devices + num_devices,
-                         [&c_api, &registration_name](const OrtEpDevice* ep_device) {
-                           return c_api.EpDevice_EpName(ep_device) == registration_name;
+                         [&c_api, &registration_name, &target_hw_device_type](const OrtEpDevice* ep_device) {
+                           return (c_api.EpDevice_EpName(ep_device) == registration_name &&
+                                   c_api.HardwareDevice_Type(c_api.EpDevice_Device(ep_device)) == target_hw_device_type);
                          });
 
   ASSERT_NE(it, ep_devices + num_devices);

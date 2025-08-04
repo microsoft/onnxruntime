@@ -12,10 +12,7 @@ namespace onnxruntime {
 // OrtEpApi infrastructure to be able to use the QNN EP as an OrtEpFactory for auto EP selection.
 struct QnnEpFactory : public OrtEpFactory, public ApiPtrs {
  public:
-  QnnEpFactory(const char* ep_name,
-               const ApiPtrs& ort_api_in,
-               OrtHardwareDeviceType hw_type,
-               const char* qnn_backend_type);
+  QnnEpFactory(const char* ep_name, const ApiPtrs& ort_api_in);
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
@@ -46,8 +43,6 @@ struct QnnEpFactory : public OrtEpFactory, public ApiPtrs {
 
   // Qualcomm vendor ID. Refer to the ACPI ID registry (search Qualcomm): https://uefi.org/ACPI_ID_List
   const uint32_t vendor_id_{'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24)};
-  const OrtHardwareDeviceType ort_hw_device_type_;  // Supported OrtHardwareDevice
-  const std::string qnn_backend_type_;              // QNN backend type for OrtHardwareDevice
 
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
 

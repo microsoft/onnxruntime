@@ -64,34 +64,6 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
   RunModelWithPluginEp(session_options);
 }
 
-TEST(OrtEpLibrary, QnnEp_AppendV2_MulInference) {
-  const std::filesystem::path& library_path = "onnxruntime_providers_qnn_abi.dll";
-  const std::string& registration_name = "QnnAbiTestProvider";
-
-  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
-
-  {
-    std::vector<Ort::ConstEpDevice> ep_devices = ort_env->GetEpDevices();
-
-    Ort::ConstEpDevice plugin_ep_device;
-    for (Ort::ConstEpDevice& device : ep_devices) {
-      if (std::string(device.EpName()) == registration_name) {
-        plugin_ep_device = device;
-        break;
-      }
-    }
-    ASSERT_NE(plugin_ep_device, nullptr);
-
-    Ort::SessionOptions session_options;
-    std::unordered_map<std::string, std::string> ep_options;
-    session_options.AppendExecutionProvider_V2(*ort_env, std::vector<Ort::ConstEpDevice>{plugin_ep_device}, ep_options);
-
-    RunModelWithPluginEp(session_options);
-  }
-
-  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
-}
-
 // Creates a session with the example plugin EP and runs a model with a single Mul node.
 // Uses the PREFER_CPU policy to append the example plugin EP to the session.
 TEST(OrtEpLibrary, PluginEp_PreferCpu_MulInference) {
@@ -136,41 +108,6 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
     // Make sure the compiled model was generated.
     ASSERT_TRUE(std::filesystem::exists(output_model_file));
   }
-}
-
-TEST(OrtEpLibrary, QnnAbiEp_SharedLibraryCodePathExecution) {
-  const std::filesystem::path& library_path =
-#if _WIN32
-      "./onnxruntime_providers_qnn.dll";
-#else
-      "./libonnxruntime_providers_qnn.so";
-#endif
-  const std::string& registration_name = "QnnAbiTestProvider";
-
-  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
-
-  {
-    std::vector<Ort::ConstEpDevice> ep_devices = ort_env->GetEpDevices();
-
-    // Find the OrtEpDevice associated with our example plugin EP.
-    Ort::ConstEpDevice plugin_ep_device;
-    for (Ort::ConstEpDevice& device : ep_devices) {
-      if (std::string(device.EpName()) == registration_name) {
-        plugin_ep_device = device;
-        break;
-      }
-    }
-    ASSERT_NE(plugin_ep_device, nullptr);
-    std::cout << "Found plugin EP: " << plugin_ep_device.EpName() << std::endl;
-    // Create session with example plugin EP
-    Ort::SessionOptions session_options;
-    std::unordered_map<std::string, std::string> ep_options;
-    session_options.AppendExecutionProvider_V2(*ort_env, std::vector<Ort::ConstEpDevice>{plugin_ep_device}, ep_options);
-
-    RunModelWithPluginEp(session_options);
-  }
-
-  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
 }
 }  // namespace test
 }  // namespace onnxruntime

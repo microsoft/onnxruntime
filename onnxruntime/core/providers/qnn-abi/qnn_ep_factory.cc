@@ -16,13 +16,8 @@ static OrtEpFactory* g_qnn_plugin_factory = nullptr;
 namespace onnxruntime {
 
 // OrtEpApi infrastructure to be able to use the QNN EP as an OrtEpFactory for auto EP selection.
-QnnEpFactory::QnnEpFactory(const char* ep_name,
-                           const ApiPtrs& ort_api_in,
-                           OrtHardwareDeviceType hw_type,
-                           const char* qnn_backend_type)
-    : ApiPtrs(ort_api_in), ep_name_{ep_name}, ort_hw_device_type_{hw_type}, qnn_backend_type_{qnn_backend_type} {
-  std::cout << "DEBUG: QnnEpFactory constructor - ep_name=" << ep_name
-            << " hw_type=" << hw_type << " backend=" << qnn_backend_type << std::endl;
+QnnEpFactory::QnnEpFactory(const char* ep_name, const ApiPtrs& ort_api_in) : ApiPtrs(ort_api_in), ep_name_{ep_name} {
+  std::cout << "DEBUG: QnnEpFactory constructor - ep_name=" << ep_name << std::endl;
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
@@ -95,24 +90,22 @@ OrtStatus* ORT_API_CALL QnnEpFactory::GetSupportedDevicesImpl(OrtEpFactory* this
   size_t& num_ep_devices = *p_num_ep_devices;
   auto* factory = static_cast<QnnEpFactory*>(this_ptr);
 
-  for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
-    const OrtHardwareDevice& device = *devices[i];
+  for (size_t idx = 0; idx < num_devices && num_ep_devices < max_ep_devices; ++idx) {
+    const OrtHardwareDevice& device = *devices[idx];
     auto device_type = factory->ort_api.HardwareDevice_Type(&device);
     auto vendor_id = factory->ort_api.HardwareDevice_VendorId(&device);
-    std::cout << "DEBUG: Device " << i << " type=" << device_type << " vendor=" << vendor_id
-              << " factory_type=" << factory->ort_hw_device_type_ << " factory_vendor=" << factory->vendor_id_ << std::endl;
-    // For CPU devices, accept vendor ID 0 (generic CPU) as well as Qualcomm vendor ID
-    bool vendor_match = (vendor_id == factory->vendor_id_) ||
-                        (device_type == OrtHardwareDeviceType_CPU && vendor_id == 4130);
-                        // (device_type == OrtHardwareDeviceType_CPU && vendor_id == 0);
-    if (device_type == factory->ort_hw_device_type_ && vendor_match) {
-      std::cout << "DEBUG: Device " << i << " matches! Creating EpDevice..." << std::endl;
-      OrtKeyValuePairs* ep_options = nullptr;
-      factory->ort_api.CreateKeyValuePairs(&ep_options);
-      factory->ort_api.AddKeyValuePair(ep_options, "backend_type", factory->qnn_backend_type_.c_str());
-      ORT_API_RETURN_IF_ERROR(
-          factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, nullptr, ep_options,
-                                                      &ep_devices[num_ep_devices++]));
+    std::cout << "DEBUG: Device " << idx
+              << " type=" << device_type << " vendor=" << vendor_id
+              << " factory_vendor=" << factory->vendor_id_
+              << std::endl;
+
+    if (vendor_id == factory->vendor_id_ || device_type == OrtHardwareDeviceType_CPU) {
+      std::cout << "DEBUG: Device " << idx << " matches! Creating EpDevice..." << std::endl;
+      ORT_API_RETURN_IF_ERROR(factory->ep_api.CreateEpDevice(factory,
+                                                             &device,
+                                                             nullptr,
+                                                             nullptr,
+                                                             &ep_devices[num_ep_devices++]));
     }
   }
 
@@ -189,21 +182,17 @@ OrtStatus* CreateEpFactories(const char* /*registration_name*/,
   const OrtModelEditorApi* model_editor_api = ort_api->GetModelEditorApi();
 
   // Factory could use registration_name or define its own EP name.
-  auto factory_cpu = std::make_unique<onnxruntime::QnnEpFactory>("QnnAbiTestProvider",
-                                                                 onnxruntime::ApiPtrs{*ort_api, *ep_api, *model_editor_api},
-                                                                 OrtHardwareDeviceType_CPU,
-                                                                 "cpu");
-
-  // If want to support GPU, create a new factory instance because QNN EP is not currently setup to partition a single model
-  // among heterogeneous devices.
-  // std::unique_ptr<OrtEpFactory> factory_gpu = std::make_unique<QnnEpFactory>(*ort_api, "QNNExecutionProvider_GPU", OrtHardwareDeviceType_GPU, "gpu");
+  auto factory = std::make_unique<onnxruntime::QnnEpFactory>("QnnAbiTestProvider",
+                                                             onnxruntime::ApiPtrs{*ort_api,
+                                                                                  *ep_api,
+                                                                                  *model_editor_api});
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
                                  "Not enough space to return EP factory. Need at least one.");
   }
 
-  factories[0] = factory_cpu.release();
+  factories[0] = factory.release();
   *num_factories = 1;
 
   return nullptr;
