@@ -21,7 +21,6 @@ int real_main(int argc, char* argv[]) {
   g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   perftest::PerformanceTestConfig test_config;
   if (!perftest::CommandLineParser::ParseArguments(test_config, argc, argv)) {
-    perftest::CommandLineParser::ShowUsage();
     return -1;
   }
   Ort::Env env{nullptr};
