@@ -330,7 +330,7 @@ inline std::string GetEnvironmentVar(std::string_view var_name) {
   return GetEnvironmentVar(std::string{var_name});
 }
 inline std::string GetEnvironmentVar(const char* var_name) {
-  return GetEnvironmentVar(std::string_view{var_name});
+  return GetEnvironmentVar(std::string{var_name});
 }
 
 namespace profiling {
