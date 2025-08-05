@@ -7,8 +7,9 @@
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 
-#include <memory>
 #include <chrono>
+#include <memory>
+#include <string>
 
 #include <gsl/gsl>
 
@@ -16,6 +17,7 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
@@ -307,28 +309,396 @@ CUDA_Provider* GetProvider() {
 
 }  // namespace onnxruntime
 
-#include "core/framework/error_code_helper.h"
+//
+// Plug-in EP infrastructure
+//
+
+#include "core/session/abi_devices.h"
 #include "onnxruntime_config.h"  // for ORT_VERSION
+
+struct ErrorHelper {
+  static const OrtApi* ort_api;
+
+  static OrtStatus* ToOrtStatus(const Status& status) {
+    if (status.IsOK()) {
+      return nullptr;  // no error
+    }
+
+    return ort_api->CreateStatus(static_cast<OrtErrorCode>(status.Code()),
+                                 status.ErrorMessage().c_str());
+  }
+};
+
+const OrtApi* ErrorHelper::ort_api = nullptr;
+
+#define RETURN_IF_ERROR(fn)    \
+  do {                         \
+    OrtStatus* _status = (fn); \
+    if (_status != nullptr) {  \
+      return _status;          \
+    }                          \
+  } while (0)
+
+#define RETURN_IF_STATUS_NOTOK(fn)              \
+  do {                                          \
+    Status _status = (fn);                      \
+    if (!_status.IsOK()) {                      \
+      return ErrorHelper::ToOrtStatus(_status); \
+    }                                           \
+  } while (0)
+
+#define CUDA_RETURN_IF_ERROR(expr) RETURN_IF_STATUS_NOTOK(CUDA_CALL(expr))
+
+struct CudaOrtAllocator : OrtAllocator {
+  CudaOrtAllocator(const OrtMemoryInfo* mem_info, const OrtApi& api) : memory_info_{mem_info} {
+    version = ORT_API_VERSION;
+    Alloc = AllocImpl;
+    Free = FreeImpl;
+    Info = InfoImpl;
+    Reserve = AllocImpl;      // no special behavior for Reserve so use AllocImpl
+    GetStats = nullptr;       // GetStatsImpl. The CUDA allocators don't have stats currently so we can skip.
+    AllocOnStream = nullptr;  // TODO. Plugin EP arena to provide this.
+
+    const OrtEpApi& ep_api = *api.GetEpApi();
+    const OrtMemoryDevice* mem_device = ep_api.MemoryInfo_GetMemoryDevice(mem_info);
+    uint32_t device_id = ep_api.MemoryDevice_GetDeviceId(mem_device);
+    const char* name = nullptr;
+    auto* status = api.MemoryInfoGetName(mem_info, &name);
+    static_cast<void>(status);  // GetName never fails
+
+    if (ep_api.MemoryDevice_GetMemoryType(mem_device) == OrtDeviceMemoryType_HOST_ACCESSIBLE) {
+      allocator_ = std::make_unique<CUDAPinnedAllocator>(device_id, name);
+    } else {
+      allocator_ = std::make_unique<CUDAAllocator>(device_id, name);
+    }
+  }
+
+  static void* ORT_API_CALL AllocImpl(struct OrtAllocator* this_, size_t size) {
+    auto& impl = *static_cast<CudaOrtAllocator*>(this_);
+    return impl.allocator_->Alloc(size);
+  }
+
+  static void ORT_API_CALL FreeImpl(struct OrtAllocator* this_, void* p) {
+    auto& impl = *static_cast<CudaOrtAllocator*>(this_);
+    impl.allocator_->Free(p);
+  }
+
+  static const struct OrtMemoryInfo* ORT_API_CALL InfoImpl(const struct OrtAllocator* this_) {
+    const CudaOrtAllocator& impl = *static_cast<const CudaOrtAllocator*>(this_);
+    return impl.memory_info_;
+  }
+
+ private:
+  const OrtMemoryInfo* memory_info_;
+  std::unique_ptr<IAllocator> allocator_;
+};
+
+struct CudaDataTransferImpl : OrtDataTransferImpl {
+  CudaDataTransferImpl(const OrtApi& ort_api_in)
+      : ort_api{ort_api_in}, ep_api{*ort_api_in.GetEpApi()} {
+    ort_version_supported = ORT_API_VERSION;
+    CanCopy = CanCopyImpl;
+    CopyTensors = CopyTensorsImpl;
+    Release = ReleaseImpl;
+  }
+
+  static bool CanCopyImpl(const OrtDataTransferImpl* this_ptr,
+                          const OrtMemoryDevice* src_memory_device,
+                          const OrtMemoryDevice* dst_memory_device) noexcept {
+    const auto& impl = *static_cast<const CudaDataTransferImpl*>(this_ptr);
+
+    // logic copied from GPUDataTransfer::CanCopy
+    OrtMemoryInfoDeviceType src_type = impl.ep_api.MemoryDevice_GetDeviceType(src_memory_device);
+    OrtMemoryInfoDeviceType dst_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_memory_device);
+    auto src_vendor_id = impl.ep_api.MemoryDevice_GetVendorId(src_memory_device);
+    auto dst_vendor_id = impl.ep_api.MemoryDevice_GetVendorId(dst_memory_device);
+
+    if ((src_type == OrtDevice::GPU && src_vendor_id != OrtDevice::VendorIds::NVIDIA) ||
+        (dst_type == OrtDevice::GPU && dst_vendor_id != OrtDevice::VendorIds::NVIDIA)) {
+      return false;
+    }
+
+    // copy must be GPU to GPU or between GPU and CPU
+    return (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_GPU) ||
+           (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_CPU) ||
+           (src_type == OrtMemoryInfoDeviceType_CPU && dst_type == OrtMemoryInfoDeviceType_GPU);
+  }
+
+  static OrtStatus* CopyTensorsImpl(OrtDataTransferImpl* this_ptr,
+                                    const OrtValue** src_tensors,
+                                    OrtValue** dst_tensors,
+                                    OrtSyncStream** streams,
+                                    size_t num_tensors) noexcept {
+    auto& impl = *static_cast<CudaDataTransferImpl*>(this_ptr);
+    bool need_stream_sync = false;
+
+    for (size_t idx = 0; idx < num_tensors; ++idx) {
+      const OrtValue* src_tensor = src_tensors[idx];
+      OrtValue* dst_tensor = dst_tensors[idx];
+      OrtSyncStream* stream = streams ? streams[idx] : nullptr;
+
+      const OrtMemoryDevice* src_device = impl.ep_api.Value_GetMemoryDevice(src_tensor);
+      const OrtMemoryDevice* dst_device = impl.ep_api.Value_GetMemoryDevice(dst_tensor);
+
+      size_t bytes;
+      RETURN_IF_ERROR(impl.ort_api.GetTensorSizeInBytes(src_tensor, &bytes));
+
+      const void* src_data = nullptr;
+      void* dst_data = nullptr;
+      RETURN_IF_ERROR(impl.ort_api.GetTensorData(src_tensor, &src_data));
+      RETURN_IF_ERROR(impl.ort_api.GetTensorMutableData(dst_tensor, &dst_data));
+
+      OrtMemoryInfoDeviceType src_type = impl.ep_api.MemoryDevice_GetDeviceType(src_device);
+      OrtMemoryInfoDeviceType dst_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_device);
+      OrtDeviceMemoryType src_mem_type = impl.ep_api.MemoryDevice_GetMemoryType(src_device);
+      OrtDeviceMemoryType dst_mem_type = impl.ep_api.MemoryDevice_GetMemoryType(dst_device);
+
+      const bool src_is_gpu_default = src_type == OrtMemoryInfoDeviceType_GPU &&
+                                      src_mem_type == OrtDeviceMemoryType_DEFAULT;
+      const bool dst_is_gpu_default = dst_type == OrtMemoryInfoDeviceType_GPU &&
+                                      dst_mem_type == OrtDeviceMemoryType_DEFAULT;
+
+      cudaStream_t cuda_stream = nullptr;
+      if (stream) {
+        cuda_stream = static_cast<cudaStream_t>(impl.ort_api.SyncStream_GetHandle(stream));
+      }
+
+      if (dst_is_gpu_default) {
+        if (src_is_gpu_default) {
+          // Copy only if the two addresses are different.
+          if (dst_data != src_data) {
+            if (cuda_stream) {
+              CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice, cuda_stream));
+
+            } else {
+              CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice));
+
+              // For device memory to device memory copy, no host-side synchronization is performed by cudaMemcpy.
+              // see https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html
+              need_stream_sync = true;
+            }
+          }
+        } else {
+          // copy from pinned or non-pinned CPU memory to GPU
+          if (cuda_stream) {
+            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, cuda_stream));
+          } else {
+            CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyHostToDevice));
+
+            if (src_mem_type != OrtDeviceMemoryType_HOST_ACCESSIBLE) {
+              // For cudaMemcpy from pageable host memory to device memory, DMA to final destination may not
+              // have completed.
+              // see https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html
+              need_stream_sync = true;
+            }
+          }
+        }
+      } else if (src_is_gpu_default) {
+        // copying from GPU to CPU memory, this is blocking
+
+        if (cuda_stream) {
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, cuda_stream));
+
+        } else {
+          CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
+        }
+      } else {
+        // copying between CPU accessible memory
+
+        if (dst_data != src_data) {
+          if (cuda_stream) {
+            if (src_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE) {
+              // sync the stream first to make sure the data arrived
+              CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+            }
+          }
+
+          memcpy(dst_data, src_data, bytes);
+        }
+      }
+    }
+
+    if (need_stream_sync) {
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
+    }
+
+    return nullptr;
+  }
+
+  static void ReleaseImpl(OrtDataTransferImpl* /*this_ptr*/) noexcept {
+    // no-op as we have a single shared instance in OrtEpFactory which is returned from CreateDataTransferImpl, and is
+    // owned by and freed by the factory.
+  }
+
+  const OrtApi& ort_api;
+  const OrtEpApi& ep_api;
+};
+
+struct CudaSyncNotificationImpl : OrtSyncNotificationImpl {
+  static OrtStatus* Create(cudaStream_t stream, const OrtApi& ort_api,
+                           std::unique_ptr<CudaSyncNotificationImpl>& notification) {
+    notification.reset(new CudaSyncNotificationImpl(stream, ort_api));  // can't use make_unique with private ctor
+    CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&notification->event_, cudaEventDisableTiming));
+
+    return nullptr;
+  }
+
+  static void ReleaseImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept {
+    delete static_cast<CudaSyncNotificationImpl*>(this_ptr);
+  }
+
+  static OrtStatus* ActivateImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept {
+    auto& impl = *static_cast<CudaSyncNotificationImpl*>(this_ptr);
+    CUDA_RETURN_IF_ERROR(cudaEventRecord(impl.event_, impl.stream_));
+
+    return nullptr;
+  }
+
+  static OrtStatus* WaitOnDeviceImpl(_In_ OrtSyncNotificationImpl* this_ptr,
+                                     _In_ OrtSyncStream* consumer_stream) noexcept {
+    auto& impl = *static_cast<CudaSyncNotificationImpl*>(this_ptr);
+
+    // setup the consumer stream to wait on our event.
+    void* consumer_handle = impl.ort_api.SyncStream_GetHandle(consumer_stream);
+    CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(static_cast<cudaStream_t>(consumer_handle), impl.event_));
+
+    return nullptr;
+  }
+
+  static OrtStatus* WaitOnHostImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept {
+    auto& impl = *static_cast<CudaSyncNotificationImpl*>(this_ptr);
+    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(impl.event_));
+
+    return nullptr;
+  }
+
+  ~CudaSyncNotificationImpl() {
+    cudaEventDestroy(event_);
+  }
+
+ private:
+  CudaSyncNotificationImpl(cudaStream_t stream, const OrtApi& ort_api_in)
+      : stream_{stream}, ort_api{ort_api_in}, ep_api{*ort_api_in.GetEpApi()} {
+    ort_version_supported = ORT_API_VERSION;
+    Activate = ActivateImpl;
+    WaitOnDevice = WaitOnDeviceImpl;
+    WaitOnHost = WaitOnHostImpl;
+    Release = ReleaseImpl;
+  }
+
+  cudaStream_t& stream_;
+  cudaEvent_t event_;
+
+  const OrtApi& ort_api;
+  const OrtEpApi& ep_api;
+};
+
+struct CudaSyncStreamImpl : OrtSyncStreamImpl {
+  CudaSyncStreamImpl(cudaStream_t&& stream,
+                     const OrtDevice& device,
+                     AllocatorPtr cpu_allocator,
+                     bool release_cpu_buffer_on_cuda_stream,
+                     const OrtApi& ort_api_in)
+      : stream_{
+            stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, /*own*/ true,
+            /*external_cudnn_handle*/ nullptr,
+            /*external_cublas_handle*/ nullptr,
+            // ep_info is used by GetResource which seems to be a somewhat ugly way to make arbitrary info that is
+            // unrelated to the stream available to a custom op.
+            // avoiding adding GetResource to OrtSyncStreamImpl as we should have a cleaner setup for custom ops,
+            // so this argument value isn't used and doesn't matter.
+            /*ep_info*/ CUDAExecutionProviderInfo{}},
+        ort_api{ort_api_in} {
+    ort_version_supported = ORT_API_VERSION;
+    GetHandle = GetHandleImpl;
+    CreateNotification = CreateNotificationImpl;
+    Flush = FlushImpl;
+    OnSessionRunEnd = OnSessionRunEndImpl;
+    Release = ReleaseImpl;
+  }
+
+  static void ReleaseImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
+    delete static_cast<CudaSyncStreamImpl*>(this_ptr);
+  }
+
+  static void* GetHandleImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
+    auto& impl = *static_cast<CudaSyncStreamImpl*>(this_ptr);
+    return impl.stream_.GetHandle();
+  }
+
+  static OrtStatus* CreateNotificationImpl(_In_ OrtSyncStreamImpl* this_ptr,
+                                           _Outptr_ OrtSyncNotificationImpl** notification_impl) noexcept {
+    auto& impl = *static_cast<CudaSyncStreamImpl*>(this_ptr);
+    *notification_impl = nullptr;
+
+    std::unique_ptr<CudaSyncNotificationImpl> notification;
+    cudaStream_t* cuda_stream = static_cast<cudaStream_t*>(impl.stream_.GetHandle());
+
+    RETURN_IF_ERROR(CudaSyncNotificationImpl::Create(*cuda_stream, impl.ort_api, notification));
+    *notification_impl = notification.release();
+
+    return nullptr;
+  }
+
+  static OrtStatus* FlushImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
+    auto& impl = *static_cast<CudaSyncStreamImpl*>(this_ptr);
+    impl.stream_.Flush();
+
+    return nullptr;
+  }
+
+  static OrtStatus* OnSessionRunEndImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
+    auto& impl = *static_cast<CudaSyncStreamImpl*>(this_ptr);
+    RETURN_IF_STATUS_NOTOK(impl.stream_.CleanUpOnRunEnd());
+
+    return nullptr;
+  }
+
+ private:
+  // this is a little onion-ish as CudaStream is a onnxruntime::Stream and this is an OrtSyncStreamImpl that will be
+  // used via plugin_ep::Stream, which is also an onnxruntime::Stream. in a 'real' plugin EP implementation
+  // CudaStream would go away and the logic it has would be implemented directly here.
+  CudaStream stream_;
+  const OrtApi& ort_api;
+};
 
 // OrtEpApi infrastructure to be able to use the CUDA EP as an OrtEpFactory for auto EP selection.
 struct CudaEpFactory : OrtEpFactory {
-  CudaEpFactory(const OrtApi& ort_api_in) : ort_api{ort_api_in} {
+  using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
+
+  CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in) : ort_api{ort_api_in},
+                                                                                default_logger{default_logger_in},
+                                                                                ep_api{*ort_api_in.GetEpApi()},
+                                                                                data_transfer_impl{ort_api_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVendorId = GetVendorIdImpl;
     GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
+
+    CreateAllocator = CreateAllocatorImpl;
+    ReleaseAllocator = ReleaseAllocatorImpl;
+    CreateDataTransfer = CreateDataTransferImpl;
+
+    IsStreamAware = IsStreamAwareImpl;
+    CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   }
 
   static const char* GetNameImpl(const OrtEpFactory* this_ptr) noexcept {
-    const auto* factory = static_cast<const CudaEpFactory*>(this_ptr);
-    return factory->ep_name.c_str();
+    const auto& factory = *static_cast<const CudaEpFactory*>(this_ptr);
+    return factory.ep_name.c_str();
   }
 
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto& factory = *static_cast<const CudaEpFactory*>(this_ptr);
+    return factory.vendor.c_str();
+  }
+
+  static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const CudaEpFactory*>(this_ptr);
-    return factory->vendor.c_str();
+    return factory->vendor_id;
   }
 
   static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
@@ -342,15 +712,84 @@ struct CudaEpFactory : OrtEpFactory {
                                             size_t max_ep_devices,
                                             size_t* p_num_ep_devices) noexcept {
     size_t& num_ep_devices = *p_num_ep_devices;
-    auto* factory = static_cast<CudaEpFactory*>(this_ptr);
+    auto& factory = *static_cast<CudaEpFactory*>(this_ptr);
 
+    int num_cuda_devices = 0;
+    cudaGetDeviceCount(&num_cuda_devices);
+    RETURN_IF_ERROR(factory.CreateMemoryInfoForDevices(num_cuda_devices));
+
+    /* in theory we can match on the LUID in the OrtHardwareDevice metadata, but that requires the CUDA Driver API
+    std::vector<uint64_t> device_to_luid;
+    device_to_luid.resize(num_cuda_devices);
+
+    for (int i = 0; i < num_cuda_devices; ++i) {
+      CUdevice device;
+      cuDeviceGet(&device, i);
+
+      char luid[8];
+      unsigned int nodeMask;
+      if (cuDeviceGetLuid(luid, &nodeMask, device) == CUDA_SUCCESS) {
+        device_to_luid[i] = *reinterpret_cast<uint64_t*>(luid);
+      }
+    }
+    */
+
+    int16_t device_id = 0;
     for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
       const OrtHardwareDevice& device = *devices[i];
-      if (factory->ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU &&
-          factory->ort_api.HardwareDevice_VendorId(&device) == 0x10de) {
-        ORT_API_RETURN_IF_ERROR(
-            factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, nullptr, nullptr,
-                                                        &ep_devices[num_ep_devices++]));
+      if (factory.ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU &&
+          factory.ort_api.HardwareDevice_VendorId(&device) == 0x10de) {
+        /* ideally we'd match on LUID here
+           for now we use an incrementing device id. could be a mismatch if you have multiple different CUDA GPUs.
+           alternative is to limit to one device only.
+
+        // find the device id. On Windows we have the LUID in the OrtHardwareDevice metadata.
+        const OrtKeyValuePairs* metadata = factory.ort_api.HardwareDevice_Metadata(&device);
+        const char* luid_str = factory.ort_api.GetKeyValue(metadata, "LUID");
+
+        if (!luid_str && num_devices > 1) {
+          // if there's no LUID we can't match device
+          return factory.ort_api.CreateStatus(ORT_EP_FAIL, "OrtHardwareDevice does not have LUID");
+        }
+
+        char* luid_end = nullptr;
+        uint64_t luid = std::strtoull(luid_str, &luid_end, 10);
+        for (; device_id < num_cuda_devices; ++device_id) {
+          if (device_to_luid[device_id] == luid) {
+            break;
+          }
+        }
+
+        if (device_id == num_cuda_devices) {
+          std::string msg("Could not match LUID to a CUDA device. LUID=");
+          msg += luid_str;
+
+          return factory.ort_api.CreateStatus(ORT_EP_FAIL, msg.c_str());
+        }
+        */
+
+        // create the EP options and add the device id
+        OrtKeyValuePairs* ep_metadata = nullptr;
+        OrtKeyValuePairs* ep_options = nullptr;
+        factory.ort_api.CreateKeyValuePairs(&ep_options);
+        factory.ort_api.AddKeyValuePair(ep_options, "device_id", std::to_string(device_id).c_str());
+
+        // create the OrtEpDevice
+        OrtEpDevice* ep_device = nullptr;
+        RETURN_IF_ERROR(factory.ort_api.GetEpApi()->CreateEpDevice(&factory, &device, ep_metadata, ep_options,
+                                                                   &ep_device));
+
+        factory.ort_api.ReleaseKeyValuePairs(ep_options);
+
+        const OrtMemoryInfo* gpu_mem_info = factory.gpu_memory_infos[device_id].get();
+        const OrtMemoryInfo* host_accessible_mem_info = factory.host_accessible_memory_infos[device_id].get();
+
+        RETURN_IF_ERROR(factory.ep_api.EpDevice_AddAllocatorInfo(ep_device, gpu_mem_info));
+        RETURN_IF_ERROR(factory.ep_api.EpDevice_AddAllocatorInfo(ep_device, host_accessible_mem_info));
+
+        ep_devices[num_ep_devices++] = ep_device;
+
+        ++device_id;
       }
     }
 
@@ -371,9 +810,125 @@ struct CudaEpFactory : OrtEpFactory {
     // no-op as we never create an EP here.
   }
 
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
+                                                     const OrtMemoryInfo* memory_info,
+                                                     const OrtKeyValuePairs* /*allocator_options*/,
+                                                     OrtAllocator** allocator) noexcept {
+    // this function is free to return the same allocator instance for all calls and make ReleaseAllocator a no-op
+    // e.g. allocator instance is in unique_ptr in the OrtEpFactory instance.
+    // ORT will create a shared allocator in the environment and the user can choose to use it in an inference session.
+    // Otherwise ORT will create an allocator when adding the EP to an inference session.
+    auto& factory = *static_cast<CudaEpFactory*>(this_ptr);
+
+    auto cuda_allocator = std::make_unique<CudaOrtAllocator>(memory_info, factory.ort_api);
+    *allocator = cuda_allocator.release();
+
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* /*this*/, OrtAllocator* allocator) noexcept {
+    delete static_cast<CudaOrtAllocator*>(allocator);
+  }
+
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* this_ptr,
+                                                        OrtDataTransferImpl** data_transfer) noexcept {
+    auto& factory = *static_cast<CudaEpFactory*>(this_ptr);
+    *data_transfer = &factory.data_transfer_impl;
+
+    return nullptr;
+  }
+
+  static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return true;
+  }
+
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+                                                               const OrtMemoryDevice* memory_device,
+                                                               const OrtKeyValuePairs* /*stream_options*/,
+                                                               OrtSyncStreamImpl** ort_stream) noexcept {
+    auto& factory = *static_cast<CudaEpFactory*>(this_ptr);
+    auto device_id = factory.ep_api.MemoryDevice_GetDeviceId(memory_device);
+
+    // the OrtEpFactory could have a cache of stream instances if it wants to avoid creating a new one on every
+    // call. the CudaStreamSyncImpl::Release could return the instance to the cache.
+    cudaStream_t stream = nullptr;
+    CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
+    CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+
+    // Currently this API is only used for creating a stream that is used outside of a session, as we're using the
+    // 'real' CUDA IExecutionProvider implementation for the EP. Due to that we need to connect it up to an internal
+    // onnxruntime::Stream that has the correct settings for the session.
+    // We do that externally by passing the cudaStream_t in via the "user_compute_stream" provider option.
+    //
+    // For use within an inference session in a completely plugin EP we'd need the session's CPU allocator to be
+    // available, as well as for relevant EP instance specific options such as whether graph capture is enabled
+    // to be applied.
+
+    const OrtDevice* ort_device = static_cast<const OrtDevice*>(memory_device);
+    // This OrtSyncStream isn't used for running the inference, so we don't need a CPU allocator for
+    // CPU scratch buffers to be created by operator kernels.
+    AllocatorPtr null_allocator;
+
+    auto impl = std::make_unique<CudaSyncStreamImpl>(std::move(stream), *ort_device, nullptr,
+                                                     /*release_cpu_buffer_on_cuda_stream*/ true,
+                                                     factory.ort_api);
+    *ort_stream = impl.release();
+
+    return nullptr;
+  }
+
+  OrtStatus* CreateMemoryInfoForDevices(int num_devices) {
+    gpu_memory_infos.reserve(num_devices);
+    host_accessible_memory_infos.reserve(num_devices);
+
+    for (int device_id = 0; device_id < num_devices; ++device_id) {
+      OrtMemoryInfo* mem_info = nullptr;
+      RETURN_IF_ERROR(ort_api.CreateMemoryInfo_V2("CUDA", OrtMemoryInfoDeviceType_GPU,
+                                                  /*vendor*/ OrtDevice::VendorIds::NVIDIA,
+                                                  /* device_id */ device_id,
+                                                  OrtDeviceMemoryType_DEFAULT,
+                                                  /*alignment*/ 0,
+                                                  OrtAllocatorType::OrtDeviceAllocator,
+                                                  &mem_info));
+
+      gpu_memory_infos.emplace_back(MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo));
+
+      // HOST_ACCESSIBLE memory should use the non-CPU device type
+      mem_info = nullptr;
+      RETURN_IF_ERROR(ort_api.CreateMemoryInfo_V2("CUDA host accessible", OrtMemoryInfoDeviceType_GPU,
+                                                  /*vendor*/ OrtDevice::VendorIds::NVIDIA,
+                                                  /* device_id */ device_id,
+                                                  OrtDeviceMemoryType_HOST_ACCESSIBLE,
+                                                  /*alignment*/ 0,
+                                                  OrtAllocatorType::OrtDeviceAllocator,
+                                                  &mem_info));
+
+      host_accessible_memory_infos.emplace_back(MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo));
+    }
+
+    return nullptr;
+  }
+
   const OrtApi& ort_api;
+  const OrtEpApi& ep_api;
+  const OrtLogger& default_logger;
   const std::string ep_name{kCudaExecutionProvider};  // EP name
   const std::string vendor{"Microsoft"};              // EP vendor name
+  uint32_t vendor_id{0x1414};                         // Microsoft vendor ID
+
+  // per-device memory info
+  std::vector<MemoryInfoUniquePtr> gpu_memory_infos;
+  std::vector<MemoryInfoUniquePtr> host_accessible_memory_infos;
+
+  // we use a shared instance for the OrtDataTransferImpl instead of creating a new one on every call to
+  // CreateDataTransferImpl.
+  CudaDataTransferImpl data_transfer_impl;
+
+  CudaEpFactory(const CudaEpFactory&) = delete;
+  CudaEpFactory& operator=(const CudaEpFactory&) = delete;
+
+  CudaEpFactory(CudaEpFactory&&) = default;
+  CudaEpFactory& operator=(CudaEpFactory&&) = default;
 };
 
 extern "C" {
@@ -381,11 +936,13 @@ extern "C" {
 // Public symbols
 //
 OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
+                             const OrtLogger* default_logger,
                              OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
+  ErrorHelper::ort_api = ort_api;  // setup our error helper
 
   // Factory could use registration_name or define its own EP name.
-  std::unique_ptr<OrtEpFactory> factory = std::make_unique<CudaEpFactory>(*ort_api);
+  std::unique_ptr<OrtEpFactory> factory = std::make_unique<CudaEpFactory>(*ort_api, *default_logger);
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,

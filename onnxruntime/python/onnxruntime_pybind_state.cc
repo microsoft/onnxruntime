@@ -46,7 +46,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/session/abi_devices.h"
-#include "core/session/ep_factory_internal.h"
+#include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/provider_policy_context.h"
 #include "core/session/utils.h"
 #endif
@@ -952,7 +952,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
                           << "TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
-#ifdef USE_MIGRAPHX
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
     std::string calibration_table;
     std::string save_model_path;
     std::string load_model_path;

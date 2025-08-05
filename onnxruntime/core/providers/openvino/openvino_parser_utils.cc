@@ -142,7 +142,7 @@ reshape_t OpenVINOParserUtils::ParseInputShape(const std::string& reshape_input_
   }
 
   // Process each tensor definition e.g. "input_1[1..5, 2, 3..4],data[1,2,3]"
-  for (std::sregex_iterator i = tensor_begin; i != tensor_end; ++i) {
+  for (std::sregex_iterator i = std::move(tensor_begin); i != tensor_end; ++i) {
     std::smatch tensor_match = *i;
 
     // Extract tensor name and trim whitespace
@@ -165,7 +165,7 @@ reshape_t OpenVINOParserUtils::ParseInputShape(const std::string& reshape_input_
     auto dim_end = std::sregex_iterator();
 
     // Process each dimension
-    for (std::sregex_iterator j = dim_begin; j != dim_end; ++j) {
+    for (std::sregex_iterator j = std::move(dim_begin); j != dim_end; ++j) {
       std::smatch dim_match = *j;
       std::string dim_value = dim_match[1].str();
 
@@ -190,7 +190,7 @@ reshape_t OpenVINOParserUtils::ParseInputShape(const std::string& reshape_input_
     }
 
     // Store parsed shape in result map
-    parsed_shape_map[tensor_name] = ov::PartialShape(dimensions);
+    parsed_shape_map[tensor_name] = ov::PartialShape(std::move(dimensions));
   }
 
   return parsed_shape_map;

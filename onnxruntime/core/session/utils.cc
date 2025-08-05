@@ -19,10 +19,10 @@
 #include "core/session/ort_env.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include "core/session/ep_factory_internal.h"
-#include "core/session/ep_plugin_provider_interfaces.h"
-#include "core/session/ep_library_plugin.h"
-#include "core/session/ep_library_provider_bridge.h"
+#include "core/session/plugin_ep/ep_factory_internal.h"
+#include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
+#include "core/session/plugin_ep/ep_library_plugin.h"
+#include "core/session/plugin_ep/ep_library_provider_bridge.h"
 #include "core/session/model_compilation_options.h"
 #include "core/session/provider_policy_context.h"
 #endif  // !defined(ORT_MINIMAL_BUILD)

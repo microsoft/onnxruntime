@@ -1,5 +1,72 @@
 # Python Helpers
 
+## Authentication method for Azure DevOps
+
+Generally speaking Azure DevOps services has three ways of doing authentication:
+
+1. Microsoft Entra ID(with an Entra token)
+2. Personal Access Tokens(PATs)
+3. Azure DevOps OAuth
+
+In this project all tools should only use the first one. An Entra token is very long compared to PATs. There are two ways of getting such a token:
+
+1. Use a service connection with Workload Identity Federation, which is for scripts that run in pipelines in Azure cloud.
+2. Get it from AzCli, which is for scripts that runs on Microsoft developers machines.  
+
+Some tools need to support the both scenarios, for example, nuget.exe. We are still exploring ways to make it work well with Entra ID auth(need to find a way to support cross-org nuget publishing).
+
+## delete_ado_pipeline.py
+Prerequisites: Install AzCli and get logged in.
+
+This script is designed to completely delete an Azure DevOps pipeline definition and all of its associated data.
+
+The process is as follows:
+1. Asynchronously finds and deletes ALL retention leases associated with the pipeline.
+2. Asynchronously deletes ALL build runs (history) for the pipeline.
+3. Deletes the pipeline definition itself.
+
+
+## upload_symbol.py
+
+This script downloads ONNX Runtime Windows release artifacts for a specified version from GitHub. Extracts PDB symbol files and uploads them to your Azure DevOps symbol server, simplifying debugging for teams hosting symbols there.
+
+This script requires symbols.exe, which can be downloaded by using the following Azure REST API: https://learn.microsoft.com/en-us/rest/api/azure/devops/symbol/client/get?view=azure-devops-rest-7.1
+
+symbols.exe handles authentication.
+
+## run_packaging_pipelines.py
+
+The script is for triggering Azure DevOps pipelines for a specific Github pull request or git branch. ONNX Runtime's release managers should use this script to trigger packaging pipelines.
+You may also use this script to trigger pull request pipelines for external PRs. 
+
+### Prerequisites
+
+1. Install AzCli and get logged in.
+2. pip install pyyaml
+
+### Usages
+
+It supports two modes:
+
+1. CI Build Mode (Default):
+   - Triggers pipelines in the 'Lotus' project.
+   - Filters pipelines based on the following criteria:
+     - Repository Association: Must be 'https://github.com/microsoft/onnxruntime'.
+     - Recent Activity: Must have run in the last 30 days.
+     - Pipeline Type: Must be YAML-based.
+     - Trigger Type: Must NOT be triggered by another pipeline resource.
+     - Template Requirement: Must extend from 'v1/1ES.Official.PipelineTemplate.yml@1esPipelines'.
+2. Pull Request (PR) Mode:
+   - Activated by using the '--pr <ID>' argument.
+   - Triggers pipelines in the 'PublicPackages' project.
+   - Filters pipelines based on a simplified criteria:
+     - Repository Association: Must be 'https://github.com/microsoft/onnxruntime'.
+     - Recent Activity: Must have run in the last 30 days.
+     - Pipeline Type: Must be YAML-based.
+
+The script also includes a feature to cancel any currently running builds for a matching
+pipeline on the target branch/PR before queuing a new one.
+
 ## ort_test_dir_utils.py
 
 Provides helpers for creating ONNX test directories that can be run using onnx_test_runner and onnxruntime_perf_test.

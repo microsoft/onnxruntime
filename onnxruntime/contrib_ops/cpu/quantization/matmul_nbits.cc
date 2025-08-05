@@ -458,7 +458,7 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
-    // dequantize b, only 2 and 4b quantization is supported for now
+    // dequantize b, only 2b, 4b, and 8b quantization is supported for now
     if (this->nbits_ == 2) {
       MlasDequantizeBlockwise<float, 2>(
           tmp_b_data_ptr.get(),                           // dequantized output

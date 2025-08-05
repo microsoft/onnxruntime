@@ -73,23 +73,82 @@ bool IsSubgroupMatrixConfigSupportedOnIntel(onnxruntime::webgpu::ComputeContext&
   return false;
 }
 
+// This program optimizes the layout of input matrix A(MxK) for SubgroupMatrixLoad, so that all elements of each
+// subgroup matrix(mxk) are arranged continuously in memory.
+// Take "M = 4, K = 4, m = 2, k = 2" as an example, the input matrix A is arranged in row-major order as follows:
+// d00, d01, | d02, d03,
+// d10, d11, | d12, d13,
+// ---------------------
+// d20, d21, | d22, d23,
+// d30, d31, | d32, d33,
+//
+// The prepack program rearranges the input matrix A to be in the following order:
+// d00, d01,
+// d10, d11,
+// ---------
+// d02, d03,
+// d12, d13,
+// ---------
+// d20, d21,
+// d30, d31,
+// ---------
+// d22, d23,
+// d32, d33,
+class PrepackProgram final : public Program<PrepackProgram> {
+ public:
+  PrepackProgram(uint32_t m, uint32_t k, std::string_view component_type) : Program{"SubgroupMatrixMatMulLayout"},
+                                                                            m_(m),
+                                                                            k_(k),
+                                                                            component_type_(component_type) {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  uint32_t m_;
+  uint32_t k_;
+  std::string_view component_type_;
+};
+
+Status PrepackProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("input_a", ShaderUsage::UseUniform);
+  shader.AddOutput("output_a", ShaderUsage::UseUniform);
+  shader.AdditionalImplementation() << "alias component_type = " << component_type_ << ";\n"
+                                    << "const m_dim: u32 = " << m_ << ";\n"
+                                    << "const k_dim: u32 = " << k_ << ";\n";
+
+  shader.MainFunctionBody() << R"MAIN_FN(
+  let M = uniforms.M;
+  let K = uniforms.K;
+  let in_offset = workgroup_id.x * m_dim * K + workgroup_id.y * k_dim;
+  let out_offset = (workgroup_id.x * K / k_dim + workgroup_id.y) * m_dim * k_dim;
+
+  // Syntax: subgroupMatrixLoad src_ptr, src_offset, is_col_major, src_stride
+  var mat: subgroup_matrix_left<component_type, k_dim, m_dim> =
+    subgroupMatrixLoad<subgroup_matrix_left<component_type, k_dim, m_dim>>(&input_a, in_offset, false, uniforms.K);
+  subgroupMatrixStore(&output_a, out_offset, mat, false, k_dim);
+  )MAIN_FN";
+  return Status::OK();
+}
+
 Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t config_index, bool has_zero_points) {
   auto& config = intel_supported_subgroup_matrix_configs[config_index];
   shader.AdditionalImplementation() << "alias component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<2>(config))] << ";\n"
                                     << "alias result_component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<3>(config))] << ";\n"
-                                    << "const m_dim = " << std::get<4>(config) << ";\n"
-                                    << "const n_dim = " << std::get<5>(config) << ";\n"
-                                    << "const k_dim = " << std::get<6>(config) << ";\n";
+                                    << "const m_dim: u32 = " << std::get<4>(config) << ";\n"
+                                    << "const n_dim: u32 = " << std::get<5>(config) << ";\n"
+                                    << "const k_dim: u32 = " << std::get<6>(config) << ";\n";
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
-        const tile_cols = 64;
-        const tile_rows = 64;
-        const tile_k = 32;
-        const subtile_rows = 8;
-        const quantization_block_size = 32;
+  const tile_cols: u32 = 64;
+  const tile_rows: u32 = 64;
+  const tile_k: u32 = 32;
+  const subtile_rows: u32 = 8;
+  const quantization_block_size: u32 = 32;
 
-        var<workgroup> tile_B: array<component_type, tile_cols * tile_k>;       // 64 x 32 - RxC
-    )ADDNL_FN" << GenerateZeroPointReadingCode(nbits, has_zero_points, "component_type");
+  var<workgroup> tile_B: array<component_type, tile_cols * tile_k>;       // 64 x 32 - RxC
+  )ADDNL_FN" << GenerateZeroPointReadingCode(nbits, has_zero_points, "component_type");
   if (nbits == 4) {
     shader.AdditionalImplementation() << R"ADDNL_FN(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
@@ -154,6 +213,12 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
         let b_global_base = workgroup_id.x * tile_cols;
 
         let subtile_id =  u32(local_idx / sg_size);
+        let subtile_a_num_per_tensor_row = u32(uniforms.K / k_dim);
+        let subtile_a_num_per_tile_col = u32(tile_rows / m_dim);
+        let subtile_a_id = (workgroup_id.y * subtile_a_num_per_tile_col + subtile_id) * subtile_a_num_per_tensor_row;
+
+        let subtile_a_size = m_dim * k_dim;
+        var matrix_a_offset = subtile_a_id * subtile_a_size;
 
         var matC00: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
         var matC01: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
@@ -167,9 +232,9 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             for (var step: u32 = 0; step < tile_k; step += k_dim)
             {
                 // Load A from global memory.
-                let matrix_a_offset = (a_global_base + subtile_id * subtile_rows) * uniforms.K + kidx + step;
                 // Syntax: subgroupMatrixLoad src_ptr, src_offset, is_col_major, src_stride
-                var matA0: subgroup_matrix_left<component_type, k_dim, m_dim> = subgroupMatrixLoad<subgroup_matrix_left<component_type, k_dim, m_dim>>(&input_a, matrix_a_offset, false, uniforms.K);
+                var matA0: subgroup_matrix_left<component_type, k_dim, m_dim> = subgroupMatrixLoad<subgroup_matrix_left<component_type, k_dim, m_dim>>(&input_a, matrix_a_offset, false, k_dim);
+                matrix_a_offset += subtile_a_size;
 
                 // Load B from shared local memory.
                 // tile_B is stored as column major.
@@ -426,6 +491,34 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       int32_t config_index,
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y) {
+  // If applicable, layout optimization of input matrix A(MxK) can be used for SubgroupMatrixLoad.
+  Tensor a_prepack;
+  if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
+    const auto& config = intel_supported_subgroup_matrix_configs[config_index];
+    const auto component_type = ComponentTypeName[static_cast<uint32_t>(std::get<2>(config))];
+    const auto m = std::get<4>(config);
+    const auto k = std::get<6>(config);
+
+    // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
+    PrepackProgram prepack_program{m, k, component_type};
+    constexpr uint32_t kSubgroupSize = 32;
+    prepack_program.SetWorkgroupSize(kSubgroupSize);
+
+    const auto dispatch_group_size_x = (M + m - 1) / m;
+    ORT_ENFORCE(K % k == 0, "K must be a multiple of ", k);
+    const auto dispatch_group_size_y = K / k;
+    // Each workgroup will process one subgroup matrix of size m x k.
+    prepack_program.SetDispatchGroupSize(dispatch_group_size_x, dispatch_group_size_y, 1);
+
+    TensorShape a_prepack_shape{dispatch_group_size_x * m, K};
+    a_prepack = context.CreateGPUTensor(a->DataType(), a_prepack_shape);
+    prepack_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+        .AddOutputs({{&a_prepack, ProgramTensorMetadataDependency::Rank, a_prepack.Shape(), 1}})
+        .AddUniformVariables({{M}, {K}})
+        .CacheHint(m, k);
+    ORT_RETURN_IF_ERROR(context.RunProgram(prepack_program));
+    a = &a_prepack;
+  }
   uint32_t tile_size_a = 32;
   uint32_t work_group_size = 128;
   constexpr uint32_t kTileSizeB = 64;
@@ -444,10 +537,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
                          {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kU32Components : 2 * kU32Components)},
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-      .AddUniformVariables({{static_cast<uint32_t>(M)},
-                            {static_cast<uint32_t>(N)},
-                            {static_cast<uint32_t>(K)},
-                            {zero_blocks_per_col}})
+      .AddUniformVariables({{M}, {N}, {K}, {zero_blocks_per_col}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, 1})
       .CacheHint(nbits, has_zero_points);
   if (has_zero_points) {
