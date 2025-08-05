@@ -24,8 +24,8 @@ std::string_view RocmErrString(ERRTYPE x) {
 }
 
 #define CASE_ENUM_TO_STR(x) \
-case x:                   \
-return #x
+  case x:                   \
+    return #x
 
 template <>
 std::string_view RocmErrString<hipError_t>(hipError_t x) {

@@ -282,6 +282,8 @@ try:
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
                 self._rewrite_ld_preload_tensorrt(to_preload_nv_tensorrt_rtx)
                 self._rewrite_ld_preload(to_preload_cann)
+            else:
+                pass
 
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino and not is_qnn:

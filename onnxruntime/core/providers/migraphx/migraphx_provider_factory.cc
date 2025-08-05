@@ -198,7 +198,6 @@ struct MIGraphX_Provider : Provider {
     return Status::OK();
   }
 
-
   void Initialize() override {
 #ifdef _WIN32
     HMODULE module = nullptr;
