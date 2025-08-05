@@ -183,11 +183,6 @@ struct TensorrtFuncState {
   bool is_dynamic_shape = false;
   std::string cache_prefix;
   std::string cache_suffix;
-  std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
-  std::vector<TensorParams> input_tensors;
-  std::vector<TensorParams> output_tensors;
-  bool is_first_run = true;              // Indicates if this is the first run of the engine
-  bool skip_io_binding_allowed = false;  // Indicates if input/output binding can be skipped
   IAllocatorUniquePtr<void> context_memory = nullptr;
   size_t context_memory_size = 0;
 };
@@ -204,11 +199,6 @@ struct TensorrtShortFuncState {
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::mutex* tensorrt_mu_ptr = nullptr;
   bool is_dynamic_shape = false;
-  std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
-  std::vector<TensorParams> input_tensors;
-  std::vector<TensorParams> output_tensors;
-  bool is_first_run = true;              // Indicates if this is the first run of the engine
-  bool skip_io_binding_allowed = false;  // Indicates if input/output binding can be skipped
   IAllocatorUniquePtr<void> context_memory = nullptr;
   size_t context_memory_size = 0;
 };
