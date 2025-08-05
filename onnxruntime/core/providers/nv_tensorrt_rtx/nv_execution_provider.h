@@ -114,6 +114,45 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
  */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
 
+/**
+ * @brief Container for tensor data and their shape.
+ *
+ */
+struct TensorParams {
+  const void* data{nullptr};
+  nvinfer1::Dims dims;
+
+  TensorParams() = default;
+
+  TensorParams(const void* data_ptr, const std::vector<int64_t>& shape) {
+    // Initialize data and dims from the Ort::ConstValue
+    data = data_ptr;
+
+    dims.nbDims = static_cast<int32_t>(shape.size());
+    for (int i = 0; i < dims.nbDims; ++i) {
+      dims.d[i] = static_cast<int32_t>(shape[i]);
+    }
+  }
+
+  TensorParams(const void* data_ptr, nvinfer1::Dims& shape) {
+    // Initialize data and dims from the Ort::ConstValue
+    data = data_ptr;
+
+    dims = shape;
+  }
+
+  bool operator!=(const TensorParams& other) const {
+    if (data != other.data || dims.nbDims != other.dims.nbDims)
+      return true;
+
+    for (int i = 0; i < dims.nbDims; ++i) {
+      if (dims.d[i] != other.dims.d[i])
+        return true;
+    }
+    return false;
+  }
+};
+
 // Information to construct kernel function state.
 struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
@@ -144,6 +183,11 @@ struct TensorrtFuncState {
   bool is_dynamic_shape = false;
   std::string cache_prefix;
   std::string cache_suffix;
+  std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
+  std::vector<TensorParams> input_tensors;
+  std::vector<TensorParams> output_tensors;
+  bool is_first_run = true;              // Indicates if this is the first run of the engine
+  bool skip_io_binding_allowed = false;  // Indicates if input/output binding can be skipped
   IAllocatorUniquePtr<void> context_memory = nullptr;
   size_t context_memory_size = 0;
 };
@@ -160,6 +204,11 @@ struct TensorrtShortFuncState {
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::mutex* tensorrt_mu_ptr = nullptr;
   bool is_dynamic_shape = false;
+  std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
+  std::vector<TensorParams> input_tensors;
+  std::vector<TensorParams> output_tensors;
+  bool is_first_run = true;              // Indicates if this is the first run of the engine
+  bool skip_io_binding_allowed = false;  // Indicates if input/output binding can be skipped
   IAllocatorUniquePtr<void> context_memory = nullptr;
   size_t context_memory_size = 0;
 };
@@ -345,8 +394,6 @@ class NvExecutionProvider : public IExecutionProvider {
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
     bool UpdateTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context);
     void ResetTensorRTContext(std::string fused_node);
-    bool CompareProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges);
-    void UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges);
 
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);
