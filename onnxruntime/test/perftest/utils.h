@@ -23,11 +23,9 @@ class ICPUUsage {
 
 std::unique_ptr<ICPUUsage> CreateICPUUsage();
 
-#ifdef _WIN32
 std::vector<std::string> ConvertArgvToUtf8Strings(int argc, wchar_t* argv[]);
 
 std::vector<char*> CStringsFromStrings(std::vector<std::string>& utf8_args);
-#endif
 
 void RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
 
