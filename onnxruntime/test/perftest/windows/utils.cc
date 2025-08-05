@@ -82,7 +82,15 @@ std::vector<std::string> ConvertArgvToUtf8Strings(int argc, wchar_t* argv[]) {
   std::vector<std::string> utf8_args;
   utf8_args.reserve(argc);
   for (int i = 0; i < argc; ++i) {
-    utf8_args.push_back(ToUTF8String(argv[i]));
+    std::string utf8_string = ToUTF8String(argv[i]);
+
+    // Abseil flags doens't natively alias "-h" to "--help".
+    // We make "-h" alias to "--help" here.
+    if (utf8_string == "-h" || utf8_string == "--h") {
+      utf8_args.push_back("--help");
+    } else {
+      utf8_args.push_back(utf8_string);
+    }
   }
   return utf8_args;
 }

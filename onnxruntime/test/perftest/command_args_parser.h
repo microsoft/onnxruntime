@@ -12,7 +12,6 @@ struct PerformanceTestConfig;
 
 class CommandLineParser {
  public:
-  static void ShowUsage();
   static bool ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]);
 };
 
