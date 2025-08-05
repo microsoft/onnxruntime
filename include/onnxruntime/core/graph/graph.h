@@ -1221,8 +1221,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the GraphProto representation of this Graph only.
-   * Deprecated. Do not use in main code. This does not recurse the subgraphs,
-   * does not populate the initializers of the root graph.
+   * This does not remove in-memory tags for graph initializers.
+   * Use ToGraphProto() const to get a GraphProto that can be serialized externally.
    */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
 
@@ -1598,23 +1598,14 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// This function is used by ToGraphProto() to ensure in-memory external data references
   /// don't leak externally since they are non-standard.
   ///
-  /// It handles two scenarios:
-  /// - When GraphSynchronizationNeeded() is false: GraphProto is simply copied
+  /// It is used when GraphSynchronizationNeeded() is false: GraphProto is simply copied
   ///   from graph_proto_ by ToGraphProto(). This copy includes both main graph
   ///   and subgraph initializers. This function examines all initializers
   ///   and inlines any in-memory data references.
-  /// - When GraphSynchronizationNeeded() is true: ToGraphProto() generates a new GraphProto
-  ///   using ToGraphProtoInternal(). This doesn't transfer main graph initializers, which are
-  ///   copied and inlined by ToGraphProto() itself. This function processes only the subgraph initializers
-  ///   as needed.
   /// </summary>
   /// <param name="output_graph_proto">The GraphProto to process</param>
-  /// <param name="main_graph">The main graph that ToGraphProto() was invoked for</param>
-  /// <param name="process_main_graph">Whether to process the initializers for the graph
-  /// that ToGraphProto() was invoked for</param>
-  /// <returns>Status indicating success or failure</returns>  ///
-  Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto,
-                                      const Graph& main_graph, bool process_main_graph) const;
+  /// <returns>Status indicating success or failure</returns>
+  Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
 
   /// <summary>
   /// This function traverses the graph bottom up and externalizes
