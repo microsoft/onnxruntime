@@ -1,27 +1,36 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 #include "core/common/path_utils.h"
-#include "core/graph/onnx_protobuf.h"
-#include "core/session/inference_session.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
-
-#include "test/util/include/scoped_env_vars.h"
-#include "test/common/trt_op_test_utils.h"
-#include "test/common/random_generator.h"
 #include "test/providers/nv_tensorrt_rtx/test_nv_trt_rtx_ep_util.h"
 
-#include <thread>
-#include <chrono>
+#include <fstream>
 
-using namespace std;
-using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::logging;
 extern std::unique_ptr<Ort::Env> ort_env;
+
 namespace onnxruntime {
 
 namespace test {
+
+RegisteredEpDeviceUniquePtr AppendTrtEtxEP(Ort::SessionOptions& session_options, std::unordered_map<std::string, std::string>& option_map) {
+  RegisteredEpDeviceUniquePtr nv_tensorrt_rtx_ep;
+#ifdef _WIN32
+  /// Since this test runs after other tests that use registration interface this test has to use it as well
+  /// windows as otherwise the kernel registry inside the EP will not be populated. The legacy APis ony call the initialize once.
+  Utils::RegisterAndGetNvTensorRtRtxEp(*ort_env, nv_tensorrt_rtx_ep);
+  auto ep_devices = ort_env->GetEpDevices();
+  Ort::ConstEpDevice selected_device;
+  for (auto& device : ep_devices) {
+    if (!std::strcmp(device.EpName(), kNvTensorRTRTXExecutionProvider)) {
+      selected_device = device;
+    }
+  }
+  session_options.AppendExecutionProvider_V2(*ort_env, {selected_device}, option_map);
+#else
+  session_options.AppendExecutionProvider(onnxruntime::kNvTensorRTRTXExecutionProvider, option_map);
+#endif
+  return nv_tensorrt_rtx_ep;
+}
 
 std::vector<char> readBinaryFile(const PathString& filename) {
   std::ifstream file(filename, std::ios::binary);
@@ -69,19 +78,8 @@ void SmallModelTest(CompileParam test_param, bool fully_supported_model) {
   CreateBaseModel(model_name, graph_name, dims, !fully_supported_model);
 
   Ort::SessionOptions session_options;
-#ifdef _WIN32
-  /// Since this test runs after other tests that use registration interface this test has to use it as well
-  /// windows as otherwise the kernel registry inside the EP will not be populated. The legacy APis ony call the initialize once.
-  RegisteredEpDeviceUniquePtr nv_tensorrt_rtx_ep;
-  Utils::RegisterAndGetNvTensorRtRtxEp(*ort_env, nv_tensorrt_rtx_ep);
-  const OrtEpDevice* const* ep_devices = nullptr;
-  size_t num_devices = 0;
-  ASSERT_ORTSTATUS_OK(Ort::GetApi().GetEpDevices(*ort_env, &ep_devices, &num_devices));
-  ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsAppendExecutionProvider_V2(session_options, *ort_env,
-                                                                             ep_devices, 1, nullptr, nullptr, 0));
-#else
-  session_options.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
-#endif
+  std::unordered_map<std::string, std::string> option_map{};
+  auto ep = AppendTrtEtxEP(session_options, option_map);
 
   Ort::ModelCompilationOptions model_compile_options(*ort_env, session_options);
   model_compile_options.SetEpContextEmbedMode(test_param.embed_mode);
@@ -124,52 +122,28 @@ TEST_P(CompileApiTest, SmallSplitModel) {
 
 TEST_P(CompileApiTest, LargeModel) {
   const auto& test_param = GetCompileParam();
-  PathString model_name = path_utils::MakePathString("nv_execution_provider_compile_large.onnx");
-  PathString external_data_name = path_utils::MakePathString("nv_execution_provider_compile_large.onnx_data");
-  PathString model_name_ctx = path_utils::MakePathString("nv_execution_provider_compile_large_ctx.onnx");
-  PathString model_name_ctx_data = path_utils::MakePathString("nv_execution_provider_compile_large_ctx.onnx_data");
+  // with embed mode == 1 the resulting file will be over the 2GB proto limit
+  if (test_param.embed_mode == 1) {
+    GTEST_SKIP();
+  }
+  std::string test_name = test_param.to_string();
+  PathString model_name = path_utils::MakePathString("nv_execution_provider_compile_large_" + test_name + ".onnx");
+  PathString external_data_name = path_utils::MakePathString("nv_execution_provider_compile_large_" + test_name + ".onnx_data");
+  PathString model_name_ctx = path_utils::MakePathString("nv_execution_provider_compile_large_" + test_name + "_ctx.onnx");
+  PathString model_name_ctx_data = path_utils::MakePathString("nv_execution_provider_compile_large_" + test_name + "_ctx.onnx_data");
   clearFileIfExists(model_name_ctx);
-  std::string graph_name = "test";
-  std::vector<int> dims = {1, 3, 2};
+  clearFileIfExists(model_name_ctx_data);
+  // This accelerates test iterations if the large model was already generated
   if (!std::filesystem::exists(model_name) || !std::filesystem::exists(external_data_name)) {
     CreateLargeLLMModel(model_name, external_data_name);
   }
 
   Ort::SessionOptions session_options;
-  std::vector<const char*> option_keys;
-  std::vector<const char*> option_values;
-  if (test_param.bytestream_io) {
-    option_keys = {onnxruntime::nv::provider_option_names::kUseExternalDataInitializer};
-    option_values = {"0"};
-  }
-  ASSERT_EQ(option_keys.size(), option_values.size());
-#ifdef _WIN32
-  /// Since this test runs after other tests that use registration interface this test has to use it as well
-  /// windows as otherwise the kernel registry inside the EP will not be populated. The legacy APis ony call the initialize once.
-  RegisteredEpDeviceUniquePtr nv_tensorrt_rtx_ep;
-  Utils::RegisterAndGetNvTensorRtRtxEp(*ort_env, nv_tensorrt_rtx_ep);
-  const OrtEpDevice* const* ep_devices = nullptr;
-  const OrtEpDevice* const* selected_device = nullptr;
-  size_t num_devices = 0;
-  ASSERT_ORTSTATUS_OK(Ort::GetApi().GetEpDevices(*ort_env, &ep_devices, &num_devices));
-  for (int i = 0; i < num_devices; i++) {
-    if (ep_devices[i]->ep_name == kNvTensorRTRTXExecutionProvider) {
-      selected_device = &ep_devices[i];
-    }
-  }
-  ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsAppendExecutionProvider_V2(session_options, *ort_env, selected_device, 1,
-                                                                             option_keys.data(), option_values.data(), option_keys.size()));
-#else
-  std::unordered_map<std::string, std::string> option_map;
-  for (size_t i = 0; i < option_keys.size(); ++i) {
-    option_map[option_keys[i]] = option_values[i];
-  }
-  session_options.AppendExecutionProvider(onnxruntime::kNvTensorRTRTXExecutionProvider, option_map);
-#endif
+  std::unordered_map<std::string, std::string> option_map{{onnxruntime::nv::provider_option_names::kUseExternalDataInitializer, std::to_string(test_param.bytestream_io)}};
+  auto ep = AppendTrtEtxEP(session_options, option_map);
 
   Ort::ModelCompilationOptions model_compile_options(*ort_env, session_options);
-  // with embed mode == 1 the resulting file will be over the 2GB proto limit
-  model_compile_options.SetEpContextEmbedMode(0);
+  model_compile_options.SetEpContextEmbedMode(test_param.embed_mode);
 
   void* output_context = nullptr;
   size_t output_context_size = 0;

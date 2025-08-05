@@ -29,7 +29,7 @@ using RegisteredEpDeviceUniquePtr = std::unique_ptr<const OrtEpDevice, std::func
 struct Utils {
   struct NvTensorRtRtxEpInfo {
     const std::filesystem::path library_path =
-#if _WIN32
+#ifdef _WIN32
         "onnxruntime_providers_nv_tensorrt_rtx.dll";
 #else
         "libonnxruntime_providers_nv_tensorrt_rtx.so";
@@ -48,7 +48,7 @@ struct Utils {
 };
 
 [[maybe_unused]] static std::string PathToUTF8(const PathString& path) {
-#ifdef WIN32
+#ifdef _WIN32
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
   return converter.to_bytes(path);
 #else
