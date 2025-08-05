@@ -1354,11 +1354,6 @@ struct ProviderHost {
   virtual std::unique_ptr<ModelMetadefIdGenerator> ModelMetadefIdGenerator__construct() = 0;
   virtual void ModelMetadefIdGenerator__operator_delete(ModelMetadefIdGenerator* p) = 0;
   virtual int ModelMetadefIdGenerator__GenerateId(const ModelMetadefIdGenerator* p, const GraphViewer& graph_viewer, HashValue& model_hash) = 0;
-
-#ifdef _WIN32
-  virtual std::string ToUTF8String(std::wstring_view s) = 0;
-  virtual std::wstring ToWideString(std::string_view s) = 0;
-#endif
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

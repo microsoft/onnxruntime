@@ -791,11 +791,11 @@ Status LoadDynamicLibrary(onnxruntime::PathString library_name) {
 
 #ifdef _WIN32
 std::string ToUTF8String(std::wstring_view s) {
-  return g_host->ToUTF8String(s);
+  return g_host->ToUTF8String(std::wstring{s});
 }
 
 std::wstring ToWideString(std::string_view s) {
-  return g_host->ToWideString(s);
+  return g_host->ToWideString(std::string{s});
 }
 #endif  // _WIN32
 }  // namespace onnxruntime
