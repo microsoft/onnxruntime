@@ -1,4 +1,4 @@
-FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20250714.2
+FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20250724.1
 ARG ROCM_VERSION=6.2.3
 
 #Add our own dependencies
@@ -23,4 +23,3 @@ RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
 ENV PATH=/usr/local/dotnet:$PATH
-

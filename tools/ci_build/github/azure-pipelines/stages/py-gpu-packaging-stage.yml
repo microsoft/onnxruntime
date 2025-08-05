@@ -5,21 +5,6 @@ parameters:
   type: string
   default: ''
 
-- name: enable_linux_cuda
-  displayName: 'Whether Linux CUDA package is built.'
-  type: boolean
-  default: false
-
-- name: enable_windows_cuda
-  displayName: 'Whether Windows CUDA package is built.'
-  type: boolean
-  default: false
-
-- name: enable_windows_dml
-  displayName: 'Whether Windows DML package is built.'
-  type: boolean
-  default: false
-
 # TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
 - name: cmake_build_type
   type: string
@@ -48,7 +33,6 @@ parameters:
     - '3.13'
 
 stages:
-  - ${{ if eq(parameters.enable_windows_cuda, true) }}:
     - ${{ each python_version in parameters.PythonVersions }}:
       - template: py-win-gpu-stage.yml
         parameters:
@@ -58,25 +42,11 @@ stages:
           EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52-real;61-real;75-real;86-real;89-real;90a-virtual"
           use_tensorrt: True
 
-  - ${{ if eq(parameters.enable_linux_cuda, true) }}:
-      - template: py-linux-gpu-stage.yml
-        parameters:
+    - template: py-linux-gpu-stage.yml
+      parameters:
           arch: 'x86_64'
-          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
+          machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
-          ${{ if eq(parameters.cuda_version, '11.8') }}:
-            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250714.2
-          ${{ if eq(parameters.cuda_version, '12.2') }}:
-            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
-
-  - ${{ if eq(parameters.enable_windows_dml, true) }}:
-    - ${{ each python_version in parameters.PythonVersions }}:
-      - template: py-win-gpu-stage.yml
-        parameters:
-          MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-          PYTHON_VERSION: ${{ python_version }}
-          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-          EP_NAME: directml
-          cmake_build_type: ${{ parameters.cmake_build_type }}
+          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250724.1

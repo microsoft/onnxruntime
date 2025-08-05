@@ -8,6 +8,13 @@
 namespace onnxruntime {
 namespace qnn {
 
+namespace {
+bool IsOptionalNodeUnitIODef(const NodeUnitIODef& node_io_def) {
+  const NodeArg& arg = node_io_def.node_arg;
+  return !arg.Exists() || arg.Name().empty();
+}
+}  // namespace
+
 std::string BaseOpBuilder::GetOpBuilderType() const {
   return op_builder_type_;
 }
@@ -46,12 +53,18 @@ Status BaseOpBuilder::ProcessDataTypes(QnnModelWrapper& qnn_model_wrapper,
   const auto& inputs = node_unit.Inputs();
   const auto& outputs = node_unit.Outputs();
   for (auto input : inputs) {
+    if (IsOptionalNodeUnitIODef(input)) {
+      continue;
+    }
     TensorInfo tensor_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, tensor_info));
     Qnn_DataType_t qnn_data_type = tensor_info.qnn_data_type;
     input_qnn_dtypes.push_back(qnn_data_type);
   }
   for (auto output : outputs) {
+    if (IsOptionalNodeUnitIODef(output)) {
+      continue;
+    }
     TensorInfo tensor_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(output, tensor_info));
     Qnn_DataType_t qnn_data_type = tensor_info.qnn_data_type;
@@ -335,7 +348,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
     // Insert cast node.
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_node_info.node_name,
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      "Cast",
+                                                      QNN_OP_CAST,
                                                       {cast_node_info.input_name},
                                                       {cast_node_info.output_name},
                                                       {}),

@@ -814,6 +814,25 @@ bool CumSumNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
   return true;
 }
 
+bool ScatterElementsNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
+                                             const std::vector<const Node*>& dq_nodes,
+                                             const std::vector<const Node*>& q_nodes) const {
+  // ScatterElements has 1 INT32 input and 2 dq inputs
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, 2)) {
+    return false;
+  }
+  const int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  const int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  const int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  // All input and output types must match.
+  if (dt_input_1 != dt_input_2 || dt_input_1 != dt_output) {
+    return false;
+  }
+
+  return true;
+}
+
 }  // namespace QDQ
 }  // namespace onnxruntime
 

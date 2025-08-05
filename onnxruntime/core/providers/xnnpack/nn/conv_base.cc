@@ -24,7 +24,6 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
                            const std::optional<std::pair<float, float>>& clip_min_max,
                            const Tensor& Weight, const Tensor* Bias,
                            XnnpackOperator& op_uptr,
-                           xnn_code_cache_t code_cache,
                            xnn_weights_cache_t weights_cache,
                            const OpQuantParam& quant_param,
                            OpComputeType conv_type,
@@ -79,7 +78,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         C, M,                                         // input channel stride, output channel stride
         Weight.Data<float>(), B_data,
         foutput_min, foutput_max, flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_fp16) {
     const auto* B_data = Bias ? Bias->Data<MLFloat16>() : nullptr;
@@ -97,7 +96,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         Weight.Data<MLFloat16>(), B_data,  // kernel, bias
         foutput_min, foutput_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8) {
     const float output_scale = quant_param[2].first[0];
@@ -121,7 +120,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8_per_channel) {
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
@@ -145,7 +144,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qu8) {
     const auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
@@ -170,7 +169,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   }
 
@@ -521,7 +520,7 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
 Status ConvBase::CreateKernel() {
   auto ret = CreateXnnpackKernel(convbase_attrs_ref_, C_, M_, kernel_shape_, clip_min_max_, packed_w_,
                                  B_, op0_,
-                                 GetCodeCache(), GetWeightsCache(),
+                                 GetWeightsCache(),
                                  quant_param_, conv_type_, is_transpose_);
   return ret;
 }

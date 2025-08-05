@@ -65,6 +65,8 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("GridSample", *this);
 
     CreateSimpleOpBuilder("LpNormalization", *this);
+
+    CreateSimpleOpBuilder("ScatterElements", *this);
   }
 
   {
@@ -196,6 +198,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateCumSumOpBuilder("CumSum", *this);
+  }
+
+  {
+    CreateGatherNDOpBuilder("GatherND", *this);
   }
 }
 
