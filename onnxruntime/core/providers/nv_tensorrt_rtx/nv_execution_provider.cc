@@ -2535,7 +2535,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
     auto trt_profiles = trt_state->profiles;
-    int num_inputs = static_cast<int>(input_indexes.size());
     int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_set<std::string> input_names;
 
@@ -2586,11 +2585,11 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
         char const* input_name = input_binding_names[i];
 
-      size_t input_index = 0;
-      const auto iter = input_indexes.find(input_name);
-      if (iter != input_indexes.end()) {
-        input_index = iter->second;
-      }
+        size_t input_index = 0;
+        const auto iter = input_indexes.find(input_name);
+        if (iter != input_indexes.end()) {
+          input_index = iter->second;
+        }
 
         auto status = BindContextInput(ctx, trt_engine, trt_context, input_name, input_index, shape_tensor_values, shape_tensor_values_int64, scratch_buffers, alloc, stream, skip_input_binding_allowed);
         if (status != Status::OK()) {
@@ -2644,17 +2643,18 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     }
 
     // Set execution context memory
-    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
-    if (trt_state->is_dynamic_shape) {
-      mem_size = trt_context->updateDeviceMemorySizeForShapes();
+    if (require_io_binding) {
+      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
+      if (trt_state->is_dynamic_shape) {
+        mem_size = trt_context->updateDeviceMemorySizeForShapes();
+      }
+      if (trt_state->context_memory_size != mem_size) {
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] A new context memory was allocated with size " << mem_size;
+        trt_state->context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, mem_size, false /*use_reserve*/);
+        trt_state->context_memory_size = mem_size;
+        trt_context->setDeviceMemoryV2(trt_state->context_memory.get(), mem_size);
+      }
     }
-    if (trt_state->context_memory_size != mem_size) {
-      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] A new context memory was allocated with size " << mem_size;
-      trt_state->context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, mem_size, false /*use_reserve*/);
-      trt_state->context_memory_size = mem_size;
-    }
-    trt_context->setDeviceMemoryV2(trt_state->context_memory.get(), mem_size);
-
     // Start CUDA graph capture.
     // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
     // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
@@ -2956,18 +2956,19 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     }
 
     // Set execution context memory
-    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
-    if (trt_state->is_dynamic_shape) {
-      mem_size = trt_context->updateDeviceMemorySizeForShapes();
+    if (require_io_binding) {
+      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
+      if (trt_state->is_dynamic_shape) {
+        mem_size = trt_context->updateDeviceMemorySizeForShapes();
+      }
+      if (trt_state->context_memory_size != mem_size) {
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] A new context memory was allocated with size " << mem_size;
+        trt_state->context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, mem_size, false /*use_reserve*/);
+        // trt_state->context_memory = IAllocator::MakeUniquePtr<void>(alloc, mem_size, false /*use_reserve*/, stream);
+        trt_state->context_memory_size = mem_size;
+        trt_context->setDeviceMemoryV2(trt_state->context_memory.get(), mem_size);
+      }
     }
-    if (trt_state->context_memory_size != mem_size) {
-      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] A new context memory was allocated with size " << mem_size;
-      trt_state->context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, mem_size, false /*use_reserve*/);
-      // trt_state->context_memory = IAllocator::MakeUniquePtr<void>(alloc, mem_size, false /*use_reserve*/, stream);
-      trt_state->context_memory_size = mem_size;
-    }
-    trt_context->setDeviceMemoryV2(trt_state->context_memory.get(), mem_size);
-
     // Start CUDA graph capture.
     // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
     // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
