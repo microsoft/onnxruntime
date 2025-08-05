@@ -155,7 +155,10 @@ struct MIGraphX_Provider : Provider {
     const ConfigOptions* config_options = &session_options.GetConfigOptions();
 
     std::array<const void*, 2> configs_array = {&provider_options, config_options};
-    auto ep_factory = CreateExecutionProviderFactory(&provider_options);
+    OrtMIGraphXProviderOptions migraphx_options;
+    UpdateProviderOptions(&migraphx_options, provider_options);
+
+    auto ep_factory = CreateExecutionProviderFactory(&migraphx_options);
     ep = ep_factory->CreateProvider(session_options, logger);
 
     return Status::OK();
@@ -309,7 +312,8 @@ struct MigraphXEpFactory : OrtEpFactory {
   const std::string vendor{"AMD"};
   const std::string version{"1.0.0"};  // MigraphX EP version
 
-  const uint32_t vendor_id{0x1002};
+  // Not using AMD vendor id 0x1002 so that OrderDevices in provider_policy_context.cc will default dml ep
+  const uint32_t vendor_id{0x9999};
   const OrtHardwareDeviceType ort_hw_device_type;  // Supported OrtHardwareDevice
 };
 

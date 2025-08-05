@@ -1412,22 +1412,41 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("normalize_routing_weights", "Whether to normalize routing weights", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
-        .Input(0, "input", "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-        .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
-        .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, inter_size, hidden_size), or (num_experts, 2 * inter_size, hidden_size) for swiglu", "T")
-        .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, inter_size), or (num_experts, 2 * inter_size) for swiglu", "T", OpSchema::Optional)
+        .Input(0, "input", "2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Input(1, "router_probs", "2D input tensor with shape (num_tokens, num_experts)", "T")
+        .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu, and 1 otherwise", "T")
+        .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
         .Input(4, "fc2_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
         .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
         .Input(6, "fc3_experts_weights", "3D optional input tensor with shape (num_experts, inter_size, hidden_size)", "T", OpSchema::Optional)
         .Input(7, "fc3_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
-        .Output(0, "output", "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Output(0, "output", "2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+constexpr const char* qMoE_ver1_doc = R"DOC(
+      Quantized mixture of experts (MoE).
+
+      Only weights are quantized with symmetric quantization.
+      The quantized weights are stored in column major order per expert.
+      The quantization block size can be specified. If not provided, column wise quantization is used.
+
+      The SwiGLU (Swish-Gated Linear Unit) activation function is like:
+         g = xW + b
+         l = xV + c
+         G = clamp(g, max=limit)
+         L = clamp(l, min=-limit, max=limit)
+         swiglu = G * sigmoid(alpha * G) * (L + beta)
+      where x is the input, W and V are weight matrices, b and c are bias vectors, and alpha, beta and limit are constant float parameters.
+      When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
+      When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
+      When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+      )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QMoE, 1,
     OpSchema()
-        .SetDoc("Quantized MoE")
+        .SetDoc(qMoE_ver1_doc)
         .Attr("activation_type",
               "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
               AttributeProto::STRING,
@@ -1440,63 +1459,90 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Whether to normalize routing weights",
               AttributeProto::INT,
               static_cast<int64_t>(0))
-        .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("use_sparse_mixer",
+              "Whether to use sparse mixer",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Attr("expert_weight_bits",
               "Number of bits used in quantized weights. Default is 4 bits",
               AttributeProto::INT,
               static_cast<int64_t>(4))
-        .Attr("swiglu_fusion", "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("swiglu_limit", "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided.", AttributeProto::FLOAT, OPTIONAL_VALUE)
-        .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
-        .Attr("activation_beta", "Beta parameter used in activation function.", AttributeProto::FLOAT, 0.0f)
+        .Attr("swiglu_fusion",
+              "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("swiglu_limit",
+              "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("activation_alpha",
+              "Alpha parameter used in activation function.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("activation_beta",
+              "Beta parameter used in activation function.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("block_size",
+              "Size of each quantization block along the K (input feature) dimension. "
+              "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
+              "If provided, both hidden_size and inter_size must be divisible by the block size. "
+              "Otherwise, there is no blocking and a whole column shares one scaling factor. ",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
-               "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape "
-               "(batch_size, sequence_length, hidden_size)",
+               "2D tensor with shape (num_tokens, hidden_size), or "
+               "3D tensor with shape (batch_size, sequence_length, hidden_size)",
                "T")
-        .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
+        .Input(1,
+               "router_probs",
+               "2D tensor with shape (num_tokens, num_experts)",
+               "T")
         .Input(2,
                "fc1_experts_weights",
-               "3D input tensor with shape (num_experts, inter_size, hidden_size), "
-               "or (num_experts, inter_size, hidden_size / 2) for 4 bits. "
-               "For swiglu, shape can be (num_experts, 2 * inter_size, hidden_size), "
-               "or (num_experts, 2 * inter_size, hidden_size / 2) for 4 bits.",
+               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / pack_size), "
+               "The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits.",
                "T1")
-        .Input(3, "fc1_scales", "2D input tensor with shape (num_experts, inter_size), or (num_experts, 2 * inter_size) for swiglu", "T2")
+        .Input(3,
+               "fc1_scales",
+               "2D tensor with shape (num_experts, fusion_size * inter_size), or "
+               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided.",
+               "T2")
         .Input(4,
                "fc1_experts_bias",
-               "2D optional input tensor with shape (num_experts, inter_size), or (num_experts, 2 * inter_size) for swiglu", "T", OpSchema::Optional)
+               "2D optional tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
         .Input(5,
                "fc2_experts_weights",
-               "3D input tensor with shape (num_experts, hidden_size, inter_size) "
-               "or (num_experts, hidden_size, inter_size / 2) for 4 bits",
+               "3D tensor with shape (num_experts, hidden_size, inter_size / pack_size)",
                "T1")
-        .Input(6, "fc2_scales", "2D input tensor with shape (num_experts, hidden_size)", "T2")
+        .Input(6,
+               "fc2_scales",
+               "2D tensor with shape (num_experts, hidden_size), or "
+               "3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided.",
+               "T2")
         .Input(7,
                "fc2_experts_bias",
-               "2D optional input tensor with shape (num_experts, hidden_size)",
+               "2D optional tensor with shape (num_experts, hidden_size)",
                "T",
                OpSchema::Optional)
         .Input(8,
                "fc3_experts_weights",
-               "3D optional input tensor with shape (num_experts, inter_size, hidden_size) "
-               "or (num_experts, inter_size, hidden_size / 2)",
+               "3D optional tensor with shape (num_experts, inter_size, hidden_size / pack_size)",
                "T1",
                OpSchema::Optional)
         .Input(9,
                "fc3_scales",
-               "2D optional input tensor with shape (num_experts, inter_size)",
+               "2D optional tensor with shape (num_experts, inter_size), or "
+               "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size) when block_size is provided.",
                "T2",
                OpSchema::Optional)
         .Input(10,
                "fc3_experts_bias",
-               "2D optional input tensor with shape (num_experts, inter_size)",
+               "2D optional tensor with shape (num_experts, inter_size)",
                "T",
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape "
-                "(batch_size, sequence_length, hidden_size)",
+                "output tensor with same shape of input",
                 "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("T1", {"tensor(uint8)"}, "Constrain weights type to uint8 tensors.")
