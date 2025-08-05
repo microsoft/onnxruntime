@@ -87,6 +87,24 @@ static void ConvertNodeArgsToValueInfos(const EpGraph* ep_graph,
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+static bool IsOptionalAttribute(const Node& node, const std::string& attr_name) {
+  const ONNX_NAMESPACE::OpSchema* op_schema = node.Op();
+  if (op_schema == nullptr) {
+    return false;
+  }
+
+  auto attr_schema_iter = op_schema->attributes().find(attr_name);
+  if (attr_schema_iter == op_schema->attributes().end()) {
+    return false;  // Not an attribute for this operator type.
+  }
+
+  const ONNX_NAMESPACE::OpSchema::Attribute& attr_schema = attr_schema_iter->second;
+
+  return !attr_schema.required;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 //
 // EpNode
 //
@@ -230,6 +248,32 @@ Status EpNode::GetAttributes(gsl::span<const OrtOpAttr*> dst) const {
   return Status::OK();
 }
 
+Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, OrtValue*& result) const {
+  const auto* attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute);
+
+  if (attr_proto->type() != onnx::AttributeProto::TENSOR) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This OrtOpAttr instance is not a 'TENSOR' attribute");
+  }
+
+  const auto& graph_viewer = ep_graph_->GetGraphViewer();
+  const auto& tensor_proto = attr_proto->t();
+
+  // Check that TensorProto is valid.
+  ORT_ENFORCE(utils::HasDataType(tensor_proto), "Tensor proto doesn't have data type.");
+  ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(tensor_proto.data_type()), "Tensor proto has invalid data type.");
+  ORT_ENFORCE(!utils::HasExternalData(tensor_proto),
+              "Tensor proto with external data for value attribute is not supported.");
+
+  // Initialize OrtValue for tensor attribute.
+  auto tensor_attribute_value = std::make_unique<OrtValue>();
+  AllocatorPtr tensor_attribute_allocator = CPUAllocator::DefaultInstance();
+  ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), tensor_proto,
+                                                   tensor_attribute_allocator, *tensor_attribute_value));
+
+  result = tensor_attribute_value.release();
+  return Status::OK();
+}
+
 Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {
   num_subgraphs = subgraphs_.size();
   return Status::OK();
@@ -268,13 +312,20 @@ gsl::span<const EpValueInfo* const> EpNode::GetOutputsSpan() const {
   return outputs_;
 }
 
-const OrtOpAttr* EpNode::GetAttribute(const std::string& name) const {
+const OrtOpAttr* EpNode::GetAttribute(const std::string& name, bool& is_unset_optional_attr) const {
   auto iter = attributes_map_.find(name);
-  if (iter == attributes_map_.end()) {
-    return nullptr;
-  } else {
+  if (iter != attributes_map_.end()) {
+    is_unset_optional_attr = false;
     return reinterpret_cast<const OrtOpAttr*>(iter->second.get());
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  is_unset_optional_attr = IsOptionalAttribute(node_, name);
+#else
+  // This is not properly set in a minimal build because it does not have access to the operator schema.
+  is_unset_optional_attr = false;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  return nullptr;
 }
 
 const std::string& EpNode::GetEpName() const {

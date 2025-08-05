@@ -620,6 +620,7 @@ def generate_build_tree(
             )
             generate_vcpkg_triplets_for_emscripten(
                 build_dir,
+                configs,
                 emscripten_root_path,
                 not args.disable_rtti,
                 not args.disable_wasm_exception_catching,
@@ -627,25 +628,21 @@ def generate_build_tree(
                 args.enable_address_sanitizer,
             )
         elif args.android:
-            generate_android_triplets(build_dir, args.android_cpp_shared, args.android_api)
+            generate_android_triplets(build_dir, configs, args.android_cpp_shared, args.android_api)
         elif is_windows():
-            generate_windows_triplets(build_dir, args.msvc_toolset)
+            generate_windows_triplets(build_dir, configs, args.msvc_toolset)
         elif is_macOS():
             osx_target = args.apple_deploy_target
             if args.apple_deploy_target is None:
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, osx_target)
+            generate_macos_triplets(build_dir, configs, osx_target)
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir)
+            generate_linux_triplets(build_dir, configs)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
-        vcpkg_install_options = generate_vcpkg_install_options(build_dir, args)
-        # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
-        # Therefore, if any of the option string contains a semicolon, it must be escaped
-        add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ";".join(vcpkg_install_options))
         # Choose the cmake triplet
         triplet = None
         if args.build_wasm:
@@ -892,7 +889,7 @@ def generate_build_tree(
     # * Leave disabled if "no_kleidiai" argument was specified.
     # * Enable if the target is Android and args.android_abi contains arm64*
     # * Enable for a Windows cross compile build if compile target is an Arm one.
-    # * Finally enable if platform.machine contains "arm64". This should cover the following cases:
+    # * Finally enable if platform.machine contains "arm64" and not a WebAssembly build. This should cover the following cases:
     #     *  Linux on Arm
     #     *  MacOs (case must be ignored)
     # * TODO Delegate responsibility for Onnxruntime_USE_KLEIDIAI = ON to CMake logic
@@ -900,7 +897,7 @@ def generate_build_tree(
         if (
             (args.android and "arm64" in args.android_abi.lower())
             or (is_windows() and (args.arm64 or args.arm64ec or args.arm) and platform.architecture()[0] != "AMD64")
-            or ("arm64" in platform.machine().lower())
+            or ("arm64" in platform.machine().lower() and not args.build_wasm)
         ):
             cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
 
@@ -1251,6 +1248,16 @@ def generate_build_tree(
             ]
         env = {}
         if args.use_vcpkg:
+            # append VCPKG_INSTALL_OPTIONS
+            #
+            # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
+            # Therefore, if any of the option string contains a semicolon, it must be escaped
+            temp_cmake_args += [
+                "-DVCPKG_INSTALL_OPTIONS={}".format(
+                    ";".join(generate_vcpkg_install_options(Path(build_dir) / config, args))
+                )
+            ]
+
             vcpkg_keep_env_vars = ["TRT_UPLOAD_AUTH_TOKEN"]
 
             if args.build_wasm:
