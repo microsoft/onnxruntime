@@ -17,24 +17,27 @@
 
 namespace onnxruntime {
 
+namespace {
 template <typename ERRTYPE>
-const char* RocmErrString(ERRTYPE x) {
+std::string_view RocmErrString(ERRTYPE x) {
   ORT_NOT_IMPLEMENTED();
 }
 
 #define CASE_ENUM_TO_STR(x) \
-  case x:                   \
-    return #x
+case x:                   \
+return #x
 
 template <>
-const char* RocmErrString<hipError_t>(hipError_t x) {
+std::string_view RocmErrString<hipError_t>(hipError_t x) {
   (void)hipDeviceSynchronize();
-  return hipGetErrorString(x);
+  return std::string_view{hipGetErrorString(x)};
 }
+
+}  // namespace
 
 template <typename ERRTYPE, bool THRW>
 std::conditional_t<THRW, void, Status> RocmCall(
-    ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg, const char* file, const int line) {
+    ERRTYPE retCode, std::string_view exprString, std::string_view libName, ERRTYPE successCode, std::string_view msg, std::string_view file, const int line) {
   if (retCode != successCode) {
     try {
 #ifdef _WIN32
@@ -47,17 +50,16 @@ std::conditional_t<THRW, void, Status> RocmCall(
       int currentHipDevice;
       (void)hipGetDevice(&currentHipDevice);
       (void)hipGetLastError();  // clear last HIP error
-      static char str[1024];
-      snprintf(str, sizeof(str), "%s failure %d: %s ; GPU=%d ; hostname=%s ; file=%s ; line=%d ; expr=%s; %s",
-               libName, static_cast<int>(retCode), RocmErrString(retCode), currentHipDevice,
-               hostname.c_str(),
-               file, line, exprString, msg);
+      std::stringstream ss;
+      ss << libName << " failure " << static_cast<int>(retCode) << ": " << RocmErrString(retCode)
+         << "; GPU=" << currentHipDevice << "; hostname=" << hostname << "; file=" << file << "; line=" << line
+         << "; expr=" << exprString << "; " << msg;
       if constexpr (THRW) {
         // throw an exception with the error info
-        ORT_THROW(str);
+        ORT_THROW(ss.str());
       } else {
-        LOGS_DEFAULT(ERROR) << str;
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, str);
+        LOGS_DEFAULT(ERROR) << ss.str();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ss.str());
       }
     } catch (const std::exception& e) {  // catch, log, and rethrow since HIP code sometimes hangs in destruction, so we'd never get to see the error
       if constexpr (THRW) {
@@ -73,7 +75,7 @@ std::conditional_t<THRW, void, Status> RocmCall(
   }
 }
 
-template Status RocmCall<hipError_t, false>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg, const char* file, const int line);
-template void RocmCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg, const char* file, const int line);
+template Status RocmCall<hipError_t, false>(hipError_t retCode, std::string_view exprString, std::string_view libName, hipError_t successCode, std::string_view msg, std::string_view file, int line);
+template void RocmCall<hipError_t, true>(hipError_t retCode, std::string_view exprString, std::string_view libName, hipError_t successCode, std::string_view msg, std::string_view file, int line);
 
 }  // namespace onnxruntime
