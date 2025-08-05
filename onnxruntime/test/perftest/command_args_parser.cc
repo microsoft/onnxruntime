@@ -191,7 +191,7 @@ static bool ParseDimensionOverride(std::string& dim_identifier, int64_t& overrid
 std::string CustomUsageMessage() {
   std::ostringstream oss;
   oss << "onnxruntime_perf_test [options...] model_path [result_file]\n\n";
-  oss << "Note: Options may be specified with either a single dash(-option) or a double dash(--option).Both forms are accepted and treated identically.\n\n";
+  oss << "Note: Options may be specified with either a single dash(-option) or a double dash(--option). Both forms are accepted and treated identically.\n\n";
   oss << "Options:";
 
   return oss.str();
