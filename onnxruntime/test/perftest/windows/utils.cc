@@ -77,32 +77,6 @@ class CPUUsage : public ICPUUsage {
 std::unique_ptr<ICPUUsage> CreateICPUUsage() {
   return std::make_unique<CPUUsage>();
 }
-
-std::vector<std::string> ConvertArgvToUtf8Strings(int argc, wchar_t* argv[]) {
-  std::vector<std::string> utf8_args;
-  utf8_args.reserve(argc);
-  for (int i = 0; i < argc; ++i) {
-    std::string utf8_string = ToUTF8String(argv[i]);
-
-    // Abseil flags doens't natively alias "-h" to "--help".
-    // We make "-h" alias to "--help" here.
-    if (utf8_string == "-h" || utf8_string == "--h") {
-      utf8_args.push_back("--help");
-    } else {
-      utf8_args.push_back(utf8_string);
-    }
-  }
-  return utf8_args;
-}
-
-std::vector<char*> CStringsFromStrings(std::vector<std::string>& utf8_args) {
-  std::vector<char*> utf8_argv;
-  utf8_argv.reserve(utf8_args.size());
-  for (auto& str : utf8_args) {
-    utf8_argv.push_back(&str[0]);
-  }
-  return utf8_argv;
-}
 }  // namespace utils
 }  // namespace perftest
 }  // namespace onnxruntime

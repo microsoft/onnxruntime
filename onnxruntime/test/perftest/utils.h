@@ -23,7 +23,7 @@ class ICPUUsage {
 
 std::unique_ptr<ICPUUsage> CreateICPUUsage();
 
-std::vector<std::string> ConvertArgvToUtf8Strings(int argc, wchar_t* argv[]);
+std::vector<std::string> ConvertArgvToUtf8Strings(int argc, ORTCHAR_T* argv[]);
 
 std::vector<char*> CStringsFromStrings(std::vector<std::string>& utf8_args);
 
