@@ -188,7 +188,7 @@ class QnnTensorWrapper {
       SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
     }
 
-    // SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
+    SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
   }
 
   // Initialize from a raw Qnn_Tensor_t. This method is currently used for graph inputs/outputs
@@ -206,9 +206,9 @@ class QnnTensorWrapper {
     qnn_tensor_ = qnn_tensor;
     SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
 
-    // const Qnn_QuantizeParams_t& src_quantize_param = GetQnnTensorQParams(qnn_tensor);
-    // ORT_RETURN_IF_ERROR(quant_params_.Init(src_quantize_param));
-    // SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
+    const Qnn_QuantizeParams_t& src_quantize_param = GetQnnTensorQParams(qnn_tensor);
+    ORT_RETURN_IF_ERROR(quant_params_.Init(src_quantize_param));
+    SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
 
     uint32_t shape_rank = GetQnnTensorRank(qnn_tensor);
     uint32_t* shape_data = GetQnnTensorDims(qnn_tensor);
@@ -280,7 +280,7 @@ class QnnTensorWrapper {
     SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
     SetQnnTensorDim(qnn_tensor_, dimensions_);
     SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
-    // SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
+    SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
   }
 
   std::string tensor_name_;

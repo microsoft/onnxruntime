@@ -17,6 +17,7 @@
 
 #include "core/common/common.h"
 #include "core/common/status.h"
+#include "core/common/string_utils.h"
 #include "core/common/safeint.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/capture.h"
@@ -148,13 +149,23 @@ struct ApiPtrs {
 //   return QDQ::GetAllNodeUnits(&graph_viewer, logger);
 // }
 
-// Forward declaration for OrtNode which is used in OrtNodeUnit
+namespace QDQ {
+
+// Define NodeGroup structure similar to the one in shared/utils.h
+struct OrtNodeGroup {
+  std::vector<const OrtNode*> dq_nodes;
+  std::vector<const OrtNode*> q_nodes;
+  const OrtNode* target_node;
+  const OrtNode* redundant_clip_node{nullptr};
+};
+
+}  // namespace QDQ
 
 struct OrtNodeUnitIODef {
   // TODO: Update this.
   struct QuantParam {
-    const void* scale;
-    const void* zero_point{nullptr};
+    const OrtValueInfo* scale;
+    const OrtValueInfo* zero_point{nullptr};
     std::optional<int64_t> axis{std::nullopt};
   };
 
@@ -175,8 +186,8 @@ class OrtNodeUnit {
   };
 
  public:
-  explicit OrtNodeUnit(const OrtNode& node, const OrtApi& ort_api);
-  // explicit NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group);
+  explicit OrtNodeUnit(const OrtNode* node, const OrtApi& ort_api);
+  explicit OrtNodeUnit(const OrtGraph* graph, const QDQ::OrtNodeGroup& node_group, const OrtApi& ort_api);
   // NodeUnit(gsl::span<const Node* const> dq_nodes, const Node& target_node, const Node* redundant_clip_node,
   //          gsl::span<const Node* const> q_nodes, Type unit_type,
   //          gsl::span<const NodeUnitIODef> inputs, gsl::span<const NodeUnitIODef> outputs,
@@ -184,33 +195,31 @@ class OrtNodeUnit {
 
   Type UnitType() const noexcept { return type_; }
 
-  // const std::vector<NodeUnitIODef>& Inputs() const noexcept { return inputs_; }
-  // const std::vector<NodeUnitIODef>& Outputs() const noexcept { return outputs_; }
   const std::vector<OrtNodeUnitIODef>& Inputs() const noexcept { return inputs_; }
   const std::vector<OrtNodeUnitIODef>& Outputs() const noexcept { return outputs_; }
 
-  const std::string& Domain() const noexcept { return target_node_.GetDomain(); }
-  const std::string& OpType() const noexcept { return target_node_.GetOpType(); }
-  const std::string& Name() const noexcept { return target_node_.GetName(); }
+  const std::string& Domain() const noexcept { return target_node_->GetDomain(); }
+  const std::string& OpType() const noexcept { return target_node_->GetOpType(); }
+  const std::string& Name() const noexcept { return target_node_->GetName(); }
   int SinceVersion() const noexcept {
     int since_version;
-    Status status = target_node_.GetSinceVersion(since_version);
+    Status status = target_node_->GetSinceVersion(since_version);
     if (!status.IsOK()) {
       since_version = -1;
     }
     return since_version;
   }
-  NodeIndex Index() const noexcept { return target_node_.GetId(); }
+  NodeIndex Index() const noexcept { return target_node_->GetId(); }
   // const std::filesystem::path& ModelPath() const noexcept;
   // ProviderType GetExecutionProviderType() const noexcept;
 
-  const OrtNode& GetNode() const noexcept { return target_node_; }
+  const OrtNode& GetNode() const noexcept { return *target_node_; }
   const OrtNode* GetRedundantClipNode() const noexcept { return redundant_clip_node_; }
   const std::vector<const OrtNode*>& GetDQNodes() const noexcept { return dq_nodes_; }
   const std::vector<const OrtNode*>& GetQNodes() const noexcept { return q_nodes_; }
   std::vector<const OrtNode*> GetAllNodesInGroup() const noexcept {
     std::vector<const OrtNode*> all_nodes = dq_nodes_;
-    all_nodes.push_back(&target_node_);
+    all_nodes.push_back(target_node_);
     if (redundant_clip_node_) {
       all_nodes.push_back(redundant_clip_node_);
     }
@@ -234,13 +243,11 @@ class OrtNodeUnit {
   void InitForSingleNode(const OrtApi& ort_api);
 
   const std::vector<const OrtNode*> dq_nodes_;  // dq nodes for this NodeUnit, not necessarily all inputs
-  const OrtNode& target_node_;
+  const OrtNode* target_node_;
   const OrtNode* redundant_clip_node_;         // Optional redundant clip node for the QDQ group, nullptr if not present.
   const std::vector<const OrtNode*> q_nodes_;  // q-nodes for this NodeUnit. not necessarily all outputs
   const Type type_;
 
-  // std::vector<NodeUnitIODef> inputs_;
-  // std::vector<NodeUnitIODef> outputs_;
   std::vector<OrtNodeUnitIODef> inputs_;
   std::vector<OrtNodeUnitIODef> outputs_;
 
@@ -304,6 +311,9 @@ OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,
                                           const char* config_key,
                                           const std::string& default_val,
                                           /*out*/ std::string& config_val);
+
+// Refer to OrtSessionOptions::GetProviderOptionPrefix.
+std::string GetProviderOptionPrefix(const char* provider_name);
 
 // TODO
 // Not sure why Env::Default() fails inside EP, replicate below implementations from "core/platform/posix/env.cc" and

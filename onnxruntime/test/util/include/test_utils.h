@@ -18,6 +18,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 namespace onnxruntime {
 class Graph;
@@ -72,6 +73,11 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes,
                                const EPVerificationParams& params = EPVerificationParams(),
                                const std::function<void(SessionOptions&)>& session_options_updater = {},
                                bool verify_outputs = true);
+
+void RunWithEPABI(OrtSessionWrapper* ort_session,
+                  const Ort::RunOptions& ort_ro,
+                  const NameMLValMap& feeds,
+                  std::vector<OrtValue>& output_vals);
 
 void RunAndVerifyOutputsWithEPABI(ModelPathOrBytes model_path_or_bytes,
                                   Ort::SessionOptions& ort_so,

@@ -273,46 +273,56 @@ static qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level, co
   }
 }
 
-static std::unique_ptr<qnn::QnnSerializerConfig> ParseSerializerBackendOptions(const OrtApi& ort_api,
-                                                                               const OrtSessionOptions& session_options,
-                                                                               const logging::Logger& logger) {
+std::unique_ptr<qnn::QnnSerializerConfig> QnnEp::InitQnnSerializerConfig() const {
   // Enable use of QNN Saver if the user provides a path the QNN Saver backend library.
   static const std::string QNN_SAVER_PATH_KEY = "qnn_saver_path";
   std::string qnn_saver_path;
-  GetSessionConfigEntryOrDefault(ort_api, session_options, QNN_SAVER_PATH_KEY.c_str(), "", qnn_saver_path);
+  GetSessionConfigEntryOrDefault(ort_api,
+                                 session_options_,
+                                 FormatEPConfigKey(QNN_SAVER_PATH_KEY),
+                                 "",
+                                 qnn_saver_path);
   if (!qnn_saver_path.empty()) {
-    LOGS(logger, VERBOSE) << "User specified QNN Saver path: " << qnn_saver_path;
+    LOGS(logger_in_, VERBOSE) << "User specified QNN Saver path: " << qnn_saver_path;
     return qnn::QnnSerializerConfig::CreateSaver(qnn_saver_path);
   }
 
   static const std::string DUMP_QNN_IR_DLC = "dump_qnn_ir_dlc";
-  auto dump_qnn_ir_dlc = ParseBoolOption(ort_api, session_options, DUMP_QNN_IR_DLC.c_str(), false, logger);
+  auto dump_qnn_ir_dlc = ParseBoolOption(ort_api,
+                                         session_options_,
+                                         FormatEPConfigKey(DUMP_QNN_IR_DLC),
+                                         false,
+                                         logger_in_);
 
   static const std::string DUMP_QNN_IR_DLC_DIR = "dump_qnn_ir_dlc_dir";
   std::string qnn_ir_dlc_dir;
-  GetSessionConfigEntryOrDefault(ort_api, session_options, DUMP_QNN_IR_DLC_DIR.c_str(), "", qnn_ir_dlc_dir);
+  GetSessionConfigEntryOrDefault(ort_api,
+                                 session_options_,
+                                 FormatEPConfigKey(DUMP_QNN_IR_DLC_DIR),
+                                 "",
+                                 qnn_ir_dlc_dir);
   if (!qnn_ir_dlc_dir.empty()) {
     if (dump_qnn_ir_dlc) {
-      LOGS(logger, INFO) << "IR DLC directory: " << qnn_ir_dlc_dir;
+      LOGS(logger_in_, INFO) << "IR DLC directory: " << qnn_ir_dlc_dir;
     } else {
-      LOGS(logger, WARNING) << "Provided a directory for dumping QNN graphs to DLC, "
-                            << "but did not set dump_qnn_ir_dlc to 1.";
+      LOGS(logger_in_, WARNING) << "Provided a directory for dumping QNN graphs to DLC, "
+                                << "but did not set dump_qnn_ir_dlc to 1.";
     }
   }
 
   static const std::string QNN_IR_BACKEND_PATH = "qnn_ir_backend_path";
   std::string qnn_ir_backend_path = kDefaultIrBackendPath;
   GetSessionConfigEntryOrDefault(ort_api,
-                                 session_options,
-                                 QNN_IR_BACKEND_PATH.c_str(),
+                                 session_options_,
+                                 FormatEPConfigKey(QNN_IR_BACKEND_PATH),
                                  kDefaultIrBackendPath,
                                  qnn_ir_backend_path);
   if (qnn_ir_backend_path != kDefaultIrBackendPath) {
     if (dump_qnn_ir_dlc) {
-      LOGS(logger, INFO) << "IR backend path: " << qnn_ir_backend_path;
+      LOGS(logger_in_, INFO) << "IR backend path: " << qnn_ir_backend_path;
     } else {
-      LOGS(logger, WARNING) << "Provided a path to the Ir backend for dumping QNN graphs to DLC, "
-                            << "but did not set dump_qnn_ir_dlc to 1.";
+      LOGS(logger_in_, WARNING) << "Provided a path to the Ir backend for dumping QNN graphs to DLC, "
+                                << "but did not set dump_qnn_ir_dlc to 1.";
     }
   }
 
@@ -426,8 +436,12 @@ QnnEp::QnnEp(QnnEpFactory& factory,
     std::string backend_path_option;
 
     // TODO: Fix key with prefix.
-    GetSessionConfigEntryOrDefault(ort_api, session_options_, "ep.qnnabitestprovider.backend_type", "", backend_type);
-    GetSessionConfigEntryOrDefault(ort_api, session_options_, "ep.qnnabitestprovider.backend_path", "", backend_path_option);
+    GetSessionConfigEntryOrDefault(ort_api, session_options_, FormatEPConfigKey("backend_type"), "", backend_type);
+    GetSessionConfigEntryOrDefault(ort_api,
+                                   session_options_,
+                                   FormatEPConfigKey("backend_path"),
+                                   "",
+                                   backend_path_option);
     std::cout << "DEBUG: BackendType " << backend_type << std::endl;
 
     // Check if both options are provided
@@ -454,9 +468,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
     LOGS(logger_in_, VERBOSE) << "Using backend path: " << backend_path;
   }
 
-  std::unique_ptr<qnn::QnnSerializerConfig> qnn_serializer_config = ParseSerializerBackendOptions(ort_api,
-                                                                                                  session_options_,
-                                                                                                  logger_in_);
+  std::unique_ptr<qnn::QnnSerializerConfig> qnn_serializer_config = InitQnnSerializerConfig();
 
   std::string profiling_file_path;
   static const std::string PROFILING_LEVEL = "profiling_level";
@@ -480,15 +492,27 @@ QnnEp::QnnEp(QnnEpFactory& factory,
 
   // Get profiling settings from session options
   std::string profiling_level_str;
-  GetSessionConfigEntryOrDefault(ort_api, session_options_, "profiling_level", "off", profiling_level_str);
+  GetSessionConfigEntryOrDefault(ort_api,
+                                 session_options_,
+                                 FormatEPConfigKey("profiling_level"),
+                                 "off",
+                                 profiling_level_str);
   ParseProfilingLevel(profiling_level_str, profiling_level, logger_in_);
 
-  GetSessionConfigEntryOrDefault(ort_api, session_options_, "profiling_file_path", "", profiling_file_path);
+  GetSessionConfigEntryOrDefault(ort_api,
+                                 session_options_,
+                                 FormatEPConfigKey("profiling_file_path"),
+                                 "",
+                                 profiling_file_path);
   LOGS(logger_in_, VERBOSE) << "Profiling file path: " << profiling_file_path;
 
   // Get RPC control latency from session options
   std::string rpc_control_latency_str;
-  GetSessionConfigEntryOrDefault(ort_api, session_options_, "rpc_control_latency", "0", rpc_control_latency_str);
+  GetSessionConfigEntryOrDefault(ort_api,
+                                 session_options_,
+                                 FormatEPConfigKey("rpc_control_latency"),
+                                 "0",
+                                 rpc_control_latency_str);
   if (!rpc_control_latency_str.empty() && rpc_control_latency_str != "0") {
     default_rpc_control_latency_ = static_cast<uint32_t>(std::stoul(rpc_control_latency_str));
     LOGS(logger_in_, VERBOSE) << "rpc_control_latency: " << default_rpc_control_latency_;
@@ -497,7 +521,11 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   // default_htp_performance_mode from QNN EP option.
   // set it once only for each thread as default so user don't need to set it for every session run
   std::string htp_performance_mode_str;
-  GetSessionConfigEntryOrDefault(ort_api, session_options_, "htp_performance_mode", "", htp_performance_mode_str);
+  GetSessionConfigEntryOrDefault(ort_api,
+                                 session_options_,
+                                 FormatEPConfigKey("htp_performance_mode"),
+                                 "",
+                                 htp_performance_mode_str);
   if (!htp_performance_mode_str.empty()) {
     ParseHtpPerformanceMode(htp_performance_mode_str, default_htp_performance_mode_, logger_in_);
   }
@@ -507,7 +535,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   std::string htp_graph_finalization_opt_mode_str;
   GetSessionConfigEntryOrDefault(ort_api,
                                  session_options_,
-                                 "htp_graph_finalization_optimization_mode",
+                                 FormatEPConfigKey("htp_graph_finalization_optimization_mode"),
                                  "",
                                  htp_graph_finalization_opt_mode_str);
   if (!htp_graph_finalization_opt_mode_str.empty()) {
@@ -517,14 +545,18 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   // QNN context priority
   qnn::ContextPriority context_priority = qnn::ContextPriority::NORMAL;
   std::string context_priority_str;
-  GetSessionConfigEntryOrDefault(ort_api, session_options_, "qnn_context_priority", "", context_priority_str);
+  GetSessionConfigEntryOrDefault(ort_api,
+                                 session_options_,
+                                 FormatEPConfigKey("qnn_context_priority"),
+                                 "",
+                                 context_priority_str);
   if (!context_priority_str.empty()) {
     ParseQnnContextPriority(context_priority_str, context_priority, logger_in_);
   }
 
   // VTCM MB
   std::string vtcm_mb_str;
-  GetSessionConfigEntryOrDefault(ort_api, session_options_, "vtcm_mb", "0", vtcm_mb_str);
+  GetSessionConfigEntryOrDefault(ort_api, session_options_, FormatEPConfigKey("vtcm_mb"), "0", vtcm_mb_str);
   if (!vtcm_mb_str.empty() && vtcm_mb_str != "0") {
     vtcm_size_in_mb_ = std::stoi(vtcm_mb_str);
     LOGS(logger_in_, VERBOSE) << "vtcm_mb: " << vtcm_size_in_mb_;
@@ -537,7 +569,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   std::string enable_vtcm_backup_buffer_sharing_str;
   GetSessionConfigEntryOrDefault(ort_api,
                                  session_options_,
-                                 "enable_vtcm_backup_buffer_sharing",
+                                 FormatEPConfigKey("enable_vtcm_backup_buffer_sharing"),
                                  "0",
                                  enable_vtcm_backup_buffer_sharing_str);
   if (enable_vtcm_backup_buffer_sharing_str == "1") {
@@ -558,7 +590,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
 
   // Device ID
   std::string device_id_str;
-  GetSessionConfigEntryOrDefault(ort_api, session_options_, "device_id", "0", device_id_str);
+  GetSessionConfigEntryOrDefault(ort_api, session_options_, FormatEPConfigKey("device_id"), "0", device_id_str);
   if (!device_id_str.empty()) {
     int value = std::stoi(device_id_str);
     if (value < 0) {
@@ -572,7 +604,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   // HTP architecture
   std::string htp_arch_str;
   QnnHtpDevice_Arch_t htp_arch = QNN_HTP_DEVICE_ARCH_NONE;
-  GetSessionConfigEntryOrDefault(ort_api, session_options_, "htp_arch", "", htp_arch_str);
+  GetSessionConfigEntryOrDefault(ort_api, session_options_, FormatEPConfigKey("htp_arch"), "", htp_arch_str);
   if (!htp_arch_str.empty()) {
     ParseHtpArchitecture(htp_arch_str, htp_arch, logger_in_);
   }
@@ -580,7 +612,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   // SoC model
   std::string soc_model_str;
   uint32_t soc_model = QNN_SOC_MODEL_UNKNOWN;
-  GetSessionConfigEntryOrDefault(ort_api, session_options_, "soc_model", "0", soc_model_str);
+  GetSessionConfigEntryOrDefault(ort_api, session_options_, FormatEPConfigKey("soc_model"), "0", soc_model_str);
   if (!soc_model_str.empty()) {
     int value = std::stoi(soc_model_str);
     if (value < 0) {
@@ -594,7 +626,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   // Op packages
   std::string op_packages_str;
   std::vector<onnxruntime::qnn::OpPackage> op_packages;
-  GetSessionConfigEntryOrDefault(ort_api, session_options_, "op_packages", "", op_packages_str);
+  GetSessionConfigEntryOrDefault(ort_api, session_options_, FormatEPConfigKey("op_packages"), "", op_packages_str);
   if (!op_packages_str.empty()) {
     ParseOpPackages(op_packages_str, op_packages, logger_in_);
   }
@@ -603,7 +635,8 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   std::string enable_htp_fp16_precision_str;
   GetSessionConfigEntryOrDefault(ort_api,
                                  session_options_,
-                                 "enable_htp_fp16_precision", "0",
+                                 FormatEPConfigKey("enable_htp_fp16_precision"),
+                                 "0",
                                  enable_htp_fp16_precision_str);
   if (enable_htp_fp16_precision_str == "1") {
     enable_HTP_FP16_precision_ = true;
@@ -631,14 +664,14 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   std::string enable_htp_spill_fill_buffer_str;
   GetSessionConfigEntryOrDefault(ort_api,
                                  session_options_,
-                                 "enable_htp_spill_fill_buffer",
+                                 FormatEPConfigKey("enable_htp_spill_fill_buffer"),
                                  "0",
                                  enable_htp_spill_fill_buffer_str);
   enable_spill_fill_buffer_ = enable_htp_spill_fill_buffer_str == "1";
 
   model_settings_.offload_graph_io_quantization = ParseBoolOption(ort_api,
                                                                   session_options_,
-                                                                  "offload_graph_io_quantization",
+                                                                  FormatEPConfigKey("offload_graph_io_quantization"),
                                                                   true,
                                                                   logger_in_);
 
@@ -651,18 +684,30 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   }
 
   static const std::string QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED = "enable_htp_shared_memory_allocator";
-  if (ParseBoolOption(ort_api, session_options_, QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED.c_str(), false, logger_in_)) {
+  if (ParseBoolOption(ort_api,
+                      session_options_,
+                      FormatEPConfigKey(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED),
+                      false,
+                      logger_in_)) {
     // Initialize rpcmem_library_.
     // This is necessary for HtpSharedMemoryAllocator to function and also indicates that the allocator is available.
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
     model_settings_.htp_shared_memory = true;
   }
 
-  dump_json_qnn_graph_ = ParseBoolOption(ort_api, session_options_, "dump_json_qnn_graph", false, logger_in_);
+  dump_json_qnn_graph_ = ParseBoolOption(ort_api,
+                                         session_options_,
+                                         FormatEPConfigKey("dump_json_qnn_graph"),
+                                         false,
+                                         logger_in_);
 
   static const std::string QNN_GRAPH_DUMP_DIR = "json_qnn_graph_dir";
   std::string json_graph_dir_str;
-  GetSessionConfigEntryOrDefault(ort_api, session_options_, QNN_GRAPH_DUMP_DIR.c_str(), "", json_graph_dir_str);
+  GetSessionConfigEntryOrDefault(ort_api,
+                                 session_options_,
+                                 FormatEPConfigKey(QNN_GRAPH_DUMP_DIR),
+                                 "",
+                                 json_graph_dir_str);
 
   if (!json_graph_dir_str.empty()) {
     json_qnn_graph_dir_ = json_graph_dir_str;

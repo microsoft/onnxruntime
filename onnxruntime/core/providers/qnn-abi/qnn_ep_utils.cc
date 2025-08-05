@@ -87,18 +87,14 @@ int32_t GetNodeIODataType(const OrtNode* node, const OrtApi& ort_api, bool is_in
   status = ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_info);
   if (status != nullptr || tensor_info == nullptr) {
     if (status != nullptr) ort_api.ReleaseStatus(status);
-    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
     return -1;
   }
 
   status = ort_api.GetTensorElementType(tensor_info, &element_type);
   if (status != nullptr) {
     ort_api.ReleaseStatus(status);
-    ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
     return -1;
   }
-
-  ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
 
   return static_cast<int32_t>(element_type);
 }
@@ -1645,31 +1641,22 @@ std::optional<OrtNodeGroup> GetOrtQDQSelection(const OrtGraph* graph, const OrtA
     // Create a NodeGroup
     OrtNodeGroup node_group;
 
-    // Get node indices
-    size_t target_node_idx = 0;
-    ort_api.Node_GetId(node, &target_node_idx);
-    node_group.target_node = static_cast<int>(target_node_idx);
+    node_group.target_node = node;
 
     if (clip_node) {
-      size_t clip_node_idx = 0;
-      ort_api.Node_GetId(clip_node, &clip_node_idx);
-      node_group.redundant_clip_node = static_cast<int>(clip_node_idx);
+      node_group.redundant_clip_node = clip_node;
     }
 
     // Add DQ node indices
     node_group.dq_nodes.reserve(dq_nodes.size());
     for (const OrtNode* dq_node : dq_nodes) {
-      size_t dq_node_idx = 0;
-      ort_api.Node_GetId(dq_node, &dq_node_idx);
-      node_group.dq_nodes.push_back(static_cast<int>(dq_node_idx));
+      node_group.dq_nodes.push_back(dq_node);
     }
 
     // Add Q node indices
     node_group.q_nodes.reserve(q_nodes.size());
     for (const OrtNode* q_node : q_nodes) {
-      size_t q_node_idx = 0;
-      ort_api.Node_GetId(q_node, &q_node_idx);
-      node_group.q_nodes.push_back(static_cast<int>(q_node_idx));
+      node_group.q_nodes.push_back(q_node);
     }
 
     return node_group;
@@ -1916,7 +1903,6 @@ class QnnEp;
 // Implementation of GetQDQNodeUnits for OrtGraph
 std::pair<std::vector<std::unique_ptr<OrtNodeUnit>>, std::unordered_map<const OrtNode*, const OrtNodeUnit*>>
 GetAllOrtNodeUnits(OrtApi ort_api, const OrtGraph* graph, const logging::Logger& logger) {
-  logger;
   std::vector<std::unique_ptr<OrtNodeUnit>> node_unit_holder;
   std::unordered_map<const OrtNode*, const OrtNodeUnit*> node_unit_map;
 
@@ -1926,12 +1912,9 @@ GetAllOrtNodeUnits(OrtApi ort_api, const OrtGraph* graph, const logging::Logger&
   std::vector<const OrtNode*> nodes(num_nodes);
   ort_api.Graph_GetNodes(graph, nodes.data(), nodes.size());
 
-  const auto add_node_unit_to_map = [&](const std::vector<int>& node_indices) {
-    for (auto node_idx : node_indices) {
-      const OrtNode* node = nodes[node_idx];
-      auto node_unit = std::make_unique<OrtNodeUnit>(*node, ort_api);
-      node_unit_map[node] = node_unit.get();
-      node_unit_holder.push_back(std::move(node_unit));
+  const auto add_node_unit_to_map = [&](const std::vector<const OrtNode*>& _nodes, const OrtNodeUnit* node_unit) {
+    for (const OrtNode* node : _nodes) {
+      node_unit_map[node] = node_unit;
     }
   };
 
@@ -1940,13 +1923,17 @@ GetAllOrtNodeUnits(OrtApi ort_api, const OrtGraph* graph, const logging::Logger&
 
   const auto qdq_selections = selector_mgr.GetOrtQDQSelections(graph, ort_api, logger);
   for (const auto& qdq_selection : qdq_selections) {
+    auto qdq_unit = std::make_unique<OrtNodeUnit>(graph, qdq_selection, ort_api);
+
     // Fill the node to node_unit map for all nodes in the QDQ Group
-    add_node_unit_to_map(qdq_selection.dq_nodes);
-    add_node_unit_to_map(qdq_selection.q_nodes);
-    add_node_unit_to_map({qdq_selection.target_node});
-    if (qdq_selection.redundant_clip_node.has_value()) {
-      add_node_unit_to_map({qdq_selection.redundant_clip_node.value()});
+    add_node_unit_to_map(qdq_selection.dq_nodes, qdq_unit.get());
+    add_node_unit_to_map(qdq_selection.q_nodes, qdq_unit.get());
+    add_node_unit_to_map({qdq_selection.target_node}, qdq_unit.get());
+    if (qdq_selection.redundant_clip_node) {
+      add_node_unit_to_map({qdq_selection.redundant_clip_node}, qdq_unit.get());
     }
+
+    node_unit_holder.push_back(std::move(qdq_unit));
   }
 
   // Get the left over single-node OrtNodeUnit.
@@ -1957,7 +1944,7 @@ GetAllOrtNodeUnits(OrtApi ort_api, const OrtGraph* graph, const logging::Logger&
     if (node_unit_map.find(node) != node_unit_map.cend())
       continue;
 
-    auto node_unit = std::make_unique<OrtNodeUnit>(*node, ort_api);
+    auto node_unit = std::make_unique<OrtNodeUnit>(node, ort_api);
     node_unit_map[node] = node_unit.get();
     node_unit_holder.push_back(std::move(node_unit));
   }

@@ -12,69 +12,186 @@
 
 namespace onnxruntime {
 
-OrtNodeUnit::OrtNodeUnit(const OrtNode& node, const OrtApi& ort_api) : target_node_(node), type_(Type::SingleNode) {
+namespace {
+
+OrtNodeUnitIODef ParseOrtValueInfo(const OrtValueInfo* io,
+                                   std::optional<OrtNodeUnitIODef::QuantParam> quant_param,
+                                   const OrtApi& ort_api) {
+  // Get name.
+  const char* name = nullptr;
+  ort_api.GetValueInfoName(io, &name);
+
+  // Get type and shape.
+  const OrtTypeInfo* type_info = nullptr;
+  ort_api.GetValueInfoTypeInfo(io, &type_info);
+  const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
+  ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
+
+  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  ort_api.GetTensorElementType(type_shape, &elem_type);
+
+  size_t num_dims = 0;
+  ort_api.GetDimensionsCount(type_shape, &num_dims);
+
+  std::vector<int64_t> shape;
+  shape.resize(num_dims, 0);
+  ort_api.GetDimensions(type_shape, shape.data(), shape.size());
+
+  return OrtNodeUnitIODef{name, elem_type, shape, quant_param};
+}
+
+std::vector<OrtNodeUnitIODef> GetQDQIODefs(const OrtNode* target_node,
+                                           const QDQ::OrtNodeGroup& node_group,
+                                           bool is_input,
+                                           const OrtApi& ort_api) {
+  const auto& dq_or_q_nodes = is_input ? node_group.dq_nodes : node_group.q_nodes;
+
+  size_t num_ios = 0;
+  std::vector<const OrtValueInfo*> target_node_ios;
+  if (is_input) {
+    ort_api.Node_GetNumInputs(target_node, &num_ios);
+    target_node_ios.resize(num_ios);
+    ort_api.Node_GetInputs(target_node, target_node_ios.data(), target_node_ios.size());
+  } else {
+    ort_api.Node_GetNumOutputs(target_node, &num_ios);
+    target_node_ios.resize(num_ios);
+    ort_api.Node_GetOutputs(target_node, target_node_ios.data(), target_node_ios.size());
+  }
+
+  // Find all the quantized IO defs and indices (for the input/output of the target node).
+  std::unordered_map<size_t, OrtNodeUnitIODef> quantized_io_defs;
+  quantized_io_defs.reserve(num_ios);
+
+  for (size_t io_idx = 0; io_idx < num_ios; ++io_idx) {
+    const OrtNode* node = nullptr;
+    if (is_input) {
+      ort_api.ValueInfo_GetValueProducer(target_node_ios[io_idx], &node, nullptr);
+    } else {
+      // TODO: Not sure whether functionally identical to old implementation.
+      size_t num_consumers = 0;
+      ort_api.ValueInfo_GetValueNumConsumers(target_node_ios[io_idx], &num_consumers);
+      if (num_consumers > 1) {
+        continue;
+      }
+
+      std::vector<const OrtNode*> consumers(num_consumers);
+      std::vector<int64_t> input_indices(num_consumers);
+      ort_api.ValueInfo_GetValueConsumers(target_node_ios[io_idx],
+                                          consumers.data(),
+                                          input_indices.data(),
+                                          num_consumers);
+      node = consumers[0];
+    }
+
+    // If we cannot find the node index in the DQ/Q nodes, this is not a quantized input/output.
+    if (std::find(dq_or_q_nodes.cbegin(), dq_or_q_nodes.cend(), node) == dq_or_q_nodes.cend()) {
+      continue;
+    }
+
+    size_t num_node_inputs = 0;
+    ort_api.Node_GetNumInputs(node, &num_node_inputs);
+    std::vector<const OrtValueInfo*> node_inputs(num_node_inputs);
+    ort_api.Node_GetInputs(node, node_inputs.data(), node_inputs.size());
+
+    // Get the Q/DQ axis attribute if available.
+    std::optional<int64_t> axis = OrtNodeAttrHelper(ort_api, *node).GetInt64("axis");
+
+    // Quantization scale and zp are always the input[1, 2].
+    OrtNodeUnitIODef::QuantParam quant_param{node_inputs[1], num_node_inputs == 3 ? node_inputs[2] : nullptr, axis};
+
+    OrtNodeUnitIODef io_def;
+    if (is_input) {
+      // DQ node, using input[0, 1, 2].
+      io_def = ParseOrtValueInfo(node_inputs[0], quant_param, ort_api);
+    } else {
+      // Q node, using output[0], input[1, 2].
+      size_t num_node_outputs = 0;
+      ort_api.Node_GetNumOutputs(node, &num_node_outputs);
+      std::vector<const OrtValueInfo*> node_outputs(num_node_outputs);
+      ort_api.Node_GetOutputs(node, node_outputs.data(), node_outputs.size());
+      io_def = ParseOrtValueInfo(node_outputs[0], quant_param, ort_api);
+    }
+
+    quantized_io_defs.insert({io_idx, io_def});
+  }
+
+  // Construct IO defs for this QDQ node group.
+  std::vector<OrtNodeUnitIODef> io_defs;
+  io_defs.reserve(num_ios);
+  for (size_t io_idx = 0; io_idx < num_ios; ++io_idx) {
+    // If we can find the NodeUnitIODef for this index, this is a quantized input/output.
+    if (quantized_io_defs.find(io_idx) != quantized_io_defs.end()) {
+      io_defs.push_back(std::move(quantized_io_defs.at(io_idx)));
+    } else {
+      // This is a regular input.
+      io_defs.push_back(ParseOrtValueInfo(target_node_ios[io_idx], std::nullopt, ort_api));
+    }
+  }
+
+  return io_defs;
+}
+
+}  // namespace
+
+OrtNodeUnit::OrtNodeUnit(const OrtNode* node, const OrtApi& ort_api) : target_node_(node), type_(Type::SingleNode) {
   InitForSingleNode(ort_api);
+}
+
+OrtNodeUnit::OrtNodeUnit(const OrtGraph* graph, const QDQ::OrtNodeGroup& node_group, const OrtApi& ort_api)
+    : dq_nodes_(node_group.dq_nodes),
+      target_node_(node_group.target_node),
+      redundant_clip_node_(node_group.redundant_clip_node ? node_group.redundant_clip_node : nullptr),
+      q_nodes_(node_group.q_nodes),
+      type_(Type::QDQGroup),
+      inputs_(GetQDQIODefs(target_node_, node_group, true, ort_api)),
+      outputs_(GetQDQIODefs((redundant_clip_node_ ? redundant_clip_node_ : target_node_), node_group, false, ort_api)) {
+  graph;
 }
 
 void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
   size_t num_inputs = 0;
   size_t num_outputs = 0;
-  ort_api.Node_GetNumInputs(&target_node_, &num_inputs);
-  ort_api.Node_GetNumOutputs(&target_node_, &num_outputs);
+  ort_api.Node_GetNumInputs(target_node_, &num_inputs);
+  ort_api.Node_GetNumOutputs(target_node_, &num_outputs);
 
   std::vector<const OrtValueInfo*> inputs_data(num_inputs);
   std::vector<const OrtValueInfo*> outputs_data(num_outputs);
-  ort_api.Node_GetInputs(&target_node_, inputs_data.data(), inputs_data.size());
-  ort_api.Node_GetOutputs(&target_node_, outputs_data.data(), outputs_data.size());
+  ort_api.Node_GetInputs(target_node_, inputs_data.data(), inputs_data.size());
+  ort_api.Node_GetOutputs(target_node_, outputs_data.data(), outputs_data.size());
 
-  auto add_io_def = [&](std::vector<OrtNodeUnitIODef>& io_defs, std::vector<const OrtValueInfo*> data, size_t num_data) {
-    for (size_t idx = 0; idx < num_data; ++idx) {
-      const OrtValueInfo* io = data[idx];
+  const char* op_type = nullptr;
+  ort_api.Node_GetOperatorType(target_node_, &op_type);
 
-      // Optional input.
-      if (io == nullptr) {
-        io_defs.push_back(OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}});
-        continue;
-      }
-
-      // Get name.
-      const char* name = nullptr;
-      ort_api.GetValueInfoName(io, &name);
-
-      // Get type and shape.
-      const OrtTypeInfo* type_info = nullptr;
-      ort_api.GetValueInfoTypeInfo(io, &type_info);
-      const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-      ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
-
-      ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-      ort_api.GetTensorElementType(type_shape, &elem_type);
-
-      size_t num_dims = 0;
-      ort_api.GetDimensionsCount(type_shape, &num_dims);
-
-      std::vector<int64_t> shape;
-      shape.resize(num_dims, 0);
-      ort_api.GetDimensions(type_shape, shape.data(), shape.size());
-
-      io_defs.push_back(OrtNodeUnitIODef{name, elem_type, shape});
-
-      // TODO: SegFault if enabled release.
-      // ort_api.ReleaseTensorTypeAndShapeInfo(const_cast<OrtTensorTypeAndShapeInfo*>(type_shape));
-      // ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
+  if (std::string(op_type) == "DequantizeLinear") {
+    std::optional<int64_t> axis = OrtNodeAttrHelper(ort_api, *target_node_).GetInt64("axis");
+    OrtNodeUnitIODef::QuantParam quant_param{inputs_data[1], num_inputs == 3 ? inputs_data[2] : nullptr, axis};
+    inputs_.push_back(ParseOrtValueInfo(inputs_data[0], quant_param, ort_api));
+    outputs_.push_back(ParseOrtValueInfo(outputs_data[0], std::nullopt, ort_api));
+  } else if (std::string(op_type) == "QuantizeLinear") {
+    std::optional<int64_t> axis = OrtNodeAttrHelper(ort_api, *target_node_).GetInt64("axis");
+    OrtNodeUnitIODef::QuantParam quant_param{inputs_data[1], num_inputs == 3 ? inputs_data[2] : nullptr, axis};
+    inputs_.push_back(ParseOrtValueInfo(inputs_data[0], std::nullopt, ort_api));
+    outputs_.push_back(ParseOrtValueInfo(outputs_data[0], quant_param, ort_api));
+  } else {
+    inputs_.reserve(num_inputs);
+    for (size_t idx = 0; idx < num_inputs; ++idx) {
+      const OrtValueInfo* io = inputs_data[idx];
+      // Nullptr indicates optional.
+      OrtNodeUnitIODef io_def = io == nullptr ? OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}}
+                                              : ParseOrtValueInfo(io, std::nullopt, ort_api);
+      inputs_.push_back(io_def);
     }
-  };
 
-  inputs_.reserve(num_inputs);
-  add_io_def(inputs_, inputs_data, num_inputs);
-
-  outputs_.reserve(num_outputs);
-  add_io_def(outputs_, outputs_data, num_outputs);
+    outputs_.reserve(num_outputs);
+    for (size_t idx = 0; idx < num_outputs; ++idx) {
+      const OrtValueInfo* io = outputs_data[idx];
+      // Not sure whether output would be optional.
+      OrtNodeUnitIODef io_def = io == nullptr ? OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}}
+                                              : ParseOrtValueInfo(io, std::nullopt, ort_api);
+      outputs_.push_back(io_def);
+    }
+  }
 }
-
-// std::vector<const Node*> Graph__Nodes(const Graph& graph) {
-//   return graph.Nodes();
-// }
 
 #define NODE_ATTR_ITER_VAL(iter) (iter)->second()
 
@@ -281,6 +398,14 @@ OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,
   config_val.resize(size - 1);  // remove the terminating '\0'
 
   return nullptr;
+}
+
+std::string GetProviderOptionPrefix(const char* provider_name) {
+  std::string key_prefix = "ep.";
+  key_prefix += utils::GetLowercaseString(provider_name);
+  key_prefix += ".";
+
+  return key_prefix;
 }
 
 PathString OrtGetRuntimePath() {

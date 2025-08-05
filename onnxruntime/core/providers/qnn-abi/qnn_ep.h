@@ -95,6 +95,11 @@ class QnnEp : public OrtEp, public ApiPtrs {
 
   void InitQnnHtpGraphConfigs(
       qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
+  std::unique_ptr<qnn::QnnSerializerConfig> InitQnnSerializerConfig() const;
+
+  const char* FormatEPConfigKey(const std::string& key) const {
+    return (GetProviderOptionPrefix(name_.c_str()) + key).c_str();
+  }
 
   struct QnnNodeComputeInfo : OrtNodeComputeInfo {
     explicit QnnNodeComputeInfo(QnnEp& ep);

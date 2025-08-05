@@ -249,6 +249,50 @@ void InferenceModel(const std::string& model_data, const char* log_id,
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &output_vals));
 }
 
+void InferenceModelABI(const std::string& model_data,
+                       const char* log_id,
+                       const ProviderOptions& provider_options,
+                       ExpectedEPNodeAssignment expected_ep_assignment,
+                       const NameMLValMap& feeds,
+                       std::vector<OrtValue>& output_vals,
+                       const std::unordered_map<std::string, std::string>& session_option_pairs,
+                       std::function<void(const Graph&)>* graph_checker) {
+  std::cout << "DEBUG: ABI InferenceModel" << std::endl;
+  const std::string& registration_name = "QnnAbiTestProvider";
+  Ort::SessionOptions session_options;
+  RegisterQnnEpLibrary(session_options, registration_name, provider_options);
+
+  session_options.SetLogId(log_id);
+  for (auto key_value : session_option_pairs) {
+    session_options.AddConfigEntry(key_value.first.c_str(), key_value.second.c_str());
+  }
+
+  Ort::RunOptions ort_run_options;
+  ort_run_options.SetRunTag(log_id);
+
+  OrtSessionWrapper ort_session(*GetOrtEnv(), model_data.data(), static_cast<int>(model_data.size()), session_options);
+
+  // Verify node assignment.
+  const auto& graph = ort_session.GetGraph();
+
+  auto ep_nodes = CountAssignedNodes(graph, registration_name);
+  if (expected_ep_assignment == ExpectedEPNodeAssignment::All) {
+    ASSERT_EQ(ep_nodes, graph.NumberOfNodes()) << "Not all nodes were assigned to " << registration_name;
+  } else if (expected_ep_assignment == ExpectedEPNodeAssignment::None) {
+    ASSERT_EQ(ep_nodes, 0) << "No nodes are supposed to be assigned to " << registration_name;
+  } else {
+    ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << registration_name;
+  }
+
+  if (graph_checker) {
+    (*graph_checker)(graph);
+  }
+
+  RunWithEPABI(&ort_session, ort_run_options, feeds, output_vals);
+
+  Ort::GetApi().UnregisterExecutionProviderLibrary(*GetOrtEnv(), registration_name.c_str());
+}
+
 NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
                               bool use_contrib_qdq) {
   NodeArg* bias_int32 = nullptr;

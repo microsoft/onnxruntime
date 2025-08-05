@@ -381,7 +381,6 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
   const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
   api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
   api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
-  api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
 
   std::vector<uint8_t> initializer_bytes;
 
@@ -450,7 +449,6 @@ Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::v
   api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
   ONNXTensorElementDataType onnx_data_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
-  api_ptrs_.ort_api.ReleaseTypeInfo(const_cast<OrtTypeInfo*>(type_info));
   ORT_RETURN_IF_NOT(onnx_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                     "Expected scale initializer to be of type FLOAT");
 
