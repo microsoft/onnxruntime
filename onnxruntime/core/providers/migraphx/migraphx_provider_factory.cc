@@ -183,6 +183,22 @@ struct MIGraphX_Provider : Provider {
     return MIGraphXExecutionProviderInfo{*static_cast<const OrtMIGraphXProviderOptions*>(provider_options)}.ToProviderOptions();
   }
 
+  Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
+                                  const OrtKeyValuePairs* const* /*ep_metadata*/,
+                                  size_t num_devices,
+                                  ProviderOptions& provider_options,
+                                  const OrtSessionOptions& session_options,
+                                  const OrtLogger& logger,
+                                  std::unique_ptr<IExecutionProvider>& ep) override {
+    ORT_UNUSED_PARAMETER(num_devices);
+    OrtMIGraphXProviderOptions migraphx_options;
+    UpdateProviderOptions(&migraphx_options, provider_options);
+    const auto ep_factory = CreateExecutionProviderFactory(&migraphx_options);
+    ep = ep_factory->CreateProvider(session_options, logger);
+    return Status::OK();
+  }
+
+
   void Initialize() override {
 #ifdef _WIN32
     HMODULE module = nullptr;
@@ -221,14 +237,22 @@ struct MigraphXEpFactory : OrtEpFactory {
                     OrtHardwareDeviceType hw_type,
                     const OrtLogger& default_logger_in)
       : ort_api{ort_api_in}, default_logger{default_logger_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
+    ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVendorId = GetVendorIdImpl;
     GetVersion = GetVersionImpl;
+
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
     GetVendorId = GetVendorIdImpl;
+    CreateAllocator = CreateAllocatorImpl;
+    ReleaseAllocator = ReleaseAllocatorImpl;
     CreateDataTransfer = CreateDataTransferImpl;
+
+    IsStreamAware = IsStreamAwareImpl;
+    CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   }
 
   // Returns the name for the EP. Each unique factory configuration must have a unique name.
@@ -245,7 +269,7 @@ struct MigraphXEpFactory : OrtEpFactory {
 
   static const char* GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
-    return factory->ep_version.c_str();
+    return factory->version.c_str();
   }
 
   static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
@@ -304,12 +328,45 @@ struct MigraphXEpFactory : OrtEpFactory {
     // no-op as we never create an EP here.
   }
 
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
+                                                     const OrtMemoryInfo* /*memory_info*/,
+                                                     const OrtKeyValuePairs* /*allocator_options*/,
+                                                     OrtAllocator** allocator) noexcept {
+    auto* factory = static_cast<MigraphXEpFactory*>(this_ptr);
+
+    *allocator = nullptr;
+    return factory->ort_api.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "CreateAllocator should not be called as we did not add OrtMemoryInfo to our OrtEpDevice.");
+  }
+
+  static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* /*allocator*/) noexcept {
+    // should never be called as we don't implement CreateAllocator
+  }
+
+  static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return false;
+  }
+
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+                                                               const OrtMemoryDevice* /*memory_device*/,
+                                                               const OrtKeyValuePairs* /*stream_options*/,
+                                                               OrtSyncStreamImpl** stream) noexcept {
+    auto* factory = static_cast<MigraphXEpFactory*>(this_ptr);
+
+    *stream = nullptr;
+    return factory->ort_api.CreateStatus(
+        ORT_INVALID_ARGUMENT, "CreateSyncStreamForDevice should not be called as IsStreamAware returned false.");
+  }
+
   const OrtApi& ort_api;
   const OrtLogger& default_logger;
   const std::string ep_name;
   const std::string vendor{"AMD"};
-  const std::string ep_version{"0.1.0"};
-  const uint32_t vendor_id{0x1002};
+  const std::string version{"1.0.0"};  // MigraphX EP version
+
+  // Not using AMD vendor id 0x1002 so that OrderDevices in provider_policy_context.cc will default dml ep
+  const uint32_t vendor_id{0x9999};
   const OrtHardwareDeviceType ort_hw_device_type;  // Supported OrtHardwareDevice
 };
 
