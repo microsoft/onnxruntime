@@ -637,7 +637,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingUnsupportedFloat16) {
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Mul"] == 1);
+  ASSERT_TRUE(op_to_count["Mul"] == 1); //Mul is folded
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   const ConfigOptions empty_config_options;
@@ -654,7 +654,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingUnsupportedFloat16) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Mul"] == 1);
+  ASSERT_TRUE(op_to_count["Mul"] == 0); // Mul is folded
 
   // all nodes should still be on CUDA
   for (auto& node : graph.Nodes()) {
