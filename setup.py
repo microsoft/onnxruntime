@@ -68,6 +68,7 @@ if wheel_name_suffix == "gpu":
         is_cuda_version_12 = cuda_version.startswith("12.")
 elif parse_arg_remove_boolean(sys.argv, "--use_migraphx"):
     is_migraphx = True
+    package_name = "onnxruntime-migraphx"
 elif parse_arg_remove_boolean(sys.argv, "--use_openvino"):
     is_openvino = True
     package_name = "onnxruntime-openvino"
@@ -90,8 +91,6 @@ elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     is_qnn = True
     package_name = "onnxruntime-qnn"
     qnn_version = parse_arg_remove_string(sys.argv, "--qnn_version=")
-elif is_migraphx:
-    package_name = "onnxruntime-migraphx" if not nightly_build else "ort-migraphx-nightly"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
