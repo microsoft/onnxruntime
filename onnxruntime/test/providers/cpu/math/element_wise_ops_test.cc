@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <limits>
 #include <math.h>
+#include <random>
 
 namespace onnxruntime {
 namespace test {
@@ -3934,6 +3935,30 @@ TEST(MathOpTest, ErfMoreData) {
       0.999978f, 0.999899f, -0.999593f, -0.998537f, -0.995322f, -0.000211571f, 0.000493666f, 0.000775761f,
       0.998022f, -0.993857f, 0.00162204f, -0.00190414f, -0.00218623f, 0.999999f, 0.999993f, -0.999967f,
       -0.999433f, -0.00105786f, 0.00133995f};
+  std::vector<int64_t> dims{static_cast<int64_t>(inputs.size())};
+
+  test.AddInput<float>("A", dims, inputs);
+  test.AddOutput<float>("B", dims, outputs);
+  test.Run();
+}
+
+TEST(MathOpTest, ErfCheckMultiThreadDataChunking) {
+  OpTester test("Erf", 9);
+  static constexpr int64_t size = 100000;
+  std::vector<float> inputs(size);
+  std::vector<float> outputs(size);
+
+  float low = -5.0f, high = 5.0f;
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<float> dist(low, high);
+
+  for (size_t i = 0; i != size; ++i) {
+    float val = dist(gen);
+    inputs[i] = val;
+    outputs[i] = std::erf(val);
+  }
+
   std::vector<int64_t> dims{static_cast<int64_t>(inputs.size())};
 
   test.AddInput<float>("A", dims, inputs);
