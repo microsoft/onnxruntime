@@ -1912,6 +1912,10 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 #elif USE_ROCM || USE_MIGRAPHX
                vendor = OrtDevice::VendorIds::AMD;
 #endif
+             } else if (type == OrtDevice::NPU) {
+#if USE_CANN
+               vendor = OrtDevice::VendorIds::HUAWEI;
+#endif
              }
 
              return OrtDevice(type, mem_type, vendor, device_id);
