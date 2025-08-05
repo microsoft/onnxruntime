@@ -558,6 +558,7 @@ else()
   check_cxx_compiler_flag(-Wambiguous-reversed-operator HAS_AMBIGUOUS_REVERSED_OPERATOR)
   # -Winterference-size was added in GCC 13
   check_cxx_compiler_flag(-Winterference-size HAS_INTERFERENCE_SIZE)
+  check_cxx_compiler_flag(-Warray-bounds HAS_ARRAY_BOUNDS)
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
   check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
   check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)

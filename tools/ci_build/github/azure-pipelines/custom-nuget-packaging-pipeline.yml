@@ -157,7 +157,7 @@ extends:
               targetType: 'inline'
               script: |
                 mkdir -p $(Build.BinariesDirectory)/osx-x64
-                 Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-x86_64* -Destination $(Build.BinariesDirectory)/osx-x64
+                Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-x86_64* -Destination $(Build.BinariesDirectory)/osx-x64
 
                 mkdir -p $(Build.BinariesDirectory)/osx-arm64
                 Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-arm64* -Destination $(Build.BinariesDirectory)/osx-arm64
