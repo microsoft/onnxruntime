@@ -1,4 +1,3 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 #include "core/graph/onnx_protobuf.h"
@@ -217,7 +216,7 @@ INSTANTIATE_TEST_SUITE_P(NvExecutionProviderTest, TypeTests,
                                            ),
                          [](const testing::TestParamInfo<TypeTests::ParamType>& info) { return getTypeAsName(info.param); });
 
-#if defined(WIN32)
+#ifdef _WIN32
 static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
   // Access the underlying InferenceSession.
   const OrtSession* ort_session = session;
@@ -399,7 +398,7 @@ TEST(NvExecutionProviderTest, DataTransfer) {
   device_tensor = Ort::Value();
 }
 
-#endif  // defined(WIN32)
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

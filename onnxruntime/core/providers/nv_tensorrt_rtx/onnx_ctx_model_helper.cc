@@ -110,8 +110,6 @@ Status CreateCtxNode(const GraphViewer& graph_viewer,
       engine_data_str.assign(engine_data, size);
     }
     attr_ep_cache_context->set_s(engine_data_str);
-    // TODO(maximilianm) we might want to disable this warning as we only support weightless engines that are really small
-    //                   the reason we had this was that the field will be hashed and storing a large bytestream has significant overhead
   } else {
     attr_ep_cache_context->set_s(engine_cache_path);
     std::fstream engine_cache_file(engine_cache_path, std::ios::binary | std::ios::out);
