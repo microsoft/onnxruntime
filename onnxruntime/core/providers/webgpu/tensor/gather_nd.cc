@@ -89,7 +89,7 @@ Status GatherND::ComputeInternal(ComputeContext& context) const {
 
   // Output shape
   std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end() - 1);
-  shape.insert(shape.end(), input_shape.GetDims().begin() + last_indices_dimension, input_shape.GetDims().end());
+  shape.insert(shape.end(), input_shape.GetDims().begin() + static_cast<size_t>(last_indices_dimension), input_shape.GetDims().end());
   auto output_tensor = context.Output(0, TensorShape(shape));
   uint32_t data_size = onnxruntime::narrow<uint32_t>(output_tensor->Shape().Size());
   if (data_size == 0) {
