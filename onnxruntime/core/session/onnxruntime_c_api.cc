@@ -1386,7 +1386,7 @@ char* onnxruntime::StrDup(std::string_view str, OrtAllocator* allocator) {
 }
 
 wchar_t* onnxruntime::StrDup(std::wstring_view str, OrtAllocator* allocator) {
-  auto* output_string = static_cast<wchar_t*>(allocator->Alloc(allocator, str.size() + 1));
+  auto* output_string = static_cast<wchar_t*>(allocator->Alloc(allocator, (str.size() + 1) * sizeof(wchar_t)));
   memcpy(output_string, str.data(), str.size() * sizeof(wchar_t));
   output_string[str.size()] = '\0';
   return output_string;
