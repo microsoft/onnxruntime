@@ -230,6 +230,10 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
     return Status::OK();
   }
 
+  // Check if user wants to fail on suboptimal models
+  bool fail_on_suboptimal = sess.GetSessionOptions().config_options.GetConfigEntry(
+      kOrtSessionOptionsFailOnSuboptimalCompiledModel) == "1";
+
   const auto& custom_metadata = model_metadata->custom_metadata_map;
   const auto& registered_provider_types = sess.GetRegisteredProviderTypes();
 
@@ -256,6 +260,38 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
           const char* status_str = GetCompatibilityStatusString(compatibility_status);
           LOGS(*sess.GetLogger(), INFO)
               << "EP " << ep_type << " compiled model compatibility: " << status_str;
+
+          // Enforce compatibility based on status
+          switch (compatibility_status) {
+            case OrtCompiledModelCompatibility_EP_NOT_APPLICABLE:
+            case OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL:
+              // Continue execution
+              break;
+
+            case OrtCompiledModelCompatibility_EP_UNSUPPORTED:
+              // Always fail for unsupported models
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                  "Compiled model is not supported by execution provider: " + ep_type);
+
+            case OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION:
+              // Behavior depends on user setting
+              if (fail_on_suboptimal) {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                    "Compiled model is suboptimal for execution provider: " + ep_type +
+                    ". Recompilation recommended for better performance.");
+              }
+              // Otherwise continue with warning
+              LOGS(*sess.GetLogger(), WARNING)
+                  << "EP " << ep_type << " reports compiled model is supported but suboptimal. "
+                  << "Consider recompiling for better performance.";
+              break;
+
+            default:
+              // Handle any unknown status values
+              LOGS(*sess.GetLogger(), WARNING)
+                  << "EP " << ep_type << " returned unknown compatibility status: " << compatibility_status;
+              break;
+          }
         } else {
           LOGS(*sess.GetLogger(), WARNING)
               << "Failed to validate compiled model compatibility for EP " << ep_type
