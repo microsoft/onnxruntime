@@ -139,7 +139,6 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
 
   // flags - 1 - for no transpose - 0 for transpose
   uint32_t flags = trans_B_ == CblasTrans ? 0 : XNN_FLAG_TRANSPOSE_WEIGHTS;
-  auto code_cache = GetCodeCache();
   auto weights_cache = GetWeightsCache();
   xnn_status status = xnn_status::xnn_status_uninitialized;
   struct xnn_operator* p = nullptr;
@@ -159,7 +158,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         bias_data,                                                   // const float* bias,
         foutput_min, foutput_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   } else if (op_compute_type_ == OpComputeType::op_compute_type_fp16) {
     const MLFloat16* bias_data = nullptr;
@@ -175,7 +174,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         bias_data,                                                   // const float* bias,
         foutput_min, foutput_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   }
 

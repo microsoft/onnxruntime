@@ -92,7 +92,9 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double, Crop);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, Crop);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoE);
-class CUDA_MS_OP_CLASS_NAME(1, QMoE);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MoE);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QMoE);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, QMoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float, MultiHeadAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_MLFloat16, MultiHeadAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_float, MultiHeadAttention);
@@ -307,7 +309,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, Crop)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoE)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, QMoE)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MoE)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QMoE)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, QMoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float, MultiHeadAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_MLFloat16, MultiHeadAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_float, MultiHeadAttention)>,

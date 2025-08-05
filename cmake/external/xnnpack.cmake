@@ -90,7 +90,7 @@ onnxruntime_fetchcontent_makeavailable(googlexnnpack)
 set(XNNPACK_DIR ${googlexnnpack_SOURCE_DIR})
 set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
 
-set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK microkernels-prod pthreadpool)
+set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK xnnpack-microkernels-prod pthreadpool)
 if(ORT_TARGET_PROCESSOR MATCHES "^arm64.*" AND NOT CMAKE_C_COMPILER_ID STREQUAL "MSVC")
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES_XNNPACK kleidiai)
 endif()

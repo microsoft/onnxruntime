@@ -39,13 +39,15 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool is_qualcomm,
                         bool is_fp16,
                         int qkv_head_size,
-                        int qkv_num_heads)
+                        int qkv_num_heads,
+                        bool is_unidirectional)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
         is_qualcomm_(is_qualcomm),
         is_fp16_(is_fp16),
         qkv_head_size_(qkv_head_size),
-        qkv_num_heads_(qkv_num_heads) {
+        qkv_num_heads_(qkv_num_heads),
+        is_unidirectional_(is_unidirectional) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -54,7 +56,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"is_gqa", ProgramUniformVariableDataType::Uint32},
+                                          {"is_unidirectional", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"alpha", ProgramUniformVariableDataType::Float32},
                                           {"num_seq_tile", ProgramUniformVariableDataType::Uint32});
@@ -65,6 +67,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   bool is_fp16_;
   int qkv_head_size_;
   int qkv_num_heads_;
+  bool is_unidirectional_;
 };
 
 class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecodeQKTProgram> {

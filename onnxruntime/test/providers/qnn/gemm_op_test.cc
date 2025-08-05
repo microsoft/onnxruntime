@@ -54,18 +54,17 @@ TEST_F(QnnCPUBackendTests, Gemm_NonDefaultAlphaBeta_Unsupported) {
                      ExpectedEPNodeAssignment::None);  // Should not be assigned to QNN EP.
 }
 
-// Test that Gemm with general 2D bias (M, N) is NOT supported (unless M == 1).
-// QNN's FullyConnected operator only supports `outputVector = ( inputAsVector * weightsMatrix ) + biasesVector`
-TEST_F(QnnCPUBackendTests, Gemm_2D_Bias_Unsupported) {
+// Test Gemm with 2D bias is supported.
+TEST_F(QnnCPUBackendTests, Gemm_2D_Bias) {
   std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
   std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 12);
 
-  // 2D matrix mul with bias not supported.
+  // 2D matrix mul with bias is supported.
   RunGemmTest<float>({TestInputDef<float>({2, 3}, false, input_a_data),
                       TestInputDef<float>({3, 4}, false, input_b_data),
                       TestInputDef<float>({2, 4}, false, -1.0f, 1.0f)},
                      {},
-                     ExpectedEPNodeAssignment::None);  // Should not be assigned to QNN EP.
+                     ExpectedEPNodeAssignment::All);  // Assigned to QNN EP.
 
   // However, 2D matrix mul without a bias is supported. Input A's 0th dimension is interpreted as `batch_size`.
   RunGemmTest<float>({TestInputDef<float>({2, 3}, false, input_a_data),
@@ -525,15 +524,19 @@ TEST_F(QnnGPUBackendTests, Gemm_AlphaBetaUnsupported) {
                      "gpu");
 }
 
-// Gemm with matrix bias ie 2D (M, N) is NOT supported. (Note: vector bias is supported ie when M == 1).
+// Gemm with matrix bias ie 2D (M, N) is supported.
+// When vector bias ie M == 1
 // QNN's FullyConnected operator only supports `outputVector = ( inputAsVector * weightsMatrix ) + biasesVector`
-TEST_F(QnnGPUBackendTests, Gemm_2DBiasUnsupported) {
-  // 2D matrix mul with 2D bias not supported.
+// When 2D bias i.e. M != 1, N != 1.
+// When 2D bias i.e. M != 1, N != 1.
+// QNN's Gemm will be split in to FullyConnected and ElementwiseAdd.
+TEST_F(QnnGPUBackendTests, Gemm_2D_Bias) {
+  // 2D matrix mul with 2D bias is supported when Gemm is not a QDQ node.
   RunGemmTest<float>({TestInputDef<float>({2, 3}, false, -10.0f, 10.0f),
                       TestInputDef<float>({3, 4}, false, -10.0f, 10.0f),
                       TestInputDef<float>({2, 4}, false, -1.0f, 1.0f)},
                      {},
-                     ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
+                     ExpectedEPNodeAssignment::All,  // Should be assigned to QNN EP.
                      "gpu");
 }
 

@@ -14,6 +14,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
+template <typename T>
 class QMoE final : public CudaKernel, public MoEBase {
  public:
   explicit QMoE(const OpKernelInfo& op_kernel_info);

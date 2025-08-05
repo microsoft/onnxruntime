@@ -41,11 +41,11 @@ class WindowsTelemetry : public Telemetry {
 
   void LogProcessInfo() const override;
 
-  void LogSessionCreationStart() const override;
+  void LogSessionCreationStart(uint32_t session_id) const override;
 
-  void LogEvaluationStop() const override;
+  void LogEvaluationStop(uint32_t session_id) const override;
 
-  void LogEvaluationStart() const override;
+  void LogEvaluationStart(uint32_t session_id) const override;
 
   void LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
                           const std::string& model_producer_version, const std::string& model_domain,

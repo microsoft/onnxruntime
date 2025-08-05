@@ -18,7 +18,7 @@ void MIGraphXAllocator::CheckDevice() const {
   int current_device;
   auto hip_err = hipGetDevice(&current_device);
   if (hip_err == hipSuccess) {
-    ORT_ENFORCE(current_device == Info().id);
+    ORT_ENFORCE(current_device == Info().device.Id());
   }
 #endif
 }

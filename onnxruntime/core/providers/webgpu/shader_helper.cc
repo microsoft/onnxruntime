@@ -491,16 +491,29 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
         ss << ",";
       }
 
-      auto alignment = (data_type == ProgramUniformVariableDataType::Float16 && length > 4) ? "@align(16) " : "";
-      ss << "\n  " << alignment << name << ": ";
+      // The actual variable type for the uniform variable depends on the data type (T) and length (N).
+      //
+      // For T in [i32, u32, f32]:
+      //   - If N == 1, the type is simply i32, u32, or f32.
+      //   - If 2 < N <= 4, the type is vecN<i32>, vecN<u32>, or vecN<f32> where N is the length.
+      //   - If N > 4, the type is array<vec4<T>, ceil(N / 4)>.
+      //
+      // For T is f16:
+      //   - If N == 1 or N == 2, the type is u32.
+      //   - If 2 < N <= 8, the type is vecX<u32> where X is ceil(N / 2).
+      //   - If N > 8, the type is array<vec4<u32>, X> where X is ceil(N / 8).
+      //
+      // Note: Using f16 type in uniforms is not generally supported on all devices. We use a u32 variable to represent
+      // 2 f16 values.
+
+      if (data_type == ProgramUniformVariableDataType::Float16) {
+        data_type = ProgramUniformVariableDataType::Uint32;  // f16 is represented as u32
+        length = (length + 1) / 2;                           // each u32 can hold 2 f16 values
+      }
+      ss << "\n  " << name << ": ";
       if (length > 4) {
-        if (data_type == ProgramUniformVariableDataType::Float16) {
-          size_t array_size = (length + 7) / 8;
-          ss << "array<mat2x4<" << data_type << ">, " << array_size << ">";
-        } else {
-          size_t array_size = (length + 3) / 4;
-          ss << "array<vec4<" << data_type << ">, " << array_size << ">";
-        }
+        size_t array_size = (length + 3) / 4;
+        ss << "array<vec4<" << data_type << ">, " << array_size << ">";
       } else if (length > 1) {
         ss << "vec" << length << "<" << data_type << ">";
       } else {

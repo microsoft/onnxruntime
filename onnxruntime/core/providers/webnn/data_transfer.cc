@@ -35,17 +35,15 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
 
     if (dst_device.Type() == OrtDevice::GPU) {
       EM_ASM({ Module.webnnUploadTensor($0, HEAPU8.subarray($1, $1 + $2)); }, dst_data, reinterpret_cast<intptr_t>(src_data), bytes);
-      if (trace) {
-        console.call<void>("timeEnd", emscripten::val("ORT::DataTransfer::webnnUploadTensor"));
-      }
     } else {
       auto webnnDownloadTensor = emscripten::val::module_property("webnnDownloadTensor");
       auto subarray = emscripten::typed_memory_view(bytes, static_cast<char*>(dst_data));
       webnnDownloadTensor(reinterpret_cast<intptr_t>(src_data), subarray).await();
-      if (trace) {
-        console.call<void>("timeEnd", emscripten::val("ORT::DataTransfer::webnnDownloadTensor"));
-      }
     }
+  }
+
+  if (trace) {
+    console.call<void>("timeEnd", emscripten::val("ORT::DataTransfer::CopyTensor"));
   }
 
   return Status::OK();
