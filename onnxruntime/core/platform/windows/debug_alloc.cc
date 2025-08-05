@@ -243,6 +243,21 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     //     empty_string = new string;
     //     empty_named_groups = new std::map<string, int>;
     //     empty_group_names = new std::map<int, string>; });
+    //
+    // In the Abseil (ABSL) flags library used by onnxruntime_perf_test, specifying "--help"
+    // causes the program to call exit(1). This is an intentional design choice from Google,
+    // treating "--help" as an early termination condition (the program does not perform its
+    // normal execution. See MaybeExit in usage.cc).
+    //
+    // As a result, many resources will not be cleaned up, including:
+    //   - Abseil's internal storage for flags, allocated in static/global objects inside
+    //     absl::flags_internal (e.g., FlagImpl::Init)
+    //   - The absl::FlagsUsageConfig instance
+    //   - Performance test utilities that hold std::vector objects for converting argv to UTF-8 strings
+    //   - The onnxruntime::perftest::PerformanceTestConfig instance
+    //
+    // Essentially, any object instantiated before calling absl::ParseCommandLine will not
+    // be cleaned up. This behavior is expected when running with "--help".
     if (string.find("RtlRunOnceExecuteOnce") == std::string::npos &&
         string.find("re2::RE2::Init") == std::string::npos &&
         string.find("dynamic initializer for 'FLAGS_") == std::string::npos &&
@@ -254,7 +269,12 @@ Memory_LeakCheck::~Memory_LeakCheck() {
         string.find("testing::internal::ThreadLocalRegistryImpl::GetThreadLocalsMapLocked") == std::string::npos &&
         string.find("testing::internal::ThreadLocalRegistryImpl::GetValueOnCurrentThread") == std::string::npos &&
         string.find("PyInit_onnxruntime_pybind11_state") == std::string::npos &&
-        string.find("google::protobuf::internal::InitProtobufDefaultsSlow") == std::string::npos) {
+        string.find("google::protobuf::internal::InitProtobufDefaultsSlow") == std::string::npos &&
+        string.find("flags_internal::ParseCommandLineImpl") == std::string::npos &&
+        string.find("SetFlagsUsageConfig") == std::string::npos &&
+        string.find("perftest::utils::ConvertArgvToUtf8Strings") == std::string::npos &&
+        string.find("perftest::utils::CStringsFromStrings") == std::string::npos &&
+        string.find("perftest::PerformanceTestConfig::PerformanceTestConfig") == std::string::npos) {
       if (leaked_bytes == 0)
         DebugPrint("\n-----Starting Heap Trace-----\n\n");
 
