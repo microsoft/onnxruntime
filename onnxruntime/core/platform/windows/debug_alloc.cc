@@ -249,6 +249,11 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     // treating "--help" as an early termination condition (the program does not perform its
     // normal execution. See MaybeExit in usage.cc).
     //
+    // In normal execution of onnxruntime_perf_test, Abseil flags are defined as global variables
+    // and persist for the lifetime of the program. They are not explicitly freed, so leak checkers
+    // may report them, but these are not true leaks. Valgrind, for example, reports them as
+    // "still reachable" rather than "definitely lost".
+    //
     // As a result, many resources will not be cleaned up, including:
     //   - Abseil's internal storage for flags, allocated in static/global objects inside
     //     absl::flags_internal (e.g., FlagImpl::Init)
@@ -271,6 +276,7 @@ Memory_LeakCheck::~Memory_LeakCheck() {
         string.find("PyInit_onnxruntime_pybind11_state") == std::string::npos &&
         string.find("google::protobuf::internal::InitProtobufDefaultsSlow") == std::string::npos &&
         string.find("flags_internal::ParseCommandLineImpl") == std::string::npos &&
+        string.find("flags_internal::FlagImpl::Init") == std::string::npos &&
         string.find("SetFlagsUsageConfig") == std::string::npos &&
         string.find("perftest::utils::ConvertArgvToUtf8Strings") == std::string::npos &&
         string.find("perftest::utils::CStringsFromStrings") == std::string::npos &&
