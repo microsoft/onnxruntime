@@ -1220,7 +1220,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-  /** Gets the GraphProto representation of this Graph only. */
+  /** Gets the GraphProto representation of this Graph only.
+   * Deprecated. Do not use in main code. This does not recurse the subgraphs,
+   * does not populate the initializers of the root graph.
+   */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
 
   /// <summary>
@@ -1606,9 +1609,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ///   as needed.
   /// </summary>
   /// <param name="output_graph_proto">The GraphProto to process</param>
-  /// <param name="process_main">Whether to process the main graph initializers</param>
+  /// <param name="main_graph">The main graph that ToGraphProto() was invoked for</param>
+  /// <param name="process_main_graph">Whether to process the initializers for the graph
+  /// that ToGraphProto() was invoked for</param>
   /// <returns>Status indicating success or failure</returns>  ///
-  Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto, bool process_main) const;
+  Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto,
+                                      const Graph& main_graph, bool process_main_graph) const;
 
   /// <summary>
   /// This function traverses the graph bottom up and externalizes

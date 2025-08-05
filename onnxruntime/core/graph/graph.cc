@@ -666,12 +666,17 @@ void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
 
   // Set attributes.
   proto.clear_attribute();
-  for (const auto& attribute : attributes_) {
+  for (const auto& [name, attribute] : attributes_) {
     const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
-    *attr = attribute.second;  // copy
-    if (update_subgraphs && attr->has_g()) {
+    *attr = attribute;  // copy
+    if (update_subgraphs && utils::HasGraph(*attr)) {
+      auto find_hit = attr_to_subgraph_map_.find(name);
+      ORT_ENFORCE(find_hit != attr_to_subgraph_map_.cend(),
+                  "Node [", name_, "] op_type [", op_type_, "] does not have the subgraph for ", name);
+      // Force ToGraphProto() const to be called
+      const Graph& subgraph = *find_hit->second;
       attr->clear_g();
-      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
+      *attr->mutable_g() = subgraph.ToGraphProto();
     }
   }
 
@@ -4312,7 +4317,7 @@ Status InlineOrCopyInitializer(const Graph& src_graph, const ONNX_NAMESPACE::Ten
 }  // namespace
 
 Status Graph::ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto,
-                                           bool process_main) const {
+                                           const Graph& main_graph, bool process_main_graph) const {
   for (const auto& node : Nodes()) {
     if (node.ContainsSubgraph()) {
       // Let's find this node in the output_graph_proto
@@ -4343,13 +4348,13 @@ Status Graph::ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_gr
                           "Subgraph ", name, " is referred to in GetAttributeNameToSubgraphMap, but not found in node ",
                           node.Name(), " while attempting to recurse into it.");
         auto& result_subgraph = *sub_hit->mutable_g();
-        ORT_RETURN_IF_ERROR(subgraph->ProcessSubgraphsInMemoryData(result_subgraph, process_main));
+        ORT_RETURN_IF_ERROR(subgraph->ProcessSubgraphsInMemoryData(result_subgraph, main_graph, process_main_graph));
       }
     }
   }
 
   // When graph_proto is copied from graph_proto, initializers already present in the main graph
-  if (parent_graph_ != nullptr || process_main) {
+  if (this != &main_graph || process_main_graph) {
 #if !defined(DISABLE_SPARSE_TENSORS)
     auto* mutable_initializers = output_graph_proto.mutable_initializer();
     const auto& model_path = ModelPath();
@@ -4402,14 +4407,14 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   GraphProto result;
   if (!GraphProtoSyncNeeded()) {
     result = *graph_proto_;
-    ORT_THROW_IF_ERROR(ProcessSubgraphsInMemoryData(result, /*process_main*/ true));
+    ORT_THROW_IF_ERROR(ProcessSubgraphsInMemoryData(result, *this, /*process_main_graph*/ true));
   } else {
     ToGraphProtoInternal(result);
 
-    ORT_THROW_IF_ERROR(ProcessSubgraphsInMemoryData(result, /*process_main*/ false));
+    ORT_THROW_IF_ERROR(ProcessSubgraphsInMemoryData(result, *this, /*process_main_graph*/ false));
 
-    // Add initializers to parent graph by copy converting them from graph_proto_
-    // ToGraphProtoInternal() does not copy initializers for the main graph
+    // Add initializers to parent graph by copying them from graph_proto_
+    // ToGraphProtoInternal() does not copy initializers for the graph that it was invoked for.
     auto* mutable_initializers = result.mutable_initializer();
 
 #if !defined(DISABLE_SPARSE_TENSORS)
