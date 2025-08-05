@@ -284,44 +284,13 @@ try:
                 self._rewrite_ld_preload_tensorrt(to_preload_nv_tensorrt_rtx)
                 self._rewrite_ld_preload(to_preload_cann)
 
-            else:
-                hipsdk_dependencies = [
-                    "amd_comgr0602.dll",
-                    "amd_comgr0604.dll",
-                    "amd_comgr0700.dll",
-                    "hiprtc0602.dll",
-                    "hiprtc0604.dll",
-                    "hiprtc0700.dll",
-                    "hiprtc-builtins0602.dll",
-                    "hiprtc-builtins0604.dll",
-                    "hiprtc-builtins0700.dll",
-                ]
-
-                migraphx_dependencies = [
-                    "migraphx-hiprtc-driver.exe",
-                    "migraphx.dll",
-                    "migraphx_c.dll",
-                    "migraphx_cpu.dll",
-                    "migraphx_device.dll",
-                    "migraphx_gpu.dll",
-                    "migraphx_onnx.dll",
-                    "migraphx_tf.dll",
-                ]
-
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino and not is_qnn:
                 assert self.dist_dir is not None
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
-                for i in (
-                    cuda_dependencies
-                    + hipsdk_dependencies
-                    + rocm_dependencies
-                    + migraphx_dependencies
-                    + tensorrt_dependencies
-                    + cann_dependencies
-                ):
+                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies + cann_dependencies:
                     auditwheel_cmd += ["--exclude", i]
                 logger.info("Running %s", " ".join([shlex.quote(arg) for arg in auditwheel_cmd]))
                 try:
