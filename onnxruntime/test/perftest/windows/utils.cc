@@ -2,14 +2,11 @@
 // Licensed under the MIT License.
 
 #include "test/perftest/utils.h"
-#include "test/perftest/strings_helper.h"
-#include <core/platform/path_lib.h>
 
 #include <cstdint>
 
 #include <Windows.h>
 #include <psapi.h>
-#include <filesystem>
 
 namespace onnxruntime {
 namespace perftest {
@@ -77,6 +74,7 @@ class CPUUsage : public ICPUUsage {
 std::unique_ptr<ICPUUsage> CreateICPUUsage() {
   return std::make_unique<CPUUsage>();
 }
+
 }  // namespace utils
 }  // namespace perftest
 }  // namespace onnxruntime

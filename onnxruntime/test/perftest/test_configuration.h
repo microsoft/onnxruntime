@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 
 #include "core/graph/constants.h"
 #include "core/framework/session_options.h"

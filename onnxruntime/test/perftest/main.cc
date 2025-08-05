@@ -5,8 +5,8 @@
 #include <core/session/onnxruntime_c_api.h>
 #include <random>
 #include "command_args_parser.h"
-#include "utils.h"
 #include "performance_runner.h"
+#include "utils.h"
 #include "strings_helper.h"
 #include <google/protobuf/stubs/common.h>
 

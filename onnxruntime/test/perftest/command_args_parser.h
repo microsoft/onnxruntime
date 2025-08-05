@@ -3,7 +3,6 @@
 
 #pragma once
 #include <core/session/onnxruntime_c_api.h>
-#include "test_configuration.h"
 
 namespace onnxruntime {
 namespace perftest {
