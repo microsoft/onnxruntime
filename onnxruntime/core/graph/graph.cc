@@ -4277,6 +4277,16 @@ bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
 
 const ONNX_NAMESPACE::GraphProto& Graph::ToGraphProto() {
   if (!GraphProtoSyncNeeded()) {
+    for (int tensor_idx = 0; tensor_idx < graph_proto_->initializer_size(); ++tensor_idx) {
+      auto tensor = graph_proto_->mutable_initializer(tensor_idx);
+      if (utils::HasExternalDataInMemory(*tensor)) {
+        std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+        ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tensor, full_init));
+        tensor->clear_data_location();
+        tensor->clear_external_data();
+        tensor->set_raw_data(full_init->raw_data());
+      }
+    }
     return *graph_proto_;
   }
 

@@ -1649,7 +1649,10 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
           SetAllGraphInputs(graph_build);
         }
 
-        ORT_ENFORCE(graph_build.Resolve().IsOK());
+        auto status = graph_build.Resolve();
+        if (!status.IsOK()) {
+          ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Graph resolve failed with error: " + status.ErrorMessage()));
+        }
 
         // Add parent graph output to the subgraph
         int i = 0;
