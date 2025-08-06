@@ -96,12 +96,7 @@ class WhisperHelper:
         audio_processor_cfg = {
             "feature_extraction": {
                 "sequence": [
-                    {
-                        "operation": {
-                            "name": "audio_decoder",
-                            "type": "AudioDecoder"
-                        }
-                    },
+                    {"operation": {"name": "audio_decoder", "type": "AudioDecoder"}},
                     {
                         "operation": {
                             "name": "STFT",
@@ -510,23 +505,18 @@ class WhisperHelper:
                                     0.000986635684967041,
                                     0.0005550682544708252,
                                     0.0002467334270477295,
-                                    0.0000616908073425293
-                                ]
-                            }
+                                    0.0000616908073425293,
+                                ],
+                            },
                         }
                     },
                     {
                         "operation": {
                             "name": "log_mel_spectrogram",
                             "type": "LogMelSpectrum",
-                            "attrs": {
-                                "chunk_size": 30,
-                                "hop_length": 160,
-                                "n_fft": 400,
-                                "n_mel": config.num_mel_bins
-                            }
+                            "attrs": {"chunk_size": 30, "hop_length": 160, "n_fft": 400, "n_mel": config.num_mel_bins},
                         }
-                    }
+                    },
                 ]
             }
         }
