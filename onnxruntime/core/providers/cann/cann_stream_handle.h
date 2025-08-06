@@ -24,8 +24,6 @@ struct CannStream : Stream {
   void Flush() override;
 
   bool own_stream_{true};
-
-  WaitNotificationFn GetWaitNotificationFn() const override { return WaitCannNotificationOnDevice; }
 };
 
 void RegisterCannStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry,

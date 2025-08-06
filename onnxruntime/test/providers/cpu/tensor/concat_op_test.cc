@@ -434,5 +434,110 @@ TEST(ConcatOpTest, Concat4D_2) {
   test.Run();
 }
 
+#ifdef USE_WEBGPU
+TEST(ConcatOpTest, Concat1D_int32_4inputs) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+
+  test.AddInput<int32_t>("input1", {1}, {1});
+  test.AddInput<int32_t>("input2", {2}, {2, 3});
+  test.AddInput<int32_t>("input3", {4}, {4, 5, 6, 7});
+  test.AddInput<int32_t>("input4", {2}, {8, 9});
+  test.AddOutput<int32_t>("concat_result", {9}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  test.Run();
+}
+
+TEST(ConcatOpTest, Concat1D_exceed_maxStorageBuffersPerShaderStage) {
+  // maxStorageBuffersPerShaderStage==8
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+
+  test.AddInput<int32_t>("input1", {1}, {1});
+  test.AddInput<int32_t>("input2", {1}, {2});
+  test.AddInput<int32_t>("input3", {1}, {3});
+  test.AddInput<int32_t>("input4", {1}, {4});
+  test.AddInput<int32_t>("input5", {1}, {5});
+  test.AddInput<int32_t>("input6", {1}, {6});
+  test.AddInput<int32_t>("input7", {1}, {7});
+  test.AddInput<int32_t>("input8", {1}, {8});
+  test.AddInput<int32_t>("input9", {1}, {9});
+  test.AddOutput<int32_t>("concat_result", {9}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  test.Run();
+}
+
+TEST(ConcatOpTest, Concat2D_exceed_maxStorageBuffersPerShaderStage_axis0) {
+  // maxStorageBuffersPerShaderStage==8
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+
+  test.AddInput<int32_t>("input1", {1, 2}, {1, 2});
+  test.AddInput<int32_t>("input2", {1, 2}, {3, 4});
+  test.AddInput<int32_t>("input3", {1, 2}, {5, 6});
+  test.AddInput<int32_t>("input4", {1, 2}, {7, 8});
+  test.AddInput<int32_t>("input5", {1, 2}, {9, 10});
+  test.AddInput<int32_t>("input6", {1, 2}, {11, 12});
+  test.AddInput<int32_t>("input7", {1, 2}, {13, 14});
+  test.AddInput<int32_t>("input8", {1, 2}, {15, 16});
+  test.AddInput<int32_t>("input9", {1, 2}, {17, 18});
+  test.AddOutput<int32_t>("concat_result", {9, 2}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
+  test.Run();
+}
+
+TEST(ConcatOpTest, Concat2D_exceed_maxStorageBuffersPerShaderStage_axis1) {
+  // maxStorageBuffersPerShaderStage==8
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{1});
+
+  test.AddInput<int32_t>("input1", {1, 2}, {1, 2});
+  test.AddInput<int32_t>("input2", {1, 2}, {3, 4});
+  test.AddInput<int32_t>("input3", {1, 2}, {5, 6});
+  test.AddInput<int32_t>("input4", {1, 2}, {7, 8});
+  test.AddInput<int32_t>("input5", {1, 2}, {9, 10});
+  test.AddInput<int32_t>("input6", {1, 2}, {11, 12});
+  test.AddInput<int32_t>("input7", {1, 2}, {13, 14});
+  test.AddInput<int32_t>("input8", {1, 2}, {15, 16});
+  test.AddInput<int32_t>("input9", {1, 2}, {17, 18});
+  test.AddOutput<int32_t>("concat_result", {1, 18}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
+  test.Run();
+}
+
+TEST(ConcatOpTest, Concat3D_exceed_maxStorageBuffersPerShaderStage) {
+  // maxStorageBuffersPerShaderStage==8
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{1});
+
+  test.AddInput<int32_t>("input1", {2, 1, 1}, {1, 2});
+  test.AddInput<int32_t>("input2", {2, 1, 1}, {3, 4});
+  test.AddInput<int32_t>("input3", {2, 1, 1}, {5, 6});
+  test.AddInput<int32_t>("input4", {2, 1, 1}, {7, 8});
+  test.AddInput<int32_t>("input5", {2, 1, 1}, {9, 10});
+  test.AddInput<int32_t>("input6", {2, 1, 1}, {11, 12});
+  test.AddInput<int32_t>("input7", {2, 1, 1}, {13, 14});
+  test.AddInput<int32_t>("input8", {2, 1, 1}, {15, 16});
+  test.AddInput<int32_t>("input9", {2, 1, 1}, {17, 18});
+  test.AddOutput<int32_t>("concat_result", {2, 9, 1}, {// batch 0
+                                                       1, 3, 5, 7, 9, 11, 13, 15, 17,
+                                                       // batch 1
+                                                       2, 4, 6, 8, 10, 12, 14, 16, 18});
+  test.Run();
+}
+
+TEST(ConcatOpTest, Concat3D_exceed_maxStorageBuffersPerShaderStage_mixed_sizes) {
+  // maxStorageBuffersPerShaderStage==8
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{1});
+
+  test.AddInput<int32_t>("input1", {2, 1, 1}, {1, 2});
+  test.AddInput<int32_t>("input2", {2, 3, 1}, {3, 4, 5, 6, 7, 8});
+  test.AddInput<int32_t>("input3", {2, 2, 1}, {9, 10, 11, 12});
+  test.AddInput<int32_t>("input4", {2, 1, 1}, {13, 14});
+  test.AddOutput<int32_t>("concat_result", {2, 7, 1}, {// batch 0
+                                                       1, 3, 4, 5, 9, 10, 13,
+                                                       // batch 1
+                                                       2, 6, 7, 8, 11, 12, 14});
+  test.Run();
+}
+#endif  // USE_WEBGPU
+
 }  // namespace test
 }  // namespace onnxruntime

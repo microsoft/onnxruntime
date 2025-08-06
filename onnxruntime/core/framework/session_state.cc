@@ -89,7 +89,8 @@ SessionState::SessionState(Graph& graph,
                            profiling::Profiler& profiler,
                            const SessionOptions& sess_options,
                            PrepackedWeightsContainer* prepacked_weights_container,
-                           AllocatorMap* parent_allocators)
+                           AllocatorMap* parent_allocators,
+                           AllocatorMap* parent_initializer_allocators)
     : graph_(graph),
       execution_providers_(execution_providers),
       logger_(logger),
@@ -109,16 +110,26 @@ SessionState::SessionState(Graph& graph,
                         sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
   if (parent_allocators) {
     allocators_ = parent_allocators;
+    initializer_allocators_ = parent_initializer_allocators;
   } else {
     allocators_unique_ptr_ = std::make_unique<AllocatorMap>();
     allocators_ = allocators_unique_ptr_.get();
+
+    initializer_allocators_unique_ptr_ = std::make_unique<AllocatorMap>();
+    initializer_allocators_ = initializer_allocators_unique_ptr_.get();
+
     // The allocator registration rule:
     // Each location (OrtDevice) will only have 1 allocator used for whole session.
-    // The EP which is registered first will have higher priority
+    // The EP which is registered first will have higher priority.
+    // Allocators with a OrtAllocatorType of OrtReadOnlyAllocator go in the initializer allocators
     for (auto& ep : execution_providers_) {
       auto allocators = ep->CreatePreferredAllocators();
       for (auto& alloc : allocators) {
-        allocators_->insert({alloc->Info().device, alloc});  // DON'T overwrite existing key
+        if (alloc->Info().alloc_type == OrtReadOnlyAllocator) {
+          initializer_allocators_->insert({alloc->Info().device, alloc});  // DON'T overwrite existing key
+        } else {
+          allocators_->insert({alloc->Info().device, alloc});  // DON'T overwrite existing key
+        }
       }
     }
   }
@@ -130,13 +141,29 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
 
 AllocatorPtr SessionState::GetAllocator(const OrtDevice& device) const noexcept {
   auto it = allocators_->find(device);
-  if (it != allocators_->end()) return it->second;
+  if (it != allocators_->end()) {
+    return it->second;
+  }
+
   return nullptr;
+}
+
+AllocatorPtr SessionState::GetInitializerAllocator(const OrtDevice& device) const noexcept {
+  auto it = initializer_allocators_->find(device);
+  if (it != initializer_allocators_->end()) {
+    return it->second;
+  }
+
+  return GetAllocator(device);
 }
 
 void SessionState::UpdateAllocatorsWithEnvAllocators(const std::vector<AllocatorPtr>& env_allocators) {
   for (const auto& env_alloc : env_allocators) {
-    (*allocators_)[env_alloc->Info().device] = env_alloc;
+    if (env_alloc->Info().alloc_type == OrtReadOnlyAllocator) {
+      (*initializer_allocators_)[env_alloc->Info().device] = env_alloc;
+    } else {
+      (*allocators_)[env_alloc->Info().device] = env_alloc;
+    }
   }
 }
 
@@ -1158,7 +1185,7 @@ Status SessionState::CreateSubgraphSessionState() {
           std::make_unique<SessionState>(*subgraph, execution_providers_,
                                          thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
                                          external_data_loader_mgr_, logger_, profiler_, sess_options_,
-                                         prepacked_weights_container_, allocators_);
+                                         prepacked_weights_container_, allocators_, initializer_allocators_);
 
       // Pass fused function manager to subgraph
       subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);

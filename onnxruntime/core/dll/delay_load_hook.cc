@@ -45,7 +45,7 @@
 
 namespace {
 
-#define DEFINE_KNOWN_DLL(name) {#name ".dll", L#name L".dll"}
+#define DEFINE_KNOWN_DLL(name) {#name ".dll", L## #name L".dll"}
 
 constexpr struct {
   const char* str;
