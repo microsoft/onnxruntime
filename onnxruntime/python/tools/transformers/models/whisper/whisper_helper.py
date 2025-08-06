@@ -93,8 +93,7 @@ class WhisperHelper:
         if separate_encoder_and_decoder_init:
             return
 
-        audio_processor_json = textwrap.dedent("""\
-        {
+        audio_processor_cfg = {
             "feature_extraction": {
                 "sequence": [
                     {
@@ -524,14 +523,15 @@ class WhisperHelper:
                                 "chunk_size": 30,
                                 "hop_length": 160,
                                 "n_fft": 400,
-                                "n_mel": 80
+                                "n_mel": config.num_mel_bins
                             }
                         }
                     }
                 ]
             }
         }
-        """)
+        audio_processor_json = json.dumps(audio_processor_cfg, indent=4)
+
         with open(os.path.join(output_dir, "audio_processor_config.json"), "w") as f:
             f.write(audio_processor_json)
 
