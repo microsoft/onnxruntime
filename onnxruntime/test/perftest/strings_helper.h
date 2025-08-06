@@ -18,6 +18,6 @@ void ParseEpList(const std::string& input, std::vector<std::string>& result);
 
 void ParseEpOptions(const std::string& input, std::vector<std::unordered_map<std::string, std::string>>& result);
 
-void ParseEpDeviceList(const std::string& input, std::vector<int>& result);
+void ParseEpDeviceIndexList(const std::string& input, std::vector<int>& result);
 }  // namespace perftest
 }  // namespace onnxruntime

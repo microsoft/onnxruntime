@@ -77,8 +77,8 @@ struct PerformanceTestConfig {
   RunConfig run_config;
   std::basic_string<ORTCHAR_T> plugin_ep_names_and_libs;
   std::vector<std::string> registered_plugin_eps;
-  std::string selected_devices;
-  bool list_available_devices = false;
+  std::string selected_ep_device_indices;
+  bool list_available_ep_devices = false;
 };
 
 }  // namespace perftest

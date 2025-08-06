@@ -13,7 +13,7 @@ namespace onnxruntime {
 namespace perftest {
 namespace utils {
 
-void ListDevices(const Ort::Env& env) {
+void ListEpDevices(const Ort::Env& env) {
   std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
 
   for (size_t i = 0; i < ep_devices.size(); ++i) {
@@ -88,15 +88,6 @@ std::vector<char*> CStringsFromStrings(std::vector<std::string>& utf8_args) {
     utf8_argv.push_back(&str[0]);
   }
   return utf8_argv;
-}
-
-// This helper function returns the basename of the filename passed as an argument
-std::string_view GetBasename(std::string_view filename) {
-  auto last_slash_pos = filename.find_last_of("/\\");
-
-  return last_slash_pos == absl::string_view::npos
-             ? filename
-             : filename.substr(last_slash_pos + 1);
 }
 
 }  // namespace utils

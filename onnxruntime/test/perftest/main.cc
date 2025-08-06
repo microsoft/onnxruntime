@@ -59,8 +59,8 @@ int real_main(int argc, char* argv[]) {
     }
   });
 
-  if (test_config.list_available_devices) {
-    perftest::utils::ListDevices(env);
+  if (test_config.list_available_ep_devices) {
+    perftest::utils::ListEpDevices(env);
     if (test_config.registered_plugin_eps.empty()) {
       fprintf(stdout, "No plugin execution provider libraries are registered. Please specify them using \"--plugin_ep_libs\"; otherwise, only CPU may be available.\n");
     }

@@ -31,9 +31,7 @@ void RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test
 
 void UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
 
-void ListDevices(const Ort::Env& env);
-
-std::string_view GetBasename(std::string_view filename);
+void ListEpDevices(const Ort::Env& env);
 
 }  // namespace utils
 }  // namespace perftest

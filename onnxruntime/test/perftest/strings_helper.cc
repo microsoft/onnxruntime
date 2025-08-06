@@ -79,7 +79,7 @@ void ParseEpList(const std::string& input, std::vector<std::string>& result) {
   }
 }
 
-void ParseEpDeviceList(const std::string& input, std::vector<int>& result) {
+void ParseEpDeviceIndexList(const std::string& input, std::vector<int>& result) {
   std::stringstream ss(input);
   std::string item;
 

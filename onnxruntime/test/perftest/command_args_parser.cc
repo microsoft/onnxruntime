@@ -203,11 +203,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   // <program>_main.cc, where the <program> is the name of the binary (without .exe on Windows). See usage_config.cc in abseil for more details.
   absl::FlagsUsageConfig config;
   config.contains_help_flags = [](absl::string_view filename) {
-    auto suffix = utils::GetBasename(filename);
-    std::string_view file_has_the_flag_defs(__FILE__);
-    file_has_the_flag_defs = utils::GetBasename(file_has_the_flag_defs);
-
-    return suffix == file_has_the_flag_defs;
+    return std::filesystem::path(filename).filename() == std::filesystem::path(__FILE__).filename();
   };
 
   config.normalize_filename = [](absl::string_view f) {
@@ -493,14 +489,14 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // --list_ep_devices
   if (absl::GetFlag(FLAGS_list_ep_devices)) {
-    test_config.list_available_devices = true;
+    test_config.list_available_ep_devices = true;
     return true;
   }
 
   // --select_ep_devices
   {
     const auto& select_ep_devices = absl::GetFlag(FLAGS_select_ep_devices);
-    if (!select_ep_devices.empty()) test_config.selected_devices = select_ep_devices;
+    if (!select_ep_devices.empty()) test_config.selected_ep_device_indices = select_ep_devices;
   }
 
   if (positional.size() == 2) {

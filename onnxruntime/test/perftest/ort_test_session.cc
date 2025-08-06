@@ -73,10 +73,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::unordered_set<std::string> ep_set(ep_list.begin(), ep_list.end());
 
     // Select EP devices by provided device index
-    if (!performance_test_config.selected_devices.empty()) {
+    if (!performance_test_config.selected_ep_device_indices.empty()) {
       std::vector<int> device_list;
-      device_list.reserve(performance_test_config.selected_devices.size());
-      ParseEpDeviceList(performance_test_config.selected_devices, device_list);
+      device_list.reserve(performance_test_config.selected_ep_device_indices.size());
+      ParseEpDeviceIndexList(performance_test_config.selected_ep_device_indices, device_list);
       for (auto index : device_list) {
         if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
           fprintf(stderr, "%s", "The device index provided is not correct. Will skip this device id.");
