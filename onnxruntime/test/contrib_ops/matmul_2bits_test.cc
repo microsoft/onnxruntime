@@ -260,6 +260,24 @@ TEST(MatMulNBits, Float32_2Bits_Accuracy0) {
   TestMatMul2BitsTyped<float, 4, 32, 16, 128, 0>();
   TestMatMul2BitsTyped<float, 4, 288, 16, 16, 0>();
 }
+
+TEST(MatMulNBits, Float16_2Bits_Accuracy0) {
+  // Currently, only fallback option enabled for 2bit datatypes
+  // where the 2bits are dequantized to fp32
+  TestMatMul2BitsTyped<MLFloat16, 1, 1, 16, 16, 0>();
+  TestMatMul2BitsTyped<MLFloat16, 1, 2, 16, 16, 0>();
+  TestMatMul2BitsTyped<MLFloat16, 1, 32, 16, 16, 0>();
+  TestMatMul2BitsTyped<MLFloat16, 1, 32, 32, 16, 0>();
+  TestMatMul2BitsTyped<MLFloat16, 1, 32, 16, 128, 0>();
+  TestMatMul2BitsTyped<MLFloat16, 1, 288, 16, 16, 0>();
+  TestMatMul2BitsTyped<MLFloat16, 1, 1, 16, 16, 0>();
+  TestMatMul2BitsTyped<MLFloat16, 4, 2, 16, 16, 0>();
+  TestMatMul2BitsTyped<MLFloat16, 4, 32, 16, 16, 0>();
+  TestMatMul2BitsTyped<MLFloat16, 4, 32, 32, 16, 0>();
+  TestMatMul2BitsTyped<MLFloat16, 4, 32, 16, 128, 0>();
+  TestMatMul2BitsTyped<MLFloat16, 4, 288, 16, 16, 0>();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 
