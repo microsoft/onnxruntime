@@ -67,10 +67,6 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     ORT_RETURN_IF_NOT(input_defs.size() == 5, "BatchNormalization requires five inputs.");
     emscripten::val mean = model_builder.GetOperand(input_defs[3]->Name());
     emscripten::val variance = model_builder.GetOperand(input_defs[4]->Name());
-    if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
-      options.set("axis", rank - 1);
-    }
-
     output = model_builder.GetBuilder().call<emscripten::val>("batchNormalization", input, mean, variance, options);
   } else if (op_type == "LayerNormalization" ||
              op_type == "SimplifiedLayerNormalization" ||
@@ -207,9 +203,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
                      std::back_inserter(new_shape),
                      [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
 
-      size_t insertion_offset = (model_builder.GetPreferredLayout() == DataLayout::NHWC) ? 2 : 3;
       ptrdiff_t excess_rank = new_shape.size() - webnn_shape_rank;
-      auto insertion_point = new_shape.begin() + insertion_offset;
+      auto insertion_point = new_shape.begin() + 3;
       if (input_shape.size() < webnn_shape_rank) {
         // Pad the shape with extra 1's to satisfy WebNN v1's rank requirements.
         new_shape.insert(insertion_point, -excess_rank, 1);
@@ -228,9 +223,6 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
                                                                reshape_input_options);
     }
 
-    if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
-      options.set("layout", emscripten::val("nhwc"));
-    }
     output = model_builder.GetBuilder().call<emscripten::val>("instanceNormalization", input, options);
     // Reshape back to the original output shape for 3D input.
     if (input_shape.size() != 4) {
