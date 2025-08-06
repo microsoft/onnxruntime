@@ -1421,6 +1421,12 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     }
   }
 
+  // We choose to convert initializers into OrtValues before partitioning here so plug-in EPs could
+  // take advantage of the initializers being in OrtValue format and not to deal with protobuf. We do not
+  // want to do it earlier so type and shape inference could handle them while they are inline (inside TensorProto).
+  // If any transformations are applied later, they will not introduce any in-memory initializers,
+  // type and shape inference would run only on any newly added nodes and any new initializers
+  // will be converted at session finalization time.
   ORT_RETURN_IF_ERROR_SESSIONID_(graph.ConvertInitializersIntoOrtValues());
 
   // Do partitioning based on execution providers' capabilities.
