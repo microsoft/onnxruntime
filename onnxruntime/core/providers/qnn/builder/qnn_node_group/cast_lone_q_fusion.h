@@ -34,7 +34,6 @@ class CastLoneQFusion : public IQnnNodeGroup {
 
  private:
   std::array<const NodeUnit*, 2> node_units_;
-  bool IsIntToFloatCast(const NodeUnit& node_unit) const;
 };
 
 }  // namespace qnn
