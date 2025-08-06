@@ -69,8 +69,7 @@ std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const Con
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider();
 
-std::unique_ptr<IExecutionProvider> DefaultInternalTestingExecutionProvider(
-    const std::unordered_set<std::string>& supported_ops);
+std::unique_ptr<IExecutionProvider> DefaultDynamicPluginExecutionProvider();
 
 }  // namespace test
 }  // namespace onnxruntime

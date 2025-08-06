@@ -274,17 +274,19 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
     }
   }
 
-  // Create (optional) fusion options for the supported nodes to fuse.
-  OrtNodeFusionOptions node_fusion_options = {};
-  node_fusion_options.ort_version_supported = ORT_API_VERSION;
+  if (!supported_nodes.empty()) {
+    // Create (optional) fusion options for the supported nodes to fuse.
+    OrtNodeFusionOptions node_fusion_options = {};
+    node_fusion_options.ort_version_supported = ORT_API_VERSION;
 
-  // Set "drop constant initializers" to true if the compiling EP doesn't need ORT to provide constant initializers
-  // as inputs to the fused/compiled node at inference time. This allows ORT to release unused initializers.
-  // This example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
-  // during inference.
-  node_fusion_options.drop_constant_initializers = true;
-  RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info, supported_nodes.data(),
-                                                               supported_nodes.size(), &node_fusion_options));
+    // Set "drop constant initializers" to true if the compiling EP doesn't need ORT to provide constant initializers
+    // as inputs to the fused/compiled node at inference time. This allows ORT to release unused initializers.
+    // This example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
+    // during inference.
+    node_fusion_options.drop_constant_initializers = true;
+    RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info, supported_nodes.data(),
+                                                                 supported_nodes.size(), &node_fusion_options));
+  }
 
   return nullptr;
 }
@@ -333,7 +335,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 
   const char* ep_name = nullptr;
   RETURN_IF_ERROR(ort_api.Node_GetEpName(fused_nodes[0], &ep_name));
-  if (std::strncmp(ep_name, "example_ep", 11) != 0) {
+  if (ep_name != ep->name_) {
     return ort_api.CreateStatus(ORT_EP_FAIL, "The fused node is expected to assigned to this EP to run on");
   }
 

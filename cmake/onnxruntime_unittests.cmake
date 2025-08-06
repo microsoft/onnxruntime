@@ -927,6 +927,7 @@ endif ()
 if(NOT onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   list(REMOVE_ITEM all_tests ${TEST_SRC_DIR}/providers/cuda/cuda_provider_test.cc)
 endif()
+
 AddTest(
   TARGET onnxruntime_test_all
   SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
@@ -2000,5 +2001,83 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
     set_property(TARGET onnxruntime_ep_graph_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
   endif()
 endif()
+
+# onnxruntime_plugin_ep_op_test
+# Runs op tests with a plugin EP enabled.
+block()
+
+# TODO should we remove op tests from onnxruntime_test_all?
+
+set(op_test_file_roots
+  ${TEST_SRC_DIR}/contrib_ops
+  ${TEST_SRC_DIR}/providers/cpu
+)
+
+set(op_test_file_patterns)
+
+foreach(op_test_file_root ${op_test_file_roots})
+  list(APPEND op_test_file_patterns
+    "${op_test_file_root}/*_op_test*.cc"
+    "${op_test_file_root}/*_ops_test*.cc"
+  )
+endforeach()
+
+file(GLOB_RECURSE op_test_files CONFIGURE_DEPENDS ${op_test_file_patterns})
+
+# temp override for quicker compilation while testing...
+# TODO remove
+# set(op_test_files
+#   ${TEST_SRC_DIR}/providers/cpu/tensor/unique_op_test.cc
+#   ${TEST_SRC_DIR}/providers/cpu/math/element_wise_ops_test.cc
+# )
+
+set(onnxruntime_plugin_ep_op_test_srcs
+  ${TEST_SRC_DIR}/common/cuda_op_test_utils.cc
+  ${TEST_SRC_DIR}/common/cuda_op_test_utils.h
+  ${TEST_SRC_DIR}/common/tensor_op_test_utils.cc
+  ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
+  ${TEST_SRC_DIR}/contrib_ops/function_test_util.cc
+  ${TEST_SRC_DIR}/contrib_ops/function_test_util.h
+  ${TEST_SRC_DIR}/framework/TestAllocatorManager.cc
+  ${TEST_SRC_DIR}/framework/TestAllocatorManager.h
+  ${TEST_SRC_DIR}/framework/test_utils.cc
+  ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.cc
+  ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.h
+  ${TEST_SRC_DIR}/framework/dummy_allocator.cc
+  ${TEST_SRC_DIR}/framework/dummy_allocator.h
+  ${TEST_SRC_DIR}/providers/base_tester.cc
+  ${TEST_SRC_DIR}/providers/base_tester.h
+  ${TEST_SRC_DIR}/providers/checkers.cc
+  ${TEST_SRC_DIR}/providers/checkers.h
+  ${TEST_SRC_DIR}/providers/compare_provider_test_utils.cc
+  ${TEST_SRC_DIR}/providers/compare_provider_test_utils.h
+  ${TEST_SRC_DIR}/contrib_ops/qordered_test_utils.h
+  ${TEST_SRC_DIR}/providers/kernel_compute_test_utils.cc
+  ${TEST_SRC_DIR}/providers/kernel_compute_test_utils.h
+  ${TEST_SRC_DIR}/providers/model_tester.h
+  ${TEST_SRC_DIR}/providers/op_tester.cc
+  ${TEST_SRC_DIR}/providers/op_tester.h
+  ${TEST_SRC_DIR}/unittest_main/test_main.cc
+
+  ${op_test_files}
+)
+
+set(onnxruntime_plugin_ep_op_test_libs
+  ${ONNXRUNTIME_TEST_LIBS}
+  onnxruntime_test_utils
+  ${onnxruntime_EXTERNAL_LIBRARIES}
+)
+
+AddTest(
+  TARGET onnxruntime_plugin_ep_op_test
+  SOURCES ${onnxruntime_plugin_ep_op_test_srcs}
+  LIBS ${onnxruntime_plugin_ep_op_test_libs}
+  DEPENDS ${all_dependencies}
+)
+
+target_compile_definitions(onnxruntime_plugin_ep_op_test PRIVATE
+  ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
+
+endblock()
 
 include(onnxruntime_fuzz_test.cmake)

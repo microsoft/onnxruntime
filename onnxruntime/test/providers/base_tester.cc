@@ -18,6 +18,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test_utils.h"
+#include "test/util/include/test_dynamic_plugin_ep.h"
 #include "test/util/include/test_environment.h"
 
 #ifdef ENABLE_TRAINING
@@ -39,6 +40,12 @@ void DebugTrap() {
 #endif
 }
 #endif
+
+const std::optional<std::string>& GetDynamicPluginEpName() {
+  static const auto dynamic_plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
+  return dynamic_plugin_ep_name;
+};
+
 }  // namespace
 
 BaseTester::~BaseTester() {
@@ -421,7 +428,8 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
 
 bool SetEpsForAllNodes(Graph& graph,
                        const std::vector<std::unique_ptr<IExecutionProvider>>& execution_providers,
-                       const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries) {
+                       const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries,
+                       const std::function<bool(const IExecutionProvider&)>& ep_uses_kernel_registry_fn) {
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
   const KernelRegistry::TypeConstraintMap type_constraint_map{};
 
@@ -436,38 +444,35 @@ bool SetEpsForAllNodes(Graph& graph,
       auto provider_type = ep->Type();
 
       node.SetExecutionProviderType(provider_type);
-      if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
-          provider_type == onnxruntime::kTensorrtExecutionProvider ||
-          provider_type == onnxruntime::kNnapiExecutionProvider ||
-          provider_type == onnxruntime::kVSINPUExecutionProvider ||
-          provider_type == onnxruntime::kCoreMLExecutionProvider ||
-          provider_type == onnxruntime::kDnnlExecutionProvider ||
-          provider_type == onnxruntime::kQnnExecutionProvider ||
-          provider_type == onnxruntime::kSnpeExecutionProvider) {
+
+      if (!ep_uses_kernel_registry_fn(*ep)) {
         found = true;
         break;
       }
 
-      // Check the EP has an impl for the node from builtin registry.
-      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver,
-                                              logger)) {
-        found = true;
-        break;
-      }
-
-      // check the internal NHWC domain if EP requests NHWC as it may only have a kernel registered in that domain
-      if (ep->GetPreferredLayout() == DataLayout::NHWC) {
-        const KernelCreateInfo* kci = nullptr;
-        auto status = ep->GetKernelRegistry()->TryFindKernel(ep->Type(),
-                                                             std::string_view(node.OpType()),
-                                                             std::string_view(kMSInternalNHWCDomain),
-                                                             node.SinceVersion(),
-                                                             type_constraint_map,
-                                                             logger,
-                                                             &kci);
-        if (status.IsOK() && kci != nullptr) {
+      if (std::shared_ptr<KernelRegistry> ep_kernel_registry = ep->GetKernelRegistry();
+          ep_kernel_registry != nullptr) {
+        // Check the EP has an impl for the node from builtin registry.
+        if (KernelRegistry::HasImplementationOf(*ep_kernel_registry, node, ep->Type(), kernel_type_str_resolver,
+                                                logger)) {
           found = true;
           break;
+        }
+
+        // check the internal NHWC domain if EP requests NHWC as it may only have a kernel registered in that domain
+        if (ep->GetPreferredLayout() == DataLayout::NHWC) {
+          const KernelCreateInfo* kci = nullptr;
+          auto status = ep_kernel_registry->TryFindKernel(ep->Type(),
+                                                          std::string_view(node.OpType()),
+                                                          std::string_view(kMSInternalNHWCDomain),
+                                                          node.SinceVersion(),
+                                                          type_constraint_map,
+                                                          logger,
+                                                          &kci);
+          if (status.IsOK() && kci != nullptr) {
+            found = true;
+            break;
+          }
         }
       }
 
@@ -647,33 +652,45 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 
 #ifdef USE_TENSORRT
       // only run trt ep to reduce test time
-      static const std::string all_provider_types[] = {
+      static const std::vector<std::string> all_provider_types = {
           kTensorrtExecutionProvider,
       };
 #else
-      static const std::string all_provider_types[] = {
-          kCpuExecutionProvider,
-          kCudaExecutionProvider,
+      static const std::vector<std::string> all_provider_types = [&](){
+        std::vector<std::string> provider_types{
+            kCpuExecutionProvider,
+            kCudaExecutionProvider,
 #ifdef ENABLE_CUDA_NHWC_OPS
-          kCudaNHWCExecutionProvider,
+            kCudaNHWCExecutionProvider,
 #endif
-          kDnnlExecutionProvider,
-          kTensorrtExecutionProvider,
-          kNvTensorRTRTXExecutionProvider,
-          kOpenVINOExecutionProvider,
-          kDmlExecutionProvider,
-          kAclExecutionProvider,
-          kArmNNExecutionProvider,
-          kNnapiExecutionProvider,
-          kVSINPUExecutionProvider,
-          kRocmExecutionProvider,
-          kCoreMLExecutionProvider,
-          kCoreMLExecutionProviderMLProgram,
-          kQnnExecutionProvider,
-          kSnpeExecutionProvider,
-          kXnnpackExecutionProvider,
-          kWebGpuExecutionProvider,
-      };
+            kDnnlExecutionProvider,
+            kTensorrtExecutionProvider,
+            kNvTensorRTRTXExecutionProvider,
+            kOpenVINOExecutionProvider,
+            kDmlExecutionProvider,
+            kAclExecutionProvider,
+            kArmNNExecutionProvider,
+            kNnapiExecutionProvider,
+            kVSINPUExecutionProvider,
+            kRocmExecutionProvider,
+            kCoreMLExecutionProvider,
+            kCoreMLExecutionProviderMLProgram,
+            kQnnExecutionProvider,
+            kSnpeExecutionProvider,
+            kXnnpackExecutionProvider,
+            kWebGpuExecutionProvider,
+        };
+
+        const auto& dynamic_plugin_ep_name = GetDynamicPluginEpName();
+        if (dynamic_plugin_ep_name.has_value()) {
+          ORT_ENFORCE(std::find(provider_types.begin(), provider_types.end(),
+                                *dynamic_plugin_ep_name) == provider_types.end(),
+                      "Dynamic plugin EP name conflicts with a known EP name: ", *dynamic_plugin_ep_name);
+          provider_types.push_back(*dynamic_plugin_ep_name);
+        }
+
+        return provider_types;
+      }();
 
       // need to special case any synthetic EP names in the exclude list
       if (ctx_.excluded_provider_types.count(kCoreMLExecutionProvider) > 0) {
@@ -732,6 +749,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultDmlExecutionProvider();
         else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
           execution_provider = DefaultWebGpuExecutionProvider();
+        else if (provider_type == GetDynamicPluginEpName())
+          execution_provider = DefaultDynamicPluginExecutionProvider();
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
@@ -830,13 +849,46 @@ void BaseTester::ExecuteModelForEps(
   }
 
   ASSERT_TRUE(!execution_providers.empty()) << "Empty execution providers vector.";
-  if (try_assign_ep_for_nodes && !SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries)) {
-    std::string providers;
-    for (const auto& ep : execution_providers) {
-      providers.append(ep->Type() + " ");
+  if (try_assign_ep_for_nodes) {
+    auto ep_uses_kernel_registry = [](const IExecutionProvider& ep) {
+      const auto& provider_type = ep.Type();
+
+      constexpr std::array kEpsThatDoNotUseKernelRegistry{
+          kOpenVINOExecutionProvider,
+          kTensorrtExecutionProvider,
+          kNnapiExecutionProvider,
+          kVSINPUExecutionProvider,
+          kCoreMLExecutionProvider,
+          kDnnlExecutionProvider,
+          kQnnExecutionProvider,
+          kSnpeExecutionProvider,
+      };
+
+      // check list of known EPs that do not use a kernel registry
+      if (const auto ep_it = std::find(kEpsThatDoNotUseKernelRegistry.begin(), kEpsThatDoNotUseKernelRegistry.end(),
+                                       provider_type);
+          ep_it != kEpsThatDoNotUseKernelRegistry.end()) {
+        return false;
+      }
+
+      // assume that a dynamic plugin EP which does not return a kernel registry does not use one
+      if (provider_type == GetDynamicPluginEpName() &&
+          ep.GetKernelRegistry() == nullptr) {
+        return false;
+      }
+
+      // otherwise, assume that the EP uses a kernel registry
+      return true;
+    };
+
+    if (!SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries, ep_uses_kernel_registry)) {
+      std::string providers;
+      for (const auto& ep : execution_providers) {
+        providers.append(ep->Type() + " ");
+      }
+      LOGS_DEFAULT(WARNING) << "registered execution providers " << providers << " were unable to run the model.";
+      return;
     }
-    LOGS_DEFAULT(WARNING) << "registered execution providers " << providers << " were unable to run the model.";
-    return;
   }
 
   std::string provider_type;
@@ -875,7 +927,7 @@ void BaseTester::ExecuteModelForEps(
     *number_of_shared_pre_packed_weights_counter =
         session_object.GetSessionState().GetUsedSharedPrePackedWeightCounter();
   }
-};
+}
 
 void BaseTester::AddReferenceOutputs(const std::string& model_path, float abs_error,
                                      std::unique_ptr<IExecutionProvider> ep) {
