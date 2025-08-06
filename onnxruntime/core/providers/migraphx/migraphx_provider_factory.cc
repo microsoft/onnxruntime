@@ -245,7 +245,7 @@ struct MigraphXEpFactory : OrtEpFactory {
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
-    GetVendorId = GetVendorIdImpl;
+
     CreateAllocator = CreateAllocatorImpl;
     ReleaseAllocator = ReleaseAllocatorImpl;
     CreateDataTransfer = CreateDataTransferImpl;
@@ -266,21 +266,14 @@ struct MigraphXEpFactory : OrtEpFactory {
     return factory->vendor.c_str();
   }
 
-  static const char* GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
-    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
-    return factory->version.c_str();
-  }
-
   static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
     return factory->vendor_id;
   }
 
-  static OrtStatus* CreateDataTransferImpl(OrtEpFactory* this_ptr,
-                                           OrtDataTransferImpl** data_transfer) noexcept {
-    ORT_UNUSED_PARAMETER(this_ptr);
-    *data_transfer = nullptr;  // return nullptr to indicate that this EP does not support data transfer.
-    return nullptr;
+  static const char* GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    return factory->version.c_str();
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
@@ -341,6 +334,12 @@ struct MigraphXEpFactory : OrtEpFactory {
 
   static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* /*allocator*/) noexcept {
     // should never be called as we don't implement CreateAllocator
+  }
+
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* /*this_ptr*/,
+                                                        OrtDataTransferImpl** data_transfer) noexcept {
+    *data_transfer = nullptr;  // not implemented
+    return nullptr;
   }
 
   static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
