@@ -4918,3 +4918,15 @@ TEST(CApiTest, custom_cast) {
                                inputs, "output", expected_dims_y, expected_values_y, 0,
                                custom_op_domain, nullptr);
 }
+
+TEST(CApiTest, TestPhi4) {
+  constexpr const ORTCHAR_T* model_path = ORT_TSTR("D:\\dev\\data\\Phi4Initializers\\gt\\encoder_float.quant.onnx");
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING);
+  Ort::SessionOptions session_options;
+
+  try {
+    Ort::Session session(env, model_path, session_options);
+  } catch (const Ort::Exception& ex) {
+    std::cout << "Exception: " << ex.what() << std::endl;
+  }
+}

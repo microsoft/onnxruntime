@@ -1608,6 +1608,17 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
 
   /// <summary>
+  /// This function replaces all of the initializers within output_graph_proto
+  /// from this Graph instance. All in memory initializers are regenerated and inlined.
+  /// This is necessary even if the graph_proto_ is already up to date because initializers() may
+  /// contain obsolete initializers that are no longer in use due to optimizations and contain obsolete
+  /// references to OrtValues that may no longer be around (since we like appending rather than replacing).
+  /// </summary>
+  /// <param name="output_graph_proto">Destination GraphProto to receive the updated initializers.</param>
+  /// <returns>Status indicating success or failure.</returns>
+  Status RegenerateInitializersAndReplaceInMemory(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
+
+  /// <summary>
   /// This function traverses the graph bottom up and externalizes
   /// constant initializers along with their pre-packed blobs from different
   /// kernels. Writes constant initializers to the external file with any pre-packed
