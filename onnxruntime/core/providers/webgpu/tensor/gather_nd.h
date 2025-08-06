@@ -26,7 +26,7 @@ class GatherNDProgram final : public Program<GatherNDProgram> {
 
 class GatherNDBase : public WebGpuKernel {
  public:
-  GatherNDBase(const OpKernelInfo& info) : WebGpuKernel(info) {
+  explicit GatherNDBase(const OpKernelInfo& info) : WebGpuKernel(info) {
     info.GetAttrOrDefault("batch_dims", &batch_dims_, static_cast<int64_t>(0));
     ORT_ENFORCE(batch_dims_ >= 0);
   }
