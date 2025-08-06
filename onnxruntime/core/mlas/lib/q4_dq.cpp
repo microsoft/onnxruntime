@@ -1452,17 +1452,6 @@ MlasBlockwiseQuantMetaShape<MLAS_FP16, 2>(
     int& meta_cols
     );
 
-template
-void
-MlasBlockwiseQuantMetaShape<float, 2>(
-    int block_size,
-    bool columnwise,
-    int rows,
-    int columns,
-    int& meta_rows,
-    int& meta_cols
-    );
-
 template void
 MlasBlockwiseQuantMetaShape<float, 4>(
     int block_size,
@@ -1538,16 +1527,6 @@ MlasBlockwiseQuantizedShape<float, 4>(
     int& q_rows,
     int& q_cols
     );
-
-template void
-MlasBlockwiseQuantizedShape<float, 2>(
-    int block_size,
-    bool columnwise,
-    int rows,
-    int columns,
-    int& q_rows,
-    int& q_cols
-);
 
 template void
 MlasBlockwiseQuantizedShape<MLAS_FP16, 4>(
@@ -1817,20 +1796,6 @@ MlasQuantizeBlockwise<float, 4>(
     int leading_dimension,
     MLAS_THREADPOOL* thread_pool
     );
-
-template void
-MlasQuantizeBlockwise<float, 2>(
-    uint8_t* dst,
-    float* scales,
-    uint8_t* zero_points,
-    const float* src,
-    int block_size,
-    bool columnwise,
-    int rows,
-    int columns,
-    int leading_dimension,
-    MLAS_THREADPOOL* thread_pool
-);
 
 template
 void
