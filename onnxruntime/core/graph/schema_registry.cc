@@ -104,6 +104,23 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESP
   return common::Status::OK();
 }
 
+
+
+// list all schemas
+std::vector<ONNX_NAMESPACE::OpSchema> OnnxRuntimeOpSchemaRegistry::get_all_schemas_with_history(){
+    std::vector<ONNX_NAMESPACE::OpSchema> r;
+
+    for (auto& x : map_) {
+      for (auto& y : x.second) {
+        for (auto& z : y.second) {
+          r.emplace_back(z.second);
+        }
+      }
+    }
+    return r;
+
+  }
+
 // Return the schema with biggest version, which is not greater than specified
 // <op_set_version> in specified domain. The value of earliest_opset_where_unchanged
 // is also set to the earliest version preceding op_set_version where the operator

@@ -66,6 +66,11 @@
 
 #include <pybind11/functional.h>
 
+
+#include "core/graph/schema_registry.h"
+#include "core/framework/customregistry.h"
+#include "core/session/custom_ops.h"
+
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
 // GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
 // GCC 4.x.
@@ -2347,6 +2352,19 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
 #endif
           },
           R"pbdoc(Specify the path to the shared library containing the custom op kernels required to run a model.)pbdoc")
+      .def(
+          "list_custom_ops_library",
+          [](PySessionOptions* options) -> std::vector<ONNX_NAMESPACE::OpSchema> {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+              std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
+              ORT_THROW_IF_ERROR(CreateCustomRegistry(options->custom_op_domains_, registry));
+              return registry->GetOpschemaRegistry()->get_all_schemas_with_history();
+#else
+              ORT_UNUSED_PARAMETER(options);
+              ORT_THROW("Custom Ops are not supported in this build.");
+#endif
+            },
+            R"pbdoc(List all OpSchema introduce by custom libraries)pbdoc")
       .def(
           "add_initializer", [](PySessionOptions* options, const char* name, py::object& ml_value_pyobject) -> void {
             ORT_ENFORCE(strcmp(Py_TYPE(ml_value_pyobject.ptr())->tp_name, PYTHON_ORTVALUE_OBJECT_NAME) == 0, "The provided Python object must be an OrtValue");
