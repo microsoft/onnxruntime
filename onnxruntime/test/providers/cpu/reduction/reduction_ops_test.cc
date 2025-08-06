@@ -2356,20 +2356,37 @@ TEST(ReductionOpTest, ReduceSum_int32) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceSum_uint32) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<uint32_t>("data", {3, 2, 2},
+                          {1, 2,
+                           3, 4,
+
+                           5, 6,
+                           7, 8,
+
+                           9, 10,
+                           11, uint32_t(1) << 30});
+  test.AddOutput<uint32_t>("reduced", {1, 2, 1}, {33, 33 + (uint32_t(1) << 30)});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceSum_uint64) {
   OpTester test("ReduceSum");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<uint64_t>("data", {3, 2, 2},
-                         {1, 2,
-                          3, 4,
+                          {1, 2,
+                           3, 4,
 
-                          5, 6,
-                          7, 8,
+                           5, 6,
+                           7, 8,
 
-                          9, 10,
-                          11, std::uint64_t(1) << 62});
-  test.AddOutput<int32_t>("reduced", {1, 2, 1}, {33, 33 + std::uint64_t(1) << 62});
+                           9, 10,
+                           11, uint64_t(1) << 62});
+  test.AddOutput<uint64_t>("reduced", {1, 2, 1}, {33, 33 + (uint64_t(1) << 62)});
   test.Run();
 }
 

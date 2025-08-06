@@ -81,39 +81,38 @@ namespace onnxruntime {
       x<int64_t>);
 
 #define REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT64_ONLY(x, sinceVersion)                 \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                     \
-      x,                                                                              \
-      sinceVersion,                                                                   \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                      \
+      x,                                                                               \
+      sinceVersion,                                                                    \
       uint64_t,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint64_t>()), \
       x<uint64_t>);
 
 #define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT64_ONLY(x, startVer, endVer)   \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
-      x,                                                                              \
-      startVer,                                                                       \
-      endVer,                                                                         \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                            \
+      x,                                                                               \
+      startVer,                                                                        \
+      endVer,                                                                          \
       uint64_t,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint64_t>()), \
       x<uint64_t>);
 
 #define REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT32_ONLY(x, sinceVersion)                 \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                     \
-      x,                                                                              \
-      sinceVersion,                                                                   \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                      \
+      x,                                                                               \
+      sinceVersion,                                                                    \
       uint32_t,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint32_t>()), \
       x<uint32_t>);
 
 #define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT32_ONLY(x, startVer, endVer)   \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
-      x,                                                                              \
-      startVer,                                                                       \
-      endVer,                                                                         \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                            \
+      x,                                                                               \
+      startVer,                                                                        \
+      endVer,                                                                          \
       uint32_t,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint32_t>()), \
       x<uint32_t>);
-
 
 #define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT8_ONLY(x, startVer, endVer)   \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                          \
