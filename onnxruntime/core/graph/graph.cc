@@ -3385,7 +3385,12 @@ Status Graph::Resolve(const ResolveOptions& options) {
 
             return Status::OK(); };
 
-  ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
+  return ForThisAndAllSubgraphs(all_subgraphs, finalize_func);
+}
+
+Status Graph::ConvertInitializersIntoOrtValues() {
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
 
   auto put_weights_maybe_in_memory_func = [&](Graph& graph) -> Status {
     // if we have any initializers that are not in memory, put them there.
