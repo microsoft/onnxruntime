@@ -156,7 +156,7 @@ ToType(const std::vector<T2>& vec) {
 template <typename T>
 typename std::enable_if<boost::mp11::mp_contains<TypeList<UInt4x2, Int4x2>, T>::value, std::vector<T>>::type
 ToType(const std::vector<int>& vec) {
-  using UnpackedType = T::UnpackedType;
+  using UnpackedType = typename T::UnpackedType;
 
   // UInt4x2 and Int4x2 uses global packing instead of per-row packing.
   size_t i = 0;

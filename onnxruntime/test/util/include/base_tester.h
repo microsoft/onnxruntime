@@ -14,6 +14,7 @@
 #include "core/framework/run_options.h"
 #include "core/framework/tensor.h"
 #include "core/framework/TensorSeq.h"
+#include "core/graph/graph.h"
 #include "core/graph/model.h"
 
 #include "test/framework/TestAllocatorManager.h"
