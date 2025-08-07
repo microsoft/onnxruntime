@@ -987,14 +987,14 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       "${TEST_SRC_DIR}/framework/inference_session_test.cc"
       "${TEST_SRC_DIR}/platform/barrier_test.cc"
       "${TEST_SRC_DIR}/platform/threadpool_test.cc"
-      "${TEST_SRC_DIR}/providers/cpu/controlflow/loop_op_test.cc"
-      "${TEST_SRC_DIR}/providers/cpu/nn/string_normalizer_op_test.cc"
+      "${TEST_SRC_DIR}/providers/cpu/controlflow/loop_test.cc"
+      "${TEST_SRC_DIR}/providers/cpu/nn/string_normalizer_test.cc"
       "${TEST_SRC_DIR}/providers/memcpy_test.cc"
     )
   endif()
   list(REMOVE_ITEM all_tests
     "${TEST_SRC_DIR}/providers/cpu/reduction/reduction_ops_test.cc"
-    "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_op_test.cc")
+    "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test.cc")
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR IOS)
