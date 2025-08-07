@@ -1205,63 +1205,61 @@ endif()
 # onnxruntime_provider_op_test
 # Generic op tests that apply to multiple providers.
 block()
+  # temp override for quicker compilation while testing...
+  # TODO remove
+  # set(generic_op_test_srcs
+  #   ${TEST_SRC_DIR}/providers/cpu/tensor/unique_op_test.cc
+  #   ${TEST_SRC_DIR}/providers/cpu/math/element_wise_ops_test.cc
+  # )
 
-# temp override for quicker compilation while testing...
-# TODO remove
-# set(generic_op_test_srcs
-#   ${TEST_SRC_DIR}/providers/cpu/tensor/unique_op_test.cc
-#   ${TEST_SRC_DIR}/providers/cpu/math/element_wise_ops_test.cc
-# )
+  set(onnxruntime_provider_op_test_srcs
+    ${generic_op_test_srcs}
 
-set(onnxruntime_provider_op_test_srcs
-  ${generic_op_test_srcs}
+    # supporting test source files
+    ${TEST_SRC_DIR}/common/cuda_op_test_utils.cc
+    ${TEST_SRC_DIR}/common/cuda_op_test_utils.h
+    ${TEST_SRC_DIR}/common/tensor_op_test_utils.cc
+    ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
+    ${TEST_SRC_DIR}/contrib_ops/function_test_util.cc
+    ${TEST_SRC_DIR}/contrib_ops/function_test_util.h
+    ${TEST_SRC_DIR}/framework/TestAllocatorManager.cc
+    ${TEST_SRC_DIR}/framework/TestAllocatorManager.h
+    ${TEST_SRC_DIR}/framework/test_utils.cc
+    ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.cc
+    ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.h
+    ${TEST_SRC_DIR}/framework/dummy_allocator.cc
+    ${TEST_SRC_DIR}/framework/dummy_allocator.h
+    ${TEST_SRC_DIR}/providers/base_tester.cc
+    ${TEST_SRC_DIR}/providers/base_tester.h
+    ${TEST_SRC_DIR}/providers/checkers.cc
+    ${TEST_SRC_DIR}/providers/checkers.h
+    ${TEST_SRC_DIR}/providers/compare_provider_test_utils.cc
+    ${TEST_SRC_DIR}/providers/compare_provider_test_utils.h
+    ${TEST_SRC_DIR}/contrib_ops/qordered_test_utils.h
+    ${TEST_SRC_DIR}/providers/kernel_compute_test_utils.cc
+    ${TEST_SRC_DIR}/providers/kernel_compute_test_utils.h
+    ${TEST_SRC_DIR}/providers/model_tester.h
+    ${TEST_SRC_DIR}/providers/op_tester.cc
+    ${TEST_SRC_DIR}/providers/op_tester.h
 
-  # supporting test source files
-  ${TEST_SRC_DIR}/common/cuda_op_test_utils.cc
-  ${TEST_SRC_DIR}/common/cuda_op_test_utils.h
-  ${TEST_SRC_DIR}/common/tensor_op_test_utils.cc
-  ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
-  ${TEST_SRC_DIR}/contrib_ops/function_test_util.cc
-  ${TEST_SRC_DIR}/contrib_ops/function_test_util.h
-  ${TEST_SRC_DIR}/framework/TestAllocatorManager.cc
-  ${TEST_SRC_DIR}/framework/TestAllocatorManager.h
-  ${TEST_SRC_DIR}/framework/test_utils.cc
-  ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.cc
-  ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.h
-  ${TEST_SRC_DIR}/framework/dummy_allocator.cc
-  ${TEST_SRC_DIR}/framework/dummy_allocator.h
-  ${TEST_SRC_DIR}/providers/base_tester.cc
-  ${TEST_SRC_DIR}/providers/base_tester.h
-  ${TEST_SRC_DIR}/providers/checkers.cc
-  ${TEST_SRC_DIR}/providers/checkers.h
-  ${TEST_SRC_DIR}/providers/compare_provider_test_utils.cc
-  ${TEST_SRC_DIR}/providers/compare_provider_test_utils.h
-  ${TEST_SRC_DIR}/contrib_ops/qordered_test_utils.h
-  ${TEST_SRC_DIR}/providers/kernel_compute_test_utils.cc
-  ${TEST_SRC_DIR}/providers/kernel_compute_test_utils.h
-  ${TEST_SRC_DIR}/providers/model_tester.h
-  ${TEST_SRC_DIR}/providers/op_tester.cc
-  ${TEST_SRC_DIR}/providers/op_tester.h
+    ${onnxruntime_unittest_main_src}
+  )
 
-  ${onnxruntime_unittest_main_src}
-)
+  set(onnxruntime_provider_op_test_libs
+    ${ONNXRUNTIME_TEST_LIBS}
+    onnxruntime_test_utils
+    ${onnxruntime_EXTERNAL_LIBRARIES}
+  )
 
-set(onnxruntime_provider_op_test_libs
-  ${ONNXRUNTIME_TEST_LIBS}
-  onnxruntime_test_utils
-  ${onnxruntime_EXTERNAL_LIBRARIES}
-)
+  AddTest(
+    TARGET onnxruntime_provider_op_test
+    SOURCES ${onnxruntime_provider_op_test_srcs}
+    LIBS ${onnxruntime_provider_op_test_libs}
+    DEPENDS ${all_dependencies}
+  )
 
-AddTest(
-  TARGET onnxruntime_provider_op_test
-  SOURCES ${onnxruntime_provider_op_test_srcs}
-  LIBS ${onnxruntime_provider_op_test_libs}
-  DEPENDS ${all_dependencies}
-)
-
-# enable dynamic plugin EP infrastructure
-target_compile_definitions(onnxruntime_provider_op_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
-
+  # enable dynamic plugin EP infrastructure
+  target_compile_definitions(onnxruntime_provider_op_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
 endblock()
 
 set(onnx_test_libs
