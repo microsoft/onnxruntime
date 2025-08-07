@@ -3,18 +3,20 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/platform/threadpool.h"
-#include "core/providers/cpu/llm/attention_parameters.h"
+#include "core/providers/cuda/cuda_kernel.h"
+#include "core/providers/cpu/llm/attention_helper.h"
 
 namespace onnxruntime {
+namespace cuda {
 
+/**
+ * Follows the same algorithm as AttentionBase (CPU).
+ */
 template <typename T>
-class AttentionBase : public OpKernel {
+class NaiveAttention {
  public:
-  AttentionBase(const OpKernelInfo& info) : OpKernel(info) {}
-
-  Status ApplyAttention(OpKernelContext* context,
+  Status ApplyAttention(OpKernelContext* context,                                // OpKernelContext
+                        cudaStream_t stream,                                     // CUDA stream
                         const T* Q,                                              // Q data with shape BxNxSxH
                         const T* K,                                              // K data with shape BxNxLxH
                         const T* V,                                              // V value with size BxNxLxH_v
@@ -28,7 +30,8 @@ class AttentionBase : public OpKernel {
                         const attention_helper::AttentionParameters& parameters  // attention parameters
   ) const;
 
- protected:
+  // protected:
+  /*
   void ComputeVxAttentionScore(T* output,                  // buffer for the result with size BxSxNxH_v
                                const T* attention_probs,   // Attention probs with size BxNxSxT
                                const T* V,                 // V value with size BxNxLxH_v
@@ -42,10 +45,12 @@ class AttentionBase : public OpKernel {
                                int kv_num_heads,           // number of KV heads
                                const T* past_value,        // past value only (if not using past state)
                                T* present_value,           // present value only (if not using present state)
-                               bool transpose_output,      // whether to transpose the output from BxNxSxH to BxSxNxH
-                               concurrency::ThreadPool* tp) const;
-
-  void ComputeAttentionProbs(T* attention_probs,                                       // output buffer with size BxNxSxT
+                               bool transpose_output       // whether to transpose the output from BxNxSxH to BxSxNxH
+  ) const;
+  */
+  /*
+  void ComputeAttentionProbs(cudaStream_t stream,
+                             T* attention_probs,                                       // output buffer with size BxNxSxT
                              const T* Q,                                               // Q data. Its size is BxNxSxH
                              const T* K,                                               // k data. Its size is BxNxLxH
                              const Tensor* mask_index,                                 // mask_index
@@ -53,36 +58,23 @@ class AttentionBase : public OpKernel {
                              const T* past_key,                                        // past key only (if not using past state)
                              T* present_key,                                           // present key only (if not using present state)
                              T* output_qk,                                             // Q*K output
-                             concurrency::ThreadPool* tp,
                              AllocatorPtr allocator) const;
+                             */
 
-  T* ConcatStateChunk(const T* past,
-                      const T* chunk,
-                      T* present,
-                      size_t past_chunk_length,
-                      size_t input_chunk_length,
-                      size_t present_chunk_length,
-                      size_t num_heads,
-                      size_t head_size,
-                      std::ptrdiff_t batch_i,
-                      std::ptrdiff_t head_i,
-                      bool transposed) const;
+  /*
+T* ConcatStateChunk(const T* past,
+                    const T* chunk,
+                    T* present,
+                    size_t past_chunk_length,
+                    size_t input_chunk_length,
+                    size_t present_chunk_length,
+                    size_t num_heads,
+                    size_t head_size,
+                    std::ptrdiff_t batch_i,
+                    std::ptrdiff_t head_i,
+                    bool transposed) const;
+                    */
 };
 
-template <typename T>
-class Attention final : public AttentionBase<T> {
- public:
-  Attention(const OpKernelInfo& info);
-  Status Compute(OpKernelContext* context) const override;
-
- protected:
-  bool is_causal_;
-  int kv_num_heads_;
-  int q_num_heads_;
-  attention_helper::QKMatMulOutputMode qk_matmul_output_mode_;
-  float scale_;
-  float softcap_;
-  int softmax_precision_;
-};
-
+}  // namespace cuda
 }  // namespace onnxruntime
