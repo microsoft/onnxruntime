@@ -586,10 +586,10 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   node_arg.SetShape(new_shape);
 
   graph_.RemoveInitializedTensor(name_str);
-  constexpr const bool use_tensor_buffer_true = true;
+  constexpr const bool use_tensor_buffer_false = false;
   ONNX_NAMESPACE::TensorProto new_tensor_proto = utils::TensorToTensorProto(out_tensor, name_str,
-                                                                            use_tensor_buffer_true);
-  graph_utils::AddInitializerWithExternalData(graph_, new_tensor_proto, std::move(out_tensor));
+                                                                            use_tensor_buffer_false);
+  graph_utils::AddInitializer(graph_, new_tensor_proto);
 }
 
 void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64_t>& shape) {
@@ -622,7 +622,7 @@ void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64
   }
 
   graph_.RemoveInitializedTensor(name_str);
-  graph_utils::AddInitializerWithExternalData(graph_, new_tensor_proto);
+  graph_utils::AddInitializer(graph_, new_tensor_proto);
 
   auto* node_arg = graph_.GetNodeArg(name_str);
   TensorShapeProto new_shape;
@@ -794,7 +794,7 @@ std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector
   }
   utils::SetRawDataInTensorProto(tensor_proto, data.data(), data.size());
 
-  const auto& node_arg = graph_utils::AddInitializerWithExternalData(graph_, tensor_proto);
+  const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
   return node_arg.Name();
 }
 
