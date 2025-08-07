@@ -10,10 +10,56 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
 
+# Exclude files based on CMake options.
+function(filter_test_srcs test_srcs_var)
+  set(excluded_path_prefixes)
+
+  if(onnxruntime_DISABLE_CONTRIB_OPS)
+    list(APPEND excluded_path_prefixes ${TEST_SRC_DIR}/contrib_ops)
+  endif()
+
+  if(onnxruntime_DISABLE_ML_OPS)
+    list(APPEND excluded_path_prefixes ${TEST_SRC_DIR}/providers/cpu/ml)
+  endif()
+
+  list(LENGTH excluded_path_prefixes num_excluded_path_prefixes)
+
+  if("${num_excluded_path_prefixes}" GREATER "0")
+    set(filtered_test_srcs)
+
+    foreach(test_src ${${test_srcs_var}})
+      set(is_excluded false)
+
+      foreach(excluded_path_prefix ${excluded_path_prefixes})
+        cmake_path(ABSOLUTE_PATH test_src OUTPUT_VARIABLE test_src_absolute)
+
+        cmake_path(IS_PREFIX excluded_path_prefix ${test_src_absolute} NORMALIZE is_excluded)
+
+        if (is_excluded)
+          break()
+        endif()
+      endforeach()
+
+      if(NOT is_excluded)
+        list(APPEND filtered_test_srcs ${test_src})
+      endif()
+    endforeach()
+
+    set(${test_srcs_var} ${filtered_test_srcs} PARENT_SCOPE)
+  endif()
+endfunction()
+
 set(disabled_warnings)
 function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
   list(REMOVE_DUPLICATES _UT_SOURCES)
+
+  filter_test_srcs(_UT_SOURCES)
+
+  # for debugging
+  # TODO remove
+  list(JOIN _UT_SOURCES "\n" ut_sources_display_output)
+  message(STATUS "test target ${_UT_TARGET} sources:\n${ut_sources_display_output}")
 
   if (IOS)
     onnxruntime_add_executable(${_UT_TARGET} ${TEST_SRC_DIR}/xctest/orttestmain.m)
@@ -253,6 +299,67 @@ function(AddTest)
   endif()
 endfunction(AddTest)
 
+# Given a list of test source files, in variable `all_srcs_var`, partition it into two lists:
+# - a list of all generic (not specific to a particular execution provider) op test source files,
+#   stored in `generic_op_test_srcs_var`
+# - a list of the other remaining test source files, stored in `other_srcs_var`
+#
+# In particular, generic op test source files:
+# - are located in these root paths:
+#   - onnxruntime/test/contrib_ops
+#   - onnxruntime/test/providers/cpu
+# - have filenames that match this regex pattern:
+#   ^.*_ops?_test.*\.cc$
+#   E.g., "gemm_op_test.cc" or "reduction_ops_test.cc"
+function(partition_generic_op_test_srcs
+         all_srcs_var generic_op_test_srcs_var other_srcs_var)
+  set(op_test_file_roots
+    ${TEST_SRC_DIR}/contrib_ops
+    ${TEST_SRC_DIR}/providers/cpu
+  )
+
+  set(op_test_filename_regex "^.*_ops?_test.*\\.cc$")
+
+  function(is_generic_op_test_src src_var result_var)
+    cmake_path(ABSOLUTE_PATH ${src_var} OUTPUT_VARIABLE src_absolute)
+
+    foreach(op_test_file_root ${op_test_file_roots})
+      cmake_path(IS_PREFIX op_test_file_root ${src_absolute} NORMALIZE src_matches_root)
+      if(src_matches_root)
+        break()
+      endif()
+    endforeach()
+
+    if(NOT src_matches_root)
+      set(${result_var} false PARENT_SCOPE)
+      return()
+    endif()
+
+    cmake_path(GET ${src_var} FILENAME src_filename)
+    if(NOT "${src_filename}" MATCHES "${op_test_filename_regex}")
+      set(${result_var} false PARENT_SCOPE)
+      return()
+    endif()
+
+    set(${result_var} true PARENT_SCOPE)
+  endfunction()
+
+  set(generic_op_test_srcs)
+  set(other_srcs)
+
+  foreach(src ${${all_srcs_var}})
+    is_generic_op_test_src(src is_generic_op_test_src_result)
+    if(is_generic_op_test_src_result)
+      list(APPEND generic_op_test_srcs ${src})
+    else()
+      list(APPEND other_srcs ${src})
+    endif()
+  endforeach()
+
+  set(${generic_op_test_srcs_var} ${generic_op_test_srcs} PARENT_SCOPE)
+  set(${other_srcs_var} ${other_srcs} PARENT_SCOPE)
+endfunction()
+
 # general program entrypoint for C++ unit tests
 set(onnxruntime_unittest_main_src "${TEST_SRC_DIR}/unittest_main/test_main.cc")
 
@@ -381,15 +488,11 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     "${TEST_SRC_DIR}/framework/TestAllocatorManager.h"
     "${TEST_SRC_DIR}/framework/test_utils.cc"
     "${TEST_SRC_DIR}/framework/test_utils.h"
+    "${TEST_SRC_DIR}/contrib_ops/*.h"
+    "${TEST_SRC_DIR}/contrib_ops/*.cc"
+    "${TEST_SRC_DIR}/contrib_ops/math/*.h"
+    "${TEST_SRC_DIR}/contrib_ops/math/*.cc"
   )
-
-  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-    list(APPEND onnxruntime_test_providers_src_patterns
-      "${TEST_SRC_DIR}/contrib_ops/*.h"
-      "${TEST_SRC_DIR}/contrib_ops/*.cc"
-      "${TEST_SRC_DIR}/contrib_ops/math/*.h"
-      "${TEST_SRC_DIR}/contrib_ops/math/*.cc")
-  endif()
 
 else()
   set(onnxruntime_test_providers_src_patterns
@@ -405,10 +508,6 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/cpu/*"
     )
-endif()
-
-if(onnxruntime_DISABLE_ML_OPS)
-  list(FILTER onnxruntime_test_providers_cpu_src EXCLUDE REGEX ".*/ml/.*")
 endif()
 
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
@@ -841,7 +940,7 @@ set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxru
         ${onnxruntime_test_flatbuffers_src} ${onnxruntime_test_lora_src})
 
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
-  if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     set(onnxruntime_test_cuda_kernels_src_patterns "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc")
   endif()
 
@@ -896,13 +995,14 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       "${TEST_SRC_DIR}/framework/inference_session_test.cc"
       "${TEST_SRC_DIR}/platform/barrier_test.cc"
       "${TEST_SRC_DIR}/platform/threadpool_test.cc"
-      "${TEST_SRC_DIR}/providers/cpu/controlflow/loop_test.cc"
-      "${TEST_SRC_DIR}/providers/cpu/nn/string_normalizer_test.cc"
+      "${TEST_SRC_DIR}/providers/cpu/controlflow/loop_op_test.cc"
+      "${TEST_SRC_DIR}/providers/cpu/nn/string_normalizer_op_test.cc"
       "${TEST_SRC_DIR}/providers/memcpy_test.cc"
     )
   endif()
-  list(REMOVE_ITEM all_tests "${TEST_SRC_DIR}/providers/cpu/reduction/reduction_ops_test.cc"
-      "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test.cc")
+  list(REMOVE_ITEM all_tests
+    "${TEST_SRC_DIR}/providers/cpu/reduction/reduction_ops_test.cc"
+    "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_op_test.cc")
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR IOS)
@@ -928,9 +1028,11 @@ if(NOT onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   list(REMOVE_ITEM all_tests ${TEST_SRC_DIR}/providers/cuda/cuda_provider_test.cc)
 endif()
 
+partition_generic_op_test_srcs(all_tests generic_op_test_srcs onnxruntime_test_all_srcs)
+
 AddTest(
   TARGET onnxruntime_test_all
-  SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
+  SOURCES ${onnxruntime_test_all_srcs} ${onnxruntime_unittest_main_src}
   LIBS
     ${onnx_test_runner_common_lib} ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     onnx_test_data_proto
@@ -1100,6 +1202,67 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 
+# onnxruntime_provider_op_test
+# Generic op tests that apply to multiple providers.
+block()
+
+# temp override for quicker compilation while testing...
+# TODO remove
+# set(generic_op_test_srcs
+#   ${TEST_SRC_DIR}/providers/cpu/tensor/unique_op_test.cc
+#   ${TEST_SRC_DIR}/providers/cpu/math/element_wise_ops_test.cc
+# )
+
+set(onnxruntime_provider_op_test_srcs
+  ${generic_op_test_srcs}
+
+  # supporting test source files
+  ${TEST_SRC_DIR}/common/cuda_op_test_utils.cc
+  ${TEST_SRC_DIR}/common/cuda_op_test_utils.h
+  ${TEST_SRC_DIR}/common/tensor_op_test_utils.cc
+  ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
+  ${TEST_SRC_DIR}/contrib_ops/function_test_util.cc
+  ${TEST_SRC_DIR}/contrib_ops/function_test_util.h
+  ${TEST_SRC_DIR}/framework/TestAllocatorManager.cc
+  ${TEST_SRC_DIR}/framework/TestAllocatorManager.h
+  ${TEST_SRC_DIR}/framework/test_utils.cc
+  ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.cc
+  ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.h
+  ${TEST_SRC_DIR}/framework/dummy_allocator.cc
+  ${TEST_SRC_DIR}/framework/dummy_allocator.h
+  ${TEST_SRC_DIR}/providers/base_tester.cc
+  ${TEST_SRC_DIR}/providers/base_tester.h
+  ${TEST_SRC_DIR}/providers/checkers.cc
+  ${TEST_SRC_DIR}/providers/checkers.h
+  ${TEST_SRC_DIR}/providers/compare_provider_test_utils.cc
+  ${TEST_SRC_DIR}/providers/compare_provider_test_utils.h
+  ${TEST_SRC_DIR}/contrib_ops/qordered_test_utils.h
+  ${TEST_SRC_DIR}/providers/kernel_compute_test_utils.cc
+  ${TEST_SRC_DIR}/providers/kernel_compute_test_utils.h
+  ${TEST_SRC_DIR}/providers/model_tester.h
+  ${TEST_SRC_DIR}/providers/op_tester.cc
+  ${TEST_SRC_DIR}/providers/op_tester.h
+
+  ${onnxruntime_unittest_main_src}
+)
+
+set(onnxruntime_provider_op_test_libs
+  ${ONNXRUNTIME_TEST_LIBS}
+  onnxruntime_test_utils
+  ${onnxruntime_EXTERNAL_LIBRARIES}
+)
+
+AddTest(
+  TARGET onnxruntime_provider_op_test
+  SOURCES ${onnxruntime_provider_op_test_srcs}
+  LIBS ${onnxruntime_provider_op_test_libs}
+  DEPENDS ${all_dependencies}
+)
+
+# enable dynamic plugin EP infrastructure
+target_compile_definitions(onnxruntime_provider_op_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
+
+endblock()
 
 set(onnx_test_libs
   onnxruntime_test_utils
@@ -2001,83 +2164,5 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
     set_property(TARGET onnxruntime_ep_graph_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
   endif()
 endif()
-
-# onnxruntime_plugin_ep_op_test
-# Runs op tests with a plugin EP enabled.
-block()
-
-# TODO should we remove op tests from onnxruntime_test_all?
-
-set(op_test_file_roots
-  ${TEST_SRC_DIR}/contrib_ops
-  ${TEST_SRC_DIR}/providers/cpu
-)
-
-set(op_test_file_patterns)
-
-foreach(op_test_file_root ${op_test_file_roots})
-  list(APPEND op_test_file_patterns
-    "${op_test_file_root}/*_op_test*.cc"
-    "${op_test_file_root}/*_ops_test*.cc"
-  )
-endforeach()
-
-file(GLOB_RECURSE op_test_files CONFIGURE_DEPENDS ${op_test_file_patterns})
-
-# temp override for quicker compilation while testing...
-# TODO remove
-# set(op_test_files
-#   ${TEST_SRC_DIR}/providers/cpu/tensor/unique_op_test.cc
-#   ${TEST_SRC_DIR}/providers/cpu/math/element_wise_ops_test.cc
-# )
-
-set(onnxruntime_plugin_ep_op_test_srcs
-  ${TEST_SRC_DIR}/common/cuda_op_test_utils.cc
-  ${TEST_SRC_DIR}/common/cuda_op_test_utils.h
-  ${TEST_SRC_DIR}/common/tensor_op_test_utils.cc
-  ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
-  ${TEST_SRC_DIR}/contrib_ops/function_test_util.cc
-  ${TEST_SRC_DIR}/contrib_ops/function_test_util.h
-  ${TEST_SRC_DIR}/framework/TestAllocatorManager.cc
-  ${TEST_SRC_DIR}/framework/TestAllocatorManager.h
-  ${TEST_SRC_DIR}/framework/test_utils.cc
-  ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.cc
-  ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.h
-  ${TEST_SRC_DIR}/framework/dummy_allocator.cc
-  ${TEST_SRC_DIR}/framework/dummy_allocator.h
-  ${TEST_SRC_DIR}/providers/base_tester.cc
-  ${TEST_SRC_DIR}/providers/base_tester.h
-  ${TEST_SRC_DIR}/providers/checkers.cc
-  ${TEST_SRC_DIR}/providers/checkers.h
-  ${TEST_SRC_DIR}/providers/compare_provider_test_utils.cc
-  ${TEST_SRC_DIR}/providers/compare_provider_test_utils.h
-  ${TEST_SRC_DIR}/contrib_ops/qordered_test_utils.h
-  ${TEST_SRC_DIR}/providers/kernel_compute_test_utils.cc
-  ${TEST_SRC_DIR}/providers/kernel_compute_test_utils.h
-  ${TEST_SRC_DIR}/providers/model_tester.h
-  ${TEST_SRC_DIR}/providers/op_tester.cc
-  ${TEST_SRC_DIR}/providers/op_tester.h
-  ${TEST_SRC_DIR}/unittest_main/test_main.cc
-
-  ${op_test_files}
-)
-
-set(onnxruntime_plugin_ep_op_test_libs
-  ${ONNXRUNTIME_TEST_LIBS}
-  onnxruntime_test_utils
-  ${onnxruntime_EXTERNAL_LIBRARIES}
-)
-
-AddTest(
-  TARGET onnxruntime_plugin_ep_op_test
-  SOURCES ${onnxruntime_plugin_ep_op_test_srcs}
-  LIBS ${onnxruntime_plugin_ep_op_test_libs}
-  DEPENDS ${all_dependencies}
-)
-
-target_compile_definitions(onnxruntime_plugin_ep_op_test PRIVATE
-  ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
-
-endblock()
 
 include(onnxruntime_fuzz_test.cmake)
