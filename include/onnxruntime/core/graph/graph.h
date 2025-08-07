@@ -1449,6 +1449,20 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <returns></returns>
   Status ConvertInitializersIntoOrtValues();
 
+  /**
+   * @brief Converts a subset of graph TensorProto initializers into OrtValues and updates the graph proto.
+   *
+   * This function converts specified TensorProto initializers in the graph into OrtValues and
+   * creates in-memory external data references for each OrtValue. It then updates the provided
+   * GraphProto with the modified initializers.
+   *
+   * @param iterators Span of iterators pointing to the initializers and the order that should be processed
+   * @param output_graph_proto The GraphProto to be updated with the modified initializers
+   * @return Status Returns a Status object indicating success or any errors that occurred during conversion
+   */
+  Status RegenerateInitializersAndReplaceInMemory(gsl::span<const InitializedTensorSet::const_iterator> iterators,
+                                                  ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
+
   const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept {
     return outer_scope_node_arg_names_;
   }
