@@ -615,6 +615,9 @@ else()
             list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/qgemm_mmla_sve_impl.cpp)
             set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_mmla_sve_impl.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+i8mm -fno-stack-protector ${ORT_SVE_ABI_FLAGS} ")
           endif()
+          # SVE FP32 GEMM (SGEMM) compute kernels.
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/sgemm_sve.cpp)
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/sgemm_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve -O3 -ffast-math -funroll-loops ${ORT_SVE_ABI_FLAGS} ")
           list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         endif()
 
