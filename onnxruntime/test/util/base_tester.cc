@@ -656,7 +656,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kTensorrtExecutionProvider,
       };
 #else
-      static const std::vector<std::string> all_provider_types = [&](){
+      static const std::vector<std::string> all_provider_types = [&]() {
         std::vector<std::string> provider_types{
             kCpuExecutionProvider,
             kCudaExecutionProvider,
