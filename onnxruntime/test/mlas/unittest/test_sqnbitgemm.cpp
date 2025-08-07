@@ -444,11 +444,11 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   size_t count = 0;
   // TODO: enable these test for 2bit development.
-  //count += SQNBitGemmShortExecuteTest<2, 16>::RegisterShortExecuteTests();
-  //count += SQNBitGemmShortExecuteTest<2, 32>::RegisterShortExecuteTests();
-  //count += SQNBitGemmShortExecuteTest<2, 64>::RegisterShortExecuteTests();
-  //count += SQNBitGemmShortExecuteTest<2, 128>::RegisterShortExecuteTests();
-  //count += SQNBitGemmShortExecuteTest<2, 256>::RegisterShortExecuteTests();
+  // count += SQNBitGemmShortExecuteTest<2, 16>::RegisterShortExecuteTests();
+  // count += SQNBitGemmShortExecuteTest<2, 32>::RegisterShortExecuteTests();
+  // count += SQNBitGemmShortExecuteTest<2, 64>::RegisterShortExecuteTests();
+  // count += SQNBitGemmShortExecuteTest<2, 128>::RegisterShortExecuteTests();
+  // count += SQNBitGemmShortExecuteTest<2, 256>::RegisterShortExecuteTests();
 
   count += SQNBitGemmShortExecuteTest<4, 16>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 32>::RegisterShortExecuteTests();

@@ -1259,7 +1259,6 @@ class MatMulNBitsQuantizer:
 
         if algo_config is None:
             algo_config = DefaultWeightOnlyQuantConfig(
-                bits=bits,
                 block_size=block_size,
                 is_symmetric=is_symmetric,
                 accuracy_level=accuracy_level,
@@ -1582,7 +1581,6 @@ if __name__ == "__main__":
         )
     elif args.quant_method == "default":
         quant_config = DefaultWeightOnlyQuantConfig(
-            bits=args.bits,
             block_size=args.block_size,
             is_symmetric=args.symmetric,
             accuracy_level=args.accuracy_level,

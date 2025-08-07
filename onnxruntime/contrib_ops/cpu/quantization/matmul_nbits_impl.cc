@@ -106,12 +106,12 @@ void DequantizeBlockwise(
         for (int j = 0; j < 256; j++) {
           if constexpr (qbits == 2) {
             Dequantize2BitsKernelReOrder(output, quant_data, scales_data, zero_points,
-                                        reorder_idx, block_size, groups_per_threadblock,
-                                        total_groups, N, K, static_cast<int>(block_id), j);
+                                         reorder_idx, block_size, groups_per_threadblock,
+                                         total_groups, N, K, static_cast<int>(block_id), j);
           } else {
             Dequantize4BitsKernelReOrder(output, quant_data, scales_data, zero_points,
-                                        reorder_idx, block_size, groups_per_threadblock,
-                                        total_groups, N, K, static_cast<int>(block_id), j);
+                                         reorder_idx, block_size, groups_per_threadblock,
+                                         total_groups, N, K, static_cast<int>(block_id), j);
           }
         }
       });
@@ -121,7 +121,6 @@ template void DequantizeBlockwise<float, uint8_t, 2>(
     float* output, const uint8_t* quant_data, const float* scales_data,
     const uint8_t* zero_points, const int32_t* reorder_idx, int32_t block_size,
     bool columnwise, int32_t K, int32_t N, onnxruntime::concurrency::ThreadPool* thread_pool);
-
 
 template void DequantizeBlockwise<float, uint8_t, 4>(
     float* output, const uint8_t* quant_data, const float* scales_data,

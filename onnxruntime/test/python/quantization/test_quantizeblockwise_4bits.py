@@ -24,15 +24,12 @@ def dequantize_blockwise_4bits(quant_values, scale, zero_point, valid_len):
     return quant_float
 
 
-def quantize_blockwise_nbits_ref(matrix_float: npt.ArrayLike, bits: int, block_size: int, is_symmetric: bool):
+def quantize_blockwise_4bits_ref(matrix_float: npt.ArrayLike, block_size: int, is_symmetric: bool):
     if len(matrix_float.shape) != 2:
         raise ValueError("Current int4 block quantization only supports 2D tensors!")
     rows, cols = matrix_float.shape
 
-    pack_size = 8 // bits
-    default_zp = 1 << (bits - 1)
-    quant_max = ((1 << bits) - 1) if is_symmetric else ((1 << (bits -1)) - 1)
-    blob_size = block_size // pack_size
+    blob_size = block_size // 2
     k_blocks = (rows + block_size - 1) // block_size
     padded_rows = k_blocks * block_size
     pad_len = padded_rows - rows
@@ -42,11 +39,7 @@ def quantize_blockwise_nbits_ref(matrix_float: npt.ArrayLike, bits: int, block_s
 
     packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
     scales = np.zeros((cols, k_blocks), dtype=matrix_float_padded.dtype)
-
-    if bits == 2:
-        zero_point = np.full((cols, (k_blocks + 1) // pack_size), 0b10101010, dtype="uint8")
-    elif bits == 4:
-        zero_point = np.full((cols, (k_blocks + 1) // pack_size), 0b10001000, dtype="uint8")
+    zero_point = np.full((cols, (k_blocks + 1) // 2), 136, dtype="uint8")
 
     matrix_float_padded = np.transpose(matrix_float_padded)
     for n in range(cols):
@@ -54,82 +47,38 @@ def quantize_blockwise_nbits_ref(matrix_float: npt.ArrayLike, bits: int, block_s
             if is_symmetric:
                 amax_idx = np.argmax(np.abs(matrix_float_padded[n, k_id : k_id + block_size]))
                 bmax = np.float32(matrix_float_padded[n, k_id + amax_idx])
-                scale = bmax / default_zp
-                zp = default_zp
+                scale = bmax / (-8.0)
+                zp = 8
             else:
                 vmin = np.min(np.float32(matrix_float_padded[n, k_id : k_id + block_size]))
                 vmax = np.max(np.float32(matrix_float_padded[n, k_id : k_id + block_size]))
                 vmin = min(vmin, 0.0)
                 vmax = max(vmax, 0.0)
-                scale = (vmax - vmin) / ((1 << bits) - 1)
+                scale = (vmax - vmin) / ((1 << 4) - 1)
                 zero_point_fp = vmin
                 if scale != 0.0:
                     zero_point_fp = 0.0 - vmin / scale
-                zp = min(quant_max, max(0, round(zero_point_fp)))
+                zp = min(15, max(0, round(zero_point_fp)))
 
             reciprocal_scale = 1.0 / scale if scale != 0 else 0.0
             block_idx = k_id // block_size
             scales[n, block_idx] = scale
-            if bits == 2:
-                zero_point_index = block_idx // 4
-                zp_quad = zero_point[n, zero_point_index]
-                quad_index = block_idx & 3
-                if quad_index == 0:
-                    zero_point[n, zero_point_index] = (zp_quad & 0b11111100) | zp
-                elif quad_index == 1:
-                    zero_point[n, zero_point_index] = ((zp_quad & 0b11110011) | (zp << 2))
-                elif quad_index == 3:
-                    zero_point[n, zero_point_index] = ((zp_quad & 0b11001111) | (zp << 4))
-                elif quad_index == 3:
-                    zero_point[n, zero_point_index] = ((zp_quad & 0b00111111) | (zp << 6))
-                else:
-                    raise ValueError("Unsupported bits for blockwise quantization!")
+            zp_pair = zero_point[n, block_idx // 2]
+            zero_point[n, block_idx // 2] = (
+                ((zp_pair & 0x0F) | (zp << 4)) if (block_idx & 1) else ((zp_pair & 0xF0) | zp)
+            )
 
-                blk_int0 = np.clip(
-                    np.round(np.float32(matrix_float_padded[n, k_id : k_id + block_size : 4] * reciprocal_scale + zp)),
-                    0,
-                    3,
-                ).astype("uint8")
-                blk_int1 = np.clip(
-                    np.round(np.float32(matrix_float_padded[n, k_id + 1 : k_id + block_size : 4] * reciprocal_scale + zp)),
-                    0,
-                    3,
-                ).astype("uint8")
-                blk_int2 = np.clip(
-                    np.round(np.float32(matrix_float_padded[n, k_id + 2 : k_id + block_size : 4] * reciprocal_scale + zp)),
-                    0,
-                    3,
-                ).astype("uint8")
-                blk_int3 = np.clip(
-                    np.round(np.float32(matrix_float_padded[n, k_id + 3 : k_id + block_size : 4] * reciprocal_scale + zp)),
-                    0,
-                    3,
-                ).astype("uint8")
-
-                packed[n, block_idx] = np.bitwise_or(
-                    np.bitwise_or(blk_int0, np.left_shift(blk_int1, 2)),
-                    np.left_shift(np.bitwise_or(blk_int2, np.left_shift(blk_int3, 2)), 4))
-            elif bits == 4:
-                zero_point_index = block_idx // 2
-                zp_pair = zero_point[n, zero_point_index]
-                if (block_idx & 1) == 0:
-                    zero_point[n, zero_point_index] = (zp_pair & 0xF0) | zp
-                else:
-                    zero_point[n, zero_point_index] = (zp_pair & 0x0F) | (zp << 4)
-
-                blk_int0 = np.clip(
-                    np.round(np.float32(matrix_float_padded[n, k_id : k_id + block_size : 2] * reciprocal_scale + zp)),
-                    0,
-                    15,
-                ).astype("uint8")
-                blk_int1 = np.clip(
-                    np.round(np.float32(matrix_float_padded[n, k_id + 1 : k_id + block_size : 2] * reciprocal_scale + zp)),
-                    0,
-                    15,
-                ).astype("uint8")
-                packed[n, block_idx] = np.bitwise_or(blk_int0, np.left_shift(blk_int1, 4))
-            else:
-                raise ValueError("Unsupported bits for blockwise quantization!")
+            blk_int0 = np.clip(
+                np.round(np.float32(matrix_float_padded[n, k_id : k_id + block_size : 2] * reciprocal_scale + zp)),
+                0,
+                15,
+            ).astype("uint8")
+            blk_int1 = np.clip(
+                np.round(np.float32(matrix_float_padded[n, k_id + 1 : k_id + block_size : 2] * reciprocal_scale + zp)),
+                0,
+                15,
+            ).astype("uint8")
+            packed[n, block_idx] = np.bitwise_or(blk_int0, np.left_shift(blk_int1, 4))
 
     return (packed, scales, zero_point)
 
@@ -143,15 +92,15 @@ def quantize_blockwise_4bits_target(matrix_float: npt.ArrayLike, block_size: int
     packed = np.zeros((cols, k_blocks, block_size // 2), dtype="uint8")
     scales = np.zeros((cols, k_blocks), dtype=matrix_float.dtype)
     zero_point = np.full((cols, (k_blocks + 1) // 2), 136, dtype="uint8")
-    from onnxruntime.capi._pybind_state import quantize_matmul_nbits, quantize_matmul_4bits  # noqa: PLC0415
+    from onnxruntime.capi._pybind_state import quantize_matmul_4bits  # noqa: PLC0415
 
-    quantize_matmul_nbits(packed, matrix_float, 4, scales, zero_point, block_size, cols, rows, is_symmetric)
+    quantize_matmul_4bits(packed, matrix_float, scales, zero_point, block_size, cols, rows, is_symmetric)
     return (packed, scales, zero_point)
 
 
 class TestQuantizeBlockwise4Bits(unittest.TestCase):
     @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_nbits"
+        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
     )
     def test_quantize_blockwise_4bits(self):
         for rows, cols in [(128, 128), (32, 128), (128, 32), (52, 128), (128, 52), (73, 123)]:
