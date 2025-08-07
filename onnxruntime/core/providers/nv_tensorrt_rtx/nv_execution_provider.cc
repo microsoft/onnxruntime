@@ -2779,7 +2779,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       GetPerThreadContext().ResetWarmupRuns(cuda_graph_annotation_id);
 
       if(GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
-        LOGS_DEFAULT(WARNING) << "Graph already captured and required_io_binding is true, resetting warmup runs";
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Graph already captured and required_io_binding is true, resetting warmup runs and deleting graph";
         GetPerThreadContext().ResetWarmupRuns(cuda_graph_annotation_id);
         GetPerThreadContext().DeleteCapturedGraph(cuda_graph_annotation_id);
       }
