@@ -673,11 +673,11 @@ Status QnnModelWrapper::UnpackInitializerData(OrtValueInfo& initializer,
   // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
   if (onnx_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4) {
     std::vector<int64_t> shape = utils::GetInitializerShape(initializer, api_ptrs_.ort_api);
-    const size_t num_int4_elems = shape.size();
+    const size_t num_int4_elems = std::accumulate(shape.begin(), shape.end(), static_cast<size_t>(1), std::multiplies<size_t>());
     ORT_RETURN_IF_ERROR(utils::UnpackInt4ToInt8<true>(num_int4_elems, unpacked_tensor));
   } else if (onnx_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4) {
     std::vector<int64_t> shape = utils::GetInitializerShape(initializer, api_ptrs_.ort_api);
-    const size_t num_uint4_elems = shape.size();
+    const size_t num_uint4_elems = std::accumulate(shape.begin(), shape.end(), static_cast<size_t>(1), std::multiplies<size_t>());
     ORT_RETURN_IF_ERROR(utils::UnpackInt4ToInt8<false>(num_uint4_elems, unpacked_tensor));
   }
 

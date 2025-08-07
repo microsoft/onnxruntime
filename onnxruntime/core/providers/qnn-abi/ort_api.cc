@@ -70,7 +70,7 @@ std::vector<OrtNodeUnitIODef> GetQDQIODefs(const OrtNode* target_node,
       // TODO: Not sure whether functionally identical to old implementation.
       size_t num_consumers = 0;
       ort_api.ValueInfo_GetValueNumConsumers(target_node_ios[io_idx], &num_consumers);
-      if (num_consumers > 1) {
+      if (num_consumers != 1) {
         continue;
       }
 

@@ -1925,6 +1925,11 @@ std::vector<std::vector<const OrtNode*>> CreateSupportedPartitionNodeGroups(
     const OrtNode* node = graph_nodes[node_idx];
     const OrtNodeUnit* node_unit = node_unit_map.at(node);
 
+    if (&node_unit->GetNode() != node) {
+      // Only process the target node.
+      continue;
+    }
+
     size_t degree = node_unit->GetInputEdgesCount(ort_api);
     in_degree.insert({node_unit->Index(), degree});
     if (degree == 0) {
