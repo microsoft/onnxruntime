@@ -563,11 +563,12 @@ if (onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
 endif()
 
+set(onnxruntime_test_internal_testing_ep_src)
 if (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
   file(GLOB_RECURSE onnxruntime_test_providers_internal_testing_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/providers/internal_testing/*"
+    "${TEST_SRC_DIR}/internal_testing_ep/*"
     )
-  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_internal_testing_src})
+  list(APPEND onnxruntime_test_internal_testing_ep_src ${onnxruntime_test_providers_internal_testing_src})
 endif()
 
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${TEST_SRC_DIR}/shared_lib")
@@ -918,9 +919,17 @@ if(NOT IOS)
     set(onnx_test_runner_common_lib onnx_test_runner_common)
 endif()
 
-set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
-        ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_quantization_src}
-        ${onnxruntime_test_flatbuffers_src} ${onnxruntime_test_lora_src})
+set(all_tests
+    ${onnxruntime_test_common_src}
+    ${onnxruntime_test_ir_src}
+    ${onnxruntime_test_optimizer_src}
+    ${onnxruntime_test_framework_src}
+    ${onnxruntime_test_providers_src}
+    ${onnxruntime_test_internal_testing_ep_src}
+    ${onnxruntime_test_quantization_src}
+    ${onnxruntime_test_flatbuffers_src}
+    ${onnxruntime_test_lora_src}
+)
 
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
