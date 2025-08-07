@@ -1790,3 +1790,12 @@ else()
     include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
   endif()
 endif()
+
+if(onnxruntime_BUILD_UNIT_TESTS)
+  include(Q:/src/onnxruntime/cmake/onnxruntime_test_pch.cmake)
+endif()
+
+# Include precompiled header configuration for providers
+if(TARGET onnxruntime_providers)
+  include(Q:/src/onnxruntime/cmake/onnxruntime_providers_pch.cmake)
+endif()
