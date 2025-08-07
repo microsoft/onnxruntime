@@ -205,7 +205,7 @@ void AppendLoraParametersAsInputs(const RunOptions& run_options,
 template <typename T>
 static py::object AddNonTensor(const OrtValue& val,
                                const DataTransferManager* /*data_transfer_manager*/,
-                               const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
+                               const std::unordered_map<OrtDevice, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
   return py::cast(val.Get<T>());
 }
 
@@ -265,39 +265,65 @@ pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value, cons
 // pretty much does what a DataTransferManager does - copy data from device(s) to the host
 py::object GetPyObjFromTensor(const OrtValue& ort_value,
                               const DataTransferManager* data_transfer_manager,
-                              const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                              const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
   ORT_ENFORCE(ort_value.IsTensor(), "This function only supports tensors");
 
   const auto& tensor = ort_value.Get<Tensor>();
+  const auto& device = tensor.Location().device;
+
   if (tensor.IsDataTypeString()) {
-    ORT_ENFORCE(tensor.Location().device.Type() == OrtDevice::CPU, "Strings can only be on CPU");
+    ORT_ENFORCE(device.Type() == OrtDevice::CPU, "Strings can only be on CPU");
     // Create a numpy array of strings (python objects) by copy/converting them
     py::array result = StringTensorToNumpyArray(tensor);
     return py::cast<py::object>(result);
   }
 
-  const auto device_type = tensor.Location().device.Type();
+  const auto device_type = device.Type();
   // Create an numpy array on top of the OrtValue memory, no copy
   if (device_type == OrtDevice::CPU) {
     py::array result = PrimitiveTensorToNumpyOverOrtValue(ort_value);
     return py::cast<py::object>(result);
   }
 
-  if (!data_transfer_manager && !mem_cpy_to_host_functions) {
-    throw std::runtime_error(
-        "GetPyObjFromTensor: Either data transfer manager or a "
-        "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
-  }
-
   py::array result;
   if (data_transfer_manager != nullptr) {
     result = PrimitiveTensorToNumpyFromDevice(ort_value, data_transfer_manager);
   } else {
-    auto mem_cpy_to_host = mem_cpy_to_host_functions->find(device_type);
-    ORT_ENFORCE(mem_cpy_to_host != mem_cpy_to_host_functions->end(),
-                "Unable to locate a function that can copy data to the host from the device");
-    result = PrimitiveTensorToNumpyFromDevice(ort_value, mem_cpy_to_host->second);
+    bool copied = false;
+    if (mem_cpy_to_host_functions) {
+      auto it = std::find_if(mem_cpy_to_host_functions->begin(), mem_cpy_to_host_functions->end(),
+                             [&device](const auto& entry) {
+                               const auto& copy_device = entry.first;
+                               // We're ignoring OrtDevice.Id() currently for historical reasons.
+                               // The key to mem_cpy_to_host_functions was previously the device type (CPU/GPU/NPU).
+                               // This changed to be OrtDevice to get the vendor id.
+                               // Assumably it would be better to also match on device id, but that was not possible
+                               // previously and to preserve existing behavior we keep the old logic and expect the
+                               // copy function to handle the device id correctly.
+                               return device.Type() == copy_device.Type() &&
+                                      device.MemType() == copy_device.MemType() &&
+                                      device.Vendor() == copy_device.Vendor();
+                             });
+
+      if (it != mem_cpy_to_host_functions->end()) {
+        result = PrimitiveTensorToNumpyFromDevice(ort_value, it->second);
+        copied = true;
+      }
+    }
+
+    if (!copied) {
+      // see if we have a shared data transfer function from a plugin EP
+      auto device_to_cpu_copy_func = CreateDataTransferMemCpy(device, OrtDevice{});
+      if (device_to_cpu_copy_func) {
+        result = PrimitiveTensorToNumpyFromDevice(ort_value, device_to_cpu_copy_func);
+      } else {
+        throw std::runtime_error(
+            "GetPyObjFromTensor: Either data transfer manager or a "
+            "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
+      }
+    }
   }
+
   return py::cast<py::object>(result);
 }
 
@@ -373,7 +399,7 @@ py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, co
 template <>
 py::object AddNonTensor<TensorSeq>(const OrtValue& val,
                                    const DataTransferManager* data_transfer_manager,
-                                   const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                                   const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
   for (const auto& ort_value : seq_tensors) {
@@ -389,7 +415,7 @@ py::object AddNonTensor<TensorSeq>(const OrtValue& val,
 
 py::object AddNonTensorAsPyObj(const OrtValue& val,
                                const DataTransferManager* data_transfer_manager,
-                               const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                               const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
   if (val_type->IsTensorSequenceType()) {
@@ -429,7 +455,7 @@ py::object AddNonTensorAsPyObj(const OrtValue& val,
 }
 
 py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager,
-                            const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                            const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
   return GetPyObjFromTensor(val, data_transfer_manager, mem_cpy_to_host_functions);
 }
 
@@ -1882,12 +1908,15 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
       .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
       .def("vendor_id", &OrtDevice::Vendor, R"pbdoc(Vendor Id.)pbdoc")
+      // generic device types that are typically used with a vendor id.
       .def_static("cpu", []() { return OrtDevice::CPU; })
+      .def_static("gpu", []() { return OrtDevice::GPU; })
+      .def_static("npu", []() { return OrtDevice::NPU; })
+      // EP specific device types for backward compatibility.
       .def_static("cuda", []() { return OrtDevice::GPU; })
       .def_static("cann", []() { return OrtDevice::NPU; })
-      .def_static("fpga", []() { return OrtDevice::FPGA; })
-      .def_static("npu", []() { return OrtDevice::NPU; })
       .def_static("dml", []() { return OrtDevice::DML; })
+      .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("webgpu", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
