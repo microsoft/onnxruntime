@@ -2109,13 +2109,12 @@ std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(
 }
 
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
-  OrtMIGraphXProviderOptions migraphx_options;
-  s_library_migraphx.Get().UpdateProviderOptions(&migraphx_options, provider_options);
-  return s_library_migraphx.Get().CreateExecutionProviderFactory(&migraphx_options);
+  return s_library_migraphx.Get().CreateExecutionProviderFactory(&provider_options);
 }
 
-std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
-  return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
+std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* options) {
+  const auto provider_options{s_library_migraphx.Get().GetProviderOptions(options)};
+  return s_library_migraphx.Get().CreateExecutionProviderFactory(&provider_options);
 }
 
 // Adapter to convert the legacy OrtOpenVINOProviderOptions to ProviderOptions

@@ -57,11 +57,18 @@ MIGraphXExecutionProviderInfo::MIGraphXExecutionProviderInfo(const ProviderOptio
                 external_empty_cache = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
+          .AddValueParser(
+              migraphx_provider_option::kModelCacheDir,
+              [this](const std::string& value_str) -> Status {
+                model_cache_dir = ToPathString(value_str);
+                return Status::OK();
+              })
           .AddAssignmentToReference(migraphx_provider_option::kFp16Enable, fp16_enable)
           .AddAssignmentToReference(migraphx_provider_option::kBf16Enable, bf16_enable)
           .AddAssignmentToReference(migraphx_provider_option::kFp8Enable, fp8_enable)
           .AddAssignmentToReference(migraphx_provider_option::kInt8Enable, int8_enable)
-          .AddAssignmentToReference(migraphx_provider_option::kModelCacheDir, model_cache_dir)
+          .AddAssignmentToReference(migraphx_provider_option::kInt8UseNativeCalibTable, int8_use_native_calibration_table)
+          .AddAssignmentToReference(migraphx_provider_option::kInt8CalibTable, int8_calibration_table_name)
           .AddAssignmentToReference(migraphx_provider_option::kExhaustiveTune, exhaustive_tune)
           .AddAssignmentToReference(migraphx_provider_option::kMemLimit, mem_limit)
           .AddAssignmentToEnumReference(migraphx_provider_option::kArenaExtendStrategy, arena_extend_strategy_mapping, arena_extend_strategy)
@@ -71,16 +78,11 @@ MIGraphXExecutionProviderInfo::MIGraphXExecutionProviderInfo(const ProviderOptio
 MIGraphXExecutionProviderInfo::MIGraphXExecutionProviderInfo(const OrtMIGraphXProviderOptions& options) noexcept
     : device_id{static_cast<OrtDevice::DeviceId>(options.device_id)},
       fp16_enable{options.migraphx_fp16_enable != 0},
-      bf16_enable{options.migraphx_bf16_enable != 0},
       fp8_enable{options.migraphx_fp8_enable != 0},
       int8_enable{options.migraphx_int8_enable != 0},
-      model_cache_dir{options.migraphx_cache_dir},
       exhaustive_tune{options.migraphx_exhaustive_tune != 0},
       mem_limit{options.migraphx_mem_limit},
-      arena_extend_strategy{options.migraphx_arena_extend_strategy},
-      external_alloc{options.migraphx_external_alloc},
-      external_free{options.migraphx_external_free},
-      external_empty_cache{options.migraphx_external_empty_cache} {
+      arena_extend_strategy{options.migraphx_arena_extend_strategy} {
 }
 
 ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions() const {
@@ -90,6 +92,8 @@ ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions() const {
       {std::string{migraphx_provider_option::kBf16Enable}, MakeStringWithClassicLocale(bf16_enable)},
       {std::string{migraphx_provider_option::kFp8Enable}, MakeStringWithClassicLocale(fp8_enable)},
       {std::string{migraphx_provider_option::kInt8Enable}, MakeStringWithClassicLocale(int8_enable)},
+      {std::string{migraphx_provider_option::kInt8CalibTable}, MakeStringWithClassicLocale(int8_calibration_table_name)},
+      {std::string{migraphx_provider_option::kInt8UseNativeCalibTable}, MakeStringWithClassicLocale(int8_use_native_calibration_table)},
       {std::string{migraphx_provider_option::kMemLimit}, MakeStringWithClassicLocale(mem_limit)},
       {std::string{migraphx_provider_option::kArenaExtendStrategy}, EnumToName(arena_extend_strategy_mapping, arena_extend_strategy)},
       {std::string{migraphx_provider_option::kExhaustiveTune}, MakeStringWithClassicLocale(exhaustive_tune)},

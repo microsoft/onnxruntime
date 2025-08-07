@@ -203,9 +203,9 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   }
 
   if (int8_enable_ ^ fp8_enable_) {
-    int8_calibration_cache_name_ =
+    int8_calibration_table_name_ =
         int8_calibration_cache_name_env.empty() ? info.int8_calibration_table_name : int8_calibration_cache_name_env;
-    int8_use_native_migraphx_calibration_table_ =
+    int8_use_native_calibration_table_ =
         int8_use_native_migraphx_calibration_table_env.empty() ? info.int8_use_native_calibration_table : std::stoi(int8_use_native_migraphx_calibration_table_env) != 0;
   }
 
@@ -216,8 +216,8 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   // Load INT8 calibration table
   if ((int8_enable_ || fp8_enable_) && int8_calibration_cache_available_) {
     std::unordered_map<std::string, float> dynamic_range_map;
-    auto calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_cache_name_);
-    if (!ReadDynamicRange(calibration_cache_path, int8_use_native_migraphx_calibration_table_, dynamic_range_map)) {
+    auto calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_table_name_);
+    if (!ReadDynamicRange(calibration_cache_path, int8_use_native_calibration_table_, dynamic_range_map)) {
       throw std::runtime_error("Session Failed to read INT8 calibration table " + calibration_cache_path.string());
     }
   }
@@ -234,9 +234,9 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
                         << "\n " << migraphx_provider_option::kArenaExtendStrategy << ": " << GetArenaExtendStrategyName(arena_extend_strategy_)
                         << "\n dump_model_ops: " << dump_model_ops_
                         << "\n " << migraphx_provider_option::kExhaustiveTune << ": " << exhaustive_tune_
-                        << "\n " << migraphx_provider_option::kInt8CalibTable << ": " << int8_calibration_cache_name_
+                        << "\n " << migraphx_provider_option::kInt8CalibTable << ": " << int8_calibration_table_name_
                         << "\n int8_calibration_cache_available: " << int8_calibration_cache_available_
-                        << "\n " << migraphx_provider_option::kInt8UseNativeCalibTable << ": " << int8_use_native_migraphx_calibration_table_
+                        << "\n " << migraphx_provider_option::kInt8UseNativeCalibTable << ": " << int8_use_native_calibration_table_
                         << "\n " << migraphx_provider_option::kModelCacheDir << ": " << model_cache_path_;
 }
 

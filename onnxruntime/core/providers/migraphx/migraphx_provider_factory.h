@@ -12,8 +12,8 @@ namespace onnxruntime {
 class IAllocator;
 
 struct ProviderInfo_MIGraphX {
-  virtual std::unique_ptr<onnxruntime::IAllocator> CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, const char* name) = 0;
-  virtual std::unique_ptr<onnxruntime::IAllocator> CreateMIGraphXPinnedAllocator(OrtDevice::DeviceId device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(OrtDevice::DeviceId device_id, const char* name) = 0;
   virtual void MIGraphXMemcpy_HostToDevice(void* dst, const void* src, size_t count) = 0;
   virtual void MIGraphXMemcpy_DeviceToHost(void* dst, const void* src, size_t count) = 0;
   virtual std::shared_ptr<IAllocator> CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t mem_limit,

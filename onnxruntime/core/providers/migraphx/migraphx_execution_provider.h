@@ -31,10 +31,6 @@ constexpr auto kDumpModelOps = "ORT_MIGRAPHX_DUMP_MODEL_OPS"sv;
 constexpr auto kINT8CalibrationTableName = "ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME"sv;
 constexpr auto kCachePath = "ORT_MIGRAPHX_CACHE_PATH"sv;
 constexpr auto kINT8UseNativeMIGraphXCalibrationTable = "ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE"sv;
-constexpr auto kSaveCompiledModel = "ORT_MIGRAPHX_SAVE_COMPILED_MODEL"sv;
-constexpr auto kSavedModelPath = "ORT_MIGRAPHX_SAVE_COMPILED_PATH"sv;
-constexpr auto kLoadCompiledModel = "ORT_MIGRAPHX_LOAD_COMPILED_MODEL"sv;
-constexpr auto kLoadModelPath = "ORT_MIGRAPHX_LOAD_COMPILED_PATH"sv;
 constexpr auto kExhaustiveTune = "ORT_MIGRAPHX_EXHAUSTIVE_TUNE"sv;
 constexpr auto kModelCachePath = "ORT_MIGRAPHX_MODEL_CACHE_PATH"sv;
 }  // namespace migraphx_env_vars
@@ -99,13 +95,15 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
         {std::string{migraphx_provider_option::kBf16Enable}, MakeStringWithClassicLocale(bf16_enable_)},
         {std::string{migraphx_provider_option::kFp8Enable}, MakeStringWithClassicLocale(fp8_enable_)},
         {std::string{migraphx_provider_option::kInt8Enable}, MakeStringWithClassicLocale(int8_enable_)},
-        {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(model_cache_path_)},
+        {std::string{migraphx_provider_option::kInt8CalibTable}, MakeStringWithClassicLocale(int8_calibration_table_name_)},
+        {std::string{migraphx_provider_option::kInt8UseNativeCalibTable}, MakeStringWithClassicLocale(int8_use_native_calibration_table_)},
+        {std::string{migraphx_provider_option::kExhaustiveTune}, MakeStringWithClassicLocale(exhaustive_tune_)},
         {std::string{migraphx_provider_option::kMemLimit}, MakeStringWithClassicLocale(mem_limit_)},
         {std::string{migraphx_provider_option::kArenaExtendStrategy}, EnumToName(arena_extend_strategy_mapping, arena_extend_strategy_)},
-        {std::string{migraphx_provider_option::kExhaustiveTune}, MakeStringWithClassicLocale(exhaustive_tune_)},
         {std::string{migraphx_provider_option::kGpuExternalAlloc}, MakeStringWithClassicLocale(external_alloc_)},
         {std::string{migraphx_provider_option::kGpuExternalFree}, MakeStringWithClassicLocale(external_free_)},
-        {std::string{migraphx_provider_option::kGpuExternalEmptyCache}, MakeStringWithClassicLocale(external_empty_cache_)}};
+        {std::string{migraphx_provider_option::kGpuExternalEmptyCache}, MakeStringWithClassicLocale(external_empty_cache_)},
+        {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(model_cache_path_)}};
   }
 
  private:
@@ -114,9 +112,9 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   bool bf16_enable_ = false;
   bool fp8_enable_ = false;
   bool int8_enable_ = false;
-  std::string int8_calibration_cache_name_;
+  std::string int8_calibration_table_name_;
   bool int8_calibration_cache_available_ = false;
-  bool int8_use_native_migraphx_calibration_table_ = false;
+  bool int8_use_native_calibration_table_ = false;
   std::filesystem::path calibration_cache_path_{};
   std::unordered_map<std::string, float> dynamic_range_map_;
   std::filesystem::path model_cache_path_{};
