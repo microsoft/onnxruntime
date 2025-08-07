@@ -55,21 +55,21 @@ if (path.basename(mjsFilePath).includes('-threaded')) {
 //
 // (for debug build)
 //
-// > subgroups: "17",
+// > subgroups: "18",
 // --- change to -->
-// > "subgroups": "17",
+// > "subgroups": "18",
 //
 // (for release build)
 //
-// > Pe:"17",
+// > Pe:"18",
 // --- change to -->
-// > "subgroups":"17",
+// > "subgroups":"18",
 //
 
 // This step should only be applied for WebGPU EP builds
 if (path.basename(mjsFilePath).includes('.async')) {
-    const regexDebug = 'subgroups: "17"';
-    const regexRelease = '[a-zA-Z_$][a-zA-Z0-9_$]*:"17"';
+    const regexDebug = 'subgroups: "18"';
+    const regexRelease = '[a-zA-Z_$][a-zA-Z0-9_$]*:"18"';
 
     const matchesDebug = [...contents.matchAll(new RegExp(regexDebug, 'g'))];
     const matchesRelease = [...contents.matchAll(new RegExp(regexRelease, 'g'))];
@@ -77,12 +77,12 @@ if (path.basename(mjsFilePath).includes('.async')) {
     if (matchesDebug.length === 1 && matchesRelease.length === 0) {
         contents = contents.replace(
             new RegExp(regexDebug),
-            '"subgroups": "17"',
+            '"subgroups": "18"',
         );
     } else if (matchesDebug.length === 0 && matchesRelease.length === 1) {
         contents = contents.replace(
             new RegExp(regexRelease),
-            '"subgroups":"17"',
+            '"subgroups":"18"',
         );
     } else {
         throw new Error(
