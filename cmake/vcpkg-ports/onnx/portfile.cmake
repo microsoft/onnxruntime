@@ -4,7 +4,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO onnx/onnx
     REF a9efe1624a284b92a63361a7ca91fee954c4e2c6
-    SHA512 262bfd9613d7edc22d094e97de5f5c659e9ad7ecfdfb0d484c6ba0f40dddb9cbc37638e5b064f487981a185ad325a1071091b10b9f977312ae939c70ba7be1fc
+    SHA512 573dfeeed2ba20205f1b37095dd3ad4d484397b2d461bd1afc08285a6114080510c586bbbd07316325833b4b3253d2d9baa7ec6bbacd908612fa5fd0b27c2172
     PATCHES
         fix-cmakelists.patch
         fix-dependency-protobuf.patch
