@@ -22,7 +22,7 @@ Status BaseOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const OrtNodeUnit& node_unit,
                                     const logging::Logger& logger) const {
   // // General Datatype checks on various QNN backend (HTP, CPU, GPU)
-  // ORT_RETURN_IF_ERROR(ProcessDataTypes(qnn_model_wrapper, node_unit));
+  ORT_RETURN_IF_ERROR(ProcessDataTypes(qnn_model_wrapper, node_unit));
   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
 }
 

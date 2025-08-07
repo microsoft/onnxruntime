@@ -374,6 +374,18 @@ class OrtSelectorManager {
 };
 }  // namespace QDQ
 
+namespace utils {
+
+// Refer to CreateSupportedPartitions in partitioning_utils.cc.
+std::vector<std::vector<const OrtNode*>> CreateSupportedPartitionNodeGroups(
+    const OrtGraph* graph,
+    const OrtApi& ort_api,
+    const std::vector<const OrtNode*>& supported_nodes,
+    const std::string& ep_type,
+    const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map);
+
+}  // namespace utils
+
 // Function to get QDQ node units from OrtGraph
 std::pair<std::vector<std::unique_ptr<OrtNodeUnit>>, std::unordered_map<const OrtNode*, const OrtNodeUnit*>>
 GetAllOrtNodeUnits(OrtApi ort_api, const OrtGraph* graph, const logging::Logger& logger);

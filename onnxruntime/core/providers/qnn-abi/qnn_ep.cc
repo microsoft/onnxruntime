@@ -240,7 +240,7 @@ static void ParseOpPackages(const std::string& op_packages_string,
 
 static bool ParseBoolOption(const OrtApi& ort_api,
                             const OrtSessionOptions& session_options,
-                            const char* key,
+                            const std::string& key,
                             bool default_value,
                             const logging::Logger& logger) {
   bool result = default_value;
@@ -435,7 +435,6 @@ QnnEp::QnnEp(QnnEpFactory& factory,
     std::string backend_type;
     std::string backend_path_option;
 
-    // TODO: Fix key with prefix.
     GetSessionConfigEntryOrDefault(ort_api, session_options_, FormatEPConfigKey("backend_type"), "", backend_type);
     GetSessionConfigEntryOrDefault(ort_api,
                                    session_options_,
@@ -1317,14 +1316,40 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
     return ss.str();
   };
 
-  std::cout << "DEBUG: #supported nodes " << supported_nodes.size() << std::endl;
-
   // If no supported nodes, return empty
   if (supported_nodes.empty()) {
     return nullptr;
   }
 
-  size_t num_of_supported_nodes = supported_nodes.size();
+  size_t num_of_supported_nodes = 0;
+  std::vector<std::vector<const OrtNode*>> partitions = utils::CreateSupportedPartitionNodeGroups(graph,
+                                                                                                  ep->ort_api,
+                                                                                                  supported_nodes,
+                                                                                                  ep->name_,
+                                                                                                  node_unit_map);
+
+  // Filter out partitions that consist of a single QuantizeLinear or DequantizeLinear node.
+  // We also count the number of supported nodes in all valid partitions.
+  for (const std::vector<const OrtNode*>& partition : partitions) {
+    size_t nodes_in_partition = partition.size();
+    if (nodes_in_partition == 1 && !is_qnn_ctx_model) {
+      const char* op_type = nullptr;
+      ep->ort_api.Node_GetOperatorType(partition[0], &op_type);
+      if (std::string(op_type) == "QuantizeLinear" || std::string(op_type) == "DequantizeLinear") {
+        LOGS(ep->logger_in_, WARNING) << "QNN EP does not support a single Quantize/Dequantize node in a partition.";
+        continue;
+      }
+    }
+
+    OrtNodeFusionOptions node_fusion_options = {};
+    node_fusion_options.ort_version_supported = ORT_API_VERSION;
+    RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+                                                                 partition.data(),
+                                                                 partition.size(),
+                                                                 &node_fusion_options));
+
+    num_of_supported_nodes += nodes_in_partition;
+  }
 
   // Print list of unsupported nodes to the ERROR logger if the CPU EP
   // has been disabled for this inference session.
@@ -1332,14 +1357,8 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
     LOGS(ep->logger_in_, ERROR) << "Unsupported nodes in QNN EP: " << get_unsupported_node_names();
   }
 
-  OrtNodeFusionOptions node_fusion_options = {};
-  node_fusion_options.ort_version_supported = ORT_API_VERSION;
-  node_fusion_options.drop_constant_initializers = true;
-  RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
-                                                               supported_nodes.data(),
-                                                               supported_nodes.size(),
-                                                               &node_fusion_options));
 
+  std::cout << "DEBUG: #supported nodes " << num_of_supported_nodes << std::endl;
   return nullptr;
 }
 

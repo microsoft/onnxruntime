@@ -209,7 +209,8 @@ class OrtNodeUnit {
     }
     return since_version;
   }
-  NodeIndex Index() const noexcept { return target_node_->GetId(); }
+  // TODO: Id is in fact not equal to index.
+  size_t Index() const noexcept { return target_node_->GetId(); }
   // const std::filesystem::path& ModelPath() const noexcept;
   // ProviderType GetExecutionProviderType() const noexcept;
 
@@ -229,14 +230,8 @@ class OrtNodeUnit {
     return all_nodes;
   }
 
-  // /// Number of input edges to the logical node. For a QDQ node this is the count of input edges to the DQ nodes
-  // /// plus any other edges to the target node for inputs that are not via a DQ node.
-  // size_t InputEdgeCount() const { return input_edge_count_; }
-
-  // // output edges. src index is for outputs of the target node. dest index and node is for consumer of node unit
-  // // output. any Q nodes are hidden.
-  // Node::EdgeConstIterator OutputEdgesBegin() const;
-  // Node::EdgeConstIterator OutputEdgesEnd() const;
+  size_t GetInputEdgesCount(const OrtApi& ort_api) const;
+  std::vector<const OrtNode*> GetOutputNodes(const OrtApi& ort_api) const;
 
  private:
   // // Initialization for a NodeUnit that contains a single node
@@ -308,12 +303,12 @@ class OrtNodeAttrHelper {
 
 OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,
                                           const OrtSessionOptions& session_options,
-                                          const char* config_key,
+                                          const std::string& config_key,
                                           const std::string& default_val,
                                           /*out*/ std::string& config_val);
 
 // Refer to OrtSessionOptions::GetProviderOptionPrefix.
-std::string GetProviderOptionPrefix(const char* provider_name);
+std::string GetProviderOptionPrefix(const std::string& provider_name);
 
 // TODO
 // Not sure why Env::Default() fails inside EP, replicate below implementations from "core/platform/posix/env.cc" and

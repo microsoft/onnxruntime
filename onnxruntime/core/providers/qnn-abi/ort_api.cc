@@ -137,7 +137,7 @@ OrtNodeUnit::OrtNodeUnit(const OrtNode* node, const OrtApi& ort_api) : target_no
   InitForSingleNode(ort_api);
 }
 
-OrtNodeUnit::OrtNodeUnit(const OrtGraph* graph, const QDQ::OrtNodeGroup& node_group, const OrtApi& ort_api)
+OrtNodeUnit::OrtNodeUnit(const OrtGraph* /* graph */, const QDQ::OrtNodeGroup& node_group, const OrtApi& ort_api)
     : dq_nodes_(node_group.dq_nodes),
       target_node_(node_group.target_node),
       redundant_clip_node_(node_group.redundant_clip_node ? node_group.redundant_clip_node : nullptr),
@@ -145,7 +145,6 @@ OrtNodeUnit::OrtNodeUnit(const OrtGraph* graph, const QDQ::OrtNodeGroup& node_gr
       type_(Type::QDQGroup),
       inputs_(GetQDQIODefs(target_node_, node_group, true, ort_api)),
       outputs_(GetQDQIODefs((redundant_clip_node_ ? redundant_clip_node_ : target_node_), node_group, false, ort_api)) {
-  graph;
 }
 
 void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
@@ -191,6 +190,84 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
       outputs_.push_back(io_def);
     }
   }
+}
+
+size_t OrtNodeUnit::GetInputEdgesCount(const OrtApi& ort_api) const {
+  auto count_edges = [&ort_api](const OrtNode* target_node) {
+    size_t num_inputs = 0;
+    ort_api.Node_GetNumInputs(target_node, &num_inputs);
+
+    std::vector<const OrtValueInfo*> inputs(num_inputs);
+    ort_api.Node_GetInputs(target_node, inputs.data(), inputs.size());
+
+    size_t num_actual_inputs = 0;
+    for (const OrtValueInfo* input : inputs) {
+      if (input == nullptr) {
+        continue;
+      }
+
+      const OrtNode* producer_node = nullptr;
+      ort_api.ValueInfo_GetValueProducer(input, &producer_node, nullptr);
+      if (producer_node) {
+        num_actual_inputs++;
+      }
+    }
+
+    return num_actual_inputs;
+  };
+
+  if (type_ == Type::SingleNode) {
+    return count_edges(target_node_);
+  }
+
+  size_t edges = std::accumulate(dq_nodes_.cbegin(),
+                                 dq_nodes_.cend(),
+                                 size_t(0),
+                                 [&count_edges](size_t acc, const OrtNode* node) { return acc + count_edges(node); });
+  return edges + count_edges(target_node_) - dq_nodes_.size();
+}
+
+std::vector<const OrtNode*> OrtNodeUnit::GetOutputNodes(const OrtApi& ort_api) const {
+  auto get_consumers = [&ort_api](const OrtNode* target_node) {
+    std::vector<const OrtNode*> target_consumers;
+
+    size_t num_outputs = 0;
+    ort_api.Node_GetNumOutputs(target_node, &num_outputs);
+
+    std::vector<const OrtValueInfo*> outputs(num_outputs);
+    ort_api.Node_GetOutputs(target_node, outputs.data(), outputs.size());
+
+    for (const OrtValueInfo* output : outputs) {
+      if (output == nullptr) {
+        continue;
+      }
+
+      size_t num_consumers = 0;
+      ort_api.ValueInfo_GetValueNumConsumers(output, &num_consumers);
+
+      std::vector<const OrtNode*> consumers(num_consumers);
+      std::vector<int64_t> input_indices(num_consumers);
+      ort_api.ValueInfo_GetValueConsumers(output, consumers.data(), input_indices.data(), num_consumers);
+
+      target_consumers.insert(target_consumers.end(), consumers.begin(), consumers.end());
+    }
+
+    return target_consumers;
+  };
+
+  const OrtNode* output_producer = redundant_clip_node_ ? redundant_clip_node_ : target_node_;
+  std::vector<const OrtNode*> output_nodes;
+
+  for (const OrtNode* output_node : get_consumers(output_producer)) {
+    if (std::find(q_nodes_.cbegin(), q_nodes_.cend(), output_node) != q_nodes_.cend()) {
+      std::vector<const OrtNode*> q_output_nodes = get_consumers(output_node);
+      output_nodes.insert(output_nodes.end(), q_output_nodes.begin(), q_output_nodes.end());
+    } else {
+      output_nodes.push_back(output_node);
+    }
+  }
+
+  return output_nodes;
 }
 
 #define NODE_ATTR_ITER_VAL(iter) (iter)->second()
@@ -379,11 +456,13 @@ bool OrtNodeAttrHelper::HasAttr(const std::string& key) const {
 
 OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,
                                           const OrtSessionOptions& session_options,
-                                          const char* config_key,
+                                          const std::string& config_key,
                                           const std::string& default_val,
                                           /*out*/ std::string& config_val) {
+  const char* config_key_cstr = config_key.c_str();
+
   int has_config = 0;
-  RETURN_IF_ERROR(ort_api.HasSessionConfigEntry(&session_options, config_key, &has_config));
+  RETURN_IF_ERROR(ort_api.HasSessionConfigEntry(&session_options, config_key_cstr, &has_config));
 
   if (has_config != 1) {
     config_val = default_val;
@@ -391,16 +470,16 @@ OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,
   }
 
   size_t size = 0;
-  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key, nullptr, &size));
+  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key_cstr, nullptr, &size));
 
   config_val.resize(size);
-  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key, config_val.data(), &size));
+  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key_cstr, config_val.data(), &size));
   config_val.resize(size - 1);  // remove the terminating '\0'
 
   return nullptr;
 }
 
-std::string GetProviderOptionPrefix(const char* provider_name) {
+std::string GetProviderOptionPrefix(const std::string& provider_name) {
   std::string key_prefix = "ep.";
   key_prefix += utils::GetLowercaseString(provider_name);
   key_prefix += ".";
