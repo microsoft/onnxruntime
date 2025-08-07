@@ -7,7 +7,7 @@
 #include "migraphx_call.h"
 
 namespace onnxruntime {
-void WaitMIGraphXNotificationOnDevice(Stream& stream, synchronize::Notification& notification);
+void WaitMIGraphXNotificationOnDevice(Stream* stream, synchronize::Notification& notification);
 
 struct MIGraphXStream : Stream {
   MIGraphXStream(hipStream_t stream,
@@ -28,8 +28,6 @@ struct MIGraphXStream : Stream {
   bool own_stream_{true};
 
   virtual void* GetResource(int version, int id) const;
-
-  virtual WaitNotificationFn GetWaitNotificationFn() const { return WaitMIGraphXNotificationOnDevice; }
 
  private:
   std::vector<void*> deferred_cpu_buffers_;

@@ -305,7 +305,14 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   TestMatMul8BitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 1234, 16, 4>();
-  TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 4>();
+
+  // Using a 2% larger tolerance for accuracy level int8 compared to the accuracy level f32/f16.
+  constexpr float abs_error = 0.1f * 1.02f;
+  constexpr float rel_error = 0.02f * 1.02f;
+  TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 4>(abs_error, rel_error);
+
+  // Test case where K (260) is divisible by 16 but not by the block size (32).
+  TestMatMul8BitsTyped<float, 32, 64, 260, 32, 4>();
 }
 
 TEST(MatMulNBits, Float32_8b_AccuracyLevel1) {
@@ -353,6 +360,9 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel1) {
   TestMatMul8BitsTyped<float, 100, 288, 93, 128, 1>();
   TestMatMul8BitsTyped<float, 100, 288, 1234, 16, 1>();
   TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 1>();
+
+  // Test case where K (260) is divisible by 16 but not by the block size (32).
+  TestMatMul8BitsTyped<float, 32, 64, 260, 32, 1>();
 }
 
 #if defined(USE_WEBGPU)
@@ -363,6 +373,9 @@ TEST(MatMulNBits, Float16_8b_AccuracyLevel4) {
   TestMatMul8BitsTyped<MLFloat16, 100, 64, 32, 32, 4>(abs_error, rel_error);
   TestMatMul8BitsTyped<MLFloat16, 100, 128, 128, 32, 4>(abs_error, rel_error);
   TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 4>(abs_error, rel_error);
+
+  // Test case where K (260) is divisible by 16 but not by the block size (32).
+  TestMatMul8BitsTyped<MLFloat16, 32, 64, 260, 32, 4>(abs_error, rel_error);
 }
 #endif
 

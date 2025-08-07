@@ -12,6 +12,7 @@
 #include <memory>
 #include "core/common/common.h"
 #include "core/providers/openvino/ov_interface.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -63,10 +64,12 @@ class SharedContext : public WeakSingleton<SharedContext> {
     fs::path external_weight_filename;
     std::unique_ptr<WeightsFile> mapped_weights;
     Metadata::Map metadata;
+    fs::path metadata_filepath;
   } shared_weights;
 };
 
 using config_t = std::map<std::string, ov::AnyMap>;
+using reshape_t = std::map<std::string, ov::PartialShape>;
 
 struct ProviderInfo {
   std::string device_type{""};             // [device_type]: Overrides the accelerator hardware type and
@@ -84,6 +87,7 @@ struct ProviderInfo {
                                            // dump and load the blobs for the model caching/kernel caching
                                            // (GPU) feature. If blob files are already present,
                                            // it will be directly loaded.
+  reshape_t reshape{};                     // Used for reshaping the ov input tensor shape at runtime.
   std::string model_priority{"DEFAULT"};   // High-level OpenVINO model priority hint
                                            // Defines what model should be provided with more performant
                                            // bounded resource first
@@ -97,6 +101,7 @@ struct ProviderInfo {
   bool disable_dynamic_shapes{false};      // [disable_dynamic_shapes]:  Rewrite dynamic shaped models to
                                            // static shape at runtime and execute.
   bool enable_qdq_optimizer{false};        // Enables QDQ pruning for efficient inference latency with NPU
+  bool enable_causallm{false};             // Enables Causal LM Compilation for ORT GenAI OVEP Pass
   bool so_context_enable{false};           // ORT session option
   bool so_disable_cpu_ep_fallback{false};  // ORT session option
   bool so_context_embed_mode{false};       // ORT session option
@@ -105,7 +110,7 @@ struct ProviderInfo {
   const ConfigOptions* config_options{NULL};
   const std::unordered_set<std::string> valid_provider_keys = {"device_type", "device_id", "device_luid", "cache_dir", "precision",
                                                                "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", "enable_qdq_optimizer",
-                                                               "enable_causallm", "disable_dynamic_shapes"};
+                                                               "enable_causallm", "disable_dynamic_shapes", "reshape_input"};
 };
 
 // Holds context applicable to the entire EP instance.
@@ -133,6 +138,7 @@ struct SubGraphContext {
   string_index_map_t output_names;
   std::string model_precision;
   bool is_ep_ctx_graph = false;
+  bool is_ep_ctx_ovir_encapsulated = false;
 };
 
 }  // namespace openvino_ep

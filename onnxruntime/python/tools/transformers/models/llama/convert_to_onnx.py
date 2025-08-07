@@ -126,7 +126,7 @@ def save_onnx_model(onnx_model: onnx.ModelProto, output_path: str, data_path: st
 def run_dynamo_export(
     args: argparse.Namespace, l_config: AutoConfig, llama: AutoModelForCausalLM, rank: int = 0, world_size: int = 1
 ):
-    from torch._dynamo import config
+    from torch._dynamo import config  # noqa: PLC0415
 
     config.capture_scalar_outputs = True
 
@@ -404,7 +404,7 @@ def optimize_export(
     world_size: int = 1,
     window_size: int = -1,
 ):
-    from fusion_options import FusionOptions
+    from fusion_options import FusionOptions  # noqa: PLC0415
 
     optimization_options = FusionOptions("gpt2")
 
@@ -489,10 +489,10 @@ def smooth_quant(
     decoder_model_int8_path: str,
     decoder_with_past_model_int8_path: str,
 ):
-    from neural_compressor import PostTrainingQuantConfig, set_workspace
-    from neural_compressor import quantization as intel_quantization
-    from onnx.external_data_helper import load_external_data_for_model
-    from quant_kv_dataloader import QuantKVDataLoader
+    from neural_compressor import PostTrainingQuantConfig, set_workspace  # noqa: PLC0415
+    from neural_compressor import quantization as intel_quantization  # noqa: PLC0415
+    from onnx.external_data_helper import load_external_data_for_model  # noqa: PLC0415
+    from quant_kv_dataloader import QuantKVDataLoader  # noqa: PLC0415
 
     set_workspace(args.nc_workspace)
     quantization_config = PostTrainingQuantConfig(
@@ -669,6 +669,8 @@ def get_args():
     )
 
     blockwise_group = parser.add_argument_group("blockwise (4-bit quantization)")
+
+    parser.add_argument("--bits", default=4, type=int, help="the target bits to represent weight")
 
     blockwise_group.add_argument(
         "--block_size",
@@ -988,6 +990,7 @@ def main():
                         model = onnx.load_model(fp_path, load_external_data=True)
                         quant = MatMulNBitsQuantizer(
                             model=model,
+                            bits=args.bits,
                             block_size=args.block_size,
                             is_symmetric=True,
                             accuracy_level=args.int4_accuracy_level,

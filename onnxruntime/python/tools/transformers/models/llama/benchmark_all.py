@@ -213,7 +213,7 @@ def process_log_file(device_id, log_file, base_results):
 
 
 def save_results(results, filename):
-    import pandas as pd
+    import pandas as pd  # noqa: PLC0415
 
     df = pd.DataFrame(
         results,
@@ -245,7 +245,7 @@ def save_results(results, filename):
     df["Memory (GB)"] = df["Memory (GB)"].astype("float")
 
     # get package name and version
-    import pkg_resources
+    import pkg_resources  # noqa: PLC0415
 
     installed_packages = pkg_resources.working_set
     installed_packages_list = sorted(

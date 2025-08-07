@@ -215,7 +215,7 @@ Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
                                                   T** interface_provider) {
   std::string error_msg;
   *backend_lib_handle = LoadLib(lib_path,
-                                static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_LOCAL),
+                                static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_GLOBAL),
                                 error_msg);
   ORT_RETURN_IF(nullptr == *backend_lib_handle, "Unable to load backend, error: ", error_msg, " ", DlError());
 
@@ -787,10 +787,12 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
 
   std::vector<QnnContext_Params_t> context_params_list;
   std::vector<QnnContext_ParamsV1_t> context_paramsv1_list;
-  std::vector<const QnnContext_Params_t*> context_params_ptr_list(context_bin_map.size() + 1);
+  std::vector<const QnnContext_Params_t*> context_params_ptr_list;
   std::vector<std::unique_ptr<char[]>> buffer_list;
 
-  size_t idx = 0;
+  context_params_list.reserve(context_bin_map.size());
+  context_params_ptr_list.reserve(context_bin_map.size() + 1);
+
   for (auto& it : context_bin_map) {
     auto context_bin_filepath = it.first;
 
@@ -816,14 +818,14 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
                                                it.second.get()};
 
     QnnContext_Params_t context_params = {QnnContext_ParamsVersion_t::QNN_CONTEXT_PARAMS_VERSION_1,
-                                          context_params_v1};
+                                          {context_params_v1}};
 
     buffer_list.push_back(std::move(buffer));
     context_params_list.push_back(std::move(context_params));
     context_paramsv1_list.push_back(std::move(context_params_v1));
-    context_params_ptr_list[idx++] = &context_params_list.back();
+    context_params_ptr_list.push_back(&context_params_list.back());
   }
-  context_params_ptr_list[idx] = nullptr;
+  context_params_ptr_list.push_back(nullptr);
   auto result = qnn_interface_.contextCreateFromBinaryListAsync(backend_handle_,
                                                                 device_handle_,
                                                                 context_params_ptr_list.data(),
@@ -837,6 +839,23 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result), ", Code:", result);
   return Status::OK();
+}
+
+Status QnnBackendManager::SetContextPriority(ContextPriority context_priority) {
+  QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority, context_priority_config));
+
+  QnnContext_Config_t* configs[] = {&context_priority_config, nullptr};
+  for (const auto& context_handle : contexts_) {
+    auto result = qnn_interface_.contextSetConfig(context_handle, (const QnnContext_Config_t**)configs);
+    ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to set context priority for context handle: ", context_handle);
+  }
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::ResetContextPriority() {
+  return SetContextPriority(context_priority_);
 }
 
 Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
@@ -1161,6 +1180,14 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
 
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 26)
     if (vtcm_backup_buffer_sharing_enabled_) {
+      // If a context bin filepath has not been processed yet,
+      // then a new context must be created for the set of context bins
+      auto first_mapping_it = ep_context_handle_map_.find(context_bin_map.begin()->first);
+      if (first_mapping_it == ep_context_handle_map_.end()) {
+        LOGS(logger, VERBOSE) << "Creating context for new set of context binaries";
+        return CreateContextVtcmBackupBufferSharingEnabled(context_bin_map);
+      }
+
       LOGS(logger, VERBOSE) << "Mapping contexts to new EP main context nodes";
 
       for (auto& it : context_bin_map) {
@@ -1426,13 +1453,33 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
   return Status::OK();
 }
 
-Status QnnBackendManager::SetRpcControlLatency(uint32_t htp_power_config_client_id,
-                                               uint32_t rpc_control_latency) {
+Status QnnBackendManager::SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
+                                             uint32_t rpc_control_latency,
+                                             uint32_t rpc_polling_time) {
   // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
   // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
   // set RPC control latency. Otherwise, this causes a segfault because the QNN backend library is unloaded.
   ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot set HTP RPC control latency if backend setup is not complete.");
+
+  constexpr int kNumRpcPollingPowerConfigs = 2;
+  std::vector<QnnHtpPerfInfrastructure_PowerConfig_t> rpc_power_configs;
+  rpc_power_configs.reserve(kNumRpcPollingPowerConfigs);
+
+  // Set rpc control latency here
   if (rpc_control_latency != 0) {
+    auto& rpc_control_latency_cfg = rpc_power_configs.emplace_back();
+    rpc_control_latency_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_CONTROL_LATENCY;
+    rpc_control_latency_cfg.rpcControlLatencyConfig = rpc_control_latency;
+  }
+
+  // Note: v68 does not support rpc polling mode
+  if (rpc_polling_time != 0) {
+    auto& rpc_polling_time_cfg = rpc_power_configs.emplace_back();
+    rpc_polling_time_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
+    rpc_polling_time_cfg.rpcPollingTimeConfig = rpc_polling_time;
+  }
+
+  if (rpc_power_configs.size() > 0) {
     QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
     auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
     ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -1442,15 +1489,6 @@ Status QnnBackendManager::SetRpcControlLatency(uint32_t htp_power_config_client_
                   "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
     QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
 
-    // Set rpc control latency here, but note that v68 doesn't support rpc polling mode.
-    constexpr int kNumRpcPollingPowerConfigs = 2;
-    std::vector<QnnHtpPerfInfrastructure_PowerConfig_t> rpc_power_configs(kNumRpcPollingPowerConfigs);
-    QnnHtpPerfInfrastructure_PowerConfig_t& rpc_control_latency_cfg = rpc_power_configs[0];
-    // v68 doesn't support this.
-    QnnHtpPerfInfrastructure_PowerConfig_t& rpc_polling_time = rpc_power_configs[1];
-    rpc_control_latency_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_CONTROL_LATENCY;
-    rpc_polling_time.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
-    rpc_control_latency_cfg.rpcControlLatencyConfig = rpc_control_latency;
     std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr =
         ObtainNullTermPtrVector(rpc_power_configs);
     status = htp_perf_infra.setPowerConfig(htp_power_config_client_id, perf_power_configs_ptr.data());

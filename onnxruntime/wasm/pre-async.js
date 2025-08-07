@@ -15,78 +15,20 @@ let initAsyncImpl = () => {
   // It removes some overhead in cwarp() and ccall() that we don't need.
   //
   // Currently in ASYNCIFY build, we only use this for the following functions:
+  // - OrtAppendExecutionProvider()
   // - OrtCreateSession()
   // - OrtRun()
   // - OrtRunWithBinding()
   // - OrtBindInput()
   //
-  // Note: about parameters "getFunc" and "setFunc":
-  // - Emscripten has different behaviors for Debug and Release builds for generating exported function wrapper.
+  // We need to wrap these functions with an async wrapper so that they can be called in an async context.
   //
-  //   - In Debug build, it will generate a wrapper function for each exported function. For example, it generates a
-  //     wrapper for OrtRun() like this (minified):
-  //     ```
-  //     var _OrtRun = Module["_OrtRun"] = createExportWrapper("OrtRun");
-  //     ```
-  //
-  //   - In Release build, it will generate a lazy loading wrapper for each exported function. For example, it generates
-  //     a wrapper for OrtRun() like this (minified):
-  //     ```
-  //     d._OrtRun = (a, b, c, e, f, h, l, q) => (d._OrtRun = J.ka)(a, b, c, e, f, h, l, q);
-  //     ```
-  //
-  //   The behavior of these two wrappers are different. The debug build will assign `Module["_OrtRun"]` only once
-  //   because `createExportWrapper()` does not reset `Module["_OrtRun"]` inside. The release build, however, will
-  //   reset d._OrtRun to J.ka when the first time it is called.
-  //
-  //   The difference is important because we need to design the async wrapper in a way that it can handle both cases.
-  //
-  //   Now, let's look at how the async wrapper is designed to work for both cases:
-  //
-  //   - Debug build:
-  //      1. When Web assembly is being loaded, `Module["_OrtRun"]` is assigned to `createExportWrapper("OrtRun")`.
-  //      2. When the first time `Module["initAsync"]` is called, `Module["_OrtRun"]` is re-assigned to a new async
-  //         wrapper function.
-  //      Value of `Module["_OrtRun"]` will not be changed again.
-  //
-  //   - Release build:
-  //      1. When Web assembly is being loaded, `Module["_OrtRun"]` is assigned to a lazy loading wrapper function.
-  //      2. When the first time `Module["initAsync"]` is called, `Module["_OrtRun"]` is re-assigned to a new async
-  //         wrapper function.
-  //      3. When the first time `Module["_OrtRun"]` is called, the async wrapper will be called. It will call into this
-  //         function:
-  //         ```
-  //         (a, b, c, e, f, h, l, q) => (d._OrtRun = J.ka)(a, b, c, e, f, h, l, q);
-  //         ```
-  //         This function will assign d._OrtRun (ie. the minimized `Module["_OrtRun"]`) to the real function (J.ka).
-  //      4. Since d._OrtRun is re-assigned, we need to update the async wrapper to re-assign its stored
-  //         function to the updated value (J.ka), and re-assign the value of `d._OrtRun` back to the async wrapper.
-  //      Value of `Module["_OrtRun"]` will not be changed again.
-  //
-  //   The value of `Module["_OrtRun"]` will need to be assigned for 2 times for debug build and 4 times for release
-  //   build.
-  //
-  //   This is why we need this `getFunc` and `setFunc` parameters. They are used to get the current value of an
-  //   exported function and set the new value of an exported function.
-  //
-  const wrapAsync = (func, getFunc, setFunc) => {
+  const wrapAsync = (func) => {
     return (...args) => {
       // cache the async data before calling the function.
       const previousAsync = Asyncify.currData;
 
-      const previousFunc = getFunc?.();
       const ret = func(...args);
-      const newFunc = getFunc?.();
-      if (previousFunc !== newFunc) {
-        // The exported function has been updated.
-        // Set the sync function reference to the new function.
-        func = newFunc;
-        // Set the exported function back to the async wrapper.
-        setFunc(previousFunc);
-        // Remove getFunc and setFunc. They are no longer needed.
-        setFunc = null;
-        getFunc = null;
-      }
 
       // If the async data has been changed, it means that the function started an async operation.
       if (Asyncify.currData != previousAsync) {
@@ -101,11 +43,7 @@ let initAsyncImpl = () => {
   // replace the original functions with asyncified versions
   const wrapAsyncAPIs = (funcNames) => {
     for (const funcName of funcNames) {
-      Module[funcName] = wrapAsync(
-        Module[funcName],
-        () => Module[funcName],
-        (v) => (Module[funcName] = v)
-      );
+      Module[funcName] = wrapAsync(Module[funcName]);
     }
   };
 

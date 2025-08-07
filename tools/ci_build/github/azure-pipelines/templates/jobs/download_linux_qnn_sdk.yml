@@ -1,7 +1,7 @@
 parameters:
   - name: QnnSDKVersion
     type: string
-    default: '2.35.0.250530'
+    default: '2.36.1.250708'
 
 steps:
   - script: |
@@ -38,10 +38,6 @@ steps:
         exit 1
       fi
     displayName: "Sanity Check: QnnSDKVersion vs sdk.yaml version"
-
-  - script: |
-      azcopy cp --recursive 'https://lotusscus.blob.core.windows.net/models/qnnsdk/Qualcomm AI Hub Proprietary License.pdf' $(QnnSDKRootDir)
-    displayName: 'Download Qualcomm AI Hub license'
 
   - script: |
       ls -al $(QnnSDKRootDir)

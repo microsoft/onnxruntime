@@ -790,7 +790,7 @@ class SymbolicShapeInference:
             new_shape = []
         elif lhs_rank == 1:
             rhs_reduce_dim = -2
-            new_shape = rhs_shape[:rhs_reduce_dim] + [rhs_shape[-1]]
+            new_shape = [*rhs_shape[:rhs_reduce_dim], rhs_shape[-1]]
         elif rhs_rank == 1:
             lhs_reduce_dim = -1
             new_shape = lhs_shape[:lhs_reduce_dim]
@@ -956,7 +956,7 @@ class SymbolicShapeInference:
         concat_dim = str(self._new_symbolic_dim_from_output(node, 0, axis))
         new_shape = seq_shape
         if new_axis:
-            new_shape = seq_shape[:axis] + [concat_dim] + seq_shape[axis:]
+            new_shape = [*seq_shape[:axis], concat_dim, *seq_shape[axis:]]
         else:
             new_shape[axis] = concat_dim
         vi = self.known_vi_[node.output[0]]
@@ -1091,7 +1091,7 @@ class SymbolicShapeInference:
             num_operands = num_operands + 1
 
         new_sympy_shape = []
-        from collections import OrderedDict
+        from collections import OrderedDict  # noqa: PLC0415
 
         num_letter_occurrences = OrderedDict()
         if mid_index != -1:
@@ -1327,9 +1327,11 @@ class SymbolicShapeInference:
         axis = get_attribute(node, "axis", -1)
         axis = handle_negative_axis(axis, len(sympy_shape) + 1)
         new_shape = get_shape_from_sympy_shape(
-            sympy_shape[:axis]
-            + [self._new_symbolic_dim_from_output(node) if not is_literal(depth) else depth]
-            + sympy_shape[axis:]
+            [
+                *sympy_shape[:axis],
+                self._new_symbolic_dim_from_output(node) if not is_literal(depth) else depth,
+                *sympy_shape[axis:],
+            ]
         )
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(
@@ -1430,7 +1432,7 @@ class SymbolicShapeInference:
         num_samples = self._try_get_value(node, 1)
         di = rank - 1
         last_dim = num_samples if num_samples else str(self._new_symbolic_dim_from_output(node, 0, di))
-        output_shape = sympy_shape[:-1] + [last_dim]
+        output_shape = [*sympy_shape[:-1], last_dim]
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(
             helper.make_tensor_value_info(
@@ -1791,7 +1793,7 @@ class SymbolicShapeInference:
             if i >= num_scan_states:
                 shape = get_shape_from_type_proto(subgraph.output[i].type)
                 new_dim = handle_negative_axis(scan_output_axes[i - num_scan_states], len(shape) + 1)
-                shape = shape[:new_dim] + [scan_input_dim] + shape[new_dim:]
+                shape = [*shape[:new_dim], scan_input_dim, *shape[new_dim:]]
                 vi.CopyFrom(helper.make_tensor_value_info(o, subgraph.output[i].type.tensor_type.elem_type, shape))
             else:
                 vi.CopyFrom(subgraph.output[i])
@@ -2038,7 +2040,7 @@ class SymbolicShapeInference:
                 make_value_info_func(
                     node.output[i_o],
                     self.known_vi_[node.input[0]].type.tensor_type.elem_type,
-                    get_shape_from_sympy_shape(input_sympy_shape[:axis] + [split[i_o]] + input_sympy_shape[axis + 1 :]),
+                    get_shape_from_sympy_shape([*input_sympy_shape[:axis], split[i_o], *input_sympy_shape[axis + 1 :]]),
                 )
             )
             self.known_vi_[vi.name] = vi
@@ -2611,7 +2613,7 @@ class SymbolicShapeInference:
         output_tensor_ranks = get_attribute(node, "output_tensor_ranks")
         assert output_tensor_ranks, f"PythonOp '{node.name}' has no output_tensor_ranks attribute."
 
-        from onnxruntime.capi._pybind_state import get_shape_inference_function
+        from onnxruntime.capi._pybind_state import get_shape_inference_function  # noqa: PLC0415
 
         func_name = get_attribute(node, "func_name").decode()
         shape_inferer = get_shape_inference_function(func_name)
@@ -2734,8 +2736,7 @@ class SymbolicShapeInference:
                 names.update(g_prereq)
                 # remove subgraph inputs from g_prereq since those are local-only
                 for i in g.input:
-                    if i.name in names:
-                        names.remove(i.name)
+                    names.discard(i.name)
             return names
 
         for n in self.tmp_mp_.graph.node:

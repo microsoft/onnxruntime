@@ -275,8 +275,23 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   var previous_max : q_element_t = min_value;
   var previous_denom : q_element_t = 0;
+)MAIN_FN";
 
-  for(var k_start = 0u; k_start < uniforms.total_sequence_length; k_start+=capped_sg_size)
+  if (is_unidirectional_) {
+    // If attention is unidirectional, set the loop bound to enforce causal masking.
+    shader.MainFunctionBody() << R"MAIN_FN(
+  let max_causal_len_for_workgroup = uniforms.past_sequence_length +
+                                     (workgroup_idx % uniforms.num_seq_tile + 1) * workgroup_size_x;
+  let loop_bound = min(uniforms.total_sequence_length, max_causal_len_for_workgroup);
+)MAIN_FN";
+  } else {
+    shader.MainFunctionBody() << R"MAIN_FN(
+  let loop_bound = uniforms.total_sequence_length;
+)MAIN_FN";
+  }
+
+  shader.MainFunctionBody() << R"MAIN_FN(
+  for(var k_start = 0u; k_start < loop_bound; k_start+=capped_sg_size)
   {
     workgroupBarrier();
     loadk(k_start, head_idx / uniforms.n_reps, local_idx, capped_sg_size);
@@ -337,7 +352,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       qk_4 = qk_4 + loadAttentionBias(q_idx_global, k_start+12, head_idx);
     }
 
-    let seq_causal_length = select(uniforms.total_sequence_length, uniforms.past_sequence_length + q_idx_global + 1, uniforms.is_gqa > 0);
+    let seq_causal_length = select(uniforms.total_sequence_length, uniforms.past_sequence_length + q_idx_global + 1, uniforms.is_unidirectional > 0);
     // Neuter qk values where K is out of bounds.
     qk_1[0] = select(min_value, qk_1[0], k_start+0 < seq_causal_length);
     qk_1[1] = select(min_value, qk_1[1], k_start+1 < seq_causal_length);
@@ -382,6 +397,8 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // sum is the second term of the same expression    : Σ_j=1:b e^(Xi[j]-Mi)
   // o_ratio is the part of the first term of o'_i expression above : d'_(i-1) * e^(M_(i-1)-M_i) / d'_i
   //
+
+  // TODO: support smooth softmax and head_sink
   shader.MainFunctionBody() << R"MAIN_FN(
     var local_max_temp = max(qk_1, qk_2);
     if (sg_size > 8)
@@ -901,7 +918,13 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     bool has_attention_bias = attention_bias != nullptr;
     bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
     bool is_fp16 = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-    FlashAttentionProgram program{"FlashAttention", has_attention_bias, is_qualcomm, is_fp16, parameters.head_size_, parameters.num_heads_};
+    FlashAttentionProgram program{"FlashAttention",
+                                  has_attention_bias,
+                                  is_qualcomm,
+                                  is_fp16,
+                                  parameters.head_size_,
+                                  parameters.num_heads_,
+                                  parameters.is_unidirectional_};
     program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
@@ -914,12 +937,12 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     const uint32_t num_seq_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;
     program.SetDispatchGroupSize(parameters.num_heads_ * num_seq_tile)
         .SetWorkgroupSize(tile_size)
-        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, is_qualcomm)
+        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm)
         .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                               {static_cast<uint32_t>(parameters.total_sequence_length_)},
                               {static_cast<uint32_t>(present_sequence_length)},
                               {static_cast<uint32_t>(parameters.total_sequence_length_ - parameters.kv_sequence_length_)},
-                              {static_cast<uint32_t>(parameters.is_gqa_ ? 1 : 0)},
+                              {static_cast<uint32_t>(parameters.is_unidirectional_)},
                               {static_cast<uint32_t>(parameters.n_reps)},
                               {alpha},
                               {num_seq_tile}});

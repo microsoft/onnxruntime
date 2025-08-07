@@ -170,7 +170,7 @@ std::string CPUIDInfo::GetX86Vendor(int32_t* data) {
 
 uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
   if (vendor == "GenuineIntel") return 0x8086;
-  if (vendor == "GenuineAMD") return 0x1022;
+  if (vendor == "AuthenticAMD") return 0x1022;
   if (vendor.find("Qualcomm") == 0) return 'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24);
   if (vendor.find("NV") == 0) return 0x10DE;
   return 0;
@@ -190,6 +190,7 @@ void CPUIDInfo::ArmLinuxInit() {
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+    has_arm_sme_ = cpuinfo_has_arm_sme();
 
     const uint32_t core_cnt = cpuinfo_get_cores_count();
     core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
@@ -342,6 +343,7 @@ void CPUIDInfo::ArmAppleInit() {
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+    has_arm_sme_ = cpuinfo_has_arm_sme();
 
     // Note: We leave is_armv8_narrow_ld_ unset because it only applies to a limited set of uarchs that we don't expect
     // to encounter on Apple platforms.

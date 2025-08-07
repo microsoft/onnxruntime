@@ -6,6 +6,8 @@
 #include "core/common/logging/logging.h"
 #include "core/common/span_utils.h"
 #include "core/framework/utils.h"
+#include "core/session/allocator_adapters.h"
+#include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -262,8 +264,9 @@ TEST(InternalTestingEP, TestReplaceAllocatorDoesntBreakDueToLocalAllocatorStorag
   OrtMemoryInfo mem_info("Replacement", OrtAllocatorType::OrtDeviceAllocator);
   AllocatorPtr replacement_alloc = std::make_shared<CPUAllocator>(mem_info);
   OrtEnv& env = *(OrtEnv*)(*ort_env);
+  OrtAllocatorImplWrappingIAllocator ort_allocator(std::move(replacement_alloc));
 
-  ASSERT_STATUS_OK(env.RegisterAllocator(replacement_alloc));
+  ASSERT_STATUS_OK(env.GetEnvironment().RegisterAllocator(&ort_allocator));
 
   SessionOptions so;
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
@@ -284,7 +287,13 @@ TEST(InternalTestingEP, TestReplaceAllocatorDoesntBreakDueToLocalAllocatorStorag
   ASSERT_STATUS_OK(session.Load(ort_model_path));
   ASSERT_STATUS_OK(session.Initialize());
 
-  ASSERT_EQ(replacement_alloc, session.GetAllocator(OrtMemoryInfo())) << "Allocators registered from Env should have the highest priority";
+  // Need to undo the wrapping that happens in Environment::RegisterAllocator to be able to compare the pointers
+  const OrtAllocator* session_allocator = reinterpret_cast<IAllocatorImplWrappingOrtAllocator*>(
+                                              session.GetAllocator(mem_info).get())
+                                              ->GetWrappedOrtAllocator();
+
+  ASSERT_EQ(session_allocator, &ort_allocator)
+      << "Allocators registered from Env should have the highest priority";
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

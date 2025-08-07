@@ -373,26 +373,57 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       continue;
     }
 
-    bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
-
-    size_t element_size = ProgramUniformVariableDataTypeSize[static_cast<int>(uniform.data_type)];
+    // Calculate the size and alignment of the uniform variable.
+    //
     // https://www.w3.org/TR/WGSL/#alignof
-    size_t base_alignment = is_f16
-                                ? (length > 4 ? 16 : length > 2 ? 8
-                                                                : length * element_size)
-                                : (length > 2 ? 16 : length * element_size);
-    size_t struct_size = is_f16 && length <= 4 ? length * element_size : 16;
+    //
+    // For f16:
+    // - length > 8      : array<vec4<u32>, N>   (align 16) (size 16 * N, N = ceil(length / 8))
+    // - length == 7 or 8: vec4<u32>             (align 16) (size 16)
+    // - length == 5 or 6: vec3<u32>             (align 16) (size 12)
+    // - length == 3 or 4: vec2<u32>             (align 8)  (size 8)
+    // - length == 1 or 2: u32                   (align 4)  (size 4)
+    //
+    // For other types (i32, u32, f32):
+    // - length > 4      : array<vec4<T>, N>     (align 16) (size 16 * N, N = ceil(length / 4))
+    // - length == 4     : vec4<T>               (align 16) (size 16)
+    // - length == 3     : vec3<T>               (align 16) (size 12)
+    // - length == 2     : vec2<T>               (align 8)  (size 8)
+    // - length == 1     : T                     (align 4)  (size 4)
+    //
 
-    current_offset = (current_offset + base_alignment - 1) / base_alignment * base_alignment;
+    const bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
+
+    size_t variable_alignment = 4;  // default alignment for scalar types
+    size_t variable_size = 4;       // default size for scalar types
+
+    if (is_f16) {
+      if (length > 6) {
+        variable_alignment = 16;
+        variable_size = 16 * ((length + 7) / 8);
+      } else if (length > 4) {
+        variable_alignment = 16;
+        variable_size = 12;
+      } else if (length > 2) {
+        variable_alignment = 8;
+        variable_size = 8;
+      }
+    } else {
+      if (length > 3) {
+        variable_alignment = 16;
+        variable_size = 16 * ((length + 3) / 4);
+      } else if (length > 2) {
+        variable_alignment = 16;
+        variable_size = 12;
+      } else if (length > 1) {
+        variable_alignment = 8;
+        variable_size = 8;
+      }
+    }
+    current_offset = (current_offset + variable_alignment - 1) / variable_alignment * variable_alignment;
     uniform_and_offsets.emplace_back(uniform, current_offset);
 
-    // For non-float16 type, when length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where
-    // N = ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N * SizeOf(vec4<i32|u32|f32>).
-    // For float16 type, when length > 4, the uniform variable is of type array<mat2x4<f16>,N>, where
-    // N = ceil(data.length / 8) and SizeOf(mat2x4<f16>) = 16. The total byte length is N * SizeOf(mat2x4<f16>).
-    size_t element_per_struct = is_f16 ? 8 : 4;
-    current_offset +=
-        length > 4 ? (length + element_per_struct - 1) / element_per_struct * struct_size : length * element_size;
+    current_offset += variable_size;
   }
 
   // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
@@ -401,6 +432,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   const size_t uniform_buffer_total_size = (current_offset + max_alignment_of_field - 1) / max_alignment_of_field * max_alignment_of_field;
 
   WGPUBuffer uniform_buffer = nullptr;
+  const webgpu::BufferManager& buffer_mgr = context.BufferManager();
   if (uniform_buffer_total_size > 0) {
     std::vector<uint8_t> uniform_data_buffer(uniform_buffer_total_size);
 
@@ -408,7 +440,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       memcpy(uniform_data_buffer.data() + offset, uniform.data.data(), uniform.data.size());
     }
 
-    uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
+    uniform_buffer = buffer_mgr.Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
@@ -429,13 +461,11 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   }
 
   LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
-
   if (uniform_buffer) {
-    buffer_mgr_->Release(uniform_buffer);
+    buffer_mgr.Release(uniform_buffer);
   }
 
   WriteTimestamp(num_pending_dispatches_ * 2 + 1);
-
   ++num_pending_dispatches_;
 
   if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
@@ -443,7 +473,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     EndComputePass();
   }
   if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
-    Flush();
+    Flush(buffer_mgr);
     num_pending_dispatches_ = 0;
   }
 
@@ -659,7 +689,7 @@ Status WebGpuContext::PopErrorScope() {
   return status;
 }
 
-void WebGpuContext::Flush() {
+void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
   if (!current_command_encoder_) {
     return;
   }
@@ -690,10 +720,11 @@ void WebGpuContext::Flush() {
     pending_queries_.emplace_back(std::move(pending_kernels_), query_read_buffer);
     pending_kernels_.clear();
   }
-
   auto command_buffer = current_command_encoder_.Finish();
   device_queue_.Submit(1, &command_buffer);
-  BufferManager().RefreshPendingBuffers();
+  if (graph_capture_state_ != GraphCaptureState::Replaying) {
+    buffer_mgr.RefreshPendingBuffers(graph_capture_state_);
+  }
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
 }
@@ -724,15 +755,90 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
 
   auto bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
+  if (graph_capture_state_ == GraphCaptureState::Capturing) {
+    external_captured_commands_->push_back({program_artifact.compute_pipeline,
+                                            bind_group,
+                                            bind_group_layout,
+                                            {x, y, z}});
+  } else {
+    compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
+    wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
+    compute_pass_encoder.DispatchWorkgroups(x, y, z);
 
-  // TODO support graph capture
+    wgpuBindGroupRelease(bind_group);
+    wgpuBindGroupLayoutRelease(bind_group_layout);
+  }
+}
 
-  compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
-  wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
-  compute_pass_encoder.DispatchWorkgroups(x, y, z);
+void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager) {
+  LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
+  // Flush any pending commands before we change the status
+  Flush(buffer_manager);
 
-  wgpuBindGroupRelease(bind_group);
-  wgpuBindGroupLayoutRelease(bind_group_layout);
+  external_captured_commands_ = captured_commands;
+
+  // Make sure the external vector is empty before we start capturing
+  if (external_captured_commands_) {
+    external_captured_commands_->clear();
+  }
+
+  // TODO: support profiling with graph capture.
+  ORT_ENFORCE(!is_profiling_, "profiling is not supported yet under graph capture mode");
+
+  graph_capture_state_ = GraphCaptureState::Capturing;
+}
+
+void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager) {
+  LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
+  graph_capture_state_ = GraphCaptureState::Replaying;
+  // Replay all captured commands from the provided vector
+  const size_t command_count = captured_commands.size();
+  for (size_t i = 0; i < command_count; ++i) {
+    auto& command = captured_commands[i];
+    const auto& compute_pass_encoder = GetComputePassEncoder();
+    WriteTimestamp(num_pending_dispatches_ * 2);
+    compute_pass_encoder.SetPipeline(command.compute_pipeline);
+    wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, command.bind_group, 0, nullptr);
+    compute_pass_encoder.DispatchWorkgroups(command.dispatch_group[0], command.dispatch_group[1], command.dispatch_group[2]);
+    WriteTimestamp(num_pending_dispatches_ * 2 + 1);
+    ++num_pending_dispatches_;
+    if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
+        (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
+      EndComputePass();
+    }
+    if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
+      Flush(buffer_manager);
+      num_pending_dispatches_ = 0;
+    }
+  }
+
+  // Flush any remaining commands
+  Flush(buffer_manager);
+
+  graph_capture_state_ = GraphCaptureState::Default;
+}
+
+void WebGpuContext::CaptureEnd() {
+  LOGS_DEFAULT(VERBOSE) << "CaptureEnd";
+
+  graph_capture_state_ = GraphCaptureState::Default;
+  external_captured_commands_ = nullptr;
+}
+
+void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands) {
+  LOGS_DEFAULT(VERBOSE) << "ReleaseGraphResources: Releasing " << captured_commands.size() << " captured command resources";
+
+  for (auto& command : captured_commands) {
+    if (command.bind_group != nullptr) {
+      wgpuBindGroupRelease(command.bind_group);
+      command.bind_group = nullptr;
+    }
+
+    if (command.bind_group_layout != nullptr) {
+      wgpuBindGroupLayoutRelease(command.bind_group_layout);
+      command.bind_group_layout = nullptr;
+    }
+  }
 }
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
