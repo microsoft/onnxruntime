@@ -20,13 +20,16 @@ Abstract:
 #ifndef __clang__
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+sve")
-
+#endif
 // Use Clang-specific per-function attribute
 #ifdef __clang__
 #define MLAS_SVE_TARGET __attribute__((target("arch=armv8.2-a+sve")))
 #else
 #define MLAS_SVE_TARGET
 #endif
+
+
+#define PACKED_B_BLOCK_WIDTH 16
 
 typedef svfloat32_t MLAS_SVFLOAT32;
 typedef svint32_t MLAS_SVINT32;
@@ -112,6 +115,65 @@ MlasSveLogisticKernel(
     const float* Input,
     float* Output,
     size_t N
+);
+
+
+MLAS_SVE_TARGET
+MLASCALL
+size_t
+MlasSgemmKernelAdd_sve(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    float alpha
+);
+
+MLAS_SVE_TARGET
+MLASCALL
+size_t
+MlasSgemmKernelZero_sve(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    float alpha
+);
+
+void MLAS_SVE_TARGET MLASCALL
+SCATTER_STORE(float* d, const float* b);
+
+void MLAS_SVE_TARGET MLASCALL
+SVE_ZERO_INITIALIZE(float* d);
+
+void MLAS_SVE_TARGET MLASCALL
+SVE_LOAD_STORE(float* D, const float* b);
+
+void MLAS_SVE_TARGET MLASCALL
+SVE_TRANSPOSE(float*& D, const float*& b, size_t ldb, size_t& x);
+
+template <unsigned N>
+void
+MlasSveTransposePackBNx4(
+    float* D,
+    const float* B,
+    size_t ldb
+);
+
+template <unsigned N>
+ void
+TransposePackBNx8(
+    float* D,
+    const float* B,
+    size_t ldb
 );
 
 //MLAS API for SVE intrinsics
@@ -321,6 +383,13 @@ MLAS_SVFLOAT32
 MlasSveBroadcastFloat32(const float* Value)
 {
     return svld1_f32(svptrue_b32(), Value);
+}
+
+MLAS_SVBOOL
+MLAS_FORCEINLINE
+MlasSveptrue(void)
+{
+    return svptrue_b32();
 }
 
 MLAS_SVE_TARGET
@@ -649,5 +718,4 @@ MlasSveCompareGreaterThan(svbool_t Pred, MLAS_SVFLOAT32 A, MLAS_SVFLOAT32 B)
 #pragma GCC pop_options
 #endif
 
-#endif
 
