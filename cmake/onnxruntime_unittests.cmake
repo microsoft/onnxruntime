@@ -56,11 +56,6 @@ function(AddTest)
 
   filter_test_srcs(_UT_SOURCES)
 
-  # for debugging
-  # TODO remove
-  list(JOIN _UT_SOURCES "\n" ut_sources_display_output)
-  message(STATUS "test target ${_UT_TARGET} sources:\n${ut_sources_display_output}")
-
   if (IOS)
     onnxruntime_add_executable(${_UT_TARGET} ${TEST_SRC_DIR}/xctest/orttestmain.m)
   else()
@@ -1198,13 +1193,6 @@ endif()
 # Execution provider-related tests.
 # These also have some support for dynamically specified plugin EPs.
 block()
-  # temp override for quicker compilation while testing...
-  # TODO remove
-  # set(provider_test_srcs
-  #   ${TEST_SRC_DIR}/providers/cpu/tensor/unique_op_test.cc
-  #   ${TEST_SRC_DIR}/providers/cpu/math/element_wise_ops_test.cc
-  # )
-
   set(onnxruntime_provider_test_srcs
     ${provider_test_srcs}
 
