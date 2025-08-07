@@ -112,8 +112,9 @@ struct MIGraphX_Provider final : Provider {
   // Method uses ProviderOptions, and not OrtMIGraphXProviderOptions (obsolete)
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
     if (provider_options != nullptr) {
-      return std::make_shared<MIGraphXProviderFactory>(MIGraphXExecutionProviderInfo{
-        MIGraphXExecutionProviderInfo{*static_cast<const ProviderOptions*>(provider_options)}});
+      return std::make_shared<MIGraphXProviderFactory>(
+        MIGraphXExecutionProviderInfo{*static_cast<const ProviderOptions*>(provider_options)}
+      );
     }
     return nullptr;
   }
