@@ -79,11 +79,11 @@ Status ProgramManager::Build(const ProgramBase& program,
 #endif
                         << "] End ===\n";
 
-  wgpu::ShaderModuleWGSLDescriptor wgsl_descriptor{};
-  wgsl_descriptor.code = code.c_str();
+  wgpu::ShaderSourceWGSL wgsl_source{};
+  wgsl_source.code = code.c_str();
 
   wgpu::ShaderModuleDescriptor descriptor{};
-  descriptor.nextInChain = &wgsl_descriptor;
+  descriptor.nextInChain = &wgsl_source;
 
   auto shader_module = device_.CreateShaderModule(&descriptor);
 

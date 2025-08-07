@@ -6,6 +6,7 @@
 #include "core/graph/contrib_ops/quantization_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/graph/contrib_ops/shape_inference_functions.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
 // Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
 // ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
 #if defined(_WIN32) && !defined(NDEBUG)
@@ -232,7 +233,8 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
 // Type and shape inference for group query attention and sparse attention.
 void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
                                                   int past_key_index = -1,
-                                                  int use_max_past_present_buffer = -1) {
+                                                  int use_max_past_present_buffer = -1,
+                                                  int output_qk_index = -1) {
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
   int64_t kv_sequence_length = -1;
@@ -277,12 +279,19 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
     }
   }
 
-  if (ctx.getNumOutputs() > 1) {  // has present output
+  if (ctx.getNumOutputs() >= 3) {  // has present output
     // copy the type from query to present key
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
 
     // copy the type from query to present value
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
+
+    int64_t total_sequence_length_value = 0;
+    const auto* total_sequence_length_data = ctx.getInputData(6);
+    if (total_sequence_length_data != nullptr) {
+      const auto& data = ParseData<int32_t>(total_sequence_length_data);
+      total_sequence_length_value = static_cast<int64_t>(data[0]);
+    }
 
     if (past_key_index >= 0 && hasInputShape(ctx, past_key_index)) {
       auto& past_shape = getInputShape(ctx, past_key_index);
@@ -299,30 +308,25 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
         ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
       } else if (use_max_past_present_buffer == 0) {
         if (kv_sequence_length > 0 && past_dims[2].has_dim_value()) {
-          int64_t total_sequence_length = kv_sequence_length + past_dims[2].dim_value();
+          const int64_t present_sequence_length = kv_sequence_length + past_dims[2].dim_value();
 
           ONNX_NAMESPACE::TensorShapeProto present_shape;
           for (auto& dim : past_dims) {
             *present_shape.add_dim() = dim;
           }
 
-          // shape of present key/value is (batch_size, kv_num_heads, total_sequence_length, head_size)
-          present_shape.mutable_dim(2)->set_dim_value(total_sequence_length);
+          // shape of present key/value is (batch_size, kv_num_heads, present_sequence_length, head_size)
+          present_shape.mutable_dim(2)->set_dim_value(present_sequence_length);
 
           updateOutputShape(ctx, 1, present_shape);
           updateOutputShape(ctx, 2, present_shape);
         }
       } else if (use_max_past_present_buffer == -1) {
-        const auto* total_sequence_length_data = ctx.getInputData(6);
-        if (total_sequence_length_data != nullptr && past_dims[2].has_dim_value()) {
-          int64_t total_sequence_length_value = 0;
-          const auto& data = ParseData<int32_t>(total_sequence_length_data);
-          total_sequence_length_value = static_cast<int64_t>(data[0]);
-
+        if (total_sequence_length_value > 0 && past_dims[2].has_dim_value()) {
           // present_sequence_length = max(past_sequence_length, total_sequence_length)
-          int64_t present_sequence_length = total_sequence_length_value > past_dims[2].dim_value()
-                                                ? total_sequence_length_value
-                                                : past_dims[2].dim_value();
+          const int64_t present_sequence_length = total_sequence_length_value > past_dims[2].dim_value()
+                                                      ? total_sequence_length_value
+                                                      : past_dims[2].dim_value();
 
           ONNX_NAMESPACE::TensorShapeProto present_shape;
           for (auto& dim : past_dims) {
@@ -336,19 +340,50 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
           updateOutputShape(ctx, 2, present_shape);
         }
       }
+
+      if (output_qk_index >= 0) {
+        const bool did_supply_qk_buffer = ctx.hasOutput(output_qk_index);
+        const int64_t qk_output_type = getAttribute(ctx, "qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT));
+
+        if (qk_output_type == static_cast<int64_t>(QKOutputType::NO_OUTPUT) && did_supply_qk_buffer) {
+          fail_shape_inference("Output QK buffer was provided but qk_output attribute was not configured");
+        }
+
+        if (qk_output_type != static_cast<int64_t>(QKOutputType::NO_OUTPUT) && !did_supply_qk_buffer) {
+          fail_shape_inference("Output QK buffer was not provided but qk_output attribute was configured");
+        }
+
+        int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+        if (did_supply_qk_buffer && hasInputShape(ctx, 0) && total_sequence_length_value > 0 && num_heads > 0) {
+          ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, output_qk_index);
+
+          auto& query_shape = getInputShape(ctx, 0);
+          auto& query_dims = query_shape.dim();
+
+          if (query_dims[0].has_dim_value() && query_dims[1].has_dim_value()) {
+            ONNX_NAMESPACE::TensorShapeProto output_qk_shape;
+            *output_qk_shape.add_dim() = query_dims[0];                             // batch_size
+            output_qk_shape.add_dim()->set_dim_value(num_heads);                    // num_heads
+            *output_qk_shape.add_dim() = query_dims[1];                             // sequence_length
+            output_qk_shape.add_dim()->set_dim_value(total_sequence_length_value);  // total_sequence_length
+            updateOutputShape(ctx, output_qk_index, output_qk_shape);
+          }
+        }
+      }
     }
   }
 }
 
-void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
+void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index, int qk_output_index) {
   // TODO(aciddelgado): propagate output shapes depending if kv-share buffer is on or not
   constexpr int use_max_past_present_buffer = -1;
-  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer);
+  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index);
 }
 
 void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
   constexpr int use_max_past_present_buffer = 1;
-  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer);
+  constexpr int qk_output_index = -1;
+  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index);
 }
 
 constexpr const char* Attention_ver1_doc = R"DOC(
@@ -1127,6 +1162,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Use a smooth factor in softmax.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
+        .Attr("qk_output",
+              "Output values of QK matrix multiplication before (1) or after (2) softmax normalization. Default value is 0 (don't output).",
+              AttributeProto::INT,
+              static_cast<int64_t>(QKOutputType::NO_OUTPUT))
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
@@ -1205,10 +1244,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
                 "T")
+        .Output(3,
+                "output_qk",
+                "Values of QK matrix multiplication, either before or after softmax normalization",
+                "T",
+                OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          GroupQueryAttentionTypeAndShapeInference(ctx, 3);
+          GroupQueryAttentionTypeAndShapeInference(ctx, 3, 3);
         }));
 
 constexpr const char* PagedAttention_ver1_doc = R"DOC(

@@ -99,7 +99,7 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (!has_zero_point) {
     if (zero_point_shape.empty()) {
       // zero_point has the same shape as the scale tensor.
-      zero_point_shape = GetNarrowedIntfromInt64<uint32_t>(scale_shape);
+      zero_point_shape = GetNarrowedIntFromInt64<uint32_t>(scale_shape);
     }
     // Create a zero constant with the same shape as the scale tensor.
     // The zero value has been pre-processed in the CreateOrGetConstant function,
@@ -167,7 +167,8 @@ bool QDQOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
     return false;
   }
 
-  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "x", logger) &&
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) &&
+         IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "x", logger) &&
          IsDataTypeSupportedByOp(op_type, input1_type, wnn_limits, "scale", "x_scale", logger) &&
          (!has_input2 || IsDataTypeSupportedByOp(op_type, input2_type, wnn_limits, "zeroPoint", "x_zero_point", logger));
 }

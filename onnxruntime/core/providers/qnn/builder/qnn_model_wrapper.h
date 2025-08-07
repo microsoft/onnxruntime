@@ -236,24 +236,6 @@ class QnnModelWrapper {
                             tensor_data_type, quantize_param, do_op_validation, is_for_input, is_for_output);
   }
 
-  Status AddInt64CastNode(const std::string& input_name, std::string& cast_output_name,
-                          std::vector<uint32_t>&& cast_output_shape, bool do_op_validation) {
-    cast_output_name = input_name + "_ort_qnn_ep_cast";
-    QnnTensorWrapper cast_output(cast_output_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32,
-                                 QnnQuantParamsWrapper(), std::move(cast_output_shape));
-    ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
-    ORT_RETURN_IF_NOT(CreateQnnNode(cast_output_name,
-                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                    "Cast",
-                                    {input_name},
-                                    {cast_output_name},
-                                    {},
-                                    do_op_validation),
-                      "Failed to add node.");
-
-    return Status::OK();
-  }
-
   Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                std::vector<uint8_t>& unpacked_tensor) const;
 
@@ -261,8 +243,44 @@ class QnnModelWrapper {
 
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
-  // Unpack float scales from initializer (1 scale for per-tensor, > 1 for per-axis).
-  Status UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const;
+  // Unpack scales from initializer (1 scale for per-tensor, > 1 for per-axis or per-block).
+  // Template parameter T allows handling both float and uint8_t scale types.
+  template <typename T = float>
+  Status UnpackScales(const std::string& initializer_name, std::vector<T>& scales) const {
+    const auto& graph_initializers = GetInitializerTensors();
+    auto iter = graph_initializers.find(initializer_name);
+    ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for scale(s): ",
+                  initializer_name.c_str());
+    gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
+
+    ORT_RETURN_IF_NOT(scale_tensor_proto->has_data_type(), "Expected scale initializer ", initializer_name.c_str(),
+                      " to have a proto data type.");
+
+    // Handle float scales
+    if constexpr (std::is_same_v<T, float>) {
+      // Verify data type for float scales
+      ORT_RETURN_IF_NOT(scale_tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                        "Expected float scale initializer to be of type FLOAT");
+
+      std::vector<uint8_t> initializer_bytes;
+      ORT_RETURN_IF_ERROR(UnpackInitializerData(*scale_tensor_proto, initializer_bytes));
+      gsl::span<const float> src = gsl::make_span(reinterpret_cast<const float*>(initializer_bytes.data()),
+                                                  initializer_bytes.size() / sizeof(float));
+      scales.insert(scales.end(), src.begin(), src.end());
+    }
+    // Handle uint8_t scales (for block quantization)
+    else if constexpr (std::is_same_v<T, uint8_t>) {
+      // Verify data type for uint8_t scales
+      ORT_RETURN_IF_NOT(scale_tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                        "Expected uint8_t scale initializer to be of type UINT8");
+
+      ORT_RETURN_IF_ERROR(UnpackInitializerData(*scale_tensor_proto, scales));
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scale ONNX data type `", typeid(T).name(),
+                             "` is not supported for unpacking.");
+    }
+    return Status::OK();
+  }
 
   // Unpack zero-points from initializer and convert to int32_t (1 zero-point for per-tensor, > 1 for per-channel).
   Status UnpackZeroPoints(const std::string& initializer_name,

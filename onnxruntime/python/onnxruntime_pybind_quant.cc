@@ -126,6 +126,8 @@ void QuantizeMatMulBnb4Blockwise(
 }
 
 void CreateQuantPybindModule(py::module& m) {
+  m.def("quantize_matmul_2bits", &QuantizeMatMulNBitsBlockwise<float, 2>);
+  m.def("quantize_matmul_2bits", &QuantizeMatMulNBitsBlockwise<MLFloat16, 2>);
   m.def("quantize_matmul_4bits", &QuantizeMatMulNBitsBlockwise<float, 4>);
   m.def("quantize_matmul_4bits", &QuantizeMatMulNBitsBlockwise<MLFloat16, 4>);
   m.def("quantize_matmul_nbits", &QuantizeMatMulNBitsBlockwise<MLFloat16, 4>);

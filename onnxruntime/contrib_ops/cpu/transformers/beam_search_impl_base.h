@@ -289,7 +289,7 @@ Status BeamSearchBase<T>::GenerateNextToken(
     auto sequences_buffer = cpu_state.sequences.GetCurrentDeviceSequences();
     for (int i = 0; i < parameters_->batch_size * parameters_->num_beams; i++) {
       gsl::span<const int32_t> sequence = sequences_buffer.subspan(i * parameters_->max_length, cpu_state.sequences.GetSequenceLength());
-      cuda_dumper_->Print("sequences", i, false);
+      cuda_dumper_->Print(::onnxruntime::MakeString("sequences[", i, "]"));
       cuda_dumper_->Print(nullptr, sequence.data(), 1, static_cast<int>(sequence.size()));
     }
 #endif

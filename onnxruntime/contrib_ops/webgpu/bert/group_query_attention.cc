@@ -178,6 +178,10 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                                head_sink,
                                                                                params));
 
+  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckNoQKOutput(
+      context.OutputCount(),
+      static_cast<int>(Info().GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)))));
+
   WebgpuAttentionParameters parameters(params);
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);
@@ -194,8 +198,12 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor* present_value = context.Output(2, present_kv_shape);
   parameters.past_present_share_buffer_ = present_key != nullptr && present_value != nullptr && past_key != nullptr && past_value != nullptr && past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
 
+  ORT_ENFORCE(parameters.total_sequence_length_ <= parameters.seqlen_present_kv_cache_, "Total sequence length cannot be greater than the existing KV cache length.");
+  // Use a sliding window if the total sequence exceeds the window's length.
+  bool use_sliding_window = (local_window_size_ != -1 && local_window_size_ < parameters.total_sequence_length_);
   if (!do_rotary_ &&
       head_sink == nullptr && !use_smooth_softmax_ &&
+      !use_sliding_window &&
       CanApplyFlashAttention(attention_bias, present_key, present_value, parameters, context)) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                                present_value, parameters, context);
@@ -237,7 +245,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       context, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, nullptr, 0, &Q));
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {  // key and value in BNSH format
     return ApplyAttention(&Q, key, value, attention_bias, past_key, past_value, output, present_key,
-                          present_value, parameters, context, head_sink, seqlen_k);
+                          present_value, parameters, context, head_sink, seqlen_k, local_window_size_);
   }
 
   TensorShapeVector k_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
@@ -254,7 +262,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
                                         parameters.v_head_size_, value, nullptr, 0, &V));
   return ApplyAttention(&Q, &K, &V, attention_bias, past_key, past_value, output, present_key,
-                        present_value, parameters, context, head_sink, seqlen_k);
+                        present_value, parameters, context, head_sink, seqlen_k, local_window_size_);
 }
 
 }  // namespace webgpu
