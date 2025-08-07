@@ -74,7 +74,7 @@ void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes);
 
 void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
 
-const std::unordered_map<OrtDevice, MemCpyFunc>* GetCudaToHostMemCpyFunction(const OrtDevice&);;
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetCudaToHostMemCpyFunction(const OrtDevice&);
 
 bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
 
