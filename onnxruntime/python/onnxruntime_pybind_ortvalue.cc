@@ -421,7 +421,7 @@ void addOrtValueMethods(pybind11::module& m) {
       // Converts Tensor into a numpy array
       .def("numpy", [](const OrtValue* ml_value) -> py::object {
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
-        const auto& device = ml_value->Get<Tensor>().Location().device;
+        [[maybe_unused]] const auto& device = ml_value->Get<Tensor>().Location().device;
 #ifdef _MSC_VER
 // The switch statement may only contain the 'default' label. In such a case, the MSVC compiler
 // will warn about it, and since the warnings are treated as errors, the compilation will break.
