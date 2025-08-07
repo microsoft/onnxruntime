@@ -750,6 +750,13 @@ bool NvExecutionProvider::PerThreadContext::UpdateTensorRTContext(std::string fu
   return false;
 }
 
+void NvExecutionProvider::PerThreadContext::DeleteCapturedGraph(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  if (graph_id_to_run_count_.find(cuda_graph_annotation_id) == graph_id_to_run_count_.end()) {
+    return;
+  }
+  graph_id_to_run_count_.erase([cuda_graph_annotation_id]);
+}
+
 void NvExecutionProvider::PerThreadContext::ResetWarmupRuns(CudaGraphAnnotation_t cuda_graph_annotation_id) {
   if (graph_id_to_run_count_.find(cuda_graph_annotation_id) == graph_id_to_run_count_.end()) {
     return;
@@ -2769,22 +2776,18 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     bool graph_replay_on_this_run = false;
     bool should_start_capture = false;
     if(require_io_binding && cuda_graph_enable_) {
-      // Resetting warm up run
       GetPerThreadContext().ResetWarmupRuns(cuda_graph_annotation_id);
 
-      // Check if graph is present --> If yes, reset the warmup runs and warn
-      // Fallback??? enqueu call right?
       if(GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
         LOGS_DEFAULT(WARNING) << "Graph already captured and required_io_binding is true, resetting warmup runs";
         GetPerThreadContext().ResetWarmupRuns(cuda_graph_annotation_id);
+        GetPerThreadContext().DeleteCapturedGraph(cuda_graph_annotation_id);
       }
     } else if(cuda_graph_enable_ && !require_io_binding) {
-      // If cuda id is not -1, we increment the warmup runs
-      if(cuda_graph_annotation_id != kCudaGraphAnnotationSkip) {
+      if(cuda_graph_annotation_id != kCudaGraphAnnotationSkip && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
         GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture(cuda_graph_annotation_id);
       }
 
-      // We capture if all okay
       if(!GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)
                               && GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
         GetPerThreadContext().SetCudaGraphStream(stream);
@@ -2792,13 +2795,11 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         should_start_capture = true;
       }
 
-      // warmup > 2 && capture presetn --> replay graph
       if(GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
         graph_replay_on_this_run = true;
       }
     }
 
-    // Run TRT inference - only if not using captured graph
     if (!graph_replay_on_this_run) {
       if (!trt_context->enqueueV3(stream)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP execution context enqueue failed.");
@@ -3109,20 +3110,39 @@ trt_state->skip_io_binding_allowed = trt_state->skip_io_binding_allowed | skip_o
     // Note: We need to set the stream and start capture here because this is where we have access to the actual compute stream
     // Get the graph annotation ID that was stored during OnRunStart
     CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCurrentGraphAnnotationId();
-    bool should_start_capture = cuda_graph_enable_ &&
-                               !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id) &&
-                               GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id);
+    bool graph_replay_on_this_run = false;
+    bool should_start_capture = false;
+    if(require_io_binding && cuda_graph_enable_) {
+      GetPerThreadContext().ResetWarmupRuns(cuda_graph_annotation_id);
 
-    if (should_start_capture) {
-      GetPerThreadContext().SetCudaGraphStream(stream);
-      GetPerThreadContext().CaptureBegin(cuda_graph_annotation_id);
+      if(GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
+        LOGS_DEFAULT(WARNING) << "Graph already captured and required_io_binding is true, resetting warmup runs";
+        GetPerThreadContext().ResetWarmupRuns(cuda_graph_annotation_id);
+        GetPerThreadContext().DeleteCapturedGraph(cuda_graph_annotation_id);
+      }
+    } else if(cuda_graph_enable_ && !require_io_binding) {
+      if(cuda_graph_annotation_id != kCudaGraphAnnotationSkip && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
+        GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture(cuda_graph_annotation_id);
+      }
+
+      if(!GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)
+                              && GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
+        GetPerThreadContext().SetCudaGraphStream(stream);
+        GetPerThreadContext().CaptureBegin(cuda_graph_annotation_id);
+        should_start_capture = true;
+      }
+
+      if(GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
+        graph_replay_on_this_run = true;
+      }
     }
 
-    // Run TRT inference - only if not using captured graph
-    if (!GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
+    if (!graph_replay_on_this_run) {
       if (!trt_context->enqueueV3(stream)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP execution context enqueue failed.");
       }
+    } else {
+      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id));
     }
 
     /*
@@ -3176,17 +3196,9 @@ trt_state->skip_io_binding_allowed = trt_state->skip_io_binding_allowed | skip_o
       }
     }
 
-    if (cuda_graph_enable_) {
-      if (should_start_capture) {
-        GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
-        ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id));
-      } else if (GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
-        ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id));
-      } else {
-        if (cuda_graph_annotation_id != kCudaGraphAnnotationSkip) {
-          GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture(cuda_graph_annotation_id);
-        }
-      }
+    if (cuda_graph_enable_ && should_start_capture) {
+      GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
+      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id));
     }
 
     return Status::OK();
