@@ -38,7 +38,7 @@ jobs:
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ccache_ort
   pool:
     name: "Azure Pipelines"
-    image: 'macOS-14'
+    image: 'macOS-15'
     os: macOS
   timeoutInMinutes: 300
   steps:
@@ -64,6 +64,8 @@ jobs:
   - template: set-version-number-variables-step.yml
 
   - template: use-xcode-version.yml
+    parameters:
+      xcodeVersion: 16.4
 
   - script: |
       set -e -x
@@ -101,7 +103,7 @@ jobs:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
         BuildJava: true
         BuildNodejs: true
         WithCache: ${{ parameters.WithCache }}
