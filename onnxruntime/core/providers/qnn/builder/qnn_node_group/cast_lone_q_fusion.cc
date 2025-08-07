@@ -17,7 +17,7 @@ Status CreateOrValidateOnQnn(
     [[maybe_unused]] const logging::Logger& logger,
     bool validate) {
   const NodeUnit* cast = node_units[0];
-  const NodeUnit* quantizeLinear = node_units[1];
+  const NodeUnit* quantize_linear = node_units[1];
 
   // ProcessInputs
   const auto& input_name = cast->Inputs()[0].node_arg.Name();
@@ -30,9 +30,9 @@ Status CreateOrValidateOnQnn(
                       "Failed to add input tensor for QNN Convert node.");
   }
   // ProcessAttributesAndOutputs
-  const auto& output_name = quantizeLinear->Outputs()[0].node_arg.Name();
+  const auto& output_name = quantize_linear->Outputs()[0].node_arg.Name();
   TensorInfo q_node_output_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper->GetTensorInfo(quantizeLinear->Outputs()[0], q_node_output_info));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper->GetTensorInfo(quantize_linear->Outputs()[0], q_node_output_info));
   QnnTensorWrapper output_tensor_wrapper;
   ORT_RETURN_IF_ERROR(qnn_model_wrapper->MakeTensorWrapper(q_node_output_info, output_name, output_tensor_wrapper));
   ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensorWrapper(std::move(output_tensor_wrapper)),
@@ -62,15 +62,15 @@ std::unique_ptr<IQnnNodeGroup> CastLoneQFusion::TryFusion(
   // Transform the pattern Non-DQ Node -> Cast -> Q into Non-DQ Node -> Convert
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
   const std::array<std::string_view, 1> child_op_types{QUANTIZE_LINEAR};
-  const NodeUnit* quantizeLinear = GetOnlyChildOfType(
+  const NodeUnit* quantize_linear = GetOnlyChildOfType(
       graph_viewer, cast_node_unit, child_op_types,
       node_to_node_unit, node_unit_to_qnn_node_group);
   const std::array<std::string_view, 1> parent_op_types{DEQUANTIZE_LINEAR};
-  const NodeUnit* dequantizeLinear = GetParentOfType(
+  const NodeUnit* dequantize_linear = GetParentOfType(
       graph_viewer, cast_node_unit, parent_op_types,
       node_to_node_unit, node_unit_to_qnn_node_group);
 
-  if (quantizeLinear == nullptr || dequantizeLinear != nullptr) {
+  if (quantize_linear == nullptr || dequantize_linear != nullptr) {
     return nullptr;
   }
 
@@ -78,7 +78,7 @@ std::unique_ptr<IQnnNodeGroup> CastLoneQFusion::TryFusion(
   if (qnn_model_wrapper.IsConstantInput(cast_node_unit.Inputs()[0].node_arg.Name())) {
     return nullptr;
   }
-  std::array<const NodeUnit*, 2> node_unit_array{&cast_node_unit, quantizeLinear};
+  std::array<const NodeUnit*, 2> node_unit_array{&cast_node_unit, quantize_linear};
   auto node_units = gsl::make_span<const NodeUnit*>(node_unit_array.data(), 2);
 
   if (CreateOrValidateOnQnn(&qnn_model_wrapper, node_units, logger, /*validate=*/true) != Status::OK()) {

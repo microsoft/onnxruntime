@@ -1112,11 +1112,7 @@ TEST_F(QnnHTPBackendTests, ProfilingTest) {
 
 TEST_F(QnnHTPBackendTests, CastAddQDQU8) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy<uint8_t>(BuildCastAddTestCase<uint8_t>(),
@@ -1128,11 +1124,7 @@ TEST_F(QnnHTPBackendTests, CastAddQDQU8) {
 
 TEST_F(QnnHTPBackendTests, CastAddQDQU16) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy<uint16_t>(BuildCastAddTestCase<uint8_t>(),
@@ -1144,11 +1136,7 @@ TEST_F(QnnHTPBackendTests, CastAddQDQU16) {
 
 TEST_F(QnnHTPBackendTests, CastAddQDQS8) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy<int8_t>(BuildCastAddTestCase<uint8_t>(),
@@ -1160,11 +1148,7 @@ TEST_F(QnnHTPBackendTests, CastAddQDQS8) {
 
 TEST_F(QnnHTPBackendTests, CastAddQDQS16) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy<int16_t>(BuildCastAddTestCase<uint8_t>(),

@@ -5,6 +5,10 @@
 
 namespace onnxruntime {
 namespace qnn {
+/// <summary>
+/// Represents a fusion of pattern: Quantize(Cast(x)) => Convert(x)
+/// when x is not the output of Dequantize
+/// </summary>
 class CastLoneQFusion : public IQnnNodeGroup {
  public:
   explicit CastLoneQFusion(gsl::span<const NodeUnit* const> node_units) {
