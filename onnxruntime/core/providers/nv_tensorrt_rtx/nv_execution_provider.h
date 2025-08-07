@@ -402,6 +402,7 @@ class NvExecutionProvider : public IExecutionProvider {
     bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
     Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id);
     void IncrementRegularRunCountBeforeGraphCapture(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    void NvExecutionProvider::PerThreadContext::ResetWarmupRuns(CudaGraphAnnotation_t cuda_graph_annotation_id);
 
    private:
     cudnnHandle_t external_cudnn_handle_ = nullptr;

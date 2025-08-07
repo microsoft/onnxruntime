@@ -365,11 +365,8 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                      \
       data = const_cast<SrcT*>(input_tensor_ptr);                                           \
     } else {                                                                                \
-      if (buffer_index >= scratch_buffers.size()) {                                         \
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));       \
-      }                                                                                     \
-      data = scratch_buffers[buffer_index].get();                                           \
-      buffer_index++;                                                                       \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1)); \
+      data = scratch_buffers.back().get();                                                  \
     }                                                                                       \
     break;                                                                                  \
   }
@@ -379,18 +376,13 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                   \
     skip_input_binding_allowed = false;                                                                           \
     if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                            \
-      if (buffer_index >= scratch_buffers.size()) {                                                               \
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
-      }                                                                                                           \
-      data = scratch_buffers[buffer_index].get();                                                                 \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
+      data = scratch_buffers.back().get();                                                                        \
       cuda::Impl_Cast<SrcT, DstT>(stream, input_tensor_ptr, reinterpret_cast<DstT*>(data), elem_cnt);             \
     } else {                                                                                                      \
-      if (buffer_index >= scratch_buffers.size()) {                                                               \
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                     \
-      }                                                                                                           \
-      data = scratch_buffers[buffer_index].get();                                                                 \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                       \
+      data = scratch_buffers.back().get();                                                                        \
     }                                                                                                             \
-    buffer_index++;                                                                                               \
     break;                                                                                                        \
   }
 
@@ -401,11 +393,8 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                     \
       buffers[output_name] = output_tensor_ptr;                                             \
     } else {                                                                                \
-      if (buffer_index >= scratch_buffers.size()) {                                                               \
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                     \
-      }                                                                                     \
-      buffers[output_name] = scratch_buffers[buffer_index].get();                           \
-      buffer_index++;                                                                       \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1)); \
+      buffers[output_name] = scratch_buffers.back().get();                                  \
     }                                                                                       \
     break;                                                                                  \
   }
@@ -416,19 +405,14 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     data_ptr = output_tensor_ptr;                                                                                 \
     skip_output_binding_allowed = false;                                                                          \
     if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                           \
-      if (buffer_index >= scratch_buffers.size()) {                                                               \
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
-      }                                                                                                           \
-      buffers[output_name] = scratch_buffers[buffer_index].get();                                                 \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
+      buffers[output_name] = scratch_buffers.back().get();                                                        \
       output_dim_sizes[i] = static_cast<int>(elem_cnt);                                                           \
     } else {                                                                                                      \
-      if (buffer_index >= scratch_buffers.size()) {                                                               \
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                     \
-      }                                                                                                           \
-      buffers[output_name] = scratch_buffers[buffer_index].get();                                                 \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                       \
+      buffers[output_name] = scratch_buffers.back().get();                                                        \
       output_dim_sizes[i] = 1;                                                                                    \
     }                                                                                                             \
-    buffer_index++;                                                                                               \
     break;                                                                                                        \
   }
 
@@ -467,7 +451,6 @@ Status BindContextInput(Ort::KernelContext& ctx,
                         std::unordered_map<std::string, std::vector<int32_t>>& shape_tensor_values,
                         std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64,
                         std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
-                        size_t& buffer_index,
                         OrtAllocator* alloc,
                         cudaStream_t stream,
                         bool& skip_input_binding_allowed) {
@@ -616,7 +599,6 @@ Status BindContextOutput(Ort::KernelContext& ctx,
                          std::unordered_map<size_t, int>& output_dim_sizes,
                          DDSOutputAllocatorMap& dds_output_allocator_map,
                          std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
-                         size_t& buffer_index,
                          OrtAllocator* alloc,
                          std::unordered_map<char const*, void*>& buffers,
                          nvinfer1::Dims& dims,
@@ -766,6 +748,13 @@ bool NvExecutionProvider::PerThreadContext::UpdateTensorRTContext(std::string fu
     return true;
   }
   return false;
+}
+
+void NvExecutionProvider::PerThreadContext::ResetWarmupRuns(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  if (graph_id_to_run_count_.find(cuda_graph_annotation_id) == graph_id_to_run_count_.end()) {
+    return;
+  }
+  graph_id_to_run_count_[cuda_graph_annotation_id] = 0;
 }
 
 bool NvExecutionProvider::PerThreadContext::IsGraphCaptureAllowed(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
@@ -1038,6 +1027,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   }
 
   cuda_graph_enable_ = info.cuda_graph_enable;
+  LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] cuda_graph_enable_ is " << cuda_graph_enable_;
   multi_profile_enable_ = info.multi_profile_enable;
   op_types_to_exclude_ = info.op_types_to_exclude;
 
@@ -2557,7 +2547,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   // Build context
   // Note: Creating an execution context from an engine is thread safe per TRT doc
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-  trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
+  trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(trt_runtime_config.get()));
   if (!trt_context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "Nv EP could not build execution context for fused node: " + fused_node.Name());
@@ -2776,20 +2766,45 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     // Note: We need to set the stream and start capture here because this is where we have access to the actual compute stream
     // Get the graph annotation ID that was stored during OnRunStart
     CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCurrentGraphAnnotationId();
-    bool should_start_capture = cuda_graph_enable_ &&
-                               !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id) &&
-                               GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id);
+    bool graph_replay_on_this_run = false;
+    bool should_start_capture = false;
+    if(require_io_binding && cuda_graph_enable_) {
+      // Resetting warm up run
+      GetPerThreadContext().ResetWarmupRuns(cuda_graph_annotation_id);
 
-    if (should_start_capture) {
-      GetPerThreadContext().SetCudaGraphStream(stream);
-      GetPerThreadContext().CaptureBegin(cuda_graph_annotation_id);
+      // Check if graph is present --> If yes, reset the warmup runs and warn
+      // Fallback??? enqueu call right?
+      if(GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
+        LOGS_DEFAULT(WARNING) << "Graph already captured and required_io_binding is true, resetting warmup runs";
+        GetPerThreadContext().ResetWarmupRuns(cuda_graph_annotation_id);
+      }
+    } else if(cuda_graph_enable_ && !require_io_binding) {
+      // If cuda id is not -1, we increment the warmup runs
+      if(cuda_graph_annotation_id != kCudaGraphAnnotationSkip) {
+        GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture(cuda_graph_annotation_id);
+      }
+
+      // We capture if all okay
+      if(!GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)
+                              && GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
+        GetPerThreadContext().SetCudaGraphStream(stream);
+        GetPerThreadContext().CaptureBegin(cuda_graph_annotation_id);
+        should_start_capture = true;
+      }
+
+      // warmup > 2 && capture presetn --> replay graph
+      if(GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
+        graph_replay_on_this_run = true;
+      }
     }
 
     // Run TRT inference - only if not using captured graph
-    if (!GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
+    if (!graph_replay_on_this_run) {
       if (!trt_context->enqueueV3(stream)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP execution context enqueue failed.");
       }
+    } else {
+      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id));
     }
 
     /*
@@ -2843,17 +2858,9 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       }
     }
 
-    if (cuda_graph_enable_) {
-      if (should_start_capture) {
+    if (cuda_graph_enable_ && should_start_capture) {
         GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
         ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id));
-      } else if (GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
-        ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id));
-      } else {
-        if (cuda_graph_annotation_id != kCudaGraphAnnotationSkip) {
-          GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture(cuda_graph_annotation_id);
-        }
-      }
     }
 
     return Status::OK();
