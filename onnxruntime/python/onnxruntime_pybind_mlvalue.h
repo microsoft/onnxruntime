@@ -74,7 +74,7 @@ void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes);
 
 void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
 
-const std::unordered_map<OrtDevice, MemCpyFunc>* GetCudaToHostMemCpyFunction();
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetCudaToHostMemCpyFunction(const OrtDevice&);;
 
 bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
 
@@ -92,7 +92,7 @@ void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes);
 
 void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
 
-const std::unordered_map<OrtDevice, MemCpyFunc>* GetDmlToHostMemCpyFunction();
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetDmlToHostMemCpyFunction(const OrtDevice&);
 
 #endif
 
@@ -102,7 +102,7 @@ void CpuToMIGraphXMemCpy(void* dst, const void* src, size_t num_bytes);
 
 void MIGraphXToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
 
-const std::unordered_map<OrtDevice, MemCpyFunc>* GetMIGraphXToHostMemCpyFunction();
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetMIGraphXToHostMemCpyFunction(const OrtDevice&);
 
 AllocatorPtr GetMIGraphXAllocator(OrtDevice::DeviceId id);
 
@@ -132,7 +132,7 @@ void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes);
 
 void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
 
-const std::unordered_map<OrtDevice, MemCpyFunc>* GetRocmToHostMemCpyFunction();
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetRocmToHostMemCpyFunction(const OrtDevice&);
 
 #endif
 
