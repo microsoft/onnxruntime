@@ -1,16 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/providers/checkers.h"
+#include "test/util/include/checkers.h"
 
 #include "gtest/gtest.h"
 
 #include "core/graph/constants.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/int4.h"
-
 #include "test/framework/test_utils.h"
-#include "test/providers/provider_test_utils.h"
+#include "test/util/include/conversion.h"
 
 namespace onnxruntime {
 namespace test {

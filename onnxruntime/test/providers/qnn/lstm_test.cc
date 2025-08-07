@@ -8,7 +8,7 @@
 
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
-#include "test/providers/tester_types.h"
+#include "test/util/include/tester_types.h"
 
 #include "core/graph/onnx_protobuf.h"
 

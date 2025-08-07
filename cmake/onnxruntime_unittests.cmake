@@ -300,63 +300,46 @@ function(AddTest)
 endfunction(AddTest)
 
 # Given a list of test source files, in variable `all_srcs_var`, partition it into two lists:
-# - a list of all generic (not specific to a particular execution provider) op test source files,
-#   stored in `generic_op_test_srcs_var`
+# - a list of the provider-related test source files, stored in `provider_test_srcs_var`
 # - a list of the other remaining test source files, stored in `other_srcs_var`
 #
-# In particular, generic op test source files:
-# - are located in these root paths:
-#   - onnxruntime/test/contrib_ops
-#   - onnxruntime/test/providers/cpu
-# - have filenames that match this regex pattern:
-#   ^.*_ops?_test.*\.cc$
-#   E.g., "gemm_op_test.cc" or "reduction_ops_test.cc"
-function(partition_generic_op_test_srcs
-         all_srcs_var generic_op_test_srcs_var other_srcs_var)
-  set(op_test_file_roots
+# In particular, provider-related test source files are located in these root paths:
+# - onnxruntime/test/contrib_ops
+# - onnxruntime/test/providers
+function(partition_provider_test_srcs
+         all_srcs_var provider_test_srcs_var other_srcs_var)
+  set(provider_test_src_roots
     ${TEST_SRC_DIR}/contrib_ops
-    ${TEST_SRC_DIR}/providers/cpu
+    ${TEST_SRC_DIR}/providers
   )
 
-  set(op_test_filename_regex "^.*_ops?_test.*\\.cc$")
-
-  function(is_generic_op_test_src src_var result_var)
+  function(is_provider_test_src src_var result_var)
     cmake_path(ABSOLUTE_PATH ${src_var} OUTPUT_VARIABLE src_absolute)
 
-    foreach(op_test_file_root ${op_test_file_roots})
-      cmake_path(IS_PREFIX op_test_file_root ${src_absolute} NORMALIZE src_matches_root)
+    foreach(provider_test_src_root ${provider_test_src_roots})
+      cmake_path(IS_PREFIX provider_test_src_root ${src_absolute} NORMALIZE src_matches_root)
       if(src_matches_root)
-        break()
+        set(${result_var} true PARENT_SCOPE)
+        return()
       endif()
     endforeach()
 
-    if(NOT src_matches_root)
-      set(${result_var} false PARENT_SCOPE)
-      return()
-    endif()
-
-    cmake_path(GET ${src_var} FILENAME src_filename)
-    if(NOT "${src_filename}" MATCHES "${op_test_filename_regex}")
-      set(${result_var} false PARENT_SCOPE)
-      return()
-    endif()
-
-    set(${result_var} true PARENT_SCOPE)
+    set(${result_var} false PARENT_SCOPE)
   endfunction()
 
-  set(generic_op_test_srcs)
+  set(provider_test_srcs)
   set(other_srcs)
 
   foreach(src ${${all_srcs_var}})
-    is_generic_op_test_src(src is_generic_op_test_src_result)
-    if(is_generic_op_test_src_result)
-      list(APPEND generic_op_test_srcs ${src})
+    is_provider_test_src(src is_provider_test_src_result)
+    if(is_provider_test_src_result)
+      list(APPEND provider_test_srcs ${src})
     else()
       list(APPEND other_srcs ${src})
     endif()
   endforeach()
 
-  set(${generic_op_test_srcs_var} ${generic_op_test_srcs} PARENT_SCOPE)
+  set(${provider_test_srcs_var} ${provider_test_srcs} PARENT_SCOPE)
   set(${other_srcs_var} ${other_srcs} PARENT_SCOPE)
 endfunction()
 
@@ -1028,7 +1011,7 @@ if(NOT onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   list(REMOVE_ITEM all_tests ${TEST_SRC_DIR}/providers/cuda/cuda_provider_test.cc)
 endif()
 
-partition_generic_op_test_srcs(all_tests generic_op_test_srcs onnxruntime_test_all_srcs)
+partition_provider_test_srcs(all_tests provider_test_srcs onnxruntime_test_all_srcs)
 
 AddTest(
   TARGET onnxruntime_test_all
@@ -1202,18 +1185,19 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 
-# onnxruntime_provider_op_test
-# Generic op tests that apply to multiple providers.
+# onnxruntime_provider_test
+# Execution provider-related tests.
+# These also have some support for dynamically specified plugin EPs.
 block()
   # temp override for quicker compilation while testing...
   # TODO remove
-  # set(generic_op_test_srcs
+  # set(provider_test_srcs
   #   ${TEST_SRC_DIR}/providers/cpu/tensor/unique_op_test.cc
   #   ${TEST_SRC_DIR}/providers/cpu/math/element_wise_ops_test.cc
   # )
 
-  set(onnxruntime_provider_op_test_srcs
-    ${generic_op_test_srcs}
+  set(onnxruntime_provider_test_srcs
+    ${provider_test_srcs}
 
     # supporting test source files
     ${TEST_SRC_DIR}/common/cuda_op_test_utils.cc
@@ -1222,44 +1206,35 @@ block()
     ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
     ${TEST_SRC_DIR}/contrib_ops/function_test_util.cc
     ${TEST_SRC_DIR}/contrib_ops/function_test_util.h
-    ${TEST_SRC_DIR}/framework/TestAllocatorManager.cc
-    ${TEST_SRC_DIR}/framework/TestAllocatorManager.h
-    ${TEST_SRC_DIR}/framework/test_utils.cc
-    ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.cc
-    ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.h
     ${TEST_SRC_DIR}/framework/dummy_allocator.cc
     ${TEST_SRC_DIR}/framework/dummy_allocator.h
-    ${TEST_SRC_DIR}/providers/base_tester.cc
-    ${TEST_SRC_DIR}/providers/base_tester.h
-    ${TEST_SRC_DIR}/providers/checkers.cc
-    ${TEST_SRC_DIR}/providers/checkers.h
-    ${TEST_SRC_DIR}/providers/compare_provider_test_utils.cc
-    ${TEST_SRC_DIR}/providers/compare_provider_test_utils.h
-    ${TEST_SRC_DIR}/contrib_ops/qordered_test_utils.h
-    ${TEST_SRC_DIR}/providers/kernel_compute_test_utils.cc
-    ${TEST_SRC_DIR}/providers/kernel_compute_test_utils.h
-    ${TEST_SRC_DIR}/providers/model_tester.h
-    ${TEST_SRC_DIR}/providers/op_tester.cc
-    ${TEST_SRC_DIR}/providers/op_tester.h
+    ${TEST_SRC_DIR}/framework/test_utils.cc
+    ${TEST_SRC_DIR}/framework/TestAllocatorManager.cc
+    ${TEST_SRC_DIR}/framework/TestAllocatorManager.h
+    ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.cc
+    ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.h
 
     ${onnxruntime_unittest_main_src}
   )
 
-  set(onnxruntime_provider_op_test_libs
-    ${ONNXRUNTIME_TEST_LIBS}
-    onnxruntime_test_utils
-    ${onnxruntime_EXTERNAL_LIBRARIES}
+  set(onnxruntime_provider_test_libs
+    ${onnx_test_runner_common_lib}
+    ${onnxruntime_test_providers_libs}
+    ${onnxruntime_test_common_libs}
+    onnx_test_data_proto
   )
 
+  set(onnxruntime_provider_test_deps ${onnxruntime_test_providers_dependencies})
+
   AddTest(
-    TARGET onnxruntime_provider_op_test
-    SOURCES ${onnxruntime_provider_op_test_srcs}
-    LIBS ${onnxruntime_provider_op_test_libs}
-    DEPENDS ${all_dependencies}
+    TARGET onnxruntime_provider_test
+    SOURCES ${onnxruntime_provider_test_srcs}
+    LIBS ${onnxruntime_provider_test_libs}
+    DEPENDS ${onnxruntime_provider_test_deps}
   )
 
   # enable dynamic plugin EP infrastructure
-  target_compile_definitions(onnxruntime_provider_op_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
+  target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
 endblock()
 
 set(onnx_test_libs
