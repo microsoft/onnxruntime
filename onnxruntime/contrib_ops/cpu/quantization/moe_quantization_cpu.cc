@@ -494,11 +494,6 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
         const int64_t num_tokens_for_expert = static_cast<int64_t>(tokens_for_expert.size());
 
-        // Get expert weights
-        const int64_t fc1_weight_offset = is_4bit ? (expert_idx * moe_params.hidden_size * fc1_output_size) : (expert_idx * moe_params.hidden_size * moe_params.inter_size * act_multiplier);
-        const float* fc1_expert_weights = dequant_fc1_weights + fc1_weight_offset;
-        const float* fc2_expert_weights = dequant_fc2_weights + expert_idx * moe_params.inter_size * moe_params.hidden_size;
-
         // Process each token for this expert deterministically using single-token processing
         for (int64_t token_i = 0; token_i < num_tokens_for_expert; ++token_i) {
           int64_t token_idx = tokens_for_expert[static_cast<size_t>(token_i)].first;
