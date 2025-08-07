@@ -425,21 +425,22 @@ void addOrtValueMethods(pybind11::module& m) {
         switch (device.Vendor()) {
 #ifdef USE_CUDA
           case OrtDevice::VendorIds::NVIDIA:
-            return GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction());
-#endif
-#ifdef USE_MIGRAPHX
-          case OrtDevice::VendorIds::AMD:
-            return GetPyObjFromTensor(*ml_value, nullptr, GetMIGraphXToHostMemCpyFunction());
-#endif
-#ifdef USE_DML
-          case OrtDevice::VendorIds::MICROSOFT:
-            return GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction());
+            return GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction(device));
 #endif
 #ifdef USE_CANN
           case OrtDevice::VendorIds::HUAWEI:
             return GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction());
 #endif
-          default:
+
+#ifdef USE_DML
+          case OrtDevice::VendorIds::MICROSOFT:
+            return GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction(device));
+#endif
+#ifdef USE_MIGRAPHX
+          case OrtDevice::VendorIds::AMD:
+            return GetPyObjFromTensor(*ml_value, nullptr, GetMIGraphXToHostMemCpyFunction(device));
+#endif
+            default:
             return GetPyObjFromTensor(*ml_value, nullptr, nullptr);
         } })
 #if defined(ENABLE_DLPACK)
