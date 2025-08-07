@@ -4396,6 +4396,7 @@ Status Graph::ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_gr
   // Filter in iterators for weights that are present in the name_to_initial_tensor_ map
   // and preserve the order. This is needed for tests.
   InlinedVector<InitializedTensorSet::const_iterator> initializers_to_process;
+  initializers_to_process.reserve(name_to_initial_tensor_.size());
   for (const auto& tensor_proto : output_graph_proto.initializer()) {
     auto hit = name_to_initial_tensor_.find(tensor_proto.name());
     if (hit != name_to_initial_tensor_.end()) {
@@ -4419,9 +4420,11 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
 
     InlinedVector<InitializedTensorSet::const_iterator> initializers_to_process;
     initializers_to_process.reserve(name_to_initial_tensor_.size());
-    for (auto iter = name_to_initial_tensor_.cbegin(), end = name_to_initial_tensor_.cend();
-         iter != end; ++iter) {
-      initializers_to_process.push_back(iter);
+    for (const auto& tensor_proto : graph_proto_->initializer()) {
+      auto hit = name_to_initial_tensor_.find(tensor_proto.name());
+      if (hit != name_to_initial_tensor_.end()) {
+        initializers_to_process.push_back(hit);
+      }
     }
 
     ORT_THROW_IF_ERROR(RegenerateInitializersAndReplaceInMemory(initializers_to_process,
