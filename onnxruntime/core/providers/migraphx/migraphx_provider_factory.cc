@@ -113,8 +113,7 @@ struct MIGraphX_Provider final : Provider {
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
     if (provider_options != nullptr) {
       return std::make_shared<MIGraphXProviderFactory>(
-        MIGraphXExecutionProviderInfo{*static_cast<const ProviderOptions*>(provider_options)}
-      );
+          MIGraphXExecutionProviderInfo{*static_cast<const ProviderOptions*>(provider_options)});
     }
     return nullptr;
   }
@@ -149,8 +148,10 @@ struct MIGraphX_Provider final : Provider {
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
-    return provider_options != nullptr ?  MIGraphXExecutionProviderInfo{
-      *static_cast<const OrtMIGraphXProviderOptions*>(provider_options)}.ToProviderOptions() : ProviderOptions{};
+    return provider_options != nullptr ? MIGraphXExecutionProviderInfo{
+                                             *static_cast<const OrtMIGraphXProviderOptions*>(provider_options)}
+                                             .ToProviderOptions()
+                                       : ProviderOptions{};
   }
 
   Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
