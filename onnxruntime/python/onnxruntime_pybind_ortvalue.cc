@@ -422,6 +422,13 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("numpy", [](const OrtValue* ml_value) -> py::object {
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
         const auto& device = ml_value->Get<Tensor>().Location().device;
+#ifdef _MSC_VER
+// The switch statement may only contain the 'default' label. In such a case, the MSVC compiler
+// will warn about it, and since the warnings are treated as errors, the compilation will break.
+// Below pragmas turn off warning generation for this switch only.
+#pragma warning(push)
+#pragma warning(disable : 4065)
+#endif
         switch (device.Vendor()) {
 #ifdef USE_CUDA
           case OrtDevice::VendorIds::NVIDIA:
@@ -440,9 +447,13 @@ void addOrtValueMethods(pybind11::module& m) {
           case OrtDevice::VendorIds::AMD:
             return GetPyObjFromTensor(*ml_value, nullptr, GetMIGraphXToHostMemCpyFunction(device));
 #endif
-            default:
+          default:
             return GetPyObjFromTensor(*ml_value, nullptr, nullptr);
-        } })
+        }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+      })
 #if defined(ENABLE_DLPACK)
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object { return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); },
            "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
