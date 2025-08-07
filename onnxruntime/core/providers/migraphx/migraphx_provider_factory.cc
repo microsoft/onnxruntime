@@ -242,8 +242,8 @@ struct MigraphXEpFactory : OrtEpFactory {
 
     for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
       const OrtHardwareDevice& device = *devices[i];
-      if (factory->ort_api.HardwareDevice_Type(&device) == factory->ort_hw_device_type) {
-        // factory->ort_api.HardwareDevice_VendorId(&device) == factory->vendor_id) {
+      if (factory->ort_api.HardwareDevice_Type(&device) == factory->ort_hw_device_type &&
+          factory->ort_api.HardwareDevice_VendorId(&device) == 0x1002) {
         OrtKeyValuePairs* ep_options = nullptr;
         factory->ort_api.CreateKeyValuePairs(&ep_options);
         ORT_API_RETURN_IF_ERROR(
