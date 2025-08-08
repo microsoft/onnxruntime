@@ -110,6 +110,8 @@ elseif (X86_64)
   set(JNI_ARCH x64)
 elseif (POWER)
   set(JNI_ARCH ppc64)
+elseif (LOONGARCH64)
+  set(JNI_ARCH loongarch64)
 else()
   # Now mirror the checks used with MSVC
   if(MSVC)
