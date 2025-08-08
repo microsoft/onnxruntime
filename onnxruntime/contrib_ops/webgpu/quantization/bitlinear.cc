@@ -92,7 +92,7 @@ Status BitLinear::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
 
   // Step 1: Quantize input A using BitLinearQuantizeProgram
   const uint32_t quantize_output_size = (M * (K_PADDED - (K_PADDED / kWeightsPerByte)) / 4);  // skipping every 5th, packed into u32
-  const uint32_t quantize_5th_output_size = M * K_PADDED / kQuantizationBlockSize;   // every 5th element packed int u32
+  const uint32_t quantize_5th_output_size = M * K_PADDED / kQuantizationBlockSize;            // every 5th element packed int u32
 
   TensorShape quantize_output_shape({quantize_output_size});
   TensorShape quantize_5th_output_shape({quantize_5th_output_size});
