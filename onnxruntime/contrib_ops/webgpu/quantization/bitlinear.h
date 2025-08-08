@@ -17,6 +17,7 @@ class BitLinearQuantizeProgram final : public Program<BitLinearQuantizeProgram> 
   BitLinearQuantizeProgram(uint32_t k, uint32_t k_padded) : Program{"BitLinearQuantize"}, K_(k), K_PADDED_(k_padded) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
+
  private:
   uint32_t K_;
   uint32_t K_PADDED_;
@@ -38,8 +39,8 @@ class BitLinearMultiplyProgram final : public Program<BitLinearMultiplyProgram> 
 class BitLinearMultiplySingleMProgram final : public Program<BitLinearMultiplySingleMProgram> {
  public:
   BitLinearMultiplySingleMProgram(uint32_t tile_size_k, uint32_t tile_size) : Program{"BitLinearMultiplySingleM"},
-                                                                                 tile_size_k_(tile_size_k),
-                                                                                 tile_size_(tile_size) {}
+                                                                              tile_size_k_(tile_size_k),
+                                                                              tile_size_(tile_size) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
