@@ -430,6 +430,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemm2DBroadcast_2) {
                             {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(12.0f), static_cast<TypeParam>(13.0f),
                              static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-7.0f)});
   test.Config(run_with_tunable_op)
+      .ConfigExcludeEps({kQnnExecutionProvider})  // Accuracy issues with QNN CPU backend since QNN 2.34
       .RunWithConfig();
 }
 
@@ -476,10 +477,8 @@ TYPED_TEST(GemmOpTypedTests, TestGemmBroadcast) {
     excluded_providers.insert(kOpenVINOExecutionProvider);  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
 
-    if (b_is_initializer && !c_is_initializer) {
-      // Accuracy issues on QNN's CPU backend with QNN SDK version 2.17
-      excluded_providers.insert(kQnnExecutionProvider);
-    }
+    // Accuracy issues with QNN CPU backend since QNN 2.34
+    excluded_providers.insert(kQnnExecutionProvider);
 
     test.ConfigExcludeEps(excluded_providers)
         .Config(run_with_tunable_op)
@@ -511,10 +510,16 @@ TYPED_TEST(GemmOpTypedTests, TestGemmTrans) {
   test.AddOutput<TypeParam>("Y", {2, 3},
                             {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
                              static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
+
+  std::unordered_set<std::string> excluded_providers;
 #if defined(OPENVINO_CONFIG_GPU)
-  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+  excluded_providers.insert(kOpenVINOExecutionProvider);  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
-  test.Config(run_with_tunable_op)
+  // Accuracy issues with QNN CPU backend since QNN 2.34
+  excluded_providers.insert(kQnnExecutionProvider);
+
+  test.ConfigExcludeEps(excluded_providers)
+      .Config(run_with_tunable_op)
       .RunWithConfig();
 }
 
@@ -537,10 +542,15 @@ TYPED_TEST(GemmOpTypedTests, TestGemmTransB) {
     test.AddOutput<TypeParam>("Y", {2, 3},
                               {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
                                static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
+
+    std::unordered_set<std::string> excluded_providers;
 #if defined(OPENVINO_CONFIG_GPU)
-    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+    excluded_providers.insert(kOpenVINOExecutionProvider);  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
-    test.Config(run_with_tunable_op)
+    excluded_providers.insert(kQnnExecutionProvider);  // Accuracy issues with QNN CPU backend since QNN 2.34
+
+    test.ConfigExcludeEps(excluded_providers)
+        .Config(run_with_tunable_op)
         .RunWithConfig();
   };
   run_test(false, false);

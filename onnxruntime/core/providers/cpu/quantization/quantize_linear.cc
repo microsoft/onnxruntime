@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <type_traits>
 #include <core/common/safeint.h>
 #include "core/framework/element_type_lists.h"
 #include "core/framework/float8.h"
@@ -285,14 +286,31 @@ struct DequantizeLinearApply<T, OutT, false> {
    * @param[in]    zero_point             same shape as scale
    */
   void op(size_t M, size_t K, size_t N, const T* input,
-          const OutT* scale, OutT* output, const T* zero_point) {
+          const OutT* scale, OutT* output, const T* zero_point, concurrency::ThreadPool* thread_pool) {
     for (size_t m = 0; m < M; m++) {
       for (size_t k = 0; k < K; k++) {
+#if defined(ORT_CLIENT_PACKAGE_BUILD)
+        // TODO: Only using multithreaded/SIMD DQ when ORT is built for client/on-device workloads.
+        // Make this the default behavior after more testing.
+        if constexpr (std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t>) {
+          ParDequantizeLinearStd<T>(input, output, N, scale[k], zero_point ? zero_point[k] : 0, thread_pool);
+          input += N;
+          output += N;
+        } else {
+          auto zp = zero_point ? static_cast<int32_t>(zero_point[k]) : 0;
+          auto sc = static_cast<float>(scale[k]);
+          for (size_t n = 0; n < N; n++) {
+            *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc);
+          }
+        }
+#else
+        ORT_UNUSED_PARAMETER(thread_pool);
         auto zp = zero_point ? static_cast<int32_t>(zero_point[k]) : 0;
         auto sc = static_cast<float>(scale[k]);
         for (size_t n = 0; n < N; n++) {
           *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc);
         }
+#endif  // defined(ORT_CLIENT_PACKAGE_BUILD)
       }
     }
   }
@@ -311,7 +329,8 @@ struct DequantizeLinearApply<T, OutT, false> {
    * @param[in]    zero_point             same shape as scale
    */
   void op(size_t M, size_t K, size_t N, size_t quant_block_size,
-          const T* input, const OutT* scale, OutT* output, const T* zero_point) {
+          const T* input, const OutT* scale, OutT* output, const T* zero_point, concurrency::ThreadPool* thread_pool) {
+    ORT_UNUSED_PARAMETER(thread_pool);
     if (zero_point) {
       for (size_t m = 0; m < M; m++) {
         for (size_t bd = 0; bd < K; bd += quant_block_size) {
@@ -352,7 +371,8 @@ template <typename T, typename OutT>
 struct DequantizeLinearApply<T, OutT, true> {
   // per-tensor/layer or per-axis quantization
   void op(size_t M, size_t K, size_t N,
-          const T* input, const OutT* scale, OutT* output, const T* zero_point) {
+          const T* input, const OutT* scale, OutT* output, const T* zero_point, concurrency::ThreadPool* thread_pool) {
+    ORT_UNUSED_PARAMETER(thread_pool);
     size_t input_index = 0;
 
     for (size_t m = 0; m < M; m++) {
@@ -378,7 +398,8 @@ struct DequantizeLinearApply<T, OutT, true> {
   // Blocked quantization
   // TODO(fajin) : add mlas kernel to utilize multithreading, refer MlasDequantizeBlockwise.
   void op(size_t M, size_t K, size_t N, size_t quant_block_size,
-          const T* input, const OutT* scale, OutT* output, const T* zero_point) {
+          const T* input, const OutT* scale, OutT* output, const T* zero_point, concurrency::ThreadPool* thread_pool) {
+    ORT_UNUSED_PARAMETER(thread_pool);
     size_t input_index = 0;
 
     if (zero_point) {
@@ -424,36 +445,36 @@ struct DequantizeLinearApply<T, OutT, true> {
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#define DEQUANTIZE_LINEAR_APPLY_FLOAT8(T)                                                       \
-  template <typename OutT>                                                                      \
-  struct DequantizeLinearApply<T, OutT, false> {                                                \
-    /* Per-tensor/layer or per-axis quantization */                                             \
-    void op(size_t M, size_t K, size_t N,                                                       \
-            const T* input, const OutT* scale, OutT* output, const T*) {                        \
-      for (size_t m = 0; m < M; m++) {                                                          \
-        for (size_t bd = 0; bd < K; bd++) {                                                     \
-          auto sc = scale[bd];                                                                  \
-          for (size_t bs = 0; bs < N; bs++, input++) {                                          \
-            *output++ = static_cast<OutT>(input->ToFloat() * sc);                               \
-          }                                                                                     \
-        }                                                                                       \
-      }                                                                                         \
-    }                                                                                           \
-    /* Blocked quantization */                                                                  \
-    void op(size_t M, size_t K, size_t N, size_t quant_block_size,                              \
-            const T* input, const OutT* scale, OutT* output, const T*) {                        \
-      for (size_t m = 0; m < M; m++) {                                                          \
-        for (size_t bd = 0; bd < K; bd += quant_block_size) {                                   \
-          for (size_t qb = 0, qb_end = std::min(quant_block_size, K - bd); qb < qb_end; ++qb) { \
-            for (size_t bs = 0; bs < N; bs++, input++) {                                        \
-              auto sc = static_cast<float>(scale[bs]);                                          \
-              *output++ = static_cast<OutT>(input->ToFloat() * sc);                             \
-            }                                                                                   \
-          }                                                                                     \
-          scale += N;                                                                           \
-        }                                                                                       \
-      }                                                                                         \
-    }                                                                                           \
+#define DEQUANTIZE_LINEAR_APPLY_FLOAT8(T)                                                          \
+  template <typename OutT>                                                                         \
+  struct DequantizeLinearApply<T, OutT, false> {                                                   \
+    /* Per-tensor/layer or per-axis quantization */                                                \
+    void op(size_t M, size_t K, size_t N,                                                          \
+            const T* input, const OutT* scale, OutT* output, const T*, concurrency::ThreadPool*) { \
+      for (size_t m = 0; m < M; m++) {                                                             \
+        for (size_t bd = 0; bd < K; bd++) {                                                        \
+          auto sc = scale[bd];                                                                     \
+          for (size_t bs = 0; bs < N; bs++, input++) {                                             \
+            *output++ = static_cast<OutT>(input->ToFloat() * sc);                                  \
+          }                                                                                        \
+        }                                                                                          \
+      }                                                                                            \
+    }                                                                                              \
+    /* Blocked quantization */                                                                     \
+    void op(size_t M, size_t K, size_t N, size_t quant_block_size,                                 \
+            const T* input, const OutT* scale, OutT* output, const T*, concurrency::ThreadPool*) { \
+      for (size_t m = 0; m < M; m++) {                                                             \
+        for (size_t bd = 0; bd < K; bd += quant_block_size) {                                      \
+          for (size_t qb = 0, qb_end = std::min(quant_block_size, K - bd); qb < qb_end; ++qb) {    \
+            for (size_t bs = 0; bs < N; bs++, input++) {                                           \
+              auto sc = static_cast<float>(scale[bs]);                                             \
+              *output++ = static_cast<OutT>(input->ToFloat() * sc);                                \
+            }                                                                                      \
+          }                                                                                        \
+          scale += N;                                                                              \
+        }                                                                                          \
+      }                                                                                            \
+    }                                                                                              \
   };
 
 DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E4M3FN)
@@ -497,6 +518,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   const auto to = x_scale.GetElementType();
   const T* input = x.Data<T>();
   constexpr bool is_4bit = boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, T>::value;
+  concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   if (to == ONNX_NAMESPACE::TensorProto::FLOAT) {
     const float* scale = x_scale.Data<float>();
@@ -506,12 +528,12 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
                                                     static_cast<size_t>(broadcast_dim),
                                                     static_cast<size_t>(process_block_size),
                                                     static_cast<size_t>(block_size_),
-                                                    input, scale, output, zero_point);
+                                                    input, scale, output, zero_point, thread_pool);
     } else {
       DequantizeLinearApply<T, float, is_4bit>().op(static_cast<size_t>(process_block_count),
                                                     static_cast<size_t>(broadcast_dim),
                                                     static_cast<size_t>(process_block_size),
-                                                    input, scale, output, zero_point);
+                                                    input, scale, output, zero_point, thread_pool);
     }
   } else if (to == ONNX_NAMESPACE::TensorProto::FLOAT16) {
     const MLFloat16* scale = x_scale.Data<MLFloat16>();
@@ -521,12 +543,12 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
                                                         static_cast<size_t>(broadcast_dim),
                                                         static_cast<size_t>(process_block_size),
                                                         static_cast<size_t>(block_size_),
-                                                        input, scale, output, zero_point);
+                                                        input, scale, output, zero_point, thread_pool);
     } else {
       DequantizeLinearApply<T, MLFloat16, is_4bit>().op(static_cast<size_t>(process_block_count),
                                                         static_cast<size_t>(broadcast_dim),
                                                         static_cast<size_t>(process_block_size),
-                                                        input, scale, output, zero_point);
+                                                        input, scale, output, zero_point, thread_pool);
     }
   } else if (to == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
     ORT_THROW("DequantizeLinear into BFLOAT16 is not implemented yet.");

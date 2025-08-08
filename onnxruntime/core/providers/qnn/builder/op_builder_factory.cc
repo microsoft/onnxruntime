@@ -135,6 +135,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateUpsampleOpBuilder("Upsample", *this);
+  }
+
+  {
     CreateTopKOpBuilder("TopK", *this);
   }
 
@@ -171,7 +175,19 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateEinsumOpBuilder("Einsum", *this);
+  }
+
+  {
     CreateMatMulOpBuilder("MatMul", *this);
+  }
+
+  {
+    CreateLSTMOpBuilder("LSTM", *this);
+  }
+
+  {
+    CreateCumSumOpBuilder("CumSum", *this);
   }
 }
 

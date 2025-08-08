@@ -62,7 +62,7 @@ stages:
       - template: py-linux-gpu-stage.yml
         parameters:
           arch: 'x86_64'
-          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
+          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
