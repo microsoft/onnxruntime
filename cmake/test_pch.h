@@ -24,8 +24,3 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
-
-// Commonly used ONNX Runtime namespaces
-using namespace onnxruntime;
-using namespace onnxruntime::test;
-using namespace ONNX_NAMESPACE;
