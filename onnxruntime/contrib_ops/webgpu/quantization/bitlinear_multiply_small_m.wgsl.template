@@ -9,7 +9,6 @@ var<workgroup> shared_memory_LUT: array<u32, lut_size>;
 // Storage for quantized A values and 5th elements
 var<workgroup> tile_A: array<vec4<u32>, tile_size_k>;
 var<workgroup> tile_A5: array<u32, tile_size_k>;
-var<workgroup> scale_A: output_element_t;
 
 // Scaled dot product of 5 packed integers for BitLinear.
 fn SDP5AI(a1: vec4<u32>, b1: vec4<u32>, a2: u32, b2: u32) -> i32 {
@@ -26,8 +25,6 @@ $MAIN {
     // Initialize: Move the lookup table to shared memory
     if (local_idx < lut_size) {
         shared_memory_LUT[local_idx] = dequantize_LUT[local_idx];
-    } else if ( local_idx == workgroup_size_x-1) {
-        scale_A = scales_a[0];
     }
     let b_global_base = (workgroup_idx) * tile_size;
 
@@ -90,7 +87,7 @@ $MAIN {
         let b_global = b_global_base + local_idx;
         let output_idx = b_global;
         if (b_global < uniforms.N) {
-            output[output_idx] = output_value * scale_A * output_element_t(uniforms.scale_B);
+            output[output_idx] = output_value * scales_a[0] * output_element_t(uniforms.scale_B);
         }
     }
 }
