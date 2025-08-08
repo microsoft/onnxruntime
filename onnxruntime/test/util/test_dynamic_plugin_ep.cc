@@ -71,7 +71,8 @@ std::optional<PluginEpInfrastructureState> g_plugin_ep_infrastructure_state{};
 
 Status ParseInitializationConfig(std::string_view json_str, InitializationConfig& config_out) {
   using json = nlohmann::json;
-  try {
+  Status status = Status::OK();
+  ORT_TRY {
     InitializationConfig config{};
     const auto parsed_json = json::parse(json_str);
 
@@ -85,18 +86,22 @@ Status ParseInitializationConfig(std::string_view json_str, InitializationConfig
 
     config_out = std::move(config);
     return Status::OK();
-  } catch (const json::exception& e) {
-    constexpr std::string_view kExampleValidJsonStr =
-        "{\n"
-        "  \"ep_library_registration_name\": \"example_plugin_ep\",\n"
-        "  \"ep_library_path\": \"/path/to/example_plugin_ep.dll\",\n"
-        "  \"selected_ep_device_indices\": [1]\n"
-        "}";
-
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "JSON parse error: ", e.what(),
-                           "\nThis is an example valid JSON configuration:\n", kExampleValidJsonStr);
   }
+  ORT_CATCH(const json::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      constexpr std::string_view kExampleValidJsonStr =
+          "{\n"
+          "  \"ep_library_registration_name\": \"example_plugin_ep\",\n"
+          "  \"ep_library_path\": \"/path/to/example_plugin_ep.dll\",\n"
+          "  \"selected_ep_device_indices\": [1]\n"
+          "}";
+
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "JSON parse error: ", e.what(),
+                               "\nThis is an example valid JSON configuration:\n", kExampleValidJsonStr);
+    });
+  }
+  return status;
 }
 
 Status Initialize(Ort::Env& env, InitializationConfig config) {
