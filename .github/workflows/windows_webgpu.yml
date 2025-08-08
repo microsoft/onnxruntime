@@ -125,7 +125,7 @@ jobs:
             --build_java `
             --use_webgpu `
             --wgsl_template ${{ matrix.wgsl_template }} `
-            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg' || '' }} `
+            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} `
             --cmake_extra_defines `
             onnxruntime_BUILD_UNIT_TESTS=ON `
             onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON
