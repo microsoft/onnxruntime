@@ -28,6 +28,11 @@ namespace test {
 // unit testing infrastructure.
 namespace dynamic_plugin_ep_infra {
 
+// Note: `Initialize()` and `Shutdown()` are not thread-safe.
+// They should be called before and after calls to most of the other functions in this namespace.
+// The exception to this is `ParseInitializationConfig()`, which may be called before `Initialize()`.
+
+// Configuration for initializing the dynamic plugin EP infrastructure.
 struct InitializationConfig {
   std::string ep_library_registration_name{};
   std::string ep_library_path{};
