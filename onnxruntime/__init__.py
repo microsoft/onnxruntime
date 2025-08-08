@@ -217,7 +217,7 @@ def print_debug_info():
     if platform.system() == "Windows":
         print(f"\nEnvironment variable:\nPATH={os.environ['PATH']}")
     elif platform.system() == "Linux":
-        print(f"\nEnvironment variable:\nLD_LIBRARY_PATH={os.environ['LD_LIBRARY_PATH']}")
+        print(f"\nEnvironment variable:\nLD_LIBRARY_PATH={os.environ.get('LD_LIBRARY_PATH', '(unset)')}")
 
     if importlib.util.find_spec("psutil"):
 
