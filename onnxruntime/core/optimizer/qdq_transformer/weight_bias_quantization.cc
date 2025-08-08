@@ -13,6 +13,76 @@
 
 namespace onnxruntime {
 
+/**
+ * Checks whether or not the output path from a given node leads to a `QuantizeLinear` node,
+ * with type and shape are preserved and no branching in between.
+ *
+ * @param node The starting node to check the output path from.
+ * @param graph The graph containing the nodes.
+ *
+ * @return true if the path exist, false otherwise.
+ */
+static bool IsTypePreserveNoBranchPathToQuantizeLinear(const Node& node, const Graph& graph) {
+  const Node* current = &node;
+  while (true) {
+    // Conv / ConvTranspose / Gemm should produce single output
+    if (current->OutputDefs().empty()) {
+      return false;
+    }
+    if (current->OutputDefs().size() != 1) {
+      return false;
+    }
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes(current->OutputDefs()[0]->Name());
+    // Branching or no consumer: not eligible
+    if (consumers.size() != 1) {
+      return false;
+    }
+    const Node* consumer = consumers[0];
+    if (consumer->OpType() == QDQ::QOpName) {
+      return true;
+    }
+    // Must be single-input, single-output op
+    const auto& i_defs = consumer->InputDefs();
+    const auto& o_defs = consumer->OutputDefs();
+    if (i_defs.size() != 1 || o_defs.size() != 1) {
+      return false;
+    }
+    // Element type must match
+    const auto* i_type = i_defs[0]->TypeAsProto();
+    const auto* o_type = o_defs[0]->TypeAsProto();
+    if (!i_type || !o_type) {
+      return false;
+    }
+    if (i_type->tensor_type().elem_type() != o_type->tensor_type().elem_type()) {
+      return false;
+    }
+    // Shape must match
+    const auto* i_shape = i_defs[0]->Shape();
+    const auto* o_shape = o_defs[0]->Shape();
+    if (!i_shape || !o_shape) {
+      return false;
+    }
+    if (i_shape->dim_size() != o_shape->dim_size()) {
+      return false;
+    }
+    for (int i = 0; i < i_shape->dim_size(); ++i) {
+      const auto& i_dim = i_shape->dim(i);
+      const auto& o_dim = o_shape->dim(i);
+      if (utils::HasDimValue(i_dim) && utils::HasDimValue(o_dim) &&
+          (i_dim.dim_value() == o_dim.dim_value())) {
+        continue;  // same known dimension
+      }
+      if (utils::HasDimParam(i_dim) && utils::HasDimParam(o_dim)) {
+        const auto& val1_param = i_dim.dim_param();
+        if (val1_param == o_dim.dim_param() && !val1_param.empty())
+          continue;  // same unknown dimension
+      }
+      return false;
+    }
+    current = consumer;
+  }
+}
+
 Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                          const logging::Logger& logger) const {
   const GraphViewer graph_viewer{graph};
@@ -43,11 +113,8 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       continue;
     }
 
-    // Require that the node's output is consumed by a single QuantizeLinear node.
-    // Otherwise, if only the inputs are quantized, but not the output, then this node group would not
-    // be considered a QDQ node unit anyway.
-    std::vector<const Node*> children_nodes = graph.GetConsumerNodes(node.OutputDefs()[0]->Name());
-    if (children_nodes.size() != 1 || children_nodes[0]->OpType() != QDQ::QOpName) {
+    // Check if the output path leads to QuantizeLinear with type/shape preserved and no branching.
+    if (!IsTypePreserveNoBranchPathToQuantizeLinear(node, graph)) {
       continue;
     }
 

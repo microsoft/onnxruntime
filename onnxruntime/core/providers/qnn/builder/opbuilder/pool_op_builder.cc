@@ -195,7 +195,7 @@ Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
       }
     }
   }
-  ReArranagePads(pad_amount);
+  ReArrangePads(pad_amount);
 
   // Param: rounding_mode.
   rounding_mode = node_helper.Get("ceil_mode", rounding_mode);
