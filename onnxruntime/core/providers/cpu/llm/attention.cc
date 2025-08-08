@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/llm/attention.h"
+#include "core/providers/cpu/llm/attention_helper.h"
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
@@ -125,10 +126,10 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* past_value = context->Input<Tensor>(5);
 
   AttentionParameters parameters;
-  std::vector<int64_t> y_shape;
-  std::vector<int64_t> present_key_shape;
-  std::vector<int64_t> present_value_shape;
-  std::vector<int64_t> output_qk_shape;
+  TensorShape y_shape;
+  TensorShape present_key_shape;
+  TensorShape present_value_shape;
+  TensorShape output_qk_shape;
 
   ORT_ENFORCE(attention_helper::ComputeOutputShapeForAttention(
                   Q,

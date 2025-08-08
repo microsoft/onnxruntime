@@ -361,7 +361,7 @@ TEST(AttentionTest, Attention3DDefault) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -388,7 +388,7 @@ TEST(AttentionTest, Attention3DDefaultFloat16) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -415,7 +415,7 @@ TEST(AttentionTest, Attention4DDefaultBasic) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -442,7 +442,7 @@ TEST(AttentionTest, Attention4DDefault) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -469,7 +469,7 @@ TEST(AttentionTest, Attention4DDefaultFloat16) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -497,7 +497,7 @@ TEST(AttentionTest, Attention4DSoftCap) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), 2.0f, -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             ys, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -525,7 +525,7 @@ TEST(AttentionTest, Attention4DSoftCapFloat16) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), 2.0f, -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             ys, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -555,7 +555,7 @@ TEST(AttentionTest, Attention4DAttnMask) {
             q, k, v, m, std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -585,7 +585,7 @@ TEST(AttentionTest, Attention4DAttnMaskBool) {
             q, k, v, std::vector<float>(), m, std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -623,7 +623,7 @@ TEST(AttentionTest, Attention4DAttnPastPresentBasic) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -661,7 +661,7 @@ TEST(AttentionTest, Attention4DAttnPastPresent) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 TEST(AttentionTest, Attention4DAttnIsCausal) {
@@ -693,7 +693,7 @@ TEST(AttentionTest, Attention4DAttnIsCausal) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -721,7 +721,7 @@ TEST(AttentionTest, Attention4DAttnIsCausalBasic) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -749,7 +749,7 @@ TEST(AttentionTest, Attention4DAttnIsCausalBasicFloat16) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -777,7 +777,7 @@ TEST(AttentionTest, Attention4DAttnIsCausalBasicDifferentSequenceLength) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -824,7 +824,7 @@ TEST(AttentionTest, Attention4DDiffHeadsWithPastAndPresent) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -859,7 +859,7 @@ TEST(AttentionTest, Attention4DGqaAttnMask) {
             q, k, v, m, std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -906,7 +906,7 @@ TEST(AttentionTest, Attention4DGqaWithPastAndPresent) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -957,13 +957,13 @@ TEST(AttentionTest, Attention4DWithPastAndPresentQkMatmul) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, qk_matmul,
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
   RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, 0, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, qk_matmul,
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 
   qk_matmul = std::vector<float>{1.786287f, 1.851782f, 1.433406f, 1.126638f, 1.074598f, 1.202869f, 1.806932f, 1.039214f, 1.155254f, 1.351381f, 1.709788f, 1.654608f, 0.904174f, 1.045790f, 1.828289f, 1.849986f, 0.982722f, 0.779313f, 1.067731f, 0.932425f, 1.164846f, 0.896809f, 1.215540f, 1.155709f, 1.283348f, 0.972161f, 1.592545f, 1.841960f, 1.391534f, 0.932551f, 0.884336f, 0.881353f, 0.905360f, 1.564150f, 1.275840f, 0.946826f, 1.789871f, 1.878873f, 1.971947f, 1.398552f, 1.823965f, 1.960587f, 1.438784f, 1.481077f, 0.957099f, 1.756017f, 1.234584f, 0.990787f, 1.096593f, 1.033003f, 1.868677f, 1.788607f, 1.659495f, 0.667182f, 1.157819f, 0.870338f, 0.879745f, 1.636864f, 0.894962f, 1.714711f, 1.549994f, 0.733612f, 1.117046f, 0.686474f, 1.499953f, 1.123992f, 1.438267f, 0.931251f, 1.633272f, 0.944889f, 0.987120f, 1.218472f, 1.497553f, 1.638913f, 1.553980f, 0.982279f, 1.142558f, 1.193196f, 1.654746f, 1.014832f, 1.090946f, 1.017206f, 1.702928f, 1.601417f, 0.808653f, 1.406642f, 1.423106f, 1.871002f, 1.358196f, 0.931623f, 0.588504f, 0.783458f, 0.882957f, 0.489307f, 1.322660f, 0.934557f, 1.271919f, 0.800610f, 1.444240f, 1.450752f, 0.946420f, 0.900686f, 0.822093f, 1.113904f, 0.568116f, 1.171030f, 1.175384f, 0.910323f, 1.157407f, 1.345392f, 1.400021f, 0.751548f, 1.625352f, 1.456414f, 0.950937f, 1.145433f, 0.649070f, 1.298100f, 0.639947f, 0.927273f, 0.736265f, 1.065406f, 1.263197f, 1.012355f, 1.297169f, 0.495477f, 0.699773f, 0.500964f, 0.620178f, 1.275150f, 0.760687f, 1.387608f, 1.336798f, 0.539168f, 1.042187f, 0.417132f, 1.257103f, 1.163759f, 1.314552f, 0.982448f, 1.345221f, 0.663667f, 0.850426f, 1.238248f, 1.593812f, 1.438230f, 1.387601f, 0.823150f, 0.726727f, 0.832655f, 1.532544f, 0.946970f, 1.126112f, 1.112509f, 1.565497f, 1.938642f, 0.832394f, 1.284816f, 1.447452f, 1.599816f, 0.609072f, 0.743433f, 1.101475f, 0.490747f, 1.020954f, 0.668047f, 0.921248f, 0.721382f, 1.095978f, 0.794792f, 1.488673f, 1.681718f, 0.852196f, 1.102478f, 0.810369f, 1.130985f, 0.425544f, 1.051735f, 0.694759f, 0.764302f, 1.275671f, 1.157903f, 1.440112f, 0.837447f, 1.422500f, 1.150930f, 1.017296f, 1.116673f, 0.804505f, 1.315179f, 0.553615f, 0.871008f, 0.659033f, 1.116166f, 1.134977f, 0.944172f, 0.857236f, 0.531893f, 1.224364f, 0.670808f, 0.843351f, 1.607988f, 0.720031f, 1.438111f, 1.628858f, 0.904480f, 1.456536f, 0.828884f, 1.145072f, 1.586629f, 1.350379f, 1.396510f, 1.226688f, 0.524469f, 0.711242f, 1.413283f, 1.519931f, 1.444998f, 1.155023f, 0.928222f, 0.827857f, 1.092185f, 1.860113f, 1.373539f, 0.953664f, 1.435734f, 1.350082f, 1.735783f, 0.610580f, 1.155694f, 1.600251f, 1.602529f, 0.859450f, 1.156073f, 0.846617f, 0.916578f, 1.134056f, 1.053106f, 1.173786f, 1.246788f, 1.509772f, 1.256221f, 1.540197f, 2.009806f, 1.067828f, 1.164871f, 0.709226f, 1.221456f, 0.845411f, 1.504512f, 1.201048f, 1.402731f, 1.564370f, 1.576583f, 1.589067f, 1.257597f, 1.674126f, 1.954917f, 1.497631f, 1.948780f, 0.954539f, 2.070836f, 0.927942f, 1.418681f, 0.804113f, 1.388198f, 1.624642f, 1.581236f, 1.511648f, 1.311894f, 0.855986f, 0.902148f, 0.785342f, 1.820220f, 0.852723f, 1.696361f, 1.655653f, 1.089764f, 1.202390f, 1.120222f, 1.284748f, 1.475221f, 1.311156f, 1.243736f, 1.625873f, 0.823371f, 1.226631f, 1.673096f, 1.553962f, 1.025746f, 1.313852f, 1.030482f, 0.989448f, 0.936074f, 1.784927f, 0.708855f, 0.971949f, 1.223065f, 1.461189f, 1.747723f, 0.799575f, 0.823636f, 1.400882f, 1.160547f, 0.520804f, 0.836825f, 0.972166f, 0.543222f, 1.346498f, 1.034594f, 1.565712f, 1.361961f, 1.751214f, 0.736224f, 1.864534f, 1.977835f, 1.411005f, 1.496084f, 1.233789f, 1.105877f, 0.961602f, 1.009357f, 1.110593f, 1.390279f, 1.693497f, 1.302893f, 1.756735f, 1.433344f, 2.067142f, 1.916540f, 1.490259f, 1.488384f, 1.309675f, 1.758509f, 1.141796f, 1.534330f, 1.156855f, 1.274409f, 1.870354f, 1.045789f, 1.400564f, 0.876651f, 0.981051f, 0.559955f, 0.790979f, 1.662600f, 1.021407f, 1.716358f, 1.630805f, 0.674263f, 1.320767f, 0.649261f, 1.538417f, 1.525061f, 1.419455f, 1.148088f, 1.820221f, 0.329244f, 1.033743f, 1.253892f, 1.790469f, 1.711897f, 1.467268f, 1.089224f, 0.834806f, 1.155425f, 2.043234f, 0.849033f, 1.136683f, 1.774663f, 1.735976f, 1.677263f, 0.902375f, 1.213391f, 1.758179f, 1.759598f, 0.879983f, 1.517559f, 0.812989f, 0.499876f, 0.998129f, 0.513259f, 1.094689f, 0.873050f, 1.131224f, 0.546321f, 1.364307f, 1.622263f, 0.652555f, 0.680481f, 0.729973f, 1.123450f, 0.722337f, 1.158875f, 0.845219f, 1.151906f, 1.343835f, 1.411206f, 1.638837f, 1.000100f, 1.652081f, 1.598655f, 0.980791f, 1.122207f, 0.848703f, 1.972988f, 0.610630f, 0.678227f, 0.839634f, 1.289163f, 1.497003f, 1.060701f, 0.971334f, 1.099509f, 1.158767f, 0.871929f, 0.972856f, 1.687900f, 0.854091f, 1.804623f, 1.804263f, 0.738135f, 1.209199f, 1.190654f, 1.425313f, 1.450061f, 1.529269f, 1.249452f, 1.921674f, 0.832500f, 0.940835f, 1.908224f};
@@ -971,13 +971,13 @@ TEST(AttentionTest, Attention4DWithPastAndPresentQkMatmul) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, 1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, qk_matmul,
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
   RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, 2, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, qk_matmul,
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 
   qk_matmul = std::vector<float>{0.079204f, 0.084565f, 0.055653f, 0.040951f, 0.038874f, 0.044195f, 0.080856f, 0.037523f, 0.042140f, 0.051271f, 0.073371f, 0.069432f, 0.032783f, 0.037770f, 0.082601f, 0.084413f, 0.035462f, 0.028935f, 0.048528f, 0.042386f, 0.053477f, 0.040903f, 0.056258f, 0.052990f, 0.060205f, 0.044104f, 0.082018f, 0.105252f, 0.067083f, 0.042392f, 0.040396f, 0.040276f, 0.041254f, 0.079722f, 0.059754f, 0.043001f, 0.069900f, 0.076406f, 0.083859f, 0.047264f, 0.072324f, 0.082912f, 0.049204f, 0.051330f, 0.030395f, 0.067573f, 0.040116f, 0.031437f, 0.034945f, 0.032792f, 0.075631f, 0.069811f, 0.061356f, 0.022746f, 0.052157f, 0.039125f, 0.039495f, 0.084209f, 0.040101f, 0.091026f, 0.077202f, 0.034126f, 0.050073f, 0.032554f, 0.073434f, 0.050422f, 0.069041f, 0.041583f, 0.083907f, 0.042154f, 0.043972f, 0.055418f, 0.062936f, 0.072492f, 0.066589f, 0.037594f, 0.044129f, 0.046421f, 0.073649f, 0.038838f, 0.041909f, 0.038930f, 0.077284f, 0.069824f, 0.031602f, 0.057467f, 0.058421f, 0.091429f, 0.054749f, 0.035737f, 0.036234f, 0.044034f, 0.048640f, 0.032812f, 0.075502f, 0.051216f, 0.071766f, 0.044795f, 0.085263f, 0.085820f, 0.051827f, 0.049510f, 0.045768f, 0.061277f, 0.035503f, 0.064879f, 0.065162f, 0.049990f, 0.057976f, 0.069967f, 0.073895f, 0.038636f, 0.092571f, 0.078182f, 0.047161f, 0.057286f, 0.034872f, 0.066735f, 0.034556f, 0.046058f, 0.038050f, 0.052880f, 0.064446f, 0.050148f, 0.066673f, 0.029907f, 0.040424f, 0.033136f, 0.037332f, 0.071867f, 0.042963f, 0.080421f, 0.076436f, 0.034427f, 0.056931f, 0.030472f, 0.070581f, 0.064291f, 0.074755f, 0.053630f, 0.077083f, 0.038991f, 0.046997f, 0.069263f, 0.077018f, 0.065921f, 0.062667f, 0.035637f, 0.032361f, 0.035977f, 0.072441f, 0.040334f, 0.048247f, 0.047595f, 0.074868f, 0.108730f, 0.035968f, 0.056545f, 0.066532f, 0.077482f, 0.028769f, 0.032906f, 0.062422f, 0.033892f, 0.057593f, 0.040467f, 0.052127f, 0.042684f, 0.062080f, 0.045935f, 0.091938f, 0.111515f, 0.048649f, 0.062485f, 0.046656f, 0.064291f, 0.031753f, 0.059393f, 0.041563f, 0.044556f, 0.069887f, 0.062123f, 0.082378f, 0.045090f, 0.080940f, 0.061691f, 0.053974f, 0.059613f, 0.043629f, 0.072703f, 0.033948f, 0.046629f, 0.037722f, 0.059583f, 0.060715f, 0.050168f, 0.045991f, 0.033218f, 0.056448f, 0.032452f, 0.038564f, 0.082843f, 0.034089f, 0.069900f, 0.084590f, 0.040994f, 0.071200f, 0.038010f, 0.052145f, 0.081092f, 0.064029f, 0.067052f, 0.056579f, 0.028034f, 0.033791f, 0.068186f, 0.068271f, 0.063343f, 0.047398f, 0.037780f, 0.034172f, 0.044511f, 0.095935f, 0.058974f, 0.038754f, 0.062758f, 0.057607f, 0.084719f, 0.027499f, 0.047430f, 0.073981f, 0.074150f, 0.035269f, 0.047448f, 0.036752f, 0.039415f, 0.048991f, 0.045181f, 0.050976f, 0.054837f, 0.071332f, 0.055356f, 0.073536f, 0.117610f, 0.045851f, 0.050524f, 0.032034f, 0.053465f, 0.036708f, 0.070958f, 0.052385f, 0.064091f, 0.057214f, 0.057917f, 0.058645f, 0.042099f, 0.063851f, 0.084550f, 0.053520f, 0.084033f, 0.031093f, 0.094942f, 0.030276f, 0.049457f, 0.026750f, 0.047972f, 0.060768f, 0.058187f, 0.054276f, 0.044448f, 0.035207f, 0.036870f, 0.032806f, 0.092340f, 0.035092f, 0.081583f, 0.078329f, 0.044479f, 0.049782f, 0.045855f, 0.054055f, 0.065397f, 0.055502f, 0.051883f, 0.076030f, 0.034077f, 0.051003f, 0.079707f, 0.080020f, 0.047184f, 0.062939f, 0.047408f, 0.045502f, 0.043137f, 0.100811f, 0.034370f, 0.044713f, 0.057477f, 0.072930f, 0.097129f, 0.037633f, 0.038550f, 0.068662f, 0.053994f, 0.028478f, 0.039062f, 0.038495f, 0.025068f, 0.055973f, 0.040975f, 0.069692f, 0.056845f, 0.083897f, 0.030405f, 0.093963f, 0.105236f, 0.059703f, 0.065004f, 0.050007f, 0.044003f, 0.038091f, 0.039954f, 0.044211f, 0.058478f, 0.065917f, 0.044603f, 0.070220f, 0.050818f, 0.095779f, 0.082388f, 0.053794f, 0.053693f, 0.044906f, 0.070345f, 0.037966f, 0.056218f, 0.038542f, 0.043350f, 0.078669f, 0.034491f, 0.049179f, 0.029124f, 0.042079f, 0.027618f, 0.034795f, 0.083187f, 0.043812f, 0.087782f, 0.080584f, 0.030962f, 0.059102f, 0.030197f, 0.073473f, 0.072498f, 0.065232f, 0.049729f, 0.097389f, 0.021927f, 0.044356f, 0.055279f, 0.076017f, 0.070273f, 0.055023f, 0.037702f, 0.029233f, 0.040282f, 0.097878f, 0.029652f, 0.039534f, 0.074825f, 0.071985f, 0.067881f, 0.031276f, 0.042686f, 0.073602f, 0.073706f, 0.030584f, 0.057861f, 0.047710f, 0.034884f, 0.057413f, 0.035354f, 0.063233f, 0.050663f, 0.065586f, 0.036542f, 0.082802f, 0.107169f, 0.040638f, 0.041789f, 0.043909f, 0.065079f, 0.043575f, 0.067425f, 0.049272f, 0.066957f, 0.059910f, 0.064085f, 0.080467f, 0.042483f, 0.081539f, 0.077297f, 0.041671f, 0.048000f, 0.036514f, 0.112392f, 0.028779f, 0.030791f, 0.036185f, 0.056722f, 0.069826f, 0.045137f, 0.041278f, 0.046923f, 0.044357f, 0.033296f, 0.036832f, 0.075295f, 0.032707f, 0.084617f, 0.084586f, 0.029126f, 0.046652f, 0.045794f, 0.057906f, 0.059357f, 0.064250f, 0.048568f, 0.095124f, 0.032009f, 0.035671f, 0.093853f};
@@ -985,7 +985,7 @@ TEST(AttentionTest, Attention4DWithPastAndPresentQkMatmul) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, 3, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, qk_matmul,
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 
   y = std::vector<float>{0.466021f, 0.458662f, 0.433769f, 0.544055f, 0.483743f, 0.601701f, 0.452252f, 0.558874f, 0.462717f, 0.462769f, 0.429452f, 0.544879f, 0.480609f, 0.607708f, 0.462766f, 0.570020f, 0.465546f, 0.464215f, 0.442318f, 0.544785f, 0.481242f, 0.599103f, 0.465833f, 0.567976f, 0.466527f, 0.450295f, 0.420681f, 0.541622f, 0.478068f, 0.592818f, 0.453533f, 0.586057f, 0.586788f, 0.542723f, 0.521934f, 0.605385f, 0.523076f, 0.515204f, 0.538008f, 0.539990f, 0.580554f, 0.544345f, 0.524057f, 0.593493f, 0.520281f, 0.513084f, 0.549197f, 0.556567f, 0.590750f, 0.536522f, 0.528383f, 0.608365f, 0.523467f, 0.511267f, 0.533588f, 0.556113f, 0.589547f, 0.537869f, 0.512585f, 0.601047f, 0.507374f, 0.511124f, 0.547465f, 0.512627f, 0.537318f, 0.460441f, 0.540844f, 0.491120f, 0.495359f, 0.476360f, 0.487767f, 0.575867f, 0.522542f, 0.469555f, 0.552479f, 0.488850f, 0.498227f, 0.480921f, 0.484224f, 0.563258f, 0.536463f, 0.455656f, 0.529199f, 0.484251f, 0.487531f, 0.482517f, 0.496116f, 0.576080f, 0.527226f, 0.455449f, 0.525402f, 0.516090f, 0.487896f, 0.477256f, 0.499739f, 0.574474f, 0.520127f, 0.578615f, 0.430572f, 0.471035f, 0.475543f, 0.515079f, 0.488231f, 0.438589f, 0.525065f, 0.569547f, 0.430350f, 0.477609f, 0.478081f, 0.515330f, 0.479993f, 0.427992f, 0.520505f, 0.584227f, 0.430333f, 0.470616f, 0.468772f, 0.517313f, 0.478180f, 0.435562f, 0.527655f, 0.580609f, 0.440415f, 0.475648f, 0.474939f, 0.501466f, 0.474016f, 0.433277f, 0.489508f, 0.425301f, 0.542249f, 0.446878f, 0.532601f, 0.462732f, 0.460696f, 0.462333f, 0.480973f, 0.421038f, 0.522864f, 0.446350f, 0.525882f, 0.466933f, 0.459678f, 0.470179f, 0.485580f, 0.431242f, 0.545418f, 0.440407f, 0.527849f, 0.471587f, 0.464982f, 0.464551f, 0.502461f, 0.437563f, 0.528884f, 0.426691f, 0.531206f, 0.480744f, 0.460218f, 0.480733f, 0.543597f, 0.506559f, 0.419551f, 0.372524f, 0.622818f, 0.678228f, 0.309035f, 0.543150f, 0.561392f, 0.501923f, 0.420097f, 0.368626f, 0.607674f, 0.661294f, 0.315077f, 0.540017f, 0.552392f, 0.506226f, 0.409681f, 0.376208f, 0.608944f, 0.674258f, 0.301188f, 0.537046f, 0.536986f, 0.515894f, 0.402735f, 0.364314f, 0.612694f, 0.684161f, 0.315733f, 0.553979f};
@@ -994,7 +994,7 @@ TEST(AttentionTest, Attention4DWithPastAndPresentQkMatmul) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, 2, std::numeric_limits<float>::quiet_NaN(), 1.f, -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, qk_matmul,
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -1045,7 +1045,7 @@ TEST(AttentionTest, Attention3DWithPastAndPresentQkMatmul) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, qk_matmul,
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -1096,7 +1096,7 @@ TEST(AttentionTest, Attention4DWithMask3DPastAndPresentQkMatmul) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, qk_matmul,
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -1147,7 +1147,7 @@ TEST(AttentionTest, Attention4DWithMask3DPastAndPresentQkMatmulCausal) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, qk_matmul,
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -1198,7 +1198,7 @@ TEST(AttentionTest, Attention4DWithMask4DPastAndPresentQkMatmul) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, qk_matmul,
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
