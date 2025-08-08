@@ -96,6 +96,18 @@ def _openvino_verify_device_type(device_read: str) -> str:
     return device_read
 
 
+def _webgpu_verify_library_kind(library_kind: str) -> str:
+    """Verifies the library kind for the WebGPU Execution Provider."""
+    choices = ["shared_lib", "static_lib"]
+    if library_kind not in choices:
+        print("\nYou have specified an invalid library kind for WebGPU EP.")
+        print(f"The invalid library kind was: {library_kind}")
+        print("Provide a library kind from the following options: ", choices)
+        print(f"Example: --use_webgpu {choices[0]}")
+        sys.exit("Incorrect build configuration")
+    return library_kind
+
+
 # --- Argument Grouping Functions ---
 
 
@@ -742,7 +754,13 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
 
     # --- WebGPU ---
     webgpu_group = parser.add_argument_group("WebGPU Execution Provider")
-    webgpu_group.add_argument("--use_webgpu", action="store_true", help="Enable WebGPU EP.")
+    webgpu_group.add_argument(
+        "--use_webgpu",
+        nargs="?",
+        const="static_lib",
+        type=_webgpu_verify_library_kind,
+        help="Enable WebGPU EP. Optionally specify 'static_lib' (default) or 'shared_lib'.",
+    )
     webgpu_group.add_argument(
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
     )
