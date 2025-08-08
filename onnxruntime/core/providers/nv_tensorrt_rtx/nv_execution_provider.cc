@@ -1773,19 +1773,19 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
   // If there are "EPContext" contrib op nodes, it means TRT EP can fetch the precompiled engine info from the node and
   // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT
   // parser and engine compilation. So, simply return subgraphs consists of single ep context nodes here.
-  size_t node_idx = 0;
-  if (GraphHasCtxNode(graph, node_idx)) {
-    int subgraph_idx = 0;
-    for (size_t node_idx : node_index) {
-      const auto& node = graph.GetNode(node_idx);
-      const bool is_context_node = node && !node->OpType().empty() && node->OpType() == EPCONTEXT_OP;
-      if (is_context_node) {
-        SubGraph_t supported_node_vector(std::make_pair(std::vector<size_t>{node_idx}, true));
-        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, model_hash, subgraph_idx++);
+  int subgraph_idx = 0;
+  for (size_t node_idx : node_index) {
+    const auto& node = graph.GetNode(node_idx);
+    const bool is_context_node = node && !node->OpType().empty() && node->OpType() == EPCONTEXT_OP;
+    if (is_context_node) {
+      SubGraph_t supported_node_vector(std::make_pair(std::vector<size_t>{node_idx}, true));
+      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, model_hash, subgraph_idx++);
 
-        result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-      }
+      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     }
+  }
+  // return early if context nodes where found
+  if (!result.empty()) {
     return result;
   }
 
@@ -2061,9 +2061,11 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
 
     // Extract weight information from the Refitter.
     int required_weights = refitter->getAllWeights(0, nullptr);
-    std::vector<char const*> refit_names(required_weights);
-    refitter->getAllWeights(required_weights, refit_names.data());
+    std::vector<char const*> refit_names_prealocated(required_weights);
+    refitter->getAllWeights(required_weights, refit_names_prealocated.data());
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refitter requires " << required_weights << " weights";
+    std::unordered_set<std::string> refit_names(std::make_move_iterator(refit_names_prealocated.begin()),
+                                      std::make_move_iterator(refit_names_prealocated.end()));
 
     // Vectors to keep track of data pointers.
     std::vector<std::string> names;
@@ -2094,8 +2096,7 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
     for (int initializer_idx = 0; initializer_idx < allInitializers_byte_stream->size(); ++initializer_idx) {
       auto& proto = allInitializers_byte_stream->at(initializer_idx);
       auto& proto_name = proto.name();
-      bool weight_is_refittable = std::find(refit_names.begin(), refit_names.end(), proto_name) != refit_names.end();
-      if (weight_is_refittable) {
+      if (refit_names.find(proto_name) != refit_names.end()) {
         if (proto.has_data_location()) {
           if (proto.data_location() == TensorProto_DataLocation_EXTERNAL) {
             // Default values for reading into external_data blob.
