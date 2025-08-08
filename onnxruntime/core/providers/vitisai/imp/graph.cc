@@ -288,19 +288,30 @@ Model* model_clone(const Model& original_model, int64_t external_data_threshold)
     }
     auto ORT_MEM_ADDR_tag = process_ext_address(*original_tensor);
     if (!ORT_MEM_ADDR_tag.empty()) {
-      cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-      auto external_data = cloned_tensor->mutable_external_data();
-      auto p = external_data->Add();
-      *p->mutable_key() = "location";
-      *p->mutable_value() = std::string("<") + graph_ptr;
-    } else if (size >= external_data_threshold) {
-      cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-      auto external_data = cloned_tensor->mutable_external_data();
-      auto p = external_data->Add();
-      *p->mutable_key() = "location";
-      *p->mutable_value() = std::string("<") + graph_ptr;
+      // ORT 1.23 intializer handling
+      if (size >= external_data_threshold) {
+        cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+        auto external_data = cloned_tensor->mutable_external_data();
+        auto p = external_data->Add();
+        *p->mutable_key() = "location";
+        *p->mutable_value() = std::string("<") + graph_ptr;
+      } else {
+        // Under threshold: get the data from ORT_MEM_ADDR and add it to cloned graph
+        std::unique_ptr<ONNX_NAMESPACE::TensorProto> tensor_proto;
+        ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*original_tensor, tensor_proto));
+        *cloned_tensor = *tensor_proto;
+      }
     } else {
-      *cloned_tensor = *original_tensor;
+      // ORT 1.22 or ealier intializer handling
+      if (size >= external_data_threshold) {
+        cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+        auto external_data = cloned_tensor->mutable_external_data();
+        auto p = external_data->Add();
+        *p->mutable_key() = "location";
+        *p->mutable_value() = std::string("<") + graph_ptr;
+      } else {
+        *cloned_tensor = *original_tensor;
+      }
     }
   }
   auto ret = Model::Create(std::move(*model_proto), file_path, &local_registries, logger);
