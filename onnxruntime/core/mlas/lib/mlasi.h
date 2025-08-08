@@ -50,9 +50,8 @@ Abstract:
 #if defined(__arm__) || defined(__aarch64__)
 #include <arm_neon.h>
 #endif
-#ifdef COMPILER_SUPPORTS_SVE
+#ifdef USE_SVE
 #include <arm_sve.h>  // SVE intrinsic header
-#define MLAS_SVE_INTRINSICS 1
 #endif
 #if defined(__x86_64__) || defined(__i386__)
 #if !defined(signature_VORTEX_ebx) && !defined(signature_NEXGEN_ebx) && !defined(signature_AMD_ebx)//workaround for Bug 96238 - [i386] cpuid.h header needs include guards

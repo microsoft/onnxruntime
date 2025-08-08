@@ -178,7 +178,7 @@ Abstract:
         ldr     q8,[x0],#16
 
 .if \Rows\() > 2
-        ldr     q9,[x0],#16
+        ldr     q9,[x0],#16 
 .endif
 
 .if \Rows\() > 4

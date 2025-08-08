@@ -5,21 +5,6 @@ set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
 set(MLAS_SRC_DIR ${MLAS_ROOT}/lib)
 set(MLAS_INC_DIR ${MLAS_ROOT}/inc)
 
-# Detect SVE support in AArch64 (ARM 64-bit)
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
-    message(STATUS "Detecting SVE support for AArch64...")
-    # Include module to check compiler flags
-    include(CheckCXXCompilerFlag)
-    # Test if the compiler supports SVE
-    check_cxx_compiler_flag("-march=armv8.2-a+sve+fp16" COMPILER_SUPPORTS_SVE)
-    if (COMPILER_SUPPORTS_SVE)
-        message(STATUS "Compiler supports SVE!")
-        add_compile_definitions(COMPILER_SUPPORTS_SVE=1) # Define COMPILER_SUPPORTS_SVE for source files
-    else()
-        message(STATUS "Compiler does NOT support SVE!")
-    endif()
-endif()
-
 #
 # All hardware agnostic source files here
 # hardware specific files would cause trouble in
@@ -27,7 +12,7 @@ endif()
 #
 onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/mlasi.h
-  ${MLAS_SRC_DIR}/mlasi_sve.h
+  ${MLAS_SRC_DIR}/sve/mlasi_sve.h
   ${MLAS_SRC_DIR}/platform.cpp
   ${MLAS_SRC_DIR}/threading.cpp
   ${MLAS_SRC_DIR}/sgemm.cpp
@@ -65,6 +50,21 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/softmax.h
   ${MLAS_SRC_DIR}/saturation_check.cpp
 )
+
+# Detect SVE support in AArch64 (ARM 64-bit)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+    message(STATUS "Detecting SVE support for AArch64...")
+    # Include module to check compiler flags
+    include(CheckCXXCompilerFlag)
+    # Test if the compiler supports SVE
+    check_cxx_compiler_flag("-march=armv8.2-a+sve+fp16" USE_SVE)
+    if (USE_SVE)
+        message(STATUS "Compiler supports SVE!")
+        target_compile_definitions(onnxruntime_mlas PRIVATE USE_SVE=1) # Define USE_SVE for source files
+    else()
+        message(STATUS "Compiler does NOT support SVE!")
+    endif()
+endif()
 
 target_sources(onnxruntime_mlas PRIVATE
   ${MLAS_INC_DIR}/mlas_float16.h
@@ -476,6 +476,7 @@ else()
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp
           )
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
@@ -494,6 +495,7 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/erf.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/compute.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/logistic.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)

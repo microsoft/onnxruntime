@@ -20,7 +20,9 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "mlasi_sve.h"
+#ifdef USE_SVE
+#include "sve/mlasi_sve.h"
+#endif
 #include "softmax.h"
 #include <cmath>
 
@@ -186,52 +188,6 @@ Return Value:
     return p;
 }
 
-#ifdef __ARM_FEATURE_SVE
-MLAS_FORCEINLINE
-MLAS_SVFLOAT32
-MlasSveComputeExpVector(
-    MLAS_SVBOOL Pred,
-    MLAS_SVFLOAT32 Vector
-)
-{
-    // Constants
-    const auto log2_e = MlasSveBroadcastFloat32(1.4426950409f);
-    const auto ln2 = MlasSveBroadcastFloat32(0.6931473921f);
-    const auto half_ln2_sq = MlasSveBroadcastFloat32(0.2413862043f);
-    const auto not_mask17 = MlasSveBroadcastUINT32(~((1u << 17) - 1));
-    const auto one = MlasSveBroadcastFloat32(1.0f);
-
-    // Step 1: y = x * log2(e)
-    svfloat32_t t0 = MlasSveMultiplyFloat32(Pred, Vector, log2_e);
-
-    // Step 2: floor(y)
-    svfloat32_t t1 = MlasSveRoundINTFloat32(Pred, t0);
-    svint32_t t2 = MlasSveCastToInt32(Pred, t1); // n
-
-    // Step 3: a = y - floor(y), b = a + 1
-    t1 = MlasSveSubtractFloat32(Pred, t0, t1);
-    t1 = MlasSveAddFloat32(Pred, t1, one);
-
-    // Step 4: v = reinterpret(b) >> 17
-    svuint32_t t3 = MlasSveShiftRightInt32(Pred, MlasSveReinterpretAsUInt32(t1), 17);
-
-    // Step 5: c = fexpa(v), scaled = c * 2^n
-    svfloat32_t t4 = MlasSveExpFloat32(t3);
-    t4 = MlasSveScaleFloat32(Pred, t4, t2);
-
-    // Step 6: z = b & ~(2^17 - 1), z = b - z
-    svfloat32_t t5 = MlasSveReinterpretAsFLOAT32(MlasSveAndUInt32(Pred, MlasSveReinterpretAsUInt32(t1), not_mask17));
-    t5 = MlasSveSubtractFloat32(Pred, t1, t5);
-
-    // Step 7: Polynomial approximation
-    t0 = MlasSveMultiplyAddFloat32(Pred, ln2, t5, half_ln2_sq);     // ln2 + half_ln2_sq * z
-    t0 = MlasSveMultiplyAddFloat32(Pred, one, t5, t0);              // 1 + ln2 * z + half_ln2_sq * z^2
-    t0 = MlasSveMultiplyFloat32(Pred, t0, t4);                   // Final result
-
-    return t0;
-}
-#endif
-
 void
 MLASCALL
 MlasComputeExpF32Kernel(
@@ -294,45 +250,6 @@ Return Value:
         }
     }
 }
-
-//optimized version of MlasSveComputeExpF32Kernel
-#ifdef __ARM_FEATURE_SVE
-void
-MLASCALL
-MlasSveComputeExpF32Kernel(
-    const float* Input,
-    float* Output,
-    size_t N
-)
-{
-    const size_t veclen = svcntw();
-
-    // Fast path: Use scalar loop when N is 1
-    if (N == 1) {
-        Output[0] = expf(Input[0]);
-        return;
-    }
-    
-    // Vectorized path
-    MLAS_SVBOOL Pred = svptrue_b32();
-    size_t stride = veclen;
-
-    while (N > 0) {
-        if (N < veclen) {
-            Pred = svwhilelt_b32(0, (int32_t)N);
-            stride = N;
-        }
-
-        MLAS_SVFLOAT32 Vector = MlasSveLoadFloat32(Pred, Input);
-        Vector = MlasSveComputeExpVector(Pred, Vector);
-        MlasSveStoreFloat32(Pred, Output, Vector);
-
-        Input += stride;
-        Output += stride;
-        N -= stride;
-    }
-}
-#endif
 
 template <>
 void
@@ -479,41 +396,6 @@ Return Value:
     return p;
 }
 
-#ifdef __ARM_FEATURE_SVE
-MLAS_FORCEINLINE
-MLAS_SVFLOAT32
-MlasSveComputeSumExpVector(
-    MLAS_SVBOOL Pred,
-    MLAS_SVFLOAT32 Vector,
-    MLAS_SVFLOAT32 NegativeMaximumVector
-)
-{
-    Vector = MlasSveAddFloat32(Pred, Vector, NegativeMaximumVector);
-    Vector = MlasSveMaximumFloat32(Pred, MlasSveBroadcastFloat32(MlasExpConstants.LowerRangeSumExp), Vector);
-    
-    const auto RoundingBias = MlasSveBroadcastFloat32(MlasExpConstants.RoundingBias);
-    auto biased = MlasSveMultiplyAddFloat32(Pred, Vector, MlasExpConstants.Log2Reciprocal, RoundingBias);
-    auto m = MlasSveSubtractFloat32(Pred, biased, RoundingBias);
-
-    Vector = MlasSveMultiplyAddFloat32(Pred, m, MlasExpConstants.Log2High, Vector);
-    Vector = MlasSveMultiplyAddFloat32(Pred, m, MlasExpConstants.Log2Low, Vector);
-
-    auto normal = MlasSveShiftLeftInt32<23>(Pred, MlasSveReinterpretAsInt32(biased));
-    normal = MlasSveAddInt32(Pred, normal, MlasSveBroadcastInt32(MlasExpConstants.MaximumExponent));
-
-    auto p = MlasSveBroadcastFloat32(MlasExpConstants.poly_0);
-    p = MlasSveMultiplyAddFloat32(Pred, p, Vector, MlasExpConstants.poly_1);
-    p = MlasSveMultiplyAddFloat32(Pred, p, Vector, MlasExpConstants.poly_2);
-    p = MlasSveMultiplyAddFloat32(Pred, p, Vector, MlasExpConstants.poly_3);
-    p = MlasSveMultiplyAddFloat32(Pred, p, Vector, MlasExpConstants.poly_4);
-    p = MlasSveMultiplyAddFloat32(Pred, p, Vector, MlasExpConstants.poly_56);  // <--|
-    p = MlasSveMultiplyAddFloat32(Pred, p, Vector, MlasExpConstants.poly_56);  // Twice?
-
-    p = MlasSveMultiplyFloat32(Pred, p, MlasSveReinterpretAsFloat32(normal));
-    return p;
-}
-#endif
-
 float
 MLASCALL
 MlasComputeSumExpF32Kernel(
@@ -630,59 +512,6 @@ Return Value:
     return Accumulator;
 }
 
-#ifdef __ARM_FEATURE_SVE
-float
-MLASCALL
-MlasSveComputeSumExpF32Kernel(
-    const float* Input,
-    float* Output,
-    size_t N,
-    const float* NegativeMaximum
-)
-/**
- * Potential optimization: Consider applying loop unrolling to improve instruction-level
- * parallelism (ILP) in this kernel. Evaluate the performance impact using benchmarks
- * before and after implementing the optimization.
- */
-{
-    if (N == 1) {
-        float result = expf(Input[0] + *NegativeMaximum);
-        if (Output != nullptr) {
-            Output[0] = result;
-        }
-        return result;
-    }
-    
-    MLAS_SVBOOL Pred = svptrue_b32();
-    size_t veclen = svcntw();
-    size_t stride = veclen;
-    float sum = 0.0f;
-
-    MLAS_SVFLOAT32 NegativeMaximumVector = MlasSveBroadcastFloat32(*NegativeMaximum);
-   
-    while (N > 0) {
-        if (N < veclen) {
-            Pred = svwhilelt_b32(0, (int32_t)N);
-            stride = N;
-        }
-       
-        MLAS_SVFLOAT32 Vector = MlasSveLoadFloat32(Pred, Input);
-        Vector = MlasSveComputeSumExpVector(Pred, Vector, NegativeMaximumVector);
-
-        if (Output != nullptr) {
-            MlasSveStoreFloat32(Pred, Output, Vector);
-            Output += stride;
-        }
-
-        sum += MlasSveReduceAddFloat32(Pred, Vector);
-
-        Input += stride;
-        N -= stride;
-    }
-    return sum;
-}
-#endif
-
 float
 MLASCALL
 MlasReduceMaximumF32Kernel(
@@ -751,57 +580,6 @@ Return Value:
     }
     return Maximum;
 }
-
-#ifdef __ARM_FEATURE_SVE
-float MLASCALL
-MlasSveReduceMaximumF32Kernel(
-    const float* Input,
-    size_t N
-)
-{
-    size_t veclen = svcntw();
-    MLAS_SVBOOL Pred = svptrue_b32();
-
-    float Maximum;
-    MLAS_SVFLOAT32 MaximumVector0 = MlasSveBroadcastFloat32(MlasMinimumF32Value);
-    
-    if (N >= veclen * 4) {
-        MLAS_SVFLOAT32 MaximumVector1 = MaximumVector0;
-        MLAS_SVFLOAT32 MaximumVector2 = MaximumVector0;
-        MLAS_SVFLOAT32 MaximumVector3 = MaximumVector0;
-        
-        while (N >= veclen * 4) {
-            MaximumVector0 = MlasSveMaximumFloat32(Pred, MaximumVector0, MlasSveLoadFloat32(Pred, Input));
-            MaximumVector1 = MlasSveMaximumFloat32(Pred, MaximumVector1, MlasSveLoadFloat32(Pred, Input + veclen));
-            MaximumVector2 = MlasSveMaximumFloat32(Pred, MaximumVector2, MlasSveLoadFloat32(Pred, Input + 2 * veclen));
-            MaximumVector3 = MlasSveMaximumFloat32(Pred, MaximumVector3, MlasSveLoadFloat32(Pred, Input + 3 * veclen));
-
-            Input += veclen * 4;
-            N -= veclen * 4;
-        }
-
-        MaximumVector0 = MlasSveMaximumFloat32(Pred, MaximumVector0, MaximumVector1);
-        MaximumVector2 = MlasSveMaximumFloat32(Pred, MaximumVector2, MaximumVector3);
-        MaximumVector0 = MlasSveMaximumFloat32(Pred, MaximumVector0, MaximumVector2);
-    }
-    size_t stride = veclen;
-    
-    while (N > 0) {
-        if (N < veclen) {
-            Pred = svwhilelt_b32(0, (int32_t)N);
-            stride = N;
-        }
-        MLAS_SVFLOAT32 Vector = MlasSveLoadFloat32(Pred, Input);
-        MaximumVector0 = MlasSveMaximumFloat32(Pred, MaximumVector0, Vector);
-
-        Input += stride;
-        N -= stride;
-    }
-
-    Maximum = MlasSveReduceMaximumFloat32(svptrue_b32(), MaximumVector0);
-    return Maximum;
-}
-#endif
 
 void
 MLASCALL
@@ -883,43 +661,6 @@ MlasReduceMinimumMaximumF32Kernel(
     *Max = tmp_max;
 }
 
-#ifdef __ARM_FEATURE_SVE
-void
-MLASCALL
-MlasSveReduceMinimumMaximumF32Kernel(
-    const float* Input,
-    float* Min,
-    float* Max,
-    size_t N
-)
-{
-    MLAS_SVBOOL Pred = svptrue_b32();
-    size_t veclen = svcntw();
-    size_t stride = veclen;
-
-    float tmp_min = std::numeric_limits<float>::max();
-    float tmp_max = std::numeric_limits<float>::lowest();
-
-    MLAS_SVFLOAT32 MaximumVector = MlasSveBroadcastFloat32(tmp_max);
-    MLAS_SVFLOAT32 MinimumVector = MlasSveBroadcastFloat32(tmp_min);
-
-    while (N > 0) {
-        if (N < veclen) {
-            Pred = svwhilelt_b32(0, (int32_t)N);
-            stride = N;
-        }
-        MLAS_SVFLOAT32 Vector = MlasSveLoadFloat32(Pred, Input);
-        MaximumVector = MlasSveMaximumFloat32(Pred, MaximumVector, Vector);
-        MinimumVector = MlasSveMinimumFloat32(Pred, MinimumVector, Vector);
-
-        Input += stride;
-        N -= stride;
-    }
-    *Min = MlasSveReduceMinimumFloat32(svptrue_b32(), MinimumVector);
-    *Max = MlasSveReduceMaximumFloat32(svptrue_b32(), MaximumVector);
-}
-#endif
-
 void
 MLASCALL
 MlasComputeSoftmaxOutputF32Kernel(
@@ -981,35 +722,6 @@ Return Value:
         N -= 1;
     }
 }
-
-#ifdef __ARM_FEATURE_SVE
-void
-MLASCALL
-MlasSveComputeSoftmaxOutputF32Kernel(
-    float* Output,
-    size_t N,
-    const float* Parameters
-)
-{
-    MLAS_SVBOOL Pred = svptrue_b32();
-    size_t veclen = svcntw();
-    size_t stride = veclen;
-
-    const float Scale = Parameters[0];
-    const MLAS_SVFLOAT32 ScaleVector = MlasSveBroadcastFloat32(Scale);
-    while (N > 0) {
-        if (N < veclen) {
-            Pred = svwhilelt_b32(0, (int32_t)N);
-            stride = N;
-        }
-        MLAS_SVFLOAT32 Vector = MlasSveMultiplyFloat32(Pred, ScaleVector, MlasSveLoadFloat32(Pred, Output));
-        MlasSveStoreFloat32(Pred, Output, Vector);
-
-        Output += stride;
-        N -= stride;
-    }
-}
-#endif
 
 void
 MLASCALL
@@ -1094,43 +806,6 @@ Return Value:
         N -= 1;
     }
 }
-
-#ifdef __ARM_FEATURE_SVE
-void
-MLASCALL
-MlasSveComputeLogSoftmaxOutputF32Kernel(
-    const float* Input,
-    float* Output,
-    size_t N,
-    const float* Parameters
-)
-{
-    MLAS_SVBOOL Pred = svptrue_b32();
-    size_t veclen = svcntw();
-    size_t stride = veclen;
-    
-    const float NegativeMaximum = Parameters[0];
-    const float Logarithm = Parameters[1];
-    MLAS_SVFLOAT32 NegativeMaximumVector = MlasSveBroadcastFloat32(NegativeMaximum);
-    MLAS_SVFLOAT32 LogarithmVector = MlasSveBroadcastFloat32(Logarithm);
-
-    while (N > 0) {
-        if (N < veclen) {
-            Pred = svwhilelt_b32(0, (int32_t)N);
-            stride = N;
-        }
-        MLAS_SVFLOAT32 Vector = MlasSveLoadFloat32(Pred, Input);
-        Vector = MlasSveAddFloat32(Pred, Vector, NegativeMaximumVector);
-        Vector = MlasSveSubtractFloat32(Pred, Vector, LogarithmVector);
-        MlasSveStoreFloat32(Pred, Output, Vector);
-
-        Input += stride;
-        Output += stride;
-        N -= stride;
-    }
-    
-}
-#endif
 
 template <typename T>
 void

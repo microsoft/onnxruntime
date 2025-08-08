@@ -16,21 +16,12 @@ Abstract:
 
 #pragma once
 
-#include "mlasi.h"
-
-
-#ifdef COMPILER_SUPPORTS_SVE
+#include "../mlasi.h"
 #include <arm_sve.h>  // SVE intrinsic header
-#define MLAS_SVE_INTRINSICS 1
-#endif
 
-#if defined(MLAS_SVE_INTRINSICS)
-// GCC: Use `#pragma GCC target` (only if not Clang)
 #ifndef __clang__
 #pragma GCC push_options
 #pragma GCC target("arch=armv8-a+sve")
-// #pragma GCC optimize("O3")
-#endif
 
 // Use Clang-specific per-function attribute
 #ifdef __clang__
@@ -44,6 +35,89 @@ typedef svfloat32_t MLAS_SVFLOAT32;
 typedef svint32_t MLAS_SVINT32;
 typedef svuint32_t MLAS_SVUINT32;
 typedef svbool_t MLAS_SVBOOL;
+
+// function decarations
+MLAS_FORCEINLINE
+MLAS_SVFLOAT32
+MlasSveComputeExpVector(
+    MLAS_SVBOOL Pred,
+    MLAS_SVFLOAT32 Vector
+);
+
+void
+MLASCALL
+MlasSveComputeExpF32Kernel(
+    const float* Input,
+    float* Output,
+    size_t N
+);
+
+MLAS_FORCEINLINE
+MLAS_SVFLOAT32
+MlasSveComputeSumExpVector(
+    MLAS_SVBOOL Pred,
+    MLAS_SVFLOAT32 Vector,
+    MLAS_SVFLOAT32 NegativeMaximumVector
+);
+
+float
+MLASCALL
+MlasSveComputeSumExpF32Kernel(
+    const float* Input,
+    float* Output,
+    size_t N,
+    const float* NegativeMaximum
+);
+
+float MLASCALL
+MlasSveReduceMaximumF32Kernel(
+    const float* Input,
+    size_t N
+);
+
+void
+MLASCALL
+MlasSveReduceMinimumMaximumF32Kernel(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+);
+
+void
+MLASCALL
+MlasSveComputeSoftmaxOutputF32Kernel(
+    float* Output,
+    size_t N,
+    const float* Parameters
+);
+
+void
+MLASCALL
+MlasSveComputeLogSoftmaxOutputF32Kernel(
+    const float* Input,
+    float* Output,
+    size_t N,
+    const float* Parameters
+);
+
+void
+MLASCALL
+MlasSveErfKernel(
+    const float* Input,
+    float* Output,
+    size_t N
+);
+
+void 
+MLASCALL
+MlasSveLogisticKernel(
+    const float* Input,
+    float* Output,
+    size_t N
+);
+
+//MLAS API for SVE intrinsics
 
 MLAS_SVE_TARGET
 MLAS_FORCEINLINE
@@ -176,6 +250,15 @@ MlasSveBlendInt32(MLAS_SVBOOL Pred, MLAS_SVINT32 Vector1, MLAS_SVINT32 Vector2, 
         MlasSveAndInt32(Pred, Vector2, Selection), 
         MlasSveAndNotInt32(Pred, Selection, Vector1)
     );
+}
+
+template<unsigned ShiftCount>
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVUINT32
+MlasSveShiftLeftUInt32(MLAS_SVBOOL Pred, MLAS_SVUINT32 Vector)
+{
+    return svlsl_n_u32_z(Pred, Vector, ShiftCount);
 }
 
 template<unsigned ShiftCount>
@@ -539,6 +622,30 @@ MlasSvePowerOf2Float32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector)
         MlasSveBroadcastInt32(127)
     );
     return MlasSveReinterpretAsFloat32(MlasSveShiftLeftInt32<23>(Pred, emm0));
+}
+
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVFLOAT32
+MlasSveSelect(svbool_t Pred, MLAS_SVFLOAT32 TrueValue, MLAS_SVFLOAT32 FalseValue)
+{
+    return svsel_f32(Pred, TrueValue, FalseValue);
+}
+
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVBOOL
+MlasSveCompareLessThan(svbool_t Pred, MLAS_SVFLOAT32 A, MLAS_SVFLOAT32 B)
+{
+    return svcmplt_f32(Pred, A, B);
+}
+
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVBOOL
+MlasSveCompareGreaterThan(svbool_t Pred, MLAS_SVFLOAT32 A, MLAS_SVFLOAT32 B)
+{
+    return svcmpgt_f32(Pred, A, B);
 }
 
 // GCC: Pop options after SVE-specific functions
