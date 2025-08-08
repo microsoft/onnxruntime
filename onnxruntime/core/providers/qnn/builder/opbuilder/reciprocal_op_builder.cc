@@ -51,7 +51,7 @@ Status ReciprocalOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mod
   ORT_UNUSED_PARAMETER(logger);
 
   // Create a constant tensor for the divisor (1.0)
-  std::string divisor_name = node_unit.Name() + "_divisor";
+  std::string divisor_name = utils::GetUniqueName(node_unit, "_divisor");
   std::vector<uint32_t> divisor_shape{1};
   std::vector<uint8_t> divisor_data;
 
@@ -94,7 +94,7 @@ Status ReciprocalOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mod
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add output tensor.");
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
-                        utils::GetNodeName(node_unit),
+                        utils::GetUniqueName(node_unit),
                         QNN_OP_PACKAGE_NAME_QTI_AISW,
                         QNN_OP_ELEMENT_WISE_DIVIDE,
                         {divisor_name, input_names[0]},
