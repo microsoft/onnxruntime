@@ -7,11 +7,11 @@
 #include "gtest/gtest.h"
 #include "gtest/gtest-assertion-result.h"
 #include "gtest/gtest-message.h"
-#include "gtest-port.h"
+#include "gtest/internal/gtest-port.h"
 
 // Core test utilities (most frequently used in tests)
-#include "providers/provider_test_utils.h"
-#include "providers/checkers.h"
+#include "test/providers/provider_test_utils.h"
+#include "test/providers/checkers.h"
 
 // ONNX and Protocol Buffer headers
 #include "core/graph/onnx_protobuf.h"

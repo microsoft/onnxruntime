@@ -1792,10 +1792,10 @@ else()
 endif()
 
 if(onnxruntime_BUILD_UNIT_TESTS)
-  include(Q:/src/onnxruntime/cmake/onnxruntime_test_pch.cmake)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_test_pch.cmake")
 endif()
 
 # Include precompiled header configuration for providers
 if(TARGET onnxruntime_providers)
-  include(Q:/src/onnxruntime/cmake/onnxruntime_providers_pch.cmake)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_providers_pch.cmake")
 endif()
