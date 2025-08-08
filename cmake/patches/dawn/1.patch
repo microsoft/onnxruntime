@@ -1,0 +1,16 @@
+diff --git a/src/dawn/native/d3d12/PlatformFunctionsD3D12.cpp b/src/dawn/native/d3d12/PlatformFunctionsD3D12.cpp
+index 673f23fcb1..9ddeda23f0 100644
+--- a/src/dawn/native/d3d12/PlatformFunctionsD3D12.cpp
++++ b/src/dawn/native/d3d12/PlatformFunctionsD3D12.cpp
+@@ -122,6 +122,11 @@ MaybeError PlatformFunctions::EnsureDXCLibraries(std::span<const std::string> se
+         return {};
+     }
+ 
++    printf("Loading DXIL and DXC libraries...\n");
++    for (auto & path : searchPaths) {
++        printf(" - %s\n", path.c_str());
++    }
++
+     DynamicLib dxilLib;
+     std::string error;
+     // DXIL must be loaded before DXC, otherwise shader signing is unavailable
