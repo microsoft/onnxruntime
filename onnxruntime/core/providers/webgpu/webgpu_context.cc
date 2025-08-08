@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <cmath>
+#include <wchar.h>
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -40,6 +41,9 @@ namespace webgpu {
 void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture) {
   std::call_once(init_flag_, [this, &buffer_cache_config, backend_type, enable_pix_capture]() {
     if (device_ == nullptr) {
+      auto runtime_path = Env::Default().GetRuntimePath();
+      wprintf(L"WebGPU EP Context initialization. Runtime path: %ls\n", runtime_path.c_str());
+
       // Create wgpu::Adapter
       wgpu::RequestAdapterOptions req_adapter_options = {};
       req_adapter_options.backendType = static_cast<wgpu::BackendType>(backend_type);
