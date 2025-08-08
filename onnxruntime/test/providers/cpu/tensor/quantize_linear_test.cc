@@ -962,10 +962,11 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   so.session_log_verbosity_level = 1;
   so.graph_optimization_level = TransformerLevel::Default;
 
+  using UnpackedType = typename Tin::UnpackedType;
   for (int64_t i = 0, n = zero_point_block_count; i < n; ++i) x_zero_point.push_back(Tin(0, 0));
   for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
   for (int i = 0; i < 8; ++i) {
-    if (i & 1) x.push_back(Tin(static_cast<Tin::UnpackedType>(i - 1), static_cast<Tin::UnpackedType>(i)));
+    if (i & 1) x.push_back(Tin(static_cast<UnpackedType>(i - 1), static_cast<UnpackedType>(i)));
     y.push_back(Tout(static_cast<float>(i) * 2.0f));
   }
 
@@ -1187,15 +1188,16 @@ void DequantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
     x_scale_shape.push_back((int64_t)i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
   }
 
+  using UnpackedType = typename Tin::UnpackedType;
   size_t i = 0, n = x_.size();
-  for (; i < n - 1; i += 2) x.push_back(Tin(static_cast<Tin::UnpackedType>(x_[i]), static_cast<Tin::UnpackedType>(x_[i + 1])));
-  if (i < n) x.push_back(Tin(static_cast<Tin::UnpackedType>(x_[i]), 0xF));
+  for (; i < n - 1; i += 2) x.push_back(Tin(static_cast<UnpackedType>(x_[i]), static_cast<UnpackedType>(x_[i + 1])));
+  if (i < n) x.push_back(Tin(static_cast<UnpackedType>(x_[i]), 0xF));
 
   if (use_zero_point) {
     i = 0, n = x_zero_point_.size();
-    for (; i < n - 1; i += 2) x_zero_point.push_back(Tin(static_cast<Tin::UnpackedType>(x_zero_point_[i]),
-                                                         static_cast<Tin::UnpackedType>(x_zero_point_[i + 1])));
-    if (i < n) x_zero_point.push_back(Tin(static_cast<Tin::UnpackedType>(x_zero_point_[i]), 0xF));
+    for (; i < n - 1; i += 2) x_zero_point.push_back(Tin(static_cast<UnpackedType>(x_zero_point_[i]),
+                                                         static_cast<UnpackedType>(x_zero_point_[i + 1])));
+    if (i < n) x_zero_point.push_back(Tin(static_cast<UnpackedType>(x_zero_point_[i]), 0xF));
   }
 
   test.AddInput<Tin>("x", dims, x);
@@ -1944,10 +1946,11 @@ void QuantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   so.session_log_verbosity_level = 1;
   so.graph_optimization_level = TransformerLevel::Default;
 
+  using UnpackedType = typename Tout::UnpackedType;
   for (int64_t i = 0, n = zero_point_block_count; i < n; ++i) x_zero_point.push_back(Tout(0, 0));
   for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tin(2.0f));
   for (int i = 0; i < 8; ++i) {
-    if (i & 1) y.push_back(Tout(static_cast<Tout::UnpackedType>(i - 1), static_cast<Tout::UnpackedType>(i)));
+    if (i & 1) y.push_back(Tout(static_cast<UnpackedType>(i - 1), static_cast<UnpackedType>(i)));
     x.push_back(Tin(static_cast<float>(i) * 2.0f));
   }
 
@@ -2169,16 +2172,17 @@ void QuantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
     scale_shape.push_back((int64_t)i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
   }
 
+  using UnpackedType = typename Tout::UnpackedType;
   size_t i = 0, n = y_.size();
-  for (; i < n - 1; i += 2) y.push_back(Tout(static_cast<Tout::UnpackedType>(y_[i]),
-                                             static_cast<Tout::UnpackedType>(y_[i + 1])));
-  if (i < n) y.push_back(Tout(static_cast<Tout::UnpackedType>(y_[i]), 0xF));
+  for (; i < n - 1; i += 2) y.push_back(Tout(static_cast<UnpackedType>(y_[i]),
+                                             static_cast<UnpackedType>(y_[i + 1])));
+  if (i < n) y.push_back(Tout(static_cast<UnpackedType>(y_[i]), 0xF));
 
   if (use_zero_point) {
     i = 0, n = zero_point_.size();
-    for (; i < n - 1; i += 2) zero_point.push_back(Tout(static_cast<Tout::UnpackedType>(zero_point_[i]),
-                                                        static_cast<Tout::UnpackedType>(zero_point_[i + 1])));
-    if (i < n) zero_point.push_back(Tout(static_cast<Tout::UnpackedType>(zero_point_[i]), 0xF));
+    for (; i < n - 1; i += 2) zero_point.push_back(Tout(static_cast<UnpackedType>(zero_point_[i]),
+                                                        static_cast<UnpackedType>(zero_point_[i + 1])));
+    if (i < n) zero_point.push_back(Tout(static_cast<UnpackedType>(zero_point_[i]), 0xF));
   }
 
   test.AddInput<Tin>("x", dims, x);
