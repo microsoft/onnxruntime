@@ -113,7 +113,7 @@ static void RunReduceTest(const std::string& op_type,
 // - Uses opset 13, which has "axes" as an input.
 TEST_F(QnnCPUBackendTests, ReduceSumOpset13_Int32) {
   RunReduceTest<int32_t>("ReduceSum",
-                         TestInputDef<int32_t>({2, 2}, false, -10.0f, 10.0f),
+                         TestInputDef<int32_t>({2, 2}, false, -10, 10),
                          std::vector<int64_t>{0, 1},
                          true,  // keepdims
                          13,
@@ -127,7 +127,7 @@ TEST_F(QnnCPUBackendTests, ReduceSumOpset13_Int32) {
 // - Uses opset 11, which has "axes" as an attribute.
 TEST_F(QnnCPUBackendTests, ReduceSumOpset11_Int32) {
   RunReduceTest<int32_t>("ReduceSum",
-                         TestInputDef<int32_t>({2, 2}, false, -10.0f, 10.0f),
+                         TestInputDef<int32_t>({2, 2}, false, -10, 10),
                          std::vector<int64_t>{0, 1},
                          true,  // keepdims
                          11,

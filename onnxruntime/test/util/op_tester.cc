@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/providers/op_tester.h"
+#include "test/util/include/op_tester.h"
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
