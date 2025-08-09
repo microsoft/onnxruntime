@@ -545,7 +545,7 @@ struct BlockwiseQuantizer {
                     }
                 }
 
-                for (int32_t j = c; j < c_end; ++j) {
+                for (int32_t j = c; j < c_end; ++j) { // this does not work if j runs more then 1 because zp_bytes is indexed by i.
                     const int32_t meta_c = j / QuantBlk::kColumn;
                     for (int32_t i = r; i < r_end; i += kPackSize) {
                         for (int l = 0; l < kPackSize && i + l < r_end; l++) {
@@ -656,19 +656,35 @@ struct BlockwiseQuantizer {
  * @tparam signed_quant  quantized type is signed
  */
 template <typename Tin, int qbits, bool signed_quant>
-struct BlockwiseQDQQuantizer;
-
-template <typename Tin, bool signed_quant>
-struct BlockwiseQDQQuantizer<Tin, 4, signed_quant> {
+struct BlockwiseQDQQuantizer {
     static MLAS_FORCEINLINE uint8_t GetElem(uint8_t val, int32_t idx)
     {
-        return (val >> (idx << 2)) & 0xF;
+        if constexpr (qbits == 2) {
+            return (val >> (idx << 1)) & 0x3;
+        } else if constexpr (qbits == 4) {
+            return (val >> (idx << 2)) & 0xF;
+        }
     }
 
     static MLAS_FORCEINLINE uint8_t SetElem(uint8_t val, int32_t idx, uint8_t dst)
     {
-        auto shift = idx << 2;
-        return ((val & 0xF) << shift) | (dst & (~(0xF << shift)));
+        if constexpr (qbits == 2) {
+            auto shift = idx << 1;
+            return ((val & 0x3) << shift) | (dst & (~(0x3 << shift)));
+        } else if constexpr (qbits == 4) {
+            auto shift = idx << 2;
+            return ((val & 0xF) << shift) | (dst & (~(0xF << shift)));
+        }
+    }
+
+    template <bool add2>
+    static MLAS_FORCEINLINE uint8_t Pack(uint8_t v0, uint8_t v1, uint8_t v2, uint8_t v3)
+    {
+          if constexpr (add2) {
+            return ((v0 & 0x3) ^ 2) | (((v1 & 0x3) ^ 2) << 2) | (((v2 & 0x3) ^ 2) << 4) | (((v3 & 0x3) ^ 2) << 6);
+          } else {
+              return (v0 & 0x3) | ((v1 & 0x3) << 2) | ((v2 & 0x3) << 4) | ((v3 & 0x3) << 6);
+          }
     }
 
     template <bool add8>
@@ -1436,8 +1452,7 @@ MlasBlockwiseQuantMetaShape<MLAS_FP16, 2>(
     int& meta_cols
     );
 
-template
-void
+template void
 MlasBlockwiseQuantMetaShape<float, 4>(
     int block_size,
     bool columnwise,
@@ -1445,7 +1460,7 @@ MlasBlockwiseQuantMetaShape<float, 4>(
     int columns,
     int& meta_rows,
     int& meta_cols
-    );
+);
 
 template
 void
@@ -1513,8 +1528,7 @@ MlasBlockwiseQuantizedShape<float, 4>(
     int& q_cols
     );
 
-template
-void
+template void
 MlasBlockwiseQuantizedShape<MLAS_FP16, 4>(
     int block_size,
     bool columnwise,
@@ -1524,7 +1538,7 @@ MlasBlockwiseQuantizedShape<MLAS_FP16, 4>(
     int& q_cols
     );
 
-    template
+template
 void
 MlasBlockwiseQuantizedShape<float, 8>(
     int block_size,
@@ -2017,6 +2031,19 @@ MlasQDQQuantizeBlockwise<float, 4>(
 );
 
 template bool
+MlasQDQQuantizeBlockwise<float, 2>(
+    const float* src,
+    float* scales,
+    uint8_t* zero_points,
+    uint8_t* dst,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template bool
 MlasQDQQuantizeBlockwise<MLAS_FP16, 4>(
     const MLAS_FP16* src,
     MLAS_FP16* scales,
@@ -2054,6 +2081,36 @@ MlasQDQTransposeBlockwiseQuantized(
         ORT_THROW("Row-wise MlasQDQTransposeBlockwiseQuantized is not implemented");
     }
 }
+
+template void
+MlasQDQTransposeBlockwiseQuantized<float, 2, true>(
+    const uint8_t* src_weights,
+    const float* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    float* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasQDQTransposeBlockwiseQuantized<float, 2, false>(
+    const uint8_t* src_weights,
+    const float* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    float* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
 
 template void
 MlasQDQTransposeBlockwiseQuantized<float, 4, true>(
