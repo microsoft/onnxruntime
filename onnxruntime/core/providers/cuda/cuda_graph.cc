@@ -85,6 +85,21 @@ Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id) 
   return Status::OK();
 }
 
+Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync_status_flag) {
+  // Although this function is not thread safe, the lock is not needed here because
+  // CUDA EP maintains a separate cuda graph per thread
+  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id "
+                     << cuda_graph_annotation_id;
+
+  cudaGraphExec_t graph_exec = cuda_graph_set_.Get(cuda_graph_annotation_id);
+  CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec, stream_));
+
+  if(sync_status_flag){
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
+  }
+  return Status::OK();
+}
+
 bool CUDAGraphManager::IsGraphCaptureAllowedOnRun(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
   return cuda_graph_annotation_id != kCudaGraphAnnotationSkip;
 }

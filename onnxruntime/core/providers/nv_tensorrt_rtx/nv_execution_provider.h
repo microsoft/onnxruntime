@@ -367,7 +367,6 @@ class NvExecutionProvider : public IExecutionProvider {
   // Call cudaStreamSynchronize() after TRT enqueueV3()
   mutable bool sync_stream_after_enqueue_ = true;
 
-
   // [Note] We don't use PerThreadContext for now since it has issue with multithreading
   //
   // TRT or CUDA objects that must be maintained on a per thread basis will be put under this PerThreadContext data structure.
@@ -400,7 +399,7 @@ class NvExecutionProvider : public IExecutionProvider {
     void CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id);
     void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
     bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
-    Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync_status_flag);
     void IncrementRegularRunCountBeforeGraphCapture(CudaGraphAnnotation_t cuda_graph_annotation_id);
     void ResetWarmupRuns(CudaGraphAnnotation_t cuda_graph_annotation_id);
     void DeleteCapturedGraph(CudaGraphAnnotation_t cuda_graph_annotation_id);
@@ -437,6 +436,7 @@ class NvExecutionProvider : public IExecutionProvider {
     // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
     // to allocate enough memory in Arena before graph capturing.
     const int min_num_runs_before_cuda_graph_capture_ = 2;  // required min regular runs before graph capture for the necessary memory allocations.
+    // https://github.com/NVIDIA/TensorRT/blob/main/samples/common/sampleInference.cpp#L1258-L1291 Based on the trtexec code
   };
 
   using PerThreadContextMap = std::unordered_map<const NvExecutionProvider*, std::weak_ptr<PerThreadContext>>;
@@ -574,6 +574,5 @@ class NvExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
-
 };
 }  // namespace onnxruntime
