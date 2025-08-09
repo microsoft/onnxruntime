@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2024 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2025 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -8,7 +8,11 @@ import ai.onnxruntime.OrtSession.SessionOptions;
 import ai.onnxruntime.OrtTrainingSession.OrtCheckpointState;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.logging.Logger;
 
@@ -443,6 +447,48 @@ public final class OrtEnvironment implements AutoCloseable {
   }
 
   /**
+   * Registers an execution provider library with this OrtEnvironment.
+   *
+   * @param registrationName The name to register the library with (used to remove it later with
+   *     {@link #unregisterExecutionProviderLibrary(String)}).
+   * @param libraryPath The path to the library binary on disk.
+   * @throws OrtException If the library could not be registered.
+   */
+  public void registerExecutionProviderLibrary(String registrationName, String libraryPath)
+      throws OrtException {
+    registerExecutionProviderLibrary(
+        OnnxRuntime.ortApiHandle, nativeHandle, registrationName, libraryPath);
+  }
+
+  /**
+   * Unregisters an execution provider library from this OrtEnvironment.
+   *
+   * @param registrationName The name the library was registered under.
+   * @throws OrtException If the library could not be removed.
+   */
+  public void unregisterExecutionProviderLibrary(String registrationName) throws OrtException {
+    unregisterExecutionProviderLibrary(OnnxRuntime.ortApiHandle, nativeHandle, registrationName);
+  }
+
+  /**
+   * Get the list of all execution provider and device combinations that are available.
+   *
+   * @see OrtSession.SessionOptions#addExecutionProvider(List, Map)
+   * @return The list of execution provider and device combinations.
+   * @throws OrtException If the devices could not be listed.
+   */
+  public List<OrtEpDevice> getEpDevices() throws OrtException {
+    long[] deviceHandles = getEpDevices(OnnxRuntime.ortApiHandle, nativeHandle);
+
+    List<OrtEpDevice> devicesList = new ArrayList<>();
+    for (long deviceHandle : deviceHandles) {
+      devicesList.add(new OrtEpDevice(deviceHandle));
+    }
+
+    return Collections.unmodifiableList(devicesList);
+  }
+
+  /**
    * Creates the native object.
    *
    * @param apiHandle The API pointer.
@@ -475,6 +521,40 @@ public final class OrtEnvironment implements AutoCloseable {
    * @throws OrtException If it failed to get the allocator.
    */
   private static native long getDefaultAllocator(long apiHandle) throws OrtException;
+
+  /**
+   * Registers the specified execution provider with this OrtEnvironment.
+   *
+   * @param apiHandle The API handle.
+   * @param nativeHandle The OrtEnvironment handle.
+   * @param registrationName The name of the execution provider.
+   * @param libraryPath The path to the execution provider binary.
+   * @throws OrtException If the registration failed.
+   */
+  private static native void registerExecutionProviderLibrary(
+      long apiHandle, long nativeHandle, String registrationName, String libraryPath)
+      throws OrtException;
+
+  /**
+   * Removes the specified execution provider from this OrtEnvironment.
+   *
+   * @param apiHandle The API handle.
+   * @param nativeHandle The OrtEnvironment handle.
+   * @param registrationName The name of the execution provider.
+   * @throws OrtException If the removal failed.
+   */
+  private static native void unregisterExecutionProviderLibrary(
+      long apiHandle, long nativeHandle, String registrationName) throws OrtException;
+
+  /**
+   * Gets handles for the EP device tuples available in this OrtEnvironment.
+   *
+   * @param apiHandle The API handle to use.
+   * @param nativeHandle The OrtEnvironment handle.
+   * @return An array of OrtEpDevice handles.
+   * @throws OrtException If the call failed.
+   */
+  private static native long[] getEpDevices(long apiHandle, long nativeHandle) throws OrtException;
 
   /**
    * Closes the OrtEnvironment, frees the handle.
