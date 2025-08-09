@@ -92,7 +92,7 @@ Status ProcessInput0(QnnModelWrapper& qnn_model_wrapper,
   std::string actual_input_0_name = original_input_0_name;
 
   if (reshape_input_0) {
-    actual_input_0_name = original_input_0_name + "_ort_qnn_ep_reshape";
+    actual_input_0_name = utils::GetUniqueName(original_input_0_name, "_reshape");
     std::vector<uint32_t> shape_2d{1, input_0_info.shape[0]};
     QnnQuantParamsWrapper quant_param_2d = input_0_info.quant_param.Copy();
     ORT_RETURN_IF_ERROR(quant_param_2d.HandleUnsqueeze<uint32_t>(input_0_info.shape, shape_2d));
@@ -178,7 +178,7 @@ Status MatMulOpBuilder::ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wra
     // Input[1] is a rank 1 tensor that needs to be reshaped.
     std::vector<uint32_t> shape_2d;
     QnnQuantParamsWrapper quant_param_2d = input_info_1.quant_param.Copy();
-    input_1_name = org_input_1_name + "_ort_qnn_ep_reshape";
+    input_1_name = utils::GetUniqueName(org_input_1_name, "_reshape");
     shape_2d = {input_info_1.shape[0], 1};
     ORT_RETURN_IF_ERROR(quant_param_2d.HandleUnsqueeze<uint32_t>(input_info_1.shape, shape_2d));
 
@@ -239,8 +239,7 @@ Status MatMulOpBuilder::ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wra
     // insert Convert op after input1
     std::string convert_input_name = input_names.back();
     input_names.pop_back();
-    const std::string& matmul_output_name = node_unit.Outputs()[0].node_arg.Name();
-    std::string convert_output_name = convert_input_name + "_convert_" + matmul_output_name;
+    const std::string convert_output_name = utils::GetUniqueName(convert_input_name, "_convert");
     std::vector<uint32_t> input_1_shape = input_info_1.shape;
     if (reshape_input_1) {
       input_1_shape = {input_info_1.shape[0], 1};
@@ -294,14 +293,14 @@ Status MatMulOpBuilder::ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_m
   QnnQuantParamsWrapper quant_param_2d = input_info_1.quant_param.Copy();
   if (reshape_input_1) {
     // Input[1] is a rank 1 tensor that needs to be reshaped.
-    input_1_name = org_input_1_name + "_ort_qnn_ep_reshape";
+    input_1_name = utils::GetUniqueName(org_input_1_name, "_reshape");
 
     // FullyConnected requires input_1's shape to be [n, k].
     shape_2d = {1, input_info_1.shape[0]};
     ORT_RETURN_IF_ERROR(quant_param_2d.HandleUnsqueeze<uint32_t>(input_info_1.shape, shape_2d));
   } else {
     assert(input_info_1.shape.size() == 2);
-    input_1_name = org_input_1_name + "_ort_qnn_ep_transpose";
+    input_1_name = utils::GetUniqueName(org_input_1_name, "_transpose");
     shape_2d = {input_info_1.shape[1], input_info_1.shape[0]};
     ORT_RETURN_IF_ERROR(quant_param_2d.HandleTranspose<uint32_t>(std::vector<uint32_t>({1, 0})));
   }
@@ -361,8 +360,7 @@ Status MatMulOpBuilder::ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_m
 
     // Pop Conv weight. Insert Convert op after Weight
     input_names.pop_back();
-    const std::string& conv_output_name = node_unit.Outputs()[0].node_arg.Name();
-    std::string convert_output_name = weight_input_name + "_convert_" + conv_output_name;
+    std::string convert_output_name = utils::GetUniqueName(weight_input_name, "_convert");
 
     ORT_RETURN_IF_ERROR(utils::InsertConvertOp(qnn_model_wrapper,
                                                weight_input_name,
@@ -417,7 +415,7 @@ Status MatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   std::vector<uint32_t> op_output_shape = output_info.shape;
   QnnQuantParamsWrapper op_output_quant_param = output_info.quant_param.Copy();
   if (reshape_output) {
-    op_output_name = org_output_name + "_ort_qnn_ep_reshape";
+    op_output_name = utils::GetUniqueName(org_output_name, "_reshape");
     if (use_fully_connected && input_info_0.shape.size() > 2) {
       op_output_shape = {std::accumulate(input_info_0.shape.begin(), input_info_0.shape.end() - 1,
                                          static_cast<uint32_t>(1), std::multiplies<uint32_t>()),
@@ -443,7 +441,7 @@ Status MatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                             op_output_quant_param.Copy(), std::vector<uint32_t>(op_output_shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(op_output_tensor_wrapper)),
                     "Failed to add output tensor.");
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit), QNN_OP_PACKAGE_NAME_QTI_AISW,
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit), QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     use_fully_connected ? QNN_OP_FULLY_CONNECTED : QNN_OP_MAT_MUL,
                                                     std::move(input_names), {op_output_name},
                                                     std::move(param_tensor_names), do_op_validation),

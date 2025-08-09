@@ -92,7 +92,7 @@ Status LayerNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[SCALE_IDX], scale_input_info));
 
     if (x_input_info.quant_param.IsPerTensor(/*include_bw*/ true) && scale_input_info.quant_param.IsQuantized()) {
-      const std::string bias_name = qnn::utils::GetNodeName(node_unit) + "_implicit_bias_ort_qnn_ep";
+      const std::string bias_name = qnn::utils::GetUniqueName(node_unit, "_implicit_bias");
       std::vector<uint32_t> bias_shape = scale_input_info.shape;
       ORT_RETURN_IF_ERROR(AddZeroBiasInput(qnn_model_wrapper, x_input_info.quant_param, scale_input_info.quant_param,
                                            std::move(bias_shape), bias_name, logger, input_names));

@@ -90,7 +90,11 @@ std::ostream& operator<<(std::ostream& out, const QnnOpConfigWrapper& op_conf_wr
 Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::TypeProto* type_proto,
                       Qnn_DataType_t& tensor_data_type);
 
-const std::string& GetNodeName(const NodeUnit& node_unit);
+// Returns an unique name string based on a base string and an optional suffix.
+std::string GetUniqueName(const std::string& base, std::string_view suffix = {});
+
+// Returns an unique name string from its name or op type and index, plus an optional suffix.
+std::string GetUniqueName(const NodeUnit& node_unit, std::string_view suffix = {});
 
 bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false);
 
