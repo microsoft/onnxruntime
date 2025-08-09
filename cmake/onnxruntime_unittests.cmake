@@ -56,6 +56,12 @@ function(AddTest)
 
   filter_test_srcs(_UT_SOURCES)
 
+  message(VERBOSE "AddTest() _UT_TARGET: ${_UT_TARGET}")
+  message(VERBOSE "AddTest() _UT_SOURCES:")
+  foreach(ut_src ${_UT_SOURCES})
+    message(VERBOSE "  ${ut_src}")
+  endforeach()
+
   if (IOS)
     onnxruntime_add_executable(${_UT_TARGET} ${TEST_SRC_DIR}/xctest/orttestmain.m)
   else()
@@ -349,6 +355,24 @@ file(GLOB onnxruntime_test_utils_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/util/include/*.h"
   "${TEST_SRC_DIR}/util/*.cc"
 )
+
+if(onnxruntime_MINIMAL_BUILD OR onnxruntime_REDUCED_OPS_BUILD)
+  # some exclusions from a minimal or reduced ops build
+  list(REMOVE_ITEM onnxruntime_test_utils_src
+    "${TEST_SRC_DIR}/util/include/base_tester.h"
+    "${TEST_SRC_DIR}/util/include/model_tester.h"
+    "${TEST_SRC_DIR}/util/include/op_tester.h"
+    "${TEST_SRC_DIR}/util/base_tester.cc"
+    "${TEST_SRC_DIR}/util/op_tester.cc"
+  )
+
+  if (onnxruntime_MINIMAL_BUILD)
+    list(REMOVE_ITEM onnxruntime_test_utils_src
+      "${TEST_SRC_DIR}/util/include/test_dynamic_plugin_ep.h"
+      "${TEST_SRC_DIR}/util/test_dynamic_plugin_ep.cc"
+    )
+  endif()
+endif()
 
 file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/common/*.cc"
@@ -857,6 +881,9 @@ file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   ${onnxruntime_test_framework_src_patterns}
   )
 
+# TODO either update the below comment or follow it...
+# it's not obvious why this limitation of not using onnxruntime internal symbols exists
+
 #This is a small wrapper library that shouldn't use any onnxruntime internal symbols(except onnxruntime_common).
 #Because it could dynamically link to onnxruntime. Otherwise you will have two copies of onnxruntime in the same
 #process and you won't know which one you are testing.
@@ -1192,11 +1219,9 @@ endif()
 # onnxruntime_provider_test
 # Execution provider-related tests.
 # These also have some support for dynamically specified plugin EPs.
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 block()
-  set(onnxruntime_provider_test_srcs
-    ${provider_test_srcs}
-
-    # supporting test source files
+  set(supporting_test_srcs
     ${TEST_SRC_DIR}/common/cuda_op_test_utils.cc
     ${TEST_SRC_DIR}/common/cuda_op_test_utils.h
     ${TEST_SRC_DIR}/common/tensor_op_test_utils.cc
@@ -1210,6 +1235,12 @@ block()
     ${TEST_SRC_DIR}/framework/TestAllocatorManager.h
     ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.cc
     ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.h
+  )
+
+  set(onnxruntime_provider_test_srcs
+    ${provider_test_srcs}
+
+    ${supporting_test_srcs}
 
     ${onnxruntime_unittest_main_src}
   )
@@ -1233,6 +1264,7 @@ block()
   # enable dynamic plugin EP infrastructure
   target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
 endblock()
+endif()
 
 set(onnx_test_libs
   onnxruntime_test_utils
@@ -1561,20 +1593,18 @@ endif()
         "${TEST_SRC_DIR}/debug_node_inputs_outputs/debug_node_inputs_outputs_utils_test.cc"
         "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
         "${TEST_SRC_DIR}/framework/test_utils.cc"
-        "${TEST_SRC_DIR}/providers/base_tester.h"
-        "${TEST_SRC_DIR}/providers/base_tester.cc"
-        "${TEST_SRC_DIR}/providers/checkers.h"
-        "${TEST_SRC_DIR}/providers/checkers.cc"
-        "${TEST_SRC_DIR}/providers/op_tester.h"
-        "${TEST_SRC_DIR}/providers/op_tester.cc"
+        "${TEST_SRC_DIR}/util/include/base_tester.h"
+        "${TEST_SRC_DIR}/util/base_tester.cc"
+        "${TEST_SRC_DIR}/util/include/checkers.h"
+        "${TEST_SRC_DIR}/util/checkers.cc"
+        "${TEST_SRC_DIR}/util/include/op_tester.h"
+        "${TEST_SRC_DIR}/util/op_tester.cc"
         "${TEST_SRC_DIR}/providers/provider_test_utils.h"
-        "${TEST_SRC_DIR}/providers/tester_types.h"
+        "${TEST_SRC_DIR}/util/include/tester_types.h"
         ${onnxruntime_unittest_main_src}
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
       DEPENDS ${all_dependencies}
     )
-
-
 
     target_compile_definitions(onnxruntime_test_debug_node_inputs_outputs
       PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)

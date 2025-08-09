@@ -29,10 +29,13 @@ PluginEpLibraryRegistrationHandle RegisterPluginEpLibrary(Ort::Env& env,
   env.RegisterExecutionProviderLibrary(ep_library_registration_name.c_str(), ep_library_path);
 
   auto unregister_ep_library = [&env, registration_name = ep_library_registration_name](void*) {
-    try {
+    ORT_TRY {
       env.UnregisterExecutionProviderLibrary(registration_name.c_str());
-    } catch (Ort::Exception& e) {
-      std::cerr << "Failed to unregister EP library with name '" << registration_name << "': " << e.what() << "\n";
+    }
+    ORT_CATCH(Ort::Exception & e) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        std::cerr << "Failed to unregister EP library with name '" << registration_name << "': " << e.what() << "\n";
+      });
     }
   };
 
