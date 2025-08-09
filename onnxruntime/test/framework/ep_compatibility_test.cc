@@ -157,7 +157,11 @@ class SessionBuilderWithCompatibility {
     std::stringstream model_stream(model_data);
 
     // Create session with basic constructor
-    auto session = std::make_unique<InferenceSession>(so, GetEnvironment(), model_stream);
+    auto session = std::make_unique<InferenceSession>(so, GetEnvironment());
+
+    // Load the model from the stream and validate the status
+    auto load_status = session->Load(model_stream);
+    EXPECT_TRUE(load_status.IsOK()) << "Failed to load model: " << load_status.ErrorMessage();
 
     return session;
   }
