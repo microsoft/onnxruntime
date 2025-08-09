@@ -961,6 +961,7 @@ void ResizeBicubicUpsample(cudaStream_t stream,
                            int rank,
                            const UpsampleMode /*upsample_mode*/,
                            ResizeCoordinateTransformationMode coordinate_transform_mode,
+                           const float cubic_coeff_a,
                            gsl::span<const int64_t> /*input_shape*/,
                            gsl::span<const int64_t> /*output_shape*/,
                            int64_t batch_size, int64_t num_channels,
@@ -982,18 +983,21 @@ void ResizeBicubicUpsample(cudaStream_t stream,
   const bool use_extrapolation = extrapolation.has_value();
   const float extrapolation_value = use_extrapolation ? *extrapolation : 0.f;
 
-  int blocksPerGrid = narrow<int>(CeilDiv(N, GridDim::maxThreadsPerBlock));
-  const fast_divmod div_output_image = (rank > 2) ? output_div_pitches[rank - 4]
-                                                  : fast_divmod(gsl::narrow_cast<int>(N));
-  const fast_divmod& div_output_width = output_div_pitches[rank - 2];
-
-  constexpr float support_value = antialias_constants::kBiCubicSupportSize;
-
   int64_t input_depth, input_height, input_width;
   std::tie(input_depth, input_height, input_width) = inferred_input_dims;
 
   int64_t output_depth, output_height, output_width;
   std::tie(output_depth, output_height, output_width) = inferred_output_dims;
+
+  const auto temp_buf_size = SafeInt<int64_t>(batch_size) * num_channels * input_height * output_width;
+
+  int blocksPerGridL2 = narrow<int>(CeilDiv(N, GridDim::maxThreadsPerBlock));
+  int blocksPerGridL1 = narrow<int>(CeilDiv(temp_buf_size, GridDim::maxThreadsPerBlock));
+  const fast_divmod div_output_image = (rank > 2) ? output_div_pitches[rank - 4]
+                                                  : fast_divmod(gsl::narrow_cast<int>(N));
+  const fast_divmod& div_output_width = output_div_pitches[rank - 2];
+
+  constexpr float support_value = antialias_constants::kBiCubicSupportSize;
 
   int blocksPerDimsMappingGrid =
       narrow<int>(CeilDiv((output_depth + output_height + output_width), 32));
@@ -1027,7 +1031,6 @@ void ResizeBicubicUpsample(cudaStream_t stream,
   AccumType* y_weighted_buffer = GetTyped<AccumType>(weighted_buffer_ptr);
   AccumType* w_weighted_buffer = y_weighted_buffer + weighted_y_size;
 
-  const auto temp_buf_size = SafeInt<int64_t>(batch_size) * num_channels * input_height * output_width;
   auto image_temp_buffer = AllocateTyped<T>(allocate_temp_space, narrow<size_t>(temp_buf_size));
 
   // clang-format off
@@ -1042,7 +1045,7 @@ void ResizeBicubicUpsample(cudaStream_t stream,
         std::make_tuple(roi_vals[rank - 2 + rank], roi_vals[rank - 1 + rank]),  // roi ends h, w
         std::make_tuple(h_scaled_support, w_scaled_support),
         std::make_tuple(h_window_size, w_window_size),
-        onnxruntime::antialias_constants::kCubicCoeffA, exclude_outside,
+        cubic_coeff_a, exclude_outside,
         GetTyped<int64_t>(bounds_buffer_ptr),
         GetTyped<int64_t>(out_of_bounds_buffer_ptr),
         std::make_tuple(y_weighted_buffer, w_weighted_buffer));
@@ -1050,7 +1053,7 @@ void ResizeBicubicUpsample(cudaStream_t stream,
   // clang-format on
   const fast_divmod div_step_image(narrow<int>(num_channels * input_height * output_width));
   // clang-format off
-  _ComputeInterpolationAtLevel1<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+  _ComputeInterpolationAtLevel1<T><<<blocksPerGridL1, GridDim::maxThreadsPerBlock, 0, stream>>>(
       num_channels, input_height, input_width, input_height, output_width,
       div_output_width,
       div_step_image,
@@ -1064,7 +1067,7 @@ void ResizeBicubicUpsample(cudaStream_t stream,
 
   const fast_divmod div_output_height{narrow<int>(output_height * output_width)};
   // clang-format off
-  _ComputeInterpolationAtLevel2<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+  _ComputeInterpolationAtLevel2<T><<<blocksPerGridL2, GridDim::maxThreadsPerBlock, 0, stream>>>(
       num_channels, input_height, output_width, output_height, output_width,
       div_output_height,
       div_output_width,
@@ -1085,6 +1088,7 @@ void ResizeAntiAliasImpl(
     int rank,
     const UpsampleMode upsample_mode,
     ResizeCoordinateTransformationMode coordinate_transform_mode,
+    const float cubic_coeff_a,
     gsl::span<const int64_t> input_shape,
     gsl::span<const int64_t> output_shape,
     int64_t batch_size, int64_t num_channels,
@@ -1132,7 +1136,7 @@ void ResizeAntiAliasImpl(
     } break;
     case CUBIC: {
       if (is_2D) {
-        ResizeBicubicUpsample<T>(stream, rank, upsample_mode, coordinate_transform_mode,
+        ResizeBicubicUpsample<T>(stream, rank, upsample_mode, coordinate_transform_mode, cubic_coeff_a,
                                  input_shape, output_shape, batch_size, num_channels,
                                  inferred_input_dims, inferred_output_dims, inferred_dim_rscales,
                                  output_div_pitches, roi_vals, extrapolation, exclude_outside,
@@ -1153,6 +1157,7 @@ void ResizeAntiAliasImpl(
       int rank,                                                     \
       const UpsampleMode upsample_mode,                             \
       ResizeCoordinateTransformationMode coordinate_transform_mode, \
+      float cubic_coeff_a,                                          \
       gsl::span<const int64_t> input_shape,                         \
       gsl::span<const int64_t> output_shape,                        \
       int64_t batch_size, int64_t num_channels,                     \
