@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 8b5af303..8593fe4a 100644
+index 47995579..6cc439f6 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -40,6 +40,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
+@@ -57,6 +57,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
  option(ONNX_DISABLE_EXCEPTIONS "Disable exception handling." OFF)
  option(ONNX_DISABLE_STATIC_REGISTRATION "Disable static registration for ONNX operator schemas." OFF)
  option(ONNX_USE_UNITY_BUILD "Enable Unity (Jumbo) build for" OFF)
@@ -10,9 +10,9 @@ index 8b5af303..8593fe4a 100644
  if(WIN32)
    option(ONNX_USE_MSVC_STATIC_RUNTIME "Build with MSVC static runtime" OFF)
  endif()
-@@ -461,14 +462,28 @@ relative_protobuf_generate_cpp(gen_onnx_data_proto
- list(APPEND ONNX_PROTO_SRCS ${__tmp_srcs})
- list(APPEND ONNX_PROTO_HDRS ${__tmp_hdrs})
+@@ -411,14 +412,28 @@ relative_protobuf_generate_cpp(ONNX_PROTO_SRCS
+ 
+ add_library(onnx_proto ${ONNX_PROTO_SRCS})
  
 -file(GLOB_RECURSE __tmp_srcs "${ONNX_ROOT}/onnx/*.h" "${ONNX_ROOT}/onnx/*.cc")
 -file(GLOB_RECURSE onnx_gtests_src "${ONNX_ROOT}/onnx/test/cpp/*.h"
@@ -45,115 +45,38 @@ index 8b5af303..8593fe4a 100644
 +    list(APPEND ONNX_SRCS ${__tmp_srcs})
 +endif()
  
- add_library(onnx_proto ${ONNX_PROTO_SRCS} ${ONNX_PROTO_HDRS})
- add_dependencies(onnx_proto gen_onnx_operators_proto gen_onnx_data_proto)
-@@ -595,13 +610,6 @@ if(ONNX_BUILD_PYTHON)
-     target_link_libraries(onnx_cpp2py_export PRIVATE ${Python3_LIBRARIES})
-     target_compile_options(onnx_cpp2py_export
-                            PRIVATE /MP
--                                   /wd4146 # unary minus operator applied to unsigned type,
--                                           # result still unsigned
--                                   /wd4244 # 'argument': conversion from 'google::
--                                           # protobuf::uint64' to 'int', possible
--                                           # loss of data
--                                   /wd4267 # Conversion from 'size_t' to 'int',
--                                           # possible loss of data
-                                    ${EXTRA_FLAGS})
-     add_msvc_runtime_flag(onnx_cpp2py_export)
-     add_onnx_global_defines(onnx_cpp2py_export)
-@@ -618,23 +626,9 @@ endif()
- if(MSVC)
-   target_compile_options(onnx_proto
-                          PRIVATE /MP
--                                 /wd4146 # unary minus operator applied to unsigned type,
--                                         # result still unsigned
--                                 /wd4244 #'argument': conversion from 'google::
--                                         #protobuf::uint64' to 'int', possible
--                                         # loss of data
--                                 /wd4267 # Conversion from 'size_t' to 'int',
--                                         # possible loss of data
-                                  ${EXTRA_FLAGS})
-   target_compile_options(onnx
-                          PRIVATE /MP
--                                 /wd4146 # unary minus operator applied to unsigned type,
--                                         # result still unsigned
--                                 /wd4244 # 'argument': conversion from 'google::
--                                         # protobuf::uint64' to 'int', possible
--                                         # loss of data
--                                 /wd4267 # Conversion from 'size_t' to 'int',
--                                         # possible loss of data
-                                  ${EXTRA_FLAGS})
-   add_msvc_runtime_flag(onnx_proto)
-   add_msvc_runtime_flag(onnx)
-diff --git a/onnx/defs/nn/defs.cc b/onnx/defs/nn/defs.cc
-index 64366270..4aed9027 100644
---- a/onnx/defs/nn/defs.cc
-+++ b/onnx/defs/nn/defs.cc
-@@ -36,7 +36,7 @@ static const char* conv_transpose_auto_pad_doc =
-     "on whether it is even or odd). In case the padding is an odd number, the extra "
-     "padding is added at the end for SAME_UPPER and at the beginning for SAME_LOWER.";
+ # Hide all symbols we don't need
+ set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
+@@ -440,19 +455,6 @@ add_onnx_global_defines(onnx_proto)
+ target_include_directories(onnx_proto PUBLIC
+   $<BUILD_INTERFACE:${ONNX_ROOT}>
+   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
+-if(MSVC)
+-  # For disabling Protobuf related warnings
+-  target_compile_options(onnx_proto PUBLIC
+-    /wd4146 # unary minus operator applied to unsigned type,
+-            # result still unsigned
+-    /wd4244 # 'argument': conversion from 'google::
+-            # protobuf::uint64' to 'int', possible
+-            # loss of data
+-    /wd4267 # Conversion from 'size_t' to 'int',
+-            # possible loss of data
+-    /wd4141 # 'inline': used more than once
+-  )
+-endif()
  
--static void convPoolShapeInference(
-+void convPoolShapeInference(
-     InferenceContext& ctx,
-     bool use_dilation,
-     bool require_kernel_shape,
-@@ -1102,7 +1102,7 @@ ONNX_OPERATOR_SET_SCHEMA(
-           convPoolShapeInference(ctx, true, false, 0, 1);
-         }));
- 
--static void convTransposeShapeInference(InferenceContext& ctx) {
-+void convTransposeShapeInference(InferenceContext& ctx) {
-   propagateElemTypeFromInputToOutput(ctx, 0, 0);
- 
-   // we need at least two inputs to have a shape for this inference.
-@@ -1462,7 +1462,7 @@ ONNX_OPERATOR_SET_SCHEMA(
-         }));
- 
- // For GlobalPool operations.
--static void globalPoolTypeShapeInference(InferenceContext& ctx) {
-+void globalPoolTypeShapeInference(InferenceContext& ctx) {
-   propagateElemTypeFromInputToOutput(ctx, 0, 0);
- 
-   // needs at least one input with shape.
-diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
-index d8ca9a46..1eda4c70 100644
---- a/onnx/defs/nn/old.cc
-+++ b/onnx/defs/nn/old.cc
-@@ -4023,7 +4023,6 @@ ONNX_OPERATOR_SET_SCHEMA(
-     GroupNormalization,
-     18,
-     OpSchema()
--        .Deprecate()
-         .SetDoc(GroupNormalization_ver18_doc)
-         .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
-         .Attr(
-diff --git a/onnx/defs/rnn/defs.cc b/onnx/defs/rnn/defs.cc
-index c0ed3a39..6c8e2909 100644
---- a/onnx/defs/rnn/defs.cc
-+++ b/onnx/defs/rnn/defs.cc
-@@ -5,7 +5,7 @@
- #include "onnx/defs/schema.h"
- 
- namespace ONNX_NAMESPACE {
--static void RNNShapeInference(InferenceContext& ctx) {
-+void RNNShapeInference(InferenceContext& ctx) {
-   TensorShapeProto::Dimension num_directions, seq_length, batch_size, hidden_size;
- 
-   auto direction = getAttribute(ctx, "direction", "forward");
+ if(CMAKE_SYSTEM_NAME STREQUAL "AIX")
+   # whole-archive linker option not available on AIX.
 diff --git a/onnx/defs/schema.h b/onnx/defs/schema.h
-index acf3aac7..5bef6e72 100644
+index ddd95454..34647987 100644
 --- a/onnx/defs/schema.h
 +++ b/onnx/defs/schema.h
-@@ -980,10 +980,7 @@ class OpSchemaRegistry final : public ISchemaRegistry {
+@@ -999,7 +999,7 @@ class OpSchemaRegistry final : public ISchemaRegistry {
    class OpSchemaRegisterOnce final {
     public:
      // Export to cpp custom register macro
 -    explicit OpSchemaRegisterOnce(
--        OpSchema op_schema,
--        int opset_version_to_load = 0,
--        bool fail_duplicate_schema = true) {
-+    OpSchemaRegisterOnce(OpSchema op_schema, int opset_version_to_load = 0, bool fail_duplicate_schema = true) {
-       OpSchemaRegisterNoExcept(std::move(op_schema), opset_version_to_load, fail_duplicate_schema);
-     }
-     static void
++    OpSchemaRegisterOnce(
+         OpSchema op_schema,
+         int opset_version_to_load = 0,
+         bool fail_duplicate_schema = true) {
