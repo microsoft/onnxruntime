@@ -308,7 +308,7 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
       ORT_THROW("Invalid type");
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Int64:
-      ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), select(0u, 0xFFFFFFFFu, " << value << " < 0));";
+      ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), select(0u, 0xFFFFFFFFu, i32(" << value << ") < 0));";
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
       ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), 0u);";
