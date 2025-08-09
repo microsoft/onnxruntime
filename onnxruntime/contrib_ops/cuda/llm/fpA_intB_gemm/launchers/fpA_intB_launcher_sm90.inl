@@ -48,14 +48,13 @@
 #include "contrib_ops/cuda/llm/cutlass_type_conversion.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/launchers/fpA_intB_launcher_sm90.h"
 
-namespace tk = onnxruntime::llm::common;
-namespace tkc = onnxruntime::llm::cutlass_extensions;
-
-using namespace cute;
-
 namespace onnxruntime::llm {
 namespace kernels {
 namespace cutlass_kernels {
+
+namespace tk = onnxruntime::llm::common;
+namespace tkc = onnxruntime::llm::cutlass_extensions;
+using namespace cute;
 
 template <typename ActivationType, typename WeightType, typename ScaleZeroType, typename BiasType, typename OutputType,
           cutlass::WeightOnlyQuantOp QuantOp, typename EpilogueTag, typename CTAShape, typename ClusterShape,

@@ -8,5 +8,5 @@ onnxruntime_fetchcontent_declare(
 
 FetchContent_GetProperties(cutlass)
 if(NOT cutlass_POPULATED)
-  FetchContent_Populate(cutlass)
+  FetchContent_MakeAvailable(cutlass)
 endif()

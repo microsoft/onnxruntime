@@ -1390,6 +1390,8 @@ if (onnxruntime_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)
 
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.8)
+    add_definitions("-DENABLE_BF16")
+    message(STATUS "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_BF16 flag")
     add_definitions("-DENABLE_FP8")
     message(STATUS "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_FP8 flag")
   endif()

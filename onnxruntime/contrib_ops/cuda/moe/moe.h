@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "contrib_ops/cuda/moe/ft_moe/moe_kernel.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"

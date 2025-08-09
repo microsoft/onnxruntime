@@ -4,10 +4,10 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/framework/tensor_shape.h"
 #include "core/framework/op_kernel.h"
-#include "contrib_ops/cuda/moe/ft_moe/moe_gemm_kernels.h"
 #include "contrib_ops/cpu/quantization/moe_helper.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cuda/llm/moe_gemm/common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -15,21 +15,22 @@ namespace cuda {
 
 class MoEBase {
  protected:
-  MoEBase(const OpKernelInfo& op_kernel_info) {
+  MoEBase(const OpKernelInfo& op_kernel_info, const cudaDeviceProp& device_prop) {
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
 
+    using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
     std::string activation_type_str;
     ORT_ENFORCE(op_kernel_info.GetAttr<std::string>("activation_type", &activation_type_str).IsOK());
     if (activation_type_str == "relu") {
-      activation_type_ = ort_fastertransformer::ActivationType::Relu;
+      activation_type_ = ActivationType::Relu;
     } else if (activation_type_str == "gelu") {
-      activation_type_ = ort_fastertransformer::ActivationType::Gelu;
+      activation_type_ = ActivationType::Gelu;
     } else if (activation_type_str == "silu") {
       activation_type_ = ort_fastertransformer::ActivationType::Silu;
     } else if (activation_type_str == "swiglu") {
       activation_type_ = ort_fastertransformer::ActivationType::SwiGLU;
     } else if (activation_type_str == "identity") {
-      activation_type_ = ort_fastertransformer::ActivationType::Identity;
+      activation_type_ = ActivationType::Identity;
     } else {
       ORT_THROW("Unsupported MoE activation type: ", activation_type_str);
     }
@@ -40,12 +41,15 @@ class MoEBase {
     if (use_sparse_mixer_) {
       ORT_ENFORCE(k_ == 2, "Sparse mixer only supports k=2");
     }
+
+    sm_ = device_prop.major * 10 + device_prop.minor;
   }
 
   bool normalize_routing_weights_;
   bool use_sparse_mixer_;
   int64_t k_;
-  ort_fastertransformer::ActivationType activation_type_;
+  onnxruntime::llm::kernels::cutlass_kernels::ActivationType activation_type_;
+  int sm_;
 };
 
 }  // namespace cuda
