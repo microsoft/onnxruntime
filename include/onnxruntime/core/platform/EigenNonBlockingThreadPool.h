@@ -10,7 +10,7 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include <type_traits>
-
+#include <mutex>
 #pragma once
 #include "onnxruntime_config.h"
 // build/external/eigen/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h:162:71:
@@ -41,7 +41,8 @@
 #endif
 #include <memory>
 #include "unsupported/Eigen/CXX11/ThreadPool"
-
+static_assert(std::is_trivially_destructible_v<std::mutex>,
+              "This optimization requires a trivially destructible mutex.");
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #elif defined(_MSC_VER)
