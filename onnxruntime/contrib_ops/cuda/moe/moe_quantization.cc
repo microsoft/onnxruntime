@@ -83,10 +83,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc2_zeros = nullptr;
 
   MoEQuantType quant_type = expert_weight_bits_ == 4 ? MoEQuantType::UINT4 : MoEQuantType::UINT8;
+
   MoEParameters moe_params;
-  ORT_RETURN_IF_ERROR(CheckInputs(moe_params, quant_type, input, router_probs, fc1_experts_weights,
-                                  fc1_experts_bias_optional, fc2_experts_weights, fc2_experts_bias_optional,
-                                  fc3_experts_weights_optional, fc3_experts_bias_optional));
+  ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
+      moe_params, input, router_probs,
+      fc1_experts_weights, fc1_experts_bias_optional, fc1_scales,
+      fc2_experts_weights, fc2_experts_bias_optional, fc2_scales,
+      fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional,
+      expert_weight_bits_ == 4 ? 2 : 1,
+      activation_type_ == ort_fastertransformer::ActivationType::SwiGLU));
 
   constexpr bool use_lora = false;
   constexpr bool use_deepseek_fp8_block_scale = false;

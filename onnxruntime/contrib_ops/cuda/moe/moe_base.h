@@ -26,9 +26,9 @@ class MoEBase {
     } else if (activation_type_str == "gelu") {
       activation_type_ = ActivationType::Gelu;
     } else if (activation_type_str == "silu") {
-      activation_type_ = ort_fastertransformer::ActivationType::Silu;
+      activation_type_ = ActivationType::Silu;
     } else if (activation_type_str == "swiglu") {
-      activation_type_ = ort_fastertransformer::ActivationType::SwiGLU;
+      activation_type_ = ActivationType::SwiGLU;
     } else if (activation_type_str == "identity") {
       activation_type_ = ActivationType::Identity;
     } else {
