@@ -13,11 +13,11 @@ class SafeIntExceptionHandler;
 template <>
 class SafeIntExceptionHandler<onnxruntime::OnnxRuntimeException> {
  public:
-  static void SafeIntOnOverflow() {
+  [[noreturn]] static void SafeIntOnOverflow() {
     ORT_THROW("Integer overflow");
   }
 
-  static void SafeIntOnDivZero() {
+  [[noreturn]] static void SafeIntOnDivZero() {
     ORT_THROW("Divide by zero");
   }
 };
