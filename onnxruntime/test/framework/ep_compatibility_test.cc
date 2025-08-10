@@ -69,7 +69,10 @@ class TestCompatibilityExecutionProvider : public IExecutionProvider {
     }
 
     // Simple validation logic for testing
-    if (compatibility_info.empty()) {
+    // If the mock status is explicitly set to NOT_APPLICABLE, always return that
+    if (mock_compatibility_status_ == OrtCompiledModelCompatibility_EP_NOT_APPLICABLE) {
+      model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    } else if (compatibility_info.empty()) {
       model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
     } else if (compatibility_info == mock_compatibility_string_) {
       model_compatibility = mock_compatibility_status_;

@@ -237,6 +237,9 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
   const auto& custom_metadata = model_metadata->custom_metadata_map;
   const auto& registered_provider_types = sess.GetRegisteredProviderTypes();
 
+  // Access the execution providers through the session state (available after Initialize)
+  const auto& execution_providers = sess.GetSessionState().GetExecutionProviders();
+
   for (const auto& ep_type : registered_provider_types) {
     // Construct the full metadata key using the prefix + EP type
     const std::string metadata_key = std::string(kOrtModelMetadata_EpCompatibilityInfoPrefix) + ep_type;
@@ -246,7 +249,6 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
       const std::string& compatibility_info = metadata_it->second;
 
       // Get the actual EP instance to call validation
-      const auto& execution_providers = sess.GetSessionState().GetExecutionProviders();
       const IExecutionProvider* ep = execution_providers.Get(ep_type);
 
       if (ep != nullptr) {
@@ -293,9 +295,10 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
               break;
           }
         } else {
-          LOGS(*sess.GetLogger(), WARNING)
-              << "Failed to validate compiled model compatibility for EP " << ep_type
-              << ": " << validation_result.ErrorMessage();
+          // Validation failed - this should cause session initialization to fail
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+              "Failed to validate compiled model compatibility for EP " + ep_type +
+              ": " + validation_result.ErrorMessage());
         }
       }
     } else {
@@ -348,15 +351,16 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  // Validate compiled model compatibility for all registered execution providers
-  ORT_API_RETURN_IF_STATUS_NOT_OK(ValidateCompiledModelCompatibility(sess));
-
   if (prepacked_weights_container != nullptr) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess.AddPrePackedWeightsContainer(
         reinterpret_cast<PrepackedWeightsContainer*>(prepacked_weights_container)));
   }
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(sess.Initialize());
+
+  // Validate compiled model compatibility for all registered execution providers
+  // This must be done after Initialize() so the session state is available
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ValidateCompiledModelCompatibility(sess));
 
   return nullptr;
 }
