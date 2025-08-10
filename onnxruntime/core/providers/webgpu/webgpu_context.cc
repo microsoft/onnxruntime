@@ -22,6 +22,8 @@
 #pragma GCC diagnostic pop
 #endif
 
+#include <windows.h>
+
 #include "core/common/common.h"
 #include "core/common/path_string.h"
 #include "core/platform/env.h"
@@ -42,7 +44,12 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
   std::call_once(init_flag_, [this, &buffer_cache_config, backend_type, enable_pix_capture]() {
     if (device_ == nullptr) {
       auto runtime_path = Env::Default().GetRuntimePath();
-      wprintf(L"WebGPU EP Context initialization. Runtime path: %ls\n", runtime_path.c_str());
+      // convert wstring to string using WIN32 API WideCharToMultiByte
+      int size_needed = WideCharToMultiByte(CP_UTF8, 0, runtime_path.c_str(), (int)runtime_path.size(), NULL, 0, NULL, NULL);
+      std::string runtime_path_str(size_needed, 0);
+      WideCharToMultiByte(CP_UTF8, 0, runtime_path.c_str(), (int)runtime_path.size(), &runtime_path_str[0], size_needed, NULL, NULL);
+
+      printf("WebGPU EP Context initialization. Runtime path: %s\n", runtime_path_str.c_str());
 
       // Create wgpu::Adapter
       wgpu::RequestAdapterOptions req_adapter_options = {};
