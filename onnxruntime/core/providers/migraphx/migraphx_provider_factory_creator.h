@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "core/providers/providers.h"
+#include "core/framework/provider_options.h"
 
 struct OrtMIGraphXProviderOptions;
 
@@ -14,5 +15,6 @@ namespace onnxruntime {
 struct MIGraphXProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(int device_id);
   static std::shared_ptr<IExecutionProviderFactory> Create(const OrtMIGraphXProviderOptions* options);
+  static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions&);
 };
 }  // namespace onnxruntime

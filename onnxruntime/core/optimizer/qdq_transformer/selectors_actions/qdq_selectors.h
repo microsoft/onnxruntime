@@ -308,6 +308,15 @@ class CumSumNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 };
 
+// Input: DQ nodes for Data, and Update
+// Output: Q node for output
+class ScatterElementsNodeGroupSelector : public NodeGroupSelector {
+  bool Check(const GraphViewer& graph_viewer,
+             const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
 /*
  * NodeSelector instances for use in the QDQ::SelectorActionTransformer.
  */
