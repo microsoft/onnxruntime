@@ -1,5 +1,12 @@
 # VM Setup
 
+## Existing VMs
+
+A list of current VMs can be found on the repo's
+[runner configuration page](https://github.qualcomm.com/MLG/onnxruntime-qnn-ep/settings/actions/runners). Windows runner
+hostnames are always `$RunnerName.na.qualcomm.com`. For example, `QCOM-N38FTQLTX0` is `QCOM-N38FTQLTX0.na.qualcomm.com`.
+Linux VMs do are not on `.na` and can generally be accessed via their bare hostname, e.g., `ssh ort-ep-lin-01`.
+
 ## Access Groups
 
 Before proceeding, please join the following:
@@ -112,7 +119,9 @@ The GitHub runner runs as a Windows service. Log in as the local administrator a
 
 * Set the environment variable `ORT_BUILD_TOOLS_PATH` to `C:\Users\OrtQnnEpCi\.ort-build-tools`.
 * Set `REQUESTS_CA_BUNDLE` to the location of the Netskope combined certificate as
-  [described here](https://qualcomm.sharepoint.com/teams/cloudproxy/SitePages/Certificate-Management.aspx).
+  [described here](https://qualcomm.sharepoint.com/teams/cloudproxy/SitePages/Certificate-Management.aspx). We've seen
+  `%ProgramData%\Netskope\STAgent\download\nscacert_combined.pem` disappear unexpectedly on a WoS CI machine so
+  consider putting this file somewhere else, such as `C:\certificates\nscacert_combined.pem`.
 
 ## Linux
 
