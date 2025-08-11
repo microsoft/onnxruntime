@@ -6,7 +6,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "test/optimizer/qdq_test_utils.h"
+#include "test/util/include/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
 #include "test/util/include/tester_types.h"
 
@@ -159,7 +159,7 @@ void _BuildLSTMTestCase(ModelTestBuilder& builder,
   lstm_node.AddAttribute("hidden_size", hidden_size);
   lstm_node.AddAttribute("layout", layout);
   ORT_UNUSED_PARAMETER(output_qparams);
-  if (std::is_same<InputType, uint8_t>::value) {
+  if constexpr (std::is_same<InputType, uint8_t>::value) {
     size_t i = 0;
     if (has_Y) {
       AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, lstm_output_Y, output_qparams[i].scale,
