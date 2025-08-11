@@ -1227,8 +1227,6 @@ block()
     ${TEST_SRC_DIR}/framework/test_utils.cc
     ${TEST_SRC_DIR}/framework/TestAllocatorManager.cc
     ${TEST_SRC_DIR}/framework/TestAllocatorManager.h
-    ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.cc
-    ${TEST_SRC_DIR}/optimizer/graph_transform_test_builder.h
   )
 
   set(onnxruntime_provider_test_srcs

@@ -13,10 +13,10 @@
 #include "core/framework/float16.h"
 #include "core/util/qmath.h"
 
-#include "test/optimizer/qdq_test_utils.h"
+#include "test/util/include/default_providers.h"
+#include "test/util/include/qdq_test_utils.h"
 #include "test/util/include/test_utils.h"
 #include "test/util/include/test/test_environment.h"
-#include "test/util/include/default_providers.h"
 
 #include "gtest/gtest.h"
 
@@ -1159,7 +1159,7 @@ inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(
  * Runs a test model on the QNN EP. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.
  *
- * \param build_test_case Function that builds a test model. See test/optimizer/qdq_test_utils.h
+ * \param build_test_case Function that builds a test model. See test/util/include/qdq_test_utils.h
  * \param provider_options Provider options for QNN EP.
  * \param opset_version The opset version.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).

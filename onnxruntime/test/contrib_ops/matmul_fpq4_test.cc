@@ -9,9 +9,9 @@
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/graph_transform_test_builder.h"
 #include "core/util/qmath.h"
 
 #include <chrono>

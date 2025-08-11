@@ -15,10 +15,10 @@
 #include "test/compare_ortvalue.h"
 #include "test/test_environment.h"
 #include "test/common/quantization_test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/graph_transform_test_builder.h"
 #include "test/util/include/inference_session_wrapper.h"
 
 #include "core/session/onnxruntime_session_options_config_keys.h"

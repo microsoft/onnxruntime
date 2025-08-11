@@ -11,13 +11,12 @@
 #include "test/util/include/test_utils.h"
 #include "test/util/include/test/test_environment.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/qdq_test_utils.h"
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/inference_session.h"
 #include "core/graph/model_saving_options.h"
-
-#include "test/optimizer/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"

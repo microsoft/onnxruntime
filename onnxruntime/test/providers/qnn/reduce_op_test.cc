@@ -6,8 +6,8 @@
 #include <string>
 #include "core/graph/graph.h"
 
-#include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
+#include "test/util/include/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 

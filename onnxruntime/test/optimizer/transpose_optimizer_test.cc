@@ -19,10 +19,10 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/internal_testing_ep/internal_testing_execution_provider.h"
-#include "test/optimizer/graph_transform_test_builder.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/graph_transform_test_builder.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_utils.h"
 

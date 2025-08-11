@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/util/include/graph_transform_test_builder.h"
 
 #include <functional>
 #include <string>
