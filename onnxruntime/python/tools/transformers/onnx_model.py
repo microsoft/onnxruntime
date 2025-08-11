@@ -1387,7 +1387,7 @@ class OnnxModel:
                 return (n1 == n2).all()
             else:
                 # Check if tensors are allclose
-                from numpy import allclose
+                from numpy import allclose  # noqa: PLC0415
 
                 return allclose(n1, n2, rtol=rtol, atol=atol)
 

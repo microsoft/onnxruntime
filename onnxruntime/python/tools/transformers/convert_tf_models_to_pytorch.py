@@ -78,7 +78,7 @@ def get_ckpt_prefix_path(ckpt_dir):
 
 
 def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
-    import pathlib
+    import pathlib  # noqa: PLC0415
 
     base_dir = os.path.join(pathlib.Path(__file__).parent.absolute(), tf_models_dir)
     ckpt_dir = os.path.join(base_dir, model_name)
@@ -88,13 +88,13 @@ def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
 
     tf_ckpt_url = TFMODELS[model_name][3]
 
-    import re
+    import re  # noqa: PLC0415
 
     if re.search(".zip$", tf_ckpt_url) is not None:
         zip_dir = download_compressed_file(tf_ckpt_url, ckpt_dir)
 
         # unzip file
-        import zipfile
+        import zipfile  # noqa: PLC0415
 
         with zipfile.ZipFile(zip_dir, "r") as zip_ref:
             zip_ref.extractall(ckpt_dir)
@@ -106,7 +106,7 @@ def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
         tar_dir = download_compressed_file(tf_ckpt_url, ckpt_dir)
 
         # untar file
-        import tarfile
+        import tarfile  # noqa: PLC0415
 
         with tarfile.open(tar_dir, "r") as tar_ref:
             tar_ref.extractall(ckpt_dir)
@@ -138,7 +138,7 @@ def init_pytorch_model(model_name, tf_checkpoint_path):
     config = model_config() if len(config_path) == 0 else model_config.from_json_file(str(config_path[0]))
 
     if not TFMODELS[model_name][2]:
-        from transformers import AutoModelForPreTraining
+        from transformers import AutoModelForPreTraining  # noqa: PLC0415
 
         init_model = AutoModelForPreTraining.from_config(config)
     else:
@@ -159,7 +159,7 @@ def convert_tf_checkpoint_to_pytorch(model_name, config, init_model, tf_checkpoi
     else:
         if TFMODELS[model_name][0] != "bert":
             raise NotImplementedError("Only support tf2 ckeckpoint for Bert model")
-        from transformers import convert_bert_original_tf2_checkpoint_to_pytorch
+        from transformers import convert_bert_original_tf2_checkpoint_to_pytorch  # noqa: PLC0415
 
         load_tf_weight_func = convert_bert_original_tf2_checkpoint_to_pytorch.load_tf2_weights_in_bert
 
@@ -185,9 +185,9 @@ def tf2pt_pipeline(model_name, is_tf2=False):
 
 def tf2pt_pipeline_test():
     # For test on linux only
-    import logging
+    import logging  # noqa: PLC0415
 
-    import torch
+    import torch  # noqa: PLC0415
 
     logger = logging.getLogger("")
     for model_name in TFMODELS:

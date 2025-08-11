@@ -31,8 +31,8 @@ class MultiHeadAttentionOpBuilder : public BaseOpBuilder {
 };
 
 /** MultiHeadAttention SubGraph.
- Abbreviatios: B is batch_size, S is sequence_length, W is hidden_size
-               N is number of attention heads, H is head size
+ Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
+                N is number of attention heads, H is head size
     Notes: If the datatype of the inputs (qkv and past kv) is float16, we cast them to float32 to ensure data precision.
 
          query       key              value

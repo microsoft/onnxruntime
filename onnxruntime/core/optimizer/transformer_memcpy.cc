@@ -383,21 +383,7 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
       TensorProto new_tensor_proto = *tensor_proto;
       *(new_tensor_proto.mutable_name()) = new_def_name;
 
-      // Query any OrtValue existing for the original initializer
-      // We are checking outer scope because GetInitializer is called with true, therefore, we potentially
-      // have references to parent graphs.
-      // We are doing this so the same OrtValue is re-used in subgraphs and no copies made for big items.
-      constexpr const bool check_outer_scope_true = true;
-      OrtValue ort_value;
-      // The initializer can be in memory with OrtValue or it can be a flatbuffer mapped.
-      if (utils::HasExternalDataInMemory(new_tensor_proto) &&
-          graph_.GetOrtValueInitializer(name, ort_value, check_outer_scope_true)) {
-        // Re-use the same ort_value and proto that points to the same buffer
-        ORT_IGNORE_RETURN_VALUE(graph_utils::AddInitializerWithExternalData(graph_, new_tensor_proto,
-                                                                            std::move(ort_value)));
-      } else {
-        ORT_IGNORE_RETURN_VALUE(graph_utils::AddInitializer(graph_, new_tensor_proto));
-      }
+      ORT_IGNORE_RETURN_VALUE(graph_utils::AddInitializer(graph_, new_tensor_proto));
 
       replacements.insert(std::make_pair(provider_def, &new_def));
     }

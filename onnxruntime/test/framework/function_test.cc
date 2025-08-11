@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/graph/onnx_protobuf.h"
 #include "onnx/defs/parser.h"
 
 #include "core/common/span_utils.h"

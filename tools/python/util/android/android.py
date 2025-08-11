@@ -106,7 +106,7 @@ def _stop_process(proc: subprocess.Popen):
 
 def _stop_process_with_pid(pid: int):
     # minimize scope of external module usage
-    import psutil
+    import psutil  # noqa: PLC0415
 
     if psutil.pid_exists(pid):
         process = psutil.Process(pid)

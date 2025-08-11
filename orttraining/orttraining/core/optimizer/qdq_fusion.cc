@@ -45,7 +45,7 @@ int ReplaceOrCreateZeroPointInitializer(Graph& graph, Node& quantize_node) {
 
     // Since the quantize node has the zero point initializer input, replace it
     graph_utils::ReplaceNodeInput(quantize_node, 2,
-                                  graph_utils::AddInitializerWithExternalData(graph, zero_point_tensor_float));
+                                  graph_utils::AddInitializer(graph, zero_point_tensor_float));
   } else {
     // The quantize node does not have the zero point optional input.
     // Create the zero point initializer to be 0.
@@ -55,7 +55,7 @@ int ReplaceOrCreateZeroPointInitializer(Graph& graph, Node& quantize_node) {
 
     // Since the input did not exist, add the newly created initializer as an input
     graph_utils::AddNodeInput(quantize_node, 2,
-                              graph_utils::AddInitializerWithExternalData(graph, zero_point_tensor_float));
+                              graph_utils::AddInitializer(graph, zero_point_tensor_float));
   }
 
   return zero_point_type;

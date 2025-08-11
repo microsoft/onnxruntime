@@ -11,7 +11,7 @@ stages:
   - template: templates/py-packaging-linux-test-cpu.yml
     parameters:
       arch: 'x86_64'
-      machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
 
 - stage: Linux_Test_CPU_aarch64_stage
@@ -38,7 +38,7 @@ stages:
         itemPattern: '*/*manylinux*x86_64.whl'
         arch: 'x86_64'
         machine_pool:
-          name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+          name: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
 # ****The following Stage depend on all previous tags. ***
 

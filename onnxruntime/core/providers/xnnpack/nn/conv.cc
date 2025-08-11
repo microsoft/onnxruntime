@@ -91,7 +91,6 @@ Status Conv::Compute(OpKernelContext* context) const {
 
   // setup allocator/automated dellocate for workspace
   size_t workspace_size = 0;
-  size_t workspace_alignment = 0;
   xnn_allocator* allocator = GetStoredAllocator().second;
   auto deallocator = [allocator](void* ptr) { allocator->aligned_deallocate(allocator->context, ptr); };
   std::unique_ptr<void, decltype(deallocator)> workspace(nullptr, deallocator);
@@ -108,7 +107,7 @@ Status Conv::Compute(OpKernelContext* context) const {
   }
 
   auto status = reshape_fn(op0_.get(), N, H, W,
-                           &workspace_size, &workspace_alignment,
+                           &workspace_size,
                            /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
                            threadpool);
   if (status != xnn_status_success) {

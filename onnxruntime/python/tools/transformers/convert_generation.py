@@ -583,7 +583,7 @@ def shape_inference(onnx_path: str, use_external_data_format: bool = True):
         use_external_data_format(bool): output tensors to external data or not.
     """
     # Run symbolic shape inference to walk around ORT shape inference issue for subgraph.
-    from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+    from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference  # noqa: PLC0415
 
     model = onnx.load_model(onnx_path, load_external_data=True)
     out = SymbolicShapeInference.infer_shapes(model, auto_merge=True, guess_output_rank=False)
@@ -3044,7 +3044,7 @@ def convert_generation_model(
 
     # TODO(tianleiwu): move shared initializers from T5 encoder and decoder subgraphs to parent graph to save memory.
     if args.use_external_data_format:
-        from packaging import version
+        from packaging import version  # noqa: PLC0415
 
         if version.parse(onnx.__version__) < version.parse("1.12.0"):
             logger.warning("Require onnx >= 1.12 to save large (>2GB) model!")
@@ -3121,7 +3121,7 @@ def test_torch_performance(
         )
         torch_latency.append(time.time() - start)
     batch_size = input_ids.shape[0]
-    from benchmark_helper import get_latency_result
+    from benchmark_helper import get_latency_result  # noqa: PLC0415
 
     return get_latency_result(torch_latency, batch_size)
 
@@ -3263,7 +3263,7 @@ def test_gpt_model(
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
         logger.debug("test_data_dir", test_data_dir)  # noqa: PLE1205
-        from bert_test_data import output_test_data
+        from bert_test_data import output_test_data  # noqa: PLC0415
 
         logger.info(f"Saving test_data to {test_data_dir}/test_data_set_* ...")
 
@@ -3290,7 +3290,7 @@ def test_gpt_model(
         _ = ort_session.run(None, inputs)
         latency.append(time.time() - start)
 
-    from benchmark_helper import get_latency_result
+    from benchmark_helper import get_latency_result  # noqa: PLC0415
 
     batch_size = input_ids.shape[0]
     output = get_latency_result(latency, batch_size)
@@ -3471,7 +3471,7 @@ def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
         logger.debug("test_data_dir", test_data_dir)  # noqa: PLE1205
-        from bert_test_data import output_test_data
+        from bert_test_data import output_test_data  # noqa: PLC0415
 
         all_inputs = [inputs]
         for i, inputs in enumerate(all_inputs):
@@ -3489,7 +3489,7 @@ def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
         result = ort_session.run(None, inputs)
         latency.append(time.time() - start)
     batch_size = input_ids.shape[0]
-    from benchmark_helper import get_latency_result
+    from benchmark_helper import get_latency_result  # noqa: PLC0415
 
     output = get_latency_result(latency, batch_size)
 

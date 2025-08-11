@@ -172,8 +172,8 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
     }
     if (step < 0) {
       // we are slicing in reverse
-      start = std::clamp(start, int64_t{0}, dim_value - 1);
-      end = std::clamp(end, int64_t{-1}, dim_value - 1);
+      start = dim_value > 0 ? std::clamp(start, int64_t{0}, dim_value - 1) : 0;
+      end = dim_value > 0 ? std::clamp(end, int64_t{-1}, dim_value - 1) : -1;
       // note that we are flipping start and end to switch to forward step
       signs.push_back(-1);
       steps.push_back(static_cast<uint32_t>(-step));

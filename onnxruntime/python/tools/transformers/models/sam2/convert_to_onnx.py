@@ -140,7 +140,7 @@ def optimize_sam2_model(onnx_model_path, optimized_model_path, float16: bool, us
     transformers_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
     if transformers_dir not in sys.path:
         sys.path.insert(0, transformers_dir)
-    from optimizer import optimize_model
+    from optimizer import optimize_model  # noqa: PLC0415
 
     optimized_model = optimize_model(onnx_model_path, model_type="sam2", opt_level=1, use_gpu=use_gpu)
     if float16:

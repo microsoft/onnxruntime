@@ -10,8 +10,6 @@
 namespace onnxruntime {
 namespace qnn {
 
-static OpBuilderRegistrations op_registrations;
-
 OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateSimpleOpBuilder("Add", *this);
@@ -67,6 +65,8 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("GridSample", *this);
 
     CreateSimpleOpBuilder("LpNormalization", *this);
+
+    CreateSimpleOpBuilder("ScatterElements", *this);
   }
 
   {
@@ -199,13 +199,14 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateCumSumOpBuilder("CumSum", *this);
   }
-}
 
-void RegisterUDOBuilder(const std::string& op_type, const std::string& op_package) {
-  CreateUDOBuilder(op_type, op_package, op_registrations);
+  {
+    CreateGatherNDOpBuilder("GatherND", *this);
+  }
 }
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type) {
+  static const OpBuilderRegistrations op_registrations;
   return op_registrations.GetOpBuilderByOnnxOpType(onnx_op_type);
 }
 

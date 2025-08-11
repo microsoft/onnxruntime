@@ -63,17 +63,13 @@ ORT_API_STATUS_IMPL(OrtApis::AddRunConfigEntry, _Inout_ OrtRunOptions* options,
   return onnxruntime::ToOrtStatus(options->config_options.AddConfigEntry(config_key, config_value));
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetRunConfigEntry, _In_ const OrtRunOptions* options,
-                    _In_z_ const char* config_key, _Outptr_result_maybenull_z_ const char** config_value_out) {
-  API_IMPL_BEGIN
+ORT_API(const char*, OrtApis::GetRunConfigEntry, _In_ const OrtRunOptions* options, _In_z_ const char* config_key) {
   const auto& config_options = options->config_options.GetConfigOptionsMap();
   if (auto it = config_options.find(config_key); it != config_options.end()) {
-    *config_value_out = it->second.c_str();
+    return it->second.c_str();
   } else {
-    *config_value_out = nullptr;
+    return nullptr;
   }
-  return nullptr;
-  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* options,

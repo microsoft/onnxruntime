@@ -16,7 +16,7 @@ from .quant_utils import QuantType
 
 
 @dataclass
-class QuantTypeInfo:
+class QuantTypeInfo:  # noqa: PLW1641
     """
     The quantization type information for a tensor override.
     """

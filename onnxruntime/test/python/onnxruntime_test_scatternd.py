@@ -39,7 +39,7 @@ class TestScatterPerProvider(unittest.TestCase):
         assert os.path.exists(filename), f"Unable to find {filename!r}."
 
     def common_scatter(self, opset, providers, dtype, reduction, expected_names):
-        from onnxruntime import InferenceSession, SessionOptions
+        from onnxruntime import InferenceSession, SessionOptions  # noqa: PLC0415
 
         op_type = "ScatterElements" if "ScatterElements" in expected_names else "ScatterND"
         ndim = 2 if op_type == "ScatterElements" else 3

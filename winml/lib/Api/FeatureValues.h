@@ -434,7 +434,8 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
       CreateTensorValueFromInspectable<winmlp::TensorUInt64Bit, uint64_t>,
       CreateTensorValueFromInspectable<winmlp::TensorInt64Bit, int64_t>,
       CreateTensorValueFromInspectable<winmlp::TensorFloat16Bit, float>,
-      CreateTensorValueFromInspectable<winmlp::TensorString, winrt::hstring>};
+      CreateTensorValueFromInspectable<winmlp::TensorString, winrt::hstring>
+    };
 
     for (const auto& tensorCreator : creators) {
       if (auto createdTensor = tensorCreator(bindingType, inspectable, tensorDescriptor)) {

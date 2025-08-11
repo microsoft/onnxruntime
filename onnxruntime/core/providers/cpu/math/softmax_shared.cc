@@ -99,7 +99,7 @@ common::Status SoftmaxCPU<float>(size_t N,
                                  float* Ydata,
                                  bool logarithmic,
                                  onnxruntime::concurrency::ThreadPool* thread_pool) {
-  MlasComputeSoftmax(Xdata, Ydata, N, D, logarithmic, false, thread_pool);
+  MlasComputeSoftmax(Xdata, Ydata, N, D, logarithmic, false, 0.0f, thread_pool);
   return Status::OK();
 }
 

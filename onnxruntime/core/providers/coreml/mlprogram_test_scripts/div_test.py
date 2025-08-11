@@ -76,7 +76,7 @@ def nn_scale():
         mode="MULTIPLY",
     )
 
-    from coremltools.models.utils import save_spec
+    from coremltools.models.utils import save_spec  # noqa: PLC0415
 
     save_spec(builder.spec, "network.mlmodel")
     m = ct.models.MLModel("network.mlmodel")

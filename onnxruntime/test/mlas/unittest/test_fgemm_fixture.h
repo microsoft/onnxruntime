@@ -70,6 +70,7 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
     test_registered += RegisterTestTransposeABProduct(128, 3072, 768, 1, 1.0f, 0.0f);
     test_registered += RegisterTestTransposeABProduct(128, 768, 3072, 1, 1.0f, 0.0f);
     test_registered += RegisterTestTransposeABProduct(25, 81, 79, 7, 1.0f, 0.0f);
+    test_registered += RegisterTestTransposeABProduct(1024, 1, 512, 1, 1.0f, 0.0f);
     return test_registered;
   }
 

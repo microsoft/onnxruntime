@@ -31,6 +31,7 @@
     "current_failing_tests": [
         "^test_adagrad",
         "^test_adagrad_multiple",
+        "^test_attention_3d.*",  // wrong expected values in onnx==1.18.0, fixed in 1.19.0
         "^test_batchnorm_epsilon_training_mode",
         "^test_batchnorm_example_training_mode",
         "^test_col2im_pads",  // still one wrong value coming from the backtest example
@@ -98,6 +99,14 @@
         "^test_if_opt",
         "^test_loop16_seq_none",
         "^test_identity_opt",
+        "^test_rotary_embedding_no_position_ids_rotary_dim",
+        "^test_rotary_embedding_with_interleaved_rotary_dim",
+        "^test_rotary_embedding_with_rotary_dim",
+        "^test_rotary_embedding_3d_input_expanded",
+        "^test_rotary_embedding_interleaved_expanded",
+        "^test_rotary_embedding_no_position_ids_interleaved_expanded",
+        "^test_rotary_embedding_expanded", //webgpu
+        "^test_rotary_embedding_no_position_ids_expanded", //webgpu
         // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
         "^test_roialign_mode_max", // TODO: Remove once onnx test is fixed
@@ -685,6 +694,10 @@
         "^test_nonmaxsuppression_identical_boxes_cpu",
         "^test_nonmaxsuppression_flipped_coordinates_cpu",
         "^test_nonmaxsuppression_center_point_box_format_cpu"
+    ],
+    "current_failing_tests_QNN": [
+        "^test_scatter_elements_with_negative_indices",
+        "^test_scatter_elements_with_duplicate_indices*"
     ],
     "current_failing_tests_WEBGPU": [
         "^test_layer_normalization_2d_axis0_cpu",

@@ -3,7 +3,7 @@
 
 #include "core/framework/session_state.h"
 #include "core/providers/webgpu/allocator.h"
-#include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/buffer_manager.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -15,18 +15,17 @@ void* GpuBufferAllocator::Alloc(size_t size) {
 
   stats_.num_allocs++;
 
-#if !defined(__wasm__)
-  if (!session_initialized_ && context_.DeviceHasFeature(wgpu::FeatureName::BufferMapExtendedUsages)) {
-    return context_.BufferManager().CreateUMA(size);
+  // Check if the buffer manager supports UMA and we're not yet in an initialized session
+  if (!session_initialized_ && buffer_manager_.SupportsUMA()) {
+    return buffer_manager_.CreateUMA(size);
   }
-#endif  // !defined(__wasm__)
 
-  return context_.BufferManager().Create(size);
+  return buffer_manager_.Create(size);
 }
 
 void GpuBufferAllocator::Free(void* p) {
   if (p != nullptr) {
-    context_.BufferManager().Release(static_cast<WGPUBuffer>(p));
+    buffer_manager_.Release(static_cast<WGPUBuffer>(p));
     stats_.num_allocs--;
   }
 }

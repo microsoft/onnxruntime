@@ -1387,33 +1387,68 @@ constexpr const char* MoE_ver1_doc = R"DOC(
       Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
       GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
       usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral).
+
+      The SwiGLU (Swish-Gated Linear Unit) activation function is like:
+         g = xW + b
+         l = xV + c
+         G = clamp(g, max=limit)
+         L = clamp(l, min=-limit, max=limit)
+         swiglu = G * sigmoid(alpha * G) * (L + beta)
+      where x is the input, W and V are weight matrices, b and c are bias vectors, and alpha, beta and limit are constant float parameters.
+      When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
+      When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
+      When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
       )DOC";
 
-ONNX_MS_OPERATOR_SET_SCHEMA(MoE, 1,
-                            OpSchema()
-                                .SetDoc(MoE_ver1_doc)
-                                .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
-                                .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Attr("normalize_routing_weights", "Whether to normalize routing weights", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Input(0, "input", "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-                                .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
-                                .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
-                                .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
-                                .Input(4, "fc2_experts_weights", "3D input tensor with shape (num_experts, inter_size, hidden_size)", "T")
-                                .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
-                                .Input(6, "fc3_experts_weights", "3D optional input tensor with shape (num_experts, hidden_size, inter_size)", "T", OpSchema::Optional)
-                                .Input(7, "fc3_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
-                                .Output(0, "output", "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or float16 tensors.")
-                                .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MoE, 1,
+    OpSchema()
+        .SetDoc(MoE_ver1_doc)
+        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
+        .Attr("swiglu_fusion", "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
+        .Attr("activation_beta", "Beta parameter used in activation function.", AttributeProto::FLOAT, 0.0f)
+        .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("normalize_routing_weights", "Whether to normalize routing weights", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "input", "2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Input(1, "router_probs", "2D input tensor with shape (num_tokens, num_experts)", "T")
+        .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu, and 1 otherwise", "T")
+        .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
+        .Input(4, "fc2_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
+        .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
+        .Input(6, "fc3_experts_weights", "3D optional input tensor with shape (num_experts, inter_size, hidden_size)", "T", OpSchema::Optional)
+        .Input(7, "fc3_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
+        .Output(0, "output", "2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+constexpr const char* qMoE_ver1_doc = R"DOC(
+      Quantized mixture of experts (MoE).
+
+      Only weights are quantized with symmetric quantization.
+      The quantized weights are stored in column major order per expert.
+      The quantization block size can be specified. If not provided, column wise quantization is used.
+
+      The SwiGLU (Swish-Gated Linear Unit) activation function is like:
+         g = xW + b
+         l = xV + c
+         G = clamp(g, max=limit)
+         L = clamp(l, min=-limit, max=limit)
+         swiglu = G * sigmoid(alpha * G) * (L + beta)
+      where x is the input, W and V are weight matrices, b and c are bias vectors, and alpha, beta and limit are constant float parameters.
+      When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
+      When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
+      When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+      )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QMoE, 1,
     OpSchema()
-        .SetDoc("Quantized MoE")
+        .SetDoc(qMoE_ver1_doc)
         .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu",
+              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
               AttributeProto::STRING,
               std::string("relu"))
         .Attr("k",
@@ -1424,60 +1459,94 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Whether to normalize routing weights",
               AttributeProto::INT,
               static_cast<int64_t>(0))
-        .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("use_sparse_mixer",
+              "Whether to use sparse mixer",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Attr("expert_weight_bits",
               "Number of bits used in quantized weights. Default is 4 bits",
               AttributeProto::INT,
               static_cast<int64_t>(4))
+        .Attr("swiglu_fusion",
+              "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("swiglu_limit",
+              "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("activation_alpha",
+              "Alpha parameter used in activation function.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("activation_beta",
+              "Beta parameter used in activation function.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("block_size",
+              "Size of each quantization block along the K (input feature) dimension. "
+              "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
+              "If provided, both hidden_size and inter_size must be divisible by the block size. "
+              "Otherwise, there is no blocking and a whole column shares one scaling factor. ",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
-               "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape "
-               "(batch_size, sequence_length, hidden_size)",
+               "2D tensor with shape (num_tokens, hidden_size), or "
+               "3D tensor with shape (batch_size, sequence_length, hidden_size)",
                "T")
-        .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
+        .Input(1,
+               "router_probs",
+               "2D tensor with shape (num_tokens, num_experts)",
+               "T")
         .Input(2,
                "fc1_experts_weights",
-               "3D input tensor with shape (num_experts, hidden_size, inter_size) "
-               "or (num_experts, hidden_size, inter_size / 2)",
+               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / pack_size), "
+               "The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits.",
                "T1")
-        .Input(3, "fc1_scales", "2D input tensor with shape (num_experts, inter_size)", "T")
+        .Input(3,
+               "fc1_scales",
+               "2D tensor with shape (num_experts, fusion_size * inter_size), or "
+               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided.",
+               "T2")
         .Input(4,
                "fc1_experts_bias",
-               "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
+               "2D optional tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
         .Input(5,
                "fc2_experts_weights",
-               "3D input tensor with shape (num_experts, inter_size, hidden_size) "
-               "or (num_experts, inter_size, hidden_size / 2)",
+               "3D tensor with shape (num_experts, hidden_size, inter_size / pack_size)",
                "T1")
-        .Input(6, "fc2_scales", "2D input tensor with shape (num_experts, hidden_size)", "T")
+        .Input(6,
+               "fc2_scales",
+               "2D tensor with shape (num_experts, hidden_size), or "
+               "3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided.",
+               "T2")
         .Input(7,
                "fc2_experts_bias",
-               "2D optional input tensor with shape (num_experts, hidden_size)",
+               "2D optional tensor with shape (num_experts, hidden_size)",
                "T",
                OpSchema::Optional)
         .Input(8,
                "fc3_experts_weights",
-               "3D optional input tensor with shape (num_experts, hidden_size, inter_size) "
-               "or (num_experts, hidden_size, inter_size / 2)",
+               "3D optional tensor with shape (num_experts, inter_size, hidden_size / pack_size)",
                "T1",
                OpSchema::Optional)
         .Input(9,
                "fc3_scales",
-               "2D optional input tensor with shape (num_experts, inter_size)",
-               "T",
+               "2D optional tensor with shape (num_experts, inter_size), or "
+               "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size) when block_size is provided.",
+               "T2",
                OpSchema::Optional)
         .Input(10,
                "fc3_experts_bias",
-               "2D optional input tensor with shape (num_experts, inter_size)",
+               "2D optional tensor with shape (num_experts, inter_size)",
                "T",
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape "
-                "(batch_size, sequence_length, hidden_size)",
+                "output tensor with same shape of input",
                 "T")
-        .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output types to float or float16 tensors.")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("T1", {"tensor(uint8)"}, "Constrain weights type to uint8 tensors.")
+        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain scales type to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
@@ -3599,6 +3668,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             "(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.",
             AttributeProto::INT,
             static_cast<int64_t>(128))
+      .Attr("bits",
+            "Number of bits used for weight quantization. Must be either 4 or 8. ",
+            AttributeProto::INT,
+            static_cast<int64_t>(4))
       .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
       .Input(1,
              "indices",
@@ -3614,22 +3687,25 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 2, 0);
-        // Shape inference
+
+        // The first 3 inputs must have shape.
         if (!hasNInputShapes(ctx, 3)) {
           return;
         }
         const TensorShapeProto& data_shape = ctx.getInputType(0)->tensor_type().shape();
         const TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
         const TensorShapeProto& scales_shape = ctx.getInputType(2)->tensor_type().shape();
-        int r = data_shape.dim_size();
 
-        if (r < 1) {
-          fail_shape_inference("data tensor must have rank >= 1");
+        int r = data_shape.dim_size();
+        if (r <= 1) {
+          fail_shape_inference("data tensor must have rank > 1");
         }
 
         int gather_axis = static_cast<int>(getAttribute(ctx, "gather_axis", 0));
         int quantize_axis = static_cast<int>(getAttribute(ctx, "quantize_axis", 1));
+        int bits = static_cast<int>(getAttribute(ctx, "bits", 4));
         auto block_size = getAttribute(ctx, "block_size", 128);
+
         if (gather_axis < -r || gather_axis >= r) {
           fail_shape_inference("gather_axis must be in [-r, r-1]");
         }
@@ -3643,15 +3719,19 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         gather_axis = (gather_axis + r) % r;
         quantize_axis = (quantize_axis + r) % r;
 
-        if ((ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) && gather_axis != 0) {
-          fail_shape_inference("gather_axis must be 0, for uint8 data");
+        if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) {
+          if (gather_axis != 0) {
+            fail_shape_inference("gather_axis must be 0, for uint8 data");
+          }
+          // CPU implementation requires quantize_axis to be the last dimension right now.
+          // we are relaxing it in the spec and shape inference since other EP might not have such restriction.
         }
 
         if (scales_shape.dim_size() != r) {
           fail_shape_inference("scales must have the same rank as data");
         }
 
-        uint32_t components = ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8 ? 2 : 1;
+        uint32_t components = (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) ? (8 / bits) : 1;
         for (int i = 0; i < r; ++i) {
           if (!data_shape.dim(i).has_dim_value() ||
               !scales_shape.dim(i).has_dim_value() ||
@@ -3663,10 +3743,6 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
 
         // validate zero point shape
         if (ctx.hasInput(3)) {
-          if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) {
-            fail_type_inference("zero_points are not supported for uint8_t data type");
-          }
-
           if (!hasInputShape(ctx, 3)) {
             fail_shape_inference("zero_points shape must be known");
           }
@@ -3679,6 +3755,12 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
           for (int i = 0; i < r; ++i) {
             if (!zp_shape.dim(i).has_dim_value() ||
                 zp_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value()) {
+              if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8 &&
+                  bits == 4 &&
+                  i == quantize_axis &&
+                  zp_shape.dim(i).dim_value() == (scales_shape.dim(i).dim_value() + 1) / 2) {
+                continue;
+              }
               fail_shape_inference("zero points shape and scales shape do not match");
             }
           }
@@ -3686,19 +3768,27 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
 
         int q = indices_shape.dim_size();
         int out_rank = q + r - 1;
-        if (out_rank == 0) {
-          ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        auto* output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        output_shape->clear_dim();
+        for (int i = 0; i < gather_axis; ++i) {
+          *output_shape->add_dim() = data_shape.dim(i);
         }
-        for (int i = 0; i < out_rank; ++i) {
-          // For uint8_t data type the last dimension needs to be expanded back to actual dimension,
-          // because the data 2 int4s are stored packed in a single uint8_t.
-          auto last_dimension_components = (i == out_rank - 1) ? components : 1;
-          *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape()->add_dim() =
-              (i < gather_axis)
-                  ? data_shape.dim(i)
-              : (i >= gather_axis && i < gather_axis + q)
-                  ? indices_shape.dim(i - gather_axis)
-                  : data_shape.dim(i - q + 1) * last_dimension_components;
+        for (int i = 0; i < q; ++i) {
+          *output_shape->add_dim() = indices_shape.dim(i);
+        }
+        for (int i = gather_axis + 1; i < r; ++i) {
+          *output_shape->add_dim() = data_shape.dim(i);
+        }
+
+        // Find the correct dimension to expand and multiply it by components
+        if (components > 1) {
+          int quantize_output_dim_idx = (quantize_axis < gather_axis) ? quantize_axis : quantize_axis + q - 1;
+          if (quantize_output_dim_idx < out_rank) {
+            auto* dim_to_update = output_shape->mutable_dim(quantize_output_dim_idx);
+            if (dim_to_update->has_dim_value()) {
+              dim_to_update->set_dim_value(dim_to_update->dim_value() * components);
+            }
+          }
         }
       });
 

@@ -29,6 +29,11 @@ enum NODE_MODE_ONNX : uint8_t {
   BRANCH_NEQ = 5,
   BRANCH_MEMBER = 6,
   LEAF = 7,
+  // This rule is not part of ONNX standard. BRANCH_MEMBER has different implementations
+  // based on the set size. The first one is for small sets (< 31 categories),
+  // the second one is for big sets. All trees are defined with the first one.
+  // The kernel decides to switch to the second one if the set is too big.
+  BRANCH_MEMBER_BIGSET = 8,
 };
 
 static inline NODE_MODE_ONNX MakeTreeNodeMode(const std::string& input) {
@@ -53,7 +58,13 @@ static inline NODE_MODE_ONNX MakeTreeNodeMode(const std::string& input) {
   if (input == "BRANCH_MEMBER") {
     return NODE_MODE_ONNX::BRANCH_MEMBER;
   }
-  return NODE_MODE_ONNX::BRANCH_NEQ;
+  if (input == "BRANCH_MEMBER_BIGSET") {
+    return NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET;
+  }
+  if (input == "BRANCH_NEQ") {
+    return NODE_MODE_ONNX::BRANCH_NEQ;
+  }
+  ORT_THROW("Unexpected value for node_mode");
 }
 
 enum class POST_EVAL_TRANSFORM : int64_t {
@@ -77,7 +88,10 @@ static inline POST_EVAL_TRANSFORM MakeTransform(const std::string& input) {
   if (input == "SOFTMAX_ZERO") {
     return POST_EVAL_TRANSFORM::SOFTMAX_ZERO;
   }
-  return POST_EVAL_TRANSFORM::PROBIT;
+  if (input == "PROBIT") {
+    return POST_EVAL_TRANSFORM::PROBIT;
+  }
+  ORT_THROW("Unexpected value for post_eval_transform");
 }
 
 enum class AGGREGATE_FUNCTION : int64_t {
@@ -97,7 +111,10 @@ static inline AGGREGATE_FUNCTION MakeAggregateFunction(const std::string& input)
   if (input == "MIN") {
     return AGGREGATE_FUNCTION::MIN;
   }
-  return AGGREGATE_FUNCTION::MAX;
+  if (input == "MAX") {
+    return AGGREGATE_FUNCTION::MAX;
+  }
+  ORT_THROW("Unexpected value for aggregate_function");
 }
 
 enum class CAST_TO {
@@ -151,7 +168,10 @@ static inline KERNEL MakeKernel(const std::string& input) {
   if (input == "RBF") {
     return KERNEL::RBF;
   }
-  return KERNEL::SIGMOID;
+  if (input == "SIGMOID") {
+    return KERNEL::SIGMOID;
+  }
+  ORT_THROW("Unexpected value for KERNEL");
 }
 
 enum NORMALIZE {
@@ -445,7 +465,7 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         }
 
         if (use_mlas) {
-          MlasComputeSoftmax(s, s, num_batches, onnxruntime::narrow<size_t>(batch_size), false, false, threadpool);
+          MlasComputeSoftmax(s, s, num_batches, onnxruntime::narrow<size_t>(batch_size), false, false, 0.0f, threadpool);
         } else {
           while (s < s_end) {
             gsl::span<float> scores_for_batch(s, s + batch_size);

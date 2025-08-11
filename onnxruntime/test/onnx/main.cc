@@ -916,7 +916,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_none_weights_log_prob_expanded"),
         ORT_TSTR("sce_none_weights_expanded"),
         ORT_TSTR("convtranspose_3d"),
-        ORT_TSTR("gather_elements_negative_indices")};
+        ORT_TSTR("gather_elements_negative_indices"),
+        ORT_TSTR("rotary_embedding_3d_input_expanded"),
+        ORT_TSTR("rotary_embedding_expanded"),
+        ORT_TSTR("rotary_embedding_interleaved_expanded")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
 

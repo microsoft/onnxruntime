@@ -119,7 +119,7 @@ def setup(app):
     this = os.path.abspath(os.path.dirname(__file__))
     dest = os.path.join(this, "model.onnx")
     if not os.path.exists(dest):
-        import urllib.request
+        import urllib.request  # noqa: PLC0415
 
         url = "https://raw.githubusercontent.com/onnx/onnx/master/onnx/backend/test/data/node/test_sigmoid/model.onnx"
         urllib.request.urlretrieve(url, dest)

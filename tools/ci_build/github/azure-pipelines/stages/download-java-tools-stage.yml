@@ -4,7 +4,7 @@ stages:
   jobs:
   - job: Download_Java_Tools
     pool:
-      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      name: 'onnxruntime-Ubuntu2404-AMD-CPU'
       os: linux
     steps:
     - checkout: none

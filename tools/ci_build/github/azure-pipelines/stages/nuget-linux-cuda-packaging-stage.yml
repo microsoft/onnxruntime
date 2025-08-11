@@ -16,7 +16,7 @@ stages:
       clean: all
     timeoutInMinutes: 150
     pool:
-      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      name: 'onnxruntime-Ubuntu2404-AMD-CPU'
       os: linux
     variables:
     - name: CUDA_VERSION_MAJOR
@@ -65,7 +65,7 @@ stages:
       clean: all
     timeoutInMinutes: 180
     pool:
-      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      name: 'onnxruntime-Ubuntu2404-AMD-CPU'
       os: linux
     variables:
     - template: ../templates/common-variables.yml

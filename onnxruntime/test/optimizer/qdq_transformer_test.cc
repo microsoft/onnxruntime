@@ -12,6 +12,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/double_qdq_pairs_remover.h"
 #include "core/optimizer/qdq_transformer/weight_bias_quantization.h"
+#include "core/optimizer/qdq_transformer/where_dummy_dq.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
@@ -3218,6 +3219,79 @@ TEST(QDQTransformerTests, ReluQuantFusion_Level2Only) {
   test_case(TransformerLevel::Level2, -128);  // Will fuse Relu into QuantizeLinear.
   test_case(TransformerLevel::Level3, -128);  // Will fuse Relu into QuantizeLinear.
   test_case(TransformerLevel::Level3, 0);     // Will not fuse Relu into QuantizeLinear due to zero-point != -128
+}
+
+template <typename ScaleType, typename ZpType>
+void TestWhereWithDqInput(bool is_dq_1,
+                          bool is_dq_2,
+                          int expected_num_where,
+                          int expected_num_dq,
+                          int expected_num_q,
+                          bool expected_modified) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("WhereDummyDqTester", false, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  NodeArg* where_in1 = nullptr;
+  NodeArg* where_in2 = nullptr;
+  if (is_dq_1) {
+    // DQ
+    auto* dq_Input = builder.MakeInput<ZpType>({4, 3, 32}, 0.0, 1.0);
+    auto* dq_scale = builder.MakeInitializer<ScaleType>({}, 0.0, 1.0);
+    auto* dq_zp = builder.MakeInitializer<ZpType>({}, 0.0, 1.0);
+    where_in1 = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {dq_Input, dq_scale, dq_zp}, {where_in1});
+  } else {
+    where_in1 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  }
+  if (is_dq_2) {
+    // DQ
+    auto* dq_Input = builder.MakeInput<ZpType>({4, 3, 32}, 0.0, 1.0);
+    auto* dq_scale = builder.MakeInitializer<ScaleType>({}, 0.0, 1.0);
+    auto* dq_zp = builder.MakeInitializer<ZpType>({}, 0.0, 1.0);
+    where_in2 = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {dq_Input, dq_scale, dq_zp}, {where_in2});
+  } else {
+    where_in2 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  }
+
+  // Where
+  auto* where_cond = builder.MakeInputBool({4, 3, 32});
+  auto* where_out = builder.MakeIntermediate();
+  builder.AddNode("Where", {where_cond, where_in1, where_in2}, {where_out});
+
+  // Q
+  auto* q_scale = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  auto* q_zp = builder.MakeInitializer<uint16_t>({}, 0.0, 1.0);
+  auto* q_out = builder.MakeOutput();
+  builder.AddNode("QuantizeLinear", {where_out, q_scale, q_zp}, {q_out});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto where_optimizer = std::make_unique<WhereDummyDq>();
+  bool modified = false;
+  ASSERT_STATUS_OK(where_optimizer->Apply(graph, modified, logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Where"], expected_num_where);
+  ASSERT_EQ(op_to_count["DequantizeLinear"], expected_num_dq);
+  ASSERT_EQ(op_to_count["QuantizeLinear"], expected_num_q);
+  ASSERT_EQ(modified, expected_modified);
+
+  return;
+};
+
+TEST(QDQTransformerTests, WhereDummyDqTest) {
+  TestWhereWithDqInput<float, uint8_t>(true, true, 1, 2, 1, false);
+  TestWhereWithDqInput<float, uint8_t>(true, false, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint8_t>(false, true, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint8_t>(false, false, 1, 0, 1, false);
+  TestWhereWithDqInput<float, uint16_t>(true, true, 1, 2, 1, false);
+  TestWhereWithDqInput<float, uint16_t>(true, false, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint16_t>(false, true, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint16_t>(false, false, 1, 0, 1, false);
 }
 
 TEST(QDQTransformerTests, Concat) {

@@ -280,6 +280,50 @@ void CheckNhwcTransformerIsApplied(const PathString& ort_model_path,
       graph_op_counts_checker,
       graph_checker));
 };
+
+#if !defined(ORT_MINIMAL_BUILD)
+// if level 0 optimization is enabled the free dimension override should be enabled.
+void CheckFreeDimensionOverrideIsApplied(const PathString& model_path,
+                                         TransformerLevel level,
+                                         FreeDimensionOverrideType overrideType) {
+  SessionOptions so{};
+  so.graph_optimization_level = level;
+  if (overrideType == FreeDimensionOverrideType::Denotation) {
+    so.free_dimension_overrides.push_back(
+        onnxruntime::FreeDimensionOverride{"DATA_BATCH", overrideType, 1});
+    so.free_dimension_overrides.push_back(
+        onnxruntime::FreeDimensionOverride{"DATA_CHANNEL", overrideType, 42});
+  } else {
+    so.free_dimension_overrides.push_back(
+        onnxruntime::FreeDimensionOverride{"Dim1", overrideType, 1});
+    so.free_dimension_overrides.push_back(
+        onnxruntime::FreeDimensionOverride{"Dim2", overrideType, 42});
+  }
+
+  GraphCheckerFn graph_checker = [](const Graph& graph) {
+    // Verify that the shape of the input graph has the correct values
+
+    const auto& graph_inputs = graph.GetInputs();
+    ASSERT_TRUE(graph_inputs.size() == 1);  // This model only has a single input ('x')
+
+    const auto* input_shape = graph_inputs[0]->Shape();
+    ASSERT_TRUE(input_shape->dim_size() == 3);  // Model takes a 3D tensor as input; two of those dimensions are (were) free dimensions
+
+    ASSERT_TRUE(input_shape->dim(0).denotation() == "DATA_BATCH");
+    ASSERT_TRUE(input_shape->dim(0).has_dim_value());
+    ASSERT_TRUE(input_shape->dim(0).dim_value() == 1);
+
+    ASSERT_TRUE(input_shape->dim(1).denotation() == "DATA_CHANNEL");
+    ASSERT_TRUE(input_shape->dim(1).has_dim_value());
+    ASSERT_TRUE(input_shape->dim(1).dim_value() == 42);
+  };
+
+  ASSERT_NO_FATAL_FAILURE(LoadAndInitializeSession(
+      so, model_path,
+      nullptr,
+      graph_checker));
+};
+#endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace
 
 TEST(GraphRuntimeOptimizationTest, QDQConv) {
@@ -374,8 +418,14 @@ TEST(GraphRuntimeOptimizationTest, TestNhwcTransformerDirectlyUpdatesQLinearConv
                               {"com.microsoft.QLinearConv", n}}));
       });
 }
-
 #if !defined(ORT_MINIMAL_BUILD)
+TEST(GraphRuntimeOptimizationTest, TestFreeDimensionOverride) {
+  CheckFreeDimensionOverrideIsApplied(ORT_TSTR("testdata/abs_free_dimensions.onnx"), TransformerLevel::Default, FreeDimensionOverrideType::Denotation);
+  CheckFreeDimensionOverrideIsApplied(ORT_TSTR("testdata/abs_free_dimensions.onnx"), TransformerLevel::Default, FreeDimensionOverrideType::Name);
+  CheckFreeDimensionOverrideIsApplied(ORT_TSTR("testdata/abs_free_dimensions.onnx"), TransformerLevel::Level1, FreeDimensionOverrideType::Denotation);
+  CheckFreeDimensionOverrideIsApplied(ORT_TSTR("testdata/abs_free_dimensions.onnx"), TransformerLevel::Level1, FreeDimensionOverrideType::Name);
+}
+
 TEST(GraphRuntimeOptimizationTest, TestOnlyApplyMinimalBuildOptimizations) {
   // This test assumes that AttentionFusion is not included in the minimal build optimizations.
   // Update it if that changes.

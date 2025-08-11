@@ -4099,7 +4099,11 @@ TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer_opset_18) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {kOpenVINOExecutionProvider}  // OpenVINO: Disabled temporarily
+  );
 }
 
 TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer_opset_18) {

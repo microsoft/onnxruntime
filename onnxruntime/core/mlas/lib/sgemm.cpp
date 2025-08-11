@@ -1572,7 +1572,13 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-
+    // Override
+    if(GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
+        // TODO: Remove once KAI supports transposing for A
+        TransA != CBLAS_TRANSPOSE::CblasTrans &&
+        GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
+        return;
+    }
     //
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
@@ -1637,6 +1643,8 @@ MlasGemmBatch(
 size_t
 MLASCALL
 MlasGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K
     )
@@ -1661,6 +1669,22 @@ Return Value:
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
+    // KleidiAI or other override
+    #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if (GetMlasPlatform().MlasGemmPackBSizeOverride != nullptr &&
+        // TODO: Remove once KAI supports transposing for A
+        TransA != CBLAS_TRANSPOSE::CblasTrans) {
+        size_t bytes_required;
+        //TODO pass status by reference to indicate success/fail
+        bytes_required = GetMlasPlatform().MlasGemmPackBSizeOverride(TransA, TransB, N, K);
+        if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
+            return bytes_required;
+        }
+    }
+    #endif
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+
 
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
@@ -1676,6 +1700,7 @@ Return Value:
 void
 MLASCALL
 MlasGemmPackB(
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K,
@@ -1712,6 +1737,17 @@ Return Value:
 
 --*/
 {
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if (GetMlasPlatform().MlasGemmPackBOverride != nullptr  &&
+        // TODO: Remove once KAI supports transposing for A
+        TransA != CBLAS_TRANSPOSE::CblasTrans    &&
+        GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
+         return;
+    }
+#endif
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+
+
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
 

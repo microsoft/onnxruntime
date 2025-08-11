@@ -911,13 +911,16 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
   size_t ini_size_threshold = ep_context_gen_options.output_external_initializer_size_threshold;
   std::filesystem::path external_ini_path = ep_context_gen_options.output_external_initializers_file_path;
+  bool force_embed_external_ini = false;
   if (external_ini_path.empty()) {
-    // Set the threshold to the max so all initializers are forced into the Onnx file
+    // if no external ini file specified, set force_embed_external_ini to true to avoid intermedia file creation
+    // and force all initializers embed into the Onnx file
     ini_size_threshold = SIZE_MAX;
-    external_ini_path = "./model_ext_ini.bin";
+    force_embed_external_ini = true;
   }
 
   ModelSavingOptions model_saving_options{ini_size_threshold};
+  model_saving_options.force_embed_external_ini = force_embed_external_ini;
 
   if (saving_to_buffer) {
     ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());

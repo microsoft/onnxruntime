@@ -47,7 +47,7 @@ jobs:
         ${{ if eq(parameters.BuildArch, 'x64') }}:
           restoreSolution: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\x64\packages.config
         ${{ if eq(parameters.BuildArch, 'x86') }}:
-          restoreSolution: $(Build.SourcesDirectory)\.tools\ci_build\github\azure-pipelines\nuget\nuget_config\x86\packages.config
+          restoreSolution: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\x86\packages.config
         ${{ if eq(parameters.BuildArch, 'arm') }}:
           restoreSolution: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\x64\packages.config
         ${{ if eq(parameters.BuildArch, 'arm64') }}:

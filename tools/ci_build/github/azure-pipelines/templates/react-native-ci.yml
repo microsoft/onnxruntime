@@ -103,7 +103,6 @@ stages:
             python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
               --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
               --staging-dir "$(Build.BinariesDirectory)/ios-full-pod" \
-              --variant Full \
               --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
           displayName: Build iOS package and assemble pods
           env:
@@ -116,7 +115,7 @@ stages:
     # Test the iOS package
     - task: NodeTool@0
       inputs:
-        versionSpec: '20.x'
+        versionSpec: '22.x'
     - script:
         brew install coreutils ninja npm
       displayName: Install coreutils, ninja, npm
@@ -226,6 +225,3 @@ stages:
         displayName: Publish React Native Detox E2E test logs
 
     - template: explicitly-defined-final-tasks.yml
-
-
-

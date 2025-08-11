@@ -93,7 +93,8 @@ Status Sample(AllocatorPtr& allocator,
 
 #ifdef DEBUG_GENERATION
   dumper->Print("sorted_scores", sorted_scores.data(), parameters->batch_size, parameters->vocab_size);
-  dumper->Print("sorted_indices", sorted_indices.data(), parameters->batch_size, parameters->vocab_size);
+  std::vector<int64_t> sorted_indices_copy(sorted_indices.begin(), sorted_indices.end());
+  dumper->Print("sorted_indices", sorted_indices_copy.data(), parameters->batch_size, parameters->vocab_size);
 #endif
 
   gsl::span<T>& cumulative_probs = sampling_state->cumulative_probs;

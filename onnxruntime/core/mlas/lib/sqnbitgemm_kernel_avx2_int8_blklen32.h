@@ -1660,7 +1660,24 @@ MlasQ4Int8TileGemmKernelBlkLen32Avx2(
 
             if constexpr (NCols4 == 8) {
                 __m128 acc_0 = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
+
+                // Clang is not happy with the code here, even if constexpr `NCols4 == 8` is always false in this context:
+                //
+                // In file included from .../onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx2.cpp:26:
+                // .../onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx2_int8_blklen32.h:1663:49: error: array index 4 is past the end of the array (that has type '__m256[4]') [-Werror,-Warray-bounds]
+                //  1663 |                 __m128 acc_1 = FoldAccumulators(acc[4], acc[5], acc[6], acc[7]);
+                //       |                                                 ^   ~
+                // .../onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx2_int8_blklen32.h:1531:13: note: array 'acc' declared here
+                //  1531 |             __m256 acc[NCols4];
+                //       |             ^
+#if defined(__clang__) && defined(HAS_ARRAY_BOUNDS)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warray-bounds"
+#endif
                 __m128 acc_1 = FoldAccumulators(acc[4], acc[5], acc[6], acc[7]);
+#if defined(__clang__) && defined(HAS_ARRAY_BOUNDS)
+#pragma clang diagnostic pop
+#endif
                 if (BiasPtr != nullptr) {
                     acc_0 = _mm_add_ps(acc_0, _mm_loadu_ps(BiasPtr));
                     acc_1 = _mm_add_ps(acc_1, _mm_loadu_ps(BiasPtr + 4));

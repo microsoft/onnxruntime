@@ -6,6 +6,6 @@ stages:
     parameters:
       OnnxruntimeArch: 'x64'
       OnnxruntimeNodejsBindingArch: 'x64'
-      PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      PoolName: 'onnxruntime-Ubuntu2404-AMD-CPU'
       PackageJava: false
       PackageNodeJS: false

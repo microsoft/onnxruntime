@@ -17,12 +17,13 @@ namespace test {
 // Runs a model with a Flatten operator on the QNN CPU backend. Checks the graph node assignment
 // and that inference outputs for QNN EP and CPU EP match.
 template <typename DataType>
-static void RunFlattenTestOnCPU(const TestInputDef<DataType>& input_def,
-                                const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                ExpectedEPNodeAssignment expected_ep_assignment,
-                                int opset = 13) {
+static void RunFlattenTest(const TestInputDef<DataType>& input_def,
+                           const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                           ExpectedEPNodeAssignment expected_ep_assignment,
+                           const std::string& backend_name = "cpu",
+                           int opset = 13) {
   ProviderOptions provider_options;
-  provider_options["backend_type"] = "cpu";
+  provider_options["backend_type"] = backend_name;
 
   RunQnnModelTest(BuildOpTestCase<DataType>("Flatten", {input_def}, {}, attrs),
                   provider_options,
@@ -36,23 +37,23 @@ static void RunFlattenTestOnCPU(const TestInputDef<DataType>& input_def,
 
 // Test that Flatten input (rank4) with axis == 0.
 TEST_F(QnnCPUBackendTests, Flatten_Rank4_Axis0) {
-  RunFlattenTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
-                      {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
-                      ExpectedEPNodeAssignment::All);
+  RunFlattenTest(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                 {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                 ExpectedEPNodeAssignment::All);
 }
 
 // Test that Flatten input (rank4) with axis == -1.
 TEST_F(QnnCPUBackendTests, Flatten_Rank4_AxisNeg1) {
-  RunFlattenTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
-                      {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},
-                      ExpectedEPNodeAssignment::All);
+  RunFlattenTest(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                 {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},
+                 ExpectedEPNodeAssignment::All);
 }
 
 // Test that Flatten input (rank5) with axis == 2.
 TEST_F(QnnCPUBackendTests, Flatten_Rank5_Axis2) {
-  RunFlattenTestOnCPU(TestInputDef<float>({1, 2, 3, 4, 4}, false, -10.0f, 10.0f),
-                      {utils::MakeAttribute("axis", static_cast<int64_t>(2))},
-                      ExpectedEPNodeAssignment::All);
+  RunFlattenTest(TestInputDef<float>({1, 2, 3, 4, 4}, false, -10.0f, 10.0f),
+                 {utils::MakeAttribute("axis", static_cast<int64_t>(2))},
+                 ExpectedEPNodeAssignment::All);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -179,6 +180,73 @@ TEST_F(QnnHTPBackendTests, Flatten_Int32_Rank5_Axis2) {
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
+#if defined(_M_ARM64)
+//
+// GPU tests:
+//
+
+// float rank4 axis == 0.
+TEST_F(QnnGPUBackendTests, Flatten_Rank4_Axis0) {
+  RunFlattenTest(TestInputDef<float>({2, 3, 4, 5}, false, -10.0f, 10.0f),
+                 {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                 ExpectedEPNodeAssignment::All,
+                 "gpu");
+}
+
+// float rank4 axis == -1.
+TEST_F(QnnGPUBackendTests, Flatten_Rank4_AxisNeg1) {
+  RunFlattenTest(TestInputDef<float>({2, 3, 4, 5}, false, -10.0f, 10.0f),
+                 {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},
+                 ExpectedEPNodeAssignment::All,
+                 "gpu");
+}
+
+// float rank4 axis == 1.
+TEST_F(QnnGPUBackendTests, Flatten_Rank4_Axis1) {
+  RunFlattenTest(TestInputDef<float>({2, 3, 4, 5}, false, -10.0f, 10.0f),
+                 {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+                 ExpectedEPNodeAssignment::All,
+                 "gpu");
+}
+
+// float rank4 axis == 2.
+TEST_F(QnnGPUBackendTests, Flatten_Rank4_Axis2) {
+  RunFlattenTest(TestInputDef<float>({2, 3, 4, 5}, false, -10.0f, 10.0f),
+                 {utils::MakeAttribute("axis", static_cast<int64_t>(2))},
+                 ExpectedEPNodeAssignment::All,
+                 "gpu");
+}
+
+// float rank5 axis == 2.
+TEST_F(QnnGPUBackendTests, Flatten_Rank5_Axis2) {
+  RunFlattenTest(TestInputDef<float>({1, 2, 3, 4, 4}, false, -10.0f, 10.0f),
+                 {utils::MakeAttribute("axis", static_cast<int64_t>(2))},
+                 ExpectedEPNodeAssignment::All,
+                 "gpu");
+}
+
+// int32 rank4 Flatten.
+TEST_F(QnnGPUBackendTests, Flatten_Int32_Rank4_Axis2) {
+  std::vector<int32_t> input_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+  RunFlattenTest<int32_t>(TestInputDef<int32_t>({1, 3, 2, 2}, false, input_data),
+                          {utils::MakeAttribute("axis", static_cast<int64_t>(2))},
+                          ExpectedEPNodeAssignment::All,
+                          "gpu");
+}
+
+// int32 rank4 Flatten.
+TEST_F(QnnGPUBackendTests, Flatten_Int32_Rank5_Axis2) {
+  std::vector<int32_t> input_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+                                     12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23};
+  RunFlattenTest<int32_t>(TestInputDef<int32_t>({1, 3, 2, 2, 2}, false, input_data),
+                          {utils::MakeAttribute("axis", static_cast<int64_t>(2))},
+                          ExpectedEPNodeAssignment::All,
+                          "gpu");
+}
+
+#endif  // defined(_M_ARM64) GPU tests
+
 }  // namespace test
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

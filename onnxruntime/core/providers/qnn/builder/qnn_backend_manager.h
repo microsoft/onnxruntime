@@ -27,6 +27,7 @@
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -158,8 +159,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
                            HtpPerformanceMode htp_performance_mode);
 
-  Status SetRpcControlLatency(uint32_t htp_power_config_client_id,
-                              uint32_t rpc_control_latency);
+  Status SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
+                            uint32_t rpc_control_latency,
+                            uint32_t rpc_polling_time);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -217,6 +219,11 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // notifyParam is expected to be a pointer to a vector of node names associated with that context handle
   // For each node name, a mapping to the context handle will be created
   void ProcessContextFromBinListAsync(Qnn_ContextHandle_t handle, void* notifyParam);
+
+  // Sets the context priority to the given value, if valid
+  Status SetContextPriority(ContextPriority context_priority);
+  // Resets the context priority to the session default as defined by context_priority_
+  Status ResetContextPriority();
 
  private:
   Status LoadBackend();
@@ -388,13 +395,13 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
       }
       ORT_RETURN_IF(QNN_SUCCESS != result, "Failed to register op package to backend. Error: ", QnnErrorHandleToString(result));
       LOGS(*logger_, VERBOSE) << "Successfully register the op package.";
-      std::string op_package_for_registration = std::filesystem::path(op_package.path).stem().string();
-      // remove lib prefix in Linux
-      std::string prefix = "lib";
-      if (op_package_for_registration.compare(0, prefix.size(), prefix) == 0) {
-        op_package_for_registration = op_package_for_registration.substr(prefix.size());
+      std::string op_package_for_registration = op_package.interface;
+      std::string suffix = "InterfaceProvider";
+      if (op_package_for_registration.size() >= suffix.size() &&
+          op_package_for_registration.compare(op_package_for_registration.size() - suffix.size(), suffix.size(), suffix) == 0) {
+        op_package_for_registration.erase(op_package_for_registration.size() - suffix.size());
       }
-      qnn::RegisterUDOBuilder(op_package.op_type, op_package_for_registration);
+      registerUDO(op_package.op_type, op_package_for_registration);
     }
 
     return Status::OK();

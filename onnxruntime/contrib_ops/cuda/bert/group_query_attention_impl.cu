@@ -460,11 +460,18 @@ Status FlashAttention(
   void* present_value = reinterpret_cast<void*>(const_cast<T*>(data.present_value));
   void* cos_cache = reinterpret_cast<void*>(const_cast<T*>(data.cos_cache));
   void* sin_cache = reinterpret_cast<void*>(const_cast<T*>(data.sin_cache));
+  void* head_sink = reinterpret_cast<void*>(const_cast<T*>(data.head_sink));
 
   bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
+
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR("Q", reinterpret_cast<T*>(query), batch_size, sequence_length, num_heads, head_size);
+  DUMP_TENSOR("K", reinterpret_cast<T*>(present_key), batch_size, parameters.seqlen_present_kv_cache, kv_num_heads, head_size);
+  DUMP_TENSOR("V", reinterpret_cast<T*>(present_value), batch_size, parameters.seqlen_present_kv_cache, kv_num_heads, head_size);
+
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
       device_prop, stream, query, present_key, present_value, key, value, data.output,
-      reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache, /*block_table*/ nullptr,
+      reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache, head_sink, /*block_table*/ nullptr,
       batch_size, num_heads, kv_num_heads, head_size, sequence_length,
       parameters.seqlen_present_kv_cache, kv_sequence_length, parameters.rotary_dim,
       scale, parameters.softcap, is_causal, is_bf16, parameters.use_smooth_softmax, past_bsnh, parameters.num_splits,
@@ -475,7 +482,6 @@ Status FlashAttention(
   //   ORT_RETURN_IF_ERROR(LaunchLeftPadLast(parameters, data, stream, device_prop.maxThreadsPerBlock));
   // }
 
-  DUMP_TENSOR_INIT();
   DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
 
   return Status::OK();
@@ -680,6 +686,11 @@ template Status QkvToContext<half>(
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<half>& data);
 
+template Status LaunchUnpackQKV<half, LAYOUT_BNSH>(
+    const half* packed_qkv, half* unpacked_q, half* unpacked_k, half* unpacked_v, const int num_heads,
+    const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
+    cudaStream_t stream, const int max_threads_per_block);
+
 template struct GroupQueryAttentionData<BFloat16>;
 
 template Status QkvToContext<BFloat16>(
@@ -688,11 +699,6 @@ template Status QkvToContext<BFloat16>(
     Stream* ort_stream,
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<BFloat16>& data);
-
-template Status LaunchUnpackQKV<half, LAYOUT_BNSH>(
-    const half* packed_qkv, half* unpacked_q, half* unpacked_k, half* unpacked_v, const int num_heads,
-    const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
-    cudaStream_t stream, const int max_threads_per_block);
 
 template Status LaunchUnpackQKV<BFloat16, LAYOUT_BNSH>(
     const BFloat16* packed_qkv, BFloat16* unpacked_q, BFloat16* unpacked_k, BFloat16* unpacked_v, const int num_heads,

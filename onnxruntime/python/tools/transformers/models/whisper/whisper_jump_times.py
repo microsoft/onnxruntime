@@ -156,7 +156,7 @@ class WhisperJumpTimes(torch.nn.Module):
             "alignment_heads",
             "sot_sequence_length",
             "segment_length",
-            *[f"cross_qk_{i}" for i in range(self.config.num_hidden_layers)],
+            *[f"cross_qk_{i}" for i in range(self.config.decoder_layers)],
         ]
         return input_names
 

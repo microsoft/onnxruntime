@@ -23,7 +23,7 @@ from sphinx.util import logging
 
 def get_template():
     try:
-        from jinja2 import Template
+        from jinja2 import Template  # noqa: PLC0415
     except ImportError:  # pragma no cover
 
         class Template:
@@ -251,7 +251,7 @@ _attribute_conversion_functions = {
 
 
 def _populate__get_all_schemas_with_history():
-    import onnxruntime.capi.onnxruntime_pybind11_state as rtpy
+    import onnxruntime.capi.onnxruntime_pybind11_state as rtpy  # noqa: PLC0415
 
     get_schemas = rtpy.get_all_operator_schema or rtpy.get_all_opkernel_def
 
@@ -885,7 +885,7 @@ def setup(app):
     Sphinx extension `onnx_sphinx` displays documentation
     of all ONNX Operators.
     """
-    import sphinx
+    import sphinx  # noqa: PLC0415
 
     app.add_config_value("onnx_doc_folder", "operators", "env")
     app.add_config_value("max_opsets", {}, "env")

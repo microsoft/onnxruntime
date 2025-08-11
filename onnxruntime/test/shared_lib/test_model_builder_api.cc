@@ -118,6 +118,9 @@ struct TestAllocator : public OrtAllocator {
     Reserve = [](struct OrtAllocator* /*this*/, size_t /*size*/) -> void* {
       throw std::runtime_error("This should not be used");
     };
+
+    GetStats = nullptr;
+    AllocOnStream = nullptr;
   }
 
   // initializers that are used directly by the model. as there's no copy they must remain valid.

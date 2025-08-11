@@ -20,13 +20,17 @@ stages:
         artifactName: 'onnxruntime-android-full-aar'
         job_name_suffix: 'Full'
         publish_executables: '1'
-        pool_name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+        pool_name: 'onnxruntime-Ubuntu2404-AMD-CPU'
         enable_code_sign: false
 
 # build Python packages
 # Linux GPU only
 - ${{ if parameters.BuildPythonPackages }}:
-  - template: stages/py-gpu-packaging-stage.yml
+  - template: stages/py-linux-gpu-stage.yml
     parameters:
-      enable_linux_cuda: true
-      cuda_version: 12.2
+        arch: 'x86_64'
+        machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
+        extra_build_arg: ''
+        cmake_build_type: Release
+        cuda_version: 12.2
+        docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2

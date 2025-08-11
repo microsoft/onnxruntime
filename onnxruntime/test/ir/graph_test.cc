@@ -1894,14 +1894,21 @@ TEST_F(GraphTest, AddRemoveInitializerHandling) {
   ASSERT_EQ(graph_proto_from_graph.initializer_size(), 2);
 
   auto validate_proto = [&](const GraphProto& proto) {
+    // Due to changes in a way we generate ToGraphProto() const, we can not guarantee the order of initializers
+    // in the generated GraphProto.
     auto initializers = proto.initializer();
-    // we expect '2' to be before '1' due to the remove moving the last initializer into the slot of the one being
-    // removed in order to free memory and only move one entry
-    EXPECT_EQ(initializers[0].name(), init2.name());
-    EXPECT_EQ(initializers[0].int32_data()[0], 2);
+    auto hit = std::find_if(initializers.begin(), initializers.end(),
+                            [&init](const ONNX_NAMESPACE::TensorProto& t) { return t.name() == init.name(); });
+    EXPECT_NE(hit, initializers.end())
+        << "Initializer with name '" << init.name() << "' not found in the proto.";
+    EXPECT_EQ(hit->int32_data()[0], 1);
 
-    EXPECT_EQ(initializers[1].name(), init.name());
-    EXPECT_EQ(initializers[1].int32_data()[0], 1);
+    hit = std::find_if(initializers.begin(), initializers.end(),
+                       [&init2](const ONNX_NAMESPACE::TensorProto& t) { return t.name() == init2.name(); });
+    EXPECT_NE(hit, initializers.end())
+        << "Initializer with name '" << init2.name() << "' not found in the proto.";
+
+    EXPECT_EQ(hit->int32_data()[0], 2);
   };
 
   validate_proto(graph_proto_from_const_graph);

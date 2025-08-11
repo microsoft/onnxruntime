@@ -241,9 +241,9 @@ static LearningModelSession CreateSession(LearningModel model) {
     WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
   } else {
     WINML_EXPECT_THROW_SPECIFIC(
-      session = LearningModelSession(model, device),
-      winrt::hresult_error,
-      [](const winrt::hresult_error& e) -> bool { return e.code() == DXGI_ERROR_UNSUPPORTED; }
+      session = LearningModelSession(model, device), winrt::hresult_error, [](const winrt::hresult_error& e) -> bool {
+        return e.code() == DXGI_ERROR_UNSUPPORTED;
+      }
     );
   }
 
@@ -294,9 +294,9 @@ static void EvaluateSessionAndCloseModelHelper(LearningModelDeviceKind kind, boo
   if (close_model_on_session_creation) {
     // ensure that the model has been closed
     WINML_EXPECT_THROW_SPECIFIC(
-      LearningModelSession(model, device, options),
-      winrt::hresult_error,
-      [](const winrt::hresult_error& e) -> bool { return e.code() == E_INVALIDARG; }
+      LearningModelSession(model, device, options), winrt::hresult_error, [](const winrt::hresult_error& e) -> bool {
+        return e.code() == E_INVALIDARG;
+      }
     );
   } else {
     WINML_EXPECT_NO_THROW(LearningModelSession(model, device, options));
@@ -418,9 +418,9 @@ static void CloseSession() {
   std::vector<int64_t> shape = {1, 3, 224, 224};
   auto tensor_input = TensorFloat::CreateFromArray(shape, input);
   WINML_EXPECT_THROW_SPECIFIC(
-    LearningModelBinding binding(session),
-    winrt::hresult_error,
-    [](const winrt::hresult_error& e) -> bool { return e.code() == RO_E_CLOSED; }
+    LearningModelBinding binding(session), winrt::hresult_error, [](const winrt::hresult_error& e) -> bool {
+      return e.code() == RO_E_CLOSED;
+    }
   );
 }
 
@@ -867,19 +867,20 @@ static void STFT(
 static void ModelBuilding_MelWeightMatrix() {
 #if !defined(BUILD_INBOX)
   std::vector<int64_t> output_shape = {INT64(9), INT64(8)};
-  auto builder = LearningModelBuilder::Create(17)
-                   .Outputs()
-                   .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-                     L"Output.MelWeightMatrix", TensorKind::Float, output_shape
-                   ))
-                   .Operators()
-                   .Add(Operator(L"MelWeightMatrix")
-                          .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(8)}))
-                          .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(16)}))
-                          .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(8192)}))
-                          .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
-                          .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {8192 / 2.f}))
-                          .SetOutput(L"output", L"Output.MelWeightMatrix"));
+  auto builder =
+    LearningModelBuilder::Create(17)
+      .Outputs()
+      .Add(
+        LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelWeightMatrix", TensorKind::Float, output_shape)
+      )
+      .Operators()
+      .Add(Operator(L"MelWeightMatrix")
+             .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(8)}))
+             .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(16)}))
+             .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(8192)}))
+             .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
+             .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {8192 / 2.f}))
+             .SetOutput(L"output", L"Output.MelWeightMatrix"));
   auto model = builder.CreateModel();
 
   LearningModelSession session(model);
@@ -923,9 +924,11 @@ static void MelSpectrogramOnThreeToneSignal(
       .Inputs()
       .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, signal_shape))
       .Outputs()
-      .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-        L"Output.MelSpectrogram", TensorKind::Float, mel_spectrogram_shape
-      ))
+      .Add(
+        LearningModelBuilder::CreateTensorFeatureDescriptor(
+          L"Output.MelSpectrogram", TensorKind::Float, mel_spectrogram_shape
+        )
+      )
       .Operators()
       .Add(Operator(L"HannWindow")
              .SetConstant(L"size", TensorInt64Bit::CreateFromArray({}, {INT64(window_size)}))
@@ -1028,20 +1031,23 @@ static void ModelBuilding_StandardDeviationNormalization() {
   int64_t channels = 3;
   std::vector<int64_t> input_shape = {1, height, width, channels};
   std::vector<int64_t> output_shape = {1, channels, height, width};
-  auto sub_model = LearningModelBuilder::Create(13)
-                     .Inputs()
-                     .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-                       L"Input", L"The NHWC image", TensorKind::Float, input_shape
-                     ))
-                     .Inputs()
-                     .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Means", TensorKind::Float, {channels}))
-                     .Outputs()
-                     .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-                       L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, input_shape
-                     ))
-                     .Operators()
-                     .Add(Operator(L"Sub").SetInput(L"A", L"Input").SetInput(L"B", L"Means").SetOutput(L"C", L"Output"))
-                     .CreateModel();
+  auto sub_model =
+    LearningModelBuilder::Create(13)
+      .Inputs()
+      .Add(
+        LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape)
+      )
+      .Inputs()
+      .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Means", TensorKind::Float, {channels}))
+      .Outputs()
+      .Add(
+        LearningModelBuilder::CreateTensorFeatureDescriptor(
+          L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, input_shape
+        )
+      )
+      .Operators()
+      .Add(Operator(L"Sub").SetInput(L"A", L"Input").SetInput(L"B", L"Means").SetOutput(L"C", L"Output"))
+      .CreateModel();
   auto div_model =
     LearningModelBuilder::Create(13)
       .Inputs()
@@ -1051,9 +1057,11 @@ static void ModelBuilding_StandardDeviationNormalization() {
       .Inputs()
       .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"StdDevs", TensorKind::Float, {channels}))
       .Outputs()
-      .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-        L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, input_shape
-      ))
+      .Add(
+        LearningModelBuilder::CreateTensorFeatureDescriptor(
+          L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, input_shape
+        )
+      )
       .Operators()
       .Add(Operator(L"Div").SetInput(L"A", L"Input").SetInput(L"B", L"StdDevs").SetOutput(L"C", L"Output"))
       .CreateModel();
@@ -1064,9 +1072,11 @@ static void ModelBuilding_StandardDeviationNormalization() {
         LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape)
       )
       .Outputs()
-      .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-        L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, output_shape
-      ))
+      .Add(
+        LearningModelBuilder::CreateTensorFeatureDescriptor(
+          L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, output_shape
+        )
+      )
       .Operators()
       .Add(Operator(L"Transpose")
              .SetInput(L"data", L"Input")

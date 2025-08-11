@@ -1,7 +1,17 @@
 trigger: none
 
+parameters:
+- name: IsReleaseBuild
+  displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
+
 variables:
   DisableDockerDetector: true
+  ${{ if eq(parameters.IsReleaseBuild, false) }}:
+     IsReleaseBuild: false
+  ${{ else }}:
+     IsReleaseBuild: true
 
 resources:
   repositories:
@@ -90,6 +100,19 @@ extends:
           - output: pipelineArtifact
             path: '$(Build.ArtifactStagingDirectory)/merged'
             artifact: drop_Windows_Build_NuGet_Packaging
+          - ${{if and(eq(parameters.IsReleaseBuild, false), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))}}:
+            - output: nuget
+              useDotNetTask: false # The default is false to use the NuGetCommand task. Set to true to use the DotNetCoreCLI task to publish packages.
+              packagesToPush: '$(Build.ArtifactStagingDirectory)/merged/*.nupkg;!$(Build.ArtifactStagingDirectory)/merged/*.symbols.nupkg'
+              packageParentPath: '$(Build.ArtifactStagingDirectory)/merged'
+              publishVstsFeed: PublicPackages/ORT-Nightly  # Required when pushing to internal feed.
+              nuGetFeedType: internal  # Change to external when publishing to external feed
+              allowPackageConflicts: true # Optional. NuGetCommand task only.
+              publishPackageMetadata: true # Optional
+          - ${{ else }}:
+            - output: pipelineArtifact
+              targetPath: $(Build.ArtifactStagingDirectory)/merged
+              artifactName: "packages"
 
         steps:
         - task: PowerShell@2
@@ -289,29 +312,3 @@ extends:
                        "toolVersion": "6.2.9304.0"
                    }
                ]
-
-      - job: NuGet_Publishing
-        dependsOn:
-        - NuGet_Packaging
-        condition: succeeded()
-        templateContext:
-          inputs:
-            - input: pipelineArtifact
-              artifactName: drop_Windows_Build_NuGet_Packaging
-              targetPath: $(Build.BinariesDirectory)/merged
-          outputs:
-            - output: nuget
-              # condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main')) # Optional condition
-              useDotNetTask: false # The default is false to use the NuGetCommand task. Set to true to use the DotNetCoreCLI task to publish packages.
-              packagesToPush: '$(Build.BinariesDirectory)/packages/*.nupkg;!$(Build.BinariesDirectory)/packages/*.symbols.nupkg'
-              packageParentPath: '$(Build.BinariesDirectory)/'
-              publishVstsFeed: PublicPackages/ORT-Nightly  # Required when pushing to internal feed.
-              nuGetFeedType: internal  # Change to external when publishing to external feed
-              allowPackageConflicts: true # Optional. NuGetCommand task only.
-              publishPackageMetadata: true # Optional
-        steps:
-        - powershell: |
-           Rename-Item  -Path merged packages
-
-          workingDirectory: '$(Build.BinariesDirectory)'
-          displayName: 'Rename nuget folder'

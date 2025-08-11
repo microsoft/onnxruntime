@@ -44,7 +44,7 @@ class SAM2ImageEncoder(nn.Module):
         """
         nvtx_helper = None
         if enable_nvtx_profile:
-            from nvtx_helper import NvtxHelper
+            from nvtx_helper import NvtxHelper  # noqa: PLC0415
 
             nvtx_helper = NvtxHelper(["image_encoder", "post_process"])
 
@@ -149,9 +149,9 @@ def export_image_encoder_onnx(
             )
             onnx_program.optimize()
             onnx_program.save(onnx_model_path + ".dynamo.onnx", external_data=False)
-            import onnx
+            import onnx  # noqa: PLC0415
 
-            from onnxruntime.transformers.dynamo_onnx_helper import DynamoOnnxHelper
+            from onnxruntime.transformers.dynamo_onnx_helper import DynamoOnnxHelper  # noqa: PLC0415
 
             onnx_model = onnx.load_model(onnx_model_path + ".dynamo.onnx", load_external_data=True)
             if dynamic_batch_axes:
@@ -165,7 +165,7 @@ def export_image_encoder_onnx(
             if clear_dynamo_metadata:
                 onnx_model_helper.clear_metadata()
 
-            import os
+            import os  # noqa: PLC0415
 
             if os.path.exists(onnx_model_path):
                 os.remove(onnx_model_path)

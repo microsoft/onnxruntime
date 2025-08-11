@@ -158,7 +158,7 @@ def main():
 
     path = os.path.join(os.getcwd(), args.perf_result_path)
     if not os.path.exists(path):
-        from pathlib import Path
+        from pathlib import Path  # noqa: PLC0415
 
         Path(path).mkdir(parents=True, exist_ok=True)
 

@@ -316,7 +316,8 @@ class PlannerTest : public ::testing::Test {
      public:
       // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
       // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-      virtual WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType /*notification_owner_ep_type*/, const OrtDevice::DeviceType /*executor_ep_type*/) const override {
+      virtual WaitNotificationFn GetWaitHandle(const OrtDevice& /*notification_owner_device*/,
+                                               const OrtDevice& /*executor_device*/) const override {
         return nullptr;
       }
 

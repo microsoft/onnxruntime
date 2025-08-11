@@ -204,7 +204,7 @@ TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale_AU16_WU8) {
 
 // Test accuracy of 8-bit QDQ LayerNorm with a dynamic scale input.
 //
-// TODO(adrianlizarraga): Fails to finalize with QNN SDK 2.22. Still fails on QNN SDK 2.35.0.
+// TODO(adrianlizarraga): Fails to finalize with QNN SDK 2.22. Still fails on QNN SDK 2.36.1.
 // Verbose logs:
 // Starting stage: Graph Transformations and Optimizations
 // C:\...\QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:203:ERROR:could not create op: q::flat_to_vtcm

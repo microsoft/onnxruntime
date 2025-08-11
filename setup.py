@@ -59,6 +59,7 @@ rocm_version = None
 is_migraphx = False
 is_openvino = False
 is_qnn = False
+qnn_version = None
 # The following arguments are mutually exclusive
 if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
@@ -67,6 +68,7 @@ if wheel_name_suffix == "gpu":
         is_cuda_version_12 = cuda_version.startswith("12.")
 elif parse_arg_remove_boolean(sys.argv, "--use_migraphx"):
     is_migraphx = True
+    package_name = "onnxruntime-migraphx"
 elif parse_arg_remove_boolean(sys.argv, "--use_openvino"):
     is_openvino = True
     package_name = "onnxruntime-openvino"
@@ -88,8 +90,7 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     is_qnn = True
     package_name = "onnxruntime-qnn"
-elif is_migraphx:
-    package_name = "onnxruntime-migraphx" if not nightly_build else "ort-migraphx-nightly"
+    qnn_version = parse_arg_remove_string(sys.argv, "--qnn_version=")
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -157,16 +158,20 @@ try:
             with open("onnxruntime/capi/_ld_preload.py", "a") as f:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
-                    for library in to_preload:
-                        f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
+                    f.writelines(
+                        '_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library)
+                        for library in to_preload
+                    )
 
         def _rewrite_ld_preload_cuda(self, to_preload):
             with open("onnxruntime/capi/_ld_preload.py", "a") as f:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
                     f.write("try:\n")
-                    for library in to_preload:
-                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
+                    f.writelines(
+                        '    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library)
+                        for library in to_preload
+                    )
                     f.write("except OSError:\n")
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "1"\n')
@@ -176,8 +181,10 @@ try:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
                     f.write("try:\n")
-                    for library in to_preload:
-                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
+                    f.writelines(
+                        '    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library)
+                        for library in to_preload
+                    )
                     f.write("except OSError:\n")
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
@@ -187,8 +194,10 @@ try:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
                     f.write("try:\n")
-                    for library in to_preload:
-                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
+                    f.writelines(
+                        '    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library)
+                        for library in to_preload
+                    )
                     f.write("except OSError:\n")
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_NV_TENSORRT_RTX_UNAVAILABLE"] = "1"\n')
@@ -273,7 +282,6 @@ try:
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
                 self._rewrite_ld_preload_tensorrt(to_preload_nv_tensorrt_rtx)
                 self._rewrite_ld_preload(to_preload_cann)
-
             else:
                 pass
 
@@ -402,10 +410,13 @@ else:
     libs.extend(["onnxruntime_providers_nv_tensorrt_rtx.dll"])
     libs.extend(["onnxruntime_providers_openvino.dll"])
     libs.extend(["onnxruntime_providers_cuda.dll"])
+    libs.extend(["onnxruntime_providers_migraphx.dll"])
     libs.extend(["onnxruntime_providers_vitisai.dll"])
     libs.extend(["onnxruntime_providers_qnn.dll"])
     # DirectML Libs
     libs.extend(["DirectML.dll"])
+    # WebGPU/Dawn Libs
+    libs.extend(["dxcompiler.dll", "dxil.dll"])
     # QNN V68/V73 dependencies
     qnn_deps = [
         "QnnCpu.dll",
@@ -423,6 +434,26 @@ else:
     libs.extend(qnn_deps)
     if nightly_build:
         libs.extend(["onnxruntime_pywrapper.dll"])
+    migraphx_deps = [
+        "amd_comgr0602.dll",
+        "amd_comgr0604.dll",
+        "amd_comgr0700.dll",
+        "hiprtc0602.dll",
+        "hiprtc0604.dll",
+        "hiprtc0700.dll",
+        "hiprtc-builtins0602.dll",
+        "hiprtc-builtins0604.dll",
+        "hiprtc-builtins0700.dll",
+        "migraphx-hiprtc-driver.exe",
+        "migraphx.dll",
+        "migraphx_c.dll",
+        "migraphx_cpu.dll",
+        "migraphx_device.dll",
+        "migraphx_gpu.dll",
+        "migraphx_onnx.dll",
+        "migraphx_tf.dll",
+    ]
+    libs.extend(migraphx_deps)
 
 if is_manylinux:
     if is_openvino:
@@ -466,7 +497,7 @@ examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join("datasets", x) for x in examples_names]
 
 # Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)
-extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm AI Hub Proprietary License.pdf"]
+extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm_LICENSE.pdf"]
 
 # Description
 readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"
@@ -734,9 +765,9 @@ with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
 
-def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
+def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version):
     sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
-    from onnxruntime_collect_build_info import find_cudart_versions
+    from onnxruntime_collect_build_info import find_cudart_versions  # noqa: PLC0415
 
     version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
     with open(version_path, "w") as f:
@@ -763,9 +794,11 @@ def save_build_and_package_info(package_name, version_number, cuda_version, rocm
                     )
         elif rocm_version:
             f.write(f"rocm_version = '{rocm_version}'\n")
+        elif qnn_version:
+            f.write(f"qnn_version = '{qnn_version}'\n")
 
 
-save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
+save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version)
 
 extras_require = {}
 if package_name == "onnxruntime-gpu" and is_cuda_version_12:

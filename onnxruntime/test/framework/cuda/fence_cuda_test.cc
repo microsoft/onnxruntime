@@ -67,7 +67,7 @@ static common::Status LoadInferenceSessionFromModel(FenceCudaTestInferenceSessio
     tensor_proto.set_data_type(PROTO_DATATYPE);                                                             \
     for (auto v : value) tensor_proto.PROTO_ADD_DATA(v);                                                    \
     tensor_proto.set_name(name);                                                                            \
-    return graph_utils::AddInitializerWithExternalData(graph, tensor_proto);                                \
+    return graph_utils::AddInitializer(graph, tensor_proto);                                                \
   }
 
 CREATE_INITIALIZER_FUNC(float, TensorProto_DataType_FLOAT, add_float_data)

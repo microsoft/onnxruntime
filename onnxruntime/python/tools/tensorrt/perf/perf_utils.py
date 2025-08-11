@@ -108,7 +108,7 @@ def get_output(command):
 
 
 def find(regex_string):
-    import glob
+    import glob  # noqa: PLC0415
 
     results = glob.glob(regex_string)
     results.sort()

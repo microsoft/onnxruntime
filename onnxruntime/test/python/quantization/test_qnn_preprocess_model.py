@@ -6,6 +6,7 @@
 # --------------------------------------------------------------------------
 
 import math
+import os
 import unittest
 from pathlib import Path
 
@@ -135,6 +136,12 @@ class TestQnnPreprocessModel(unittest.TestCase):
         The new preprocessed model should also have external data.
         """
         model = self.build_model((1, 2, 3), [2.0, 2.0, 2.0], [1.0, 1.0, 1.0])
+
+        # remove external data leftovers from previous runs
+        for file in ["weights.bin", "weights2.bin"]:
+            if os.path.exists(file):
+                os.remove(file)
+
         onnx.save_model(
             model,
             "model.onnx",

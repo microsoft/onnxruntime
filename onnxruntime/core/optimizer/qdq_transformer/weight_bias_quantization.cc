@@ -131,14 +131,14 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       weight_scale_proto.set_name(graph.GenerateNodeArgName(node.Name() + "_weight_scale"));
       weight_scale_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
       weight_scale_proto.mutable_float_data()->Add(scale);
-      weight_scale_arg = &graph_utils::AddInitializerWithExternalData(graph, weight_scale_proto);
+      weight_scale_arg = &graph_utils::AddInitializer(graph, weight_scale_proto);
 
       // Weight zero point initializer.
       ONNX_NAMESPACE::TensorProto weight_zp_proto;
       weight_zp_proto.set_name(graph.GenerateNodeArgName(node.Name() + "_weight_zp"));
       weight_zp_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
       weight_zp_proto.mutable_int32_data()->Add(static_cast<int32_t>(zp));
-      NodeArg& weight_zp_arg = graph_utils::AddInitializerWithExternalData(graph, weight_zp_proto);
+      NodeArg& weight_zp_arg = graph_utils::AddInitializer(graph, weight_zp_proto);
 
       // Q from float32 to int8.
       ONNX_NAMESPACE::TypeProto weight_q_type_proto;

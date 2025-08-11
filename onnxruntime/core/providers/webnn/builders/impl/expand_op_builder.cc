@@ -56,7 +56,7 @@ Status ExpandOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
 
-  emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(output_shape));
+  emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_shape));
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("expand", input, output_shape_arr, options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();

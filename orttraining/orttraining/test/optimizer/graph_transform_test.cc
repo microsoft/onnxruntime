@@ -1235,7 +1235,7 @@ TEST_F(GraphTransformationTests, Conv1dReplacement_TakeEffect) {
         auto out_channel = 64;
         auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
 
-        auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel / group, 1}, {-1.0f, 1.0f});
+        auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel / group, 1}, -1.0f, 1.0f);
         auto* conv_output = builder.MakeOutput();
 
         auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});
@@ -1280,8 +1280,8 @@ TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect1) {
       auto out_channel = 64;
       auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
 
-      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel, 1}, {-1.0f, 1.0f});
-      auto* bias_arg = builder.MakeInitializer<float>({out_channel}, {-1.0f, 1.0f});
+      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel, 1}, -1.0f, 1.0f);
+      auto* bias_arg = builder.MakeInitializer<float>({out_channel}, -1.0f, 1.0f);
       auto* conv_output = builder.MakeOutput();
 
       auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg, bias_arg}, {conv_output});
@@ -1314,7 +1314,7 @@ TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect2) {
       auto out_channel = 64;
       auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
 
-      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel, 1}, {-1.0f, 1.0f});
+      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel, 1}, -1.0f, 1.0f);
       auto* conv_output = builder.MakeOutput();
 
       auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});
@@ -1347,7 +1347,7 @@ TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect3) {
       auto out_channel = 64;
       auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
 
-      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel, 1}, {-1.0f, 1.0f});
+      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel, 1}, -1.0f, 1.0f);
       auto* conv_output = builder.MakeOutput();
 
       auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});

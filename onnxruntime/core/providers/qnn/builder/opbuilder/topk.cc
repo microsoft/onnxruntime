@@ -257,7 +257,7 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                         "Failed to add tensor.");
       ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_input_name,
                                                         QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                        "Cast",
+                                                        QNN_OP_CAST,
                                                         {cast_input_name},
                                                         {output_name},
                                                         {}),

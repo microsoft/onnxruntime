@@ -272,9 +272,9 @@ class ImageTests : public ::testing::Test {
       LearningModelBinding binding(session);
       auto ifv = FileHelpers::LoadImageFeatureValue(L"1080.jpg");
       WINML_EXPECT_THROW_SPECIFIC(
-        binding.Bind(L"add_3", ifv),
-        winrt::hresult_error,
-        [](const winrt::hresult_error& e) -> bool { return e.code() == WINML_ERR_INVALID_BINDING; }
+        binding.Bind(L"add_3", ifv), winrt::hresult_error, [](const winrt::hresult_error& e) -> bool {
+          return e.code() == WINML_ERR_INVALID_BINDING;
+        }
       );
     }
   }
@@ -658,9 +658,9 @@ TEST_F(ImageTests, LoadInvalidBindModelWithoutImageMetadata) {
     {1, 3, 227, 227}, winrt::single_threaded_vector<uint8_t>(std::vector<uint8_t>(3 * 227 * 227))
   );
   WINML_EXPECT_THROW_SPECIFIC(
-    model_binding.Bind(L"data", tensor_uint8),
-    winrt::hresult_error,
-    [](const winrt::hresult_error& e) -> bool { return e.code() == WINML_ERR_INVALID_BINDING; }
+    model_binding.Bind(L"data", tensor_uint8), winrt::hresult_error, [](const winrt::hresult_error& e) -> bool {
+      return e.code() == WINML_ERR_INVALID_BINDING;
+    }
   );
 
   // Should fail if tensor has smaller dimensions/type
@@ -668,9 +668,9 @@ TEST_F(ImageTests, LoadInvalidBindModelWithoutImageMetadata) {
     {1, 3, 22, 22}, winrt::single_threaded_vector<float>(std::vector<float>(3 * 22 * 22))
   );
   WINML_EXPECT_THROW_SPECIFIC(
-    model_binding.Bind(L"data", tensor),
-    winrt::hresult_error,
-    [](const winrt::hresult_error& e) -> bool { return e.code() == WINML_ERR_SIZE_MISMATCH; }
+    model_binding.Bind(L"data", tensor), winrt::hresult_error, [](const winrt::hresult_error& e) -> bool {
+      return e.code() == WINML_ERR_SIZE_MISMATCH;
+    }
   );
 }
 

@@ -311,7 +311,7 @@ static void RunAttentionTest(
                    kv_sequence_length, past_present_share_buffer, use_scale, do_neox_rotary);
 }
 
-TEST(AttentionTest, AttentionBatch1) {
+TEST(ContribOpAttentionTest, AttentionBatch1) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -340,7 +340,7 @@ TEST(AttentionTest, AttentionBatch1) {
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
 
-TEST(AttentionTest, AttentionBatch1WithQKVAttr1) {
+TEST(ContribOpAttentionTest, AttentionBatch1WithQKVAttr1) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -381,7 +381,7 @@ TEST(AttentionTest, AttentionBatch1WithQKVAttr1) {
                    0, false, false, disable_rocm, false, qkv_sizes);
 }
 
-TEST(AttentionTest, AttentionBatch1WithQKVAttr2) {
+TEST(ContribOpAttentionTest, AttentionBatch1WithQKVAttr2) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -419,7 +419,7 @@ TEST(AttentionTest, AttentionBatch1WithQKVAttr2) {
                    0, false, false, disable_rocm, false, qkv_sizes);
 }
 
-TEST(AttentionTest, AttentionBatch1AttentionBias) {
+TEST(ContribOpAttentionTest, AttentionBatch1AttentionBias) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -460,7 +460,7 @@ TEST(AttentionTest, AttentionBatch1AttentionBias) {
                    0, disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, attention_bias);
 }
 
-TEST(AttentionTest, AttentionBatch2AttentionBias) {
+TEST(ContribOpAttentionTest, AttentionBatch2AttentionBias) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -506,7 +506,7 @@ TEST(AttentionTest, AttentionBatch2AttentionBias) {
                    0, disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, attention_bias);
 }
 
-TEST(AttentionTest, AttentionBatch1_Float16) {
+TEST(ContribOpAttentionTest, AttentionBatch1_Float16) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -535,7 +535,7 @@ TEST(AttentionTest, AttentionBatch1_Float16) {
                    batch_size, sequence_length, hidden_size, number_of_heads, true);
 }
 
-TEST(AttentionTest, AttentionBatch2) {
+TEST(ContribOpAttentionTest, AttentionBatch2) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -568,7 +568,7 @@ TEST(AttentionTest, AttentionBatch2) {
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
 
-TEST(AttentionTest, AttentionMaskPartialSequence) {
+TEST(ContribOpAttentionTest, AttentionMaskPartialSequence) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -598,7 +598,7 @@ TEST(AttentionTest, AttentionMaskPartialSequence) {
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
 
-TEST(AttentionTest, AttentionMaskExceedSequence) {
+TEST(ContribOpAttentionTest, AttentionMaskExceedSequence) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -628,7 +628,7 @@ TEST(AttentionTest, AttentionMaskExceedSequence) {
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
 
-TEST(AttentionTest, AttentionNoMaskIndex) {
+TEST(ContribOpAttentionTest, AttentionNoMaskIndex) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -658,7 +658,7 @@ TEST(AttentionTest, AttentionNoMaskIndex) {
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
 
-TEST(AttentionTest, AttentionUnidirectional) {
+TEST(ContribOpAttentionTest, AttentionUnidirectional) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -855,7 +855,7 @@ void RawAttentionEmptyPastState(bool past_present_share_buffer) {
   }
 }
 
-TEST(AttentionTest, Causal_EmptyPastState) {
+TEST(ContribOpAttentionTest, Causal_EmptyPastState) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 64;
@@ -918,11 +918,11 @@ TEST(AttentionTest, Causal_EmptyPastState) {
   }
 }
 
-TEST(AttentionTest, AttentionEmptyPastState) {
+TEST(ContribOpAttentionTest, AttentionEmptyPastState) {
   RawAttentionEmptyPastState(false);
 }
 
-TEST(AttentionTest, AttentionEmptyPastState_SharedPastPresent) {
+TEST(ContribOpAttentionTest, AttentionEmptyPastState_SharedPastPresent) {
   RawAttentionEmptyPastState(true);
 }
 
@@ -1037,11 +1037,11 @@ void RawAttentionPastStateBatch1(bool past_present_share_buffer) {
   }
 }
 
-TEST(AttentionTest, AttentionPastStateBatch1) {
+TEST(ContribOpAttentionTest, AttentionPastStateBatch1) {
   RawAttentionPastStateBatch1(false);
 }
 
-TEST(AttentionTest, AttentionPastStateBatch1_SharedPastPresent) {
+TEST(ContribOpAttentionTest, AttentionPastStateBatch1_SharedPastPresent) {
   RawAttentionPastStateBatch1(true);
 }
 
@@ -1170,11 +1170,11 @@ void RawAttentionPastStateBatch2(bool past_present_share_buffer) {
   }
 }
 
-TEST(AttentionTest, AttentionPastStateBatch2) {
+TEST(ContribOpAttentionTest, AttentionPastStateBatch2) {
   RawAttentionPastStateBatch2(false);
 }
 
-TEST(AttentionTest, AttentionPastStateBatch2_SharedPastPresent) {
+TEST(ContribOpAttentionTest, AttentionPastStateBatch2_SharedPastPresent) {
   RawAttentionPastStateBatch2(true);
 }
 
@@ -1295,15 +1295,15 @@ void RawAttentionPastStateBatch2WithPadding(bool past_present_share_buffer) {
   }
 }
 
-TEST(AttentionTest, AttentionPastStateBatch2WithPadding) {
+TEST(ContribOpAttentionTest, AttentionPastStateBatch2WithPadding) {
   RawAttentionPastStateBatch2WithPadding(false);
 }
 
-TEST(AttentionTest, AttentionPastStateBatch2WithPadding_SharedPastPresent) {
+TEST(ContribOpAttentionTest, AttentionPastStateBatch2WithPadding_SharedPastPresent) {
   RawAttentionPastStateBatch2WithPadding(true);
 }
 
-TEST(AttentionTest, AttentionBatch2MaskIndex2) {
+TEST(ContribOpAttentionTest, AttentionBatch2MaskIndex2) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1344,7 +1344,7 @@ TEST(AttentionTest, AttentionBatch2MaskIndex2) {
                    AttentionMaskType::MASK_1D_END_START);
 }
 
-TEST(AttentionTest, AttentionRightPaddingMaskIndex2) {
+TEST(ContribOpAttentionTest, AttentionRightPaddingMaskIndex2) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1382,7 +1382,7 @@ TEST(AttentionTest, AttentionRightPaddingMaskIndex2) {
                    AttentionMaskType::MASK_1D_END_START);
 }
 
-TEST(AttentionTest, AttentionLeftPaddingMaskIndex2) {
+TEST(ContribOpAttentionTest, AttentionLeftPaddingMaskIndex2) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1420,7 +1420,7 @@ TEST(AttentionTest, AttentionLeftPaddingMaskIndex2) {
                    AttentionMaskType::MASK_1D_END_START);
 }
 
-TEST(AttentionTest, AttentionBatch2LeftPaddingMaskIndex2) {
+TEST(ContribOpAttentionTest, AttentionBatch2LeftPaddingMaskIndex2) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1462,7 +1462,7 @@ TEST(AttentionTest, AttentionBatch2LeftPaddingMaskIndex2) {
                    AttentionMaskType::MASK_1D_END_START);
 }
 
-TEST(AttentionTest, Attention3DMask) {
+TEST(ContribOpAttentionTest, Attention3DMask) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1508,7 +1508,7 @@ TEST(AttentionTest, Attention3DMask) {
                    AttentionMaskType::MASK_3D_ATTENTION);
 }
 
-TEST(AttentionTest, AttentionBatch2AttentionMask) {
+TEST(ContribOpAttentionTest, AttentionBatch2AttentionMask) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1550,7 +1550,7 @@ TEST(AttentionTest, AttentionBatch2AttentionMask) {
                    AttentionMaskType::MASK_2D_KEY_PADDING);
 }
 
-TEST(AttentionTest, AttentionUnidirectional3DMask) {
+TEST(ContribOpAttentionTest, AttentionUnidirectional3DMask) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1596,7 +1596,7 @@ TEST(AttentionTest, AttentionUnidirectional3DMask) {
                    AttentionMaskType::MASK_3D_ATTENTION);
 }
 
-TEST(AttentionTest, AttentionUnidirectionalAttentionMask) {
+TEST(ContribOpAttentionTest, AttentionUnidirectionalAttentionMask) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1638,7 +1638,7 @@ TEST(AttentionTest, AttentionUnidirectionalAttentionMask) {
                    AttentionMaskType::MASK_2D_KEY_PADDING);
 }
 
-TEST(AttentionTest, AttentionWithNormFactor) {
+TEST(ContribOpAttentionTest, AttentionWithNormFactor) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1683,7 +1683,7 @@ TEST(AttentionTest, AttentionWithNormFactor) {
                    true /*use_scale*/);
 }
 
-TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
+TEST(ContribOpAttentionTest, AttentionWithNeoXRotaryEmbedding) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 64;
@@ -1717,7 +1717,7 @@ TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
                    true /*use_scale*/, true /*use_neox_rotary_embedding*/);
 }
 
-TEST(AttentionTest, AttentionMask1DEndNoWord) {
+TEST(ContribOpAttentionTest, AttentionMask1DEndNoWord) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1760,7 +1760,7 @@ TEST(AttentionTest, AttentionMask1DEndNoWord) {
                    AttentionMaskType::MASK_1D_KEY_SEQ_LEN);
 }
 
-TEST(AttentionTest, AttentionMask1DNoWord) {
+TEST(ContribOpAttentionTest, AttentionMask1DNoWord) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1803,7 +1803,7 @@ TEST(AttentionTest, AttentionMask1DNoWord) {
                    AttentionMaskType::MASK_1D_END_START);
 }
 
-TEST(AttentionTest, AttentionMask2DNoWord) {
+TEST(ContribOpAttentionTest, AttentionMask2DNoWord) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1846,7 +1846,7 @@ TEST(AttentionTest, AttentionMask2DNoWord) {
                    AttentionMaskType::MASK_2D_KEY_PADDING);
 }
 
-TEST(AttentionTest, AttentionMask3DNoWord) {
+TEST(ContribOpAttentionTest, AttentionMask3DNoWord) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1889,7 +1889,7 @@ TEST(AttentionTest, AttentionMask3DNoWord) {
                    AttentionMaskType::MASK_3D_ATTENTION);
 }
 
-TEST(AttentionTest, AttentionDummyMask2D) {
+TEST(ContribOpAttentionTest, AttentionDummyMask2D) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1931,7 +1931,7 @@ TEST(AttentionTest, AttentionDummyMask2D) {
                    AttentionMaskType::MASK_2D_DUMMY);
 }
 
-TEST(AttentionTest, Attention4DMask) {
+TEST(ContribOpAttentionTest, Attention4DMask) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1977,7 +1977,7 @@ TEST(AttentionTest, Attention4DMask) {
                    disable_cpu);
 }
 
-TEST(AttentionTest, AttentionMaskIndexOutOfRange) {
+TEST(ContribOpAttentionTest, AttentionMaskIndexOutOfRange) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -2021,7 +2021,7 @@ TEST(AttentionTest, AttentionMaskIndexOutOfRange) {
 
 #if !defined(__wasm__)
 // TODO: fix in web assembly
-TEST(AttentionTest, AttentionPastState_dynamic) {
+TEST(ContribOpAttentionTest, AttentionPastState_dynamic) {
   // create rand inputs
   RandomValueGenerator random{};
 
@@ -2051,7 +2051,7 @@ TEST(AttentionTest, AttentionPastState_dynamic) {
 }
 #endif  //! defined(__wasm__)
 
-TEST(AttentionTest, AttentionPrunedModel) {
+TEST(ContribOpAttentionTest, AttentionPrunedModel) {
   int batch_size = 2;
   int sequence_length = 2;
   // test input_hidden_size > hidden_size
@@ -2174,7 +2174,7 @@ static void RunModelWithRandomInput(
   }
 }
 
-TEST(AttentionTest, Attention_Mask2D_Fp32_B2_S32) {
+TEST(ContribOpAttentionTest, Attention_Mask2D_Fp32_B2_S32) {
   constexpr int batch_size = 2;
   constexpr int sequence_length = 32;
 
@@ -2196,7 +2196,7 @@ TEST(AttentionTest, Attention_Mask2D_Fp32_B2_S32) {
       false);
 }
 
-TEST(AttentionTest, Attention_Mask1D_Fp32_B2_S64) {
+TEST(ContribOpAttentionTest, Attention_Mask1D_Fp32_B2_S64) {
   constexpr int batch_size = 2;
   constexpr int sequence_length = 64;
 
@@ -2217,7 +2217,7 @@ TEST(AttentionTest, Attention_Mask1D_Fp32_B2_S64) {
 }
 
 // This case can be used to test flash attention using Ampere GPU
-TEST(AttentionTest, Attention_NoMask_Fp16) {
+TEST(ContribOpAttentionTest, Attention_NoMask_Fp16) {
   constexpr int batch_size = 2;
   std::vector<int> sequence_lengths{1, 7, 8};
   for (const auto& sequence_length : sequence_lengths) {
@@ -2236,7 +2236,7 @@ TEST(AttentionTest, Attention_NoMask_Fp16) {
 }
 
 // This test is disabled since it is flaky.
-TEST(AttentionTest, DISABLED_Attention_Mask1D_Fp16_B2_FusedNoPadding) {
+TEST(ContribOpAttentionTest, DISABLED_Attention_Mask1D_Fp16_B2_FusedNoPadding) {
   constexpr int batch_size = 2;
 
   // Sequence lengths used in TRT fused attention fp16 v2 kernels.
@@ -2263,7 +2263,7 @@ TEST(AttentionTest, DISABLED_Attention_Mask1D_Fp16_B2_FusedNoPadding) {
 
 #ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
-TEST(AttentionTest, SharedPrepackedWeights) {
+TEST(ContribOpAttentionTest, SharedPrepackedWeights) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;

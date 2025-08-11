@@ -629,6 +629,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
     std::unordered_map<std::string, OrtValue> feeds;
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
+    number_of_nodes_ = model.MainGraph().NumberOfNodes();
 
     // Run the model
     if (ctx_.run_with_specified_eps) {
@@ -793,6 +794,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
     ORT_RETHROW;
   }
 }
+
+int BaseTester::GetNumberOfNodesAfterRun() const { return number_of_nodes_; }
 
 void BaseTester::ExecuteModelForEps(
     std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers,

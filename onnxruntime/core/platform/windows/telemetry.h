@@ -41,11 +41,11 @@ class WindowsTelemetry : public Telemetry {
 
   void LogProcessInfo() const override;
 
-  void LogSessionCreationStart() const override;
+  void LogSessionCreationStart(uint32_t session_id) const override;
 
-  void LogEvaluationStop() const override;
+  void LogEvaluationStop(uint32_t session_id) const override;
 
-  void LogEvaluationStart() const override;
+  void LogEvaluationStart(uint32_t session_id) const override;
 
   void LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
                           const std::string& model_producer_version, const std::string& model_domain,
@@ -70,6 +70,14 @@ class WindowsTelemetry : public Telemetry {
   void LogDriverInfoEvent(const std::string_view device_class,
                           const std::wstring_view& driver_names,
                           const std::wstring_view& driver_versions) const override;
+
+  void LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
+                          const std::vector<std::string>& requested_execution_provider_ids,
+                          const std::vector<std::string>& available_execution_provider_ids) const override;
+
+  void LogProviderOptions(const std::string& provider_id,
+                          const std::string& provider_options_string,
+                          bool captureState) const override;
 
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,

@@ -3,6 +3,7 @@
 
 #include "allocator_adapters.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/environment.h"
@@ -21,37 +22,56 @@ namespace {
 // `IAllocatorImplWrappingOrtAllocator` to ensure compatibility.
 constexpr uint32_t kOrtAllocatorReserveMinVersion = 18;
 constexpr uint32_t kOrtAllocatorStatsMinVersion = 23;
+constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
 }  // namespace
 
 OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxruntime::AllocatorPtr&& i_allocator)
     : i_allocator_(std::move(i_allocator)) {
   OrtAllocator::version = ORT_API_VERSION;
-  OrtAllocator::Alloc =
-      [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Alloc(size); };
-  OrtAllocator::Free =
-      [](OrtAllocator* this_, void* p) { static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Free(p); };
-  OrtAllocator::Info =
-      [](const OrtAllocator* this_) { return static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Info(); };
+
+  OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) {
+    return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Alloc(size);
+  };
+
+  OrtAllocator::Free = [](OrtAllocator* this_, void* p) {
+    static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Free(p);
+  };
+
+  OrtAllocator::Info = [](const OrtAllocator* this_) {
+    return static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Info();
+  };
+
   if (OrtAllocator::version >= kOrtAllocatorReserveMinVersion) {
-    OrtAllocator::Reserve =
-        [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Reserve(size); };
+    OrtAllocator::Reserve = [](OrtAllocator* this_, size_t size) {
+      return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Reserve(size);
+    };
   }
+
   if (OrtAllocator::version >= kOrtAllocatorStatsMinVersion) {
-    OrtAllocator::GetStats =
-        [](const OrtAllocator* this_, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
+    OrtAllocator::GetStats = [](const OrtAllocator* this_, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
       API_IMPL_BEGIN
       auto kvp = std::make_unique<OrtKeyValuePairs>();
-      auto stats_map = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
-      kvp->Copy(stats_map);
+      const auto& stats_map = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
+      kvp->CopyFromMap(std::map<std::string, std::string>(stats_map.begin(), stats_map.end()));
       *stats = reinterpret_cast<OrtKeyValuePairs*>(kvp.release());
       return nullptr;
       API_IMPL_END
+    };
+  }
+
+  if (OrtAllocator::version >= kOrtAllocatorAllocOnStreamMinVersion) {
+    OrtAllocator::AllocOnStream = [](OrtAllocator* this_, size_t size, OrtSyncStream* stream) {
+      return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->AllocOnStream(size, stream);
     };
   }
 }
 
 void* OrtAllocatorImplWrappingIAllocator::Alloc(size_t size) {
   return i_allocator_->Alloc(size);
+}
+
+void* OrtAllocatorImplWrappingIAllocator::AllocOnStream(size_t size, OrtSyncStream* stream) {
+  return i_allocator_->AllocOnStream(size, static_cast<Stream*>(stream));
 }
 
 void* OrtAllocatorImplWrappingIAllocator::Reserve(size_t size) {
@@ -105,6 +125,18 @@ void* IAllocatorImplWrappingOrtAllocator::Alloc(size_t size) {
   return ort_allocator_->Alloc(ort_allocator_.get(), size);
 }
 
+bool IAllocatorImplWrappingOrtAllocator::IsStreamAware() const {
+  return ort_allocator_->version >= kOrtAllocatorAllocOnStreamMinVersion && ort_allocator_->AllocOnStream != nullptr;
+}
+
+void* IAllocatorImplWrappingOrtAllocator::AllocOnStream(size_t size, Stream* stream) {
+  if (ort_allocator_->version >= kOrtAllocatorAllocOnStreamMinVersion && ort_allocator_->AllocOnStream) {
+    return ort_allocator_->AllocOnStream(ort_allocator_.get(), size, static_cast<OrtSyncStream*>(stream));
+  }
+
+  return ort_allocator_->Alloc(ort_allocator_.get(), size);
+}
+
 void* IAllocatorImplWrappingOrtAllocator::Reserve(size_t size) {
   if (ort_allocator_->version >= kOrtAllocatorReserveMinVersion && ort_allocator_->Reserve) {
     return ort_allocator_->Reserve(ort_allocator_.get(), size);
@@ -130,25 +162,27 @@ void IAllocatorImplWrappingOrtAllocator::GetStats(AllocatorStats* stats) {
 
     std::unique_ptr<OrtKeyValuePairs*, decltype(release_fn)> kvp_guard(&kvps, release_fn);
 
-    for (size_t i = 0; i < kvps->keys.size(); ++i) {
-      if (strcmp(kvps->keys[i], "Limit") == 0) {
-        stats->bytes_limit = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "InUse") == 0) {
-        stats->bytes_in_use = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "TotalAllocated") == 0) {
-        stats->total_allocated_bytes = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "MaxInUse") == 0) {
-        stats->max_bytes_in_use = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "NumAllocs") == 0) {
-        stats->num_allocs = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "NumReserves") == 0) {
-        stats->num_reserves = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "NumArenaExtensions") == 0) {
-        stats->num_arena_extensions = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "NumArenaShrinkages") == 0) {
-        stats->num_arena_shrinkages = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "MaxAllocSize") == 0) {
-        stats->max_alloc_size = std::stoll(kvps->values[i]);
+    const auto keys = kvps->Keys(), values = kvps->Values();
+
+    for (size_t i = 0; i < keys.size(); ++i) {
+      if (strcmp(keys[i], "Limit") == 0) {
+        stats->bytes_limit = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "InUse") == 0) {
+        stats->bytes_in_use = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "TotalAllocated") == 0) {
+        stats->total_allocated_bytes = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "MaxInUse") == 0) {
+        stats->max_bytes_in_use = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "NumAllocs") == 0) {
+        stats->num_allocs = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "NumReserves") == 0) {
+        stats->num_reserves = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "NumArenaExtensions") == 0) {
+        stats->num_arena_extensions = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "NumArenaShrinkages") == 0) {
+        stats->num_arena_shrinkages = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "MaxAllocSize") == 0) {
+        stats->max_alloc_size = std::stoll(values[i]);
       }
     }
   }

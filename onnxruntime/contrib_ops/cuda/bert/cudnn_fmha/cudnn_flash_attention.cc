@@ -391,8 +391,7 @@ void run(
   // Allocate workspace.
   auto bytes = mha_graph->get_workspace_size();
 
-  IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(
-      allocator, bytes, false, stream, WaitCudaNotificationOnDevice);
+  IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, bytes, false, stream);
 
   CUDNN_FE_CALL_THROW(mha_graph->execute(handle, variant_pack, buffer.get()));
 }

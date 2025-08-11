@@ -22,6 +22,7 @@ jobs:
     strategy:
       matrix:
         vcpkg_option: [novcpkg, vcpkg]
+        wgsl_template: [static, dynamic]
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
@@ -123,10 +124,11 @@ jobs:
             --build_nodejs `
             --build_java `
             --use_webgpu `
-            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg' || '' }} `
+            --wgsl_template ${{ matrix.wgsl_template }} `
+            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} `
             --cmake_extra_defines `
             onnxruntime_BUILD_UNIT_TESTS=ON `
-            onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=ON
+            onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }

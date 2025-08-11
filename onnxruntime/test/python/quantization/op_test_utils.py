@@ -387,7 +387,7 @@ def check_op_type_count(testcase, model_path, **kwargs):
                 f"op_type {op_type} count not same",
             )
         except AssertionError as e:
-            from onnx_array_api.plotting.text_plot import onnx_simple_text_plot
+            from onnx_array_api.plotting.text_plot import onnx_simple_text_plot  # noqa: PLC0415
 
             raise AssertionError(
                 f"Assert failed:\noptype={optype2count}\nkwargs={kwargs}\n{onnx_simple_text_plot(model)}"

@@ -128,16 +128,10 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                            const WebnnDeviceType /* device_type */,
                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-
-  const auto& op_type = node.OpType();
   const std::string axes_name = GetTensorName(input_defs, 1);
   // If the optional input 'axes' is provided, it must be an initializer.
   if (!axes_name.empty() && !graph_viewer.GetConstantInitializer(axes_name)) {
-    LOGS(logger, VERBOSE) << "Input axes of " << op_type << " must be a constant";
+    LOGS(logger, VERBOSE) << "Input axes of " << node.OpType() << " must be a constant";
     return false;
   }
 

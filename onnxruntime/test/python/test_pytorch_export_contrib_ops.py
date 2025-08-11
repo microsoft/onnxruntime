@@ -18,7 +18,7 @@ from onnxruntime.tools import pytorch_export_contrib_ops
 
 
 def _torch_version_lower_than(version: str):
-    from packaging.version import Version as LooseVersion  # pylint: disable=C0415
+    from packaging.version import Version as LooseVersion  # pylint: disable=C0415  # noqa: PLC0415
 
     return LooseVersion(torch.__version__) < LooseVersion(version)
 

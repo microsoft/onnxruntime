@@ -12,7 +12,7 @@ from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
 from parameterized import parameterized
-from test_gqa_cuda import attention_ref, has_flash_attention
+from test_gqa import attention_ref, has_flash_attention
 
 from onnxruntime import InferenceSession, SessionOptions
 
@@ -303,24 +303,16 @@ def mha_func(q, k, v, config):
 def attention_qkvpacked_ref(
     qkv,
     key_padding_mask=None,
-    dropout_p=0.0,
-    dropout_mask=None,
     causal=False,
-    upcast=True,
-    reorder_ops=False,
     use_smooth_softmax=False,
 ):
     return attention_ref(
         qkv[:, :, 0],
         qkv[:, :, 1],
         qkv[:, :, 2],
-        key_padding_mask,
-        key_padding_mask,
-        dropout_p,
-        dropout_mask,
-        upcast=upcast,
+        query_padding_mask=key_padding_mask,
+        key_padding_mask=key_padding_mask,
         causal=causal,
-        reorder_ops=reorder_ops,
         use_smooth_softmax=use_smooth_softmax,
     )
 
@@ -344,7 +336,7 @@ def parity_check_mha(
         )
         out = out.detach().cpu().numpy()
         # Pytorch to compare
-        out_ref, _ = attention_qkvpacked_ref(qkv, key_padding_mask, 0.0, None, causal=False)
+        out_ref, _ = attention_qkvpacked_ref(qkv, key_padding_mask, causal=False)
         out_ref = out_ref.detach().cpu().numpy()
     else:
         q = torch.randn(

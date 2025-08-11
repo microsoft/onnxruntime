@@ -336,11 +336,12 @@ class TensorIdTracker {
     copyOld: boolean,
   ): Promise<MLTensor> {
     const context = this.tensorManager.getMLContext(sessionId);
+    const opLimits = this.tensorManager.getMLOpSupportLimits(sessionId);
     let fallbackDataType: MLOperandDataType | undefined;
     // Check if the context supports the data type. If not, try to use the fallback data type.
-    if (!context.opSupportLimits().input.dataTypes.includes(dataType)) {
+    if (!opLimits?.input.dataTypes.includes(dataType)) {
       fallbackDataType = webnnDataTypeToFallback.get(dataType);
-      if (!fallbackDataType || !context.opSupportLimits().input.dataTypes.includes(fallbackDataType)) {
+      if (!fallbackDataType || opLimits?.input.dataTypes.includes(fallbackDataType)) {
         throw new Error(`WebNN backend does not support data type: ${dataType}`);
       }
       LOG_DEBUG(
@@ -458,6 +459,10 @@ class TensorManagerImpl implements TensorManager {
       throw new Error('MLContext not found for session.');
     }
     return context;
+  }
+
+  public getMLOpSupportLimits(sessionId: number): MLOpSupportLimits | undefined {
+    return this.backend.getMLOpSupportLimits(sessionId);
   }
 
   public reserveTensorId(): TensorId {

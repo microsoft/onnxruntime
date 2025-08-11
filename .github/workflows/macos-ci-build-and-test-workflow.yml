@@ -20,26 +20,37 @@ on:
         required: false
         type: string
         default: "3.11"
-      matrix_exclude:
+      matrix_include:
         required: false
         type: string
-        description: "JSON string specifying combinations to exclude from the matrix"
+        description: "JSON string specifying combinations to include in the matrix"
         # we do not have enough resources to run all combinations
-        # Exclude x86_64 + Debug combination by default
+        # Include arm64 + Debug combination by default
         default: >-
           [
-            {"platform_machine": "x86_64", "build_config": "Debug"}
+            {"machine": "arm64", "target": "arm64", "build_config": "Debug"}
           ]
 
 jobs:
   build-and-test:
     strategy:
       matrix:
-        platform_machine: ["x86_64", "arm64"]
-        build_config: ["Debug", "Release"]
-        exclude: ${{ fromJSON(inputs.matrix_exclude) }}
+        # To avoid creating too many jobs, we explicitly specify the combinations to run.
+        #
+        # # Specify the machine architecture to run the build on.
+        # machine: ["x86_64", "arm64"]
+        #
+        # # Specify the target architecture for the build.
+        # target: ["x86_64", "arm64"]
+        #
+        # # Specify the build configuration for the build.
+        # build_config: ["Debug", "Release"]
+        #
+        include: ${{ fromJSON(inputs.matrix_include) }}
 
-    runs-on: ${{ matrix.platform_machine == 'x86_64' && 'macos-13' || 'macos-15' }}
+    # "macos-13" is a x86_64 image, and "macos-15" is an arm64 image.
+    # see also: https://github.com/actions/runner-images/blob/main/README.md
+    runs-on: ${{ matrix.machine == 'x86_64' && 'macos-13' || 'macos-15' }}
     env:
       build_flags: >
         --build_dir ./build
@@ -53,10 +64,13 @@ jobs:
         --build_wheel
         ${{ inputs.use_webgpu && '--use_webgpu' || '' }}
         ${{ inputs.use_xnnpack && '--use_xnnpack' || '' }}
-        ${{ inputs.use_coreml && '--use_coreml' || '' }}
+        ${{ inputs.use_coreml && '--use_coreml --skip_onnx_tests' || '' }}
         --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         --config ${{ matrix.build_config }}
-      xcode_version: ${{ matrix.platform_machine == 'x86_64' && '14.3.1' || '16' }}
+        --osx_arch ${{ matrix.target }}
+
+      # xCode version needs to match the "runs-on" configuration.
+      xcode_version: ${{ matrix.machine == 'x86_64' && '14.3.1' || '16' }}
 
     steps:
       - name: Checkout code
@@ -65,7 +79,7 @@ jobs:
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup
         with:
-          platform_machine: ${{ matrix.platform_machine }}
+          platform_machine: ${{ matrix.machine }}
           python_version: ${{ inputs.python_version }}
           xcode_version: ${{ env.xcode_version }}
           use_cache: true
@@ -107,6 +121,8 @@ jobs:
           make install DESTDIR=${{ github.workspace }}/build/installed
 
       - name: Running Tests (build.py --test)
+        # Skip tests when cross-compiling
+        if: ${{ matrix.machine == matrix.target }}
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |

@@ -224,5 +224,23 @@ void GenerateHashValue(const std::string string, HashValue& hash_value) {
   hash_value = hash[0] | (uint64_t(hash[1]) << 32);
 }
 
+bool is_dynamic_shape(const aclmdlIODims& dims) {
+  return std::find(dims.dims, dims.dims + dims.dimCount, -1) != dims.dims + dims.dimCount;
+}
+
+namespace fs = std::filesystem;
+std::string RegexMatchFile(const std::string& file_name) {
+  fs::path current_dir = fs::current_path();
+  std::regex pattern(file_name);
+  for (const auto& entry : fs::directory_iterator(current_dir)) {
+    if (entry.is_regular_file()) {
+      std::string name = entry.path().filename().string();
+      if (std::regex_search(name, pattern)) {
+        return name;
+      }
+    }
+  }
+  return "";
+}
 }  // namespace cann
 }  // namespace onnxruntime

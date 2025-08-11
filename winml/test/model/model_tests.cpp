@@ -102,9 +102,11 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
         auto sequenceOfMapsStringToFloat =
           results.Outputs().Lookup(outputName).try_as<IVectorView<IMap<winrt::hstring, float>>>();
         if (sequenceOfMapsStringToFloat != nullptr) {
-          WINML_EXPECT_TRUE(CompareFeatureValuesHelper::CompareSequenceOfMapsStringToFloat(
-            sequenceOfMapsStringToFloat, value, m_absolutePerSampleTolerance, m_relativePerSampleTolerance
-          ));
+          WINML_EXPECT_TRUE(
+            CompareFeatureValuesHelper::CompareSequenceOfMapsStringToFloat(
+              sequenceOfMapsStringToFloat, value, m_absolutePerSampleTolerance, m_relativePerSampleTolerance
+            )
+          );
         } else {
           throw winrt::hresult_not_implemented(L"This particular type of sequence output hasn't been handled yet.");
         }

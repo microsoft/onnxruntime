@@ -196,7 +196,7 @@ Status MatMulNBits<T>::PrePack_Scale([[maybe_unused]] const Tensor& tensor,
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
     DUMP_TENSOR_INIT();
-    DUMP_TENSOR_D("transposed_scales", transposed_scales, k_blocks, n);
+    DUMP_TENSOR_D("transposed_scales", transposed_scales, static_cast<int>(k_blocks), static_cast<int>(n));
   }
   return Status::OK();
 }
@@ -242,7 +242,7 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
     DUMP_TENSOR_INIT();
-    DUMP_TENSOR_D("scaled_zero_points", scaled_zero_points, k_blocks, n);
+    DUMP_TENSOR_D("scaled_zero_points", scaled_zero_points, static_cast<int>(k_blocks), static_cast<int>(n));
   }
   return Status::OK();
 }
@@ -465,7 +465,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  DUMP_TENSOR_D("DeQuantized", b_data, N_, K_padded);
+  DUMP_TENSOR_D("DeQuantized", b_data, static_cast<int>(N_), static_cast<int>(K_padded));
 
   const CudaT alpha = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(1.f);
   const CudaT zero = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(0.f);

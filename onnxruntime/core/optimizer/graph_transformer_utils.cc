@@ -67,6 +67,7 @@
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 #endif
 #include "core/optimizer/qdq_transformer/weight_bias_quantization.h"
+#include "core/optimizer/qdq_transformer/where_dummy_dq.h"
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
@@ -220,6 +221,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
 
   switch (level) {
+    case TransformerLevel::Default: {
+      if (!session_options.free_dimension_overrides.empty()) {
+        transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
+            session_options.free_dimension_overrides));
+      }
+    } break;
     case TransformerLevel::Level1: {
       // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
       // so run them first so there is potentially less for the more intensive optimizations like ConstantFolding,
@@ -265,6 +272,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         // It runs unconditionally in InferenceSession::TransformGraph() prior to Level1 optimizers.
         // We also put it here with other Level1 optimizers so that it can fix things up after their changes.
         transformers.emplace_back(std::make_unique<EnsureUniqueDQForNodeUnit>());
+        transformers.emplace_back(std::make_unique<WhereDummyDq>());
       }
 
       // add __backwardpass attribute to nodes after YieldOp, ROCm-only

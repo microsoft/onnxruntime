@@ -9,6 +9,8 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
+
+class WebGpuExecutionProvider;
 namespace webgpu {
 
 // -----------------------------------------------------------------------
@@ -17,11 +19,12 @@ namespace webgpu {
 class WebGpuKernel : public OpKernel {
  public:
   explicit WebGpuKernel(const OpKernelInfo& info)
-      : OpKernel(info) {
+      : OpKernel(info),
+        ep_(*static_cast<const WebGpuExecutionProvider*>(info.GetExecutionProvider())) {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
-    ComputeContext context{*p_op_kernel_context};
+    ComputeContext context{*p_op_kernel_context, ep_};
 
     context.PushErrorScope();
     Status s = ComputeInternal(context);
@@ -31,6 +34,9 @@ class WebGpuKernel : public OpKernel {
   }
 
   virtual Status ComputeInternal(ComputeContext& context) const = 0;
+
+ private:
+  const WebGpuExecutionProvider& ep_;
 };
 
 }  // namespace webgpu

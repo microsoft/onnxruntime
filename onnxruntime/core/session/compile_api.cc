@@ -128,6 +128,35 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelPath,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextBinaryInformation,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    const ORTCHAR_T* output_directory,
+                    const ORTCHAR_T* model_name) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+
+  std::string output_dir = PathToUTF8String(output_directory);
+  if (output_dir.empty()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid output directory: path is empty");
+  }
+
+  std::string model_name_str = ToUTF8String(model_name);
+  if (model_name_str.empty()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid model name: string is empty");
+  }
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetEpContextBinaryInformation(output_dir, model_name_str));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(output_directory);
+  ORT_UNUSED_PARAMETER(model_name);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelExternalInitializersFile,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
                     const ORTCHAR_T* external_initializers_file_path,
@@ -248,6 +277,7 @@ static constexpr OrtCompileApi ort_compile_api = {
     // End of Version 22 - DO NOT MODIFY ABOVE
 
     &OrtCompileAPI::ModelCompilationOptions_SetFlags,
+    &OrtCompileAPI::ModelCompilationOptions_SetEpContextBinaryInformation,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

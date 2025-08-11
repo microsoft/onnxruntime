@@ -5,7 +5,6 @@ parameters:
   DoEsrp: 'false'
   BuildArch: 'x64' # Optional. Options: x86, x64
   sln_platform: 'x64' # Options: Win32, x64, arm, arm64
-  AgentDemands: []
   BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
   EnableLto: true
   # Controls whether unreleased onnx opsets are allowed. Default is set to 1
@@ -35,7 +34,26 @@ stages:
       clean: all
     pool:
       name: onnxruntime-Win-CPU-2022
-      demands: ${{ parameters.AgentDemands }}
+      os: windows
+    templateContext:
+      sdl:
+        codeSignValidation:
+          enabled: true
+          break: false
+        psscriptanalyzer:
+          enabled: true
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+      outputs:
+      - ${{ if and(eq(parameters.PublishWebGpuBuildTools, true), eq(parameters.sln_platform, 'x64')) }}:
+        - output: pipelineArtifact
+          targetPath: '$(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}'
+          artifactName: ${{ parameters.WebGpuBuildToolsArtifactName }}
+      - output: pipelineArtifact
+        targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
+        artifactName: ${{ parameters.ArtifactName }}
+
     variables:
       buildDirectory: '$(Build.BinariesDirectory)'
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
@@ -53,28 +71,23 @@ stages:
         clean: true
         submodules: none
 
-      - powershell: |
-          if($env:TELEMETRYGUID)
-          {
-            $length = $env:TELEMETRYGUID.length
-            $fileContent = "#define TraceLoggingOptionMicrosoftTelemetry() \
-              TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
-            New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
-            Write-Output "Enabling TELEMETRY"
-          }
-        displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
-        env:
-          TELEMETRYGUID: $(TELEMETRYGUID)
+      - template: ../templates/telemetry-steps.yml
 
       - task: NodeTool@0
         inputs:
-          versionSpec: '20.x'
+          versionSpec: '22.x'
 
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.12'
           addToPath: true
           architecture: ${{ parameters.BuildArch }}
+
+      - task: PipAuthenticate@1
+        displayName: 'Pip Authenticate'
+        inputs:
+          artifactFeeds: 'Lotus'
+
 
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - task: UseDotNet@2
@@ -175,18 +188,9 @@ stages:
         workingDirectory: '$(Build.SourcesDirectory)\js\node'
         displayName: 'Create NPM Package'
 
-      - task: 1ES.PublishPipelineArtifact@1
-        inputs:
-          targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
-          artifactName: ${{ parameters.ArtifactName }}
-
       - ${{ if and(eq(parameters.PublishWebGpuBuildTools, true), eq(parameters.sln_platform, 'x64')) }}:
         - script: |
             mkdir $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
             copy $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\dxc\RelWithDebInfo\bin\llvm-tblgen.exe $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
             copy $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\dxc\RelWithDebInfo\bin\clang-tblgen.exe $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
           displayName: 'Copy WebGPU build tools'
-        - task: 1ES.PublishPipelineArtifact@1
-          inputs:
-            targetPath: '$(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}'
-            artifactName: ${{ parameters.WebGpuBuildToolsArtifactName }}

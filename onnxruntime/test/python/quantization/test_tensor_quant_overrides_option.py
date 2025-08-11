@@ -1146,6 +1146,11 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             graph,
             opset_imports=[onnx.helper.make_opsetid("", 18)],
         )
+
+        # Remove potential leftover external data file.
+        if os.path.exists("add_ext_data.bin"):
+            os.remove("add_ext_data.bin")
+
         onnx.save_model(
             model,
             "add_ext_data.onnx",

@@ -571,6 +571,8 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   params7.trt_dump_ep_context_model = 1;
   params7.trt_ep_context_embed_mode = 1;
   params7.trt_weight_stripped_engine_enable = 1;
+  params7.trt_onnx_bytestream = model_bytes.data();
+  params7.trt_onnx_bytestream_size = model_bytes.size();
   params7.trt_ep_context_file_path = ctx_model_name_str.c_str();
   execution_provider = TensorrtExecutionProviderWithOptions(&params7);
   EXPECT_TRUE(session_object7.RegisterExecutionProvider(std::move(execution_provider)).IsOK());

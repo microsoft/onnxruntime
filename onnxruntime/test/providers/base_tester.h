@@ -39,6 +39,7 @@ class BaseTester {
           ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
       opset_version_ = latest_onnx_version;
     }
+    number_of_nodes_ = 0;
   }
 
   // Derived class to implement to provide the model to test.
@@ -621,6 +622,8 @@ class BaseTester {
     test_allow_released_onnx_opset_only_ = false;
   }
 
+  int GetNumberOfNodesAfterRun() const;
+
  protected:
   //// if the derived class is caching the model this helper can be called in CreateModelToTest to reset the nodes
   // static void ClearEpsForAllNodes(Graph& graph);
@@ -767,6 +770,7 @@ class BaseTester {
   std::vector<Data> input_data_;
   std::vector<Data> output_data_;
   std::vector<OrtValue> fetches_;
+  int number_of_nodes_;
 
   bool testing_function_called_{};  // has the function that performs the actual testing been called yet?
 

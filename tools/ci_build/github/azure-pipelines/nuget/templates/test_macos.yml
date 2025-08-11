@@ -4,53 +4,48 @@ parameters:
 stages:
 - stage: NuGet_Test_MacOS
   dependsOn:
-  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
+  - Setup
   condition: succeeded()
   jobs:
   - job: NuGet_Test_MacOS
     workspace:
       clean: all
     pool:
-      name: 'Azure Pipelines'
-      image: 'macOS-14'
-      os: 'macOS'
+      vmImage: 'macOS-15'
 
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
     steps:
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - Signed NuGet'
-      inputs:
-        artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - download: build
+      displayName: 'Download Nuget'
+      artifact: 'drop-signed-nuget-${{ parameters.ArtifactSuffix }}'
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download OsX CustomOp test data'
-      inputs:
-        artifactName: 'onnxruntime-osx'
-        targetPath: '$(Build.BinariesDirectory)/testdata'
+    - download: build
+      displayName: 'Download Nuget'
+      artifact: 'onnxruntime-osx'
+
+    - script: |
+        mv $(Pipeline.Workspace)/build/drop-signed-nuget-${{ parameters.ArtifactSuffix }} $(Build.BinariesDirectory)/nuget-artifact
+        mv $(Pipeline.Workspace)/build/onnxruntime-osx $(Build.BinariesDirectory)/testdata
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - script: |
-        echo "TODO: Enable this test once fix this nuget test issue"
-  #     $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
-  #               $(Build.BinariesDirectory)/nuget-artifact \
-  #               $(NuGetPackageVersionNumber) \
-  #               ${{ parameters.IsMacOS }}
-  #
-  #     if [ $? -ne 0 ]; then
-  #         echo "Failed to run test"
-  #         exit 1
-  #     fi
+       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
+                 $(Build.BinariesDirectory)/nuget-artifact \
+                 $(NuGetPackageVersionNumber) \
+                 true
+  
+       if [ $? -ne 0 ]; then
+           echo "Failed to run test"
+           exit 1
+       fi
       displayName: 'Run Test'
       env:
           OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
           DisableContribOps: $(DisableContribOps)
           DisableMlOps: $(DisableMlOps)
           IsReleaseBuild: $(IsReleaseBuild)
-
-    - template: ../../templates/clean-agent-build-directory-step.yml

@@ -33,7 +33,7 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '20.x'
+      versionSpec: '22.x'
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 6.10.x

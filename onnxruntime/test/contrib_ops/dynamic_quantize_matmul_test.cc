@@ -82,21 +82,48 @@ static void CalculateDynamicQuantizeMatMul(const int64_t M, const int64_t N, con
   }
 }
 
+struct TestDynamicQuantizeMatMulOptions {
+  bool is_matrix_b_constant = true;
+
+  bool per_column = false;
+
+  bool is_scale_constant = false;
+
+  bool has_zp = true;
+  bool is_zp_constant = false;
+  bool is_zp_zero = false;
+
+  bool has_bias = false;
+  bool is_bias_constant = false;
+
+  bool empty_input = false;
+};
+
 template <typename T>
-void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
-                               bool per_column = false,
-                               bool has_zp = true,
-                               bool has_bias = false,
-                               bool empty_input = false) {
+void TestDynamicQuantizeMatMul(const TestDynamicQuantizeMatMulOptions& opts) {
+  static_assert(std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t>);
+
+  SCOPED_TRACE(MakeString(
+      "b data type:", (std::is_same_v<T, uint8_t> ? "uint8" : "int8"),
+      ", is_matrix_b_constant:", opts.is_matrix_b_constant,
+      ", per_column:", opts.per_column,
+      ", is_scale_constant:", opts.is_scale_constant,
+      ", has_zp:", opts.has_zp,
+      ", is_zp_constant:", opts.is_zp_constant,
+      ", is_zp_zero:", opts.is_zp_zero,
+      ", has_bias:", opts.has_bias,
+      ", is_bias_constant:", opts.is_bias_constant,
+      ", empty_input:", opts.empty_input));
+
   // create rand inputs
   RandomValueGenerator random{1668426375};
 
-  int64_t M = empty_input ? 1 : 4;
+  int64_t M = opts.empty_input ? 1 : 4;
   int64_t N = 128;
   int64_t K = 128;
-  std::vector<int64_t> A_dims{empty_input ? 0 : M, K};
+  std::vector<int64_t> A_dims{opts.empty_input ? 0 : M, K};
   std::vector<int64_t> B_dims{K, N};
-  std::vector<int64_t> Y_dims{empty_input ? 0 : M, K};
+  std::vector<int64_t> Y_dims{opts.empty_input ? 0 : M, K};
   std::vector<float> A_data = random.Uniform<float>(A_dims, -1.0f, 1.0f);
   std::vector<T> B_data;
   std::vector<T> tmp_B_data = random.Uniform<T>(B_dims,
@@ -106,101 +133,120 @@ void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
     return static_cast<T>(v);
   });
 
-  int64_t b_scale_zp_size = per_column ? B_dims.back() : 1;
+  int64_t b_scale_zp_size = opts.per_column ? B_dims.back() : 1;
   std::vector<float> B_scale = random.Uniform<float>(AsSpan({b_scale_zp_size}), -0.1f, 0.1f);
   std::vector<T> B_zero_point(b_scale_zp_size);
-  std::for_each(B_zero_point.begin(),
-                B_zero_point.end(),
-                [&random](T& zp) {
-                  zp = static_cast<T>(random.Uniform<T>(std::array<int64_t, 1>{1},
-                                                        std::numeric_limits<T>::min(),
-                                                        std::numeric_limits<T>::max())[0]);
-                });
+  if (!opts.is_zp_zero) {
+    std::for_each(B_zero_point.begin(),
+                  B_zero_point.end(),
+                  [&random](T& zp) {
+                    zp = static_cast<T>(random.Uniform<T>(std::array<int64_t, 1>{1},
+                                                          std::numeric_limits<T>::min(),
+                                                          std::numeric_limits<T>::max())[0]);
+                  });
+  }
 
   std::vector<float> Bias = random.Uniform<float>(AsSpan({B_dims.back()}), -0.1f, 0.1f);
 
   OpTester test("DynamicQuantizeMatMul", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("A", A_dims, A_data);
-  test.AddInput<T>("B", B_dims, B_data, is_matrix_b_constant);
-  test.AddInput<float>("b_scale", {b_scale_zp_size}, B_scale);
+  test.AddInput<T>("B", B_dims, B_data, opts.is_matrix_b_constant);
+  test.AddInput<float>("b_scale", {b_scale_zp_size}, B_scale, opts.is_scale_constant);
 
-  if (has_zp) {
-    test.AddInput<T>("b_zero_point", {b_scale_zp_size}, B_zero_point);
+  if (opts.has_zp) {
+    test.AddInput<T>("b_zero_point", {b_scale_zp_size}, B_zero_point, opts.is_zp_constant);
   } else {
     test.AddOptionalInputEdge<T>();
   }
 
-  if (has_bias) {
-    test.AddInput<float>("bias", {B_dims.back()}, Bias);
+  if (opts.has_bias) {
+    test.AddInput<float>("bias", {B_dims.back()}, Bias, opts.is_bias_constant);
   } else {
     test.AddOptionalInputEdge<float>();
   }
 
   std::vector<float> Y_data(M * N);
   CalculateDynamicQuantizeMatMul<T>(M, N, K, A_data, B_data, B_scale, B_zero_point, Bias, Y_data,
-                                    per_column, has_zp, has_bias);
+                                    opts.per_column, opts.has_zp, opts.has_bias);
   test.AddOutput<float>("Y", Y_dims, Y_data);
   test.SetOutputRelErr("Y", 0.02f);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
-template <typename T, bool HasZeroPoint, bool HasBias>
+template <typename T>
+void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
+                               bool per_column = false,
+                               bool has_zp = true,
+                               bool has_bias = false,
+                               bool empty_input = false) {
+  TestDynamicQuantizeMatMulOptions opts{};
+  opts.is_matrix_b_constant = is_matrix_b_constant;
+  opts.per_column = per_column;
+  opts.has_zp = has_zp;
+  opts.has_bias = has_bias;
+  opts.empty_input = empty_input;
+
+  TestDynamicQuantizeMatMul<T>(opts);
+}
+
+template <typename T>
 void RunDynamicQuantizeMatMulTest() {
-  TestDynamicQuantizeMatMul<T>(false,        /*is_matrix_b_constant*/
-                               false,        /*per_column*/
-                               HasZeroPoint, /*has_zp*/
-                               HasBias       /*has_bias*/
-  );
-
-  TestDynamicQuantizeMatMul<T>(true,         /*is_matrix_b_constant*/
-                               false,        /*per_column*/
-                               HasZeroPoint, /*has_zp*/
-                               HasBias       /*has_bias*/
-  );
-
-  TestDynamicQuantizeMatMul<T>(false,        /*is_matrix_b_constant*/
-                               true,         /*per_column*/
-                               HasZeroPoint, /*has_zp*/
-                               HasBias       /*has_bias*/
-  );
-
-  TestDynamicQuantizeMatMul<T>(true,         /*is_matrix_b_constant*/
-                               true,         /*per_column*/
-                               HasZeroPoint, /*has_zp*/
-                               HasBias       /*has_bias*/
-  );
+  for (bool is_matrix_b_constant : {false, true}) {
+    for (bool per_column : {false, true}) {
+      for (bool has_zp : {false, true}) {
+        for (bool has_bias : {false, true}) {
+          TestDynamicQuantizeMatMul<T>(is_matrix_b_constant,
+                                       per_column,
+                                       has_zp,
+                                       has_bias);
+        }
+      }
+    }
+  }
 }
 
-TEST(DynamicQuantizeMatMul, HasZeroPoint_NoBias_test_S8) {
-  RunDynamicQuantizeMatMulTest<int8_t, true, false>();
+TEST(DynamicQuantizeMatMul, Int8) {
+  RunDynamicQuantizeMatMulTest<int8_t>();
 }
 
-TEST(DynamicQuantizeMatMul, HasZeroPoint_NoBias_test_U8) {
-  RunDynamicQuantizeMatMulTest<uint8_t, true, false>();
+TEST(DynamicQuantizeMatMul, UInt8) {
+  RunDynamicQuantizeMatMulTest<uint8_t>();
 }
 
-TEST(DynamicQuantizeMatMul, NoZeroPoint_HasBias_test_S8) {
-  RunDynamicQuantizeMatMulTest<int8_t, false, true>();
-}
+TEST(DynamicQuantizeMatMul, WithConstantBInputs) {
+  TestDynamicQuantizeMatMulOptions base_opts{};
+  base_opts.is_matrix_b_constant = true;
+  base_opts.is_scale_constant = true;
+  base_opts.is_zp_constant = true;
 
-TEST(DynamicQuantizeMatMul, NoZeroPoint_HasBias_test_U8) {
-  RunDynamicQuantizeMatMulTest<uint8_t, false, true>();
-}
+  {
+    // no zp
+    auto opts = base_opts;
+    opts.has_zp = false;
 
-TEST(DynamicQuantizeMatMul, NoZeroPoint_NoBias_test_S8) {
-  RunDynamicQuantizeMatMulTest<int8_t, false, false>();
-}
+    TestDynamicQuantizeMatMul<int8_t>(opts);
+    TestDynamicQuantizeMatMul<uint8_t>(opts);
+  }
 
-TEST(DynamicQuantizeMatMul, NoZeroPoint_NoBias_test_U8) {
-  RunDynamicQuantizeMatMulTest<uint8_t, false, false>();
-}
+  {
+    // zp that is zero (symmetric quantization)
+    auto opts = base_opts;
+    opts.has_zp = true;
+    opts.is_zp_zero = true;
 
-TEST(DynamicQuantizeMatMul, HasZeroPoint_HasBias_test_S8) {
-  RunDynamicQuantizeMatMulTest<int8_t, true, true>();
-}
+    TestDynamicQuantizeMatMul<int8_t>(opts);
+    TestDynamicQuantizeMatMul<uint8_t>(opts);
+  }
 
-TEST(DynamicQuantizeMatMul, HasZeroPoint_HasBias_test_U8) {
-  RunDynamicQuantizeMatMulTest<uint8_t, true, true>();
+  {
+    // zp that is non-zero
+    auto opts = base_opts;
+    opts.has_zp = true;
+    opts.is_zp_zero = false;
+
+    TestDynamicQuantizeMatMul<int8_t>(opts);
+    TestDynamicQuantizeMatMul<uint8_t>(opts);
+  }
 }
 
 TEST(DynamicQuantizeMatMul, UInt8_test_with_empty_input) {

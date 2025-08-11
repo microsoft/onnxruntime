@@ -460,7 +460,7 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
 
 
 def get_acl_version():
-    from pathlib import Path
+    from pathlib import Path  # noqa: PLC0415
 
     home = str(Path.home())
     p = subprocess.run(["find", home, "-name", "libarm_compute.so"], check=True, stdout=subprocess.PIPE)
@@ -1043,8 +1043,8 @@ def parse_models_info_from_file(root_dir, path, models):
 
 
 def convert_model_from_float_to_float16(model_path, new_model_dir):
-    from float16 import convert_float_to_float16
-    from onnxmltools.utils import load_model, save_model
+    from float16 import convert_float_to_float16  # noqa: PLC0415
+    from onnxmltools.utils import load_model, save_model  # noqa: PLC0415
 
     new_model_path = os.path.join(new_model_dir, "new_fp16_model_by_trt_perf.onnx")
 
@@ -1064,7 +1064,7 @@ def get_test_data(fp16, test_data_dir, all_inputs_shape):
 
 
 def run_symbolic_shape_inference(model_path, new_model_path):
-    import onnxruntime.tools.symbolic_shape_infer as symbolic_shape_infer
+    import onnxruntime.tools.symbolic_shape_infer as symbolic_shape_infer  # noqa: PLC0415
 
     logger.info("run symbolic shape inference")
     try:
@@ -2313,7 +2313,7 @@ def main():
 
     path = os.path.join(os.getcwd(), args.perf_result_path)
     if not os.path.exists(path):
-        from pathlib import Path
+        from pathlib import Path  # noqa: PLC0415
 
         Path(path).mkdir(parents=True, exist_ok=True)
 

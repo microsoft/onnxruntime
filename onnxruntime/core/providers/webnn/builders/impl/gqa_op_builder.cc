@@ -62,9 +62,9 @@ std::vector<int32_t> repeat_sequence(int32_t sequence_length, int32_t kv_num_hea
 }
 
 /** GroupQueryAttention SubGraph.
- Abbreviatios: B is batch_size, S is sequence_length, W is hidden_size, P is past_sequence_length
-               N is number of attention heads, kv_N is number of attention heads for kv, H is head size
-               G is group size, and G=N/kv_N, W=N*H, h=Sqrt(H).
+ Abbreviations: B is batch_size, S is sequence_length, W is hidden_size, P is past_sequence_length
+                N is number of attention heads, kv_N is number of attention heads for kv, H is head size
+                G is group size, and G=N/kv_N, W=N*H, h=Sqrt(H).
     GQA inputs: query, key, value, past_key, past_value, seqlens_k, total_sequence_length
     Notes: cos_cache, sin_cache inputs are not supported. If the data type of the inputs (qkv and past kv) is float16,
     we cast them to float32 to ensure data precision.

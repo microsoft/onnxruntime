@@ -111,7 +111,7 @@ def run_onnxruntime(
     enable_arm64_bfloat16_fastmath_mlas_gemm,
     args,
 ):
-    import onnxruntime
+    import onnxruntime  # noqa: PLC0415
 
     results = []
     if (
@@ -424,9 +424,9 @@ def run_pytorch(
 
 
 def run_with_tf_optimizations(do_eager_mode: bool, use_xla: bool):
-    from functools import wraps
+    from functools import wraps  # noqa: PLC0415
 
-    import tensorflow as tf
+    import tensorflow as tf  # noqa: PLC0415
 
     def run_func(func):
         @wraps(func)
@@ -464,7 +464,7 @@ def run_tensorflow(
 ):
     results = []
 
-    import tensorflow as tf
+    import tensorflow as tf  # noqa: PLC0415
 
     tf.config.threading.set_intra_op_parallelism_threads(num_threads)
 
@@ -513,7 +513,7 @@ def run_tensorflow(
 
                 logger.info(f"Run Tensorflow on {model_name} with input shape {[batch_size, sequence_length]}")
 
-                import random
+                import random  # noqa: PLC0415
 
                 rng = random.Random()
                 values = [rng.randint(0, config.vocab_size - 1) for i in range(batch_size * sequence_length)]
@@ -571,7 +571,7 @@ def run_tensorflow(
                     results.append(result)
                 except RuntimeError as e:
                     logger.exception(e)
-                    from numba import cuda
+                    from numba import cuda  # noqa: PLC0415
 
                     device = cuda.get_current_device()
                     device.reset()

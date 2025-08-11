@@ -93,7 +93,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_tvm_imported(self):
         if "TvmExecutionProvider" not in onnxrt.get_available_providers():
             return
-        import tvm
+        import tvm  # noqa: PLC0415
 
         self.assertTrue(tvm is not None)
 
@@ -352,7 +352,7 @@ class TestInferenceSession(unittest.TestCase):
             """
 
             try:
-                import torch
+                import torch  # noqa: PLC0415
 
                 if torch.cuda.is_available():
                     s = torch.cuda.Stream()
@@ -457,7 +457,7 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(options["CUDAExecutionProvider"]["user_compute_stream"], "0")
 
                 try:
-                    import torch
+                    import torch  # noqa: PLC0415
 
                     if torch.cuda.is_available():
                         s = torch.cuda.Stream()
@@ -1675,7 +1675,7 @@ class TestInferenceSession(unittest.TestCase):
                 sess2.run([], {input_name: x}, ro2)
 
     def test_check_and_normalize_provider_args(self):
-        from onnxruntime.capi.onnxruntime_inference_collection import check_and_normalize_provider_args
+        from onnxruntime.capi.onnxruntime_inference_collection import check_and_normalize_provider_args  # noqa: PLC0415
 
         valid_providers = ["a", "b", "c"]
 
