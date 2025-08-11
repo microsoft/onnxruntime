@@ -21,11 +21,12 @@ steps:
   condition: and(succeeded(), eq('${{ parameters.DoEsrp }}', true))
   inputs:
     ConnectedServiceName: 'OnnxrunTimeCodeSign_20240611'
-    AppRegistrationClientId: '53d54d02-978d-4305-8572-583cf6711c4f'
-    AppRegistrationTenantId: '72f988bf-86f1-41af-91ab-2d7cd011db47'
-    AuthAKVName: 'buildkeyvault'
-    AuthCertName: '53d54d02-SSL-AutoRotate'
-    AuthSignCertName: '53d54d02-978d-4305-8572-583cf6711c4f'
+    UseMSIAuthentication: true
+    AppRegistrationClientId: '62b7cfed-4d25-454f-880e-010dc21455ac'
+    AppRegistrationTenantId: '975f013f-7f24-47e8-a7d3-abc4752bf346'
+    EsrpClientId: "53d54d02-978d-4305-8572-583cf6711c4f"
+    AuthAKVName: 'ortbuildkeyvault'
+    AuthSignCertName: 'esrpcodesign'
     signConfigType: inlineSignParams
     inlineOperation: |
       [

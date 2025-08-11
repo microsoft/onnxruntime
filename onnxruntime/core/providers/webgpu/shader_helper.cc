@@ -123,7 +123,13 @@ const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, Sha
 #ifndef NDEBUG  // if debug build
 namespace {
 // Validate if the tensor element type matches the program variable data type
-Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType var_type) {
+Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType var_type, bool is_atomic = false) {
+  if (is_atomic) {
+    // float32 is not a valid data type for atomic. However the data may be bitcast-ed to i32 and used to simulate atomic operation using  atomicCompareExchangeWeak.
+    ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int32 || var_type == ProgramVariableDataType::Uint32 || var_type == ProgramVariableDataType::Float32,
+                      "Unexpected program variable type ", int(var_type), " for atomic variable");
+  }
+
   switch (element_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
       ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Float32 ||
@@ -173,6 +179,14 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
                             var_type == ProgramVariableDataType::Int8x8 ||
                             var_type == ProgramVariableDataType::Int8x16,
                         "Unexpected program variable type ", int(var_type), " for int8 tensor");
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int4x8,
+                        "Unexpected program variable type ", int(var_type), " for int4 tensor");
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4:
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Uint4x8,
+                        "Unexpected program variable type ", int(var_type), " for uint4 tensor");
       break;
     default:
       ORT_RETURN_IF(true, "Unsupported data type: ", element_type);
@@ -237,7 +251,7 @@ Status ShaderHelper::ValidateVariable(const ProgramInput& input, const ShaderVar
   return Status::OK();
 }
 Status ShaderHelper::ValidateVariable(const ProgramOutput& output, const ShaderVariableHelper& var) const {
-  ORT_RETURN_IF_ERROR(ValidateVariableDataType(output.tensor->GetElementType(), var.type_));
+  ORT_RETURN_IF_ERROR(ValidateVariableDataType(output.tensor->GetElementType(), var.type_, output.is_atomic));
   ORT_RETURN_IF_ERROR(ValidateVariableShape(output.tensor->Shape(),
                                             output.use_override_shape,
                                             output.use_override_shape ? output.override_shape : output.tensor->Shape(),
@@ -365,6 +379,10 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
 #if !defined(__wasm__)
   if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
     ss << "enable chromium_experimental_subgroup_matrix;\n";
+
+    // Dawn enforces the subgroup matrix builtin arguments to be uniform in change https://dawn-review.googlesource.com/c/dawn/+/236054
+    // Since we use `subgroup_id` as the subgroup matrix builtin argument, we have to turn off this restriction
+    ss << "diagnostic (off, chromium.subgroup_matrix_uniformity);\n";
   }
 #endif
 
@@ -400,12 +418,28 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   //
   // Input/output variables
   //
-  size_t variable_count = 0;
-  for (const auto& input : input_vars_) {
-    ss << "@group(0) @binding(" << variable_count++ << ") var<storage, read> " << input->name_ << ": array<" << input->StorageType() << ">;\n";
+  for (size_t i = 0; i < input_vars_.size(); ++i) {
+    const auto& input = input_vars_[i];
+    ss << "@group(0) @binding(" << i << ") var<storage, read> " << input->name_ << ": array<" << input->StorageType() << ">;\n";
   }
-  for (const auto& output : output_vars_) {
-    ss << "@group(0) @binding(" << variable_count++ << ") var<storage, read_write> " << output->name_ << ": array<" << output->StorageType() << ">;\n";
+  for (size_t i = 0; i < output_vars_.size(); ++i) {
+    const auto& output = output_vars_[i];
+    bool is_atomic = program_.Outputs()[i].is_atomic;
+    ss << "@group(0) @binding(" << input_vars_.size() + i << ") var<storage, read_write> " << output->name_ << ": array<";
+    if (is_atomic) {
+      if (output->type_ == ProgramVariableDataType::Float32) {
+        ss << "atomic<i32>";
+      } else if (output->type_ == ProgramVariableDataType::Uint32) {
+        ss << "atomic<u32>";
+      } else if (output->type_ == ProgramVariableDataType::Int32) {
+        ss << "atomic<i32>";
+      } else {
+        ORT_RETURN_IF(true, "Unsupported atomic type: ", int(output->type_));
+      }
+    } else {
+      ss << output->StorageType();
+    }
+    ss << ">;\n";
   }
 
   //
@@ -457,16 +491,29 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
         ss << ",";
       }
 
-      auto alignment = (data_type == ProgramUniformVariableDataType::Float16 && length > 4) ? "@align(16) " : "";
-      ss << "\n  " << alignment << name << ": ";
+      // The actual variable type for the uniform variable depends on the data type (T) and length (N).
+      //
+      // For T in [i32, u32, f32]:
+      //   - If N == 1, the type is simply i32, u32, or f32.
+      //   - If 2 < N <= 4, the type is vecN<i32>, vecN<u32>, or vecN<f32> where N is the length.
+      //   - If N > 4, the type is array<vec4<T>, ceil(N / 4)>.
+      //
+      // For T is f16:
+      //   - If N == 1 or N == 2, the type is u32.
+      //   - If 2 < N <= 8, the type is vecX<u32> where X is ceil(N / 2).
+      //   - If N > 8, the type is array<vec4<u32>, X> where X is ceil(N / 8).
+      //
+      // Note: Using f16 type in uniforms is not generally supported on all devices. We use a u32 variable to represent
+      // 2 f16 values.
+
+      if (data_type == ProgramUniformVariableDataType::Float16) {
+        data_type = ProgramUniformVariableDataType::Uint32;  // f16 is represented as u32
+        length = (length + 1) / 2;                           // each u32 can hold 2 f16 values
+      }
+      ss << "\n  " << name << ": ";
       if (length > 4) {
-        if (data_type == ProgramUniformVariableDataType::Float16) {
-          size_t array_size = (length + 7) / 8;
-          ss << "array<mat2x4<" << data_type << ">, " << array_size << ">";
-        } else {
-          size_t array_size = (length + 3) / 4;
-          ss << "array<vec4<" << data_type << ">, " << array_size << ">";
-        }
+        size_t array_size = (length + 3) / 4;
+        ss << "array<vec4<" << data_type << ">, " << array_size << ">";
       } else if (length > 1) {
         ss << "vec" << length << "<" << data_type << ">";
       } else {
@@ -512,7 +559,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
 
     ss << "\n};\n"
           "@group(0) @binding("
-       << variable_count << ") var<uniform> uniforms: Uniforms;\n";
+       << input_vars_.size() + output_vars_.size() << ") var<uniform> uniforms: Uniforms;\n";
   }
 
   //

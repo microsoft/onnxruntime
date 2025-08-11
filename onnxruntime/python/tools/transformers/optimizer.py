@@ -101,7 +101,7 @@ def optimize_by_onnxruntime(
         optimized_model_path (str): the path of optimized model
     """
     assert opt_level in [1, 2, 99]
-    from torch import version as torch_version
+    from torch import version as torch_version  # noqa: PLC0415
 
     if onnx_model is None:
         onnx_model = deprecated_kwargs.pop("onnx_model_path", None)
@@ -135,6 +135,8 @@ def optimize_by_onnxruntime(
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
     elif opt_level == 2:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+    elif opt_level == 3:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_LAYOUT
     else:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
@@ -265,7 +267,7 @@ def optimize_by_fusion(
     optimizer.topological_sort()
 
     optimizer.model.producer_name = "onnxruntime.transformers"
-    from onnxruntime import __version__ as onnxruntime_version
+    from onnxruntime import __version__ as onnxruntime_version  # noqa: PLC0415
 
     optimizer.model.producer_version = onnxruntime_version
 
@@ -517,11 +519,11 @@ def _parse_arguments():
         "--opt_level",
         required=False,
         type=int,
-        choices=[0, 1, 2, 99],
+        choices=[0, 1, 2, 3, 99],
         default=None,
         help="onnxruntime optimization level. 0 will disable onnxruntime graph optimization. "
         "The recommended value is 1. When opt_level > 1 is used, optimized model for GPU might not run in CPU. "
-        "Level 2 and 99 are intended for --only_onnxruntime.",
+        "Level 2, Level 3 and 99 are intended for --only_onnxruntime.",
     )
 
     parser.add_argument(

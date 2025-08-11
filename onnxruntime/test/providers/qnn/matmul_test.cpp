@@ -26,12 +26,13 @@ static GetTestModelFn BuildMatMulOpTestCase(const TestInputDef<float>& input1_de
   };
 }
 
-static void RunMatMulOpTest(bool is_htp_backend, const std::vector<int64_t>& shape_0,
+static void RunMatMulOpTest(const std::vector<int64_t>& shape_0,
                             const std::vector<int64_t>& shape_1, bool is_initializer_0, bool is_initializer_1,
                             ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
+                            const std::string& backend_name = "cpu",
                             int opset = 18, float f32_abs_err = 1e-4f) {
   ProviderOptions provider_options;
-  provider_options["backend_type"] = is_htp_backend ? "htp" : "cpu";
+  provider_options["backend_type"] = backend_name;
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildMatMulOpTestCase(
@@ -184,39 +185,33 @@ static void RunQDQPerChannelMatMulOpTest(
 // CPU tests:
 //
 TEST_F(QnnCPUBackendTests, MatMulOp) {
-  // RunMatMulOpTest(is_htp_backend, shape_0, shape_1, is_initializer_0, is_initializer_1)
-  RunMatMulOpTest(false, {2, 3}, {3, 2}, false, false);
-  RunMatMulOpTest(false, {2, 3}, {3, 2}, false, true);
-  RunMatMulOpTest(false, {2, 3}, {3, 2}, true, false);
-  RunMatMulOpTest(false, {2, 3}, {3, 2}, true, true);  // constant folding
-  RunMatMulOpTest(false, {2, 3}, {2, 3, 2}, false, false);
-  RunMatMulOpTest(false, {3, 3, 3}, {3, 2}, true, false);
-  RunMatMulOpTest(false, {2, 3, 3, 3}, {3, 2}, false, true);
-  RunMatMulOpTest(false, {2, 3, 3, 3}, {2, 3, 3, 2}, false, true);
+  // RunMatMulOpTest(shape_0, shape_1, is_initializer_0, is_initializer_1)
+  RunMatMulOpTest({2, 3}, {3, 2}, false, false);
+  RunMatMulOpTest({2, 3}, {3, 2}, false, true);
+  RunMatMulOpTest({2, 3}, {3, 2}, true, false);
+  RunMatMulOpTest({2, 3}, {3, 2}, true, true);  // constant folding
+  RunMatMulOpTest({2, 3}, {2, 3, 2}, false, false);
+  RunMatMulOpTest({3, 3, 3}, {3, 2}, true, false);
+  RunMatMulOpTest({2, 3, 3, 3}, {3, 2}, false, true);
+  RunMatMulOpTest({2, 3, 3, 3}, {2, 3, 3, 2}, false, true);
 
-#if defined(__linux__)
-  // TODO: This fails on Linux (HTP emulation). Works on Windows ARM64.
-  // Expected: contains 24 values, where each value and its corresponding value in 16-byte object <18-00 00-00 00-00 00-00 00-29 4E-53 A8-55 00-00> are an almost-equal pair
-  // Actual: 16-byte object <18-00 00-00 00-00 00-00 80-28 3E-53 A8-55 00-00>, where the value pair (0.0285999943, 0) at index #12 don't match, which is -0.0286 from 0.0286
-#else
-  RunMatMulOpTest(false, {2, 1, 2, 3}, {3, 3, 2}, false, false);
-#endif
-  RunMatMulOpTest(false, {3}, {3}, false, false);
-  RunMatMulOpTest(false, {3}, {3}, false, true);
-  RunMatMulOpTest(false, {3}, {3}, true, false);
-  RunMatMulOpTest(false, {3}, {3, 2}, false, false);
-  RunMatMulOpTest(false, {3}, {3, 2}, false, true);
-  RunMatMulOpTest(false, {3}, {3, 3, 2}, true, false);
-  RunMatMulOpTest(false, {2, 3}, {3}, false, false);
-  RunMatMulOpTest(false, {2, 3}, {3}, true, false);
-  RunMatMulOpTest(false, {2, 3, 3, 3}, {3}, false, false);
+  RunMatMulOpTest({2, 1, 2, 3}, {3, 3, 2}, false, false);
+  RunMatMulOpTest({3}, {3}, false, false);
+  RunMatMulOpTest({3}, {3}, false, true);
+  RunMatMulOpTest({3}, {3}, true, false);
+  RunMatMulOpTest({3}, {3, 2}, false, false);
+  RunMatMulOpTest({3}, {3, 2}, false, true);
+  RunMatMulOpTest({3}, {3, 3, 2}, true, false);
+  RunMatMulOpTest({2, 3}, {3}, false, false);
+  RunMatMulOpTest({2, 3}, {3}, true, false);
+  RunMatMulOpTest({2, 3, 3, 3}, {3}, false, false);
 
   // Failed randomly on Linux
   // Expected: contains 36 values, where each value and its corresponding value in 16-byte object
   // <24-00 00-00 00-00 00-00 40-4A 47-42 4D-56 00-00> are an almost-equal pair
   // Actual: 16-byte object <24-00 00-00 00-00 00-00 80-39 2B-42 4D-56 00-00>, where the value pair (0.104199991, 0)
   // at index #18 don't match, which is -0.1042 from 0.1042
-  // RunMatMulOpTest(false, {2, 3, 3, 3}, {3, 2}, true, false);
+  // RunMatMulOpTest({2, 3, 3, 3}, {3, 2}, true, false);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -226,33 +221,33 @@ TEST_F(QnnCPUBackendTests, MatMulOp) {
 //
 // Disable this for now as the QNN HTP backend is not stable on different versions and platforms so it failed randomly.
 TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp) {
-  // RunMatMulOpTest(is_htp_backend, shape_0, shape_1, is_initializer_0, is_initializer_1, expected_ep_assignment,
+  // RunMatMulOpTest(shape_0, shape_1, is_initializer_0, is_initializer_1, expected_ep_assignment,
   // opset, f32_abs_err)
-  RunMatMulOpTest(true, {2, 3}, {3, 2}, false, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {2, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {2, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {2, 3}, {3, 2}, true, true);  // constant folding
-  RunMatMulOpTest(true, {2, 3}, {2, 3, 2}, false, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {2, 3, 3, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {2, 3, 3, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {2, 3, 3, 3}, {2, 3, 3, 2}, false, true, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {2, 1, 2, 3}, {3, 3, 2}, false, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {3}, {3}, false, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {3}, {3}, false, true, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {3}, {3}, true, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {3}, {3, 2}, false, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {3}, {3, 3, 2}, true, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {2, 3}, {3}, false, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {2, 3}, {3}, true, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
-  RunMatMulOpTest(true, {2, 3, 3, 3}, {3}, false, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
+  RunMatMulOpTest({2, 3}, {3, 2}, false, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({2, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({2, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({2, 3}, {3, 2}, true, true, ExpectedEPNodeAssignment::All, "htp");  // constant folding
+  RunMatMulOpTest({2, 3}, {2, 3, 2}, false, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({2, 3, 3, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({2, 3, 3, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({2, 3, 3, 3}, {2, 3, 3, 2}, false, true, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({2, 1, 2, 3}, {3, 3, 2}, false, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({3}, {3}, false, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({3}, {3}, false, true, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({3}, {3}, true, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({3}, {3, 2}, false, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({3}, {3, 3, 2}, true, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({2, 3}, {3}, false, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({2, 3}, {3}, true, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
+  RunMatMulOpTest({2, 3, 3, 3}, {3}, false, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
 
   // Failed randomly on Linux
   // Expected: contains 18 values, where each value and its corresponding value in 16-byte object
   // <12-00 00-00 00-00 00-00 40-3D CC-A5 5A-7A 00-00> are an almost-equal pair
   // Actual: 16-byte object <12-00 00-00 00-00 00-00 80-E8 CF-8F 5B-7A 00-00>, where the value pair
   // (0.0393999927, 98304.0078) at index #6 don't match, which is 98304 from 0.0394
-  // RunMatMulOpTest(true, {3, 3, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
+  // RunMatMulOpTest({3, 3, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
 }
 
 TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
@@ -285,7 +280,7 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
   // UINT16, per-channel INT8 weight
   RunQDQPerChannelMatMulOpTest<uint16_t, int8_t, uint16_t>({2, 3}, {3, 2}, 1, QDQTolerance(),
                                                            ExpectedEPNodeAssignment::All, 21, false, false);
-  RunQDQPerChannelMatMulOpTest<uint16_t, int8_t, uint16_t>({2, 3, 3}, {3}, -1, QDQTolerance(0.005f));
+  RunQDQPerChannelMatMulOpTest<uint16_t, int8_t, uint16_t>({2, 3, 3}, {3}, -1, QDQTolerance(0.0041f));
 }
 
 // Tests MatMul with two uint16 (quantized) inputs that are both dynamic.
@@ -340,7 +335,122 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
   }
 }
 
+#ifndef __linux__
+// Tests MatMul with two uint16 (quantized) inputs with weight as static.
+// This exercises a workaround in QNN EP that inserts a QNN Convert op before input[1] (converts from uint16 to sint16).
+// This workaround prevents a validation error for this specific MatMul configuration.
+// Got specific shapes and input ranges (quant params) from customer model.
+TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_static_weight) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  // Test with rank 4 inputs
+  {
+    std::vector<int64_t> shape_0 = {1, 12, 512, 96};
+    TestInputDef<float> input0_def(
+        {1, 12, 512, 96}, false,
+        GetFloatDataInRange(-5.087f, 4.992f,
+                            static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
+                                                                std::multiplies<int64_t>()))));
+    std::vector<int64_t> shape_1 = {1, 12, 96, 512};
+    TestInputDef<float> input1_def(
+        shape_1, true,
+        GetFloatDataInRange(-6.772f, 7.258f,
+                            static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
+                                                                std::multiplies<int64_t>()))));
+
+    TestQDQModelAccuracy(
+        BuildMatMulOpTestCase(input0_def, input1_def),
+        BuildMatMulOpQDQTestCase<uint16_t, uint16_t, uint16_t>(input0_def, input1_def, false),
+        provider_options, 21, ExpectedEPNodeAssignment::All, QDQTolerance());
+  }
+
+  // Test with input[1] as rank 1
+  {
+    std::vector<int64_t> shape_0 = {1, 12, 512, 96};
+    TestInputDef<float> input0_def(
+        {1, 12, 512, 96}, false,
+        GetFloatDataInRange(-5.087f, 4.992f,
+                            static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
+                                                                std::multiplies<int64_t>()))));
+    std::vector<int64_t> shape_1 = {96};
+    TestInputDef<float> input1_def(
+        shape_1, true,
+        GetFloatDataInRange(-6.772f, 7.258f,
+                            static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
+                                                                std::multiplies<int64_t>()))));
+
+    TestQDQModelAccuracy(
+        BuildMatMulOpTestCase(input0_def, input1_def),
+        BuildMatMulOpQDQTestCase<uint16_t, uint16_t, uint16_t>(input0_def, input1_def, false),
+        provider_options, 21, ExpectedEPNodeAssignment::All, QDQTolerance());
+  }
+}
+#endif
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
+#if defined(_M_ARM64)
+//
+// GPU tests:
+//
+
+// RunMatMulOpTest(shape_0, shape_1, is_initializer_0, is_initializer_1, expected_ep_assignment, backend);
+
+TEST_F(QnnGPUBackendTests, MatMulOp_simple) {
+  RunMatMulOpTest({2, 3}, {3, 2}, false, false, ExpectedEPNodeAssignment::All, "gpu");
+  RunMatMulOpTest({2, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
+  RunMatMulOpTest({2, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, "gpu");
+  RunMatMulOpTest({2, 3}, {3, 2}, true, true, ExpectedEPNodeAssignment::All, "gpu");  // constant folding
+}
+
+TEST_F(QnnGPUBackendTests, MatMulOp_batches) {
+  RunMatMulOpTest({3, 3, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
+  RunMatMulOpTest({2, 3, 3, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
+}
+
+TEST_F(QnnGPUBackendTests, MatMulOp_batchesWtsSameDim) {
+  RunMatMulOpTest({3, 3, 3}, {3, 3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
+}
+
+TEST_F(QnnGPUBackendTests, MatMulOp_batchesWtsSameDim2) {
+  RunMatMulOpTest({2, 3, 3, 3}, {2, 3, 3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
+}
+
+TEST_F(QnnGPUBackendTests, MatMulOp_wtsDimBcast) {
+  RunMatMulOpTest({3, 3, 3}, {1, 3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
+}
+
+TEST_F(QnnGPUBackendTests, DISABLED_MatMulOp_batchesDimBcast) {
+  RunMatMulOpTest({1, 3, 3}, {3, 3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
+}
+
+TEST_F(QnnGPUBackendTests, DISABLED_MatMulOp_batchesDimBcast2) {
+  RunMatMulOpTest({2, 1, 3, 3}, {3, 3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
+}
+
+TEST_F(QnnGPUBackendTests, MatMulOp_inp0DimBcast) {
+  RunMatMulOpTest({3, 3}, {3, 3, 2}, false, false, ExpectedEPNodeAssignment::All, "gpu");
+}
+
+TEST_F(QnnGPUBackendTests, MatMulOp_inp1DimBcast) {
+  RunMatMulOpTest({2, 3, 3}, {3, 2}, false, false, ExpectedEPNodeAssignment::All, "gpu");
+}
+
+TEST_F(QnnGPUBackendTests, MatMulOp_rank1) {
+  RunMatMulOpTest({3}, {3}, false, false, ExpectedEPNodeAssignment::All, "gpu");
+  RunMatMulOpTest({3}, {3}, false, true, ExpectedEPNodeAssignment::All, "gpu");
+  RunMatMulOpTest({3}, {3}, true, false, ExpectedEPNodeAssignment::All, "gpu");
+  RunMatMulOpTest({3}, {3, 2}, false, false, ExpectedEPNodeAssignment::All, "gpu");
+  RunMatMulOpTest({3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
+  RunMatMulOpTest({3}, {3, 3, 2}, true, false, ExpectedEPNodeAssignment::All, "gpu");
+  RunMatMulOpTest({2, 3}, {3}, false, false, ExpectedEPNodeAssignment::All, "gpu");
+  RunMatMulOpTest({2, 3}, {3}, true, false, ExpectedEPNodeAssignment::All, "gpu");
+  RunMatMulOpTest({2, 3, 3, 3}, {3}, false, false, ExpectedEPNodeAssignment::All, "gpu");
+}
+
+#endif  // defined(_M_ARM64) GPU tests
 
 }  // namespace test
 }  // namespace onnxruntime

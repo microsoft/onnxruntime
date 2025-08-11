@@ -24,7 +24,6 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
                            const std::optional<std::pair<float, float>>& clip_min_max,
                            const Tensor& Weight, const Tensor* Bias,
                            XnnpackOperator& op_uptr,
-                           xnn_code_cache_t code_cache,
                            xnn_weights_cache_t weights_cache,
                            const OpQuantParam& quant_param,
                            OpComputeType conv_type,
@@ -34,18 +33,18 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
   // if this is 1D input, we fake all the height related dims being 1 to make it 2D. so {W} -> {1, W}
   const auto is_1D = kernel_shape.size() == 1;
 
-  const uint32_t kernel_height = is_1D ? 1 : gsl::narrow<uint32_t>(kernel_shape[0]);
-  const uint32_t kernel_width = gsl::narrow<uint32_t>(kernel_shape[is_1D ? 0 : 1]);
+  const uint32_t kernel_height = is_1D ? 1 : narrow<uint32_t>(kernel_shape[0]);
+  const uint32_t kernel_width = narrow<uint32_t>(kernel_shape[is_1D ? 0 : 1]);
 
-  const uint32_t input_padding_top = is_1D ? 0 : gsl::narrow<uint32_t>(conv_attrs.pads[0]);
-  const uint32_t input_padding_left = gsl::narrow<uint32_t>(conv_attrs.pads[is_1D ? 0 : 1]);
-  const uint32_t input_padding_bottom = is_1D ? 0 : gsl::narrow<uint32_t>(conv_attrs.pads[2]);
-  const uint32_t input_padding_right = gsl::narrow<uint32_t>(conv_attrs.pads[is_1D ? 1 : 3]);
+  const uint32_t input_padding_top = is_1D ? 0 : narrow<uint32_t>(conv_attrs.pads[0]);
+  const uint32_t input_padding_left = narrow<uint32_t>(conv_attrs.pads[is_1D ? 0 : 1]);
+  const uint32_t input_padding_bottom = is_1D ? 0 : narrow<uint32_t>(conv_attrs.pads[2]);
+  const uint32_t input_padding_right = narrow<uint32_t>(conv_attrs.pads[is_1D ? 1 : 3]);
 
-  const uint32_t subsampling_height = is_1D ? 1 : gsl::narrow<uint32_t>(conv_attrs.strides[0]);
-  const uint32_t subsampling_width = gsl::narrow<uint32_t>(conv_attrs.strides[is_1D ? 0 : 1]);
-  const uint32_t dilation_height = is_1D ? 1 : gsl::narrow<uint32_t>(conv_attrs.dilations[0]);
-  const uint32_t dilation_width = gsl::narrow<uint32_t>(conv_attrs.dilations[is_1D ? 0 : 1]);
+  const uint32_t subsampling_height = is_1D ? 1 : narrow<uint32_t>(conv_attrs.strides[0]);
+  const uint32_t subsampling_width = narrow<uint32_t>(conv_attrs.strides[is_1D ? 0 : 1]);
+  const uint32_t dilation_height = is_1D ? 1 : narrow<uint32_t>(conv_attrs.dilations[0]);
+  const uint32_t dilation_width = narrow<uint32_t>(conv_attrs.dilations[is_1D ? 0 : 1]);
 
   uint32_t flags = 0;
   if (conv_attrs.auto_pad == AutoPadType::SAME_UPPER) {
@@ -62,9 +61,9 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
   // also, in the case of DepthWiseConv, group_count = C, IC is 1 constantly, OC is what DPconv require.
   // So we can unify it with IC and OC.
   // group is either 1 (for regular conv) or C (for depth-wise conv), and hence M % group == 0 so M/group is safe
-  uint32_t group_count = gsl::narrow<uint32_t>(conv_attrs.group);
-  size_t group_input_channels = gsl::narrow<size_t>(C / group_count);   // either C or 1
-  size_t group_output_channels = gsl::narrow<size_t>(M / group_count);  // either M or M/C
+  uint32_t group_count = narrow<uint32_t>(conv_attrs.group);
+  size_t group_input_channels = narrow<size_t>(C / group_count);   // either C or 1
+  size_t group_output_channels = narrow<size_t>(M / group_count);  // either M or M/C
   if (conv_type == OpComputeType::op_compute_type_fp32) {
     auto* B_data = Bias ? Bias->Data<float>() : nullptr;
     auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_f32
@@ -79,7 +78,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         C, M,                                         // input channel stride, output channel stride
         Weight.Data<float>(), B_data,
         foutput_min, foutput_max, flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_fp16) {
     const auto* B_data = Bias ? Bias->Data<MLFloat16>() : nullptr;
@@ -97,7 +96,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         Weight.Data<MLFloat16>(), B_data,  // kernel, bias
         foutput_min, foutput_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8) {
     const float output_scale = quant_param[2].first[0];
@@ -121,7 +120,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8_per_channel) {
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
@@ -145,7 +144,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qu8) {
     const auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
@@ -170,7 +169,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   }
 
@@ -521,7 +520,7 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
 Status ConvBase::CreateKernel() {
   auto ret = CreateXnnpackKernel(convbase_attrs_ref_, C_, M_, kernel_shape_, clip_min_max_, packed_w_,
                                  B_, op0_,
-                                 GetCodeCache(), GetWeightsCache(),
+                                 GetWeightsCache(),
                                  quant_param_, conv_type_, is_transpose_);
   return ret;
 }

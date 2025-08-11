@@ -3,10 +3,6 @@ parameters:
   displayName: Run Tests?
   type: boolean
   default: true
-- name: DoEsrp
-  displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
-  type: boolean
-  default: false
 
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
@@ -42,10 +38,12 @@ parameters:
   type: string
   default: '0'
 
+# Do not update this to a version that does not exist for the qnn-runtime Maven package:
+# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: 2.32.0.250228
+  default: 2.37.0.250724
 
 - name: is1ES
   displayName: Is 1ES pipeline
@@ -63,7 +61,7 @@ stages:
     BuildForAllArchs: true
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
-    DoEsrp: ${{ parameters.DoEsrp }}
+    DoEsrp: true
 
 - stage: Android_Java_API_AAR_Packaging_Full
   dependsOn: Setup # Setup stage defined in set_packaging_variables_stage.yml creates the ReleaseVersionSuffix variable
@@ -77,18 +75,12 @@ stages:
       artifactName: 'onnxruntime-android-full-aar'
       job_name_suffix: 'Full'
       publish_executables: '1'
-      enable_code_sign: ${{ parameters.DoEsrp }}
+      enable_code_sign: true
       packageName: 'onnxruntime-android'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
       is1ES: ${{ parameters.is1ES }}
 
-- stage: Android_Java_API_AAR_Testing_Full
-  dependsOn: Android_Java_API_AAR_Packaging_Full
-  jobs:
-  - template: android-java-api-aar-test.yml
-    parameters:
-      artifactName: 'onnxruntime-android-full-aar'
-      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+
 
 - stage: Android_Java_API_AAR_Packaging_QNN
   dependsOn: Setup # Setup stage defined in set_packaging_variables_stage.yml creates the ReleaseVersionSuffix variable
@@ -102,20 +94,11 @@ stages:
       artifactName: 'onnxruntime-android-qnn-aar'
       job_name_suffix: 'QNN'
       publish_executables: '0'
-      enable_code_sign: ${{ parameters.DoEsrp }}
+      enable_code_sign: true
       packageName: 'onnxruntime-android-qnn'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
       QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
       is1ES: ${{ parameters.is1ES }}
-
-- stage: Final_AAR_Testing_Android_QNN
-  dependsOn: Android_Java_API_AAR_Packaging_QNN
-  jobs:
-  - template: android-java-api-aar-test.yml
-    parameters:
-      artifactName: 'onnxruntime-android-qnn-aar'
-      packageName: 'onnxruntime-android-qnn'
-      QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
 
 - stage: iOS_Full_xcframework
   dependsOn: []
@@ -151,7 +134,6 @@ stages:
           --fail_if_cocoapods_missing \
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
-          --variant Full \
           --skip_macos_test \
           --mac_catalyst_enabled
       displayName: "Test Apple framework"
@@ -161,23 +143,9 @@ stages:
         targetPath: '$(Build.BinariesDirectory)/artifacts'
         artifactName: 'onnxruntime-ios-full-xcframework'
 
-
-
 - template: win-ci.yml
   parameters:
-    DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
-    buildArch: x86
-    msbuildPlatform: Win32
-    packageName: x86
-    buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
-    runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: false
-    buildNodejs: false
-
-- template: win-ci.yml
-  parameters:
-    DoEsrp: ${{ parameters.DoEsrp }}
+    DoEsrp: true
     stage_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
     buildArch: x64
     msbuildPlatform: arm64
@@ -189,7 +157,7 @@ stages:
 
 - template: win-ci.yml
   parameters:
-    DoEsrp: ${{ parameters.DoEsrp }}
+    DoEsrp: true
     stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
     buildArch: x64
     msbuildPlatform: x64
@@ -210,52 +178,38 @@ stages:
   - job: Jar_Packaging
     workspace:
       clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool:
+      name: 'onnxruntime-Win-CPU-2022'
+      os: windows
+    templateContext:
+      inputs:
+      - input: pipelineArtifact
+        artifactName: drop-onnxruntime-java-win-x64
+        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+
+      - input: pipelineArtifact
+        artifactName: drop-onnxruntime-java-linux-x64
+        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+
+      - input: pipelineArtifact
+        artifactName: drop-onnxruntime-java-linux-aarch64
+        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-aarch64'
+
+      - input: pipelineArtifact
+        artifactName: drop-onnxruntime-java-osx-x86_64
+        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x86_64'
+      - input: pipelineArtifact
+        artifactName: drop-onnxruntime-java-osx-arm64
+        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: onnxruntime-java
 
     steps:
     - checkout: self
       submodules: false
     - template: set-version-number-variables-step.yml
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - Win x64'
-        ArtifactName: 'drop-onnxruntime-java-win-x64'
-        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - Linux x64'
-        ArtifactName: 'drop-onnxruntime-java-linux-x64'
-        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - Linux AARCH64'
-        ArtifactName: 'drop-onnxruntime-java-linux-aarch64'
-        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-aarch64'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - MacOS x64'
-        ArtifactName: 'drop-onnxruntime-java-osx-x86_64'
-        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x86_64'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - MacOS ARM64'
-        ArtifactName: 'drop-onnxruntime-java-osx-arm64'
-        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
 
     - task: PowerShell@2
       displayName: 'PowerShell Script'
@@ -281,20 +235,12 @@ stages:
         SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline Artifact'
-      inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifactName: 'onnxruntime-java'
-
-
 
 - stage: NuGet_Packaging_CPU
   dependsOn:
   - Setup
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Package_Publish
-  - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   - Android_Java_API_AAR_Packaging_Full
@@ -304,10 +250,24 @@ stages:
   - job: NuGet_Packaging_CPU
     workspace:
       clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool:
+      name: 'onnxruntime-Win-CPU-2022'
+      os: windows
+    templateContext:
+      sdl:
+        codeSignValidation:
+          enabled: true
+          break: false
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: 'drop-signed-nuget-CPU'
+
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
-      breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
       BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
       BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
@@ -320,14 +280,6 @@ stages:
       parameters:
         StepName: 'Download Pipeline Artifact - Win x64'
         ArtifactName: 'onnxruntime-win-x64'
-        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download win-x86 Pipeline Artifact'
-        ArtifactName: 'onnxruntime-win-x86'
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
@@ -429,17 +381,22 @@ stages:
         msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:PackageVersion=$(OnnxRuntimeVersion)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - ${{ if eq(parameters.DoEsrp, true) }}:
-      - template: win-esrp-dll.yml
-        parameters:
-          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
-          DisplayName: 'ESRP - Sign C# dlls'
-          DoEsrp: ${{ parameters.DoEsrp }}
+    - template: win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+        DisplayName: 'ESRP - Sign C# dlls'
+        DoEsrp: true
 
     - task: UsePythonVersion@0
       displayName: 'Use Python'
       inputs:
         versionSpec: 3.12
+
+    - task: PipAuthenticate@1
+      displayName: 'Pip Authenticate'
+      inputs:
+        artifactFeeds: 'Lotus'
+
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'
@@ -475,37 +432,12 @@ stages:
       parameters:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.ArtifactStagingDirectory)'
-        DoEsrp: ${{ parameters.DoEsrp }}
-
-    - template: validate-package.yml
-      parameters:
-        PackageType: 'nuget'
-        PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
-        PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx-x64'
-        VerifyNugetSigning: false
-
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline NuGet Artifact'
-      inputs:
-        artifactName: 'drop-signed-nuget-CPU'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-
-
-    - task: MSBuild@1
-      displayName: 'Clean C#'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'Any CPU'
-        configuration: RelWithDebInfo
-        msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-
+        DoEsrp: true
 
 
 - stage: Nodejs_Packaging
   dependsOn:
+  - Setup
   - Windows_Nodejs_Packaging_x64
   - Windows_Nodejs_Packaging_arm64
   - Linux_Nodejs_Packaging_x64
@@ -516,13 +448,28 @@ stages:
   - job: Nodejs_Packaging
     workspace:
       clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool:
+      name: 'onnxruntime-Win-CPU-2022'
+      os: windows
+    templateContext:
+      sdl:
+        codeSignValidation:
+          enabled: true
+          break: false
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: 'NPM_packages'
     variables:
       ${{ if eq(parameters.IsReleaseBuild, true) }}:
         NpmPackagingMode: 'release'
       ${{ if not(eq(parameters.IsReleaseBuild, true)) }}:
         NpmPackagingMode: 'dev'
-      breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
+      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
+      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
     - checkout: self
@@ -599,7 +546,7 @@ stages:
     #  - linux/x64/libonnxruntime_providers_cuda.so
     #
     # Rest binary artifacts will eventually be put into folder before packaging 'onnxruntime-node':
-    #  $(Build.SourcesDirectory)\js\node\bin\napi-v3\{os}\{cpu_arch}\
+    #  $(Build.SourcesDirectory)\js\node\bin\napi-v6\{os}\{cpu_arch}\
     #
     # {os} is one of 'win32', 'darwin', 'linux' and {cpu_arch} is one of 'x64', 'arm64'.
 
@@ -659,68 +606,118 @@ stages:
 
     # Node.js binding win32/x64
     - task: CopyFiles@2
-      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
+      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\x64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\x64'
         Contents: |
           *.dll
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\x64'
 
     # Node.js binding win32/arm64
     - task: CopyFiles@2
-      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
+      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\arm64'
         Contents: |
           *.dll
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\arm64'
 
     # Node.js binding linux/x64
     - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
+      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\x64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\x64'
         Contents: |
           libonnxruntime.so.1
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\x64'
 
     # Node.js binding linux/arm64
     - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
+      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\arm64'
         Contents: |
           libonnxruntime.so.1
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\arm64'
 
     # Node.js binding darwin/x64
     - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64\'
+      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\x64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\x64'
         Contents: |
           libonnxruntime.*.dylib
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\x64'
 
     # Node.js binding darwin/arm64
     - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64\'
+      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\arm64'
         Contents: |
           libonnxruntime.*.dylib
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\arm64'
+
+    - ${{ if not(eq(parameters.IsReleaseBuild, true)) }}:
+      - task: PowerShell@2
+        displayName: 'Set environment variable NODEJS_DEP_PACKAGE_VERSIONS'
+        inputs:
+          targetType: 'inline'
+          script: |
+            # The following PowerShell script is used to set environment variable "NODEJS_DEP_PACKAGE_VERSIONS" to the
+            # following format:
+            # <current_version>;<latest_existing_version>
+            #
+            # - The "current_version" is the same to the version of the Nuget package being built.
+            # - The "latest_existing_version" is the latest existing version of the package
+            #   "Microsoft.ML.OnnxRuntime.Gpu.Linux" from the NuGet nightly feed.
+            #
+
+            $index = 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/nuget/v3/index.json'
+            $packageName = 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
+
+            # Download NuGet index
+            $nugetIndex = Invoke-RestMethod -Uri $index -UseBasicParsing
+            if (-not $nugetIndex) {
+                throw "Failed to download NuGet index from $index"
+            }
+
+            # Find the base URL for "PackageBaseAddress/3.0.0"
+            $packageBaseUrl = ($nugetIndex.resources | Where-Object { $_.'@type' -eq 'PackageBaseAddress/3.0.0' }).'@id'
+            if (-not $packageBaseUrl) {
+                throw "Failed to find PackageBaseAddress in NuGet index"
+            }
+
+            # Fetch package version info
+            $packageInfo = Invoke-RestMethod -Uri "$packageBaseUrl$($packageName.ToLower())/index.json" -UseBasicParsing
+            if (-not $packageInfo.versions -or $packageInfo.versions.Count -eq 0) {
+                throw "No versions found for package $packageName"
+            }
+
+            # Extract the latest version
+            $devVersions = $packageInfo.versions | Where-Object { $_ -match '-dev-' }
+            $latestVersion = $devVersions[0]
+            Write-Host "Latest version of ${packageName}: $latestVersion"
+
+            # Generate current version
+            $currentVersion = "$(cat .\VERSION_NUMBER)-dev-$($env:BuildDate)-$($env:BuildTime)-$(git rev-parse --short HEAD)"
+            Write-Host "Current version: $currentVersion"
+
+            # Set the version as an environment variable
+            Write-Host "##vso[task.setvariable variable=NODEJS_DEP_PACKAGE_VERSIONS]$currentVersion;$latestVersion"
+            Write-Host "Environment variable NODEJS_DEP_PACKAGE_VERSIONS set to $currentVersion;$latestVersion"
+          workingDirectory: '$(Build.SourcesDirectory)'
 
     - task: PowerShell@2
       inputs:
         filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
-        arguments: '$(NpmPackagingMode) $(Build.SourcesDirectory) node'
+        arguments: '$(NpmPackagingMode) "$(Build.SourcesDirectory)" node "$env:NODEJS_DEP_PACKAGE_VERSIONS"'
         workingDirectory: $(Build.BinariesDirectory)
         errorActionPreference: stop
       displayName: 'Pack NPM packages'
@@ -738,76 +735,3 @@ stages:
         SourceFolder: '$(Build.SourcesDirectory)/js/node/'
         Contents: 'onnxruntime-node-*.tgz'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish NPM packages files'
-      inputs:
-        artifactName: 'NPM_packages'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-
-
-
-
-- template: ../nuget/templates/test_win.yml
-  parameters:
-    AgentPool: 'onnxruntime-Win-CPU-2022'
-    Skipx86Tests: false
-    NugetPackageName: 'Microsoft.ML.OnnxRuntime'
-    ArtifactSuffix: 'CPU'
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: ../nuget/templates/test_android.yml
-  parameters:
-    AgentPool : 'onnxruntime-Win-CPU-2022'
-    ArtifactSuffix: 'CPU'
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: ../nuget/templates/test_linux.yml
-  parameters:
-    AgentPool: onnxruntime-Ubuntu2204-AMD-CPU
-    NugetPackageName: 'Microsoft.ML.OnnxRuntime'
-    ArtifactSuffix: 'CPU'
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: ../nuget/templates/test_macos.yml
-  parameters:
-    AgentPool: macOS-14
-    ArtifactSuffix: 'CPU'
-
-- template: ../nodejs/templates/test_win.yml
-  parameters:
-    AgentPool: 'onnxruntime-Win-CPU-2022'
-    StageSuffix: 'Win_CPU_x64'
-
-- template: ../nodejs/templates/test_linux.yml
-  parameters:
-    AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
-    StageSuffix: 'Linux_CPU_x64'
-
-- template: ../nodejs/templates/test_macos.yml
-  parameters:
-    StageSuffix: 'macOS_CPU_x64'
-
-- template: final-jar-testing.yml
-  parameters:
-    OS: Windows
-    BuildId: ${{ parameters.BuildId }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'onnxruntime-Win-CPU-2022'
-
-- template: final-jar-testing.yml
-  parameters:
-    OS: Linux
-    BuildId: ${{ parameters.BuildId }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-
-- template: final-jar-testing.yml
-  parameters:
-    OS: MacOS
-    BuildId: ${{ parameters.BuildId }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'macOS-14'

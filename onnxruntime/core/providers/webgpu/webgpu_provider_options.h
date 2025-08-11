@@ -9,28 +9,28 @@ namespace options {
 
 // The following are the options that can be set in the WebGPU provider options.
 
-constexpr const char* kPreferredLayout = "ep.WebGPU.preferredLayout";
-constexpr const char* kEnableGraphCapture = "ep.WebGPU.enableGraphCapture";
+constexpr const char* kPreferredLayout = "ep.webgpuexecutionprovider.preferredLayout";
+constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGraphCapture";
 
-constexpr const char* kDawnProcTable = "ep.WebGPU.dawnProcTable";
+constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
 
-constexpr const char* kDawnBackendType = "ep.WebGPU.dawnBackendType";
+constexpr const char* kDawnBackendType = "ep.webgpuexecutionprovider.dawnBackendType";
 
-constexpr const char* kDeviceId = "ep.WebGPU.deviceId";
-constexpr const char* kWebGpuInstance = "ep.WebGPU.webgpuInstance";
-constexpr const char* kWebGpuDevice = "ep.WebGPU.webgpuDevice";
+constexpr const char* kDeviceId = "ep.webgpuexecutionprovider.deviceId";
+constexpr const char* kWebGpuInstance = "ep.webgpuexecutionprovider.webgpuInstance";
+constexpr const char* kWebGpuDevice = "ep.webgpuexecutionprovider.webgpuDevice";
 
-constexpr const char* kStorageBufferCacheMode = "ep.WebGPU.storageBufferCacheMode";
-constexpr const char* kUniformBufferCacheMode = "ep.WebGPU.uniformBufferCacheMode";
-constexpr const char* kQueryResolveBufferCacheMode = "ep.WebGPU.queryResolveBufferCacheMode";
-constexpr const char* kDefaultBufferCacheMode = "ep.WebGPU.defaultBufferCacheMode";
+constexpr const char* kStorageBufferCacheMode = "ep.webgpuexecutionprovider.storageBufferCacheMode";
+constexpr const char* kUniformBufferCacheMode = "ep.webgpuexecutionprovider.uniformBufferCacheMode";
+constexpr const char* kQueryResolveBufferCacheMode = "ep.webgpuexecutionprovider.queryResolveBufferCacheMode";
+constexpr const char* kDefaultBufferCacheMode = "ep.webgpuexecutionprovider.defaultBufferCacheMode";
 
-constexpr const char* kValidationMode = "ep.WebGPU.validationMode";
+constexpr const char* kValidationMode = "ep.webgpuexecutionprovider.validationMode";
 
-constexpr const char* kForceCpuNodeNames = "ep.WebGPU.forceCpuNodeNames";
-constexpr const char* kEnablePIXCapture = "ep.WebGPU.enablePIXCapture";
+constexpr const char* kForceCpuNodeNames = "ep.webgpuexecutionprovider.forceCpuNodeNames";
+constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXCapture";
 
-constexpr const char* kPreserveDevice = "ep.WebGPU.preserveDevice";
+constexpr const char* kPreserveDevice = "ep.webgpuexecutionprovider.preserveDevice";
 
 // The following are the possible values for the provider options.
 

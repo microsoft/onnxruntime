@@ -213,6 +213,10 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
 
+  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckNoQKOutput(
+      context->OutputCount(),
+      static_cast<int>(Info().GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)))));
+
   if (do_rotary_ && (cos_cache == nullptr || sin_cache == nullptr)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "cos_cache and sin_cache must be passed to GroupQueryAttention when do_rotary = 1");
@@ -497,7 +501,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
       parameters.head_size,  // v head size
       GetCkFmhaDataTypeString<T>(),
       !parameters.is_first_prompt,  // true,  // is_group_mode
-      true,                   // is_v_rowmajor ? dim is fastest : seq is fastest
+      true,                         // is_v_rowmajor ? dim is fastest : seq is fastest
       mask.type,
       bias_type,
       false,  // has_lse

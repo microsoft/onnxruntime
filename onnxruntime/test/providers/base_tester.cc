@@ -537,7 +537,7 @@ void BaseTester::Run(ExpectResult expect_result, const std::string& expected_fai
   SessionOptions so;
   so.use_per_session_threads = false;
   so.session_logid = test_name_;
-  so.session_log_verbosity_level = 0;
+  so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
   so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
@@ -629,6 +629,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
     std::unordered_map<std::string, OrtValue> feeds;
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
+    number_of_nodes_ = model.MainGraph().NumberOfNodes();
 
     // Run the model
     if (ctx_.run_with_specified_eps) {
@@ -658,6 +659,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 #endif
           kDnnlExecutionProvider,
           kTensorrtExecutionProvider,
+          kNvTensorRTRTXExecutionProvider,
           kOpenVINOExecutionProvider,
           kDmlExecutionProvider,
           kAclExecutionProvider,
@@ -700,6 +702,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
           execution_provider = DefaultOpenVINOExecutionProvider();
+        else if (provider_type == onnxruntime::kNvTensorRTRTXExecutionProvider)
+          execution_provider = DefaultNvTensorRTRTXExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
@@ -790,6 +794,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
     ORT_RETHROW;
   }
 }
+
+int BaseTester::GetNumberOfNodesAfterRun() const { return number_of_nodes_; }
 
 void BaseTester::ExecuteModelForEps(
     std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers,

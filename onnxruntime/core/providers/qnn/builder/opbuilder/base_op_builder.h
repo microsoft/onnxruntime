@@ -70,6 +70,18 @@ class BaseOpBuilder : public IOpBuilder {
     return Status::OK();
   }
 
+  Status ProcessDataTypes(QnnModelWrapper& qnn_model_wrapper,
+                          const NodeUnit& node_unit) const ORT_MUST_USE_RESULT;
+
+  virtual Status CheckCpuDataTypes(const std::vector<Qnn_DataType_t>,
+                                   const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
+
+  virtual Status CheckHtpDataTypes(const std::vector<Qnn_DataType_t>,
+                                   const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
+
+  virtual Status CheckGpuDataTypes(const std::vector<Qnn_DataType_t>,
+                                   const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
+
   virtual Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& node_unit,
                                const logging::Logger& logger,
@@ -140,6 +152,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Less", QNN_OP_ELEMENT_WISE_LESS},
         {"LessOrEqual", QNN_OP_ELEMENT_WISE_LESS_EQUAL},
         {"Log", QNN_OP_ELEMENT_WISE_LOG},
+        {"LSTM", QNN_OP_LSTM},
         {"Max", QNN_OP_ELEMENT_WISE_MAXIMUM},
         {"Min", QNN_OP_ELEMENT_WISE_MINIMUM},
         {"Neg", QNN_OP_ELEMENT_WISE_NEG},
@@ -155,6 +168,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"ReduceSum", QNN_OP_REDUCE_SUM},
         {"Round", QNN_OP_ELEMENT_WISE_ROUND},
         {"Where", QNN_OP_ELEMENT_WISE_SELECT},
+        {"ScatterND", QNN_OP_SCATTER_ND},
         {"Sigmoid", QNN_OP_SIGMOID},
         {"Sin", QNN_OP_ELEMENT_WISE_SIN},
         {"Slice", QNN_OP_STRIDED_SLICE},
@@ -192,12 +206,14 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"Reshape", QNN_OP_RESHAPE},
         {"Resize", QNN_OP_RESIZE},
+        {"Upsample", QNN_OP_RESIZE},
         {"Flatten", QNN_OP_RESHAPE},
         {"Squeeze", QNN_OP_RESHAPE},
         {"Unsqueeze", QNN_OP_RESHAPE},
 
         {"LogSoftmax", QNN_OP_LOG_SOFTMAX},
         {"Concat", QNN_OP_CONCAT},
+        {"CumSum", QNN_OP_CUMULATIVE_SUM},
 
         {"Gemm", QNN_OP_FULLY_CONNECTED},
 
@@ -212,6 +228,8 @@ class BaseOpBuilder : public IOpBuilder {
         {"LRN", QNN_OP_LRN},
 
         {"Pad", QNN_OP_PAD},
+
+        {"ScatterElements", QNN_OP_SCATTER_ELEMENTS},
 
         {"Expand", QNN_OP_ELEMENT_WISE_MULTIPLY}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);

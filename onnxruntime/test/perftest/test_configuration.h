@@ -35,6 +35,7 @@ struct ModelInfo {
 struct MachineConfig {
   Platform platform{Platform::kWindows};
   std::string provider_type_name{onnxruntime::kCpuExecutionProvider};
+  std::vector<std::string> plugin_provider_type_list;
 };
 
 struct RunConfig {
@@ -59,19 +60,25 @@ struct RunConfig {
   bool set_denormal_as_zero{false};
   std::basic_string<ORTCHAR_T> ep_runtime_config_string;
   std::unordered_map<std::string, std::string> session_config_entries;
-  std::map<std::basic_string<ORTCHAR_T>, int64_t> free_dim_name_overrides;
-  std::map<std::basic_string<ORTCHAR_T>, int64_t> free_dim_denotation_overrides;
+  std::map<std::string, int64_t> free_dim_name_overrides;
+  std::map<std::string, int64_t> free_dim_denotation_overrides;
   std::string intra_op_thread_affinities;
   bool disable_spinning = false;
   bool disable_spinning_between_run = false;
   bool exit_after_session_creation = false;
   std::basic_string<ORTCHAR_T> register_custom_op_path;
+  bool enable_cuda_io_binding{false};
+  bool use_extensions = false;
 };
 
 struct PerformanceTestConfig {
   ModelInfo model_info;
   MachineConfig machine_config;
   RunConfig run_config;
+  std::basic_string<ORTCHAR_T> plugin_ep_names_and_libs;
+  std::vector<std::string> registered_plugin_eps;
+  std::string selected_ep_device_indices;
+  bool list_available_ep_devices = false;
 };
 
 }  // namespace perftest

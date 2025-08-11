@@ -28,19 +28,8 @@ export declare namespace JSEP {
   type CaptureBeginFunction = () => void;
   type CaptureEndFunction = () => void;
   type ReplayFunction = () => void;
-  type ReserveTensorIdFunction = () => number;
-  type ReleaseTensorIdFunction = (tensorId: number) => void;
-  type EnsureTensorFunction = (
-    sessionId: number | undefined,
-    tensorId: number,
-    dataType: DataType,
-    shape: readonly number[],
-    copyOld: boolean,
-  ) => Promise<MLTensor>;
-  type UploadTensorFunction = (tensorId: number, data: Uint8Array) => void;
-  type DownloadTensorFunction = (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
 
-  export interface Module extends WebGpuModule, WebNnModule {
+  export interface Module extends WebGpuModule, WebNN.Module {
     /**
      * This is the entry of JSEP initialization. This function is called once when initializing ONNX Runtime per
      * backend. This function initializes Asyncify support. If name is 'webgpu', also initializes WebGPU backend and
@@ -65,12 +54,14 @@ export declare namespace JSEP {
     jsepInit(
       name: 'webnn',
       initParams: [
-        backend: BackendType,
-        reserveTensorId: ReserveTensorIdFunction,
-        releaseTensorId: ReleaseTensorIdFunction,
-        ensureTensor: EnsureTensorFunction,
-        uploadTensor: UploadTensorFunction,
-        downloadTensor: DownloadTensorFunction,
+        backend: WebNN.BackendType,
+        reserveTensorId: WebNN.ReserveTensorIdFunction,
+        releaseTensorId: WebNN.ReleaseTensorIdFunction,
+        ensureTensor: WebNN.EnsureTensorFunction,
+        uploadTensor: WebNN.UploadTensorFunction,
+        downloadTensor: WebNN.DownloadTensorFunction,
+        registerMLTensor: WebNN.RegisterMLTensorFunction,
+        enableTraceEvent: boolean,
       ],
     ): void;
   }
@@ -144,8 +135,54 @@ export declare namespace JSEP {
      */
     jsepOnReleaseSession: (sessionId: number) => void;
   }
+}
 
-  export interface WebNnModule {
+export declare namespace WebGpu {
+  export interface Module {
+    webgpuInit(setDefaultDevice: (device: GPUDevice) => void): void;
+    webgpuRegisterDevice(
+      device?: GPUDevice,
+    ): undefined | [deviceId: number, instanceHandle: number, deviceHandle: number];
+    webgpuOnCreateSession(sessionHandle: number): void;
+    webgpuOnReleaseSession(sessionHandle: number): void;
+    webgpuRegisterBuffer(buffer: GPUBuffer, sessionHandle: number, bufferHandle?: number): number;
+    webgpuUnregisterBuffer(buffer: GPUBuffer): void;
+    webgpuGetBuffer(bufferHandle: number): GPUBuffer;
+    webgpuCreateDownloader(gpuBuffer: GPUBuffer, size: number, sessionHandle: number): () => Promise<ArrayBuffer>;
+  }
+}
+
+export declare namespace WebNN {
+  type BackendType = unknown;
+  type ReserveTensorIdFunction = () => number;
+  type ReleaseTensorIdFunction = (tensorId: number) => void;
+  type EnsureTensorFunction = (
+    sessionId: number | undefined,
+    tensorId: number,
+    dataType: DataType,
+    shape: readonly number[],
+    copyOld: boolean,
+  ) => Promise<MLTensor>;
+  type UploadTensorFunction = (tensorId: number, data: Uint8Array) => void;
+  type DownloadTensorFunction = (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
+  type RegisterMLTensorFunction = (sessionId: number, mlContext: MLContext) => void;
+
+  export interface Module {
+    /**
+     * The entry of WebNN initialization when used without JSEP.
+     */
+    webnnInit(
+      initParams: [
+        backend: BackendType,
+        reserveTensorId: ReserveTensorIdFunction,
+        releaseTensorId: ReleaseTensorIdFunction,
+        ensureTensor: EnsureTensorFunction,
+        uploadTensor: UploadTensorFunction,
+        downloadTensor: DownloadTensorFunction,
+        registerMLTensor: RegisterMLTensorFunction,
+        enableTraceEvent: boolean,
+      ],
+    ): void;
     /**
      * Active MLContext used to create WebNN EP.
      */
@@ -288,6 +325,19 @@ export declare namespace JSEP {
      */
     webnnIsGraphInput: (sessionId: number, inputName: string) => boolean;
     /**
+     * [exported from pre-jsep.js] Register a WebNN graph output.
+     * @param outputName - specify the output name.
+     */
+    webnnRegisterGraphOutput: (outputName: string) => void;
+    /**
+     * [exported from pre-jsep.js] Check if a graph output is a WebNN graph output.
+     * @param sessionId - specify the session ID.
+     * @param outputName - specify the output name.
+     * @returns whether the output is a WebNN graph output.
+     */
+    webnnIsGraphOutput: (sessionId: number, outputName: string) => boolean;
+
+    /**
      * [exported from pre-jsep.js] Create a temporary MLTensor for a session.
      * @param sessionId - specify the session ID.
      * @param dataType - specify the data type.
@@ -296,26 +346,14 @@ export declare namespace JSEP {
      */
     webnnCreateTemporaryTensor: (sessionId: number, dataType: DataType, shape: readonly number[]) => Promise<number>;
     /**
-     * [exported from pre-jsep.js] Check if a session's associated WebNN Context supports int64.
+     * [exported from pre-jsep.js] Check if a session's associated WebNN Context supports given data type as its graph
+     * input/output.
      * @param sessionId - specify the session ID.
-     * @returns whether the WebNN Context supports int64.
+     * @param type - specify the graph input/output data type.
+     * @param isInput - specify whether the data type is for graph input.
+     * @returns whether the graph input/output of WebNN Context supports the given data type.
      */
-    webnnIsInt64Supported: (sessionId: number) => boolean;
-  }
-}
-
-export declare namespace WebGpu {
-  export interface Module {
-    webgpuInit(setDefaultDevice: (device: GPUDevice) => void): void;
-    webgpuRegisterDevice(
-      device?: GPUDevice,
-    ): undefined | [deviceId: number, instanceHandle: number, deviceHandle: number];
-    webgpuOnCreateSession(sessionHandle: number): void;
-    webgpuOnReleaseSession(sessionHandle: number): void;
-    webgpuRegisterBuffer(buffer: GPUBuffer, sessionHandle: number, bufferHandle?: number): number;
-    webgpuUnregisterBuffer(buffer: GPUBuffer): void;
-    webgpuGetBuffer(bufferHandle: number): GPUBuffer;
-    webgpuCreateDownloader(gpuBuffer: GPUBuffer, size: number, sessionHandle: number): () => Promise<ArrayBuffer>;
+    webnnIsGraphInputOutputTypeSupported: (sessionId: number, type: Tensor.Type, isInput: boolean) => boolean;
   }
 }
 
@@ -412,7 +450,8 @@ export interface OrtWasmModule
   extends EmscriptenModule,
     OrtInferenceAPIs,
     Partial<JSEP.Module>,
-    Partial<WebGpu.Module> {
+    Partial<WebGpu.Module>,
+    Partial<WebNN.Module> {
   // #region emscripten functions
   stackSave(): number;
   stackRestore(stack: number): void;

@@ -158,6 +158,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"InstanceNormalization", V_2020_4, {"CPU", "GPU"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
     {"HardMax", V_2022_1, {"CPU", "GPU"}},
+    {"HardSwish", V_2025_0, {"CPU", "GPU"}},
     {"LayerNormalization", V_2023_0, {"CPU", "GPU"}},
     {"LeakyRelu", V_2020_4, {"CPU", "GPU"}},
     {"Less", V_2020_4, {"CPU", "GPU"}},
@@ -228,6 +229,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Sigmoid", V_2020_4, {"CPU", "GPU"}},
     {"Sign", V_2020_4, {"CPU"}},
     {"Sign", V_2022_1, {"GPU"}},
+    {"SimplifiedLayerNormalization", V_2025_2, {"CPU", "GPU"}},
     {"Sin", V_2022_1, {"CPU", "GPU"}},
     {"Sinh", V_2020_4, {"CPU"}},
     {"Size", V_2022_1, {"CPU", "GPU"}},
@@ -401,7 +403,7 @@ void DataOps::populate_op_mode_supported() {
 
   // populate unsupportedmode_t
   {
-    UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1},
+    UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1, V_2025_2},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the Input of ReduceMax op is UINT8, it is rejected (Due to output mismatch)
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -417,9 +419,11 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
-                              V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1},
+                              V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
+                              V_2025_2},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               const auto& input_arg = node->InputDefs()[1];
+                               const auto& input_args = node->InputDefs();
+                               const auto& input_arg = (input_args.size() > 1) ? input_args[1] : input_args[0];
                                auto shape = input_arg->Shape();
                                // Reshape op with empty dim is Rejected for Myriad
                                // [TODO] Is this condition required anymore with Myriad removed?
@@ -435,7 +439,8 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
-                              V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1},
+                              V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
+                              V_2025_2},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph.
@@ -450,8 +455,8 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5, V_2024_6,
-                              V_2025_0, V_2025_1},
+    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5,
+                              V_2024_6, V_2025_0, V_2025_1, V_2025_2},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
@@ -612,6 +617,9 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
             (var.second == dtype)) {
           return true;
         }
+        // experimentally for GPU and qdq stripping mode allow int16 types
+        if (npu_qdq_optimizer_enabled_ && (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 || dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16))
+          return true;
       }
 #ifndef NDEBUG
       if (openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -792,7 +800,8 @@ bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_wei
             if (((device_id_.find("CPU") != std::string::npos) || (device_id_.find("GPU") != std::string::npos)) &&
                 ((optype == "Expand") || (optype == "Equal") ||
                  (optype == "Slice") || (optype == "Concat") ||
-                 (optype == "Shape"))) {
+                 (optype == "Shape") || (optype == "Cast") ||
+                 (optype == "Resize"))) {
               return;
             }
             has_unsupported_dimension = true;

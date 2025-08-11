@@ -79,11 +79,6 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                          const WebnnDeviceType /* device_type */,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-
   const auto& perm_name = input_defs[1]->Name();
   const auto* perm_init = graph_viewer.GetConstantInitializer(perm_name);
   if (!perm_init) {
@@ -93,9 +88,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
 
   const auto& perm_tensor = *perm_init;
   std::vector<uint8_t> unpacked_tensor;
-  auto status = onnxruntime::utils::UnpackInitializerData(perm_tensor, unpacked_tensor);
-  if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Error while unpacking perm_tensor: " << status.ErrorMessage();
+  if (!UnpackInitializerData(perm_tensor, unpacked_tensor, graph_viewer, logger)) {
     return false;
   }
 

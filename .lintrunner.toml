@@ -92,34 +92,21 @@ init_command = [
 is_formatter = true
 
 [[linter]]
-code = 'RUSTFMT'
-include_patterns = ['**/*.rs']
-command = [
-    'python',
-    '-m',
-    'lintrunner_adapters',
-    'run',
-    'rustfmt_linter',
-    '--binary=rustfmt',
-    '--config-path=rust/rustfmt.toml',
-    '--',
-    '@{{PATHSFILE}}'
-]
-is_formatter = true
-
-[[linter]]
 code = 'CLANGFORMAT'
 include_patterns = [
     '**/*.h',
     '**/*.cc',
     '**/*.hpp',
     '**/*.cpp',
+    '**/*.cuh',
+    '**/*.cu',
     '**/*.m',
     '**/*.mm',
 ]
 exclude_patterns = [
     'java/**', # FIXME: Enable clang-format for java
     'onnxruntime/contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/**', # Contains data chunks
+    'onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemm/launchers/*.generated.cu', # Generated code
     'onnxruntime/core/flatbuffers/schema/*.fbs.h', # Generated code
     'onnxruntime/test/flatbuffers/*.fbs.h', # Generated code
     'onnxruntime/core/graph/contrib_ops/quantization_defs.cc',

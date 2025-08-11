@@ -21,22 +21,31 @@ int ReplaceOrCreateZeroPointInitializer(Graph& graph, Node& quantize_node) {
   ONNX_NAMESPACE::TensorProto zero_point_tensor_float;
   if (quant_node_input_defs.size() >= 3) {
     // The quantize node has the zero point input
-    auto zero_point_tensor_int = graph.GetInitializer(quant_node_input_defs[2]->Name(), true);
-    ORT_ENFORCE(zero_point_tensor_int != nullptr, "Expected: zero point initializer with name ",
+    constexpr const bool check_outer_scope_true = true;
+    const auto* zero_point_tensor_proto = graph.GetInitializer(quant_node_input_defs[2]->Name(), check_outer_scope_true);
+    ORT_ENFORCE(zero_point_tensor_proto != nullptr, "Expected: zero point initializer with name ",
                 quant_node_input_defs[2]->Name(), " to be present in the graph. Actual: not found.");
-    zero_point_type = zero_point_tensor_int->data_type();
-    zero_point_tensor_float.set_name(graph.GenerateNodeArgName(zero_point_tensor_int->name()));
+    Initializer zero_point_tensor_int(graph, *zero_point_tensor_proto, graph.ModelPath(), check_outer_scope_true);
+    zero_point_type = zero_point_tensor_int.data_type();
+    zero_point_tensor_float.set_name(graph.GenerateNodeArgName(zero_point_tensor_int.name()));
     zero_point_tensor_float.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    for (const auto val : zero_point_tensor_int->int32_data()) {
-      zero_point_tensor_float.add_float_data(static_cast<float>(val));
+    if (zero_point_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+      for (const auto val : zero_point_tensor_int.DataAsSpan<uint8_t>()) {
+        zero_point_tensor_float.add_float_data(static_cast<float>(val));
+      }
+    } else {
+      for (const auto val : zero_point_tensor_int.DataAsSpan<int8_t>()) {
+        zero_point_tensor_float.add_float_data(static_cast<float>(val));
+      }
     }
-    for (const auto& dim : zero_point_tensor_int->dims()) {
+    for (const auto dim : zero_point_tensor_int.dims()) {
       zero_point_tensor_float.add_dims(dim);
     }
-    graph.RemoveInitializedTensor(zero_point_tensor_int->name());
+    graph.RemoveInitializedTensor(zero_point_tensor_int.name());
 
     // Since the quantize node has the zero point initializer input, replace it
-    graph_utils::ReplaceNodeInput(quantize_node, 2, graph_utils::AddInitializer(graph, zero_point_tensor_float));
+    graph_utils::ReplaceNodeInput(quantize_node, 2,
+                                  graph_utils::AddInitializer(graph, zero_point_tensor_float));
   } else {
     // The quantize node does not have the zero point optional input.
     // Create the zero point initializer to be 0.
@@ -45,7 +54,8 @@ int ReplaceOrCreateZeroPointInitializer(Graph& graph, Node& quantize_node) {
     zero_point_tensor_float.add_float_data(0.0f);
 
     // Since the input did not exist, add the newly created initializer as an input
-    graph_utils::AddNodeInput(quantize_node, 2, graph_utils::AddInitializer(graph, zero_point_tensor_float));
+    graph_utils::AddNodeInput(quantize_node, 2,
+                              graph_utils::AddInitializer(graph, zero_point_tensor_float));
   }
 
   return zero_point_type;

@@ -342,11 +342,10 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for WebAssembly (WASM) platform builds."""
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
-    parser.add_argument("--emsdk_version", default="4.0.4", help="Specify version of emsdk.")
+    parser.add_argument("--emsdk_version", default="4.0.11", help="Specify version of emsdk.")
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD.")
     parser.add_argument("--enable_wasm_relaxed_simd", action="store_true", help="Enable WebAssembly Relaxed SIMD.")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threading.")
-    parser.add_argument("--enable_wasm_memory64", action="store_true", help="Enable WebAssembly 64-bit memory.")
     parser.add_argument("--disable_wasm_exception_catching", action="store_true", help="Disable exception catching.")
     parser.add_argument(
         "--enable_wasm_api_exception_catching",
@@ -397,6 +396,7 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--windows_sdk_version", help="Windows SDK version (e.g., 10.0.19041.0).")
     parser.add_argument("--enable_msvc_static_runtime", action="store_true", help="Statically link MSVC runtimes.")
     parser.add_argument("--use_telemetry", action="store_true", help="Enable telemetry (official builds only).")
+    parser.add_argument("--caller_framework", type=str, help="Name of the framework calling ONNX Runtime.")
 
     # Cross-compilation targets hosted on Windows
     parser.add_argument(
@@ -527,6 +527,15 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_client_package_args(parser: argparse.ArgumentParser) -> None:
+    """Adds arguments for client package build package."""
+    parser.add_argument(
+        "--client_package_build",
+        action="store_true",
+        help="Create ORT package with default settings more appropriate for client/on-device workloads.",
+    )
+
+
 def add_python_binding_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Python bindings."""
     parser.add_argument("--enable_pybind", action="store_true", help="Enable Python bindings.")
@@ -603,18 +612,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         help="Enable CUDA kernel profiling (requires CUPTI in PATH).",
     )
 
-    # --- ROCm ---
-    rocm_group = parser.add_argument_group("ROCm Execution Provider")
-    rocm_group.add_argument("--use_rocm", action="store_true", help="Enable ROCm EP.")
-    rocm_group.add_argument("--rocm_version", help="ROCm stack version.")
-    rocm_group.add_argument("--rocm_home", help="Path to ROCm installation directory.")
-    # ROCm-specific profiling
-    rocm_group.add_argument(
-        "--enable_rocm_profiling",
-        action="store_true",
-        help="Enable ROCm kernel profiling.",
-    )
-
     # --- DNNL (formerly MKL-DNN / oneDNN) ---
     dnnl_group = parser.add_argument_group("DNNL Execution Provider")
     dnnl_group.add_argument("--use_dnnl", action="store_true", help="Enable DNNL EP.")
@@ -660,6 +657,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     )
     trt_group.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS ONNX parser.")
     trt_group.add_argument("--tensorrt_home", help="Path to TensorRT installation directory.")
+    trt_group.add_argument("--tensorrt_rtx_home", help="Path to TensorRT RTX installation directory.")
+
+    # --- Nv ---
+    nv_group = parser.add_argument_group("Nv Execution Provider")
+    nv_group.add_argument("--use_nv_tensorrt_rtx", action="store_true", help="Enable Nv EP.")
 
     # --- DirectML ---
     dml_group = parser.add_argument_group("DirectML Execution Provider (Windows)")
@@ -726,6 +728,9 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     migx_group = parser.add_argument_group("MIGraphX Execution Provider")
     migx_group.add_argument("--use_migraphx", action="store_true", help="Enable MIGraphX EP.")
     migx_group.add_argument("--migraphx_home", help="Path to MIGraphX installation directory.")
+    migx_group.add_argument("--use_rocm", action="store_true", help="Enable ROCm EP.")
+    migx_group.add_argument("--rocm_version", help="ROCm stack version.")
+    migx_group.add_argument("--rocm_home", help="Path to ROCm installation directory.")
 
     # --- WebNN ---
     webnn_group = parser.add_argument_group("WebNN Execution Provider")
@@ -740,6 +745,12 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     webgpu_group.add_argument("--use_webgpu", action="store_true", help="Enable WebGPU EP.")
     webgpu_group.add_argument(
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
+    )
+    webgpu_group.add_argument(
+        "--wgsl_template",
+        choices=["static", "dynamic"],
+        default="static",  # By default, use static WGSL template generation
+        help="Specify the generator for WebGPU WGSL template generation.",
     )
 
     # --- XNNPACK ---
@@ -761,9 +772,6 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ms_experimental", action="store_true", help="Build Microsoft experimental operators.")
     parser.add_argument(
         "--enable_msinternal", action="store_true", help="[MS Internal] Enable Microsoft internal build features."
-    )
-    parser.add_argument(
-        "--use_triton_kernel", action="store_true", help="Use Triton compiled kernels (requires Triton)."
     )
     parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
     parser.add_argument(
@@ -831,6 +839,7 @@ def parse_arguments() -> argparse.Namespace:
     add_dependency_args(parser)
     add_extension_args(parser)
     add_size_reduction_args(parser)
+    add_client_package_args(parser)
 
     # Language Bindings
     add_python_binding_args(parser)

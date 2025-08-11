@@ -104,20 +104,20 @@ Module["jsepInit"] = (name, params) => {
       Module["webnnEnsureTensor"],
       Module.webnnUploadTensor,
       Module["webnnDownloadTensor"],
+      Module.webnnRegisterMLContext,
+      Module["webnnEnableTraceEvent"],
     ] = params.slice(1);
 
     // This function is called from both JS and an EM_ASM block, it needs both a minifiable name and an explicit name.
     Module["webnnReleaseTensorId"] = Module.webnnReleaseTensorId;
     Module["webnnUploadTensor"] = Module.webnnUploadTensor;
+    Module["webnnRegisterMLContext"] = Module.webnnRegisterMLContext;
 
     // Functions called from JS also need to have explicit names.
     Module["webnnOnRunStart"] = (sessionId) => {
       return backend["onRunStart"](sessionId);
     };
     Module["webnnOnRunEnd"] = backend["onRunEnd"].bind(backend);
-    Module["webnnRegisterMLContext"] = (sessionId, mlContext) => {
-      backend["registerMLContext"](sessionId, mlContext);
-    };
     Module["webnnOnReleaseSession"] = (sessionId) => {
       backend["onReleaseSession"](sessionId);
     };
@@ -151,9 +151,12 @@ Module["jsepInit"] = (name, params) => {
     Module["webnnRegisterGraphInput"] =
       backend["registerGraphInput"].bind(backend);
     Module["webnnIsGraphInput"] = backend["isGraphInput"].bind(backend);
+    Module["webnnRegisterGraphOutput"] =
+      backend["registerGraphOutput"].bind(backend);
+    Module["webnnIsGraphOutput"] = backend["isGraphOutput"].bind(backend);
 
     Module["webnnCreateTemporaryTensor"] =
       backend["createTemporaryTensor"].bind(backend);
-    Module["webnnIsInt64Supported"] = backend["isInt64Supported"].bind(backend);
+    Module["webnnIsGraphInputOutputTypeSupported"] = backend["isGraphInputOutputTypeSupported"].bind(backend);
   }
 };

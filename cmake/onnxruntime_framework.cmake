@@ -63,12 +63,12 @@ endif()
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_framework PRIVATE ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()
-if(onnxruntime_USE_TENSORRT OR onnxruntime_USE_NCCL)
+if(onnxruntime_USE_TENSORRT OR onnxruntime_USE_NCCL OR onnxruntime_USE_NV)
 # TODO: for now, core framework depends on CUDA. It should be moved to TensorRT EP
 # TODO: provider_bridge_ort.cc should not include nccl.h
-target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 else()
-target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
 endif()
 # Needed for the provider interface, as it includes training headers when training is enabled
 if (onnxruntime_ENABLE_TRAINING_OPS)
@@ -118,7 +118,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
   install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/framework/provider_options.h  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
 else()
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/framework  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
-  install(TARGETS onnxruntime_framework
+  install(TARGETS onnxruntime_framework EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

@@ -40,7 +40,7 @@ size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
       {QNN_DATATYPE_UFIXED_POINT_8, 1},
       {QNN_DATATYPE_UFIXED_POINT_16, 2},
       {QNN_DATATYPE_UFIXED_POINT_32, 4},
-  };
+      {QNN_DATATYPE_UNDEFINED, 1}};
 
   auto pos = data_type_to_size.find(data_type);
   ORT_ENFORCE(pos != data_type_to_size.end(), "Unknown QNN data type", data_type);
@@ -227,6 +227,9 @@ std::ostream& operator<<(std::ostream& out, const Qnn_DataType_t& data_type) {
       break;
     case QNN_DATATYPE_UFIXED_POINT_4:
       out << "QNN_DATATYPE_UFIXED_POINT_4";
+      break;
+    case QNN_DATATYPE_UNDEFINED:
+      out << "QNN_DATATYPE_UNDEFINED";
       break;
     default:
       ORT_THROW("Unknown Qnn Data type");
@@ -1034,6 +1037,99 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
   return Status::OK();
 }
 
+/**
+ * @brief QuantizeData with LPBQ encodings (per_channel_float_scales, per_block_int_scales)
+ * @pre-condition data should have axis at 0
+ *
+ * @param data float data of Gemm weight
+ * @param data_shape shape of Gemm weight
+ * @param channel_scales per-channel float scales
+ * @param block_scales per-block int scales
+ * @param offsets per-channel offsets
+ * @param quant_bytes data (int4 data) stored in uint8
+ * @param data_type data_type of quantized tensor (int4)
+ * @param data_axis channel dimension (default: 0)
+ * @param block_scales_axis size of block in a channel
+ * @param block_scales_shape shape of block scales
+ */
+Status LowPowerBlockQuantizeData(gsl::span<const float> data,
+                                 gsl::span<const uint32_t> data_shape,
+                                 gsl::span<const float> channel_scales,
+                                 gsl::span<const uint8_t> block_scales,
+                                 gsl::span<const int32_t> offsets,
+                                 /*out*/ gsl::span<uint8_t> quant_bytes,
+                                 Qnn_DataType_t data_type,
+                                 int64_t data_axis,
+                                 int64_t block_scales_axis,
+                                 size_t data_block_size,
+                                 gsl::span<const uint32_t> block_scales_shape) {
+  // transpose weight to match [K, N] where K : In Channel and N : Out Channel
+  const size_t num_dims = data_shape.size();
+  const size_t num_elems = ShapeSizeCalc(data_shape, 0, num_dims);
+  ORT_RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
+  // LPBQ is currently supported for INT4 and INT8 types. INT4 weight is stored in INT8 buffer.
+  size_t expected_num_quant_bytes = GetElementSizeByType(QNN_DATATYPE_SFIXED_POINT_8) * data.size();
+  ORT_RETURN_IF_NOT(quant_bytes.size() == expected_num_quant_bytes,
+                    "Cannot quantize data because output buffer is not the correct size");
+
+  size_t data_axis_no_neg = data_axis < 0 ? static_cast<size_t>(data_axis) + num_dims : static_cast<size_t>(data_axis);
+
+  size_t block_scales_axis_no_neg = block_scales_axis < 0 ? static_cast<size_t>(block_scales_axis) + num_dims : static_cast<size_t>(block_scales_axis);
+
+  // Assumption: data is of rank-2 with OutChannels at 0-dim
+  ORT_RETURN_IF_NOT(data_axis_no_neg == 0, "BlockQuantize works for Output Channel at axis 0");  // Data is expected in format: OI or OIHW; Output channel at axis-0
+  // Current implementation is expecting block axis at axis-0
+  ORT_RETURN_IF_NOT(data_shape[data_axis_no_neg] == block_scales_shape[block_scales_axis_no_neg], "Incompatible shape of block_scales w.r.t data");
+
+  size_t channel_count = data_shape[data_axis_no_neg];
+  size_t block_count = (block_scales_axis_no_neg == 0) ? block_scales_shape[1] : block_scales_shape[0];
+  size_t data_block_count = ShapeSizeCalc(data_shape, data_axis_no_neg + 1, num_dims) / data_block_size;
+
+  ORT_RETURN_IF_NOT(data_block_count == block_count, "Incompatible LowPowerBlockQuantization encodings.");
+  ORT_RETURN_IF_NOT(channel_scales.size() == channel_count, "Unexpected size of per-channel-float-scales output buffer");
+  ORT_RETURN_IF_NOT(offsets.size() == channel_count, "Unexpected size of offsets output buffer");
+  ORT_RETURN_IF_NOT(block_scales.size() == channel_count * block_count, "Unexpected size of Per-block-int-scales output buffer");
+
+  // Pre-determine the block_scales_index calculation method based on the axis configuration
+  // If block_scales_axis is 0, then the channel dimension comes first in the block scales tensor
+  // Otherwise, the block dimension comes first
+  bool is_channel_first = (block_scales_axis_no_neg == 0);
+
+  size_t i = 0;
+  for (size_t cn = 0; cn < channel_count; ++cn) {
+    for (size_t bn = 0; bn < block_count; ++bn) {
+      auto input_span = gsl::make_span<const float>(&data[i], data_block_size);
+      auto output_span = gsl::make_span<uint8_t>(&quant_bytes[i * sizeof(int8_t)], sizeof(int8_t) * data_block_size);
+
+      // Calculate the index into the block_scales array based on the layout
+      // For channel-first layout: index = cn * block_count + bn
+      // For block-first layout: index = bn * channel_count + cn
+      size_t block_scales_index = is_channel_first ? (cn * block_count + bn) : (bn * channel_count + cn);
+
+      // Combine the per-channel float scale with the per-block int scale
+      const float scale = channel_scales[cn] * static_cast<float>(block_scales[block_scales_index]);
+
+      switch (data_type) {
+        case QNN_DATATYPE_SFIXED_POINT_8: {
+          ORT_RETURN_IF_ERROR(QuantizeData<int8_t>(input_span, scale, offsets[cn], output_span));
+          break;
+        }
+        case QNN_DATATYPE_SFIXED_POINT_4: {
+          ORT_RETURN_IF_ERROR(QuantizeData<Int4QuantTraits>(input_span, scale, offsets[cn], output_span));
+          break;
+        }
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported quantization data type for LowPowerBlockQuantizeData");
+      }
+      i += data_block_size;
+    }
+  }
+
+  ORT_RETURN_IF_NOT(i == data.size(), "Failed to LowPowerBlockQuantize due to mismatch per-channel and per-block scales");
+
+  return Status::OK();
+}
+
 std::string GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface, Qnn_ErrorHandle_t qnn_error_handle) {
   const char* error_msg = nullptr;
   if (qnn_interface.errorGetMessage(qnn_error_handle, &error_msg) == QNN_SUCCESS) {
@@ -1248,6 +1344,67 @@ Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& original_input_shape_dims,
                             elem_byte_size,
                             input_buffer,
                             output_buffer);
+}
+
+// Inserts a QNN Convert operator to convert from one quantization type (e.g., uint16) to another (e.g., uint8).
+// (OR) Convert from Asymmetric (e.g., UINT16) to Symmetric (e.g., INT16) quantization type
+Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
+                       const std::string& convert_input_name,
+                       const std::string& convert_output_name,
+                       Qnn_DataType_t input_qnn_data_type,
+                       Qnn_DataType_t output_qnn_data_type,
+                       int32_t input_offset,
+                       float input_scale,
+                       const std::vector<uint32_t>& output_shape,
+                       bool output_symmetric,
+                       bool do_op_validation) {
+  // Assume input is already handled.
+  float qmin = 0.0f;
+  float qmax = 255.0f;
+  ORT_RETURN_IF_ERROR(qnn::utils::GetQminQmax(input_qnn_data_type, qmin, qmax));
+  double value_min = qnn::utils::Dequantize(input_offset, input_scale, qmin);
+  double value_max = qnn::utils::Dequantize(input_offset, input_scale, qmax);
+  float scale = 0.0f;
+  int32_t offset = 0;
+  ORT_RETURN_IF_ERROR(qnn::utils::GetQuantParams(static_cast<float>(value_min),
+                                                 static_cast<float>(value_max),
+                                                 output_qnn_data_type,
+                                                 scale,
+                                                 offset,
+                                                 output_symmetric));
+
+  std::vector<uint32_t> output_shape_copy = output_shape;
+  QnnTensorWrapper convert_output_tensorwrapper(convert_output_name,
+                                                QNN_TENSOR_TYPE_NATIVE,
+                                                output_qnn_data_type,
+                                                QnnQuantParamsWrapper(scale, offset),
+                                                std::move(output_shape_copy));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(convert_output_tensorwrapper)), "Failed to add tensor.");
+
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(convert_output_name,
+                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                    "Convert",
+                                                    {convert_input_name},
+                                                    {convert_output_name},
+                                                    {},
+                                                    do_op_validation),
+                    "Failed to add node.");
+  return Status::OK();
+}
+
+Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm) {
+  ORT_RETURN_IF_NOT(axis < rank, "Expected axis must be smaller than rank: ", axis, " >= ", rank);
+
+  perm.reserve(rank);
+  for (uint32_t dim = 0; dim < rank; ++dim) {
+    perm.push_back(dim);
+  }
+
+  // Swap axis with the last one.
+  perm[axis] = rank - 1;
+  perm[rank - 1] = axis;
+
+  return Status::OK();
 }
 
 }  // namespace utils

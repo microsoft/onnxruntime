@@ -27,6 +27,27 @@ const onnxruntime::ConfigOptions& OrtSessionOptions::GetConfigOptions() const no
   return value.config_options;
 }
 
+onnxruntime::Status OrtSessionOptions::AddProviderOptionsToConfigOptions(
+    const std::unordered_map<std::string, std::string>& provider_options, const char* provider_name) {
+  // Add provider options to the session config options.
+  // Use a new key with the format: "ep.<lowercase_provider_name>.<PROVIDER_OPTION_KEY>"
+  auto key_prefix = GetProviderOptionPrefix(provider_name);
+  for (const auto& [ep_key, ep_value] : provider_options) {
+    const std::string new_key = key_prefix + ep_key;
+    ORT_RETURN_IF_ERROR(value.config_options.AddConfigEntry(new_key.c_str(), ep_value.c_str()));
+  }
+  return Status::OK();
+}
+
+// static
+std::string OrtSessionOptions::GetProviderOptionPrefix(const char* provider_name) {
+  std::string key_prefix = "ep.";
+  key_prefix += onnxruntime::utils::GetLowercaseString(provider_name);
+  key_prefix += ".";
+
+  return key_prefix;
+}
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(onnxruntime::PathString library_name) {
   const auto& platform_env = onnxruntime::Env::Default();
@@ -42,18 +63,17 @@ onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(onnxruntime::Pat
   ORT_RETURN_IF_ERROR(platform_env.GetSymbolFromLibrary(library_handle, "RegisterCustomOps",
                                                         (void**)&RegisterCustomOps));
 
-  // Call the exported RegisterCustomOps function and store the return value in a unique_ptr.
-  const std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)> status(RegisterCustomOps(this, OrtGetApiBase()),
-                                                                             OrtApis::ReleaseStatus);
+  // Call the exported RegisterCustomOps function.
+  auto status = onnxruntime::ToStatusAndRelease(RegisterCustomOps(this, OrtGetApiBase()));
 
-  if (status) {  // A non-nullptr status indicates an error registering custom ops.
+  if (!status.IsOK()) {
     auto unload_status = platform_env.UnloadDynamicLibrary(library_handle);
     if (!unload_status.IsOK()) {
       LOGS_DEFAULT(WARNING) << "Failed to unload handle for dynamic library "
                             << onnxruntime::PathToUTF8String(library_name) << ": " << unload_status;
     }
 
-    return onnxruntime::ToStatus(status.get());
+    return status;
   }
 
   // The internal onnxruntime::SessionOptions will manage the lifetime of library handles.
@@ -184,6 +204,9 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOp
     case ORT_ENABLE_EXTENDED:
       options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
       break;
+    case ORT_ENABLE_LAYOUT:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+      break;
     case ORT_ENABLE_ALL:
       options->value.graph_optimization_level = onnxruntime::TransformerLevel::MaxLevel;
       break;
@@ -252,6 +275,21 @@ ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions
                                       size);
 
   return onnxruntime::ToOrtStatus(status);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetSessionOptionsConfigEntries, _In_ const OrtSessionOptions* options, _Outptr_ OrtKeyValuePairs** out) {
+  API_IMPL_BEGIN
+  if (options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "options is nullptr");
+  }
+  auto& config_options = options->value.config_options.GetConfigOptionsMap();
+  auto kvps = std::make_unique<OrtKeyValuePairs>();
+  for (auto& kv : config_options) {
+    kvps->Add(kv.first.c_str(), kv.second.c_str());
+  }
+  *out = reinterpret_cast<OrtKeyValuePairs*>(kvps.release());
+  return nullptr;
   API_IMPL_END
 }
 
@@ -341,6 +379,29 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializersFromFilesInMemory, _In_ OrtS
 ORT_API_STATUS_IMPL(OrtApis::SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value) {
   API_IMPL_BEGIN
   options->value.use_deterministic_compute = value;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* options,
+                    _In_ OrtExecutionProviderDevicePolicy policy) {
+  API_IMPL_BEGIN
+  options->value.ep_selection_policy.enable = true;
+  options->value.ep_selection_policy.policy = policy;
+  options->value.ep_selection_policy.delegate = nullptr;
+  options->value.ep_selection_policy.state = nullptr;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetEpSelectionPolicyDelegate, _In_ OrtSessionOptions* options,
+                    _In_opt_ EpSelectionDelegate delegate,
+                    _In_opt_ void* state) {
+  API_IMPL_BEGIN
+  options->value.ep_selection_policy.enable = true;
+  options->value.ep_selection_policy.policy = OrtExecutionProviderDevicePolicy_DEFAULT;
+  options->value.ep_selection_policy.delegate = delegate;
+  options->value.ep_selection_policy.state = state;
   return nullptr;
   API_IMPL_END
 }

@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "common.h"
+#include "ort_instance_data.h"
 #include "tensor_helper.h"
 #include "inference_session_wrap.h"
 
@@ -275,12 +276,18 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
     }
 
     // new Tensor("string", stringArray /* string[] */, dims /* number[] */)
-    return scope.Escape(InferenceSessionWrap::GetTensorConstructor().New({Napi::String::New(env, "string"), stringArray, dims}));
+    return scope.Escape(OrtInstanceData::TensorConstructor(env)
+                            .New({Napi::String::New(env, "string"),
+                                  stringArray,
+                                  dims}));
   } else {
     // number data
     if (isGpuBuffer) {
       // Tensor.fromGpuBuffer(buffer, options)
-      Napi::Function tensorFromGpuBuffer = InferenceSessionWrap::GetTensorConstructor().Value().Get("fromGpuBuffer").As<Napi::Function>();
+      Napi::Function tensorFromGpuBuffer = OrtInstanceData::TensorConstructor(env)
+                                               .Value()
+                                               .Get("fromGpuBuffer")
+                                               .As<Napi::Function>();
       OrtValue* underlyingOrtValue = value.release();
 
       auto options = Napi::Object::New(env);
@@ -311,10 +318,10 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
       NAPI_THROW_IF_FAILED(env, status, Napi::Value);
 
       // new Tensor(type, typedArrayData, dims)
-      return scope.Escape(InferenceSessionWrap::GetTensorConstructor().New(
-          {type,
-           Napi::Value(env, typedArrayData),
-           dims}));
+      return scope.Escape(OrtInstanceData::TensorConstructor(env)
+                              .New({type,
+                                    Napi::Value(env, typedArrayData),
+                                    dims}));
     }
   }
 }

@@ -67,6 +67,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.PackedAttention">com.microsoft.PackedAttention</a>
   * <a href="#com.microsoft.PackedMultiHeadAttention">com.microsoft.PackedMultiHeadAttention</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
+  * <a href="#com.microsoft.PagedAttention">com.microsoft.PagedAttention</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
   * <a href="#com.microsoft.QGemm">com.microsoft.QGemm</a>
   * <a href="#com.microsoft.QLinearAdd">com.microsoft.QLinearAdd</a>
@@ -815,7 +816,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   scale = 1. / (1. - ratio).
   ```
   
-  This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
+  This op functions in much the same was as Dropout-11 and Dropout-13 do, except that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
 
 #### Version
 
@@ -2037,9 +2038,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) with differences:
     1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.
-       `block_size must` be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ..
+       `block_size` must be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ...
     2. Input `data`'s scale and zero point are specified by input `scales` and `zero_points`. `scales` and `zero_points` are also constants.
-       If `zero_points` is not provided, 0 is the zero point except when data is uint8 type then the default zero point is 8.
+       If `zero_points` is not provided, the default value is 0 for int4/uint4, or 2^(bits-1) for uint8.
     3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
        to dequantize the output.
     4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
@@ -2052,6 +2053,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>bits</tt> : int</dt>
+<dd>Number of bits used for weight quantization. Must be either 4 or 8. </dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.</dd>
 <dt><tt>gather_axis</tt> : int</dt>
@@ -2231,9 +2234,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>dtype</tt> : int</dt>
 <dd>Output Type. Same definition as attribute 'to' for operator Cast.</dd>
 <dt><tt>transA</tt> : int</dt>
-<dd>Whether A should be transposed. Float 8 only supprted transA=0.</dd>
+<dd>Whether A should be transposed. Float 8 only supported transA=0.</dd>
 <dt><tt>transB</tt> : int</dt>
-<dd>Whether B should be transposed. Float 8 only supprted transB=1.</dd>
+<dd>Whether B should be transposed. Float 8 only supported transB=1.</dd>
 </dl>
 
 #### Inputs (2 - 6)
@@ -2309,7 +2312,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>emb</tt> : U</dt>
-<dd>embeddding - 3D tensor with shape (batch_size, seq_len, dim)</dd>
+<dd>embedding - 3D tensor with shape (batch_size, seq_len, dim)</dd>
 <dt><tt>q</tt> : T</dt>
 <dd>q state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)</dd>
 <dt><tt>q_rot</tt> : T</dt>
@@ -2542,6 +2545,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
+<dt><tt>qk_output</tt> : int</dt>
+<dd>Output values of QK matrix multiplication before (1) or after (2) softmax normalization. Default value is 0 (don't output).</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
 <dt><tt>scale</tt> : float</dt>
@@ -2552,7 +2557,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Softcap value for attention weights. Default value is 0.</dd>
 </dl>
 
-#### Inputs (7 - 11)
+#### Inputs (7 - 12)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2577,9 +2582,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D tensor with shape (batch_size, sequence_length). When processing the first prompt the kernel uses only the first element</dd>
 <dt><tt>attention_bias</tt> (optional) : T</dt>
 <dd>additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)</dd>
+<dt><tt>head_sink</tt> (optional) : T</dt>
+<dd>1D tensor with shape (num_heads). Each head has a smooth factor adding to the denominator of softmax.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (3 - 4)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
@@ -2588,6 +2595,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>present state key with support for format BNSH. When past_key uses same tensor as present_key(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
 <dt><tt>present_value</tt> : T</dt>
 <dd>present state value with support for format BNSH. When past_value uses same tensor as present_value(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
+<dt><tt>output_qk</tt> (optional) : T</dt>
+<dd>Values of QK matrix multiplication, either before or after softmax normalization</dd>
 </dl>
 
 #### Type Constraints
@@ -2816,7 +2825,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Matrix product with right hand matrix being pre-packed and quantized int4 data blob.
   During quantization, the matrix is divided into blocks, where each block is a
-  continguous subset inside each column. Each block is quantized into a
+  contiguous subset inside each column. Each block is quantized into a
   sequence of 4b integers with a scaling factor and an optional offset.
   Currently 3 quantization types are supported:
   (0): block size 32, no offset, (1): block size 32, with offset, (2): block size 64,
@@ -2946,29 +2955,20 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.MatMulNBits"></a><a name="com.microsoft.matmulnbits">**com.microsoft.MatMulNBits**</a>
 
-  MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7).It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
-    1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.
-    2. Input B is quantized with x bits which is specified by attribute 'bits'. It is quantized blockwisely along dimension 0 (e.g. column) with block size specified by attribute block_size.
-       And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
-    3. Input B's scale and zero point are specified by input scales and zero_points.
+  MatMulNBits performs a matrix multiplication where the right-hand-side matrix (weights) is quantized to N bits.
   
-    Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
-    - n_blocks_per_col = (K + block_size - 1) / block_size
-    - blob_size = CeilDiv(block_size * bits, bitsof(uint8_t)<8>)
-    For all bits from 2-8, a row of data is stored squeezely and represented by uint8_t.
-      - for 2,4,8 bits, 4x2bit,2x4bit,1x8bit are stored in one uint8_t.
-          4bit example:
-          |.|.|.|.| .|.|.|.| =uint8_t (2x4bit)
-      - for 3,5,6,7 bits, 32x3bit,32x5bit,16x6bit,32x7bit are stored in 12xuint8_t,20xuint8_t,12xuint8_t,28xuint8_t separately. no bits are wasted.
-          3bit example:
-          |.|.|. |.|.|. |.|.|. = 9bit, which across 2 uint8_t, the highest bit for the second uint8_t is used.
-    The last uint_8 may have some bits unused.
+  It is a fusion of two operations:
+  1. Linear dequantization of the quantized weights using scale and (optionally) zero-point with formula:
+     dequantized_weight = (quantized_weight - zero_point) * scale
+  2. Matrix multiplication between the input matrix A and the dequantized weight matrix.
   
+  The weight matrix is a 2D constant matrix with the input feature count and output feature count specified by attributes 'K' and 'N'.
+  It is quantized block-wise along the K dimension with a block size specified by the 'block_size' attribute.
+  The block size must be a power of 2 and not smaller than 16 (e.g., 16, 32, 64, 128). Each block has its own scale and zero-point.
+  The quantization is performed using a bit-width specified by the 'bits' attribute, which can take values from 2 to 8.
   
-  Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
-  Input zero_points is stored as uint8_t or same as type(A). It has the same packing method as input B.
-    - [N * CeilDiv(n_blocks_per_col * bits, 8)]
-    If zero_points has same type as A, it's not packed and has the same shape as Scales.
+  The quantized weights are stored in a bit-packed format along the K dimension, with each block being represented by a blob of uint8.
+  For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a byte, and the second 4 bits are stored in the higher 4 bits of a byte.
 
 #### Version
 
@@ -2978,30 +2978,30 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>K</tt> : int (required)</dt>
-<dd>size of each input feature</dd>
+<dd>Input feature dimension of the weight matrix.</dd>
 <dt><tt>N</tt> : int (required)</dt>
-<dd>size of each output feature</dd>
+<dd>Output feature dimension of the weight matrix.</dd>
 <dt><tt>accuracy_level</tt> : int</dt>
 <dd>The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) (default unset). It is used to control how input A is quantized or downcast internally while doing computation, for example: 0 means input A will not be quantized or downcast while doing computation. 4 means input A can be quantized with the same block_size to int8 internally from type T1.</dd>
-<dt><tt>bits</tt> : int (required)</dt>
-<dd>number of bits used for weight quantization (default 4)</dd>
+<dt><tt>bits</tt> : int</dt>
+<dd>Bit-width used to quantize the weights (valid range: 2~8)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
-<dd>number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.</dd>
+<dd>Size of each quantization block along the K (input feature) dimension. Must be a power of two and ≥ 16 (e.g., 16, 32, 64, 128).</dd>
 </dl>
 
 #### Inputs (3 - 6)
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
-<dd>The input tensor, not quantized</dd>
+<dd>The input tensor, not quantized.</dd>
 <dt><tt>B</tt> : T2</dt>
-<dd>1 or 2 dimensional data blob</dd>
+<dd>Packed uint8 tensor of shape (N, k_blocks, blob_size), where k_blocks = ceil(K / block_size) and blob_size = (block_size * bits / 8). The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.</dd>
 <dt><tt>scales</tt> : T1</dt>
-<dd>quantization scale</dd>
+<dd>Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A.</dd>
 <dt><tt>zero_points</tt> (optional) : T3</dt>
-<dd>quantization zero points</dd>
+<dd>Per-block zero point for dequantization. It can be either packed or unpacked: Packed (uint8) format has shape (N, ceil(k_blocks * bits / 8)), and it uses same bit-packing method as Input B. Unpacked (same type as A) format has shape (N, k_blocks). If not provided, a default zero point is used: 2^(bits - 1) (e.g., 8 for 4-bit quantization, 128 for 8-bit). </dd>
 <dt><tt>g_idx</tt> (optional) : T4</dt>
-<dd>group_idx</dd>
+<dd>group_idx. This input is deprecated</dd>
 <dt><tt>bias</tt> (optional) : T1</dt>
 <dd>Bias to add to result. It should have shape [N].</dd>
 </dl>
@@ -3016,12 +3016,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(float), tensor(float16)</dt>
-<dd>Constrain input and output types to float/half_float tensors.</dd>
-<dt><tt>T2</tt> : tensor(uint8), tensor(int32)</dt>
-<dd>Constrain quantized weight types to uint8/int32.</dd>
-<dt><tt>T3</tt> : tensor(uint8), tensor(int32), tensor(float16), tensor(float)</dt>
-<dd>Constrain quantized zero point types to uint8/int32/float16/float.</dd>
+<dt><tt>T1</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Constrain quantized weight types to uint8.</dd>
+<dt><tt>T3</tt> : tensor(uint8), tensor(float16), tensor(float), tensor(bfloat16)</dt>
+<dd>Constrain quantized zero point types to uint8 or float tensors.</dd>
 <dt><tt>T4</tt> : tensor(int32)</dt>
 <dd>the index tensor.</dd>
 </dl>
@@ -3079,6 +3079,17 @@ This version of the operator has been available since version 1 of the 'com.micr
   Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
         GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
         usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral).
+  
+        The SwiGLU (Swish-Gated Linear Unit) activation function is like:
+           g = xW + b
+           l = xV + c
+           G = clamp(g, max=limit)
+           L = clamp(l, min=-limit, max=limit)
+           swiglu = G * sigmoid(alpha * G) * (L + beta)
+        where x is the input, W and V are weight matrices, b and c are bias vectors, and alpha, beta and limit are constant float parameters.
+        When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
+        When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
+        When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
         
 
 #### Version
@@ -3088,12 +3099,20 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>activation_alpha</tt> : float</dt>
+<dd>Alpha parameter used in activation function.</dd>
+<dt><tt>activation_beta</tt> : float</dt>
+<dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
+<dt><tt>swiglu_fusion</tt> : int</dt>
+<dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
+<dt><tt>swiglu_limit</tt> : float</dt>
+<dd>The limit used to clamp in SwiGLU. No clamp when limit is not provided.</dd>
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 </dl>
@@ -3102,19 +3121,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input</tt> : T</dt>
-<dd>2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>router_probs</tt> : T</dt>
-<dd>2D input tensor with shape (num_rows, num_experts)</dd>
+<dd>2D input tensor with shape (num_tokens, num_experts)</dd>
 <dt><tt>fc1_experts_weights</tt> : T</dt>
-<dd>3D input tensor with shape (num_experts, hidden_size, inter_size)</dd>
+<dd>3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu, and 1 otherwise</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
-<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+<dd>2D optional input tensor with shape (num_experts, fusion_size * inter_size)</dd>
 <dt><tt>fc2_experts_weights</tt> : T</dt>
-<dd>3D input tensor with shape (num_experts, inter_size, hidden_size)</dd>
+<dd>3D input tensor with shape (num_experts, hidden_size, inter_size)</dd>
 <dt><tt>fc2_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional input tensor with shape (num_experts, hidden_size)</dd>
 <dt><tt>fc3_experts_weights</tt> (optional) : T</dt>
-<dd>3D optional input tensor with shape (num_experts, hidden_size, inter_size)</dd>
+<dd>3D optional input tensor with shape (num_experts, inter_size, hidden_size)</dd>
 <dt><tt>fc3_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
 </dl>
@@ -3123,14 +3142,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
-<dd>Constrain input and output types to float or float16 tensors.</dd>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
 </dl>
 
 
@@ -3689,6 +3708,100 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.PagedAttention"></a><a name="com.microsoft.pagedattention">**com.microsoft.PagedAttention**</a>
+
+  Paged Attention.
+  
+  This op leverages a block-based KV cache to enable continuous batching for LLMs. Currently, it is designed to work with
+  the CUDA Execution Provider only.
+  
+  In other attention ops, batch entries typically aren't of the same length, so they are padded.
+  Below is a batch with 3 sequences where * denotes a padding token.
+    Sequence_0:   0,  1*, 2*,  3*
+    Sequence_1:   4,  5,  6*,  7*
+    Sequence_2:   8,  9,  10,  11
+  
+  PagedAttention is designed to take in packed input, i.e., only the real tokens without padding.
+  For example, the input shown above will be packed into 3 tensors like below:
+   - query ([q0, q4, q5, q8, q9, q10, q11])
+   - key ([k0, k4, k5, k8, k9, k10, k11])
+   - value ([v0, v4, v5, v8, v9, v10, v11])
+   - cumulative_sequence_length: 0, 1, 1+2, 1+2+4
+  This packing omits padding tokens.
+  
+  The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
+  cumulative_sequence_length records cumulated length of each sequence length.
+  
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>do_rotary</tt> : int</dt>
+<dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>kv_num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for k and v</dd>
+<dt><tt>local_window_size</tt> : int</dt>
+<dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for q</dd>
+<dt><tt>rotary_interleaved</tt> : int</dt>
+<dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+<dt><tt>softcap</tt> : float</dt>
+<dd>Softcap value for attention weights. Default value is 0.</dd>
+</dl>
+
+#### Inputs (8 - 10)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query with shape (num_tokens, hidden_size), or packed QKV with shape (num_tokens, d) where d is (num_heads * head_size + 2 * kv_num_heads * head_size).</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Key with shape (num_tokens, kv_hidden_size) </dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>Value with shape (num_tokens, kv_hidden_size)</dd>
+<dt><tt>key_cache</tt> : T</dt>
+<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op.</dd>
+<dt><tt>value_cache</tt> : T</dt>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache.</dd>
+<dt><tt>cumulative_sequence_length</tt> : S</dt>
+<dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
+<dt><tt>past_seqlens</tt> : S</dt>
+<dd>A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.</dd>
+<dt><tt>block_table</tt> : S</dt>
+<dd>2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to itscorresponding blocks in the KV cache.</dd>
+<dt><tt>cos_cache</tt> (optional) : T</dt>
+<dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
+<dt><tt>sin_cache</tt> (optional) : T</dt>
+<dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (num_tokens, hidden_size)</dd>
+<dt><tt>key_cache_out</tt> (optional) : T</dt>
+<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as key_cache.</dd>
+<dt><tt>value_cache_out</tt> (optional) : T</dt>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as value_cache.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output to float tensors.</dd>
+<dt><tt>S</tt> : tensor(int32)</dt>
+<dd>Constrain Positional inputs to int tensor.</dd>
 </dl>
 
 
@@ -4419,7 +4532,23 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.QMoE"></a><a name="com.microsoft.qmoe">**com.microsoft.QMoE**</a>
 
-  Quantized MoE
+  Quantized mixture of experts (MoE).
+  
+        Only weights are quantized with symmetric quantization.
+        The quantized weights are stored in column major order per expert.
+        The quantization block size can be specified. If not provided, column wise quantization is used.
+  
+        The SwiGLU (Swish-Gated Linear Unit) activation function is like:
+           g = xW + b
+           l = xV + c
+           G = clamp(g, max=limit)
+           L = clamp(l, min=-limit, max=limit)
+           swiglu = G * sigmoid(alpha * G) * (L + beta)
+        where x is the input, W and V are weight matrices, b and c are bias vectors, and alpha, beta and limit are constant float parameters.
+        When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
+        When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
+        When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+        
 
 #### Version
 
@@ -4428,14 +4557,24 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>activation_alpha</tt> : float</dt>
+<dd>Alpha parameter used in activation function.</dd>
+<dt><tt>activation_beta</tt> : float</dt>
+<dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). If provided, both hidden_size and inter_size must be divisible by the block size. Otherwise, there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
 <dd>Number of bits used in quantized weights. Default is 4 bits</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
+<dt><tt>swiglu_fusion</tt> : int</dt>
+<dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
+<dt><tt>swiglu_limit</tt> : float</dt>
+<dd>The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided.</dd>
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 </dl>
@@ -4444,43 +4583,45 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input</tt> : T</dt>
-<dd>2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>2D tensor with shape (num_tokens, hidden_size), or 3D tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>router_probs</tt> : T</dt>
-<dd>2D input tensor with shape (num_rows, num_experts)</dd>
+<dd>2D tensor with shape (num_tokens, num_experts)</dd>
 <dt><tt>fc1_experts_weights</tt> : T1</dt>
-<dd>3D input tensor with shape (num_experts, hidden_size, inter_size) or (num_experts, hidden_size, inter_size / 2)</dd>
-<dt><tt>fc1_scales</tt> : T</dt>
-<dd>2D input tensor with shape (num_experts, inter_size)</dd>
+<dd>3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / pack_size), The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits.</dd>
+<dt><tt>fc1_scales</tt> : T2</dt>
+<dd>2D tensor with shape (num_experts, fusion_size * inter_size), or 3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided.</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
-<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+<dd>2D optional tensor with shape (num_experts, fusion_size * inter_size)</dd>
 <dt><tt>fc2_experts_weights</tt> : T1</dt>
-<dd>3D input tensor with shape (num_experts, inter_size, hidden_size) or (num_experts, inter_size, hidden_size / 2)</dd>
-<dt><tt>fc2_scales</tt> : T</dt>
-<dd>2D input tensor with shape (num_experts, hidden_size)</dd>
+<dd>3D tensor with shape (num_experts, hidden_size, inter_size / pack_size)</dd>
+<dt><tt>fc2_scales</tt> : T2</dt>
+<dd>2D tensor with shape (num_experts, hidden_size), or 3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided.</dd>
 <dt><tt>fc2_experts_bias</tt> (optional) : T</dt>
-<dd>2D optional input tensor with shape (num_experts, hidden_size)</dd>
+<dd>2D optional tensor with shape (num_experts, hidden_size)</dd>
 <dt><tt>fc3_experts_weights</tt> (optional) : T1</dt>
-<dd>3D optional input tensor with shape (num_experts, hidden_size, inter_size) or (num_experts, hidden_size, inter_size / 2)</dd>
-<dt><tt>fc3_scales</tt> (optional) : T</dt>
-<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+<dd>3D optional tensor with shape (num_experts, inter_size, hidden_size / pack_size)</dd>
+<dt><tt>fc3_scales</tt> (optional) : T2</dt>
+<dd>2D optional tensor with shape (num_experts, inter_size), or 3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size) when block_size is provided.</dd>
 <dt><tt>fc3_experts_bias</tt> (optional) : T</dt>
-<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+<dd>2D optional tensor with shape (num_experts, inter_size)</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>output tensor with same shape of input</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16)</dt>
-<dd>Constrain input and output types to float or float16 tensors.</dd>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T1</tt> : tensor(uint8)</dt>
 <dd>Constrain weights type to uint8 tensors.</dd>
+<dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain scales type to float tensors.</dd>
 </dl>
 
 
@@ -5585,8 +5726,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
-<dd>Constrain input and output types to float or half tensors.</dd>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output to float tensors.</dd>
 <dt><tt>U</tt> : tensor(float)</dt>
 <dd>Constrain mean and inv_std_var to float tensors.</dd>
 </dl>
@@ -6076,7 +6217,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.WhisperBeamSearch"></a><a name="com.microsoft.whisperbeamsearch">**com.microsoft.WhisperBeamSearch**</a>
 
-  Beam Search for whisper model, especiall with cross_qk features etc.
+  Beam Search for whisper model, especially with cross_qk features etc.
 
 #### Version
 

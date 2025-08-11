@@ -547,6 +547,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   std::string f32_model_data;
   f32_model_fn(f32_helper);
   f32_helper.SetGraphOutputs();
+
   ASSERT_STATUS_OK(f32_model.MainGraph().Resolve());
   f32_model.ToProto().SerializeToString(&f32_model_data);
 
@@ -589,6 +590,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   std::string qdq_model_data;
   qdq_model_fn(qdq_helper, output_qparams);
   qdq_helper.SetGraphOutputs();
+
   ASSERT_STATUS_OK(qdq_model.MainGraph().Resolve());
   qdq_model.ToProto().SerializeToString(&qdq_model_data);
 
@@ -1009,6 +1011,42 @@ inline GetTestModelFn BuildOpTestCase(const std::string& op_type,
   };
 }
 
+template <typename InputType1, typename InputType2 = int64_t>
+inline GetTestModelFn BuildOpTestCase(const std::string& op_type,
+                                      const std::vector<TestInputDef<InputType1>>& input_defs_1,
+                                      const std::vector<TestInputDef<InputType2>>& input_defs_2,
+                                      const std::vector<TestInputDef<InputType1>>& input_defs_3,
+                                      const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                      const std::string& op_domain = kOnnxDomain,
+                                      AllocatorPtr input_allocator = nullptr) {
+  return [op_type, input_defs_1, input_defs_2, input_defs_3, attrs, op_domain, input_allocator](ModelTestBuilder& builder) {
+    std::vector<NodeArg*> op_inputs;
+    op_inputs.reserve(input_defs_1.size() + input_defs_2.size() + input_defs_3.size());
+
+    for (const auto& input_def : input_defs_1) {
+      NodeArg* input = MakeTestInput<InputType1>(builder, input_def, input_allocator);
+      op_inputs.push_back(input);
+    }
+
+    for (const auto& input_def : input_defs_2) {
+      NodeArg* input = MakeTestInput<InputType2>(builder, input_def, input_allocator);
+      op_inputs.push_back(input);
+    }
+
+    for (const auto& input_def : input_defs_3) {
+      NodeArg* input = MakeTestInput<InputType1>(builder, input_def, input_allocator);
+      op_inputs.push_back(input);
+    }
+
+    auto* output = builder.MakeOutput();
+    Node& onnx_node = builder.AddNode(op_type, op_inputs, {output}, op_domain);
+
+    for (const auto& attr : attrs) {
+      onnx_node.AddAttributeProto(attr);
+    }
+  };
+}
+
 /**
  * Returns a function that builds a model with a single QDQ operator with N float (quantizeable) inputs
  * and M inputs of a potentially different type.
@@ -1064,7 +1102,59 @@ inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(
                                                      output_qparams[0].zero_point, use_contrib_qdq);
   };
 }
+template <typename QuantType, typename OtherInputType = int64_t>
+inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(
+    const std::string& op_type,
+    const std::vector<TestInputDef<float>>& quant_input_defs,
+    const std::vector<TestInputDef<OtherInputType>>& non_quant_input_defs,
+    const std::vector<TestInputDef<float>>& quant_input_defs_2,
+    const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+    const std::string& op_domain = kOnnxDomain,
+    bool use_contrib_qdq = false,
+    AllocatorPtr input_allocator = nullptr) {
+  return [op_type, quant_input_defs, non_quant_input_defs, quant_input_defs_2, attrs, op_domain,
+          use_contrib_qdq, input_allocator](
+             ModelTestBuilder& builder, std::vector<QuantParams<QuantType>>& output_qparams) {
+    std::vector<NodeArg*> op_inputs;
+    op_inputs.reserve(quant_input_defs.size() + non_quant_input_defs.size() + quant_input_defs_2.size());
 
+    // Create QDQ inputs
+    for (const auto& input_def : quant_input_defs) {
+      NodeArg* input = MakeTestInput<float>(builder, input_def, input_allocator);
+      QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
+      NodeArg* input_after_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale,
+                                                           input_qparams.zero_point, use_contrib_qdq);
+      op_inputs.push_back(input_after_qdq);
+    }
+
+    // Create non-QDQ inputs
+    for (const auto& input_def : non_quant_input_defs) {
+      NodeArg* input = MakeTestInput<OtherInputType>(builder, input_def, input_allocator);
+      op_inputs.push_back(input);
+    }
+
+    // Create QDQ inputs
+    for (const auto& input_def : quant_input_defs_2) {
+      NodeArg* input = MakeTestInput<float>(builder, input_def, input_allocator);
+      QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
+      NodeArg* input_after_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale,
+                                                           input_qparams.zero_point, use_contrib_qdq);
+      op_inputs.push_back(input_after_qdq);
+    }
+
+    // Op -> op_output
+    auto* op_output = builder.MakeIntermediate();
+    Node& onnx_node = builder.AddNode(op_type, op_inputs, {op_output}, op_domain);
+
+    for (const auto& attr : attrs) {
+      onnx_node.AddAttributeProto(attr);
+    }
+
+    // op_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, op_output, output_qparams[0].scale,
+                                                     output_qparams[0].zero_point, use_contrib_qdq);
+  };
+}
 /**
  * Runs a test model on the QNN EP. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.
@@ -1100,7 +1190,20 @@ class QnnHTPBackendTests : public ::testing::Test {
  protected:
   void SetUp() override;
 
+  // Some tests need the Ir backend, which is not always available.
+  [[nodiscard]] BackendSupport IsIRBackendSupported() const;
+
   static BackendSupport cached_htp_support_;  // Set by the first test using this fixture.
+  static BackendSupport cached_ir_support_;
+};
+
+// Testing fixture class for tests that require the QNN GPU backend. Checks if QNN GPU is available before the test
+// begins. The test is skipped if the GPU backend is unavailable (may occur on Windows ARM64).
+class QnnGPUBackendTests : public ::testing::Test {
+ protected:
+  void SetUp() override;
+
+  static BackendSupport cached_gpu_support_;  // Set by the first test using this fixture.
 };
 
 // Testing fixture class for tests that require the QNN CPU backend. Checks if QNN CPU is available before the test
@@ -1111,6 +1214,15 @@ class QnnCPUBackendTests : public ::testing::Test {
   void SetUp() override;
 
   static BackendSupport cached_cpu_support_;  // Set by the first test using this fixture.
+};
+
+// Testing fixture class for tests that require the QNN Ir backend. Checks if QNN IR is available before the test
+// begins. The test is skipped if the IR backend is unavailable (may occur with certain QNN versions).
+class QnnIRBackendTests : public ::testing::Test {
+ protected:
+  void SetUp() override;
+
+  static BackendSupport cached_ir_support_;  // Set by the first test using this fixture.
 };
 
 /**

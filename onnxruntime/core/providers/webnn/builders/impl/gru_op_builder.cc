@@ -143,8 +143,7 @@ bool GruOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node
 
     const auto& sequence_lens_tensor = *seq_initializer;
     std::vector<int32_t> sequence_lens;
-    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, logger)) {
-      LOGS(logger, ERROR) << "Cannot read sequence lens tensor";
+    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, graph_viewer, logger)) {
       return false;
     }
     if (!std::all_of(sequence_lens.begin(), sequence_lens.end(),
@@ -220,7 +219,8 @@ bool GruOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, input_X_type, wnn_limits, "input", "X", logger);
+  return IsDataTypeSupportedByOp(op_type, input_X_type, wnn_limits, "input", "X", logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 bool GruOpBuilder::HasSupportedOutputsImpl(const Node& node,

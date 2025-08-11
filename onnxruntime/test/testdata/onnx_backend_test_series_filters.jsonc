@@ -31,12 +31,10 @@
     "current_failing_tests": [
         "^test_adagrad",
         "^test_adagrad_multiple",
-        "^test_batchnorm_epsilon_old",
+        "^test_attention_3d.*",  // wrong expected values in onnx==1.18.0, fixed in 1.19.0
         "^test_batchnorm_epsilon_training_mode",
-        "^test_batchnorm_example_old",
         "^test_batchnorm_example_training_mode",
         "^test_col2im_pads",  // still one wrong value coming from the backtest example
-        "^test_gathernd_example_int32_batch_dim1",
         "^test_max_int16",
         "^test_max_int8",
         "^test_max_uint16",
@@ -52,8 +50,6 @@
         "^test_pow_types_float32_uint64",
         "^test_gradient_of_add_and_mul",
         "^test_gradient_of_add",
-        "^test_batchnorm_example_training_mode",
-        "^test_batchnorm_epsilon_training_mode",
         "^test_MaxPool2d_stride_padding_dilation_cpu", // result approximation error; need to be updated in ONNX
         "^test_maxunpool_export_with_output_shape", // result mismatch
         "^test_resize_downsample_scales_cubic_align_corners", // results mismatch with onnx tests
@@ -103,13 +99,20 @@
         "^test_if_opt",
         "^test_loop16_seq_none",
         "^test_identity_opt",
+        "^test_rotary_embedding_no_position_ids_rotary_dim",
+        "^test_rotary_embedding_with_interleaved_rotary_dim",
+        "^test_rotary_embedding_with_rotary_dim",
+        "^test_rotary_embedding_3d_input_expanded",
+        "^test_rotary_embedding_interleaved_expanded",
+        "^test_rotary_embedding_no_position_ids_interleaved_expanded",
+        "^test_rotary_embedding_expanded", //webgpu
+        "^test_rotary_embedding_no_position_ids_expanded", //webgpu
         // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
         "^test_roialign_mode_max", // TODO: Remove once onnx test is fixed
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",
-        "^test_convtranspose_autopad_same_cpu",
         "^test_sub_uint8_cuda",
         "^test_simple_rnn_batchwise_cuda",
         "^test_mul_uint8_cuda",
@@ -315,7 +318,29 @@
         "^test_dequantizelinear_int4",
         "^test_dequantizelinear_uint4",
         "^test_quantizelinear_int4",
-        "^test_quantizelinear_uint4"
+        "^test_quantizelinear_uint4",
+        // ONNX 1.18 has invalid test model for RMSNorm operator.
+        "^test_rms_normalization_2d_axis0_expanded",
+        "^test_rms_normalization_2d_axis1_expanded",
+        "^test_rms_normalization_2d_axis_negative_1_expanded",
+        "^test_rms_normalization_2d_axis_negative_2_expanded",
+        "^test_rms_normalization_3d_axis0_epsilon_expanded",
+        "^test_rms_normalization_3d_axis1_epsilon_expanded",
+        "^test_rms_normalization_3d_axis2_epsilon_expanded",
+        "^test_rms_normalization_3d_axis_negative_1_epsilon_expanded",
+        "^test_rms_normalization_3d_axis_negative_2_epsilon_expanded",
+        "^test_rms_normalization_3d_axis_negative_3_epsilon_expanded",
+        "^test_rms_normalization_4d_axis0_expanded",
+        "^test_rms_normalization_4d_axis1_expanded",
+        "^test_rms_normalization_4d_axis2_expanded",
+        "^test_rms_normalization_4d_axis3_expanded",
+        "^test_rms_normalization_4d_axis_negative_1_expanded",
+        "^test_rms_normalization_4d_axis_negative_2_expanded",
+        "^test_rms_normalization_4d_axis_negative_3_expanded",
+        "^test_rms_normalization_4d_axis_negative_4_expanded",
+        "^test_rms_normalization_default_axis_expanded",
+        // topk uint64 is not implemented in ORT yet.
+        "^test_top_k_uint64"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -670,6 +695,10 @@
         "^test_nonmaxsuppression_flipped_coordinates_cpu",
         "^test_nonmaxsuppression_center_point_box_format_cpu"
     ],
+    "current_failing_tests_QNN": [
+        "^test_scatter_elements_with_negative_indices",
+        "^test_scatter_elements_with_duplicate_indices*"
+    ],
     "current_failing_tests_WEBGPU": [
         "^test_layer_normalization_2d_axis0_cpu",
         "^test_layer_normalization_2d_axis1_cpu",
@@ -873,7 +902,9 @@
     "failing_permanently_nodejs_binding": [
         // those test cases are no longer available in later opset version
         ["opset10", "^test_mod_float_mixed_sign_example"],
-        ["opset11", "^test_unique_not_sorted_without_axis"]
+        ["opset11", "^test_unique_not_sorted_without_axis"],
+        // those test cases are generated incorrectly
+        ["opset14", "^test_convtranspose_autopad_same"]
     ],
     "test_with_types_disabled_due_to_binary_size_concerns": [
         "^test_bitshift_right_uint16",

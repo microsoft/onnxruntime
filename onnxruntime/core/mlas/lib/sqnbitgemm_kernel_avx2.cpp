@@ -584,6 +584,88 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx2(
     return CountM;
 }
 
+template<bool vnni>
+MLAS_FORCEINLINE
+size_t
+SQ8BitGemmKernel_BlkSum_CompInt8_avx2(
+    const size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* /*QuantBZeroPoint*/,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum
+)
+{
+    if (BlkLen == 16) {
+        MlasQ8Int8GemmKernelBlkLen16Avx2<vnni>(
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            CountK,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    } else if (BlkLen == 32) {
+        MlasQ8Int8GemmKernelBlkLen32Avx2<vnni>(
+              QuantA,
+              QuantAScale,
+              QuantBData,
+              QuantBScale,
+              C,
+              CountM,
+              CountN,
+              CountK,
+              BlockCountK,
+              Bias,
+              ldc
+        );
+    } else {
+        MlasQ8Int8GemmKernelBlkLen64Avx2<vnni>(
+            BlkLen,
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    }
+
+    float* c_blk = C;
+    const float* b_blk_sum = QuantBBlkSum;
+
+    size_t RowsRemaining = CountM;
+    const float* a_blksum_row = ABlockSum;
+    while (RowsRemaining > 0) {
+        auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
+            a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f, false
+        );
+
+        c_blk += ldc * RowsHandled;
+        a_blksum_row += BlockCountK * RowsHandled;
+        RowsRemaining -= RowsHandled;
+    }
+    return CountM;
+}
+
 size_t
 SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni(
   const size_t BlkLen,
@@ -1311,7 +1393,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     const float* QuantBScaleBegin,
     bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
-    PackedQuantBDataStruct<float>& PackedQuantB,
+    PackedQuantBDataStruct<float, 4>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -1328,23 +1410,52 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
         HasZeroPoint, QuantBZPBegin, PackedQuantB, ThreadPool);
 }
 
+static void
+SQ8BitGemmPackQuantBDataAndBlkSum(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::byte* QuantBDataBegin,
+    const float* QuantBScaleBegin,
+    bool HasZeroPoint,
+    const std::byte* QuantBZPBegin,
+    PackedQuantBDataStruct<float, 8>& PackedQuantB,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    assert(BlkLen >= 16 && BlkLen % 16 == 0);
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+
+    size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
+    if (ComputeType == SQNBIT_CompInt8) {
+        SubBlkLen = 64;
+    }
+    Q8PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin,
+        HasZeroPoint, QuantBZPBegin, PackedQuantB, ThreadPool);
+}
+
 //
 // Kernel dispatch structure definition.
 //
 const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
     MLAS_QNBIT_GEMM_DISPATCH d;
 
-    d.Q4BitGemmPackQuantBDataSize = Q4BitGemmPackQuantBDataSize;
+    d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
+    d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum;
+    d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum;
 
-    d.Q4BitGemmPerGemmWorkspaceSize = Q4BitGemmPerGemmWorkspaceSize;
-    d.Q4BitGemmPerGemmWorkspaceAlignment = Q4BitGemmPerGemmWorkspaceAlignment;
+    d.QNBitGemmPerGemmWorkspaceSize = QNBitGemmPerGemmWorkspaceSize;
+    d.QNBitGemmPerGemmWorkspaceAlignment = QNBitGemmPerGemmWorkspaceAlignment;
 
     d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32_avx2;
     d.SQ4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2;
+    d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx2<false>;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
 
     return d;
@@ -1353,17 +1464,20 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
 const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     MLAS_QNBIT_GEMM_DISPATCH d;
 
-    d.Q4BitGemmPackQuantBDataSize = Q4BitGemmPackQuantBDataSize;
+    d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
+    d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum;
+    d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum;
 
-    d.Q4BitGemmPerGemmWorkspaceSize = Q4BitGemmPerGemmWorkspaceSize;
-    d.Q4BitGemmPerGemmWorkspaceAlignment = Q4BitGemmPerGemmWorkspaceAlignment;
+    d.QNBitGemmPerGemmWorkspaceSize = QNBitGemmPerGemmWorkspaceSize;
+    d.QNBitGemmPerGemmWorkspaceAlignment = QNBitGemmPerGemmWorkspaceAlignment;
 
     d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32_avx2;
     d.SQ4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni;
+    d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx2<true>;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
 
     return d;

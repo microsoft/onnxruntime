@@ -45,6 +45,8 @@ enum StatusCode {
   INVALID_GRAPH = 10,
   EP_FAIL = 11,
   MODEL_LOAD_CANCELED = 12,
+  MODEL_REQUIRES_COMPILATION = 13,
+  NOT_FOUND = 14,
 };
 
 constexpr const char* StatusCodeToString(StatusCode status) noexcept {
@@ -75,6 +77,10 @@ constexpr const char* StatusCodeToString(StatusCode status) noexcept {
       return "EP_FAIL";
     case StatusCode::MODEL_LOAD_CANCELED:
       return "MODEL_LOAD_CANCELED";
+    case StatusCode::MODEL_REQUIRES_COMPILATION:
+      return "MODEL_REQUIRES_COMPILATION";
+    case StatusCode::NOT_FOUND:
+      return "NOT_FOUND";
     default:
       return "GENERAL ERROR";
   }
@@ -109,6 +115,10 @@ constexpr HRESULT StatusCodeToHRESULT(StatusCode status) noexcept {
       return HRESULT_FROM_WIN32(ERROR_INTERNAL_ERROR);
     case StatusCode::MODEL_LOAD_CANCELED:
       return HRESULT_FROM_WIN32(ERROR_CANCELLED);
+    case StatusCode::MODEL_REQUIRES_COMPILATION:
+      return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
+    case StatusCode::NOT_FOUND:
+      return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
     default:
       return E_FAIL;
   }

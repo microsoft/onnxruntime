@@ -18,13 +18,14 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | And | ai.onnx(7+) | logicalAnd | |
 | ArgMax | ai.onnx(7-10, 11, 12, 13+) | argMax | |
 | ArgMin | ai.onnx(7-10, 11, 12, 13+) | argMin | |
-| AveragePool | ai.onnx(7-9, 10, 11, 12-18, 19+) | averagePool2d | Only supports 4-D input, 2-D 'kernel_shape', 'count_include_pad' value is 0 |
+| AveragePool | ai.onnx(7-9, 10, 11, 12-18, 19+) | averagePool2d | Only supports 4-D input, 2-D 'kernel_shape' |
 | BatchNormalization | ai.onnx(7-8, 9-13, 14, 15+) | batchNormalization | Only supports 'training_mode' value is 0, one output |
 | Cast | ai.onnx(7-8, 9-12, 13-18, 19-20, 21+) | cast | |
 | Ceil | ai.onnx(7-12, 13+) | ceil | |
 | Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | |
 | Concat | ai.onnx(7-10, 11-12, 13+) | concat | |
 | Conv | ai.onnx(7-10, 11+) | conv2d | Only supports 3-D or 4-D input and 'W' (weight) |
+| ConvInteger | ai.onnx(10+) | cast, conv2d, dequantizeLinear | Only supports 3-D or 4-D input and 'W' (weight) |
 | ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | Only supports 3-D or 4-D input and 'W' (weight) |
 | Cos | ai.onnx(7+) | cos | |
 | CumSum | ai.onnx(11-13, 14+) | cumulativeSum | 'axis' input should be a constant |
@@ -64,11 +65,13 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | LRN | ai.onnx(7-12, 13+) | pad, averagePool2d, transpose, add, mul, pow, div | |
 | LSTM | ai.onnx(7-13, 14-21, 22+) | lstm | Only supports 'layout' == 0, 'input_forget' == 0. 'clip' is not supported. The activation functions in 'activations' must be one of 'Relu', 'Tanh', 'Sigmoid'. Forward and backward activations must be the same if bidirectional. 'sequence_lens' if present should be constant with values equal to the first dimension length of input 'X' |
 | MatMul | ai.onnx(7-8, 9-12, 13+) | matmul | |
+| MatMulInteger | ai.onnx(10+) | cast, dequantizeLinear, matmul | |
 | MatMulNBits | com.microsoft(1+) | add, dequantizeLinear, matmul, reshape, transpose | Inputs 'B' and 'zero_points' (if present) should be constants, input 'g_idx' is not supported, only bits=4 is supported |
 | Max | ai.onnx(7, 8-11, 12, 13+) | max | |
 | MaxPool | ai.onnx(7, 8-9, 10, 11, 12+) | maxPool2d | Only supports 4-D input, 2-D 'kernel_shape', 'storage_order' != 1, one output |
 | Min | ai.onnx(7, 8-11, 12, 13+) | min | |
 | Mul | ai.onnx(7-12, 13, 14+) | mul | |
+| MultiHeadAttention | com.microsoft(1+) | add, cast, concat, constant, div, matmul, reshape, softmax, transpose | Does not support inputs bias, key_padding_mask, past_sequence_length, or cache_indirection. Does not support output qk |
 | Neg | ai.onnx(7-12, 13+) | neg | |
 | Not | ai.onnx(7+) | logicalNot | |
 | Or | ai.onnx(7+) | logicalOr | |
@@ -90,7 +93,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Relu | ai.onnx(7-12, 13, 14+) | relu | |
 | Reshape | ai.onnx(7-12, 13, 14-18, 19-20, 21+) | reshape | Input 'shape' should be a constant, 0 dimension value in 'shape' is not supported |
 | Resize | ai.onnx(11-12, 13-17, 18, 19+) | resample2d | Only supports 4-D input, antialias == 0, exclude_outside == 0, keep_aspect_ratio_policy == 'stretch', 'linear' and 'nearest' modes, input 'scales' and 'sizes' if present must be a constant |
-| RotaryEmbedding | com.microsoft(1+) | add, concat, gather, mul, reshape, split | |
+| RotaryEmbedding | ai.onnx(23+), com.microsoft(1+) | add, concat, gather, mul, reshape, slice, split | |
 | ScatterElements | ai.onnx(11-12, 13-15, 16-17, 18+) | scatterElements | Only supports 'reduction' == 'none' |
 | ScatterND | ai.onnx(11-12, 13-15, 16-17, 18+) | scatterND | Only supports 'reduction' == 'none' |
 | Shape | ai.onnx(7-12, 13-14, 15-18, 19-20, 21+) | slice | |

@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -23,32 +23,42 @@ jobs:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       # Only build arm64 for CPU
-      matrix_exclude: >-
+      matrix_include: >-
         [
-          {"platform_machine": "x86_64"}
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
         ]
 
   coreml:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       use_coreml: true
-
+      matrix_include: >-
+        [
+          {"machine": "x86_64", "target": "x86_64", "build_config": "Release"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
+        ]
   xnnpack:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       use_xnnpack: true
       # only build arm64/Debug for XNNPack
-      matrix_exclude: >-
+      matrix_include: >-
         [
-          {"platform_machine": "x86_64"},
-          {"platform_machine": "arm64", "build_config": "Release"}
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"}
         ]
 
   webgpu:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       use_webgpu: true
-
+      matrix_include: >-
+        [
+          {"machine": "arm64", "target": "x86_64", "build_config": "Release"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
+        ]
   iphone_simulator:
     runs-on: macos-15
 

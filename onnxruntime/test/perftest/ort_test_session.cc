@@ -19,6 +19,10 @@
 #include "TestCase.h"
 #include "strings_helper.h"
 
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
+#include <cuda_runtime.h>
+#endif
+
 #ifdef USE_OPENVINO
 #include "nlohmann/json.hpp"
 #endif
@@ -57,6 +61,84 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                                                const TestModelInfo& m)
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
+
+  // Add EP devices if any (created by plugin EP)
+  if (!performance_test_config.registered_plugin_eps.empty()) {
+    std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
+    // EP -> associated EP devices (All OrtEpDevice instances must be from the same execution provider)
+    std::unordered_map<std::string, std::vector<Ort::ConstEpDevice>> added_ep_devices;
+    std::unordered_set<int> added_ep_device_index_set;
+
+    auto& ep_list = performance_test_config.machine_config.plugin_provider_type_list;
+    std::unordered_set<std::string> ep_set(ep_list.begin(), ep_list.end());
+
+    // Select EP devices by provided device index
+    if (!performance_test_config.selected_ep_device_indices.empty()) {
+      std::vector<int> device_list;
+      device_list.reserve(performance_test_config.selected_ep_device_indices.size());
+      ParseEpDeviceIndexList(performance_test_config.selected_ep_device_indices, device_list);
+      for (auto index : device_list) {
+        if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
+          fprintf(stderr, "%s", "The device index provided is not correct. Will skip this device id.");
+          continue;
+        }
+
+        Ort::ConstEpDevice& device = ep_devices[index];
+        if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
+          if (added_ep_device_index_set.find(index) == added_ep_device_index_set.end()) {
+            added_ep_devices[device.EpName()].push_back(device);
+            added_ep_device_index_set.insert(index);
+            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s] has been added to session.\n", index, device.EpName());
+          }
+        } else {
+          std::string err_msg = "[Plugin EP] [WARNING] : The EP device index and its corresponding OrtEpDevice is not created from " +
+                                performance_test_config.machine_config.provider_type_name + ". Will skip adding this device.\n";
+          fprintf(stderr, "%s", err_msg.c_str());
+        }
+      }
+    } else {
+      // Find and select the OrtEpDevice associated with the EP in "--plugin_eps".
+      for (size_t index = 0; index < ep_devices.size(); ++index) {
+        Ort::ConstEpDevice& device = ep_devices[index];
+        if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
+          added_ep_devices[device.EpName()].push_back(device);
+          fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.\n", static_cast<int>(index), device.EpName());
+        }
+      }
+    }
+
+    if (added_ep_devices.empty()) {
+      ORT_THROW("[ERROR] [Plugin EP]: No matching EP devices found.");
+    }
+
+    std::string ep_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+
+    // EP's associated provider option lists
+    std::vector<std::unordered_map<std::string, std::string>> ep_options_list;
+    ParseEpOptions(ep_option_string, ep_options_list);
+
+    // If user only provide the EPs' provider option lists for the first several EPs,
+    // add empty provider option lists for the rest EPs.
+    if (ep_options_list.size() < ep_list.size()) {
+      for (size_t i = ep_options_list.size(); i < ep_list.size(); ++i) {
+        ep_options_list.emplace_back();  // Adds a new empty map
+      }
+    } else if (ep_options_list.size() > ep_list.size()) {
+      ORT_THROW("[ERROR] [Plugin EP]: Too many EP provider option lists provided.");
+    }
+
+    // EP -> associated provider options
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> ep_options_map;
+    for (size_t i = 0; i < ep_list.size(); ++i) {
+      ep_options_map.emplace(ep_list[i], ep_options_list[i]);
+    }
+
+    for (auto& ep_and_devices : added_ep_devices) {
+      auto& ep = ep_and_devices.first;
+      auto& devices = ep_and_devices.second;
+      session_options.AppendExecutionProvider_V2(env, devices, ep_options_map[ep]);
+    }
+  }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
   std::unordered_map<std::string, std::string> provider_options;
@@ -145,6 +227,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                 "\nSupported options are:\n", options);
     }
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
+    if (performance_test_config.run_config.enable_cuda_io_binding) {
+      device_memory_name_ = CUDA;
+    }
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
@@ -188,8 +273,20 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
     // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
+    if (performance_test_config.run_config.enable_cuda_io_binding) {
+      device_memory_name_ = CUDA;
+    }
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
+#endif
+  } else if (provider_name_ == onnxruntime::kNvTensorRTRTXExecutionProvider) {
+#ifdef USE_NV
+    session_options.AppendExecutionProvider("NvTensorRtRtx", provider_options);
+    if (performance_test_config.run_config.enable_cuda_io_binding) {
+      device_memory_name_ = CUDA;
+    }
+#else
+    ORT_THROW("NV TensorRT RTX is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
@@ -200,7 +297,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
     ParseSessionConfigs(option_string, provider_options,
                         {"backend_type", "backend_path", "profiling_file_path", "profiling_level",
-                         "rpc_control_latency", "vtcm_mb", "soc_model", "device_id", "htp_performance_mode",
+                         "rpc_control_latency", "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "op_packages",
                          "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
                          "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
                          "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
@@ -230,6 +327,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                     std::ostream_iterator<std::string>(str_stream, ","));
           std::string str = str_stream.str();
           ORT_THROW("Supported htp_performance_mode: " + str);
+        }
+      } else if (key == "op_packages") {
+        if (value.empty()) {
+          ORT_THROW("Please provide the valid op_packages.");
         }
       } else if (key == "qnn_saver_path") {
         // no validation
@@ -680,11 +781,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           ov_options[key] = value;
         } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
           ov_options[key] = value;
-        } else if (value.find("HETERO:") == 0) {
+        } else if (value.find("HETERO") == 0) {
           ov_options[key] = value;
-        } else if (value.find("MULTI:") == 0) {
+        } else if (value.find("MULTI") == 0) {
           ov_options[key] = value;
-        } else if (value.find("AUTO:") == 0) {
+        } else if (value.find("AUTO") == 0) {
           ov_options[key] = value;
         } else {
           ORT_THROW(
@@ -741,6 +842,15 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         } else {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_qdq_optimizer' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "enable_causallm") {
+        if (value == "true" || value == "True" ||
+            value == "false" || value == "False") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [OpenVINO] The value for the key 'enable_causallm' should be a boolean i.e. true or false."
+              " Default value is false. This provider option must be used with CausalLM Models viz. LLMs & SLMs only.\n");
+        }
       } else if (key == "disable_dynamic_shapes") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
@@ -792,17 +902,26 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         }
       } else if (key == "device_memory_name") {
         device_memory_name_ = std::move(value);
+      } else if (key == "device_luid") {
+        ov_options[key] = value;
+      } else if (key == "reshape_input") {
+        ov_options[key] = value;
       } else {
         ORT_THROW(
             "[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO."
             " ['device_type', 'device_id', 'num_of_threads', 'load_config', 'cache_dir', 'num_streams', "
-            "'enable_opencl_throttling', 'disable_dynamic_shapes', 'enable_qdq_optimizer', 'model_priority'] \n");
+            "'enable_opencl_throttling', 'disable_dynamic_shapes', 'enable_qdq_optimizer',"
+            " 'enable_causallm', 'model_priority'] \n");
       }
     }
     session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
+  }
+
+  if (performance_test_config.run_config.use_extensions) {
+    session_options.EnableOrtCustomOps();
   }
 
   if (!performance_test_config.model_info.load_via_path) {
@@ -847,7 +966,12 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       return Ort::Value(nullptr);
     };
   } else {
-    Ort::MemoryInfo memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
+    Ort::MemoryInfo memory_info(nullptr);  // Default initialize, will be overwritten
+    if (device_memory_name_ == CUDA) {
+      memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeDefault);
+    } else {
+      memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
+    }
     custom_allocator_ = Ort::Allocator(session_, memory_info);
     allocator_ = custom_allocator_;
 
@@ -948,6 +1072,7 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
 }
 
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
+  Ort::AllocatorWithDefaultOptions default_allocator;
   // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
@@ -959,10 +1084,37 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
       auto transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
       std::transform(input_node_dim.begin(), input_node_dim.end(), input_node_dim.begin(), transform_fcn);
 
-      Ort::Value input_tensor = Ort::Value::CreateTensor(allocator_, (const int64_t*)input_node_dim.data(),
-                                                         input_node_dim.size(), tensor_info.GetElementType());
-      InitializeTensorWithSeed(seed, input_tensor);
-      PreLoadTestData(0, i, std::move(input_tensor));
+      if (device_memory_name_ != CUDA) {
+        Ort::Value input_tensor = Ort::Value::CreateTensor(allocator_, (const int64_t*)input_node_dim.data(),
+                                                           input_node_dim.size(), tensor_info.GetElementType());
+        InitializeTensorWithSeed(seed, input_tensor);
+        PreLoadTestData(0, i, std::move(input_tensor));
+      }
+// Create tensor on CPU, initialize and copy to CUDA tensor
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
+      else {
+        Ort::Value default_tensor = Ort::Value::CreateTensor(default_allocator, (const int64_t*)input_node_dim.data(),
+                                                             input_node_dim.size(), tensor_info.GetElementType());
+        InitializeTensorWithSeed(seed, default_tensor);
+
+        // Get pointer to CPU tensor data
+        const void* default_ptr = default_tensor.GetTensorRawData();
+
+        size_t total_bytes = default_tensor.GetTensorSizeInBytes();
+
+        Ort::Value cuda_tensor = Ort::Value::CreateTensor(allocator_, input_node_dim.data(),
+                                                          input_node_dim.size(), tensor_info.GetElementType());
+
+        void* cuda_ptr = cuda_tensor.GetTensorMutableData<void>();
+
+        // Copy the initialized data from CPU to GPU
+        cudaError_t cuda_err = cudaMemcpy(cuda_ptr, default_ptr, total_bytes, cudaMemcpyHostToDevice);
+        if (cuda_err != cudaSuccess) {
+          ORT_THROW("Failed to copy tensor data from CPU to CUDA device. CUDA Error: ", cudaGetErrorString(cuda_err));
+        }
+        PreLoadTestData(0, i, std::move(cuda_tensor));
+      }
+#endif
     }
   }
   return true;

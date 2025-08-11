@@ -9,7 +9,7 @@ namespace py = pybind11;
 
 const std::string onnxruntime::python::SessionObjectInitializer::default_logger_id = "Default";
 
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 // TODO remove deprecated global config
 std::string openvino_device_type;
 #endif
@@ -19,7 +19,7 @@ OrtDevice::DeviceId cuda_device_id = 0;
 // TODO remove deprecated global config
 size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 // TODO remove deprecated global config
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 // TODO remove deprecated global config
@@ -39,8 +39,19 @@ bool do_copy_in_default_stream = true;
 // TODO remove deprecated global config
 onnxruntime::rocm::TunableOpInfo tunable_op{};
 onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
+#endif
+
+#if defined(USE_ROCM) || defined(USE_MIGRAPHX)
 // TODO remove deprecated global config
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+#endif
+
+#ifdef USE_MIGRAPHX
+namespace migraphx::external {
+void* alloc_fn{nullptr};
+void* free_fn{nullptr};
+void* empty_cache_fn{nullptr};
+}  // namespace migraphx::external
 #endif
 
 #if defined(ENABLE_DLPACK)

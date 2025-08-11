@@ -14,30 +14,6 @@ using namespace CoreML::Specification;
 namespace onnxruntime {
 namespace coreml {
 
-namespace {
-// TODO, move this to shared_library
-bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node& node,
-                            const logging::Logger& logger) {
-  for (const auto* node_arg : node.InputDefs()) {
-    const auto& input_name(node_arg->Name());
-    const auto initializer_it = initializers.find(input_name);
-    if (initializer_it == initializers.end()) {
-      continue;
-    }
-
-    const auto& tensor = *initializer_it->second;
-    if (tensor.has_data_location() &&
-        tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      LOGS(logger, VERBOSE) << "Initializer [" << input_name
-                            << "] with external data location are not currently supported";
-      return true;
-    }
-  }
-
-  return false;
-}
-}  // namespace
-
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                                         const logging::Logger& logger) const {
   Status status = AddToModelBuilderImpl(model_builder, node, logger);
@@ -63,13 +39,6 @@ bool BaseOpBuilder::IsOpSupported(const Node& node, const OpBuilderInputParams& 
 
   if (!HasSupportedInputs(node, input_params, logger)) {
     LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] has unsupported inputs";
-    return false;
-  }
-
-  // We do not support external initializers for now
-  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
-  if (HasExternalInitializer(initializers, node, logger)) {
-    LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] has external initializers";
     return false;
   }
 
@@ -115,8 +84,9 @@ bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
   }
 
 #if CAN_BUILD_COREML6_OR_LATER
-  // only MLProgram support FP16
-  if (input_params.create_mlprogram && input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+  // only MLProgram support FP16 and INT64
+  if (input_params.create_mlprogram && (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+                                        input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64)) {
     return true;
   }
 #endif

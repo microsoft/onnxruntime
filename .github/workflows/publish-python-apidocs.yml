@@ -40,6 +40,7 @@ jobs:
       - name: Generate Python docs with Sphinx
         run: |
           cd tools/doc
+          chmod +x *
           ./builddoc.sh /usr/bin ../.. ../../build
       - name: Log source commit
         run: git rev-parse --short HEAD > build/docs/html/source-version.txt

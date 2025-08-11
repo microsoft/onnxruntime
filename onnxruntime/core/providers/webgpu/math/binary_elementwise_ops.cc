@@ -14,6 +14,9 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& c = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
+  const bool a_is_bool = Inputs()[0].var_type == ProgramVariableDataType::Boolx4;
+  const bool b_is_bool = Inputs()[1].var_type == ProgramVariableDataType::Boolx4;
+
   shader.AdditionalImplementation() << additional_impl_;
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
@@ -37,58 +40,78 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
     }
   } else {
     const auto& c_indices = shader.AddIndices("bcast_indices");
+    // Use indices helpers to calculate the offset of A and B.
+    const auto& a_indices = shader.AddIndices("a_indices");
+    const auto& b_indices = shader.AddIndices("b_indices");
+
     // check whether can use vectorize mode.
     // If either last dimension of A or B is divisible by 4, or the shared dimension is divisible by 4, vectorize mode
     // can be enabled.
     // In vectorize mode, the source data of A and B will be loaded only once to calculate 4 output values.
-    // Use indices helpers to calculate the offset of A and B.
     if (vectorize_) {
-      const auto& a_indices = shader.AddIndices("a_indices");
-      const auto& b_indices = shader.AddIndices("b_indices");
-
       shader.MainFunctionBody() << "let outputIndices = " << c_indices.OffsetToIndices("global_idx * 4") << ";\n"
                                 << "let offset_a = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
                                 << "let offset_b = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n";
       // get A data
-      if (a.NumComponents() == 4) {
+      if (is_lhs_use_4_components_) {
         shader.MainFunctionBody() << "let a = " << a.GetByOffset("offset_a / 4") << ";\n";
+      } else if (a_is_bool) {
+        shader.MainFunctionBody() << "let a = " << a.GetByOffset("offset_a / 4") << "[offset_a % 4];\n";
       } else {
         shader.MainFunctionBody() << "let a = input_a_value_t(" << a.GetByOffset("offset_a") << ");\n";
       }
 
       // get B data
-      if (b.NumComponents() == 4) {
+      if (is_rhs_use_4_components_) {
         shader.MainFunctionBody() << "let b = " << b.GetByOffset("offset_b / 4") << ";\n";
+      } else if (b_is_bool) {
+        shader.MainFunctionBody() << "let b = " << b.GetByOffset("offset_b / 4") << "[offset_b % 4];\n";
       } else {
         shader.MainFunctionBody() << "let b = input_b_value_t(" << b.GetByOffset("offset_b") << ");\n";
       }
     } else {
       // In broadcast mode, each element of the vec4 value of A and B will be loaded separately to calculate the output value.
       shader.MainFunctionBody() << "var outputIndices = " << c_indices.OffsetToIndices("global_idx * 4") << ";\n"
-                                << "let offset_a0 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
-                                << "let offset_b0 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_a0 = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b0 = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
                                 << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 1") << ";\n"
-                                << "let offset_a1 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
-                                << "let offset_b1 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_a1 = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b1 = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
                                 << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 2") << ";\n"
-                                << "let offset_a2 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
-                                << "let offset_b2 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_a2 = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b2 = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
                                 << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 3") << ";\n"
-                                << "let offset_a3 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
-                                << "let offset_b3 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n";
+                                << "let offset_a3 = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b3 = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n";
 
       // get A data
-      shader.MainFunctionBody() << "let a = vec4<input_a_value_t>("
-                                << a.GetByOffset("offset_a0") << ", "
-                                << a.GetByOffset("offset_a1") << ", "
-                                << a.GetByOffset("offset_a2") << ", "
-                                << a.GetByOffset("offset_a3") << ");\n";
+      if (a_is_bool) {
+        shader.MainFunctionBody() << "let a = vec4<bool>("
+                                  << a.GetByOffset("offset_a0 / 4") << "[offset_a0 % 4], "
+                                  << a.GetByOffset("offset_a1 / 4") << "[offset_a1 % 4], "
+                                  << a.GetByOffset("offset_a2 / 4") << "[offset_a2 % 4], "
+                                  << a.GetByOffset("offset_a3 / 4") << "[offset_a3 % 4]);\n";
+      } else {
+        shader.MainFunctionBody() << "let a = vec4<input_a_value_t>("
+                                  << a.GetByOffset("offset_a0") << ", "
+                                  << a.GetByOffset("offset_a1") << ", "
+                                  << a.GetByOffset("offset_a2") << ", "
+                                  << a.GetByOffset("offset_a3") << ");\n";
+      }
       // get B data
-      shader.MainFunctionBody() << "let b = vec4<input_b_value_t>("
-                                << b.GetByOffset("offset_b0") << ", "
-                                << b.GetByOffset("offset_b1") << ", "
-                                << b.GetByOffset("offset_b2") << ", "
-                                << b.GetByOffset("offset_b3") << ");\n";
+      if (b_is_bool) {
+        shader.MainFunctionBody() << "let b = vec4<bool>("
+                                  << b.GetByOffset("offset_b0 / 4") << "[offset_b0 % 4], "
+                                  << b.GetByOffset("offset_b1 / 4") << "[offset_b1 % 4], "
+                                  << b.GetByOffset("offset_b2 / 4") << "[offset_b2 % 4], "
+                                  << b.GetByOffset("offset_b3 / 4") << "[offset_b3 % 4]);\n";
+      } else {
+        shader.MainFunctionBody() << "let b = vec4<input_b_value_t>("
+                                  << b.GetByOffset("offset_b0") << ", "
+                                  << b.GetByOffset("offset_b1") << ", "
+                                  << b.GetByOffset("offset_b2") << ", "
+                                  << b.GetByOffset("offset_b3") << ");\n";
+      }
     }
   }
 
@@ -113,6 +136,12 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
   bool is_broadcast = lhs_shape != rhs_shape;
   bool is_lhs_scalar = lhs_shape.IsScalar();
   bool is_rhs_scalar = rhs_shape.IsScalar();
+
+  // Check if either input is boolean
+  // For boolean inputs, we need to handle them differently in the shader. This is because `bool` is not a valid type in
+  // storage buffer. We have to use a `u32` to represent 4 boolean values.
+  bool is_lhs_bool = lhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+  bool is_rhs_bool = rhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
 
   bool vectorize = is_lhs_scalar || is_rhs_scalar || !is_broadcast;
   bool a_last_dim_divisible_by_4 = false;
@@ -157,6 +186,8 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
                                    is_broadcast,
                                    is_lhs_scalar,
                                    is_rhs_scalar,
+                                   shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4,
+                                   shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4,
                                    vectorize};
   program
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
@@ -169,8 +200,8 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     // Mode Element-wise
     // cache hint: "E{is_a_scalar}{is_b_scalar}"
     program
-        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, {is_lhs_scalar ? 1 : vec_size}, 4},
-                    {rhs_tensor, ProgramTensorMetadataDependency::Type, {is_rhs_scalar ? 1 : vec_size}, 4}})
+        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4},
+                    {rhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
         .CacheHint("E" + std::to_string(is_lhs_scalar) + std::to_string(is_rhs_scalar));
   } else if (vectorize) {
     // reshape the dims to merge the shared dimension if available
@@ -187,13 +218,13 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
       reshaped_output_shape[reshaped_output_shape.NumDimensions() - 1] = output_shape.SizeFromDimension(output_shape.NumDimensions() - num_shared_dimension);
     }
 
-    if (shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4) {
-      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::Type, {(lhs_shape.Size() + 3) / 4}, 4});
+    if (shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4 || is_lhs_bool) {
+      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4});
     } else {
       program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::Type});
     }
-    if (shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4) {
-      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type, {(rhs_shape.Size() + 3) / 4}, 4});
+    if (shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4 || is_rhs_bool) {
+      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4});
     } else {
       program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type});
     }
@@ -208,9 +239,11 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     // Mode Broadcast
     // cache hint: "B"
     program
-        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::TypeAndRank},
-                    {rhs_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, is_lhs_bool ? 4 : 1},
+                    {rhs_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, is_rhs_bool ? 4 : 1}})
         .AddIndices(output_tensor->Shape())
+        .AddIndices(lhs_tensor->Shape())
+        .AddIndices(rhs_tensor->Shape())
         .CacheHint("B");
   }
 
@@ -289,6 +322,14 @@ std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
     round_str = "round";
   }
+  std::string use_sqrt_for_pow;
+  if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT || lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
+    // use sqrt instead of pow when base (a) is a positive float and exponent (b) is 0.5
+    use_sqrt_for_pow =
+        "  else if (a >= input_a_element_t(0.0) && b == 0.5) {\n"
+        "    return sqrt(a);\n"
+        "  }\n";
+  }
 
   s << "fn pow_custom(a : input_a_element_t, b : f32) -> input_a_element_t {\n"
        "  if (b == 0.0) {\n"
@@ -296,6 +337,7 @@ std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
        "  } else if (a < input_a_element_t(0.0) && b != floor(b)) {\n"
        "    return input_a_element_t(pow(f32(a), b)); // NaN\n"
        "  }\n"
+    << use_sqrt_for_pow
     << "  return select(sign(a), input_a_element_t(1.0), round(abs(b) % 2.0) != 1.0) * input_a_element_t(" << round_str << "(pow(f32(abs(a)), b)));\n"
     << "}\n"
        "fn pow_v(a : vec4<input_a_element_t>, b : vec4<input_b_element_t>) -> vec4<input_a_element_t> {\n"
@@ -310,29 +352,33 @@ WEBGPU_BINARY_VERSIONED_KERNEL_2(Pow, 12, 12, Pow, WebGpuSupportedNumberTypes(),
 WEBGPU_BINARY_VERSIONED_KERNEL_2(Pow, 13, 14, Pow, WebGpuSupportedNumberTypes(), WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL_2(Pow, 15, Pow, WebGpuSupportedNumberTypes(), WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(a == b)")
+WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(vec4<input_a_element_t>(a) == vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 7, 10, Equal, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 11, 12, Equal, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 13, 18, Equal, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(Equal, 19, Equal, WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(a > b)")
+WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(vec4<input_a_element_t>(a) > vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(Greater, 7, 8, Greater, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL(Greater, 9, 12, Greater, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(Greater, 13, Greater, WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(Less, "vec4<u32>(a < b)")
+WEBGPU_BINARY_IMPL(Less, "vec4<u32>(vec4<input_a_element_t>(a) < vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(Less, 7, 8, Less, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL(Less, 9, 12, Less, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(Less, 13, Less, WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(GreaterOrEqual, "vec4<u32>(a >= b)")
+WEBGPU_BINARY_IMPL(GreaterOrEqual, "vec4<u32>(vec4<input_a_element_t>(a) >= vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(GreaterOrEqual, 12, 15, GreaterOrEqual, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(GreaterOrEqual, 16, GreaterOrEqual, WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(LessOrEqual, "vec4<u32>(a <= b)")
+WEBGPU_BINARY_IMPL(LessOrEqual, "vec4<u32>(vec4<input_a_element_t>(a) <= vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(LessOrEqual, 12, 15, LessOrEqual, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(LessOrEqual, 16, LessOrEqual, WebGpuSupportedNumberTypes())
+
+// And operator only supports tensor(bool).
+WEBGPU_BINARY_IMPL(And, "(vec4<input_a_element_t>(a) & vec4<input_b_element_t>(b))")
+WEBGPU_BINARY_KERNEL(And, 7, And, DataTypeImpl::GetTensorType<bool>())
 
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -48,15 +48,14 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
         ss << "let xValue = " << dy.GetByIndices("dy_indices_t(batch, inputChannel, idyR, idyC)") << ";\n";
       }
       if (a_components_ == 1) {
-        ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)") << ";\n"
+        ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel / " + std::to_string(b_components_) + ")") << ";\n"
            << "dotProd = dotProd + xValue * wValue;\n";
       } else if (a_components_ == b_components_ && components_ == 1) {
         ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)") << ";\n"
            << "dotProd = dotProd + dot(xValue, wValue);\n";
       } else {
         for (uint32_t i = 0; i < a_components_; ++i) {
-          ss << "let w_indices" << i << " = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel + d2 + " << i << ", wOutChannel);\n "
-             << "let w_offset" << i << " = " << w.IndicesToOffset("w_indices" + std::to_string(i)) << ";\n"
+          ss << "let w_indices" << i << " = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel + " << i << ", wOutChannel / " << b_components_ << ");\n "
              << "let wValue" << i << " = " << w.GetByIndices("w_indices" + std::to_string(i)) << ";\n"
              << "dotProd = dotProd + xValue[" << i << "] * wValue" << i << ";\n";
         }
@@ -86,14 +85,14 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let outputIndices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "let batch = " << output.IndicesGet("outputIndices", 0) << ";\n"
-                            << "let d1 = " << output.IndicesGet("outputIndices", channel_dim) << ";\n"
+                            << "let d1 = " << output.IndicesGet("outputIndices", channel_dim) << " * " << components_ << ";\n"
                             << "let r = " << output.IndicesGet("outputIndices", row_dim) << ";\n"
                             << "let c = " << output.IndicesGet("outputIndices", col_dim) << ";\n"
                             << "let dyCorner = vec2<i32>(i32(r), i32(c)) - vec2<i32>(uniforms.pads);\n"
                             << "let dyRCorner = dyCorner.x;\n"
                             << "let dyCCorner = dyCorner.y;\n"
-                            << "let groupId = d1 / (uniforms.output_channels_per_group / " << components_ << ");\n"
-                            << "let wOutChannel = d1 - groupId * (uniforms.output_channels_per_group / " << components_ << ");\n"
+                            << "let groupId = d1 / uniforms.output_channels_per_group;\n"
+                            << "let wOutChannel = d1 - groupId * uniforms.output_channels_per_group;\n"
                             << "// Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).\n"
                             << "// ? = to be determined. : = across all values in that axis.\n"
                             << "var dotProd = output_value_t(0.0);\n"
@@ -130,22 +129,22 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "    let idyC: u32 = u32(dyC);\n"
                             << "    var inputChannel = groupId * uniforms.input_channels_per_group;\n";
   if (pack_input_as4_) {
-    shader.MainFunctionBody() << "    let dy_indices = dy_indices_t(batch, idyR, idyC, inputChannel);\n"
-                              << "    let w_indices = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel);\n"
+    shader.MainFunctionBody() << "    let dy_indices = dy_indices_t(batch, idyR, idyC, inputChannel / " << a_components_ << ");\n"
+                              << "    let w_indices = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel / " << b_components_ << ");\n"
                               << "    var x_offset = " << dy.IndicesToOffset("dy_indices") << ";\n"
                               << "    var w_offset = " << w.IndicesToOffset("w_indices") << ";\n";
   }
 
   shader.MainFunctionBody() << "    for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group_int; d2 = d2 + " << (pack_input_as4_ ? 4 : a_components_) << ") {\n"
                             << "      " << calculate_result() << "\n"
-                            << "      inputChannel = inputChannel + " << (pack_input_as4_ ? 4 : 1) << ";\n"
+                            << "      inputChannel = inputChannel + " << (pack_input_as4_ ? 4 : a_components_) << ";\n"
                             << "    }\n"
                             << "    " << calculate_remainder() << "\n"
                             << "    wC = wC + uniforms.strides.y - 1;\n"
                             << "  }\n"
                             << "  wR = wR + uniforms.strides.x - 1;\n"
                             << "}\n"
-                            << "let value = dotProd" << (has_bias_ ? " + bias[d1]" : "") << ";\n"
+                            << "let value = dotProd" << (has_bias_ ? " + bias[d1 / " + std::to_string(components_) + "]" : "") << ";\n"
                             << output.SetByOffset("global_idx", "value") << "\n";
   return Status::OK();
 }
@@ -181,8 +180,7 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
   }
   program.AddOutput({output, ProgramTensorMetadataDependency::Rank, reduced_output_shape, components})
-      .CacheHint(std::to_string(input_channels_remainder) + "-" + std::to_string(pack_input_as4) + std::to_string(components) +
-                 "-" + std::to_string(b_components) + "-" + std::to_string(a_components) + "-" + std::to_string(is_channels_last ? 1 : 0))
+      .CacheHint(input_channels_remainder, pack_input_as4, components, b_components, a_components, is_channels_last ? 1 : 0, has_bias ? 1 : 0)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {strides}, {kernel_dims}, {dilations}, {effective_kernel_dims}, {local_pads}, {static_cast<uint32_t>(input_channels_per_group_int)}, {static_cast<uint32_t>(input_channels_per_group)}, {static_cast<uint32_t>(output_channels_per_group)}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
 

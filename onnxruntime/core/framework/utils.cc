@@ -32,14 +32,6 @@
 
 namespace onnxruntime {
 namespace utils {
-void* DefaultAlloc(size_t size) {
-  return onnxruntime::AllocatorDefaultAlloc(size);
-}
-
-void DefaultFree(void* p) {
-  onnxruntime::AllocatorDefaultFree(p);
-}
-
 void ConstructStrings(void* p_data, int64_t elements) {
   auto* ptr = static_cast<std::string*>(p_data);
   for (int64_t i = 0; i < elements; ++i) {
@@ -82,28 +74,21 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
 
   if (source_mlvalue.IsTensor()) {
     const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
-    if (allocator->Info().alloc_type == OrtArenaAllocator) {
-      void* p_data = nullptr;
-#ifdef ORT_ENABLE_STREAM
-      BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
-      auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_ptr);
-      if (stream_aware_alloc && target_stream) {
-        size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
-        p_data = stream_aware_alloc->AllocOnStream(len, target_stream, nullptr);
+    void* p_data = nullptr;
+    if (target_stream && allocator->IsStreamAware()) {
+      size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
+      p_data = allocator->AllocOnStream(len, target_stream);
+      if (p_data == nullptr && len > 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Allocation failed.");
       }
-#else
-      ORT_UNUSED_PARAMETER(target_stream);
-#endif  // ORT_ENABLE_STREAM
-      if (p_data == nullptr) {
-        Tensor::InitOrtValue(source_tensor.DataType(),
-                             source_tensor.Shape(),
-                             allocator, target_mlvalue);
-      } else {
-        Tensor::InitOrtValue(source_tensor.DataType(),
-                             source_tensor.Shape(),
-                             p_data,
-                             allocator, target_mlvalue);
-      }
+    }
+
+    if (p_data) {
+      Tensor::InitOrtValue(source_tensor.DataType(),
+                           source_tensor.Shape(),
+                           p_data,
+                           allocator, target_mlvalue);
+
     } else {
       Tensor::InitOrtValue(source_tensor.DataType(),
                            source_tensor.Shape(),
@@ -564,7 +549,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
     size_t num_streams = device_stream_collection->NumStreams();
     for (size_t i = 0; i < num_streams; i++) {
       Stream* stream = device_stream_collection->GetStream(i);
-      if (stream && stream->GetDevice().Type() != OrtDevice::CPU) {
+      if (stream && !stream->GetDevice().UsesCpuMemory()) {
         device_stream = stream;
         break;
       }

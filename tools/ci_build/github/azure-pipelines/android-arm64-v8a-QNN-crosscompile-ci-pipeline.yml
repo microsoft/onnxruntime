@@ -32,7 +32,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.32.0.250228
+  default: 2.37.0.250724
 
 jobs:
 - job: Build_QNN_EP
@@ -52,7 +52,7 @@ jobs:
   - script: sudo chmod go+rw /dev/kvm
     displayName: Update permissions to KVM
 
-  - template: templates/jobs/download_linux_qnn_sdk.yml
+  - template: templates/jobs/init_linux_qnn_sdk_x64.yml
     parameters:
       QnnSDKVersion: ${{ parameters.QnnSdk }}
 

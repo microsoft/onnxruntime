@@ -342,7 +342,7 @@ class ONNXModel:
         graph = graph_path[-1]
         for node in graph.node:
             graph_attrs = [attr for attr in node.attribute if attr.type == 5 or attr.type == 10]
-            if len(graph_attrs):
+            if graph_attrs:
                 kwargs = {}
                 for attr in node.attribute:
                     if attr.type == 5:

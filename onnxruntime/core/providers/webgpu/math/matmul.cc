@@ -55,7 +55,7 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string process_bias;
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
-    process_bias = is_channels_last_ ? "value += output_value_t(bias[col])" : "value += output_value_t(bias[row + i]);";
+    process_bias = is_channels_last_ ? "value += output_value_t(bias[col]);" : "value += output_value_t(bias[row + i]);";
   }
 
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
@@ -109,6 +109,10 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
 
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
   auto* output_tensor = context.Output(0, helper.OutputShape());
+  if (output_tensor->Shape().Size() == 0) {
+    // If the output tensor is empty, we can return early.
+    return Status::OK();
+  }
   bool has_bias = context.InputCount() > 2;
 
   if (helper.N() < 8 && helper.K() < 8) {  // call MatMulNaiveProgram
@@ -232,7 +236,7 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
 
   MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread, is_channels_last};
   program
-      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
+      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})

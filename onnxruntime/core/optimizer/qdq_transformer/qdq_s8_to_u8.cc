@@ -41,8 +41,8 @@ static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
 
   // TODO(fuchen): need to augment this when we support per row quantization
   using ONNX_TENSOR_ELEM_TYPE = ONNX_NAMESPACE::TensorProto::DataType;
-  Initializer q_zero_point(*q_zp_tensor_proto, graph.ModelPath());
-  Initializer dq_zero_point(*dq_zp_tensor_proto, graph.ModelPath());
+  Initializer q_zero_point(graph, *q_zp_tensor_proto, graph.ModelPath());
+  Initializer dq_zero_point(graph, *dq_zp_tensor_proto, graph.ModelPath());
   if (q_zero_point.size() != 1 ||
       dq_zero_point.size() != 1 ||
       q_zero_point.data_type() != ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8 ||

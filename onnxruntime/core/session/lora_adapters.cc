@@ -12,13 +12,13 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/ort_apis.h"
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif
 
 namespace onnxruntime {
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 #endif
 
@@ -58,7 +58,7 @@ static std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtMemoryInfo& mem_i
   }
 
   if (strcmp(mem_info.name, onnxruntime::CUDA) == 0) {
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
     auto* cuda_provider_info = TryGetProviderInfo_CUDA();
     if (cuda_provider_info != nullptr) {
       data_transfer = cuda_provider_info->CreateGPUDataTransfer();

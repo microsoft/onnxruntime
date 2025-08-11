@@ -95,7 +95,7 @@ static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
     ONNX_NAMESPACE::TensorShapeProto result_shape;
     result_shape.add_dim()->set_dim_value(clamped_slice_length);
     constant_arg_out->SetShape(result_shape);
-    graph.AddInitializedTensor(shape_constant);
+    graph_utils::AddInitializer(graph, shape_constant);
   }
 
   return is_concrete_shape;  // convert to constant if this is true
@@ -118,7 +118,7 @@ static Status ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Log
   }
 
   // This is a boolean initializer with a single element.
-  Initializer condition{*initializer};
+  Initializer condition{graph, *initializer};
   ORT_RETURN_IF_NOT(condition.size() == 1, "If node condition initializer: `", condition_def->Name(),
                     "' is expected to have a single boolean element");
 
@@ -317,7 +317,11 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
           auto* constant_arg_out = node->MutableOutputDefs()[fetch_idx];
           const Tensor& out_tensor = ort_value.Get<Tensor>();
-          ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
+          constexpr const bool use_tensor_buffer_false = false;
+          ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(
+              out_tensor,
+              constant_arg_out->Name(),
+              use_tensor_buffer_false);
 
           ONNX_NAMESPACE::TensorShapeProto result_shape;
           for (auto& dim : out_tensor.Shape().GetDims()) {

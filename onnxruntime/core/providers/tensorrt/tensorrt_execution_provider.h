@@ -23,6 +23,7 @@ static const std::string kMaxPartitionIterations = "ORT_TENSORRT_MAX_PARTITION_I
 static const std::string kMinSubgraphSize = "ORT_TENSORRT_MIN_SUBGRAPH_SIZE";
 static const std::string kMaxWorkspaceSize = "ORT_TENSORRT_MAX_WORKSPACE_SIZE";
 static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
+static const std::string kBF16Enable = "ORT_TENSORRT_BF16_ENABLE";
 static const std::string kINT8Enable = "ORT_TENSORRT_INT8_ENABLE";
 static const std::string kINT8CalibrationTableName = "ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME";
 static const std::string kINT8UseNativeTensorrtCalibrationTable = "ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE";
@@ -156,6 +157,28 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
  */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
 
+// Struct to hold user weights when ModelProtos are serialized with data.
+class TensorrtUserWeights {
+ public:
+  TensorrtUserWeights(const std::string& name, const std::string& data) : name_(name), data_(data) {};
+
+  const char* Name() const {
+    return name_.c_str();
+  };
+
+  const void* Data() const {
+    return static_cast<void const*>(data_.data());
+  }
+
+  int64_t Size() const {
+    return static_cast<int64_t>(data_.size());
+  }
+
+ private:
+  std::string name_{};
+  std::string data_{};
+};
+
 // Information to construct kernel function state.
 struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
@@ -172,6 +195,7 @@ struct TensorrtFuncState {
   std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
   std::mutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
+  bool bf16_enable = false;
   bool int8_enable = false;
   bool int8_calibration_cache_available = false;
   bool dla_enable = false;
@@ -183,6 +207,7 @@ struct TensorrtFuncState {
   std::vector<nvinfer1::IOptimizationProfile*> profiles;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
+  IAllocatorUniquePtr<void>* context_memory = nullptr;
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable = false;
   int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
@@ -202,6 +227,7 @@ struct TensorrtFuncState {
   std::string cache_suffix;
   bool engine_hw_compatible = false;
   std::vector<nvinfer1::PreviewFeature> preview_features;
+  std::unique_ptr<std::vector<TensorrtUserWeights>>* userWeights = nullptr;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -216,6 +242,7 @@ struct TensorrtShortFuncState {
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
+  IAllocatorUniquePtr<void>* context_memory = nullptr;
   std::mutex* tensorrt_mu_ptr = nullptr;
 };
 
@@ -283,6 +310,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                                     bool path_check,
                                     const void* onnx_model_bytestream,
                                     size_t onnx_model_bytestream_size,
+                                    const void* onnx_external_data_bytestream,
+                                    size_t onnx_external_data_bytestream_size,
                                     nvinfer1::ICudaEngine* trt_engine,
                                     bool serialize_refitted_engine,
                                     bool detailed_build_log);
@@ -295,6 +324,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   size_t min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 0;
   bool fp16_enable_ = false;
+  bool bf16_enable_ = false;
   bool int8_enable_ = false;
   bool dla_enable_ = false;
   int dla_core_ = 0;
@@ -309,6 +339,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string onnx_model_folder_path_;
   const void* onnx_model_bytestream_;
   size_t onnx_model_bytestream_size_;
+  const void* onnx_external_data_bytestream_ = nullptr;
+  size_t onnx_external_data_bytestream_size_ = 0;
   bool build_heuristics_enable_ = false;
   bool sparsity_enable_ = false;
   int builder_optimization_level_ = 3;
@@ -335,6 +367,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_hw_compatible_ = false;
   std::string op_types_to_exclude_;
   std::vector<nvinfer1::PreviewFeature> preview_features_;
+  bool load_user_initializer_ = false;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
@@ -375,6 +408,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
   std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_maps_;
+  std::unordered_map<std::string, std::unique_ptr<std::vector<TensorrtUserWeights>>> weights_;  // User provided weights.
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
   cudnnHandle_t external_cudnn_handle_ = nullptr;
@@ -535,7 +569,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * and save those information in subgraph context data structure. It's useful for building a valid graph and
    * make Graph::Resolve() happy especially when dealing with nested control-flow op graph.
    */
-  void BuildSubGraphContext(const Graph& build_graph) const;
+  void BuildSubGraphContext(Graph& build_graph) const;
 
   /**
    * Set outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.

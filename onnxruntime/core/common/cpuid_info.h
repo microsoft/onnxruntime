@@ -15,6 +15,14 @@ class CPUIDInfo {
     return cpuid_info;
   }
 
+  std::string_view GetCPUVendor() const {
+    return vendor_;
+  }
+
+  uint32_t GetCPUVendorId() const {
+    return vendor_id_;
+  }
+
   bool HasAMX_BF16() const { return has_amx_bf16_; }
   bool HasAVX() const { return has_avx_; }
   bool HasAVX2() const { return has_avx2_; }
@@ -25,12 +33,14 @@ class CPUIDInfo {
   bool HasSSE3() const { return has_sse3_; }
   bool HasSSE4_1() const { return has_sse4_1_; }
   bool IsHybrid() const { return is_hybrid_; }
+  bool HasTPAUSE() const { return has_tpause_; }
 
   // ARM
   bool HasArmNeonDot() const { return has_arm_neon_dot_; }
   bool HasArmNeon_I8MM() const { return has_arm_neon_i8mm_; }
   bool HasArmSVE_I8MM() const { return has_arm_sve_i8mm_; }
   bool HasArmNeon_BF16() const { return has_arm_neon_bf16_; }
+  bool HasArm_SME() const { return has_arm_sme_; }
 
   uint32_t GetCurrentCoreIdx() const;
 
@@ -104,6 +114,7 @@ class CPUIDInfo {
   bool has_sse3_{false};
   bool has_sse4_1_{false};
   bool is_hybrid_{false};
+  bool has_tpause_{false};
 
   std::vector<uint32_t> core_uarchs_;  // micro-arch of each core
 
@@ -117,10 +128,17 @@ class CPUIDInfo {
   bool has_arm_neon_i8mm_{false};
   bool has_arm_sve_i8mm_{false};
   bool has_arm_neon_bf16_{false};
+  bool has_arm_sme_{false};
+
+  std::string vendor_;
+  uint32_t vendor_id_;
+
+  uint32_t GetVendorId(const std::string& vendor);
 
 #if defined(CPUIDINFO_ARCH_X86)
 
   void X86Init();
+  std::string GetX86Vendor(int32_t* data);
 
 #elif defined(CPUIDINFO_ARCH_ARM)
 
@@ -136,6 +154,7 @@ class CPUIDInfo {
 #elif defined(_WIN32)
 
   void ArmWindowsInit();
+  std::string GetArmWindowsVendor();
 
 #elif defined(__APPLE__)
 

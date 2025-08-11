@@ -33,7 +33,7 @@ parameters:
 - name: pool_name
   displayName: Pool name
   type: string
-  default: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  default: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
 - name: packageName
   displayName: Package Name
@@ -48,10 +48,12 @@ parameters:
   type: string
   default: ''
 
+# Do not update this to a version that does not exist for the qnn-runtime Maven package:
+# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.32.0.250228'
+  default: '2.37.0.250724'
 
 - name: is1ES
   displayName: Is 1ES pipeline
@@ -101,7 +103,7 @@ jobs:
   - template: use-android-ndk.yml
 
   - ${{ if contains(parameters.packageName, 'qnn') }}:
-    - template: jobs/download_linux_qnn_sdk.yml
+    - template: jobs/init_linux_qnn_sdk_x64.yml
       parameters:
         QnnSDKVersion: '${{parameters.QnnSDKVersion}}'
 

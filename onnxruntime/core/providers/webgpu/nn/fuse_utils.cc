@@ -63,11 +63,15 @@ std::string GetActivationSnippet(const Activation& activation, std::string value
     case ActivationKind::Sigmoid:
       return "value = " + value_type_cast(1.0) + " / (" + value_type_cast(1.0) + " + exp(-value));";
     case ActivationKind::Clip:
-      return "value = clamp(value, " + value_type_cast(activation.activation_params_.Clip.minimum_) + ", " + value_type_cast(activation.activation_params_.Clip.maximum_) + ");";
+      return "value = clamp(value, " + value_type_cast(activation.activation_params_.Clip.minimum_) + ", " +
+             value_type_cast(activation.activation_params_.Clip.maximum_) + ");";
     case ActivationKind::HardSigmoid:
-      return "value = clamp(" + value_type_cast(activation.activation_params_.HardSigmoid.alpha_) + " * value + " + value_type_cast(activation.activation_params_.HardSigmoid.beta_) + ", 0.0" + ", 1.0" + ");";
+      return "value = clamp(" + value_type_cast(activation.activation_params_.HardSigmoid.alpha_) + " * value + " +
+             value_type_cast(activation.activation_params_.HardSigmoid.beta_) + ", " + value_type_cast(0.0) + ", " +
+             value_type_cast(1.0) + ");";
     case ActivationKind::LeakyRelu:
-      return "value = select(" + base_type_cast(activation.activation_params_.LeakyRelu.alpha_) + " * value, value, value >= " + value_type_cast(0.0) + ");";
+      return "value = select(" + base_type_cast(activation.activation_params_.LeakyRelu.alpha_) +
+             " * value, value, value >= " + value_type_cast(0.0) + ");";
     case ActivationKind::Tanh:
       return "value = tanh(value);";
     default:

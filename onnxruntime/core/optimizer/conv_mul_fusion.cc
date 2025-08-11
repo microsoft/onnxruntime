@@ -52,11 +52,11 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
     }
   }
 
-  Initializer conv_W{*conv_W_tensor_proto, graph.ModelPath()};
-  Initializer mul_B{*mul_B_tensor_proto, graph.ModelPath()};
+  Initializer conv_W{graph, *conv_W_tensor_proto, graph.ModelPath()};
+  Initializer mul_B{graph, *mul_B_tensor_proto, graph.ModelPath()};
 
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
-  std::unique_ptr<Initializer> conv_B = nullptr;
+  std::optional<Initializer> conv_B;
   const bool is_3d = conv_inputs.size() == 3;
   if (is_3d) {
     conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
@@ -68,7 +68,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
       return Status::OK();
     }
 
-    conv_B = std::make_unique<Initializer>(*conv_B_tensor_proto, graph.ModelPath());
+    conv_B.emplace(graph, *conv_B_tensor_proto, graph.ModelPath());
   }
 
   // Calculate new value of initializers of conv node
@@ -83,7 +83,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   }
 
   // Create new initializers of conv
-  ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto(*conv_W_tensor_proto);
+  ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto;
   conv_W.ToProto(new_conv_W_tensor_proto);
 
   auto new_W_name = graph.GenerateNodeArgName("ConvMulFusion_W_" + conv_W_tensor_proto->name());
@@ -94,7 +94,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   graph_utils::ReplaceNodeInput(conv_node, 1, new_conv_W_node_arg);
 
   if (is_3d) {
-    ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto(*conv_B_tensor_proto);
+    ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto;
     conv_B->ToProto(new_conv_B_tensor_proto);
 
     auto new_B_name = graph.GenerateNodeArgName("ConvMulFusion_Mul_B_" + mul_B_tensor_proto->name());

@@ -256,7 +256,7 @@ class ThreadPoolProfiler {
   void LogCoreAndBlock(std::ptrdiff_t block_size);  // called in main thread to log core and block size for task breakdown
   void LogThreadId(int thread_idx);                 // called in child thread to log its id
   void LogRun(int thread_idx);                      // called in child thread to log num of run
-  std::string DumpChildThreadStat();                // return all child statitics collected so far
+  std::string DumpChildThreadStat();                // return all child statistics collected so far
 
  private:
   static const char* GetEventName(ThreadPoolEvent);
@@ -739,7 +739,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // Allocate a new tag to use to identify work items from a given
     // thread in a parallel section.  Ideally, threads will have
     // unique tags, but re-use is not incorrect if the counter wraps
-    // (for intsance, if a long-running workload is calling into ORT
+    // (for instance, if a long-running workload is calling into ORT
     // from a fresh thread for each request).  We must not re-use the
     // default tag 0 which is used to identify work items added via
     // Schedule as opposed to requests for help in parallel sections.
@@ -912,7 +912,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       }
     }
 
-    // Now we know that dispatch is finshed, we synchronize with the
+    // Now we know that dispatch is finished, we synchronize with the
     // tasks that were created (if any) for the parallel section.  We
     // revoke tasks still in queues, and then wait for any that are
     // still running.
@@ -1004,7 +1004,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // * First, suppose that a single job is running a series of loops.
   //   Its main thread enters a parallel loop.  Initially, let's assume
   //   its preferred worker array is [_,0,1,2], writing "_" for the
-  //   unusued element for the par_idx=0 work that the main thread will
+  //   unused element for the par_idx=0 work that the main thread will
   //   run.
   //
   //   The main thread schedules the dispatcher task onto worker 0.

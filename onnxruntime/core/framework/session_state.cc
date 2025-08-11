@@ -33,8 +33,12 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
   // Wait is a little special as we need to consider the source stream the notification generated,
   // and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType notification_owner_device_type,
-                                   const OrtDevice::DeviceType executor_device_type) const override {
+  WaitNotificationFn GetWaitHandle(const OrtDevice& notification_owner_device,
+                                   const OrtDevice& executor_device) const override {
+    auto notification_owner_device_type = notification_owner_device.UsesCpuMemory() ? OrtDevice::CPU
+                                                                                    : notification_owner_device.Type();
+    auto executor_device_type = executor_device.UsesCpuMemory() ? OrtDevice::CPU : executor_device.Type();
+
     auto it = notification_wait_map_.find(GetWaitKey(notification_owner_device_type, executor_device_type));
     return it == notification_wait_map_.end() ? nullptr : it->second;
   }
@@ -85,7 +89,8 @@ SessionState::SessionState(Graph& graph,
                            profiling::Profiler& profiler,
                            const SessionOptions& sess_options,
                            PrepackedWeightsContainer* prepacked_weights_container,
-                           AllocatorMap* parent_allocators)
+                           AllocatorMap* parent_allocators,
+                           AllocatorMap* parent_initializer_allocators)
     : graph_(graph),
       execution_providers_(execution_providers),
       logger_(logger),
@@ -105,16 +110,26 @@ SessionState::SessionState(Graph& graph,
                         sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
   if (parent_allocators) {
     allocators_ = parent_allocators;
+    initializer_allocators_ = parent_initializer_allocators;
   } else {
     allocators_unique_ptr_ = std::make_unique<AllocatorMap>();
     allocators_ = allocators_unique_ptr_.get();
+
+    initializer_allocators_unique_ptr_ = std::make_unique<AllocatorMap>();
+    initializer_allocators_ = initializer_allocators_unique_ptr_.get();
+
     // The allocator registration rule:
     // Each location (OrtDevice) will only have 1 allocator used for whole session.
-    // The EP which is registered first will have higher priority
+    // The EP which is registered first will have higher priority.
+    // Allocators with a OrtAllocatorType of OrtReadOnlyAllocator go in the initializer allocators
     for (auto& ep : execution_providers_) {
       auto allocators = ep->CreatePreferredAllocators();
       for (auto& alloc : allocators) {
-        allocators_->insert({alloc->Info().device, alloc});  // DON'T overwrite existing key
+        if (alloc->Info().alloc_type == OrtReadOnlyAllocator) {
+          initializer_allocators_->insert({alloc->Info().device, alloc});  // DON'T overwrite existing key
+        } else {
+          allocators_->insert({alloc->Info().device, alloc});  // DON'T overwrite existing key
+        }
       }
     }
   }
@@ -126,13 +141,29 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
 
 AllocatorPtr SessionState::GetAllocator(const OrtDevice& device) const noexcept {
   auto it = allocators_->find(device);
-  if (it != allocators_->end()) return it->second;
+  if (it != allocators_->end()) {
+    return it->second;
+  }
+
   return nullptr;
+}
+
+AllocatorPtr SessionState::GetInitializerAllocator(const OrtDevice& device) const noexcept {
+  auto it = initializer_allocators_->find(device);
+  if (it != initializer_allocators_->end()) {
+    return it->second;
+  }
+
+  return GetAllocator(device);
 }
 
 void SessionState::UpdateAllocatorsWithEnvAllocators(const std::vector<AllocatorPtr>& env_allocators) {
   for (const auto& env_alloc : env_allocators) {
-    (*allocators_)[env_alloc->Info().device] = env_alloc;
+    if (env_alloc->Info().alloc_type == OrtReadOnlyAllocator) {
+      (*initializer_allocators_)[env_alloc->Info().device] = env_alloc;
+    } else {
+      (*allocators_)[env_alloc->Info().device] = env_alloc;
+    }
   }
 }
 
@@ -300,16 +331,12 @@ const std::vector<AllocPlanPerValue>& SessionState::GetPerValueAllocPlan() const
   return p_seq_exec_plan_->allocation_plan;
 }
 
-Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
+Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value,
                                           bool constant, bool sparse) {
   auto p = initialized_tensors_.insert({ort_value_index, ort_value});
   if (!p.second)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated ort_value index:", ort_value_index,
                            ". Do you have duplicated calls to SessionState::AddInitializedTensor function?");
-
-  if (d != nullptr && d->f != nullptr) {
-    deleter_for_initialized_tensors_.insert_or_assign(ort_value_index, *d);
-  }
 
   if (constant) {
     constant_initialized_tensors_.insert({ort_value_index, ort_value});
@@ -1158,7 +1185,7 @@ Status SessionState::CreateSubgraphSessionState() {
           std::make_unique<SessionState>(*subgraph, execution_providers_,
                                          thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
                                          external_data_loader_mgr_, logger_, profiler_, sess_options_,
-                                         prepacked_weights_container_, allocators_);
+                                         prepacked_weights_container_, allocators_, initializer_allocators_);
 
       // Pass fused function manager to subgraph
       subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);
@@ -1620,16 +1647,16 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       Env::Default(), graph_location, *graph_viewer_,
       GetAllocator(OrtDevice()),
       ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator,
-      [this, remove_initializers](const std::string& name, int idx, const OrtValue& value, const OrtCallback& d,
+      [this, remove_initializers](const std::string& name, int idx, const OrtValue& value,
                                   bool constant, bool sparse) -> Status {
-        ORT_RETURN_IF_ERROR(AddInitializedTensor(idx, value, &d, constant, sparse));
+        ORT_RETURN_IF_ERROR(AddInitializedTensor(idx, value, constant, sparse));
         if (remove_initializers) {
           graph_.RemoveInitializedTensor(name);
         }
         return Status::OK();
       },
       logger_, data_transfer_mgr_, external_data_loader_mgr_, *p_seq_exec_plan_, session_options,
-      memory_profile_func, name_to_buffered_tensor_, graph_.GetPrepacked()));
+      memory_profile_func, graph_.GetPrepacked()));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device

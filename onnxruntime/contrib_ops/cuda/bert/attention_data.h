@@ -156,6 +156,7 @@ struct GroupQueryAttentionData {
   int* seqlens_k = nullptr;
   const T* cos_cache = nullptr;
   const T* sin_cache = nullptr;
+  const T* head_sink = nullptr;
 
   // Flash buffers
   T* softmax_lse = nullptr;
@@ -178,6 +179,35 @@ struct GroupQueryAttentionData {
   // Kernel Flags
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
+};
+
+template <typename T>
+struct PagedAttentionData {
+  // Input Tensors
+  const T* query = nullptr;
+  const T* key = nullptr;
+  const T* value = nullptr;
+  T* key_cache = nullptr;
+  T* value_cache = nullptr;
+  const int* cumulative_seqlens_q = nullptr;
+  const int* past_seqlens = nullptr;
+  const int* block_table = nullptr;
+  const int* slot_mappings = nullptr;
+  const T* cos_cache = nullptr;
+  const T* sin_cache = nullptr;
+
+  // Flash buffers
+  T* softmax_lse = nullptr;
+  int* cumulative_seqlens_kv = nullptr;  // Flash api takes cumulative sequence length for kv-cache
+
+  // Fused op buffers
+  T* workspace_buffer = nullptr;
+
+  // Output Tensors
+  T* output = nullptr;
+
+  // Kernel Flags
+  bool use_flash_attention = false;
 };
 
 }  // namespace cuda

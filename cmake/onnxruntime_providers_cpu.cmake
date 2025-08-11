@@ -25,15 +25,6 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
-file(GLOB_RECURSE onnxruntime_rocm_contrib_ops_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.cc"
-)
-
-file(GLOB_RECURSE onnxruntime_rocm_contrib_ops_cu_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.cu"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.cuh"
-)
 
 file(GLOB_RECURSE onnxruntime_js_contrib_ops_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.h"
@@ -267,7 +258,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
-  install(TARGETS onnxruntime_providers
+  install(TARGETS onnxruntime_providers EXPORT ${PROJECT_NAME}Targets
           ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

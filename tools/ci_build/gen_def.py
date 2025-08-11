@@ -81,6 +81,7 @@ with open(args.output_source, "w") as file:
             "tensorrt",
             "azure",
             "webgpu",
+            "nv_tensorrt_rtx",
         ):
             file.write(f"#include <core/providers/{c}/{c}_provider_factory.h>\n")
     file.write("void* GetFunctionEntryByName(const char* name){\n")

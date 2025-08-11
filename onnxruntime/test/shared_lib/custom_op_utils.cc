@@ -35,9 +35,11 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   int64_t size = output_info.GetElementCount();
 
 #ifdef USE_CUDA
-  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
 #else
-  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0));
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator,
+                         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
 #endif
   OrtAllocator* allocator;
   Ort::ThrowOnError(ort_.KernelContext_GetAllocator(context, &mem_info, &allocator));
@@ -451,8 +453,9 @@ void StandaloneCustomKernel::InitGru() {
   float betas[1] = {2.f};
   Ort::OpAttr activation_beta = Ort::OpAttr("activation_beta ", betas, 1, OrtOpAttrType::ORT_OP_ATTR_FLOATS);
 
-  const char* direction_string = "bidirectional";
-  Ort::OpAttr direction = Ort::OpAttr("direction", direction_string, 1, OrtOpAttrType::ORT_OP_ATTR_STRING);
+  const std::string direction_string = "bidirectional";
+  Ort::OpAttr direction = Ort::OpAttr("direction", direction_string.c_str(), static_cast<int>(direction_string.length()),
+                                      OrtOpAttrType::ORT_OP_ATTR_STRING);
 
   int64_t linear_before_reset_value = 0;
   Ort::OpAttr linear_before_reset = Ort::OpAttr("linear_before_reset", &linear_before_reset_value, 1,

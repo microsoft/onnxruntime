@@ -192,13 +192,13 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       uint32_t output_size = static_cast<uint32_t>(output_shape.Size() / components / output_number);
       const size_t output_rank = matmul_output_shape.NumDimensions();
       TensorShape outer_dims = output_rank > 2 ? matmul_output_shape.Slice(0, output_rank - 2) : TensorShape({});
-      MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias);
+      MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias, is_channels_last);
       program
           .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
           .AddInputs({{matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[0], a_components), int(a_components)},
                       {matmul_inputs[1], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[1], components), int(components)}});
       if (has_bias) {
-        program.AddInput({bias, ProgramTensorMetadataDependency::Rank, bias->Shape(), components});
+        program.AddInput({bias, ProgramTensorMetadataDependency::Rank, ReduceShapeByComponents(bias->Shape(), components), components});
       }
       program
           .AddOutputs({{output, ProgramTensorMetadataDependency::None, ReduceShapeByComponents(matmul_output_shape, components), int(components)}})
@@ -211,7 +211,6 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       return context.RunProgram(program);
     }
   }
-  const bool sequentially_access_by_threads = true;
   // Transpose weights
   Tensor transposed_kernel;
   ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
@@ -221,7 +220,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   inputs[1] = &transposed_kernel;
   TensorShape transposed_kernel_shape = transposed_kernel.Shape();
   modified_input_output_shapes[1] = transposed_kernel.Shape();
-  Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last, sequentially_access_by_threads, modified_input_output_shapes);
+  Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last, modified_input_output_shapes);
   return context.RunProgram(conv2d_mm_program);
 }
 

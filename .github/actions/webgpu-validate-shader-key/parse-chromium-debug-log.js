@@ -16,7 +16,7 @@ async function processChromiumDebugLog() {
 
   for await (const line of rl) {
     const result =
-      /^\[.+INFO:CONSOLE\(\d+\)]\ "(?<raw_log_data>.+)",\ source:\ [^"]+?\(\d+\)$/.exec(
+      /^\[.+INFO:CONSOLE.+?]\ "(?<raw_log_data>.+)",\ source:\ [^"]+?\(\d+\)$/.exec(
         line
       );
     if (!result) {

@@ -1,0 +1,21 @@
+FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20250724.1
+
+ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
+
+#Install Vulkan and RPM Fusion for NVIDIA drivers (UBI8/RHEL8)
+#RUN dnf install -y \
+#    https://download1.rpmfusion.org/free/el/rpmfusion-free-release-8.noarch.rpm \
+#    https://download1.rpmfusion.org/nonfree/el/rpmfusion-nonfree-release-8.noarch.rpm && \
+#    dnf install -y xorg-x11-drv-nvidia akmod-nvidia vulkan vulkan-tools mesa-vulkan-drivers
+
+# TODO: Currently this Dockerfile works only for building WebGPU. Need to make it also support running WebGPU tests.
+
+ADD scripts /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh
+RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
+
+ARG BUILD_UID=1001
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --uid $BUILD_UID $BUILD_USER
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER

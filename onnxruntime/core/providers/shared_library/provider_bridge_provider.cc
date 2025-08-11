@@ -347,13 +347,13 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
 
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT)
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) {
-  return g_host->CreateCUDAPinnedAllocator(name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateCUDAPinnedAllocator(device_id, name);
 }
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
@@ -361,7 +361,6 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 }
 #endif
 
-#ifdef USE_MIGRAPHX
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXAllocator(device_id, name);
 }
@@ -369,7 +368,6 @@ std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const cha
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXPinnedAllocator(device_id, name);
 }
-#endif
 
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
@@ -525,7 +523,7 @@ Status NonMaxSuppressionBase::GetThresholdsFromInputs(const PrepareContext& pc, 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, GatherBase::Prepare& p) const { return g_host_cpu.GatherBase__PrepareForCompute(this, context, reinterpret_cast<GatherBase__Prepare&>(p)); }
 Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, UnsqueezeBase::Prepare& p) const { return g_host_cpu.UnsqueezeBase__PrepareCompute(this, ctx, reinterpret_cast<UnsqueezeBase__Prepare&>(p)); }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) || defined(USE_ROCM)
 bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats, size_t rank, bool& is_batched_memcpy, size_t& num_of_elements_per_batch, size_t& num_of_copies_per_batch, size_t& num_of_batch_copies) {
   return g_host_cpu.TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
 }
@@ -792,12 +790,12 @@ Status LoadDynamicLibrary(onnxruntime::PathString library_name) {
 #endif
 
 #ifdef _WIN32
-std::string ToUTF8String(const std::wstring& s) {
-  return g_host->ToUTF8String(s);
+std::string ToUTF8String(std::wstring_view s) {
+  return g_host->ToUTF8String(std::wstring{s});
 }
 
-std::wstring ToWideString(const std::string& s) {
-  return g_host->ToWideString(s);
+std::wstring ToWideString(std::string_view s) {
+  return g_host->ToWideString(std::string{s});
 }
 #endif  // _WIN32
 }  // namespace onnxruntime

@@ -17,6 +17,7 @@
 #include "core/framework/resource_accountant.h"
 #include "core/graph/function.h"
 #include "core/graph/function_utils.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/model_saving_options.h"
@@ -423,7 +424,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            const layout_transformation::DebugGraphFn& debug_graph_fn,
                                            const CheckLoadCancellationFn& check_load_cancellation_fn,
                                            const logging::Logger& logger, IResourceAccountant* resource_accountant,
-                                           const GraphOptimizerRegistry& graph_optimizer_registry) {
+                                           const GraphOptimizerRegistry& graph_optimizer_registry,
+                                           bool disable_model_compile) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -440,7 +442,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                        transform_layout_fn, debug_graph_fn,
                                                        check_load_cancellation_fn,
                                                        logger, resource_accountant,
-                                                       graph_optimizer_registry));
+                                                       graph_optimizer_registry, disable_model_compile));
     }
   }
 
@@ -529,6 +531,16 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     }
   }
 
+  // Helper function that returns true if any of the nodes assigned to a compiling EP is not already compiled.
+  auto graph_viewer_has_non_compiled_node = [](const GraphViewer& graph_viewer) -> bool {
+    for (const auto& node : graph_viewer.Nodes()) {
+      if (node.OpType() != "EPContext") {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // NOTE: if mode_ is kAssignOnly, nodes_to_compile will be empty at this point due to logic in PlaceNode
   // even with single node, EP might still want to compile it.
   // for example, it want to JIT an optimized kernel for LSTM with a given shape.
@@ -548,7 +560,14 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       for (size_t j = 0, end = nodes_to_compile.size(); j < end; j++) {
         auto* node = nodes_to_compile[j];
         const auto& cur_capability = *capabilities_to_compile[j];
-        viewers.push_back(std::make_unique<GraphViewer>(graph, *cur_capability.sub_graph));
+        auto graph_viewer = std::make_unique<GraphViewer>(graph, *cur_capability.sub_graph);
+
+        if (disable_model_compile && graph_viewer_has_non_compiled_node(*graph_viewer)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_REQUIRES_COMPILATION, "User disabled EP compilation but EP '",
+                                 type, "' needs to compile one or more nodes.");
+        }
+
+        viewers.push_back(std::move(graph_viewer));
         nodes_and_viewers.push_back(IExecutionProvider::FusedNodeAndGraph{*node, *viewers.back()});
       }
 
@@ -749,10 +768,10 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_path,
                                         const std::filesystem::path& model_path,
                                         std::filesystem::path& context_cache_path,
-                                        bool allow_overwrite_output_model = false) {
+                                        bool error_if_output_file_exists = true) {
   if (!ep_context_path.empty()) {
     context_cache_path = ep_context_path;
-    if (!context_cache_path.has_filename()) {
+    if (!(context_cache_path.has_filename() && context_cache_path.extension() != "")) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "context_file_path should not point to a folder.");
     }
   } else if (!model_path.empty()) {
@@ -766,9 +785,9 @@ static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
   }
 
-  if (std::filesystem::exists(context_cache_path) && !allow_overwrite_output_model) {
+  if (std::filesystem::exists(context_cache_path) && error_if_output_file_exists) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
-                           context_cache_path, "' exist already. Please remove the EP context model if you want to re-generate it.");
+                           context_cache_path, "' exists already. Please remove the EP context model if you want to re-generate it.");
   }
 
   return Status::OK();
@@ -785,10 +804,25 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   }
 
   if (all_ep_context_nodes.size() < 1) {
-    ORT_RETURN_IF(ep_context_gen_options.error_if_no_compiled_nodes,
-                  "Compiled model does not contain any EPContext nodes. "
-                  "Check that the session EPs support compilation and can execute at least one model subgraph.");
-    return Status::OK();
+    auto action_if_no_compiled_nodes = ep_context_gen_options.action_if_no_compiled_nodes;
+
+    ORT_RETURN_IF(action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kReturnError,
+                  "Unable to compile any nodes. Check that the session EPs support compilation and can execute "
+                  "at least one subgraph in the model.");
+
+    if (action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kDontGenerateModel) {
+      LOGS(logger, WARNING) << "Unable to compile any nodes. ONNX Runtime will not generate a compiled model. "
+                               "Either the session EPs do not support compilation or the model is already compiled.";
+      // Note: this path is only taken if a model is compiled with the original compilation approach that uses
+      // session options configs only. The explicit compile API instead only chooses between
+      // kReturnError and kGenerateModel.
+      return Status::OK();
+    }
+
+    // Assert so that this is caught in a test in DEBUG builds (in case a new enum value is added)
+    assert(action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kGenerateModel);
+    LOGS(logger, INFO) << "Unable to compile any nodes but will still generate an output model. "
+                          "Either the session EPs do not support compilation or the model is already compiled.";
   }
 
   auto get_ep_context_node = [&all_ep_context_nodes](const std::string& node_name) -> std::pair<bool, const Node*> {
@@ -800,11 +834,29 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     return std::make_pair(false, static_cast<const Node*>(nullptr));
   };
 
+  bool saving_to_buffer = ep_context_gen_options.output_model_buffer_ptr != nullptr &&
+                          ep_context_gen_options.output_model_buffer_size_ptr != nullptr &&
+                          ep_context_gen_options.output_model_buffer_allocator != nullptr;
+
   std::filesystem::path context_cache_path;
-  ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path,
-                                                graph.ModelPath(),
-                                                context_cache_path,
-                                                ep_context_gen_options.overwrite_existing_output_file));
+  if (!saving_to_buffer || !graph.ModelPath().empty()) {
+    ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path,
+                                                  graph.ModelPath(),
+                                                  context_cache_path,
+                                                  ep_context_gen_options.error_if_output_file_exists));
+  }
+
+  // Utility function to detect a fused node with an unsupported domain.
+  // Ex: when compiling an already compiled model, an EPContext node in the input model would be wrapped
+  // into a fused node with a domain like "QNN". Such fused nodes do not pass ONNX correctness checks, so
+  // we should detect them here and return a better error message. Otherwise, an ORT_INVALID_GRAPH error is raised
+  // with a confusing error message *after* the invalid model has been saved/generated.
+  // Note: This only applies to the explicit compile API. The original compilation approach (via session options),
+  // early exits above (without error) if the model is already compiled.
+  auto is_invalid_fused_node = [&graph](const Node& node) {
+    const std::unordered_map<std::string, int>& supported_domains = graph.DomainToVersionMap();
+    return (node.NodeType() == Node::Type::Fused) && (supported_domains.find(node.Domain()) == supported_domains.end());
+  };
 
   Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
                          graph.GetModel().ModelPath(),  // use source model path so that external initializers can find the data file path
@@ -842,31 +894,35 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     // Use EpContext node created by the EPs if name matched, otherwise use node from original model
     if (ep_context_node.first) {
       ep_graph.AddNode(*ep_context_node.second);
+    } else if (is_invalid_fused_node(node)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Encountered an invalid node while compiling a model. ",
+                             "Please ensure the input model is not already compiled.");
     } else {
       ep_graph.AddNode(node);
     }
   }
 
   // handle initializers
-  for (const auto& initialized_tensor : graph.GetAllInitializedTensors()) {
-    if (ep_graph.GetNodeArg(initialized_tensor.first) != nullptr) {
-      ep_graph.AddInitializedTensor(*initialized_tensor.second);
+  for (const auto& [name, _] : graph.GetAllInitializedTensors()) {
+    if (ep_graph.GetNodeArg(name) != nullptr) {
+      graph_utils::MakeInitializerCopyIfNotExist(graph, ep_graph, name);
     }
   }
 
   size_t ini_size_threshold = ep_context_gen_options.output_external_initializer_size_threshold;
   std::filesystem::path external_ini_path = ep_context_gen_options.output_external_initializers_file_path;
+  bool force_embed_external_ini = false;
   if (external_ini_path.empty()) {
-    // Set the threshold to the max so all initializers are forced into the Onnx file
+    // if no external ini file specified, set force_embed_external_ini to true to avoid intermedia file creation
+    // and force all initializers embed into the Onnx file
     ini_size_threshold = SIZE_MAX;
-    external_ini_path = "./model_ext_ini.bin";
+    force_embed_external_ini = true;
   }
 
   ModelSavingOptions model_saving_options{ini_size_threshold};
+  model_saving_options.force_embed_external_ini = force_embed_external_ini;
 
-  if (ep_context_gen_options.output_model_buffer_ptr != nullptr &&
-      ep_context_gen_options.output_model_buffer_size_ptr != nullptr &&
-      ep_context_gen_options.output_model_buffer_allocator != nullptr) {
+  if (saving_to_buffer) {
     ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
     // TODO(adrianlizarraga): Investigate if we can make this more memory efficient.
     // May be able to use allocator to directly allocate the ModelProto to avoid a copy.
@@ -877,12 +933,12 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
                   "Cannot serialize ONNX ModelProto larger than 2GB");
 
-    OrtAllocator* allocator = ep_context_gen_options.output_model_buffer_allocator;
-    void* buffer = allocator->Alloc(allocator, buffer_size);
-    model_proto.SerializeToArray(buffer, static_cast<int>(buffer_size));
+    AllocatorPtr allocator = ep_context_gen_options.output_model_buffer_allocator;
+    IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_size);
+    model_proto.SerializeToArray(buffer.get(), static_cast<int>(buffer_size));
 
     *ep_context_gen_options.output_model_buffer_size_ptr = buffer_size;
-    *ep_context_gen_options.output_model_buffer_ptr = buffer;
+    *ep_context_gen_options.output_model_buffer_ptr = buffer.release();
   } else {
     ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
                                                             external_ini_path, model_saving_options));
@@ -896,7 +952,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                        KernelRegistryManager& kernel_registry_manager,
                                        const std::optional<ResourceAccountantMap>& acc_map,
                                        const GraphOptimizerRegistry& graph_optimizer_registry,
-                                       const logging::Logger& logger) {
+                                       const logging::Logger& logger, bool disable_model_compile) {
   bool modified_graph = false;
 
   auto& graph = partition_params.graph.get();
@@ -921,7 +977,8 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        transform_layout_function,
                                                        partition_params.debug_graph_fn,
                                                        check_load_cancellation_fn,
-                                                       logger, resource_accountant, graph_optimizer_registry));
+                                                       logger, resource_accountant, graph_optimizer_registry,
+                                                       disable_model_compile));
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
@@ -1187,7 +1244,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::filesystem::path context_cache_path;
       ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path, graph.ModelPath(),
                                                     context_cache_path,
-                                                    ep_context_gen_options.overwrite_existing_output_file));
+                                                    ep_context_gen_options.error_if_output_file_exists));
     }
 
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs
@@ -1195,8 +1252,10 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     std::optional<ResourceAccountantMap> ep_acc_map;
     ORT_RETURN_IF_ERROR(NodeStatsRecorder::CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
 
+    bool disable_model_compile = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "1";
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
-                                                 ep_acc_map, *graph_optimizer_registry_, logger));
+                                                 ep_acc_map, *graph_optimizer_registry_, logger,
+                                                 disable_model_compile));
 
     if (ep_context_gen_options.enable) {
       ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_gen_options, logger));

@@ -33,7 +33,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.32.0.250228
+  default: 2.37.0.250724
 
 jobs:
 - job: 'BUILD_QNN_EP'
@@ -50,24 +50,17 @@ jobs:
     matrix:
       SHARED_LIB:
         QnnLibKind: 'shared_lib'
-        qnn_build_args: '--use_qnn'
+        ExtraQnnBuildArgs: '--client_package_build'
       STATIC_LIB:
         QnnLibKind: 'static_lib'
-        qnn_build_args: '--use_qnn'
+        ExtraQnnBuildArgs: ''
       SHARED_LIB_GENERIC_INTERFACE:
         QnnLibKind: 'shared_lib'
-        qnn_build_args: '--use_qnn --use_generic_interface'
+        # Note: Building ORT with generic ep interface which only builds the provider-bridge APIs for
+        # various EPs, but does not build the actual EPs. We enable --build_wheel for additional code coverage
+        # because the python bindings also use the USE_<EP>_PROVIDER_INTERFACE preprocessor macros.
+        ExtraQnnBuildArgs: '--enable_generic_interface --build_wheel'
   steps:
-
-  - script: |
-      MKDIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
-      XCOPY /s /y /h /e /c /q "C:\Python\Python311\*.*" $(Agent.ToolsDirectory)\Python\3.11.0\arm64\
-      COPY NUL $(Agent.ToolsDirectory)\Python\3.11.0\arm64.complete
-      DIR $(Agent.ToolsDirectory)\Python
-      DIR $(Agent.ToolsDirectory)\Python\3.11.0
-      DIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
-    displayName: Copy python 3.11.0 version to agent tools directory
-
   - task: UsePythonVersion@0
     inputs:
       versionSpec: '3.x'
@@ -93,7 +86,7 @@ jobs:
         --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache 
         --use_qnn $(QnnLibKind)
         --qnn_home $(QnnSDKRootDir)
-        --update --build --parallel
+        --update --build --parallel $(ExtraQnnBuildArgs)
 
   - script: |
       python $(Build.SourcesDirectory)\tools\ci_build\build.py ^
@@ -103,7 +96,7 @@ jobs:
         --build_shared_lib ^
         --use_qnn $(QnnLibKind) ^
         --qnn_home $(QnnSDKRootDir) ^
-        --test --enable_onnx_tests
+        --test --enable_onnx_tests $(ExtraQnnBuildArgs)
     displayName: 'Run unit tests'
 
   - script: |

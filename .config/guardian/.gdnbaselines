@@ -52,6 +52,423 @@
       "createdDate": "2025-02-06 15:53:46Z",
       "expirationDate": "2025-07-26 16:26:55Z",
       "justification": "This error is baselined with an expiration date of 180 days from 2025-02-06 16:26:55Z"
+    },
+    "4a0e83898f2607b442b095973eed78a44648024954e8ef2188e6ba3786771620": {
+      "signature": "4a0e83898f2607b442b095973eed78a44648024954e8ef2188e6ba3786771620",
+      "alternativeSignatures": [
+        "68a14c0d46c7eb93178e545e06454f12e9d1c98e4e9ecbe009e11cd3eff4f682"
+      ],
+      "target": "file:///D:/a/_work/_temp/RelWithDebInfo/RelWithDebInfo/dxcompiler.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-04-25 11:09:32Z",
+      "expirationDate": "2025-10-12 11:33:39Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 11:33:39Z"
+    },
+    "b3a97d9c774e372e8204bdd6abe8e5bc5fdd46799adaeb0f666838042fdd8f99": {
+      "signature": "b3a97d9c774e372e8204bdd6abe8e5bc5fdd46799adaeb0f666838042fdd8f99",
+      "alternativeSignatures": [
+        "79f7ba0d65b89c586e684239b8488e9d8cf58c53ce9fedb323dbee5096378e08"
+      ],
+      "target": "file:///D:/a/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-04-25 11:09:32Z",
+      "expirationDate": "2025-10-12 11:33:39Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 11:33:39Z"
+    },
+    "9836b7915d2d6019bd245fd42935c164e0f9db8c867c8fe26cd6c2f576927aa2": {
+      "signature": "9836b7915d2d6019bd245fd42935c164e0f9db8c867c8fe26cd6c2f576927aa2",
+      "alternativeSignatures": [
+        "1081cda6083ef05dfe233be730c16c300ef887ba2b0bd8908b2f255ba666f3be"
+      ],
+      "target": "file:///D:/a/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime_autoep_test.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-04-25 11:09:32Z",
+      "expirationDate": "2025-10-12 11:33:39Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 11:33:39Z"
+    },
+    "5d44b5ab5f1d37e0368a85b56bf7460c97e329d626954edd761ace4890e5b6d9": {
+      "signature": "5d44b5ab5f1d37e0368a85b56bf7460c97e329d626954edd761ace4890e5b6d9",
+      "alternativeSignatures": [
+        "acaec6efd0587a90c9d9ae4dc9893cd8ae4cec325f0263eb710444ca16f76e86"
+      ],
+      "target": "file:///D:/a/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime_perf_test.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-04-25 11:09:32Z",
+      "expirationDate": "2025-10-12 11:33:39Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 11:33:39Z"
+    },
+    "55ad483be6385b220d416d13e2815669297a2e9abb23fb12c4c8057cba628808": {
+      "signature": "55ad483be6385b220d416d13e2815669297a2e9abb23fb12c4c8057cba628808",
+      "alternativeSignatures": [
+        "64e9ad74cf4e0c10e1bc5c07140f0b8ed101b123a96565b112ee81ccaa3a942a"
+      ],
+      "target": "file:///D:/a/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime_test_all.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-04-25 11:09:32Z",
+      "expirationDate": "2025-10-12 11:33:39Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 11:33:39Z"
+    },
+    "20edb5d58ae9fe1784a826b3cd03ec897234691bcb117b076ee0b1da3c4c4468": {
+      "signature": "20edb5d58ae9fe1784a826b3cd03ec897234691bcb117b076ee0b1da3c4c4468",
+      "alternativeSignatures": [
+        "dc64851ea95bd49082445a0f63dd2eb843410d661388ff5b64303f71aed44ad4"
+      ],
+      "target": "file:///D:/a/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnx_test_runner.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-04-25 11:09:32Z",
+      "expirationDate": "2025-10-12 11:33:39Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 11:33:39Z"
+    },
+    "6a04730bbf5429b2a82eec02edf9a10199d16a2956ef3bc4b11795318e44d7b3": {
+      "signature": "6a04730bbf5429b2a82eec02edf9a10199d16a2956ef3bc4b11795318e44d7b3",
+      "alternativeSignatures": [
+        "fae795cbfb44b883a7ef789394c107474257e3256a60fc4f8142634875d2df47"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-arm64/native/onnxruntime_perf_test.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "6b12997cff49c14a6472fa08cd6aae83767f6fea72aa2654caca0a7afbe1e8aa": {
+      "signature": "6b12997cff49c14a6472fa08cd6aae83767f6fea72aa2654caca0a7afbe1e8aa",
+      "alternativeSignatures": [
+        "4349b8b6474089bf80e75d9ef3e41d904f91caac91fb5b64914ccbad1758e874"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-arm64/native/onnx_test_runner.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "5e3b583bf904b2985056f9b98153ac5be048864ce31c78219e143727c834d988": {
+      "signature": "5e3b583bf904b2985056f9b98153ac5be048864ce31c78219e143727c834d988",
+      "alternativeSignatures": [
+        "0edba8b6930210ec72d5d7ae32f20150656e16110734e5325665571f873b8787"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-arm64/native/QnnCpu.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "32c1e4332e93d446403d313dee13b68d84e9ae65b45dd624bb07bea27c211b03": {
+      "signature": "32c1e4332e93d446403d313dee13b68d84e9ae65b45dd624bb07bea27c211b03",
+      "alternativeSignatures": [
+        "55642f7417832dd59f767472b0d50492e273411880395c8fb16ccff013022271"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-arm64/native/QnnGpu.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "79ad215ffb5f1a3c51f4061b877f5d1d65eb71a5c1acedd9fe0410b20f797df1": {
+      "signature": "79ad215ffb5f1a3c51f4061b877f5d1d65eb71a5c1acedd9fe0410b20f797df1",
+      "alternativeSignatures": [
+        "570709e99467a902da4d446c6dbda5cebc52f84e6272834ec813204060d76188"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-arm64/native/QnnHtp.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "00e3517a665b3fc013745cb76d0aad5d6091828c0325d5a3230fdae837f8f971": {
+      "signature": "00e3517a665b3fc013745cb76d0aad5d6091828c0325d5a3230fdae837f8f971",
+      "alternativeSignatures": [
+        "f40aab5b7b16c3fbd0562d4d395897370f5409befabb9cb10be9c4a5116001ed"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-arm64/native/QnnHtpPrepare.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "341396cfcbf2cd00c8b505c6fdd4fd56cd45c2466e548c6bfca2ded31ebbc371": {
+      "signature": "341396cfcbf2cd00c8b505c6fdd4fd56cd45c2466e548c6bfca2ded31ebbc371",
+      "alternativeSignatures": [
+        "0515e21e0cc4f70161d08fe02bf41a1f7818db8ee22a152c550eb75019db2eee"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-arm64/native/QnnHtpV68Stub.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "2fba96257861f1ba2b702bc8c1e9242ef9c71e90529d6dd830e78ae0280b5a50": {
+      "signature": "2fba96257861f1ba2b702bc8c1e9242ef9c71e90529d6dd830e78ae0280b5a50",
+      "alternativeSignatures": [
+        "e0f5edd83dd731f4774d381587a99f7aa7bbff367931474d2a03d2fd0c284888"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-arm64/native/QnnHtpV73Stub.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "f92f8f9eab05869e80b374408af4f30697bc49c6ff79511e6833cc5dcc0eaf9c": {
+      "signature": "f92f8f9eab05869e80b374408af4f30697bc49c6ff79511e6833cc5dcc0eaf9c",
+      "alternativeSignatures": [
+        "48b6850d8ea65e1dc6028afba9530341e22be187eb497c791f06c592e06b070e"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-arm64/native/QnnSaver.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "688b86bbaa9d662204784f37c9c184e532a5005429eb654dd31221b27affa28a": {
+      "signature": "688b86bbaa9d662204784f37c9c184e532a5005429eb654dd31221b27affa28a",
+      "alternativeSignatures": [
+        "42fc3288553ee6bed51b3c0d5e1010b0d7d2efbaf805bc467b99e9b472fb5382"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-arm64/native/QnnSystem.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "0c8d7037690ad318b1d094798d596dba3882a310dc68f97b3815a89d80c540a7": {
+      "signature": "0c8d7037690ad318b1d094798d596dba3882a310dc68f97b3815a89d80c540a7",
+      "alternativeSignatures": [
+        "b450b5782f69aae532807936726d9c4af88806b0f49ae0ae33cd38a76bdc8a16"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-x64/native/onnxruntime_perf_test.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "16744137fb39b77c89d7a4770f34e8ff4de6a0b94a080be2930daff16a4e4728": {
+      "signature": "16744137fb39b77c89d7a4770f34e8ff4de6a0b94a080be2930daff16a4e4728",
+      "alternativeSignatures": [
+        "d6b6fc769d11c6c5998c3f7a4ad9aa0458f4ec7d83ed4e633f66a0f605820536"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-x64/native/onnx_test_runner.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "17f65b2847b5e2d9db98da9877df029306d696896a7792cc307d3cd9db05d1b2": {
+      "signature": "17f65b2847b5e2d9db98da9877df029306d696896a7792cc307d3cd9db05d1b2",
+      "alternativeSignatures": [
+        "bc5561d1f532f05ea310e9086f4755cbc3f30e8d7aa28ae62b127fd6d8332850"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-x64/native/QnnCpu.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "6eab05d067b751e37396a947650b38645d3b18c54065e9fba45c39c140e829b5": {
+      "signature": "6eab05d067b751e37396a947650b38645d3b18c54065e9fba45c39c140e829b5",
+      "alternativeSignatures": [
+        "c8a0788fe4624f8c8c5e81f6adfb2ef29b4d801fe7d970fc3961aa6958f7f0f3"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-x64/native/QnnHtp.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "dee40d055d13313aec18920bc2f0a0a72bfc6deb836fd7a0a92245fc501bb73c": {
+      "signature": "dee40d055d13313aec18920bc2f0a0a72bfc6deb836fd7a0a92245fc501bb73c",
+      "alternativeSignatures": [
+        "70da4f93be9acc7617d47270be9c790c970f0c12d6eaa642739d0d1b413eb7b5"
+      ],
+      "target": "Microsoft.ML.OnnxRuntime.QNN.1.23.0-dev-20250425-0443-1e118d6/runtimes/win-x64/native/QnnSaver.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "codesign",
+      "ruleId": "CodeSign.MissingSigningCert",
+      "createdDate": "2025-04-25 17:06:52Z",
+      "expirationDate": "2025-10-12 17:09:03Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "568199e534a7aaaa1f2f1395eba1edad215e4a4b1f71457c84868644ca2b5997": {
+      "signature": "568199e534a7aaaa1f2f1395eba1edad215e4a4b1f71457c84868644ca2b5997",
+      "alternativeSignatures": [],
+      "target": "ScanTelemetry_20250425220821141.json",
+      "line": 1,
+      "memberOf": [
+        "default"
+      ],
+      "tool": "credscan",
+      "ruleId": "CSCAN-AZURE0130",
+      "createdDate": "2025-04-25 22:25:47Z",
+      "expirationDate": "2025-10-12 23:01:19Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 23:01:19Z"
+    },
+    "46cd93fda3b6f7eec5d6c3f72169c3ad1092216fa6c9630177d7f2d6e940e555": {
+      "signature": "46cd93fda3b6f7eec5d6c3f72169c3ad1092216fa6c9630177d7f2d6e940e555",
+      "alternativeSignatures": [],
+      "target": "ScanTelemetry_20250425220811012.json",
+      "line": 1,
+      "memberOf": [
+        "default"
+      ],
+      "tool": "credscan",
+      "ruleId": "CSCAN-AZURE0130",
+      "createdDate": "2025-04-25 22:25:52Z",
+      "expirationDate": "2025-10-12 23:01:19Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 23:01:19Z"
+    },
+    "919e797b88639882a09d577e57832df0158ac312a221697faf9fc9a40021d8a0": {
+      "signature": "919e797b88639882a09d577e57832df0158ac312a221697faf9fc9a40021d8a0",
+      "alternativeSignatures": [],
+      "target": "ScanTelemetry_20250425220803349.json",
+      "line": 1,
+      "memberOf": [
+        "default"
+      ],
+      "tool": "credscan",
+      "ruleId": "CSCAN-AZURE0130",
+      "createdDate": "2025-04-25 22:25:55Z",
+      "expirationDate": "2025-10-12 23:01:19Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 23:01:19Z"
+    },
+    "67acaef0adebeee9ddcb2ff2630fa3051c0c8e7083f36f64ac0040d9a22b73b5": {
+      "signature": "67acaef0adebeee9ddcb2ff2630fa3051c0c8e7083f36f64ac0040d9a22b73b5",
+      "alternativeSignatures": [
+        "2f5e8344c6d8ffa32a8a54c363d0c480380320a6c0a3fd3e4ca1ff2aafe6dbcf"
+      ],
+      "target": "file:///E:/_work/_temp/RelWithDebInfo/RelWithDebInfo/dxcompiler.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-07-24 10:13:44Z",
+      "expirationDate": "2026-01-10 11:03:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-07-24 11:03:50Z"
+    },
+    "7a02b29f8870bfd4cc770281dd860421523a3aac51ea96332e25696ca1f5570e": {
+      "signature": "7a02b29f8870bfd4cc770281dd860421523a3aac51ea96332e25696ca1f5570e",
+      "alternativeSignatures": [
+        "1229412e0db78558feac3bc51ea9eed6ae2311e60298dc1f2d3366bd12544c88"
+      ],
+      "target": "file:///E:/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime_perf_test.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-07-24 10:13:44Z",
+      "expirationDate": "2026-01-10 11:03:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-07-24 11:03:50Z"
+    },
+    "68b657f6d9dd9386bd43f0716cb424c196f7da4559eb1c3f3f26a1297b211239": {
+      "signature": "68b657f6d9dd9386bd43f0716cb424c196f7da4559eb1c3f3f26a1297b211239",
+      "alternativeSignatures": [
+        "e026012915cda24b9e85a1d1fa38607d09effa532b40a1c0f0740eb3855f9599"
+      ],
+      "target": "file:///E:/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime_test_all.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-07-24 10:13:44Z",
+      "expirationDate": "2026-01-10 11:03:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-07-24 11:03:50Z"
+    },
+    "8222fbb019a791fa0541084854a0bf7bf723ce7ffaa4a0e1e5ca5cb76acb48bb": {
+      "signature": "8222fbb019a791fa0541084854a0bf7bf723ce7ffaa4a0e1e5ca5cb76acb48bb",
+      "alternativeSignatures": [
+        "5e0bdc06af73864bdb480aceaf154a35e0774ab7f8490e7d9f8b5a36b7c19619"
+      ],
+      "target": "file:///E:/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnx_test_runner.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-07-24 10:13:44Z",
+      "expirationDate": "2026-01-10 11:03:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-07-24 11:03:50Z"
     }
   }
 }

@@ -8,7 +8,7 @@ For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://ak
 or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 """
 
-__version__ = "1.22.0"
+__version__ = "1.23.0"
 __author__ = "Microsoft"
 
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
@@ -30,6 +30,11 @@ try:
         NodeArg,  # noqa: F401
         OrtAllocatorType,  # noqa: F401
         OrtArenaCfg,  # noqa: F401
+        OrtCompileApiFlags,  # noqa: F401
+        OrtEpDevice,  # noqa: F401
+        OrtExecutionProviderDevicePolicy,  # noqa: F401
+        OrtHardwareDevice,  # noqa: F401
+        OrtHardwareDeviceType,  # noqa: F401
         OrtMemoryInfo,  # noqa: F401
         OrtMemType,  # noqa: F401
         OrtSparseFormat,  # noqa: F401
@@ -44,11 +49,15 @@ try:
         get_available_providers,  # noqa: F401
         get_build_info,  # noqa: F401
         get_device,  # noqa: F401
+        get_ep_devices,  # noqa: F401
         get_version_string,  # noqa: F401
         has_collective_ops,  # noqa: F401
+        register_execution_provider_library,  # noqa: F401
         set_default_logger_severity,  # noqa: F401
         set_default_logger_verbosity,  # noqa: F401
+        set_global_thread_pool_sizes,  # noqa: F401
         set_seed,  # noqa: F401
+        unregister_execution_provider_library,  # noqa: F401
     )
 
     import_capi_exception = None
@@ -64,6 +73,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import (
     AdapterFormat,  # noqa: F401
     InferenceSession,  # noqa: F401
     IOBinding,  # noqa: F401
+    ModelCompiler,  # noqa: F401
     OrtDevice,  # noqa: F401
     OrtValue,  # noqa: F401
     SparseTensor,  # noqa: F401
@@ -85,7 +95,7 @@ onnxruntime_validation.check_distro_info()
 
 
 def _get_package_version(package_name: str):
-    from importlib.metadata import PackageNotFoundError, version
+    from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415
 
     try:
         package_version = version(package_name)
@@ -95,7 +105,7 @@ def _get_package_version(package_name: str):
 
 
 def _get_package_root(package_name: str, directory_name: str | None = None):
-    from importlib.metadata import PackageNotFoundError, distribution
+    from importlib.metadata import PackageNotFoundError, distribution  # noqa: PLC0415
 
     root_directory_name = directory_name or package_name
     try:
@@ -157,10 +167,10 @@ def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = Tru
 
 def print_debug_info():
     """Print information to help debugging."""
-    import importlib.util
-    import os
-    import platform
-    from importlib.metadata import distributions
+    import importlib.util  # noqa: PLC0415
+    import os  # noqa: PLC0415
+    import platform  # noqa: PLC0415
+    from importlib.metadata import distributions  # noqa: PLC0415
 
     print(f"{package_name} version: {__version__}")
     if cuda_version:
@@ -205,9 +215,9 @@ def print_debug_info():
                 print(f"{package} not installed")
 
     if platform.system() == "Windows":
-        print(f"\nEnvironment variable:\nPATH={os.environ['PATH']}")
+        print(f"\nEnvironment variable:\nPATH={os.environ.get('PATH', '(unset)')}")
     elif platform.system() == "Linux":
-        print(f"\nEnvironment variable:\nLD_LIBRARY_PATH={os.environ['LD_LIBRARY_PATH']}")
+        print(f"\nEnvironment variable:\nLD_LIBRARY_PATH={os.environ.get('LD_LIBRARY_PATH', '(unset)')}")
 
     if importlib.util.find_spec("psutil"):
 
@@ -217,7 +227,7 @@ def print_debug_info():
                 target_keywords = ["cufft", "cublas", "cudart", "nvrtc", "curand", "cudnn", *target_keywords]
             return any(keyword in path for keyword in target_keywords)
 
-        import psutil
+        import psutil  # noqa: PLC0415
 
         p = psutil.Process(os.getpid())
 
@@ -228,7 +238,7 @@ def print_debug_info():
 
         if cuda_version:
             if importlib.util.find_spec("cpuinfo") and importlib.util.find_spec("py3nvml"):
-                from .transformers.machine_info import get_device_info
+                from .transformers.machine_info import get_device_info  # noqa: PLC0415
 
                 print("\nDevice information:")
                 print(get_device_info())
@@ -255,10 +265,10 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
            If directory is empty string (""), the search order: nvidia site packages, default DLL loading paths.
            If directory is a path, the search order: the directory, default DLL loading paths.
     """
-    import ctypes
-    import os
-    import platform
-    import sys
+    import ctypes  # noqa: PLC0415
+    import os  # noqa: PLC0415
+    import platform  # noqa: PLC0415
+    import sys  # noqa: PLC0415
 
     if platform.system() not in ["Windows", "Linux"]:
         return

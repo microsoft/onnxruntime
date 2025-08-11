@@ -9,7 +9,6 @@ from helper import get_name
 from numpy.testing import assert_almost_equal
 from onnx import TensorProto, helper
 from onnx.defs import onnx_opset_version
-from onnx.mapping import TENSOR_TYPE_MAP
 
 import onnxruntime as onnxrt
 from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice  # pylint: disable=E0611
@@ -168,8 +167,7 @@ class TestIOBinding(unittest.TestCase):
                 TensorProto.UINT64,
             ]:
                 with self.subTest(onnx_dtype=onnx_dtype, inner_device=str(inner_device)):
-                    assert onnx_dtype in TENSOR_TYPE_MAP
-                    np_dtype = TENSOR_TYPE_MAP[onnx_dtype].np_dtype
+                    np_dtype = helper.tensor_dtype_to_np_dtype(onnx_dtype)
                     x = np.arange(8).reshape((-1, 2)).astype(np_dtype)
 
                     # create onnx graph
@@ -198,7 +196,7 @@ class TestIOBinding(unittest.TestCase):
     # Test I/O binding with onnx types like bfloat16 and float8, which are not supported in numpy.
     def test_bind_onnx_types_not_supported_by_numpy(self):
         try:
-            import torch
+            import torch  # noqa: PLC0415
         except ImportError:
             self.skipTest("Skipping since PyTorch is not installed.")
 

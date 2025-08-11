@@ -279,7 +279,7 @@ def output_summary(results, csv_filename, args):
                                     headers = {k: v for k, v in result.items() if k in header_names}
                                     if not row:
                                         row.update(headers)
-                                        row.update({k: "" for k in data_names})
+                                        row.update(dict.fromkeys(data_names, ""))
                                     else:
                                         for k in header_names:
                                             assert row[k] == headers[k]
@@ -407,7 +407,7 @@ def set_random_seed(seed=123):
 
 
 def get_gpu_info() -> list[dict[str, Any]] | None:
-    from py3nvml.py3nvml import (
+    from py3nvml.py3nvml import (  # noqa: PLC0415
         NVMLError,
         nvmlDeviceGetCount,
         nvmlDeviceGetHandleByIndex,
@@ -449,7 +449,7 @@ class MemoryMonitor(ABC):
         self.keep_measuring = keep_measuring
 
     def measure_cpu_usage(self):
-        import psutil
+        import psutil  # noqa: PLC0415
 
         max_usage = 0
         while True:
@@ -469,7 +469,7 @@ class CudaMemoryMonitor(MemoryMonitor):
         super().__init__(keep_measuring)
 
     def measure_gpu_usage(self) -> list[dict[str, Any]] | None:
-        from py3nvml.py3nvml import (
+        from py3nvml.py3nvml import (  # noqa: PLC0415
             NVMLError,
             nvmlDeviceGetCount,
             nvmlDeviceGetHandleByIndex,
@@ -522,7 +522,7 @@ class RocmMemoryMonitor(MemoryMonitor):
             if rocm_smi_path not in sys.path:
                 sys.path.append(rocm_smi_path)
         try:
-            import rocm_smi
+            import rocm_smi  # noqa: PLC0415
 
             self.rocm_smi = rocm_smi
             self.rocm_smi.initializeRsmi()

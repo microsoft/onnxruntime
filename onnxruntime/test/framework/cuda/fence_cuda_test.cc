@@ -16,6 +16,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
@@ -66,10 +67,7 @@ static common::Status LoadInferenceSessionFromModel(FenceCudaTestInferenceSessio
     tensor_proto.set_data_type(PROTO_DATATYPE);                                                             \
     for (auto v : value) tensor_proto.PROTO_ADD_DATA(v);                                                    \
     tensor_proto.set_name(name);                                                                            \
-    graph.AddInitializedTensor(tensor_proto);                                                               \
-    TypeProto type_proto;                                                                                   \
-    type_proto.mutable_tensor_type()->set_elem_type(PROTO_DATATYPE);                                        \
-    return graph.GetOrCreateNodeArg(name, &type_proto);                                                     \
+    return graph_utils::AddInitializer(graph, tensor_proto);                                                \
   }
 
 CREATE_INITIALIZER_FUNC(float, TensorProto_DataType_FLOAT, add_float_data)

@@ -24,6 +24,7 @@
 #include <unordered_map>
 #include <string>
 #include <unordered_set>
+
 #include "core/framework/compute_capability.h"
 #include "core/providers/vsinpu/vsinpu_execution_provider.h"
 #include "core/providers/vsinpu/vsinpu_ep_graph.h"
@@ -38,23 +39,11 @@
 
 namespace onnxruntime {
 VSINPUExecutionProvider::VSINPUExecutionProvider(const VSINPUExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kVSINPUExecutionProvider},
+    : IExecutionProvider{onnxruntime::kVSINPUExecutionProvider,
+                         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT,
+                                   DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtDevice::VendorIds::NONE,
+                                   kAlloc4KAlignment)},
       device_id_(info.device_id) {
-  AllocatorCreationInfo default_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo("VSINPU", OrtAllocatorType::OrtDeviceAllocator));
-      }};
-
-  CreateAllocator(default_memory_info);
-
-  AllocatorCreationInfo cpu_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo("VSINPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      }};
-
-  CreateAllocator(cpu_memory_info);
 }
 
 VSINPUExecutionProvider::~VSINPUExecutionProvider() {}
@@ -65,17 +54,17 @@ VSINPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                                        const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                                        IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
-
+  const auto& logger = *GetLogger();
   if (graph_viewer.IsSubgraph()) {
     return result;
   }
 
   for (const auto& tensor : graph_viewer.GetAllInitializedTensors()) {
     if (tensor.second->has_data_location()) {
-      LOGS_DEFAULT(VERBOSE) << "location:" << tensor.second->data_location();
+      LOGS(logger, VERBOSE) << "location:" << tensor.second->data_location();
       if (tensor.second->data_location() ==
           ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-        LOGS_DEFAULT(WARNING) << "VSINPU: Initializers with external data location are not "
+        LOGS(logger, WARNING) << "VSINPU: Initializers with external data location are not "
                                  "currently supported";
         return result;
       }
@@ -102,11 +91,11 @@ VSINPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       supported = it->second;
     } else {
       // We only check the target node of the node unit
-      supported = vsi::npu::GraphEP::IsNodeSupportedInGroup(*node_unit, graph_viewer);
+      supported = vsi::npu::GraphEP::IsNodeSupportedInGroup(*node_unit, graph_viewer, logger);
       node_unit_supported_result[node_unit] = supported;
     }
 
-    LOGS_DEFAULT(VERBOSE) << "Node supported: [" << supported
+    LOGS(logger, VERBOSE) << "Node supported: [" << supported
                           << "] Operator type: [" << node.OpType()
                           << "] index: [" << node.Index()
                           << "] name: [" << node.Name()
@@ -167,9 +156,9 @@ VSINPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   // If the graph is partitioned in multiple subgraphs, and this may impact performance,
   // we want to give users a summary message at warning level.
   if (num_of_partitions > 1) {
-    LOGS_DEFAULT(WARNING) << summary_msg;
+    LOGS(logger, WARNING) << summary_msg;
   } else {
-    LOGS_DEFAULT(INFO) << summary_msg;
+    LOGS(logger, INFO) << summary_msg;
   }
 
   return result;
@@ -279,6 +268,24 @@ Status VSINPUExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
 std::shared_ptr<KernelRegistry> VSINPUExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
   return kernel_registry;
+}
+
+std::vector<AllocatorPtr> VSINPUExecutionProvider::CreatePreferredAllocators() {
+  std::vector<AllocatorPtr> result;
+  // We do not want arena for this, as it would not respect alignment.
+  constexpr const bool use_arena_false = false;
+  AllocatorCreationInfo device_info_cpu_aligned_4k{
+      [](OrtDevice::DeviceId device_id) {
+        return std::make_unique<CPUAllocator>(
+            OrtMemoryInfo(
+                onnxruntime::CPU_ALIGNED_4K, OrtAllocatorType::OrtDeviceAllocator,
+                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE,
+                          device_id, kAlloc4KAlignment)));
+      },
+      device_id_, use_arena_false};
+
+  result.push_back(CreateAllocator(device_info_cpu_aligned_4k));
+  return result;
 }
 
 }  // namespace onnxruntime

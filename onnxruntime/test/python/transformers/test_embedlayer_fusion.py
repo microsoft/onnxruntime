@@ -51,7 +51,7 @@ class TestFusion(unittest.TestCase):
 
         onnx.save(model, original_model_path)
         optimized_model = optimize_model(original_model_path, model_type="gpt2")
-        optimized_model.save_model_to_file(optimized_model_path, use_external_data_format=True)
+        optimized_model.save_model_to_file(optimized_model_path, use_external_data_format=False)
 
         self.verify_fusion(optimized_model, expected_model_filename)
         self.verify_parity(optimized_model_path, expected_model_filename)
@@ -67,7 +67,7 @@ class TestFusion(unittest.TestCase):
 
         onnx.save(model, original_model_path)
         optimized_model = optimize_model(original_model_path, model_type="gpt2")
-        optimized_model.save_model_to_file(optimized_model_path, use_external_data_format=True)
+        optimized_model.save_model_to_file(optimized_model_path, use_external_data_format=False)
 
         self.verify_fusion(optimized_model, expected_model_filename)
         self.verify_parity(optimized_model_path, expected_model_filename)
@@ -83,7 +83,7 @@ class TestFusion(unittest.TestCase):
 
         onnx.save(model, original_model_path)
         optimized_model = optimize_model(original_model_path, model_type="gpt2")
-        optimized_model.save_model_to_file(optimized_model_path, use_external_data_format=True)
+        optimized_model.save_model_to_file(optimized_model_path, use_external_data_format=False)
 
         self.verify_fusion(optimized_model, expected_model_filename)
         self.verify_parity(optimized_model_path, expected_model_filename)
@@ -99,7 +99,7 @@ class TestFusion(unittest.TestCase):
 
         onnx.save(model, original_model_path)
         optimized_model = optimize_model(original_model_path, model_type="gpt2")
-        optimized_model.save_model_to_file(optimized_model_path, use_external_data_format=True)
+        optimized_model.save_model_to_file(optimized_model_path, use_external_data_format=False)
 
         self.verify_fusion(optimized_model, expected_model_filename)
         self.verify_parity(optimized_model_path, expected_model_filename)

@@ -55,46 +55,9 @@ static std::vector<std::string> parseDevices(const std::string& device_string,
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, std::shared_ptr<SharedContext> shared_context)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider},
       session_context_(info),
-      shared_context_{shared_context},
+      shared_context_{std::move(shared_context)},
       ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger()} {
   InitProviderOrtApi();
-
-  // to check if target device is available
-  // using OVCore capability GetAvailableDevices to fetch list of devices plugged in
-  if (info.cache_dir.empty()) {
-    bool device_found = false;
-    std::vector<std::string> available_devices = OVCore::Get()->GetAvailableDevices();
-    // Checking for device_type configuration
-    if (info.device_type != "") {
-      if (info.device_type.find("HETERO") != std::string::npos ||
-          info.device_type.find("MULTI") != std::string::npos ||
-          info.device_type.find("AUTO") != std::string::npos) {
-        device_found = true;
-      } else {
-        for (const std::string& device : available_devices) {
-          if (device.rfind(info.device_type, 0) == 0) {
-            if (info.device_type.find("GPU") != std::string::npos && (info.precision == "FP32" ||
-                                                                      info.precision == "FP16" ||
-                                                                      info.precision == "ACCURACY")) {
-              device_found = true;
-              break;
-            }
-            if (info.device_type == "CPU" && (info.precision == "FP32")) {
-              device_found = true;
-              break;
-            }
-            if (info.device_type.find("NPU") != std::string::npos) {
-              device_found = true;
-              break;
-            }
-          }
-        }
-      }
-    }
-    if (!device_found) {
-      ORT_THROW("[ERROR] [OpenVINO] Specified device - " + info.device_type + " is not available");
-    }
-  }
 }
 
 OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {
@@ -139,15 +102,24 @@ common::Status OpenVINOExecutionProvider::Compile(
         graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
   }
 
-  // Temporary code to read metadata before it moves to the .bin
-  auto& metadata = shared_context_->shared_weights.metadata;
-  if (session_context_.so_share_ep_contexts && metadata.empty()) {
-    // Metadata is always read from model location, this could be a source or epctx model
-    fs::path metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    std::ifstream file(metadata_filename, std::ios::binary);
-    if (file) {
-      file >> metadata;
+  // The block below is executed during EP context model inference
+  auto& metadata = shared_context_->shared_weights.metadata;  // Metadata object in memory
+  if (session_context_.so_share_ep_contexts &&
+      !session_context_.so_context_enable &&
+      metadata.empty()) {
+    fs::path context_model_file_path = session_context_.so_context_file_path;
+    if (context_model_file_path.empty()) {
+      // If ep.context_file_path is not set the input model path is used
+      context_model_file_path = session_context_.onnx_model_path_name;
     }
+
+    // Metadata is always read from model location, this could be a source or epctx model
+    fs::path metadata_filename = context_model_file_path.stem().string() + "_metadata.bin";
+    fs::path metadata_file_path = context_model_file_path.parent_path() / metadata_filename;
+    std::ifstream file(metadata_file_path, std::ios::binary);
+    ORT_RETURN_IF_NOT(file, "Metadata file was not found: " + metadata_file_path.string());
+    shared_context_->shared_weights.metadata_filepath = std::move(metadata_file_path);
+    file >> metadata;
   }
 
   struct OpenVINOEPFunctionState {
@@ -210,22 +182,31 @@ common::Status OpenVINOExecutionProvider::Compile(
     }
   }
 
-  if (session_context_.so_share_ep_contexts) {
-    fs::path metadata_filename;
-    if (session_context_.so_context_file_path.empty()) {
-      metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    } else {
-      metadata_filename = session_context_.so_context_file_path.parent_path() / "metadata.bin";
+  // The block below is executed during EP context model generation
+  if (session_context_.so_context_enable &&
+      session_context_.so_share_ep_contexts &&
+      !metadata.empty()) {
+    // For models after the first the metadata name comes from the shared context
+    fs::path metadata_file_path = shared_context_->shared_weights.metadata_filepath;
+    if (metadata_file_path.empty()) {
+      metadata_file_path = session_context_.so_context_file_path;
+      std::string name_append{"_metadata.bin"};
+      if (metadata_file_path.empty()) {
+        metadata_file_path = session_context_.onnx_model_path_name;
+        name_append = "_ctx" + name_append;
+      }
+      auto metadata_filename = metadata_file_path.stem().string() + name_append;
+      metadata_file_path.replace_filename(metadata_filename);
+      shared_context_->shared_weights.metadata_filepath = metadata_file_path;
     }
 
     // Metadata is generated only for shared contexts
-    // If saving metadata then save it to the provided path or ose the original model path
+    // If saving metadata then save it to the provided path or use the original model path
     // Multiple calls to Compile() will update the metadata and for the last call
     //   the resulting file will contain the aggregated content
-    std::ofstream file(metadata_filename, std::ios::binary);
-    if (file) {
-      file << metadata;
-    }
+    std::ofstream file{metadata_file_path, std::ios::binary};
+    ORT_RETURN_IF_NOT(file, "Metadata file could not be written: ", metadata_file_path);
+    file << metadata;
   }
 
   return status;
@@ -275,10 +256,39 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
         LOGS_DEFAULT(WARNING) << "Supported types are 'Efficient' and 'Default' \n";
       }
       if (workload_type != "") {
-        LOGS_DEFAULT(INFO) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
+        LOGS_DEFAULT(VERBOSE) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
         for (auto& backend : backend_managers_) {
-          ov::CompiledModel& ov_compiled_model = backend.GetOVCompiledModel();
-          ov_compiled_model.set_property(ov::workload_type(workload_type));
+          ov::CompiledModel ov_compiled_model = backend.GetOVCompiledModel();
+          if (ov_compiled_model) {
+            ov_compiled_model.set_property(ov::workload_type(workload_type));
+          } else {
+            LOGS_DEFAULT(VERBOSE) << "Model is not compiled in OV as its dynamic";
+            ov::AnyMap map;
+            map["WORKLOAD_TYPE"] = workload_type;
+            if (session_context_.device_type == "NPU")
+              session_context_.load_config["NPU"] = std::move(map);
+            else
+              ORT_THROW(" WORKLOAD_TYPE property is supported only for NPU");
+          }
+        }
+      }
+    } else if (key == "kvcache_rewind") {
+      // Convert kvcache_rewind value to int64_t
+      int64_t index;
+      try {
+        index = std::stoll(value);
+      } catch (const std::exception& e) {
+        LOGS_DEFAULT(WARNING) << "Conversion for kvcache_rewind string value to int64_t index failed."
+                              << "Exception:" + std::string(e.what());
+        return Status::OK();
+      }
+
+      // Trigger KVCache Rewind for target Backend
+      for (auto& backend : backend_managers_) {
+        if (index >= 0) {
+          backend.RewindKVCache(static_cast<size_t>(index));
+        } else {
+          LOGS_DEFAULT(WARNING) << "kvcache_rewind index is < 0:\t" << index;
         }
       }
     } else {

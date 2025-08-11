@@ -1,13 +1,13 @@
-torch>=1.13.0
-transformers>=4.36.0,<= 4.42.4
-openai-whisper>=20231117,<=20240927
+torch>=2.7.0
+transformers==4.52.3
+openai-whisper==20240927
 ffmpeg-python
 datasets
 soundfile
 librosa
-optimum<=1.21.2
+optimum
 onnxruntime-extensions>=0.9.0
-onnx==1.17.0
+onnx
 protobuf==3.20.2
 numpy==1.23.3
 psutil

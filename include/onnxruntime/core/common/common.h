@@ -294,15 +294,29 @@ inline std::string ToUTF8String(const std::string& s) { return s; }
 /**
  * Convert a wide character string to a UTF-8 string
  */
-std::string ToUTF8String(const std::wstring& s);
-
-std::wstring ToWideString(const std::string& s);
+std::string ToUTF8String(std::wstring_view s);
+inline std::string ToUTF8String(const wchar_t* s) {
+  return ToUTF8String(std::wstring_view{s});
+}
+inline std::string ToUTF8String(const std::wstring& s) {
+  return ToUTF8String(std::wstring_view{s});
+}
+std::wstring ToWideString(std::string_view s);
+inline std::wstring ToWideString(const char* s) {
+  return ToWideString(std::string_view{s});
+}
+inline std::wstring ToWideString(const std::string& s) {
+  return ToWideString(std::string_view{s});
+}
 inline std::wstring ToWideString(const std::wstring& s) { return s; }
+inline std::wstring ToWideString(std::wstring_view s) { return std::wstring{s}; }
 #else
 inline std::string ToWideString(const std::string& s) { return s; }
+inline std::string ToWideString(const char* s) { return s; }
+inline std::string ToWideString(std::string_view s) { return std::string{s}; }
 #endif
 
-constexpr size_t kMaxStrLen = 2048;
+constexpr size_t kMaxStrLen = 4096;
 
 // Returns whether `key` is in `container`.
 // Like C++20's map/set contains() member function.

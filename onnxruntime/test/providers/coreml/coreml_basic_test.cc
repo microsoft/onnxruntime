@@ -1,12 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
+
 #include "core/common/logging/logging.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/coreml/coreml_provider_factory_creator.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
@@ -28,18 +32,67 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 
+// defined in test_main.cc
+extern std::unique_ptr<Ort::Env> ort_env;
+
 namespace onnxruntime {
 namespace test {
 
-static std::unique_ptr<IExecutionProvider> MakeCoreMLExecutionProvider(
-    std::string ModelFormat = "NeuralNetwork", std::string ComputeUnits = "CPUOnly", std::string ModelCacheDirectory = "") {
+static std::unordered_map<std::string, std::string> MakeCoreMLProviderOptions(std::string ModelFormat = "NeuralNetwork",
+                                                                              std::string ComputeUnits = "CPUOnly",
+                                                                              std::string ModelCacheDirectory = "") {
   std::unordered_map<std::string, std::string> provider_options = {{kCoremlProviderOption_MLComputeUnits, ComputeUnits},
                                                                    {kCoremlProviderOption_ModelFormat, ModelFormat},
-                                                                   {kCoremlProviderOption_ModelCacheDirectory, ModelCacheDirectory}};
+                                                                   {kCoremlProviderOption_ModelCacheDirectory,
+                                                                    ModelCacheDirectory}};
+  return provider_options;
+}
+
+static std::unique_ptr<IExecutionProvider> MakeCoreMLExecutionProvider(
+    std::string ModelFormat = "NeuralNetwork", std::string ComputeUnits = "CPUOnly", std::string ModelCacheDirectory = "") {
+  std::unordered_map<std::string, std::string> provider_options = MakeCoreMLProviderOptions(ModelFormat,
+                                                                                            ComputeUnits,
+                                                                                            ModelCacheDirectory);
   return CoreMLProviderFactoryCreator::Create(provider_options)->CreateProvider();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+TEST(CoreMLExecutionProviderTest, TestAddEpUsingPublicApi) {
+  auto session_has_ep = [](Ort::Session& session) -> bool {
+    // Access the underlying InferenceSession.
+    const OrtSession* ort_session = session;
+    const InferenceSession* s = reinterpret_cast<const InferenceSession*>(ort_session);
+    bool has_ep = false;
+
+    for (const auto& provider : s->GetRegisteredProviderTypes()) {
+      if (provider == kCoreMLExecutionProvider) {
+        has_ep = true;
+        break;
+      }
+    }
+    return has_ep;
+  };
+
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/constant_floats.onnx");
+  auto provider_options = MakeCoreMLProviderOptions("NeuralNetwork", "CPUOnly", "./tmp");
+
+  {
+    // Test C++ API to add CoreML EP with the short name 'CoreML'.
+    Ort::SessionOptions so;
+    so.AppendExecutionProvider("CoreML", provider_options);
+    Ort::Session session(*ort_env, model_file_name, so);
+    ASSERT_TRUE(session_has_ep(session)) << "CoreML EP was not found in registered providers for session.";
+  }
+
+  {
+    // Test C++ API to add CoreML EP with the long canonical name 'CoreMLExecutionProvider'.
+    Ort::SessionOptions so;
+    so.AppendExecutionProvider(kCoreMLExecutionProvider, provider_options);
+    Ort::Session session(*ort_env, model_file_name, so);
+    ASSERT_TRUE(session_has_ep(session)) << "CoreML EP was not found in registered providers for session.";
+  }
+}
 
 TEST(CoreMLExecutionProviderTest, FunctionTest) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("coreml_execution_provider_test_graph.onnx");
@@ -84,7 +137,7 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
 
-  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
   CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_y);
@@ -116,7 +169,7 @@ TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
   std::vector<int64_t> dims_mul_x = {3, 2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
 
   NameMLValMap feeds;
@@ -145,7 +198,7 @@ TEST(CoreMLExecutionProviderTest, ArgMaxUnsupportedCastTest) {
   std::vector<int64_t> dims_mul_x = {3, 2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
 
   NameMLValMap feeds;
@@ -285,7 +338,7 @@ TEST(CoreMLExecutionProviderTest, TestModelCache) {
   std::vector<int64_t> dims_mul_x = {3, 2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
 
   NameMLValMap feeds;

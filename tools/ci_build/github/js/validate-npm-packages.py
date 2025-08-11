@@ -129,6 +129,16 @@ if RELEASE_NODE and RELEASE_REACT_NATIVE and ort_node_ver != ort_react_native_ve
 if RELEASE_WEB and RELEASE_REACT_NATIVE and ort_web_ver != ort_react_native_ver:
     raise Exception("version number is different for onnxruntime-web and onnxruntime-react-native")
 
+# @dev build has to match the following pattern:
+# "x.y.z-dev.*"
+if tag == "dev":
+    if RELEASE_NODE and "-dev" not in ort_node_ver:
+        raise Exception(f'@dev build version should contain "-dev". ort_node_ver={ort_node_ver}')
+    if RELEASE_WEB and "-dev" not in ort_web_ver:
+        raise Exception(f'@dev build version should contain "-dev". ort_web_ver={ort_web_ver}')
+    if RELEASE_REACT_NATIVE and "-dev" not in ort_react_native_ver:
+        raise Exception(f'@dev build version should contain "-dev". ort_react_native_ver={ort_react_native_ver}')
+
 print("====== validated versions ======")
 print(f"source_branch={source_branch}")
 print(f"tag={tag}")

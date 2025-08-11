@@ -28,7 +28,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     planned_memory_sizes_in_byte.reserve(location_len);
     for (size_t i = 0; i < location_len; ++i) {
       auto& location = mem_patterns_.locations[i];
-      auto alloc = GetAllocator(location);
+      auto alloc = GetInitializerAllocator(location);
       if (!alloc)
         return Status(common::ONNXRUNTIME, common::FAIL,
                       "Failed to get allocator for location: " + location.ToString());
@@ -39,20 +39,15 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       }
 
       const auto peak_size = mem_patterns_.patterns[i].PeakSize();
-      void* buffer;
-      if (alloc->Info().alloc_type == OrtArenaAllocator) {
-        // Arena has a specific way to store static memory.
-        // Arena does not reuse static memory allocated by Reserve.
-        buffer = static_cast<BFCArena*>(alloc.get())->Reserve(peak_size);
-      } else {
-        buffer = alloc->Alloc(peak_size);
-      }
-      weights_buffers_.push_back(BufferUniquePtr(buffer, BufferDeleter(alloc)));
+      // use Reserve for initializers so they don't affect arena growth patterns if an arena is involved.
+      void* buffer = alloc->Reserve(peak_size);
+
+      auto buffer_ptr = BufferUniquePtr(buffer, BufferDeleter(std::move(alloc)));
       auto kvp = buffers_.insert(std::make_pair(location, buffer));
       if (!kvp.second) {
-        alloc->Free(buffer);
         return Status(common::ONNXRUNTIME, common::FAIL, "duplicated location");
       }
+      weights_buffers_.push_back(std::move(buffer_ptr));
 
       planned_memory_sizes_in_byte[location] += peak_size;
     }
@@ -79,25 +74,28 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     if (!is_sealed_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error.");
     }
+
     const struct OrtDevice& location = seq_plan_.GetLocation(ort_value_index);
     auto pattern = mem_patterns_.GetPatterns(location);
     if (pattern == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mem pattern for initializer ", name, " is not found");
     }
+
     // if block is not found, means this ort_value is not traced
     // fall back to allocate separate buffer.
     // if it->second.get() is null, then fall back to the block not found case
     auto block = pattern->GetBlock(ort_value_index);
     if (nullptr == block) {
       // not traced, only return allocator
-      alloc_out = GetAllocator(location);
+      alloc_out = GetInitializerAllocator(location);
       return Status::OK();
     }
+
     auto it = buffers_.find(location);
     if (it == buffers_.end()) {
       if (block != nullptr && block->size_ == 0) {
         // Because the size is 0, this miss find is expected. we won't allocate a buffer with size of zero.
-        buf_out.emplace(nullptr, 0, GetAllocator(location)->Info());
+        buf_out.emplace(nullptr, 0, GetInitializerAllocator(location)->Info());
         return Status::OK();
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Weight buffer for initializer '", name, "' is not found");
@@ -107,7 +105,8 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Get preallocated buffer for initializer '", name, "' failed");
     }
 
-    buf_out.emplace(reinterpret_cast<char*>(it->second) + block->offset_, block->size_, GetAllocator(location)->Info());
+    buf_out.emplace(static_cast<char*>(it->second) + block->offset_, block->size_,
+                    GetInitializerAllocator(location)->Info());
     return Status::OK();
   }
   common::Status Trace(int id, const ONNX_NAMESPACE::TensorProto* value) override {

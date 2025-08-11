@@ -15,6 +15,7 @@
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
+#include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -111,8 +112,8 @@ class MatMulNBits final : public OpKernel {
       has_unquantized_zero_point_ = type != ONNX_NAMESPACE::TensorProto_DataType_UINT8;
     }
 
-    ORT_ENFORCE(nbits_ == 4,
-                "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4 || nbits_ == 8,
+                "Only 2b, 4b and 8b quantization is supported for MatMulNBits op, additional bits support is planned.");
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
   }
@@ -457,19 +458,49 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
-    // dequantize b, only 4b quantization is supported for now
-    MlasDequantizeBlockwise<float, 4>(
-        tmp_b_data_ptr.get(),                           // dequantized output
-        b_data,                                         // quantized input
-        scales_data,                                    // quantization scales
-        static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-        static_cast<int32_t>(block_size_),              // quantization block size
-        column_wise_quant_,                             // columnwise quantization or row-wise
-        static_cast<int32_t>(K_),                       // number of rows in quantized input
-        static_cast<int32_t>(N_),                       // number of columns in quantized input
-        thread_pool);
+    // dequantize b, only 2b, 4b, and 8b quantization is supported for now
+    if (this->nbits_ == 2) {
+      MlasDequantizeBlockwise<float, 2>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else if (this->nbits_ == 4) {
+      MlasDequantizeBlockwise<float, 4>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else {  // If it isn't 4bit, it has to be 8-bit quantization
+      ORT_ENFORCE(nbits_ == 8);
+      MlasDequantizeBlockwise<float, 8>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    }
   } else {
+    // Hitting any of the below is very rare
     ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
+    ORT_ENFORCE(nbits_ == 4,
+                "Only 4b quantization is supported for unpacked compute using "
+                "non-MLAS de-quantization for now");
+
     // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
     if (zero_points && zero_points->IsDataType<float>()) {
       DequantizeBlockwise<float, float>(
@@ -576,19 +607,37 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<MLFloat16>())) {
-    // dequantize b, only 4b quantization is supported for now
-    MlasDequantizeBlockwise<float, 4>(
-        tmp_b_data_ptr.get(),                           // dequantized output
-        b_data,                                         // quantized input
-        scales_ptr,                                     // quantization scales
-        static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-        static_cast<int32_t>(block_size_),              // quantization block size
-        column_wise_quant_,                             // columnwise quantization or row-wise
-        static_cast<int32_t>(K_),                       // number of rows in quantized input
-        static_cast<int32_t>(N_),                       // number of columns in quantized input
-        thread_pool);
+    if (nbits_ == 4) {
+      MlasDequantizeBlockwise<float, 4>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_ptr,                                     // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else {  // If it isn't 4bit, it has to be 8-bit quantization
+      ORT_ENFORCE(nbits_ == 8);
+      MlasDequantizeBlockwise<float, 8>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_ptr,                                     // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    }
   } else {
+    // Hitting any of the below is very rare
     ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
+    ORT_ENFORCE(nbits_ == 4,
+                "Only 4b quantization is supported for unpacked compute using "
+                "non-MLAS de-quantization for now");
+
     // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
     if (zero_points && zero_points->IsDataType<MLFloat16>()) {
       DequantizeBlockwise<float, MLFloat16>(
@@ -674,10 +723,16 @@ template <typename T1>
 Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   const Tensor* a = ctx->Input<Tensor>(InputIndex::A);
+  // If B is prepacked, B would have been removed from the context
+  const bool is_b_prepacked = packed_b_size_ > 0;
+  const Tensor* b = is_b_prepacked ? nullptr : ctx->Input<Tensor>(InputIndex::B);
   const Tensor* scales = scales_are_packed_ ? nullptr : ctx->Input<Tensor>(InputIndex::scales);
   const Tensor* zero_points = ctx->Input<Tensor>(InputIndex::zero_points);
   const Tensor* reorder_idx = ctx->Input<Tensor>(InputIndex::g_idx);
   const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
+
+  ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
+      a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
 
   TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
   MatMulComputeHelper helper;
@@ -710,25 +765,29 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
     }
   }
 
-  // If B is prepacked, B would have been removed from the context
-  const Tensor* b = ctx->Input<Tensor>(InputIndex::B);
+  // TODO(hasesh): Should this logging level be warning ?
+  LOGS(ctx->Logger(), INFO) << "Falling back to using unpacked compute mode for the Matmul operation "
+                               "(i.e.) the weights will be de-quantized to fp32 before invoking "
+                               "the fp32 Matmul kernel."
+                               "This is because MLAS doesn't have an optimized quantized kernel "
+                               "for the requested compute configuration.";
+
   return ComputeBUnpacked(a, b, scales, zero_points, reorder_idx, bias, y, allocator, thread_pool, helper);
 }
 
-#define REGISTER_MatMulNBits(T1)                                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
-      MatMulNBits,                                                          \
-      kMSDomain,                                                            \
-      1,                                                                    \
-      T1,                                                                   \
-      kCpuExecutionProvider,                                                \
-      KernelDefBuilder()                                                    \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())          \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())     \
-          .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(),    \
-                                 DataTypeImpl::GetTensorType<float>(),      \
-                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),    \
+#define REGISTER_MatMulNBits(T1)                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
+      MatMulNBits,                                                       \
+      kMSDomain,                                                         \
+      1,                                                                 \
+      T1,                                                                \
+      kCpuExecutionProvider,                                             \
+      KernelDefBuilder()                                                 \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())       \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())  \
+          .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), \
+                                 DataTypeImpl::GetTensorType<T1>()})     \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()), \
       MatMulNBits<T1>);
 
 REGISTER_MatMulNBits(float);

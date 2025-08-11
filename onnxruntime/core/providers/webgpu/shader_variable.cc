@@ -33,6 +33,10 @@ constexpr static const std::string_view STORAGE_TYPE_ARRAY[] = {
     "vec2<u32>",  // Uint8x8
     "vec4<u32>",  // Uint8x16
     "u32",        // Int8x4
+    "vec2<u32>",  // Int8x8
+    "vec4<u32>",  // Int8x16
+    "u32",        // Uint4x8
+    "u32",        // Int4x8
 };
 constexpr static const auto STORAGE_TYPE = details::_to_std_array(STORAGE_TYPE_ARRAY);
 
@@ -55,7 +59,11 @@ constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "u32",         // Uint8x4 (u32 as 4 elements of uint8)
     "vec2<u32>",   // Uint8x8 (vec2<u32> as 2x4 elements of uint8)
     "vec4<u32>",   // Uint8x16 (vec4<u32> as 4x4 elements of uint8)
-    "i32",         // Int8x4
+    "u32",         // Int8x4 (u32 as 4 elements of int8)
+    "vec2<u32>",   // Int8x8 (vec2<i32> as 2x4 elements of int8)
+    "vec4<u32>",   // Int8x16 (vec4<i32> as 4x4 elements of int8)
+    "u32",         // Uint4x8
+    "u32",         // Int4x8
 };
 constexpr static const auto VALUE_TYPE = details::_to_std_array(VALUE_TYPE_ARRAY);
 
@@ -81,6 +89,8 @@ constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "i32",   // Int8x4
     "i32",   // Int8x8
     "i32",   // Int8x16
+    "u32",   // Uint4x8
+    "i32",   // Int4x8
 };
 constexpr static const auto ELEMENT_TYPE = details::_to_std_array(ELEMENT_TYPE_ARRAY);
 
@@ -258,8 +268,8 @@ void ShaderVariableHelper::Impl(std::ostream& ss) const {
   // Implementation of "fn get_{name}_by_indices"
   if (usage_ & ShaderUsage::UseGetByIndices) {
     if (rank_ >= 2) {
-      SS_APPEND(ss, "fn get_", name_, "_by_indices(indices: ", IndicesType(), ")->", ValueType(), " {\n");
-      SS_APPEND(ss, "  return ", GetByOffset("i2o_" + name_ + "(indices)"), ";\n");
+      SS_APPEND(ss, "fn get_", name_, "_by_indices(indices_fnarg: ", IndicesType(), ")->", ValueType(), " {\n");
+      SS_APPEND(ss, "  return ", GetByOffset("i2o_" + name_ + "(indices_fnarg)"), ";\n");
       SS_APPEND(ss, "}\n");
     }
   }

@@ -29,37 +29,6 @@ static bool ValidateAddBiasInitializer(const Graph& graph, const Node& add, int6
   return optimizer_utils::ValidateShape(input_b, {hidden_size});
 }
 
-// Merge 1-D weights (q, k and v) by concatenating them one by one.
-template <typename T>
-void MergeWeights(const T* q, const T* k, const T* v, std::vector<T>& result, int64_t element_count) {
-  for (int64_t i = 0; i < element_count; i++) {
-    result.push_back(*q);
-    q++;
-  }
-
-  for (int64_t i = 0; i < element_count; i++) {
-    result.push_back(*k);
-    k++;
-  }
-
-  for (int64_t i = 0; i < element_count; i++) {
-    result.push_back(*v);
-    v++;
-  }
-}
-
-// Merge 2-D weights (q, k and v) by concatenating them row by row.
-template <typename T>
-void MergeMatMulWeights(const T* q_weight, const T* k_weight, const T* v_weight,
-                        std::vector<T>& result, int64_t hidden_size) {
-  const T* q = q_weight;
-  const T* k = k_weight;
-  const T* v = v_weight;
-  for (int64_t i = 0; i < hidden_size; i++, q += hidden_size, k += hidden_size, v += hidden_size) {
-    MergeWeights(q, k, v, result, hidden_size);
-  }
-}
-
 // Load q, k and v weights, and validate their data types.
 static bool LoadQkvWeights(
     Graph& graph,
@@ -100,9 +69,9 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
   assert(nullptr != q_tensor);
   assert(nullptr != k_tensor);
   assert(nullptr != v_tensor);
-  Initializer q_initializer(*q_tensor, graph.ModelPath());
-  Initializer k_initializer(*k_tensor, graph.ModelPath());
-  Initializer v_initializer(*v_tensor, graph.ModelPath());
+  Initializer q_initializer(graph, *q_tensor, graph.ModelPath());
+  Initializer k_initializer(graph, *k_tensor, graph.ModelPath());
+  Initializer v_initializer(graph, *v_tensor, graph.ModelPath());
   auto data_type = q_tensor->data_type();
 
   ONNX_NAMESPACE::TensorProto initializer;
@@ -123,9 +92,9 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     std::vector<float> result;
     result.reserve(gsl::narrow<size_t>(element_count));
     if (is_matmul) {
-      MergeMatMulWeights<float>(q_weight, k_weight, v_weight, result, hidden_size);
+      optimizer_utils::MergeMatMulWeightsByRow<float>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size, hidden_size);
     } else {
-      MergeWeights<float>(q_weight, k_weight, v_weight, result, hidden_size);
+      optimizer_utils::MergeWeights1d<float>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size);
     }
     utils::SetRawDataInTensorProto(initializer, result.data(), gsl::narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
@@ -135,9 +104,9 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     std::vector<MLFloat16> result;
     result.reserve(gsl::narrow<size_t>(element_count));
     if (is_matmul) {
-      MergeMatMulWeights<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size);
+      optimizer_utils::MergeMatMulWeightsByRow<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size, hidden_size);
     } else {
-      MergeWeights<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size);
+      optimizer_utils::MergeWeights1d<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size);
     }
     utils::SetRawDataInTensorProto(initializer, result.data(), gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }

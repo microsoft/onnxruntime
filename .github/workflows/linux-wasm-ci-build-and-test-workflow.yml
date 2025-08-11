@@ -15,6 +15,14 @@ on:
         required: false
         type: boolean
         default: false
+      use_vcpkg:
+        required: false
+        type: boolean
+        default: true
+      enable_wasm_threads:
+        required: false
+        type: boolean
+        default: true
       build_jsep:
         required: false
         type: boolean
@@ -29,7 +37,7 @@ jobs:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     env:
       buildArch: x64
-      common_build_args: --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --config ${{ inputs.build_config }} --skip_submodule_sync --build_wasm --enable_wasm_simd --enable_wasm_threads ${{ inputs.extra_build_args }}
+      common_build_args: --parallel ${{ inputs.use_vcpkg == true && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} --config ${{ inputs.build_config }} --skip_submodule_sync --build_wasm --enable_wasm_simd ${{ inputs.enable_wasm_threads == true && '--enable_wasm_threads' || '' }} ${{ inputs.extra_build_args }}
 
     steps:
       - name: Checkout code
@@ -37,15 +45,21 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           architecture: ${{ env.buildArch }}
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.5
+
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
         with:
-          vcpkg-version: '2025.03.19'
-          vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
+          vcpkg-version: '2025.06.13'
+          vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
           cmake-version: '3.31.6'
           cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
           add-cmake-to-path: 'true'
@@ -57,29 +71,17 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Install EMSDK
+      - name: Build (simd + threads)
         run: |
-          set -ex
-          cd ${{ github.workspace }}/cmake/external/emsdk
-          ./emsdk install 4.0.4
-          ./emsdk activate 4.0.4
-
-      - name: Build and test (browser) (simd + threads)
-        run: |
-          set -e -x
-          source ${{ github.workspace }}/cmake/external/emsdk/emsdk_env.sh
-          cd '${{ github.workspace }}'
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
             --build_dir ${{ github.workspace }}/build/wasm_inferencing \
-            --wasm_run_tests_in_browser
+            --skip_tests
+        working-directory: ${{ github.workspace }}
 
       - name: Build (simd + threads + JSEP)
         if: ${{ inputs.build_jsep == true }}
         run: |
-          set -e -x
-          source ${{ github.workspace }}/cmake/external/emsdk/emsdk_env.sh
-          cd '${{ github.workspace }}'
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
             --build_dir ${{ github.workspace }}/build/wasm_inferencing_jsep \
@@ -87,21 +89,19 @@ jobs:
             --use_webnn \
             --target onnxruntime_webassembly \
             --skip_tests
+        working-directory: ${{ github.workspace }}
 
       - name: Build (simd + threads + WebGPU experimental)
         if: ${{ inputs.build_webgpu == true }}
         run: |
-          set -e -x
-          source ${{ github.workspace }}/cmake/external/emsdk/emsdk_env.sh
-          cd '${{ github.workspace }}'
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
             --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu \
             --use_webgpu \
-            --use_jsep \
             --use_webnn \
             --target onnxruntime_webassembly \
             --skip_tests
+        working-directory: ${{ github.workspace }}
 
       - name: Create Artifacts
         if: ${{ inputs.skip_publish != true }}
@@ -113,13 +113,10 @@ jobs:
             cp ${{ github.workspace }}/build/wasm_inferencing_jsep/${{ inputs.build_config }}/ort-wasm-simd-threaded.jsep.wasm ${{ github.workspace }}/artifacts/wasm/
             cp ${{ github.workspace }}/build/wasm_inferencing_jsep/${{ inputs.build_config }}/ort-wasm-simd-threaded.jsep.mjs ${{ github.workspace }}/artifacts/wasm/
           fi
-
-      - name: Create WebGPU Artifacts
-        if: ${{ inputs.skip_publish != true && inputs.build_webgpu == true }}
-        run: |
-          mkdir -p ${{ github.workspace }}/artifacts/wasm_webgpu/
-          cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.jsep.wasm ${{ github.workspace }}/artifacts/wasm_webgpu/
-          cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.jsep.mjs ${{ github.workspace }}/artifacts/wasm_webgpu/
+          if [ -d ${{ github.workspace }}/build/wasm_inferencing_webgpu ]; then
+            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.wasm ${{ github.workspace }}/artifacts/wasm/
+            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.mjs ${{ github.workspace }}/artifacts/wasm/
+          fi
 
       - name: Upload WASM artifacts
         if: ${{ inputs.skip_publish != true }}
@@ -128,12 +125,27 @@ jobs:
           name: ${{ inputs.build_config }}_wasm
           path: ${{ github.workspace }}/artifacts/wasm
 
-      - name: Upload WebGPU artifacts
-        if: ${{ inputs.skip_publish != true && inputs.build_webgpu == true }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.build_config }}_wasm_webgpu
-          path: ${{ github.workspace }}/artifacts/wasm_webgpu
+      - name: Test (Node.js) (simd + threads)
+        # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
+        if: ${{ inputs.build_config == 'Debug' }}
+        run: |
+          python ./tools/ci_build/build.py \
+            ${{ env.common_build_args }} \
+            --build_dir ${{ github.workspace }}/build/wasm_inferencing \
+            --test
+        working-directory: ${{ github.workspace }}
+
+      - name: Test (browser) (simd + threads)
+        # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
+        if: ${{ inputs.build_config == 'Debug' }}
+        run: |
+          python ./tools/ci_build/build.py \
+            ${{ env.common_build_args }} \
+            --build_dir ${{ github.workspace }}/build/wasm_inferencing \
+            --wasm_run_tests_in_browser \
+            --target onnxruntime_test_all \
+            --update --build --test
+        working-directory: ${{ github.workspace }}
 
       - name: Publish test results
         if: ${{ always() && inputs.build_config == 'Debug' }}

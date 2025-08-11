@@ -43,6 +43,14 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       continue;
     }
 
+    // Require that the node's output is consumed by a single QuantizeLinear node.
+    // Otherwise, if only the inputs are quantized, but not the output, then this node group would not
+    // be considered a QDQ node unit anyway.
+    std::vector<const Node*> children_nodes = graph.GetConsumerNodes(node.OutputDefs()[0]->Name());
+    if (children_nodes.size() != 1 || children_nodes[0]->OpType() != QDQ::QOpName) {
+      continue;
+    }
+
     Node& dq_0 = *graph.GetNode(parent_node_0->Index());
     Node* dq_1 = nullptr;
     const ONNX_NAMESPACE::TensorProto* weight_proto = nullptr;
@@ -81,7 +89,9 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       }
 
       const auto& dq_attrs = dq_1->GetAttributes();
-      if (dq_attrs.find("block_size") != dq_attrs.end()) {
+      auto attr_it = dq_attrs.find("block_size");
+      // Default value of block_size=0 has no significance. Don't skip weight_bias_quantization.
+      if (attr_it != dq_attrs.end() && attr_it->second.i() != 0) {
         continue;
       }
 
@@ -107,14 +117,14 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
 
     NodeArg* weight_scale_arg = nullptr;
     if (!dq_1) {
-      auto initializer = std::make_unique<Initializer>(*weight_proto, graph.ModelPath());
-      const float* weight_data = initializer->data<float>();
+      Initializer initializer(graph, *weight_proto, graph.ModelPath());
+      const float* weight_data = initializer.data<float>();
 
       // Quantize float32 weight to int8_t (per-tensor, symmetric).
       // int8_t quantization of input[1] works with input[0] of all types.
       float scale;
       int8_t zp;
-      GetQuantizationParameter(weight_data, static_cast<int64_t>(initializer->size()), scale, zp, nullptr);
+      GetQuantizationParameter(weight_data, static_cast<int64_t>(initializer.size()), scale, zp, nullptr);
 
       // Weight scale initializer.
       ONNX_NAMESPACE::TensorProto weight_scale_proto;

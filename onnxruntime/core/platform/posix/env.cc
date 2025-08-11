@@ -62,15 +62,8 @@ namespace {
 
 constexpr int OneMillion = 1000000;
 
-class UnmapFileParam {
- public:
-  void* addr;
-  size_t len;
-};
-
-static void UnmapFile(void* param) noexcept {
-  std::unique_ptr<UnmapFileParam> p(reinterpret_cast<UnmapFileParam*>(param));
-  int ret = munmap(p->addr, p->len);
+static void UnmapFile(void* addr, size_t len) noexcept {
+  int ret = munmap(addr, len);
   if (ret != 0) {
     auto [err_no, err_msg] = GetErrnoInfo();
     LOGS_DEFAULT(ERROR) << "munmap failed. error code: " << err_no << " error msg: " << err_msg;
@@ -230,13 +223,11 @@ class PosixThread : public EnvThread {
         } else {
           errno = ret;
           auto [err_no, err_msg] = GetErrnoInfo();
-#if !defined(USE_MIGRAPHX)
           LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
                               << ", index: " << p->index
                               << ", mask: " << *p->affinity
                               << ", error code: " << err_no << " error msg: " << err_msg
                               << ". Specify the number of threads explicitly so the affinity is not set.";
-#endif
         }
       }
 #endif
@@ -451,7 +442,9 @@ class PosixEnv : public Env {
 
     mapped_memory =
         MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
-                        OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
+                        [mapped_base, mapped_length](void*) {
+                          UnmapFile(mapped_base, mapped_length);
+                        }};
 
     return Status::OK();
   }

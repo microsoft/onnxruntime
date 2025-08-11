@@ -25,35 +25,12 @@ class MatMulProgram final : public Program<MatMulProgram> {
                                           {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
                                           {"dim_inner", ProgramUniformVariableDataType::Uint32});
 
-  static Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
-                                           const InlinedVector<int64_t>& elements_per_thread,
-                                           uint32_t workgroup_size_x,
-                                           uint32_t workgroup_size_y,
-                                           const std::string& data_type,
-                                           const ShaderIndicesHelper* batch_dims,
-                                           bool transpose_a = false,
-                                           uint32_t tile_inner = 32,
-                                           bool split_k = false,
-                                           uint32_t splitted_dim_inner = 32);
-  static Status MakeMatMulPackedSource(ShaderHelper& shader,
-                                       const InlinedVector<int64_t>& elements_per_thread,
-                                       uint32_t workgroup_size_x,
-                                       uint32_t workgroup_size_y,
-                                       const std::string& data_type,
-                                       const ShaderIndicesHelper* batch_dims,
-                                       bool transpose_a = false,
-                                       uint32_t tile_inner = 32,
-                                       bool split_k = false,
-                                       uint32_t splitted_dim_inner = 32,
-                                       bool sequentially_access_by_threads = false);
-
  private:
   const Activation& activation_;
   const bool has_bias_;
   const bool is_vec4_;
   const InlinedVector<int64_t> elements_per_thread_;
   bool is_channels_last_ = false;
-  void MatMulReadWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b, const ShaderVariableHelper& output, const ShaderIndicesHelper& batch_dims, std::string apply_activation) const;
 };
 
 }  // namespace webgpu

@@ -24,13 +24,78 @@
 #include "System/QnnSystemInterface.h"
 
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 
 namespace onnxruntime {
 namespace qnn {
 
 class QnnModel;
+
+class QnnSerializerConfig {
+ public:
+  virtual ~QnnSerializerConfig();
+
+  /**
+   * Create a config to write a DLC file for each graph using the Ir backend.
+   */
+  static std::unique_ptr<QnnSerializerConfig> CreateIr(std::string backend_path, std::string dlc_dir);
+
+  /**
+   * Create a config to write C++ source files using the Saver backend.
+   */
+  static std::unique_ptr<QnnSerializerConfig> CreateSaver(std::string backend_path);
+
+  /**
+   * Get the path to the serializer backend.
+   */
+  const std::string& GetBackendPath() const;
+
+  /**
+   * Set the name of the graph being serialized. This value may be used to determine the name
+   * of the output files.
+   *
+   * \param graph_name The name of the graph being serialized.
+   */
+  void SetGraphName(std::string graph_name);
+
+  /**
+   * Get any QNN Graph configs required to configure this serializer and perform any
+   * preparation, such as creating output directories.
+   *
+   * \return nullptr or a null-terminated list of QnnGraph_Config_t*.
+   */
+  virtual const QnnGraph_Config_t** Configure() = 0;
+
+  /**
+   * Some serializers allow for GraphConfigs that are unrelated to serialization to be
+   * specified at context creation time, while others raise an error. If true, this
+   * serializer should be configured with graph configs for any applicable real (e.g., HTP)
+   * backend.
+   *
+   * \return true if the backend can be configured with non-serialization graph configs.
+   */
+  virtual bool SupportsArbitraryGraphConfigs() const = 0;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnSerializerConfig);
+
+ protected:
+  QnnSerializerConfig(std::string backend_path);
+  const std::string& GetGraphName() const;
+
+ private:
+  std::string backend_path_;
+  std::string graph_name_{"graph"};
+};
+
+struct OpPackage {
+  std::string op_type;
+  std::string path;
+  std::string interface;
+  std::string target;
+};
 
 // configuration values for QnnBackendManager creation
 struct QnnBackendManagerConfig {
@@ -39,10 +104,11 @@ struct QnnBackendManagerConfig {
   ProfilingLevel profiling_level;
   std::string profiling_file_path;
   ContextPriority context_priority;
-  std::string qnn_saver_path;
+  std::shared_ptr<QnnSerializerConfig> qnn_serializer_config;
   uint32_t device_id;
   QnnHtpDevice_Arch_t htp_arch;
   uint32_t soc_model;
+  std::vector<OpPackage> op_packages;
 };
 
 class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager> {
@@ -63,10 +129,11 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         profiling_level_(config.profiling_level),
         profiling_file_path_(config.profiling_file_path),
         context_priority_(config.context_priority),
-        qnn_saver_path_(config.qnn_saver_path),
+        qnn_serializer_config_(config.qnn_serializer_config),
         device_id_(config.device_id),
         htp_arch_(config.htp_arch),
-        soc_model_(config.soc_model) {
+        soc_model_(config.soc_model),
+        op_packages_(config.op_packages) {
   }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
@@ -83,15 +150,18 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Initializes handles to QNN resources (device, logger, etc.).
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
-                      bool need_load_system_lib, bool share_ep_contexts);
+                      bool need_load_system_lib, bool share_ep_contexts,
+                      bool enable_vtcm_backup_buffer_sharing,
+                      std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
   Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
                            HtpPerformanceMode htp_performance_mode);
 
-  Status SetRpcControlLatency(uint32_t htp_power_config_client_id,
-                              uint32_t rpc_control_latency);
+  Status SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
+                            uint32_t rpc_control_latency,
+                            uint32_t rpc_polling_time);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -141,6 +211,20 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status ParseLoraConfig(std::string lora_config);
 
+  QnnSerializerConfig* GetQnnSerializerConfig();
+
+  // Handler to be called upon successful context creation via contextCreateFromBinaryListAsync()
+  // This handler is expected to be called in the callback ContextCreateAsyncCallback() in the .cc file
+  // Takes in the context and the notifyParam objects received by the callback function
+  // notifyParam is expected to be a pointer to a vector of node names associated with that context handle
+  // For each node name, a mapping to the context handle will be created
+  void ProcessContextFromBinListAsync(Qnn_ContextHandle_t handle, void* notifyParam);
+
+  // Sets the context priority to the given value, if valid
+  Status SetContextPriority(ContextPriority context_priority);
+  // Resets the context priority to the session default as defined by context_priority_
+  Status ResetContextPriority();
+
  private:
   Status LoadBackend();
 
@@ -157,6 +241,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status ReleaseProfilehandle();
 
   Status CreateContext(bool enable_htp_weight_sharing);
+
+  Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string,
+                                                                        std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
   Status ReleaseContext();
 
@@ -176,7 +263,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status LoadQnnSystemLib();
 
-  Status LoadQnnSaverBackend();
+  Status LoadQnnSerializerBackend();
 
   Status UnloadLib(void* handle);
 
@@ -242,7 +329,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 #endif
 
   // Adds a new QNN context.
-  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance.
+  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
   Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
 
  private:
@@ -255,6 +342,70 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     UniqueQnnContextHandle context_handle;
     std::unique_ptr<QnnContextMemHandleManager> mem_handles;
   };
+
+  Status LoadOpPackage() {
+    // assume op_packages passed in represented in
+    // op_packages|<OpTpye>:<PackagePath>:<InterfaceSymbolName>:<OptionalTarget>,<OpTpye2>:<PackagePath2>:<InterfaceSymbolName2>:<OptionalTarget2>
+    for (const auto& op_package : op_packages_) {
+      ORT_RETURN_IF(nullptr == qnn_interface_.backendRegisterOpPackage, "backendRegisterOpPackageFnHandle is nullptr.");
+
+      Qnn_ErrorHandle_t result = qnn_interface_.backendRegisterOpPackage(
+          backend_handle_,
+          op_package.path.c_str(),
+          op_package.interface.c_str(),
+          op_package.target.c_str());
+
+      if (result != QNN_SUCCESS) {
+        switch (result) {
+          case QNN_BACKEND_ERROR_INVALID_ARGUMENT:
+            LOGS(*logger_, ERROR) << "Invalid argument, please check if op package path or interface provider is NULL.";
+            break;
+          case QNN_BACKEND_ERROR_OP_PACKAGE_NOT_FOUND:
+            LOGS(*logger_, ERROR) << "Could not open op package path. op_pack_path: " << op_package.path;
+            break;
+          case QNN_BACKEND_ERROR_OP_PACKAGE_IF_PROVIDER_NOT_FOUND:
+            LOGS(*logger_, ERROR) << "Could not find interfaceProvider symbol in op package library.";
+            break;
+          case QNN_BACKEND_ERROR_OP_PACKAGE_REGISTRATION_FAILED:
+            LOGS(*logger_, ERROR) << "Op package registration failed.";
+            break;
+          case QNN_BACKEND_ERROR_OP_PACKAGE_UNSUPPORTED_VERSION:
+            LOGS(*logger_, ERROR) << "Op package has interface version not supported by this backend.";
+            break;
+          case QNN_BACKEND_ERROR_NOT_SUPPORTED:
+            LOGS(*logger_, ERROR) << "Op package registration is not supported.";
+            break;
+          case QNN_BACKEND_ERROR_INVALID_HANDLE:
+            LOGS(*logger_, ERROR) << "backend is not a valid handle.";
+            break;
+          case QNN_BACKEND_ERROR_OP_PACKAGE_DUPLICATE:
+            LOGS(*logger_, ERROR) << "OpPackageName+OpName must be unique. Op package content information can be be obtained with \
+  QnnOpPackage interface. Indicates that an Op with the same package name and op name was already registered.";
+            break;
+          case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION:
+            LOGS(*logger_, ERROR) << "SSR occurrence (successful recovery).";
+            break;
+          case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION_FATAL:
+            LOGS(*logger_, ERROR) << "SSR occurrence (unsuccessful recovery).";
+            break;
+          default:
+            LOGS(*logger_, ERROR) << "Unknown error occurred while initializing logging in the QNN backend.";
+            break;
+        }
+      }
+      ORT_RETURN_IF(QNN_SUCCESS != result, "Failed to register op package to backend. Error: ", QnnErrorHandleToString(result));
+      LOGS(*logger_, VERBOSE) << "Successfully register the op package.";
+      std::string op_package_for_registration = op_package.interface;
+      std::string suffix = "InterfaceProvider";
+      if (op_package_for_registration.size() >= suffix.size() &&
+          op_package_for_registration.compare(op_package_for_registration.size() - suffix.size(), suffix.size(), suffix) == 0) {
+        op_package_for_registration.erase(op_package_for_registration.size() - suffix.size());
+      }
+      registerUDO(op_package.op_type, op_package_for_registration);
+    }
+
+    return Status::OK();
+  }
 
  private:
   const std::string backend_path_;
@@ -275,6 +426,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // HtpSharedMemoryAllocator allocation cleanup callback.
   std::unordered_map<Qnn_ContextHandle_t, std::shared_ptr<QnnContextHandleRecord>> context_map_;
 
+  // Map of EP Main Context Node names to Qnn_ContextHandle_t
+  std::mutex ep_context_handle_map_mutex_;
+  std::unordered_map<std::string, Qnn_ContextHandle_t> ep_context_handle_map_;
+
   // Vector of Qnn_ContextHandle_t. The context handles are owned by context_map_.
   std::vector<Qnn_ContextHandle_t> contexts_;
 
@@ -286,19 +441,20 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool device_created_ = false;
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
+  bool vtcm_backup_buffer_sharing_enabled_ = false;
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
-  std::vector<std::string> op_package_paths_;
   ContextPriority context_priority_;
   std::string sdk_build_version_ = "";
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif
-  const std::string qnn_saver_path_;
+  const std::shared_ptr<QnnSerializerConfig> qnn_serializer_config_;
   uint32_t device_id_ = 0;
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
+  const std::vector<OpPackage> op_packages_;
 };
 
 }  // namespace qnn

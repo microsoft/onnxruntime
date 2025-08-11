@@ -20,6 +20,11 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
     // We don't need to transfer the tensor to an MLTensor, so we don't need to copy the data.
     return Status::OK();
   }
+  bool trace = emscripten::val::module_property("webnnEnableTraceEvent").as<bool>();
+  emscripten::val console = emscripten::val::global("console");
+  if (trace) {
+    console.call<void>("time", emscripten::val("ORT::DataTransfer::CopyTensor"));
+  }
 
   size_t bytes = src.SizeInBytes();
   if (bytes > 0) {
@@ -35,6 +40,10 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
       auto subarray = emscripten::typed_memory_view(bytes, static_cast<char*>(dst_data));
       webnnDownloadTensor(reinterpret_cast<intptr_t>(src_data), subarray).await();
     }
+  }
+
+  if (trace) {
+    console.call<void>("timeEnd", emscripten::val("ORT::DataTransfer::CopyTensor"));
   }
 
   return Status::OK();

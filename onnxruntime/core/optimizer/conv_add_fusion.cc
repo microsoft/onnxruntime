@@ -62,8 +62,8 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
       return Status::OK();
     }
 
-    Initializer conv_B{*conv_B_tensor_proto, graph.ModelPath()};
-    Initializer add_B{*add_B_tensor_proto, graph.ModelPath()};
+    Initializer conv_B{graph, *conv_B_tensor_proto, graph.ModelPath()};
+    Initializer add_B{graph, *add_B_tensor_proto, graph.ModelPath()};
 
     if (conv_B.size() != add_B.size()) {
       return Status::OK();
@@ -84,7 +84,9 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
 
   } else {
     // Create new tensor proto and update shape
-    ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto(*add_B_tensor_proto);
+    Initializer add_B{graph, *add_B_tensor_proto, graph.ModelPath()};
+    ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto;
+    add_B.ToProto(new_conv_B_tensor_proto);
     int64_t dim = conv_W_tensor_proto->dims(0);
     new_conv_B_tensor_proto.clear_dims();
     new_conv_B_tensor_proto.add_dims(dim);

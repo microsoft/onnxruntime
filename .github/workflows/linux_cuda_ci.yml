@@ -2,12 +2,13 @@ name: Linux CUDA CI
 
 on:
   push:
-    branches: [ main, 'rel-*']
+    branches: [main, 'rel-*']
   pull_request:
-    branches: [ main, 'rel-*']
+    branches: [main, 'rel-*']
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -28,7 +29,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1'
       docker_image_repo: onnxruntimecuda12manylinuxbuild
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 --enable_cuda_profiling --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 --enable_cuda_profiling --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
       run_tests: false            # <<< Do not run tests in this job
       upload_build_output: true   # <<< Upload the build/Release directory
@@ -41,7 +42,7 @@ jobs:
     needs: build-linux-cuda-x64-release
     runs-on:
       - self-hosted
-      - "1ES.Pool=Onnxruntime-github-Linux-GPU-A100-WUS3"
+      - "1ES.Pool=Onnxruntime-github-Linux-GPU-H100"
     permissions:
       contents: read
       packages: read
@@ -49,7 +50,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.5
+      - uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
@@ -92,11 +93,11 @@ jobs:
       # So build.py --build_dir build/Release inside the container correctly finds the artifacts.
       - name: Test ONNX Runtime
         id: test_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Release
           mode: 'test' # Set mode to test
           execution_providers: 'cuda'
-          extra_build_flags: '--use_binskim_compliant_compile_flags --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
+          extra_build_flags: '--use_binskim_compliant_compile_flags --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
           python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'

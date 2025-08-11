@@ -96,7 +96,7 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   // READ INPUTS
   const Tensor* input_tensor = context.Input(0);
   const TensorShape& input_shape = input_tensor->Shape();
-  int64_t input_rank = static_cast<int64_t>(input_shape.NumDimensions());
+  auto input_rank = input_shape.NumDimensions();
 
   auto starts_raw = attr_starts_.empty() ? context.Input(1)->DataAsSpan<int64_t>() : gsl::make_span(attr_starts_);
   auto ends_raw = attr_ends_.empty() ? context.Input(2)->DataAsSpan<int64_t>() : gsl::make_span(attr_ends_);
@@ -137,123 +137,96 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   }
   auto steps_raw = steps_tensor == nullptr ? gsl::make_span(steps_default) : steps_tensor->DataAsSpan<int64_t>();
 
-  // PROCESS INPUTS
-  std::vector<uint32_t> axes;
+  // get final axes
+  std::vector<uint32_t> axes, axes_fixed;
   for (unsigned int i = 0; i < axes_raw.size(); i++) {
     int64_t val = axes_raw[i];
     if (val < 0) {
       val += input_rank;
     }
+    axes_fixed.push_back(static_cast<int32_t>(val));
     axes.push_back(static_cast<int32_t>(val));
   }
 
   std::vector<uint32_t> starts;
-  for (unsigned int i = 0; i < starts_raw.size(); i++) {
-    int64_t val = starts_raw[i];
-    if (val < 0) {
-      val += input_shape[axes[i]];
-    }
-
-    if (steps_raw[i] < 0) {
-      val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes[i]] - 1)));
-    } else {
-      val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes[i]])));
-    }
-    starts.push_back(static_cast<uint32_t>(val));
-  }
-
   std::vector<uint32_t> ends;
-  for (unsigned int i = 0; i < ends_raw.size(); i++) {
-    int64_t val = ends_raw[i];
-    if (val < 0) {
-      val += input_shape[axes[i]];
+  std::vector<int32_t> signs;
+  std::vector<uint32_t> steps;
+  std::vector<int64_t> output_dims;
+  output_dims.resize(input_rank, 0);
+
+  // main loop over axes that will setup
+  // starts, ends, steps, signs and output_dims
+  for (unsigned int i = 0; i < starts_raw.size(); i++) {
+    int64_t start = starts_raw[i];
+    int64_t end = ends_raw[i];
+    int64_t step = steps_raw[i];
+    int64_t dim_value = input_shape[axes[i]];
+    if (start < 0) {
+      start += dim_value;
     }
-    if (steps_raw[i] < 0) {
-      val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes[i]] - 1)));
+    if (end == std::numeric_limits<int32_t>::max() || end == std::numeric_limits<int64_t>::max()) {
+      end = step < 0 ? -1 : dim_value;
+    } else if (end < 0) {
+      end += dim_value;
+    }
+    if (step < 0) {
+      // we are slicing in reverse
+      start = dim_value > 0 ? std::clamp(start, int64_t{0}, dim_value - 1) : 0;
+      end = dim_value > 0 ? std::clamp(end, int64_t{-1}, dim_value - 1) : -1;
+      // note that we are flipping start and end to switch to forward step
+      signs.push_back(-1);
+      steps.push_back(static_cast<uint32_t>(-step));
+      starts.push_back(static_cast<uint32_t>((end < 0) ? 0 : end));
+      ends.push_back(static_cast<uint32_t>(start));
     } else {
-      val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes[i]])));
+      // we are slicing in forward direction
+      start = std::clamp(start, int64_t{0}, dim_value);
+      end = std::clamp(end, int64_t{0}, dim_value);
+      signs.push_back(1);
+      steps.push_back(static_cast<uint32_t>(step));
+      starts.push_back(static_cast<uint32_t>(start));
+      ends.push_back(static_cast<uint32_t>(end));
     }
-    ends.push_back(static_cast<uint32_t>(val));
+    auto temp = static_cast<int64_t>(ceil(1.0 * (end - start) / static_cast<float>(step)));
+    output_dims[axes[i]] = (temp > 0 && dim_value != 0) ? temp : 0;
   }
 
-  // temporary steps vector to handle negative steps
-  std::vector<int32_t> steps_tmp;
-  for (unsigned int i = 0; i < steps_raw.size(); i++) {
-    if (steps_raw[i] >= std::numeric_limits<int32_t>::max()) {
-      steps_tmp.push_back(std::numeric_limits<int32_t>::max());
-    } else {
-      steps_tmp.push_back(static_cast<int32_t>(steps_raw[i]));
-    }
-  }
-
-  // Insert missing dimensions
-  if (static_cast<int64_t>(axes.size()) != input_rank) {
+  // insert missing dimensions
+  if (axes.size() != input_rank) {
     for (uint32_t i = 0; i < input_rank; i++) {
       int idx = -1;
-      for (unsigned int j = 0; j < axes_raw.size(); j++) {
-        if (axes_raw[j] == i) {
+      for (unsigned int j = 0; j < axes_fixed.size(); j++) {
+        if (axes_fixed[j] == i) {
           idx = j;
           break;
         }
       }
       if (idx == -1) {
+        uint32_t dim_value = static_cast<uint32_t>(input_shape[i]);
         axes.insert(axes.begin() + i, i);
         starts.insert(starts.begin() + i, 0);
-        ends.insert(ends.begin() + i, static_cast<uint32_t>(input_shape[i]));
-        steps_tmp.insert(steps_tmp.begin() + i, 1);
+        ends.insert(ends.begin() + i, dim_value);
+        signs.insert(signs.begin() + i, 1);
+        steps.insert(steps.begin() + i, 1);
+        output_dims[i] = dim_value;
       }
     }
   }
 
-  // retain the sign of the steps
-  std::vector<int32_t> signs;
-  for (unsigned int i = 0; i < steps_tmp.size(); i++) {
-    signs.push_back(steps_tmp[i] < 0 ? -1 : (steps_tmp[i] > 0 ? 1 : 0));
-  }
-
-  // Convert negative steps to positive steps and reverse starts and ends
-  for (unsigned int i = 0; i < steps_tmp.size(); i++) {
-    if (steps_tmp[i] < 0) {
-      float numSteps = static_cast<float>((static_cast<float>(ends[i]) - static_cast<float>(starts[i])) / static_cast<float>(steps_tmp[i]));
-      float newEnd = static_cast<float>(starts[i]);
-      float newStart = newEnd + numSteps * static_cast<float>(steps_tmp[i]);
-
-      starts[i] = static_cast<uint32_t>(newStart);
-      ends[i] = static_cast<uint32_t>(newEnd);
-      steps_tmp[i] = static_cast<int32_t>(-steps_tmp[i]);
-    }
-  }
-
-  // final steps vector of type unsigned int
-  std::vector<uint32_t> steps;
-  for (unsigned int i = 0; i < steps_tmp.size(); i++) {
-    steps.push_back(static_cast<uint32_t>(steps_tmp[i]));
-  }
-
   // Reorder inputs in order of axis
   std::vector<int32_t> signs_reordered;
-  std::vector<uint32_t> steps_reordered, starts_reordered;
-  for (unsigned int i = 0; i < axes.size(); i++) {
-    signs_reordered.push_back(0);
-    steps_reordered.push_back(0);
-    starts_reordered.push_back(0);
-  }
-  for (unsigned int i = 0; i < axes.size(); i++) {
+  std::vector<uint32_t> steps_reordered, starts_reordered, ends_reordered;
+  signs_reordered.resize(input_rank, 0);
+  steps_reordered.resize(input_rank, 1);
+  starts_reordered.resize(input_rank, 0);
+  ends_reordered.resize(input_rank, 0);
+  for (unsigned int i = 0; i < input_rank; i++) {
     int32_t dim = axes[i];
     signs_reordered[dim] = signs[i];
     steps_reordered[dim] = steps[i];
     starts_reordered[dim] = starts[i];
-  }
-
-  // calculate output dims
-  std::vector<int64_t> output_dims;
-  for (unsigned int i = 0; i < axes.size(); i++) {
-    int32_t dim = axes[i];
-    float tmp = ceil((static_cast<float>(ends[dim]) - static_cast<float>(starts[dim])) / static_cast<float>(steps[dim]));
-    if (tmp < 0)
-      output_dims.push_back(0);
-    else
-      output_dims.push_back(static_cast<int64_t>(tmp));
+    ends_reordered[dim] = ends[i];
   }
 
   TensorShape output_shape(output_dims);

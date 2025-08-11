@@ -13,7 +13,9 @@
     onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface Eigen3::Eigen
   )
 
-  target_link_libraries(onnxruntime_providers_acl -L$ENV{LD_LIBRARY_PATH})
+  if (DEFINED ENV{LD_LIBRARY_PATH})
+    target_link_libraries(onnxruntime_providers_acl -L$ENV{LD_LIBRARY_PATH})
+  endif()
   add_dependencies(onnxruntime_providers_acl ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_acl PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_acl
@@ -26,7 +28,7 @@
   set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_providers_acl
+    install(TARGETS onnxruntime_providers_acl EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

@@ -450,7 +450,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
   assert(sequence_length > 0);
   assert(hidden_size > 0);
 
-  Initializer old_initializer{*tensor, graph.ModelPath()};
+  Initializer old_initializer{graph, *tensor, graph.ModelPath()};
   auto data_type = tensor->data_type();
 
   ONNX_NAMESPACE::TensorProto initializer;

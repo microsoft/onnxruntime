@@ -313,6 +313,17 @@ namespace Microsoft.ML.OnnxRuntime
 #endif
 
         /// <summary>
+        /// This API computes and returns the size of the tensor data in bytes.
+        /// </summary>
+        /// <returns>size of the tensor data in bytes</returns>
+        public long GetTensorSizeInBytes()
+        {
+            // The native API verifies that this is a non-string tensor
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorSizeInBytes(Handle, out UIntPtr size));
+            return (long)size;
+        }
+
+        /// <summary>
         /// Fetch string tensor element buffer pointer at the specified index,
         /// convert/copy to UTF-16 char[] and return a ReadOnlyMemory{char} instance.
         ///
@@ -689,8 +700,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// The method will attempt to pin managed memory so no copying occurs when data is passed down
         /// to native code.
         /// </summary>
-        /// <param name="value">Tensor object</param>
-        /// <param name="elementType">discovered tensor element type</param>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="tensor">Tensor object</param>
         /// <returns>And instance of OrtValue constructed on top of the object</returns>
         [Experimental("SYSLIB5001")]
         public static OrtValue CreateTensorValueFromSystemNumericsTensorObject<T>(SystemNumericsTensors.Tensor<T> tensor) where T : unmanaged
@@ -1357,7 +1368,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// This API helps the user to process a map OrtValue without
         /// having to deal with the lifespan of intermediate OrtValues.
         ///
-        /// each API value is fed to the vistor functor.
+        /// each API value is fed to the visitor functor.
         /// </summary>
         /// <param name="visitor">visitor function</param>
         /// <param name="allocator">Allocator to use for intermediate values</param>

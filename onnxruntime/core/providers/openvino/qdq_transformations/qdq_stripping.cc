@@ -14,6 +14,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/qdq_transformations/qdq_stripping.h"
+#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -341,12 +342,13 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
   }
 }
 
+// this check is if QLinear node feed into the output of src graph which expects quantized output
 static bool CheckQFeedsIntoQuantizedOutput(const NodeUnit& node_unit,
                                            const std::unordered_map<std::string, std::string> graph_op_data_type) {
   auto op_of_quantized_layer = node_unit.Outputs();
   for (auto& itr : op_of_quantized_layer) {
     auto it = graph_op_data_type.find(itr.node_arg.Name());
-    if (it != graph_op_data_type.end() && it->second == "tensor(uint8)") {
+    if (it != graph_op_data_type.end() && (it->second == "tensor(uint8)" || it->second == "tensor(uint16)")) {
       return true;
     }
   }
@@ -369,6 +371,11 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
     graph_op_data_type[src_graph.GetNodeArg(ops->Name())->Name()] = ops->Type()->data();
   }
 
+  // check If any quantized node feeds into the src graph output
+  if (CheckQFeedsIntoQuantizedOutput(node_unit, std::move(graph_op_data_type))) {
+    return true;
+  }
+
   // If UInt16 Q, don't keep it
   if (GetQDQDataType(q_node) == DT_UINT16 || GetQDQDataType(q_node) == DT_INT16) {
     reason = SkipReason::Int16QDQ;
@@ -380,8 +387,6 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
     return IsNextTargetNodeOfQValid(q_node, &target_node, src_graph, {"Add", "Mul", "Div"}, true);
   } else if (op_type == "Add") {
     // Add keeps all Qs
-    return true;
-  } else if (CheckQFeedsIntoQuantizedOutput(node_unit, std::move(graph_op_data_type))) {
     return true;
   } else {
     // Keep Q of an unsupported Op only if the target that succeeds it is a supported Op in this list
@@ -444,8 +449,16 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
 static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxruntime::GraphViewer& src_graph,
                                   const NodeUnit& node_unit,
                                   std::set<std::string>& initializers_to_keep,
+                                  bool IsWeightSharingWithoutOVEPQDQStripping,
                                   const logging::Logger& /* logger */) {
   assert(node_unit.UnitType() == NodeUnit::Type::SingleNode);
+
+  // this is the scenario where WAI is enabled and ovep stripping is disabled
+  // do not strip off any Q or DQ node
+  if (IsWeightSharingWithoutOVEPQDQStripping) {
+    AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
+    return;
+  }
 
   if (HandleDoubleQDQ(dst_graph, src_graph, node_unit, initializers_to_keep)) return;
 
@@ -508,6 +521,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
                            const onnxruntime::GraphViewer& src_graph,
                            const NodeUnit& node_unit,
                            std::set<std::string>& initializers_to_keep,
+                           bool IsWeightSharingWithoutOVEPQDQStripping,
                            const logging::Logger& /* logger */) {
   assert(node_unit.UnitType() == NodeUnit::Type::QDQGroup);
 
@@ -526,7 +540,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
     SkipReason reason = SkipReason::Other;
     bool keep_dq = CheckDQRuleSet(node_unit, dq_node, src_graph, reason);
 
-    if (keep_dq) {
+    if (IsWeightSharingWithoutOVEPQDQStripping || keep_dq) {
       AddNode(initializers_to_keep, src_graph, dst_graph, *dq_node);
       dq_node_args_to_keep.insert({input_defs.at(0)->Name(),
                                    &dst_graph.GetOrCreateNodeArg(dq_node->OutputDefs().at(0)->Name(),
@@ -594,7 +608,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
       bool keep_q = CheckQRuleSet(node_unit, q_node, src_graph, reason);
 
-      if (keep_q) {
+      if (IsWeightSharingWithoutOVEPQDQStripping || keep_q) {
         AddNode(initializers_to_keep, src_graph, dst_graph, *q_node);
         // if keep_q, then output defs of the target node doesn't change
         output_args.push_back(&dst_graph.GetOrCreateNodeArg(target_node.OutputDefs().at(i)->Name(),
@@ -630,15 +644,11 @@ static void AddInitializerAsInput(onnxruntime::Graph& dst_graph,
                                   const onnxruntime::GraphViewer& src_graph,
                                   const std::string& initializer_name) {
   // Get the initializer from source graph
-  const auto& src_initializers = src_graph.GetAllInitializedTensors();
-  auto init_iter = src_initializers.find(initializer_name);
-
-  if (init_iter == src_initializers.end()) {
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  if (!src_graph.GetInitializedTensor(initializer_name, tensor_proto)) {
     // Initializer not found
     return;
   }
-
-  const auto* tensor_proto = init_iter->second;
 
   // Create TypeProto for the initializer
   auto type_proto = ONNX_NAMESPACE::TypeProto::Create();
@@ -671,6 +681,7 @@ static void AddInitializerAsInput(onnxruntime::Graph& dst_graph,
 Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
                                        const logging::Logger& logger,
                                        bool enable_ovep_weight_sharing,
+                                       bool enable_ovep_qdq_optimizer,
                                        /*out*/ std::unique_ptr<onnxruntime::Model>& model,
                                        /*out*/ sw& shared_weights) {
   // NOTE: This function is a re-implementation of GraphViewerToProto() in core/graph/graph_proto_serializer.cc
@@ -763,27 +774,33 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
       continue;  // Already handled this node unit
     }
 
+    bool IsWeightSharingWithoutOVEPQDQStripping = enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer;
+
     if (node_unit->UnitType() == NodeUnit::Type::SingleNode) {
-      AddStandaloneNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger);
+      AddStandaloneNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, IsWeightSharingWithoutOVEPQDQStripping, logger);
     } else {
-      AddQDQNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger);
+      AddQDQNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, IsWeightSharingWithoutOVEPQDQStripping, logger);
     }
 
     seen_node_units.insert(node_unit);
   }
 
   //  Copy initializers to dst graph.
+  const auto& initializers = src_graph.GetAllInitializedTensors();
 
-  std::unordered_set<std::string> current_scope_initializer_set;
-
-  auto& initializers = src_graph.GetAllInitializedTensors();
+  InlinedHashSet<std::string> current_scope_initializer_set;
+  current_scope_initializer_set.reserve(initializers.size());
 
   // Sort initializers to maintain consistency in model proto created across inference requests
-  std::vector<std::string> const_inits;
-  for (auto& it : initializers) {
-    const_inits.push_back(it.first);
+
+  InlinedVector<InitializedTensorSet::const_iterator> all_inits;
+  all_inits.reserve(initializers.size());
+  for (auto it = initializers.cbegin(), end = initializers.cend(); it != end; ++it) {
+    all_inits.push_back(it);
   }
-  std::sort(const_inits.begin(), const_inits.end());
+  std::sort(all_inits.begin(), all_inits.end(), [](const auto& i1, const auto& i2) {
+    return i1->first < i2->first;
+  });
 
   // initialize map for creating metadata for initilizers with external weights
   auto& metadata = shared_weights.metadata;
@@ -816,41 +833,53 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
     metadata.emplace(key, std::move(value));
   };
 
-  // Handle constant initializers
-  for (auto& it : const_inits) {
-    const auto& initializer_tensor = *initializers.at(it);
+  // Handle initializers
+  for (const auto& it : all_inits) {
+    const auto& [name, init] = *it;
+    const auto& initializer_tensor = *init;
+
+    std::unique_ptr<ONNX_NAMESPACE::TensorProto> init_with_data;
+    ORT_RETURN_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(initializer_tensor, init_with_data));
 
     // Check if the initializer has external data
-    if (initializer_tensor.has_data_location() &&
-        initializer_tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL &&
+    if (!init_with_data &&
+        utils::HasExternalData(initializer_tensor) &&
         enable_ovep_weight_sharing) {
       insert_metadata(initializer_tensor);
 
       // Add initializer with external data as input
-      AddInitializerAsInput(dst_graph, accumulated_inputs, src_graph, it);
-
+      AddInitializerAsInput(dst_graph, accumulated_inputs, src_graph, name);
     } else {
       // Add as an initialized tensor if it does not have external data
-      if (initializers_to_keep.count(it))
-        dst_graph.AddInitializedTensor(*(initializers.at(it)));
+      if (initializers_to_keep.count(name) > 0) {
+        if (init_with_data) {
+          dst_graph.AddInitializedTensor(*init_with_data);
+        } else {
+          dst_graph.AddInitializedTensor(initializer_tensor);
+        }
+      }
     }
 
-    current_scope_initializer_set.insert(it);
+    current_scope_initializer_set.insert(name);
   }
 
-  // Handle outer-scope constant initializers
+  // Handle outer-scope initializers
   for (auto& node_idx : src_graph.GetNodesInTopologicalOrder()) {
     const auto& node = src_graph.GetNode(node_idx);
     for (const auto& input : node->InputDefs()) {
-      if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {
+      if (current_scope_initializer_set.count(input->Name()) > 0) {
         continue;
       }
 
       if (src_graph.IsConstantInitializer(input->Name(), true)) {
         const auto& initializer_tensor = *src_graph.GetConstantInitializer(input->Name(), true);
+
+        std::unique_ptr<ONNX_NAMESPACE::TensorProto> init_with_data;
+        ORT_RETURN_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(initializer_tensor, init_with_data));
+
         // Check if the initializer has external data
-        if (initializer_tensor.has_data_location() &&
-            initializer_tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL &&
+        if (!init_with_data &&
+            utils::HasExternalData(initializer_tensor) &&
             enable_ovep_weight_sharing) {
           insert_metadata(initializer_tensor);
 
@@ -860,7 +889,11 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
         } else {
           // Add as an initialized tensor if it does not have external data
           if (initializers_to_keep.count(input->Name())) {
-            dst_graph.AddInitializedTensor(*(src_graph.GetConstantInitializer(input->Name(), true)));
+            if (init_with_data) {
+              dst_graph.AddInitializedTensor(*init_with_data);
+            } else {
+              dst_graph.AddInitializedTensor(initializer_tensor);
+            }
           }
         }
 

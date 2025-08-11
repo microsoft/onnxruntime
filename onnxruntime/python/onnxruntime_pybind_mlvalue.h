@@ -42,22 +42,27 @@ MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type);
 
 MLDataType OnnxTypeToOnnxRuntimeTensorType(int onnx_element_type);
 
-using MemCpyFunc = void (*)(void*, const void*, size_t);
-
+using MemCpyFunc = std::function<void(void*, const void*, size_t)>;
 using DataTransferAlternative = std::variant<const DataTransferManager*, MemCpyFunc>;
+
+// helpers to get allocator and IDataTransfer from Environment for plugin EP
+AllocatorPtr GetSharedAllocator(const OrtDevice& device);
+MemCpyFunc CreateDataTransferMemCpy(const OrtDevice& src_device, const OrtDevice& dst_device);
 
 void CpuToCpuMemCpy(void*, const void*, size_t);
 
-void CopyDataToTensor(const pybind11::array& py_array, int npy_type, Tensor& tensor, MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy);
+void CopyDataToTensor(const pybind11::array& py_array, int npy_type, Tensor& tensor,
+                      const MemCpyFunc& mem_cpy_to_device = CpuToCpuMemCpy);
 
 pybind11::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager,
-                                  const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions);
+                                  const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions);
 
-pybind11::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, const DataTransferManager* data_transfer_manager);
+pybind11::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value,
+                                             const DataTransferManager* data_transfer_manager);
 
 pybind11::object AddNonTensorAsPyObj(const OrtValue& val,
                                      const DataTransferManager* data_transfer_manager,
-                                     const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions);
+                                     const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions);
 
 OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device);
 
@@ -69,7 +74,7 @@ void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes);
 
 void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction();
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetCudaToHostMemCpyFunction(const OrtDevice&);
 
 bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
 
@@ -87,7 +92,19 @@ void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes);
 
 void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction();
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetDmlToHostMemCpyFunction(const OrtDevice&);
+
+#endif
+
+#ifdef USE_MIGRAPHX
+
+void CpuToMIGraphXMemCpy(void* dst, const void* src, size_t num_bytes);
+
+void MIGraphXToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
+
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetMIGraphXToHostMemCpyFunction(const OrtDevice&);
+
+AllocatorPtr GetMIGraphXAllocator(OrtDevice::DeviceId id);
 
 #endif
 
@@ -97,7 +114,7 @@ void CpuToCannMemCpy(void* dst, const void* src, size_t num_bytes);
 
 void CannToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCannToHostMemCpyFunction();
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetCannToHostMemCpyFunction();
 
 bool IsCannDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
 
@@ -115,17 +132,18 @@ void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes);
 
 void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction();
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetRocmToHostMemCpyFunction(const OrtDevice&);
 
 #endif
 
 void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc,
                           const std::string& name_input, const pybind11::object& value, OrtValue* p_mlvalue,
-                          bool accept_only_numpy_array = false, bool use_numpy_data_memory = true, MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy);
+                          bool accept_only_numpy_array = false, bool use_numpy_data_memory = true,
+                          const MemCpyFunc& mem_cpy_to_device = CpuToCpuMemCpy);
 
 pybind11::object GetPyObjFromTensor(const OrtValue& rtensor,
                                     const DataTransferManager* data_transfer_manager = nullptr,
-                                    const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions = nullptr);
+                                    const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions = nullptr);
 
 // The below two functions are used to convert OrtValue to numpy arrays
 

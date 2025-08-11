@@ -24,10 +24,12 @@ function(get_c_cxx_api_headers HEADERS_VAR)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_c_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_device_ep_metadata_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
   )
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -53,138 +55,148 @@ endfunction()
 
 get_c_cxx_api_headers(ONNXRUNTIME_PUBLIC_HEADERS)
 
-#If you want to verify if there is any extra line in symbols.txt, run
-# nm -C -g --defined libonnxruntime.so |grep -v '\sA\s' | cut -f 3 -d ' ' | sort
-# after build
+if(onnxruntime_BUILD_SHARED_LIB)
+  #If you want to verify if there is any extra line in symbols.txt, run
+  # nm -C -g --defined libonnxruntime.so |grep -v '\sA\s' | cut -f 3 -d ' ' | sort
+  # after build
 
-list(APPEND SYMBOL_FILES "${REPO_ROOT}/tools/ci_build/gen_def.py")
-foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
-  list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
-endforeach()
+  list(APPEND SYMBOL_FILES "${REPO_ROOT}/tools/ci_build/gen_def.py")
+  foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
+    list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
+  endforeach()
 
-if(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
-add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
-  COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
-    --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
-    --config ${ONNXRUNTIME_PROVIDER_NAMES} --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE}
-    --output_source ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
-  DEPENDS ${SYMBOL_FILES}
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+  if(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+  add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
+    COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
+      --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
+      --config ${ONNXRUNTIME_PROVIDER_NAMES} --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE}
+      --output_source ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
+    DEPENDS ${SYMBOL_FILES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
-add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
-endif()
-if(WIN32)
-  onnxruntime_add_shared_library(onnxruntime
-    ${SYMBOL_FILE}
-    "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc"
-    "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc"
-    "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc"
-  )
-elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
-  # apple framework requires the header file be part of the library
-  onnxruntime_add_shared_library(onnxruntime
-    ${ONNXRUNTIME_PUBLIC_HEADERS}
-    "${CMAKE_CURRENT_BINARY_DIR}/generated_source.c"
-  )
-
-  # create Info.plist for the framework and podspec for CocoaPods (optional)
-  set(MACOSX_FRAMEWORK_NAME "onnxruntime")
-  set(MACOSX_FRAMEWORK_IDENTIFIER "com.microsoft.onnxruntime")
-
-  # Setup weak frameworks for macOS/iOS. 'weak' as the CoreML or WebGPU EPs are optionally enabled.
-  if(onnxruntime_USE_COREML)
-    list(APPEND _weak_frameworks "\\\"CoreML\\\"")
+  add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
   endif()
+  if(WIN32)
+    onnxruntime_add_shared_library(onnxruntime
+      ${SYMBOL_FILE}
+      "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc"
+      "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc"
+      "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc"
+    )
+  elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
+    # apple framework requires the header file be part of the library
+    onnxruntime_add_shared_library(onnxruntime
+      ${ONNXRUNTIME_PUBLIC_HEADERS}
+      "${CMAKE_CURRENT_BINARY_DIR}/generated_source.c"
+    )
 
-  if(onnxruntime_USE_WEBGPU)
-    list(APPEND _weak_frameworks "\\\"QuartzCore\\\"")
-    list(APPEND _weak_frameworks "\\\"IOSurface\\\"")
-    list(APPEND _weak_frameworks "\\\"Metal\\\"")
-  endif()
+    # create Info.plist for the framework and podspec for CocoaPods (optional)
+    set(MACOSX_FRAMEWORK_NAME "onnxruntime")
+    set(MACOSX_FRAMEWORK_IDENTIFIER "com.microsoft.onnxruntime")
 
-  if (_weak_frameworks)
-    string(JOIN ", " APPLE_WEAK_FRAMEWORK ${_weak_frameworks})
-  endif()
-
-  set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
-  configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
-  configure_file(
-    ${REPO_ROOT}/tools/ci_build/github/apple/framework_info.json.template
-    ${CMAKE_CURRENT_BINARY_DIR}/framework_info.json)
-  set_target_properties(onnxruntime PROPERTIES
-    FRAMEWORK TRUE
-    FRAMEWORK_VERSION A
-    MACOSX_FRAMEWORK_INFO_PLIST ${INFO_PLIST_PATH}
-    # Note: The PUBLIC_HEADER and VERSION properties for the 'onnxruntime' target will be set later in this file.
-  )
-else()
-  if(CMAKE_SYSTEM_NAME MATCHES "AIX")
-    onnxruntime_add_shared_library(onnxruntime ${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc)
-  else()
-    onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
-  endif()
-  if(NOT APPLE)
-    include(CheckLinkerFlag)
-    check_linker_flag(CXX "LINKER:-rpath=\$ORIGIN" LINKER_SUPPORT_RPATH)
-    if(LINKER_SUPPORT_RPATH)
-      target_link_options(onnxruntime PRIVATE "LINKER:-rpath=\$ORIGIN")
+    # Setup weak frameworks for macOS/iOS. 'weak' as the CoreML or WebGPU EPs are optionally enabled.
+    if(onnxruntime_USE_COREML)
+      list(APPEND _weak_frameworks "\\\"CoreML\\\"")
     endif()
-  endif()
-endif()
 
-if(CMAKE_SYSTEM_NAME MATCHES "AIX")
-  add_dependencies(onnxruntime ${onnxruntime_EXTERNAL_DEPENDENCIES})
-else()
-  add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
-endif()
-target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
+    if(onnxruntime_USE_WEBGPU)
+      list(APPEND _weak_frameworks "\\\"QuartzCore\\\"")
+      list(APPEND _weak_frameworks "\\\"IOSurface\\\"")
+      list(APPEND _weak_frameworks "\\\"Metal\\\"")
+    endif()
 
+    if (_weak_frameworks)
+      string(JOIN ", " APPLE_WEAK_FRAMEWORK ${_weak_frameworks})
+    endif()
 
-target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
-
-if(UNIX)
-  if (APPLE)
-    target_link_options(onnxruntime PRIVATE "LINKER:-dead_strip")
-  elseif(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
-    target_link_options(onnxruntime PRIVATE  "LINKER:--version-script=${SYMBOL_FILE}" "LINKER:--no-undefined" "LINKER:--gc-sections")
-  endif()
-else()
-  target_link_options(onnxruntime PRIVATE  "-DEF:${SYMBOL_FILE}")
-endif()
-
-
-if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
-    target_link_options(onnxruntime PRIVATE  "LINKER:-exported_symbols_list,${SYMBOL_FILE}")
-    if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
-      set_target_properties(onnxruntime PROPERTIES
-        MACOSX_RPATH TRUE
-        INSTALL_RPATH_USE_LINK_PATH FALSE
-        BUILD_WITH_INSTALL_NAME_DIR TRUE
-        INSTALL_NAME_DIR @rpath)
+    set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
+    configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
+    configure_file(
+      ${REPO_ROOT}/tools/ci_build/github/apple/framework_info.json.template
+      ${CMAKE_CURRENT_BINARY_DIR}/framework_info.json)
+    set_target_properties(onnxruntime PROPERTIES
+      FRAMEWORK TRUE
+      FRAMEWORK_VERSION A
+      MACOSX_FRAMEWORK_INFO_PLIST ${INFO_PLIST_PATH}
+      # Note: The PUBLIC_HEADER and VERSION properties for the 'onnxruntime' target will be set later in this file.
+    )
+  else()
+    if(CMAKE_SYSTEM_NAME MATCHES "AIX")
+      onnxruntime_add_shared_library(onnxruntime ${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc)
     else()
-        set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
+      onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
     endif()
-endif()
+    if(NOT APPLE)
+      include(CheckLinkerFlag)
+      check_linker_flag(CXX "LINKER:-rpath=\$ORIGIN" LINKER_SUPPORT_RPATH)
+      if(LINKER_SUPPORT_RPATH)
+        target_link_options(onnxruntime PRIVATE "LINKER:-rpath=\$ORIGIN")
+      endif()
+    endif()
+  endif()
 
-
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_MINIMAL_BUILD)
-  # target onnxruntime is a shared library, the dummy __cxa_demangle is only attach to it to avoid
-  # affecting downstream ort library users with the behavior of dummy __cxa_demangle. So the dummy
-  # __cxa_demangle must not expose to libonnxruntime_common.a. It works as when the linker is
-  # creating the DSO, our dummy __cxa_demangle always comes before libc++abi.a so the
-  # __cxa_demangle in libc++abi.a is discarded, thus, huge binary size reduction.
-  target_sources(onnxruntime PRIVATE "${ONNXRUNTIME_ROOT}/core/platform/android/cxa_demangle.cc")
-  target_compile_definitions(onnxruntime PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
-endif()
-
-# strip binary on Android, or for a minimal build on Unix
-if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR (onnxruntime_MINIMAL_BUILD AND UNIX))
-  if (onnxruntime_MINIMAL_BUILD AND ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
-    # don't strip
+  if(CMAKE_SYSTEM_NAME MATCHES "AIX")
+    add_dependencies(onnxruntime ${onnxruntime_EXTERNAL_DEPENDENCIES})
   else()
-    set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_RELEASE -s)
-    set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_MINSIZEREL -s)
+    add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  endif()
+  target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
+
+
+  target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
+
+  if(UNIX)
+    if (APPLE)
+      target_link_options(onnxruntime PRIVATE "LINKER:-dead_strip")
+    elseif(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+      target_link_options(onnxruntime PRIVATE  "LINKER:--version-script=${SYMBOL_FILE}" "LINKER:--no-undefined" "LINKER:--gc-sections" "LINKER:-z,noexecstack")
+    endif()
+  else()
+    target_link_options(onnxruntime PRIVATE  "-DEF:${SYMBOL_FILE}")
+  endif()
+
+
+  if (APPLE)
+    target_link_options(onnxruntime PRIVATE  "LINKER:-exported_symbols_list,${SYMBOL_FILE}")
+    set_target_properties(onnxruntime PROPERTIES
+      MACOSX_RPATH TRUE
+      BUILD_WITH_INSTALL_RPATH TRUE
+      INSTALL_RPATH "@loader_path"
+      BUILD_WITH_INSTALL_NAME_DIR TRUE
+      INSTALL_NAME_DIR @rpath)
+  endif()
+
+
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_MINIMAL_BUILD)
+    # target onnxruntime is a shared library, the dummy __cxa_demangle is only attach to it to avoid
+    # affecting downstream ort library users with the behavior of dummy __cxa_demangle. So the dummy
+    # __cxa_demangle must not expose to libonnxruntime_common.a. It works as when the linker is
+    # creating the DSO, our dummy __cxa_demangle always comes before libc++abi.a so the
+    # __cxa_demangle in libc++abi.a is discarded, thus, huge binary size reduction.
+    target_sources(onnxruntime PRIVATE "${ONNXRUNTIME_ROOT}/core/platform/android/cxa_demangle.cc")
+    target_compile_definitions(onnxruntime PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
+  endif()
+
+  # strip binary on Android, or for a minimal build on Unix
+  if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR (onnxruntime_MINIMAL_BUILD AND UNIX))
+    if (onnxruntime_MINIMAL_BUILD AND ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
+      # don't strip
+    else()
+      set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_RELEASE -s)
+      set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_MINSIZEREL -s)
+    endif()
+  endif()
+
+  # we need to copy C/C++ API headers to be packed into Android AAR package
+  if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
+    set(ANDROID_HEADERS_DIR ${CMAKE_CURRENT_BINARY_DIR}/android/headers)
+    file(MAKE_DIRECTORY ${ANDROID_HEADERS_DIR})
+    # copy the header files one by one
+    foreach(h_ ${ONNXRUNTIME_PUBLIC_HEADERS})
+      get_filename_component(HEADER_NAME_ ${h_} NAME)
+      add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${h_} ${ANDROID_HEADERS_DIR}/${HEADER_NAME_})
+    endforeach()
   endif()
 endif()
 
@@ -197,6 +209,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
     get_filename_component(HEADER_NAME_ ${h_} NAME)
     add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${h_} ${ANDROID_HEADERS_DIR}/${HEADER_NAME_})
   endforeach()
+endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+  add_library(onnxruntime INTERFACE)
 endif()
 
 set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
@@ -251,10 +267,17 @@ endif()
 
 # If you are linking a new library, please add it to the list onnxruntime_INTERNAL_LIBRARIES or onnxruntime_EXTERNAL_LIBRARIES,
 # Please do not add a library directly to the target_link_libraries command
-target_link_libraries(onnxruntime PRIVATE
+if (onnxruntime_BUILD_SHARED_LIB)
+  target_link_libraries(onnxruntime PRIVATE
+      ${onnxruntime_INTERNAL_LIBRARIES}
+      ${onnxruntime_EXTERNAL_LIBRARIES}
+  )
+else()
+  target_link_libraries(onnxruntime INTERFACE
     ${onnxruntime_INTERNAL_LIBRARIES}
     ${onnxruntime_EXTERNAL_LIBRARIES}
-)
+  )
+endif()
 
 if(WIN32)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})

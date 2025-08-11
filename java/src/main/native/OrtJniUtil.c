@@ -47,6 +47,8 @@ GraphOptimizationLevel convertOptimizationLevel(jint level) {
             return ORT_ENABLE_BASIC;
         case 2:
             return ORT_ENABLE_EXTENDED;
+        case 3:
+            return ORT_ENABLE_LAYOUT;
         case 99:
             return ORT_ENABLE_ALL;
         default:
@@ -1049,6 +1051,12 @@ jint convertErrorCode(OrtErrorCode code) {
             return 10;
         case ORT_EP_FAIL:
             return 11;
+        case ORT_MODEL_LOAD_CANCELED:
+            return 12;
+        case ORT_MODEL_REQUIRES_COMPILATION:
+            return 13;
+        case ORT_NOT_FOUND:
+            return 14;
         default:
             return -1; // Unknown error code
     }

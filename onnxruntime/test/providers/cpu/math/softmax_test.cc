@@ -49,6 +49,23 @@ TEST(SoftmaxOperator, Simple) {
   RunTest(x_vals, expected_vals, dimensions);
 }
 
+#ifdef USE_WEBGPU
+TEST(SoftmaxOperator, webgpu_nan) {
+  OpTester test("Softmax", 13);  // axis default is -1
+
+  std::vector<float> x_vals = {-INFINITY, -INFINITY, -INFINITY};
+  std::vector<float> expected_result = {0.0f, 0.0f, 0.0f};
+  std::vector<int64_t> dimensions = {1, 3};
+
+  test.AddInput<float>("X", dimensions, x_vals);
+  test.AddOutput<float>("Y", dimensions, expected_result);
+
+  // explicitly disable for EPs that do not handle NaN
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCpuExecutionProvider, kCoreMLExecutionProvider, kDmlExecutionProvider});
+}
+#endif
+
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_XNNPACK)
 TEST(SoftmaxOperator, Simple_fp16) {
 #ifdef USE_CUDA

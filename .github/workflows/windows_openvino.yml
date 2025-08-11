@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -54,12 +54,12 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Download OpenVINO Toolkit v2025.0.0
+      - name: Download OpenVINO Toolkit v2025.2.0
         env:
-          OpenVINOVersion: 2025.0.0
+          OpenVINOVersion: 2025.2.0
         shell: pwsh
         run: |
-          $Url = "https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.0/windows/openvino_toolkit_windows_2025.0.0.17942.1f68be9f594_x86_64.zip"
+          $Url ="https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.2/windows/openvino_toolkit_windows_2025.2.0.19140.c01cd93e24d_x86_64.zip"
           $OutputPath = "$env:RUNNER_TEMP\openvino.zip"
           $ExtractPath = "$env:RUNNER_TEMP\openvino-v$env:OpenVINOVersion"
           $TempExtractPath = "$env:RUNNER_TEMP\openvino_temp"
@@ -102,7 +102,7 @@ jobs:
         shell: pwsh
         # Use $GITHUB_ENV to set the variable for subsequent steps
         run: |
-          $openVinoRootDir = Join-Path $env:RUNNER_TEMP "openvino-v2025.0.0"
+          $openVinoRootDir = Join-Path $env:RUNNER_TEMP "openvino-v2025.2.0"
           echo "OpenVINORootDir=$openVinoRootDir" >> $env:GITHUB_ENV
 
       - name: Print OpenVINORootDir after downloading OpenVINO

@@ -67,6 +67,10 @@ static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enab
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
+// Enable or disable Cast chain elimination in graph optimization. "0": disable; "1": enable. The default is "0".
+// CastElimination with chain elimination has side effects which may change the inference results. It is disabled by default due to this.
+static const char* const kOrtSessionOptionsEnableCastChainElimination = "optimization.enable_cast_chain_elimination";
+
 // This setting controls whether to enable AheadOfTime function inlining.
 // AOT function inlining examines the graph and attempts to inline as many locally defined functions in the model
 // as possible with the help of enabled execution providers.
@@ -107,13 +111,46 @@ static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimiz
 // Default is an empty string which means no optimizers are disabled.
 static const char* const kOrtSessionOptionsDisableSpecifiedOptimizers = "optimization.disable_specified_optimizers";
 
+// It controls whether to run graph optimizations in loop or not.
+//
+// "0": disable. Graph Optimization Loop is disabled.
+// ```
+// Level 2 --> Level 3 --> InsertCastTransforms --> Level 4
+//   ^                                                 |
+//   |                 "No Loop"                       |
+//   |                                                 |
+//   X                xxxxxxxxxxx                      X
+// ```
+// "1": enable. Graph Optimization Loop is enabled, such that, if optimizations at Level 4 are applied then
+// the loop will check for any other valid optimization that can happen.
+// ```
+// Level 2 --> Level 3 --> InsertCastTransforms --> Level 4
+//   ^                                                 |
+//   |        "Loop only depending on Level 4"         |
+//   |                                                 |
+//   ---------------------------------------------------
+// ```
+// "2": enable. Graph Optimization Loop is enabled, such that, if optimizations at Level 2 or above are applied then
+// The loop will check for any other valid optimization that can happen.
+// ```
+// Level 2 --> Level 3 --> InsertCastTransforms --> Level 4
+//   ^                                                 |
+//   |                    "Loop"                       |
+//   |                                                 |
+//   ---------------------------------------------------
+// ```
+// Default value is set to "1".
+static const char* const kOrtSessionOptionsGraphOptimizationsLoopLevel = "session.graph_optimizations_loop_level";
+
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
 // Using device allocators means the memory allocation is made using malloc/new.
 static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
 
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
 // "0": thread will block if found no job to run
-// "1": default, thread will spin a number of times before blocking
+// "1": thread will spin a number of times before blocking
+// The default is "0" when ORT is built with "ORT_CLIENT_PACKAGE_BUILD" and "1" otherwise.
+// Thread spinning is disabled by default for client/on-device workloads to reduce cpu utilization and improve power efficiency.
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
 
@@ -321,8 +358,13 @@ static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_context
 // Stop to share EP related resources across sessions from then on
 static const char* const kOrtSessionOptionStopShareEpContexts = "ep.stop_share_ep_contexts";
 
-// Use this config when dumping EP context model with an external initializers file
-// All initializers will be inside the external data file if specified, otherwise all in Onnx file
+// Used only for context model generation.
+// This configuration is used when some nodes are partitioned on the CPU EP and those nodes have external initializers.
+// When generating the EP context model, the new model should not rely on the old external data file used by the source ONNX model.
+// Use this setting when dumping the EP context model with an external initializers file.
+// If specified, all initializers will be placed inside the external data file.
+// Otherwise, all initializers will be embedded inside the generated ONNX file.
+// By default, this option is not set, meaning all initializers will be included within the ONNX file.
 static const char* const kOrtSessionOptionsEpContextModelExternalInitializersFileName =
     "ep.context_model_external_initializers_file_name";
 
@@ -343,3 +385,19 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "sessio
 // “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
 // “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
 static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";
+
+// Disables model compilation during session initialization.
+//
+// If this option is set to "1", inference session creation will fail with error code ORT_MODEL_REQUIRES_COMPILATION
+// if compilation is required to run the model on any Execution Provider added to the session.
+// Only the following kinds of models are valid when this option is set to "1":
+//   - Pre-compiled models that have EPContext nodes for the compiling Execution Providers in the session.
+//   - Non-compiled models that run only on non-compiling Execution Providers, like CPU EP.
+//
+// See \href https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for details about
+// compiled models with EPContext nodes.
+//
+// Option values:
+// - "0": EP compile is not disabled. [DEFAULT]
+// - "1": EP compile is disabled.
+static const char* const kOrtSessionOptionsDisableModelCompile = "session.disable_model_compile";

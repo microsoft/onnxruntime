@@ -2,7 +2,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.32.0.250228
+  default: 2.37.0.250724
 
 - name: build_config
   displayName: Build Configuration
@@ -41,10 +41,32 @@ extends:
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
+    featureFlags:
+      binskimScanAllExtensions: true
     sdl:
+      binskim:
+        enabled: true
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
         os: windows
+      componentgovernance:
+        ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
+      spotBugs:
+        enabled: false
+        justificationForDisabling: "Getting ##[error]1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
+      codeql:
+        compiled:
+          enabled: false
+          justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
+      tsa:
+        enabled: true
+      codeSignValidation:
+        enabled: true
+        break: true
+        additionalTargetsGlobPattern: -|**\QnnCpu.dll;-|**\QnnGpu.dll;-|**\QnnHtp*.dll;-|**\QnnSystem.dll
+      policheck:
+        enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
     stages:
 
     - template: templates/qnn-ep-win.yml
@@ -53,34 +75,6 @@ extends:
         QnnSdk: ${{ parameters.QnnSdk }}
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         DoEsrp: ${{ parameters.DoEsrp }}
-        ArtifactName: 'drop-nuget-qnn-x64'
-        StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
+        ArtifactName: 'drop-nuget-qnn-arm64x'
+        StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64x'
         build_config: ${{ parameters.build_config }}
-
-    - template: templates/qnn-ep-win.yml
-      parameters:
-        qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-        QnnSdk: ${{ parameters.QnnSdk }}
-        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-        DoEsrp: ${{ parameters.DoEsrp }}
-        ArtifactName: 'drop-nuget-qnn-arm64'
-        buildParameter: '--arm64'
-        buildPlatform: 'ARM64'
-        buildArch: 'ARM64'
-        StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
-        build_config: ${{ parameters.build_config }}
-
-    - template: stages/nuget-qnn-packaging-stage.yml
-      parameters:
-        DoEsrp: ${{ parameters.DoEsrp }}
-
-    - template: templates/publish-nuget-steps.yml
-      parameters:
-        download_artifacts_steps:
-        - template: templates/flex-downloadPipelineArtifact.yml
-          parameters:
-            StepName: 'Download Pipeline Artifact - Signed NuGet Qnn Package'
-            ArtifactName: 'drop-signed-nuget-qnn'
-            targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-            SpecificArtifact: ${{ parameters.specificArtifact }}
-            BuildId: ${{ parameters.BuildId }}

@@ -12,17 +12,18 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
+#TODO: enable  --build_nodejs
 jobs:
-  Windows_GPU_TensorRT_CI_Pipeline:
+  build:
     name: Windows GPU TensorRT CI Pipeline
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetch all history for all tags and branches
+          fetch-depth: 0
           submodules: 'none'
 
       - uses: actions/setup-python@v5
@@ -36,29 +37,20 @@ jobs:
           architecture: x64
 
       - name: Install python modules
-        run: python -m pip install -r ${{ github.workspace }}\tools\ci_build\github\windows\python\requirements.txt
+        run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
+        working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - name: Download Primary CUDA SDK v12.2
-        run: 'azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2" ${{ runner.temp }}'
+      - name: Download CUDA SDK v12.2
+        working-directory: ${{ runner.temp }}
+        run: |
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2" .
+          dir
         shell: pwsh
-        env:
-          AZCOPY_AUTO_LOGIN_TYPE: MSI
-          AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
 
-      - name: Download TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8
-        run: 'azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8" ${{ runner.temp }}'
+      - name: Download TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8
+        run: 'azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8" ${{ runner.temp }}'
         shell: pwsh
-        env:
-          AZCOPY_AUTO_LOGIN_TYPE: MSI
-          AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
-
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Add CUDA to PATH
         shell: powershell
@@ -67,35 +59,200 @@ jobs:
           Write-Host "CUDA Path: $env:RUNNER_TEMP\v12.2\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.2\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.2\extras\CUPTI\lib64"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8\lib"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8\lib"
 
-      - name: Generate sln
-        working-directory: ${{ runner.temp }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          architecture: x64
+
+      - uses: actions/cache@v4
+        id: onnx-node-tests-cache
+        with:
+          path: ${{ github.workspace }}/js/test/
+          key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
+
+      - name: API Documentation Check and generate
         run: |
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib             --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          set ORT_DOXY_SRC=${{ github.workspace }}
+          set ORT_DOXY_OUT=${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
+          mkdir %ORT_DOXY_SRC%
+          mkdir %ORT_DOXY_OUT%
+          "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
+        working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - name: Build
-        working-directory: ${{ runner.temp }}
-        run: |
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib             --build --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+      - uses: actions/setup-dotnet@v4
+        env:
+          PROCESSOR_ARCHITECTURE: x64
+        with:
+          dotnet-version: '8.x'
+
+      - name: Use Nuget 6.x
+        uses: nuget/setup-nuget@v2
+        with:
+          nuget-version: '6.x'
+
+      - name: NuGet restore
+        run: nuget restore ${{ github.workspace }}\packages.config -ConfigFile ${{ github.workspace }}\NuGet.config -PackagesDirectory ${{ runner.temp }}\build\RelWithDebInfo
         shell: cmd
 
-      - name: Add build dir to PATH
+      - name: Set OnnxRuntimeBuildDirectory
+        shell: pwsh
+        run: |
+          $buildDir = Join-Path ${{ runner.temp }} "build"
+          echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
+
+      - name: Build and Clean Binaries
+        working-directory: ${{ runner.temp }}
+        run: |
+          npm install -g typescript
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+          # Execute the build process
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib --build --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+          # Clean up the output directory before uploading artifacts
+          $outputDir = "${{ runner.temp }}\build\RelWithDebInfo"
+          Write-Host "Cleaning up files from $outputDir..."
+
+          Remove-Item -Path "$outputDir\onnxruntime" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\pybind11" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\models" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\vcpkg_installed" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\_deps" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\CMakeCache.txt" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\CMakeFiles" -Recurse -Force -ErrorAction SilentlyContinue
+          # Remove intermediate object files as in the original script
+          Remove-Item -Path $outputDir -Include "*.obj" -Recurse
+        shell: pwsh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: ${{ runner.temp }}\build
+    env:
+      OrtPackageId: Microsoft.ML.OnnxRuntime.Gpu
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+      DocUpdateNeeded: false
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
+      AZCOPY_AUTO_LOGIN_TYPE: MSI
+      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+
+  test:
+    name: Windows GPU TensorRT CI Pipeline Test Job
+    needs: build
+    timeout-minutes: 300
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: 'none'
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: ${{ runner.temp }}\build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install python modules
+        run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
+        working-directory: ${{ github.workspace }}
+        shell: cmd
+
+      - name: Download CUDA SDK v12.2
+        working-directory: ${{ runner.temp }}
+        run: |
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2" .
+          dir
+        shell: pwsh
+
+      - name: Download TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8
+        run: 'azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8" ${{ runner.temp }}'
+        shell: pwsh
+
+      - name: Add CUDA to PATH
         shell: powershell
         run: |
           Write-Host "Adding CUDA to PATH"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\build\RelWithDebInfo\RelWithDebInfo"
+          Write-Host "CUDA Path: $env:RUNNER_TEMP\v12.2\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.2\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.2\extras\CUPTI\lib64"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8\lib"
+
+      - name: Set OnnxRuntimeBuildDirectory
+        shell: pwsh
+        run: |
+          $buildDir = Join-Path ${{ runner.temp }} "build"
+          echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
 
       - name: Install ONNX Runtime Wheel
         uses: ./.github/actions/install-onnxruntime-wheel
         with:
           whl-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo\dist
 
-      - name: Run tests
+      - name: Run Tests
         working-directory: ${{ runner.temp }}
         run: |
-          mklink  /D /J ${{ github.workspace }}\RelWithDebInfo\models ${{ github.workspace }}\models
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          npm install -g typescript
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+          
+          python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py   "${{ runner.temp }}\build\RelWithDebInfo\CTestTestfile.cmake" "${{ runner.temp }}\build\RelWithDebInfo"
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+          
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+        shell: pwsh
+
+      - name: Validate C# native delegates
+        run: python tools\ValidateNativeDelegateAttributes.py
+        working-directory: ${{ github.workspace }}\csharp
         shell: cmd
-        timeout-minutes: 180
+    env:
+      OrtPackageId: Microsoft.ML.OnnxRuntime.Gpu
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+      DocUpdateNeeded: false
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
+      AZCOPY_AUTO_LOGIN_TYPE: MSI
+      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4

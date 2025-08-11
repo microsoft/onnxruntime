@@ -13,7 +13,6 @@ class DummyArena : public IAllocator {
       : IAllocator(OrtMemoryInfo(resource_allocator->Info().name,
                                  OrtAllocatorType::OrtDeviceAllocator,
                                  resource_allocator->Info().device,
-                                 resource_allocator->Info().id,
                                  resource_allocator->Info().mem_type)),
         allocator_(std::move(resource_allocator)) {
   }
@@ -50,7 +49,7 @@ static Status RegisterAllocator(std::unordered_map<std::string, AllocatorPtr>& m
                                 std::unique_ptr<IAllocator> allocator, size_t /*memory_limit*/,
                                 bool use_arena) {
   auto& info = allocator->Info();
-  auto allocator_id = GetAllocatorId(info.name, info.id, use_arena);
+  auto allocator_id = GetAllocatorId(info.name, info.device.Id(), use_arena);
 
   auto status = Status::OK();
   if (map.find(allocator_id) != map.end())

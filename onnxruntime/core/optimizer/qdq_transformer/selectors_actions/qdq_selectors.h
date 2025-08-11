@@ -182,6 +182,37 @@ class PadNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 };
 
+// one ore more DQ nodes for each input -> node -> Q
+class EinsumNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit EinsumNodeGroupSelector(bool allow_int8 = true, bool allow_16bit = true, bool allow_4bit = true)
+      : allow_int8_(allow_int8), allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer,
+             const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+  bool allow_int8_;
+  bool allow_16bit_;
+  bool allow_4bit_;
+};
+
+class ReciprocalNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit ReciprocalNodeGroupSelector(bool allow_int8 = true, bool allow_16bit = true, bool allow_4bit = true)
+      : allow_int8_(allow_int8), allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer,
+             const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+  bool allow_int8_;
+  bool allow_16bit_;
+  bool allow_4bit_;
+};
+
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 // The lack of a trailing Q isn't really a QDQ node group, so we default support for that to off.
 class MatMulNodeGroupSelector : public NodeGroupSelector {
@@ -265,6 +296,23 @@ class LogicalComparisonNodeGroupSelector : public NodeGroupSelector {
 // Zero point and scale are constant scalars and must match
 class TopKNodeGroupSelector : public NodeGroupSelector {
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
+// one DQ node for first input -> node -> Q
+class CumSumNodeGroupSelector : public NodeGroupSelector {
+  bool Check(const GraphViewer& graph_viewer,
+             const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
+// Input: DQ nodes for Data, and Update
+// Output: Q node for output
+class ScatterElementsNodeGroupSelector : public NodeGroupSelector {
+  bool Check(const GraphViewer& graph_viewer,
+             const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 };

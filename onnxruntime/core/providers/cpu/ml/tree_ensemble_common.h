@@ -13,6 +13,24 @@ namespace onnxruntime {
 namespace ml {
 namespace detail {
 
+// This class checks if a value is in a set of categories. It is used to handle categorical features.
+// It internally uses an unordered_set for O(1) average time complexity lookups.
+// TCat represents the type of values stored in the set (typically int32_t)
+// TInput represents the type of input values to test (can be converted to TCat)
+// This implementation could be optimized for different kinds of integer sets,
+// e.g., using a bitmap representation for small sets of consecutive integers.
+template <typename TCat, typename TInput>
+class TreeCategorySet {
+ public:
+  TreeCategorySet(const std::vector<TCat>& values) : set_(values.begin(), values.end()) {}
+  inline bool isIn(const TInput& val) const {
+    return set_.find(static_cast<TCat>(val)) != set_.end();
+  }
+
+ private:
+  std::unordered_set<TCat> set_;
+};
+
 /**
  * These attributes are the kernel attributes. They are different from the onnx operator attributes
  * to improve the computation efficiency. The initialization consists in moving the onnx attributes
@@ -24,6 +42,21 @@ class TreeEnsembleCommonAttributes {
   virtual Status Init(const OpKernelInfo&) = 0;
   virtual Status compute(OpKernelContext*, const Tensor*, Tensor*, Tensor*) const = 0;
   virtual ~TreeEnsembleCommonAttributes() {}
+
+  // Default constructor with reasonable defaults for all members
+  TreeEnsembleCommonAttributes()
+      : n_targets_or_classes_(1),
+        post_transform_(POST_EVAL_TRANSFORM::NONE),
+        aggregate_function_(AGGREGATE_FUNCTION::SUM),
+        n_nodes_(0),
+        max_tree_depth_(1),
+        max_feature_id_(0),
+        n_trees_(0),
+        same_mode_(true),
+        has_missing_tracks_(false),
+        parallel_tree_(80),
+        parallel_tree_N_(128),
+        parallel_N_(50) {}
 
  protected:
   int64_t n_targets_or_classes_;
@@ -53,6 +86,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   // `ThresholdType` is used as well for output type (double as well for lightgbm) and not `OutputType`.
   std::vector<SparseValue<ThresholdType>> weights_;
   std::vector<TreeNodeElement<ThresholdType>*> roots_;
+  std::vector<TreeCategorySet<int32_t, InputType>> category_sets_;
 
  public:
   TreeEnsembleCommon() {}
@@ -71,6 +105,10 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
 
   template <typename AGG>
   void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Y, Tensor* label, const AGG& agg) const;
+
+  inline const TreeCategorySet<int32_t, InputType>& GetCategorySet(const ThresholdType& set_id) const {
+    return category_sets_[static_cast<size_t>(set_id)];
+  }
 
  private:
   bool CheckIfSubtreesAreEqual(const size_t left_id, const size_t right_id, const int64_t tree_id, const InlinedVector<NODE_MODE_ONNX>& cmodes,
@@ -147,14 +185,19 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   // Additional members
   size_t limit;
-  uint32_t i;
+  uint32_t i;  // this variable is used in different loops with different types for the upper bound
   InlinedVector<NODE_MODE_ONNX> cmodes;
   cmodes.reserve(attributes.nodes_modes.size());
   same_mode_ = true;
+  bool check_same_mode_again = false;
   int fpos = -1;
   for (i = 0, limit = attributes.nodes_modes.size(); i < limit; ++i) {
     cmodes.push_back(attributes.nodes_modes[i]);
     if (cmodes[i] == NODE_MODE_ONNX::LEAF) continue;
+    // The struture may be compressed if it contains only BRANCH_EQ
+    // and if ai.onnx.ml == 3, it changes the branch mode into BRANCH_MEMBER.
+    // same_mode_ needs to be recomputed again.
+    check_same_mode_again |= cmodes[i] == NODE_MODE_ONNX::BRANCH_EQ;
     if (fpos == -1) {
       fpos = static_cast<int>(i);
       continue;
@@ -288,6 +331,49 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     }
   }
 
+  if (same_mode_ && check_same_mode_again) {
+    // A node BRANCH_EQ may have been changed into BRANCH_MEMBER
+    // to compress the structure. same_mode_ needs to evaluated again.
+    same_mode_ = true;
+    auto mode = nodes_[0].mode();
+    for (auto& node : nodes_) {
+      if (node.is_not_leaf()) {
+        if (node.mode() != mode) {
+          same_mode_ = false;
+          break;
+        }
+      }
+    }
+  }
+
+  // Handling bigsets
+  if (!attributes.bigsets.empty()) {
+    category_sets_.reserve(attributes.bigsets.size());
+    for (auto bigset : attributes.bigsets) {
+      // We check every value in the bigset is a valid value (an integer).
+      std::vector<ThresholdType> wrong_values;
+      std::vector<int32_t> bigset_int32;
+      bigset_int32.reserve(bigset.size());
+      for (auto value : bigset) {
+        if (static_cast<ThresholdType>(static_cast<int32_t>(value)) != value) {
+          wrong_values.push_back(value);
+        }
+        bigset_int32.push_back(static_cast<int32_t>(value));
+      }
+      ORT_ENFORCE(
+          wrong_values.empty(),
+          "MemberShip values is only implemented for integers, ", wrong_values.size(), "values cannot be cast into int32_t.");
+      TreeCategorySet<int32_t, InputType> catset(bigset_int32);
+      category_sets_.emplace_back(std::move(catset));
+    }
+  }
+
+#if defined(_TREE_DEBUG)
+  std::cout << "TreeEnsemble:same_mode_=" << (same_mode_ ? 1 : 0) << "\n";
+  for (auto& node : nodes_) {
+    std::cout << node.str() << "\n";
+  }
+#endif
   return Status::OK();
 }
 
@@ -768,8 +854,28 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
             root = SetMembershipCheck(val, root->value_or_unique_weight) ? root->truenode_or_weight.ptr : root + 1;
           }
         }
+        break;
+      case NODE_MODE_ORT::BRANCH_MEMBER_BIGSET:
+        // The threshold or node value (stored in value_or_unique_weight) in an index of a set in `bigsets`.
+        // val is the feature value, method isIn checks whether the value is in the set.
+        if (has_missing_tracks_) {
+          while (root->is_not_leaf()) {
+            val = x_data[root->feature_id];
+            root = (GetCategorySet(root->value_or_unique_weight).isIn(val) || (root->is_missing_track_true() && _isnan_(val)))
+                       ? root->truenode_or_weight.ptr
+                       : root + 1;
+          }
+        } else {
+          while (root->is_not_leaf()) {
+            val = x_data[root->feature_id];
+            root = GetCategorySet(root->value_or_unique_weight).isIn(val) ? root->truenode_or_weight.ptr : root + 1;
+          }
+        }
+        break;
       case NODE_MODE_ORT::LEAF:
         break;
+      default:
+        ORT_THROW("Unknown node mode in TreeEnsembleCommon::ProcessTreeNodeLeave: ", static_cast<int>(root->mode()));
     }
   } else {  // Different rules to compare to node thresholds.
     ThresholdType threshold;
@@ -806,8 +912,17 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
                      ? root->truenode_or_weight.ptr
                      : root + 1;
           break;
+        case NODE_MODE_ORT::BRANCH_MEMBER_BIGSET:
+          // The threshold or node value (stored in value_or_unique_weight) in an index of a set in `bigsets`.
+          // val is the feature value, method isIn checks whether the value is in the set.
+          root = (GetCategorySet(root->value_or_unique_weight).isIn(val) || (root->is_missing_track_true() && _isnan_(val)))
+                     ? root->truenode_or_weight.ptr
+                     : root + 1;
+          break;
         case NODE_MODE_ORT::LEAF:
           return root;
+        default:
+          ORT_THROW("Unknown node mode in TreeEnsembleCommon::ProcessTreeNodeLeave: ", static_cast<int>(root->mode()));
       }
     }
   }

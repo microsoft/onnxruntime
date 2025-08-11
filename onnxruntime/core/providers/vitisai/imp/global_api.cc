@@ -42,6 +42,35 @@ using namespace onnxruntime;
 #define LIBRARY_EXTENSION ".so"
 #endif
 
+/// @brief Gets the path of directory containing the dynamic library that contains the address.
+/// @param address An address of a function or variable in the dynamic library.
+/// @return The path of the directory containing the dynamic library, or an empty string if the path cannot be determined.
+static onnxruntime::PathString GetDynamicLibraryLocationByAddress(const void* address) {
+#ifdef _WIN32
+  HMODULE moduleHandle;
+  if (!::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(address), &moduleHandle)) {
+    return {};
+  }
+  std::wstring buffer;
+  for (std::uint32_t size{70}; size < 4096; size *= 2) {
+    buffer.resize(size, L'\0');
+    const std::uint32_t requiredSize = ::GetModuleFileNameW(moduleHandle, buffer.data(), size);
+    if (requiredSize == 0) {
+      break;
+    }
+    if (requiredSize == size) {
+      continue;
+    }
+    buffer.resize(requiredSize);
+    return {std::move(buffer)};
+  }
+#else
+  std::ignore = address;
+#endif
+  return {};
+}
+
 vaip_core::OrtApiForVaip* create_org_api_hook();
 struct OrtVitisAIEpAPI {
   void (*initialize_onnxruntime_vitisai_ep)(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
@@ -74,8 +103,20 @@ struct OrtVitisAIEpAPI {
     // this dll is already linked to the executable, normally a test program
     handle_ = reinterpret_cast<void*>(GetModuleHandle(TEXT("onnxruntime_vitisai_ep.dll")));
     if (!handle_) {
+      // First try loading with full path
+      auto library_filename = PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_vitisai_ep") LIBRARY_EXTENSION);
       auto full_path = env.GetRuntimePath() + PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_vitisai_ep") LIBRARY_EXTENSION);
-      ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(full_path, true, &handle_));
+      if (std::filesystem::exists(full_path)) {
+        ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(full_path, true, &handle_));
+      } else {
+        // Identify the path of the current dynamic library, and expect that onnxruntime_vitisai_ep is in the same directory.
+        PathString current_path = GetDynamicLibraryLocationByAddress(reinterpret_cast<const void*>(create_org_api_hook));
+        if (!current_path.empty()) {
+          const std::filesystem::path parent_path = std::filesystem::path{std::move(current_path)}.parent_path();
+          PathString module_relative_full_path = PathString(parent_path / library_filename);
+          ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(module_relative_full_path, true, &handle_));
+        }
+      }
     }
 #else
     auto full_path = env.GetRuntimePath() + PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_vitisai_ep") LIBRARY_EXTENSION);
@@ -268,10 +309,10 @@ void initialize_vitisai_ep() {
 }
 
 void deinitialize_vitisai_ep() {
+  vaip::deregister_xir_ops(s_domains_vitisaiep);
   if (s_library_vitisaiep.deinitialize_onnxruntime_vitisai_ep) {
     s_library_vitisaiep.deinitialize_onnxruntime_vitisai_ep();
   }
-  vaip::deregister_xir_ops(s_domains_vitisaiep);
   // kernel registry would be repopulated, no need to delete kernel registry
   s_domains_vitisaiep.clear();
 
@@ -539,6 +580,8 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     graph.RemoveInitializedTensor(tensor_name);
   };
   the_global_api.graph_reverse_dfs_from_preemp = vaip::graph_reverse_dfs_from;
+  the_global_api.graph_save_string = vaip::graph_save_string;
+
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
   } else {

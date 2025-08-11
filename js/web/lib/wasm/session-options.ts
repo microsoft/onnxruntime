@@ -14,6 +14,8 @@ const getGraphOptimzationLevel = (graphOptimizationLevel: string | unknown): num
       return 1;
     case 'extended':
       return 2;
+    case 'layout':
+      return 3;
     case 'all':
       return 99;
     default:
@@ -91,7 +93,7 @@ const setExecutionProviders = async (
         }
         break;
       case 'webgpu':
-        if (BUILD_DEFS.USE_WEBGPU_EP) {
+        if (!BUILD_DEFS.DISABLE_WEBGPU) {
           epName = 'WebGPU';
           let customDevice: GPUDevice | undefined;
 
@@ -179,7 +181,7 @@ export const setSessionOptions = async (options?: InferenceSession.SessionOption
 
     const logSeverityLevel = sessionOptions.logSeverityLevel ?? 2; // Default to 2 - warning
     if (!Number.isInteger(logSeverityLevel) || logSeverityLevel < 0 || logSeverityLevel > 4) {
-      throw new Error(`log serverity level is not valid: ${logSeverityLevel}`);
+      throw new Error(`log severity level is not valid: ${logSeverityLevel}`);
     }
 
     const logVerbosityLevel = sessionOptions.logVerbosityLevel ?? 0; // Default to 0 - verbose

@@ -46,12 +46,13 @@ static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node,
 template <typename T>
 static void ApplyNewInputValue(Graph& graph, Node& node, QDQ::InputIndex index, T value) {
   const auto* input_tensor = graph_utils::GetConstantInitializer(graph, node.InputDefs()[index]->Name());
-  Initializer input_init{*input_tensor, graph.ModelPath()};
-  ONNX_NAMESPACE::TensorProto new_input_tensor(*input_tensor);
+  Initializer input_init{graph, *input_tensor, graph.ModelPath()};
+  ONNX_NAMESPACE::TensorProto new_input_tensor;
   input_init.data<T>()[0] = value;
   input_init.ToProto(new_input_tensor);
   auto new_name = graph.GenerateNodeArgName("DoubleQDQRemoved_" + node.InputDefs()[index]->Name());
   new_input_tensor.set_name(new_name);
+  new_input_tensor.add_dims(1);
   NodeArg& new_input = graph_utils::AddInitializer(graph, new_input_tensor);
   graph_utils::ReplaceNodeInput(node, index, new_input);
 }
@@ -79,10 +80,10 @@ static bool FindNewZeroPointAndScale(const Graph& graph, const Node& node1, cons
       graph_utils::GetConstantInitializer(graph, node1_zp_name);
   const ONNX_NAMESPACE::TensorProto* node2_zp_tensor_proto =
       graph_utils::GetConstantInitializer(graph, node2_zp_name);
-  Initializer zero_point_init_1{*node1_zp_tensor_proto, graph.ModelPath()};
-  Initializer zero_point_init_2{*node2_zp_tensor_proto, graph.ModelPath()};
-  Initializer scale_init_1{*node1_scale_tensor_proto, graph.ModelPath()};
-  Initializer scale_init_2{*node2_scale_tensor_proto, graph.ModelPath()};
+  Initializer zero_point_init_1{graph, *node1_zp_tensor_proto, graph.ModelPath()};
+  Initializer zero_point_init_2{graph, *node2_zp_tensor_proto, graph.ModelPath()};
+  Initializer scale_init_1{graph, *node1_scale_tensor_proto, graph.ModelPath()};
+  Initializer scale_init_2{graph, *node2_scale_tensor_proto, graph.ModelPath()};
   if (zero_point_init_1.data_type() != zero_point_init_2.data_type() ||
       scale_init_1.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
       scale_init_2.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
@@ -181,7 +182,7 @@ static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
   }
 
   // The Q1 and DQ1 nodes must have equal zero-point and scale values (scalar/constant).
-  if (!QDQ::IsQDQPairSupported(*q1, *dq1, get_constant_initializer, graph.ModelPath())) {
+  if (!QDQ::IsQDQPairSupported(graph, *q1, *dq1, get_constant_initializer, graph.ModelPath())) {
     return false;
   }
 
@@ -218,7 +219,7 @@ static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
     }
 
     // The Q2 and DQ2 nodes must have equal zero-point and scale values (scalar/constant).
-    if (!QDQ::IsQDQPairSupported(*q2, *dq2, get_constant_initializer, graph.ModelPath())) {
+    if (!QDQ::IsQDQPairSupported(graph, *q2, *dq2, get_constant_initializer, graph.ModelPath())) {
       return false;
     }
 

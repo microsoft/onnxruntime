@@ -16,7 +16,6 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
     : IAllocator(OrtMemoryInfo(resource_allocator->Info().name,
                                OrtAllocatorType::OrtArenaAllocator,
                                resource_allocator->Info().device,
-                               resource_allocator->Info().id,
                                resource_allocator->Info().mem_type)),
       arena_type_(ArenaType::BaseArena),
       device_allocator_(std::move(resource_allocator)),
@@ -225,6 +224,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   c->next = kInvalidChunkHandle;
   // assign the new created chunk to default stream, so it can be pick up by any stream
   c->stream = nullptr;
+  c->stream_sync_id = 0;
 
   region_manager_.set_handle(c->ptr, h);
 
@@ -254,7 +254,7 @@ void BFCArena::DeallocateChunk(ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
   // clean the stream / timestamp when deallocate chunk
   c->stream = nullptr;
-  c->stream_timestamp = 0;
+  c->stream_sync_id = 0;
   c->next = free_chunks_list_;
   free_chunks_list_ = h;
 }
@@ -269,7 +269,7 @@ size_t BFCArena::RoundedBytes(size_t bytes) {
 }
 
 void* BFCArena::Alloc(size_t size) {
-  return AllocateRawInternal(size, false, nullptr, false, nullptr);
+  return AllocateRawInternal(size, false, nullptr);
 }
 
 void* BFCArena::Reserve(size_t size) {
@@ -310,13 +310,11 @@ size_t BFCArena::AllocatedSize(const void* ptr) {
 
 void* BFCArena::AllocateRawInternal(size_t num_bytes,
                                     bool dump_log_on_failure,
-                                    Stream* stream,
-                                    bool enable_cross_stream_reusing,
-                                    WaitNotificationFn wait_fn) {
+                                    Stream* stream) {
   if (num_bytes == 0) {
-    LOGS_DEFAULT(VERBOSE) << "tried to allocate 0 bytes";
     return nullptr;
   }
+
   // First, always allocate memory of at least kMinAllocationSize
   // bytes, and always allocate multiples of kMinAllocationSize bytes
   // so all memory addresses are nicely byte aligned.
@@ -327,20 +325,9 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
 
   std::lock_guard<std::mutex> lock(lock_);
   // search for a valid chunk
-  auto* chunk = FindChunkPtr(bin_num,
-                             rounded_bytes,
-                             num_bytes,
-                             stream,
-                             enable_cross_stream_reusing,
-                             wait_fn);
+  auto* chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream);
 
   if (chunk != nullptr) {
-    // if it is on default stream (the new allocate chunk), assign to current stream
-    if (chunk->stream == nullptr) {
-      chunk->stream = stream;
-      if (stream)
-        chunk->stream_timestamp = stream->GetCurrentTimestamp();
-    }
     return chunk->ptr;
   }
 
@@ -350,12 +337,8 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   // Try to extend
   auto status = Extend(rounded_bytes);
   if (status.IsOK()) {
-    chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, false);
+    chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream);
     if (chunk != nullptr) {
-      // if it is on default stream (the new allocate chunk), assign to current stream
-      if (chunk->stream == nullptr && stream) {
-        chunk->stream = stream;
-      }
       return chunk->ptr;
     } else {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -414,11 +397,8 @@ BFCArena::Chunk* BFCArena::SplitFreeChunkFromBin(BFCArena::Bin::FreeChunkSet* fr
 }
 
 BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
-                                        size_t num_bytes, Stream* stream,
-                                        bool allow_chunk_from_different_stream,
-                                        WaitNotificationFn wait_fn) {
-  BFCArena::Chunk* other_stream_candidate = nullptr;
-  // First identify the first bin that could satisfy rounded_bytes.
+                                        size_t num_bytes, Stream* stream) {
+  //  First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {
     // Start searching from the first bin for the smallest chunk that fits
     // rounded_bytes.
@@ -428,29 +408,27 @@ BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
       BFCArena::Chunk* chunk = ChunkFromHandle(h);
       ORT_ENFORCE(!chunk->in_use());
       if (chunk->size >= rounded_bytes) {
-        // We found an existing chunk that fits us that wasn't in use, now check the stream
+        // We found an existing chunk that fits us that wasn't in use, now check the stream.
         bool safe_to_use = chunk->stream == stream ||
                            !chunk->stream ||
                            (stream && chunk->stream &&
-                            chunk->stream_timestamp < stream->GetLastSyncTimestampWithTargetStream(chunk->stream));
+                            chunk->stream_sync_id < stream->GetSyncIdForLastWaitOnStream(*chunk->stream));
         if (safe_to_use) {
           // the chunk with same stream has higher priority.
-          return SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
-        } else if (allow_chunk_from_different_stream && !other_stream_candidate) {
-          other_stream_candidate = chunk;
+          chunk = SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
+
+          if (stream) {
+            chunk->stream = stream;
+            chunk->stream_sync_id = stream->GetSyncId();
+          }
+
+          return chunk;
         }
       }
     }
   }
-  // if trying to use an unsafe chunk from other streams, secure it.
-  if (other_stream_candidate) {
-    SecureTheChunk(other_stream_candidate->stream, stream, wait_fn);
-    // if find some available chunk, make sure mark it as "being used" before return
-    other_stream_candidate->allocation_id = next_allocation_id_++;
-    other_stream_candidate->bin_num = kInvalidBinNum;
-  }
 
-  return other_stream_candidate;
+  return nullptr;
 }
 
 void BFCArena::SplitChunk(BFCArena::ChunkHandle h, size_t num_bytes) {
@@ -464,7 +442,7 @@ void BFCArena::SplitChunk(BFCArena::ChunkHandle h, size_t num_bytes) {
   BFCArena::Chunk* new_chunk = ChunkFromHandle(h_new_chunk);
   // set the new chunk's stream and timestamp
   new_chunk->stream = c->stream;
-  new_chunk->stream_timestamp = c->stream_timestamp;
+  new_chunk->stream_sync_id = c->stream_sync_id;
 
   new_chunk->ptr = static_cast<void*>(static_cast<char*>(c->ptr) + num_bytes);
   region_manager_.set_handle(new_chunk->ptr, h_new_chunk);
@@ -609,7 +587,7 @@ void BFCArena::Merge(BFCArena::ChunkHandle h1,
 
   // Set the new size
   c1->size += c2->size;
-  c1->stream_timestamp = std::max(c1->stream_timestamp, c2->stream_timestamp);
+  c1->stream_sync_id = std::max(c1->stream_sync_id, c2->stream_sync_id);
 
   DeleteChunk(h2);
 }
@@ -816,7 +794,7 @@ void BFCArena::ResetChunkOnTargetStream(Stream* target_stream, bool coalesce_fla
       Chunk* c = ChunkFromHandle(h);
       if (c->stream == target_stream) {
         c->stream = nullptr;
-        c->stream_timestamp = 0;
+        c->stream_sync_id = 0;
       }
       h = c->next;
     }
@@ -851,24 +829,23 @@ void BFCArena::ResetChunkOnTargetStream(Stream* target_stream, bool coalesce_fla
 
 StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocator,
                                    size_t total_memory,
-                                   bool enable_cross_stream_sharing,
                                    ArenaExtendStrategy arena_extend_strategy,
                                    int initial_chunk_size_bytes,
                                    int max_dead_bytes_per_chunk,
                                    int initial_growth_chunk_size_bytes,
-                                   int64_t max_power_of_two_extend_bytes) : BFCArena(std::move(resource_allocator),
-                                                                                     total_memory,
-                                                                                     arena_extend_strategy,
-                                                                                     initial_chunk_size_bytes,
-                                                                                     max_dead_bytes_per_chunk,
-                                                                                     initial_growth_chunk_size_bytes,
-                                                                                     max_power_of_two_extend_bytes),
-                                                                            enable_cross_stream_reusing_(enable_cross_stream_sharing) {
+                                   int64_t max_power_of_two_extend_bytes)
+    : BFCArena(std::move(resource_allocator),
+               total_memory,
+               arena_extend_strategy,
+               initial_chunk_size_bytes,
+               max_dead_bytes_per_chunk,
+               initial_growth_chunk_size_bytes,
+               max_power_of_two_extend_bytes) {
   arena_type_ = ArenaType::StreamAwareArena;
 }
 
-void* StreamAwareArena::AllocOnStream(size_t size, Stream* current_stream, WaitNotificationFn wait_fn) {
-  return AllocateRawInternal(size, false, current_stream, enable_cross_stream_reusing_, wait_fn);
+void* StreamAwareArena::AllocOnStream(size_t size, Stream* current_stream) {
+  return AllocateRawInternal(size, false, current_stream);
 }
 
 void StreamAwareArena::ReleaseStreamBuffers(Stream* stream) {
@@ -876,15 +853,5 @@ void StreamAwareArena::ReleaseStreamBuffers(Stream* stream) {
   ResetChunkOnTargetStream(stream, true);
 }
 
-void StreamAwareArena::SecureTheChunk(Stream* chunk_stream, Stream* target_stream, WaitNotificationFn wait_fn) const {
-  if (chunk_stream && target_stream && chunk_stream != target_stream) {
-    auto notification = chunk_stream->CreateNotification(1);
-    notification->ActivateAndUpdate();
-    if (wait_fn)
-      wait_fn(*target_stream, *notification);
-    target_stream->UpdateStreamClock(notification->GetStreamSyncTable());
-    // it should be ok to release the notification now, as the wait is already launch to stream.
-  }
-}
 #endif
 }  // namespace onnxruntime

@@ -149,8 +149,7 @@ bool LstmOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Nod
 
     const auto& sequence_lens_tensor = *sequence_lens_init;
     std::vector<int32_t> sequence_lens;
-    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, logger)) {
-      LOGS(logger, ERROR) << "Cannot read sequence lens tensor";
+    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, graph_viewer, logger)) {
       return false;
     }
     if (std::any_of(sequence_lens.begin(), sequence_lens.end(),
@@ -243,7 +242,8 @@ bool LstmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 bool LstmOpBuilder::HasSupportedOutputsImpl(const Node& node,

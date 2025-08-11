@@ -14,9 +14,15 @@ import torch
 from benchmark_helper import Precision
 from fusion_options import AttentionOpType
 from onnx_model import OnnxModel
+from packaging import version
 from transformers import AutoConfig, AutoModelForCausalLM
 
-from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
+from onnxruntime import __version__ as ort_version
+
+if version.parse(ort_version) < version.parse("1.22.0"):
+    from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer as MatMulNBitsQuantizer
+else:
+    from onnxruntime.quantization.matmul_nbits_quantizer import MatMulNBitsQuantizer
 
 
 class ConvertPhi2ToONNX:
@@ -92,7 +98,7 @@ class ConvertPhi2ToONNX:
         input_ids, attention_mask, past_key_values = self.get_phi2_torch_inputs(self.batch_size, self.sequence_length)
         self.phi_model(input_ids, attention_mask=attention_mask, past_key_values=past_key_values)
 
-        from torch._dynamo import config
+        from torch._dynamo import config  # noqa: PLC0415
 
         config.capture_scalar_outputs = True
 
@@ -108,8 +114,8 @@ class ConvertPhi2ToONNX:
         onnx.shape_inference.infer_shapes_path(onnx_path)
 
     def optimize_phi2_onnx(self, onnx_path: str, onnx_path_opt: str):
-        from fusion_options import FusionOptions
-        from optimizer import optimize_model
+        from fusion_options import FusionOptions  # noqa: PLC0415
+        from optimizer import optimize_model  # noqa: PLC0415
 
         optimization_options = FusionOptions("phi")
         optimization_options.set_attention_op_type(self.attn_op_type)
@@ -160,8 +166,9 @@ class ConvertPhi2ToONNX:
             return
         else:
             assert self.precision == Precision.INT4
-            quant = MatMul4BitsQuantizer(
+            quant = MatMulNBitsQuantizer(
                 model=optimizer.model,
+                bits=4,
                 block_size=self.block_size,
                 is_symmetric=True,
                 accuracy_level=self.accuracy_level,
@@ -173,7 +180,7 @@ class ConvertPhi2ToONNX:
     def convert_to_use_cuda_graph(self, in_onnx_path: str, out_onnx_path: str):
         onnx_model = OnnxModel(onnx.load(in_onnx_path, load_external_data=True))
 
-        from onnx import TensorProto, helper
+        from onnx import TensorProto, helper  # noqa: PLC0415
 
         graph = onnx_model.graph()
         new_inputs = []
@@ -351,7 +358,7 @@ def parse_arguments():
         required=False,
         default=16,
         type=int,
-        help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_4bits_quantizer.py for details.",
+        help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_nbits_quantizer.py for details.",
     )
 
     parser.add_argument(
@@ -431,7 +438,7 @@ def main():
     }
 
     if not args.skip_export:
-        from multiprocessing import Process
+        from multiprocessing import Process  # noqa: PLC0415
 
         def run_optimize_phi2_onnx(
             converter: ConvertPhi2ToONNX,
@@ -518,7 +525,7 @@ def main():
         [p.join() for p in processes]
 
     if args.run_example or args.run_benchmark:
-        from inference_example import run_phi2
+        from inference_example import run_phi2  # noqa: PLC0415
 
         if args.fp16_gpu_sm8x:
             logging.info("Running fp16_gpu_sm8x example...")
