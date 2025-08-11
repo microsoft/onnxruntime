@@ -31,10 +31,10 @@ static const onnxruntime::perftest::PerformanceTestConfig& DefaultPerformanceTes
 }
 
 ABSL_FLAG(std::string, f, "",
-          "Specifies free dimensions by name to override with the specific values for performance optimization. Key-value paris are separated by space.\n"
+          "Specifies free dimensions by name to override with the specific values for performance optimization. Key-value pairs are separated by space.\n"
           "[Usage]: -f \"dimension_name_1:override_value_1 dimension_name_2:override_value_2 ... \". Override value must > 0.");
 ABSL_FLAG(std::string, F, "",
-          "Specifies free dimensions by denotation to override with the specific values for performance optimization. Key-value paris are separated by space.\n"
+          "Specifies free dimensions by denotation to override with the specific values for performance optimization. Key-value pairs are separated by space.\n"
           "[Usage]: -F \"denotation_name_1:override_value_1 denotation_name_2:override_value_2 ... \". Override value must > 0.");
 ABSL_FLAG(std::string, m, "duration", "Specifies the test mode. Value could be 'duration' or 'times'.");
 ABSL_FLAG(std::string, e, "cpu", "Specifies the provider 'cpu','cuda','dnnl','tensorrt', 'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'.");
