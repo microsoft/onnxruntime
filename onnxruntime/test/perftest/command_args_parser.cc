@@ -220,12 +220,18 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   {
     const auto& dim_override_str = absl::GetFlag(FLAGS_f);
     if (!dim_override_str.empty()) {
-      std::string dim_name;
-      int64_t override_val;
-      if (!ParseDimensionOverride(dim_name, override_val, dim_override_str.c_str())) {
-        return false;
+      for (int i = 1; i < argc; i++) {
+        auto utf8_arg = ToUTF8String(argv[i]);
+        if ((utf8_arg == "-f" || utf8_arg == "--f") && i + 1 < argc) {
+          auto utf8_value = ToUTF8String(argv[i + 1]);
+          std::string dim_name;
+          int64_t override_val;
+          if (!ParseDimensionOverride(dim_name, override_val, utf8_value.c_str())) {
+            return false;
+          }
+          test_config.run_config.free_dim_name_overrides[dim_name] = override_val;
+        }
       }
-      test_config.run_config.free_dim_name_overrides[dim_name] = override_val;
     }
   }
 
