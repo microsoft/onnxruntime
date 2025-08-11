@@ -307,9 +307,7 @@ class NvExecutionProvider : public IExecutionProvider {
   std::mutex tensorrt_mu_;
   int device_id_;
   std::string compute_capability_;
-  bool context_memory_sharing_enable_ = false;
   size_t max_ctx_mem_size_ = 0;
-  IAllocatorUniquePtr<void> context_memory_ = nullptr;
   mutable char model_path_[4096] = {};  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*) = nullptr;

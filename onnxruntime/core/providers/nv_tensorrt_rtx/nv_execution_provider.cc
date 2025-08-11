@@ -1025,7 +1025,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     }
   }
 
-  cuda_graph_enable_ = info.cuda_graph_enable;
+  cuda_graph_enable_ = true; //info.cuda_graph_enable;
   multi_profile_enable_ = info.multi_profile_enable;
   op_types_to_exclude_ = info.op_types_to_exclude;
 
@@ -1118,7 +1118,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
                         << ", nv_force_sequential_engine_build: " << force_sequential_engine_build_
                         << ", nv_sparsity_enable: " << sparsity_enable_
                         << ", nv_auxiliary_streams: " << auxiliary_streams_
-                        << ", nv_cuda_graph_enable: " << cuda_graph_enable_
+                        << ", enable_cuda_graph: " << cuda_graph_enable_
                         << ", nv_dump_ep_context_model: " << dump_ep_context_model_
                         << ", nv_ep_context_file_path: " << ep_context_file_path_
                         << ", nv_ep_context_embed_mode: " << ep_context_embed_mode_
@@ -2772,7 +2772,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
       if (GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
         LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Graph already captured and required_io_binding is true, resetting warmup runs and deleting graph";
-        GetPerThreadContext().ResetWarmupRuns(cuda_graph_annotation_id);
         GetPerThreadContext().DeleteCapturedGraph(cuda_graph_annotation_id);
       }
     // Case 2: CUDA Graph capture is enabled AND IO binding is NOT required.
@@ -2823,6 +2822,12 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     }
 
+    if (cuda_graph_enable_ && should_start_capture) {
+      GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
+      bool sync_status_flag = external_stream_ ? false : true;
+      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_status_flag));
+    }
+
     // Assign TRT output back to ORT output
     // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
     // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
@@ -2854,12 +2859,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
           }
         }
       }
-    }
-
-    if (cuda_graph_enable_ && should_start_capture) {
-      GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
-      bool sync_status_flag = external_stream_ ? false : true;
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_status_flag));
     }
 
     return Status::OK();
@@ -3119,7 +3118,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
 
       if (GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
         LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Graph already captured and required_io_binding is true, resetting warmup runs and deleting graph";
-        GetPerThreadContext().ResetWarmupRuns(cuda_graph_annotation_id);
         GetPerThreadContext().DeleteCapturedGraph(cuda_graph_annotation_id);
       }
     // Case 2: CUDA Graph capture is enabled AND IO binding is NOT required.
@@ -3170,6 +3168,12 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     }
 
+    if (cuda_graph_enable_ && should_start_capture) {
+      GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
+      bool sync_status_flag = external_stream_ ? false : true;
+      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_status_flag));
+    }
+    
     // Assign TRT output back to ORT output
     // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
     // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
@@ -3201,12 +3205,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
           }
         }
       }
-    }
-
-    if (cuda_graph_enable_ && should_start_capture) {
-      GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
-      bool sync_status_flag = external_stream_ ? false : true;
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_status_flag));
     }
 
     return Status::OK();
