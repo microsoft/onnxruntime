@@ -321,9 +321,9 @@ DataLayout CUDAExecutionProvider::GetPreferredLayout() const {
   return this->IsNHWCPreferred() ? DataLayout::NHWC : DataLayout::NCHW;
 }
 
-std::optional<bool> CUDAExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
-                                                                        std::string_view node_op_type,
-                                                                        DataLayout target_data_layout) const {
+std::optional<bool> CUDAExecutionProvider::ShouldConvertDataLayoutForOp( [[maybe_unused]] std::string_view node_domain,
+                                                                         [[maybe_unused]] std::string_view node_op_type,
+                                                                         [[maybe_unused]] DataLayout target_data_layout) const {
 #if defined(ENABLE_CUDA_NHWC_OPS)
   if (target_data_layout != DataLayout::NHWC) {
     return std::nullopt;
