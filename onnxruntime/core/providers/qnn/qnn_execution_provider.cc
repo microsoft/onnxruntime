@@ -8,13 +8,13 @@
 #include <string_view>
 #include <unordered_set>
 
-#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/qnn_node_group.h"
+#include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/qnn_allocator.h"
 #include "core/providers/qnn/qnn_telemetry.h"
 #include "core/providers/qnn/rpcmem_library.h"
@@ -1141,7 +1141,8 @@ QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager*
                                                          uint32_t device_id,
                                                          uint32_t core_id,
                                                          qnn::HtpPerformanceMode default_htp_performance_mode,
-                                                         uint32_t default_rpc_control_latency)
+                                                         uint32_t default_rpc_control_latency,
+                                                         uint32_t default_rpc_polling_time)
     : qnn_backend_manager_(qnn_backend_manager) {
   Status rt = qnn_backend_manager_->CreateHtpPowerCfgId(device_id, core_id, htp_power_config_id_);
   is_htp_power_config_id_valid_ = rt.IsOK();
@@ -1152,9 +1153,10 @@ QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager*
       ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_,
                                                                       default_htp_performance_mode));
     }
-    if (default_rpc_control_latency > 0) {
-      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcControlLatency(htp_power_config_id_,
-                                                                         default_rpc_control_latency));
+    if (default_rpc_control_latency > 0 || default_rpc_polling_time > 0) {
+      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcPowerConfigs(htp_power_config_id_,
+                                                                       default_rpc_control_latency,
+                                                                       default_rpc_polling_time));
     }
   }
 }
@@ -1185,7 +1187,8 @@ QNNExecutionProvider::PerThreadContext& QNNExecutionProvider::GetPerThreadContex
     if (context_state_.retired_context_pool.empty()) {
       uint32_t core_id = 0;
       context = std::make_shared<PerThreadContext>(qnn_backend_manager_.get(), device_id_, core_id,
-                                                   default_htp_performance_mode_, default_rpc_control_latency_);
+                                                   default_htp_performance_mode_, default_rpc_control_latency_,
+                                                   default_rpc_polling_time_);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -1253,15 +1256,21 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
     LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
   }
 
+  uint32_t rpc_polling_time = 0;
+  if (qnn::HtpPerformanceMode::kHtpBurst != htp_performance_mode) {
+    rpc_polling_time = 9999;
+  }
+
   if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
     if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
       ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
                                                                   htp_performance_mode));
     }
 
-    if (rpc_control_latency > 0) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcControlLatency(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                     rpc_control_latency));
+    if (rpc_control_latency > 0 || rpc_polling_time > 0) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcPowerConfigs(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                   rpc_control_latency,
+                                                                   rpc_polling_time));
     }
   }
 

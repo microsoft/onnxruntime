@@ -40,7 +40,7 @@ size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
       {QNN_DATATYPE_UFIXED_POINT_8, 1},
       {QNN_DATATYPE_UFIXED_POINT_16, 2},
       {QNN_DATATYPE_UFIXED_POINT_32, 4},
-  };
+      {QNN_DATATYPE_UNDEFINED, 1}};
 
   auto pos = data_type_to_size.find(data_type);
   ORT_ENFORCE(pos != data_type_to_size.end(), "Unknown QNN data type", data_type);
@@ -227,6 +227,9 @@ std::ostream& operator<<(std::ostream& out, const Qnn_DataType_t& data_type) {
       break;
     case QNN_DATATYPE_UFIXED_POINT_4:
       out << "QNN_DATATYPE_UFIXED_POINT_4";
+      break;
+    case QNN_DATATYPE_UNDEFINED:
+      out << "QNN_DATATYPE_UNDEFINED";
       break;
     default:
       ORT_THROW("Unknown Qnn Data type");

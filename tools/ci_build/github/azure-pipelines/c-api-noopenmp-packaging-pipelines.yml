@@ -60,7 +60,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.33.0.250327
+  default: 2.36.1.250708
 
 resources:
   repositories:
@@ -189,8 +189,8 @@ extends:
         DoEsrp: ${{ parameters.DoEsrp }}
         NuPackScript: |
           msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentData=$(BuildDate) /p:CurrentTime=$(BuildTime)
-          copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\Microsoft.ML.OnnxRuntime.DirectML.1.22.1.nupkg $(Build.ArtifactStagingDirectory)
-          copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\Microsoft.ML.OnnxRuntime.DirectML.1.22.1.nupkg $(Build.ArtifactStagingDirectory)
+          copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\Microsoft.ML.OnnxRuntime.DirectML.1.22.2.nupkg $(Build.ArtifactStagingDirectory)
+          copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\Microsoft.ML.OnnxRuntime.DirectML.1.22.2.nupkg $(Build.ArtifactStagingDirectory)
           mkdir $(Build.ArtifactStagingDirectory)\testdata
           copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -210,7 +210,7 @@ extends:
         NuPackScript: |
           msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
           cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
-          ren Microsoft.ML.OnnxRuntime.DirectML.1.22.1.nupkg win-dml-x86.zip
+          ren Microsoft.ML.OnnxRuntime.DirectML.1.22.2.nupkg win-dml-x86.zip
           copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-x86.zip $(Build.ArtifactStagingDirectory)
           mkdir $(Build.ArtifactStagingDirectory)\testdata
           copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
@@ -231,7 +231,7 @@ extends:
         NuPackScript: |
           msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
           cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
-          ren Microsoft.ML.OnnxRuntime.DirectML.1.22.1.nupkg win-dml-arm64.zip
+          ren Microsoft.ML.OnnxRuntime.DirectML.1.22.2.nupkg win-dml-arm64.zip
           copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-arm64.zip $(Build.ArtifactStagingDirectory)
           mkdir $(Build.ArtifactStagingDirectory)\testdata
           copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata

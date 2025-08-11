@@ -59,7 +59,7 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.33.2.250410
+  default: 2.36.1.250708
 
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
@@ -287,7 +287,7 @@ stages:
     - template: ../templates/py-linux.yml
       parameters:
         arch: 'x86_64'
-        machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
+        machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
         extra_build_arg: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
         is1ES: true

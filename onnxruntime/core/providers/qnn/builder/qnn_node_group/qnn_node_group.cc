@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/qnn/builder/qnn_node_group.h"
-
 #include <gsl/gsl>
 #include <limits>
 #include <memory>
@@ -10,13 +8,16 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include "core/providers/qnn/ort_api.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
+
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_node_group/dq_q_fusion.h"
 #include "core/providers/qnn/builder/qnn_node_group/hardsigmoid_mul_fusion.h"
+#include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_node_group/reshape_gemm_fusion.h"
+#include "core/providers/qnn/builder/qnn_node_group/scale_softmax_fusion.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -90,6 +91,7 @@ static std::unique_ptr<IQnnNodeGroup> TryQnnFusions(
       {"DequantizeLinear", DQQFusion::TryFusion},
       {"HardSigmoid", HardSigmoidMulFusion::TryFusion},
       {"Gemm", ReshapeGemmFusion::TryFusion},
+      {"Mul", ScaleSoftmaxFusion::TryFusion},
   };
 
   // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).

@@ -182,10 +182,8 @@ TEST_F(QnnHTPBackendTests, MaxPool_Large_Input_HTP_u8) {
                              utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
                              utils::MakeAttribute("auto_pad", "NOTSET")},
                             ExpectedEPNodeAssignment::All,
-                            18,     // opset
-                            false,  // use_contrib_qdq_ops
-                            // Need a tolerance of 0.417% of output range after QNN SDK 2.17
-                            QDQTolerance(0.00417f));
+                            18,      // opset
+                            false);  // use_contrib_qdq_ops
 }
 
 TEST_F(QnnHTPBackendTests, MaxPool_Ceil_HTP_u8) {
