@@ -60,7 +60,7 @@ bool ParseDimensionOverride(const std::string& input, std::map<std::string, int6
   std::stringstream ss(input);
   std::string free_dim_str;
 
-  while (std::getline(ss, free_dim_str, ';')) {
+  while (std::getline(ss, free_dim_str, ' ')) {
     if (!free_dim_str.empty()) {
       size_t delimiter_location = free_dim_str.find(":");
       if (delimiter_location >= free_dim_str.size() - 1) {
