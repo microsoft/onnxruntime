@@ -52,7 +52,7 @@ struct MIGraphXExecutionProviderInfo {
   bool exhaustive_tune{false};
 
   size_t mem_limit{std::numeric_limits<size_t>::max()};
-  ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
+  ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kSameAsRequested};
 
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
 

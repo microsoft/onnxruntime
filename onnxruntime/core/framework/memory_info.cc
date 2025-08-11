@@ -47,7 +47,6 @@ void MemoryInfo::Init(const SequentialExecutionPlan* execution_plan,
     tensor_alloc_info_map_[value_idx] = std::move(mem_info);
     tensors_memory_info_map_[mem_info.location];
   }
-  return;
 }
 
 // Record the planned memory information
@@ -77,6 +76,12 @@ void MemoryInfo::RecordPatternInfo(const MemoryPatternGroup& mem_patterns, const
 // Record the actual allocated tensor in the device
 void MemoryInfo::RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtValue& value, const MapType& type) {
   if (tensor_alloc_info_map_.find(idx) == tensor_alloc_info_map_.end()) return;
+#ifdef USE_MIGRAPHX
+  if (!value.IsAllocated()) {
+    tensors_memory_info_map_.at(AllocPlan(idx)->location)[type].AddAllocMemory(idx, {0, 0});
+    return;
+  }
+#endif
   ORT_ENFORCE(value.IsTensor(), "Memory profiler only supports tensor type.");
   auto& tensor = value.Get<Tensor>();
   auto tensor_size_in_bytes = tensor.SizeInBytes();
