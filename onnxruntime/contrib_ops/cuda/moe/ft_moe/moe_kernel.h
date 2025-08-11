@@ -178,14 +178,4 @@ class CutlassMoeFCRunner {
   std::vector<int64_t> total_rows_before_expert_host_;
 };
 
-template <typename WeightType>
-class CutlassMoeFCRunner<float, WeightType, typename std::enable_if_t<!std::is_same<float, WeightType>::value>> {
- public:
-  CutlassMoeFCRunner(int sm_version, ActivationType activation_type, bool has_fc3, bool normalize_routing_weights, bool use_sparse_mixer);
-
-  size_t getWorkspaceSize(size_t num_rows, size_t hidden_size, size_t inter_size, size_t num_experts, size_t k) {
-    return 0;
-  }
-};
-
 }  // namespace ort_fastertransformer

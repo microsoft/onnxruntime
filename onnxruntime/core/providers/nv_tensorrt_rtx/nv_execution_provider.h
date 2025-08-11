@@ -78,6 +78,9 @@ using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 //
 class OutputAllocator : public nvinfer1::IOutputAllocator {
  public:
+  OutputAllocator() = delete;
+  OutputAllocator(OrtAllocator* allocator) : alloc_(allocator) {};
+
   void* reallocateOutputAsync(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment, cudaStream_t stream) noexcept override;
 
   void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override;
@@ -95,10 +98,11 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
   }
 
   ~OutputAllocator() override {
-    cudaFree(outputPtr);
+    alloc_->Free(alloc_, outputPtr);
   }
 
  private:
+  OrtAllocator* alloc_;
   void* outputPtr{nullptr};
   uint64_t allocated_size = 0;
   std::vector<int64_t> output_shapes;
@@ -109,6 +113,45 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
  * tensor name -> ( dimension -> [min, max, opt] )
  */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
+
+/**
+ * @brief Container for tensor data and their shape.
+ *
+ */
+struct TensorParams {
+  const void* data{nullptr};
+  nvinfer1::Dims dims;
+
+  TensorParams() = default;
+
+  TensorParams(const void* data_ptr, const std::vector<int64_t>& shape) {
+    // Initialize data and dims from the Ort::ConstValue
+    data = data_ptr;
+
+    dims.nbDims = static_cast<int32_t>(shape.size());
+    for (int i = 0; i < dims.nbDims; ++i) {
+      dims.d[i] = static_cast<int32_t>(shape[i]);
+    }
+  }
+
+  TensorParams(const void* data_ptr, nvinfer1::Dims& shape) {
+    // Initialize data and dims from the Ort::ConstValue
+    data = data_ptr;
+
+    dims = shape;
+  }
+
+  bool operator!=(const TensorParams& other) const {
+    if (data != other.data || dims.nbDims != other.dims.nbDims)
+      return true;
+
+    for (int i = 0; i < dims.nbDims; ++i) {
+      if (dims.d[i] != other.dims.d[i])
+        return true;
+    }
+    return false;
+  }
+};
 
 // Information to construct kernel function state.
 struct TensorrtFuncState {
@@ -130,8 +173,6 @@ struct TensorrtFuncState {
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
   std::vector<nvinfer1::IOptimizationProfile*> profiles;
-  bool context_memory_sharing_enable = false;
-  size_t* max_context_mem_size_ptr = nullptr;
   bool engine_decryption_enable = false;
   int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
   int (*engine_encryption)(const char*, char*, size_t) = nullptr;
@@ -139,8 +180,16 @@ struct TensorrtFuncState {
   bool sparsity_enable = false;
   int auxiliary_streams = -1;
   bool cuda_graph_enable = 0;
+  bool is_dynamic_shape = false;
   std::string cache_prefix;
   std::string cache_suffix;
+  std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
+  std::vector<TensorParams> input_tensors;
+  std::vector<TensorParams> output_tensors;
+  bool is_first_run = true;              // Indicates if this is the first run of the engine
+  bool skip_io_binding_allowed = false;  // Indicates if input/output binding can be skipped
+  IAllocatorUniquePtr<void> context_memory = nullptr;
+  size_t context_memory_size = 0;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -153,9 +202,15 @@ struct TensorrtShortFuncState {
   std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
-  bool context_memory_sharing_enable = false;
-  size_t* max_context_mem_size_ptr = nullptr;
   std::mutex* tensorrt_mu_ptr = nullptr;
+  bool is_dynamic_shape = false;
+  std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
+  std::vector<TensorParams> input_tensors;
+  std::vector<TensorParams> output_tensors;
+  bool is_first_run = true;              // Indicates if this is the first run of the engine
+  bool skip_io_binding_allowed = false;  // Indicates if input/output binding can be skipped
+  IAllocatorUniquePtr<void> context_memory = nullptr;
+  size_t context_memory_size = 0;
 };
 
 // Holds important information for building valid ORT graph.
@@ -251,9 +306,7 @@ class NvExecutionProvider : public IExecutionProvider {
   std::mutex tensorrt_mu_;
   int device_id_;
   std::string compute_capability_;
-  bool context_memory_sharing_enable_ = false;
   size_t max_ctx_mem_size_ = 0;
-  IAllocatorUniquePtr<void> context_memory_ = nullptr;
   mutable char model_path_[4096] = {};  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*) = nullptr;
@@ -341,8 +394,6 @@ class NvExecutionProvider : public IExecutionProvider {
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
     bool UpdateTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context);
     void ResetTensorRTContext(std::string fused_node);
-    bool CompareProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges);
-    void UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges);
 
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);

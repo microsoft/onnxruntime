@@ -59,7 +59,7 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.36.1.250708
+  default: 2.37.0.250724
 
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
@@ -222,7 +222,7 @@ stages:
           targetPath: $(Build.SourcesDirectory)/build/Release/dist/fixed_wheels
           artifactName: onnxruntime-macos-$(PythonVersion)
       variables:
-        MACOSX_DEPLOYMENT_TARGET: '13.3'
+        MACOSX_DEPLOYMENT_TARGET: '13.4'
       strategy:
         matrix:
           Python310:

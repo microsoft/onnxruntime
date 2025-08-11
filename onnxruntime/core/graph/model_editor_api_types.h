@@ -137,6 +137,11 @@ struct ModelEditorNode : public OrtNode {
                            "OrtModelEditorApi does not support getting attribute OrtOpAttr for OrtNode");
   }
 
+  Status GetTensorAttributeAsOrtValue(const OrtOpAttr* /*attribute*/, OrtValue*& /*attr_tensor*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting 'TENSOR' attribute for OrtNode");
+  }
+
   Status GetNumSubgraphs(size_t& /*num_subgraphs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the subgraphs for OrtNode");
