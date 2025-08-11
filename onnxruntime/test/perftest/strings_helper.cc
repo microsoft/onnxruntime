@@ -56,6 +56,34 @@ void ParseSessionConfigs(const std::string& configs_string,
   }
 }
 
+bool ParseDimensionOverride(const std::string& input, std::map<std::string, int64_t>& free_dim_override_map) {
+  std::stringstream ss(input);
+  std::string free_dim_str;
+
+  while (std::getline(ss, free_dim_str, ';')) {
+    if (!free_dim_str.empty()) {
+      size_t delimiter_location = free_dim_str.find(":");
+      if (delimiter_location >= free_dim_str.size() - 1) {
+        return false;
+      }
+      std::string dim_identifier = free_dim_str.substr(0, delimiter_location);
+      std::string override_val_str = free_dim_str.substr(delimiter_location + 1, std::string::npos);
+      ORT_TRY {
+        int64_t override_val = std::stoll(override_val_str.c_str());
+        if (override_val <= 0) {
+          return false;
+        }
+        free_dim_override_map[dim_identifier] = override_val;
+      }
+      ORT_CATCH(...) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 void ParseEpOptions(const std::string& input, std::vector<std::unordered_map<std::string, std::string>>& result) {
   auto tokens = utils::SplitString(input, ";", true);
 
