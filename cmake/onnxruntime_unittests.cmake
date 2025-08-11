@@ -360,9 +360,13 @@ if(onnxruntime_MINIMAL_BUILD OR onnxruntime_REDUCED_OPS_BUILD)
   # some exclusions from a minimal or reduced ops build
   list(REMOVE_ITEM onnxruntime_test_utils_src
     "${TEST_SRC_DIR}/util/include/base_tester.h"
+    "${TEST_SRC_DIR}/util/include/function_test_util.h"
+    "${TEST_SRC_DIR}/util/include/graph_transform_test_builder.h"
     "${TEST_SRC_DIR}/util/include/model_tester.h"
     "${TEST_SRC_DIR}/util/include/op_tester.h"
     "${TEST_SRC_DIR}/util/base_tester.cc"
+    "${TEST_SRC_DIR}/util/function_test_util.cc"
+    "${TEST_SRC_DIR}/util/graph_transform_test_builder.cc"
     "${TEST_SRC_DIR}/util/op_tester.cc"
   )
 
