@@ -37,17 +37,6 @@ jobs:
     name: ${{ parameters.MACHINE_POOL }}
     os: windows
     hostArchitecture: Arm64
-  strategy:
-    matrix:
-      Python311_arm64:
-        PythonVersion: '3.11.0'
-        LocalPythonDir: 'C:\Python\Python311'
-      Python312_arm64:
-        PythonVersion: '3.12.6'
-        LocalPythonDir: 'C:\Python\Python312'
-      Python313_arm64:
-        PythonVersion: '3.13.2'
-        LocalPythonDir: 'C:\Python\Python313'
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
