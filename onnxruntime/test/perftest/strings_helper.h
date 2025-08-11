@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 #include <string_view>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
