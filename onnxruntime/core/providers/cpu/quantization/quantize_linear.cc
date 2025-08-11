@@ -121,7 +121,7 @@ static void PrepareForQDQ(const TensorShape& input_shape,
 #define REGISTER_DEQUANTIZELINEAR(T)                                         \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                            \
       DequantizeLinear,                                                      \
-      23,                                                                    \
+      24,                                                                    \
       T,                                                                     \
       KernelDefBuilder()                                                     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
@@ -160,8 +160,7 @@ static void PrepareForQDQ(const TensorShape& input_shape,
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DequantizeLinear<T>);
 
-// Opset 23 added support for float4e2m1.
-// TODO(titaiwang): Add support for float4e2m1.
+// Opset24
 REGISTER_DEQUANTIZELINEAR(int8_t)
 REGISTER_DEQUANTIZELINEAR(uint8_t)
 REGISTER_DEQUANTIZELINEAR(int16_t)
@@ -174,6 +173,22 @@ REGISTER_DEQUANTIZELINEAR(Float8E4M3FN)
 REGISTER_DEQUANTIZELINEAR(Float8E4M3FNUZ)
 REGISTER_DEQUANTIZELINEAR(Float8E5M2)
 REGISTER_DEQUANTIZELINEAR(Float8E5M2FNUZ)
+#endif
+
+// Opset 23 added support for float4e2m1.
+// TODO: Add support for float4e2m1.
+REGISTER_DEQUANTIZELINEAR_VERSIONED(int8_t, 23, 23)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(uint8_t, 23, 23)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(int16_t, 23, 23)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(uint16_t, 23, 23)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(int32_t, 23, 23)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Int4x2, 23, 23)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(UInt4x2, 23, 23)
+#if !defined(DISABLE_FLOAT8_TYPES)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E4M3FN, 23, 23)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E4M3FNUZ, 23, 23)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E5M2, 23, 23)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ, 23, 23)
 #endif
 
 // Opset 21 added 16-bit and 4-bit int to DQ.
@@ -578,7 +593,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 #define REGISTER_QUANTIZELINEAR(T)                                          \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                           \
       QuantizeLinear,                                                       \
-      23,                                                                   \
+      24,                                                                   \
       T,                                                                    \
       KernelDefBuilder()                                                    \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
@@ -619,8 +634,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
       QuantizeLinear<T>);
 
-// Opset 23 added support for float4e2m1.
-// TODO(titaiwang): Add support for float4e2m1.
+// Opset 24
 REGISTER_QUANTIZELINEAR(int8_t)
 REGISTER_QUANTIZELINEAR(uint8_t)
 REGISTER_QUANTIZELINEAR(int16_t)
@@ -632,6 +646,20 @@ REGISTER_QUANTIZELINEAR(Float8E4M3FN)
 REGISTER_QUANTIZELINEAR(Float8E4M3FNUZ)
 REGISTER_QUANTIZELINEAR(Float8E5M2)
 REGISTER_QUANTIZELINEAR(Float8E5M2FNUZ)
+#endif
+
+// Opset 23 added support for float4e2m1.
+REGISTER_QUANTIZELINEAR_VERSIONED(int8_t, 23, 23)
+REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t, 23, 23)
+REGISTER_QUANTIZELINEAR_VERSIONED(int16_t, 23, 23)
+REGISTER_QUANTIZELINEAR_VERSIONED(uint16_t, 23, 23)
+REGISTER_QUANTIZELINEAR_VERSIONED(Int4x2, 23, 23)
+REGISTER_QUANTIZELINEAR_VERSIONED(UInt4x2, 23, 23)
+#if !defined(DISABLE_FLOAT8_TYPES)
+REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FN, 23, 23)
+REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FNUZ, 23, 23)
+REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2, 23, 23)
+REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ, 23, 23)
 #endif
 
 // Opset 21 added 16-bit and 4-bit int support to Q ops.

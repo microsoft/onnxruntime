@@ -49,7 +49,7 @@ class BaseOpBuilder : public IOpBuilder {
   virtual bool IsQuantizedOp(const NodeUnit& /* node_unit */) const { return false; }
 
   virtual int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 23; }
+  virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 24; }
 
   virtual bool HasSupportedInputOutputsImpl(
       const InitializedTensorSet& initializers, const NodeUnit& node_unit) const;

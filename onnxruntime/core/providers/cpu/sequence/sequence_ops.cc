@@ -334,9 +334,19 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
 
 // SplitToSequence
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    SplitToSequence,
+    11, 23,
+    KernelDefBuilder()
+        .TypeConstraint("T",
+                        BuildKernelDefConstraints<float, MLFloat16, double, int32_t, int64_t, bool, std::string>())
+        .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
+        .TypeConstraint("I", BuildKernelDefConstraints<int32_t, int64_t>()),
+    SplitToSequence);
+
 ONNX_CPU_OPERATOR_KERNEL(
     SplitToSequence,
-    11,
+    24,
     KernelDefBuilder()
         .TypeConstraint("T",
                         BuildKernelDefConstraints<float, MLFloat16, double, int32_t, int64_t, bool, std::string>())

@@ -477,10 +477,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose);
 
 // Opset 23 added support for float4e2m1.
-// TODO(titaiwang): Implement support for float4e2m1.
-ONNX_CPU_OPERATOR_KERNEL(
+// TODO: Implement support for float4e2m1.
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     23,
+    23,
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesOpset21>()),
+    Transpose);
+
+// Opset 24
+ONNX_CPU_OPERATOR_KERNEL(
+    Transpose,
+    24,
     KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesOpset21>()),
     Transpose);
 
