@@ -1222,8 +1222,6 @@ block()
     ${TEST_SRC_DIR}/common/cuda_op_test_utils.h
     ${TEST_SRC_DIR}/common/tensor_op_test_utils.cc
     ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
-    ${TEST_SRC_DIR}/contrib_ops/function_test_util.cc
-    ${TEST_SRC_DIR}/contrib_ops/function_test_util.h
     ${TEST_SRC_DIR}/framework/dummy_allocator.cc
     ${TEST_SRC_DIR}/framework/dummy_allocator.h
     ${TEST_SRC_DIR}/framework/test_utils.cc
