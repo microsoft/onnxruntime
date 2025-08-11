@@ -1026,7 +1026,6 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   }
 
   cuda_graph_enable_ = info.cuda_graph_enable;
-  LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] cuda_graph_enable_ is " << cuda_graph_enable_;
   multi_profile_enable_ = info.multi_profile_enable;
   op_types_to_exclude_ = info.op_types_to_exclude;
 
