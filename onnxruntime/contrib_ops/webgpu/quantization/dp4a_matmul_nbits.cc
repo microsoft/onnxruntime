@@ -654,15 +654,15 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   const bool has_zero_points = zero_points != nullptr;
   if (M < min_M_for_tile_optimization) {
     uint32_t tile_size_k_vec = 16;
-    uint32_t tile_size = 32;
+    uint32_t tile_size_n = 32;
 
     if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
       tile_size_k_vec = 32;
-      tile_size = 4;
+      tile_size_n = 4;
     }
 
-    DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size, nbits, has_zero_points};
-    uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
+    DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size_n, nbits, has_zero_points};
+    uint32_t num_N_tile = (N + tile_size_n - 1) / tile_size_n;
     mul_program.SetWorkgroupSize(128);
     mul_program.SetDispatchGroupSize(M * num_N_tile);
     mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
@@ -671,7 +671,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddUniformVariables({M, N, K, K / 16, K / 32, block_size, num_N_tile, zero_blocks_per_col})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
-        .CacheHint(nbits, tile_size_k_vec, tile_size, has_zero_points);
+        .CacheHint(nbits, tile_size_k_vec, tile_size_n, has_zero_points);
     if (has_zero_points) {
       mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
     }
