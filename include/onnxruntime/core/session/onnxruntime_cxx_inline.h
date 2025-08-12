@@ -13,6 +13,7 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+#include "onnxruntime_cxx_api.h"
 
 // Convert OrtStatus to Ort::Status and return
 // instead of throwing
@@ -297,6 +298,16 @@ inline OrtMemType MemoryInfoImpl<T>::GetMemoryType() const {
 }
 
 template <typename T>
+inline OrtDeviceMemoryType MemoryInfoImpl<T>::GetDeviceMemoryType() const {
+  return GetApi().MemoryInfoGetDeviceMemType(this->p_);
+}
+
+template <typename T>
+inline uint32_t MemoryInfoImpl<T>::GetVendorId() const {
+  return GetApi().MemoryInfoGetVendorId(this->p_);
+}
+
+template <typename T>
 template <typename U>
 inline bool MemoryInfoImpl<T>::operator==(const MemoryInfoImpl<U>& o) const {
   int comp_result = 0;
@@ -314,6 +325,12 @@ inline MemoryInfo MemoryInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_ty
 
 inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
   ThrowOnError(GetApi().CreateMemoryInfo(name, type, id, mem_type, &this->p_));
+}
+
+inline MemoryInfo::MemoryInfo(const char* name, OrtMemoryInfoDeviceType device_type, uint32_t vendor_id, uint32_t device_id,
+                              OrtDeviceMemoryType mem_type, size_t alignment, OrtAllocatorType allocator_type) {
+  ThrowOnError(GetApi().CreateMemoryInfo_V2(name, device_type, vendor_id, device_id, mem_type, alignment,
+                                            allocator_type, &this->p_));
 }
 
 namespace detail {
@@ -404,20 +421,7 @@ inline std::vector<std::string> GetOutputNamesHelper(const OrtIoBinding* binding
 
 inline std::vector<Value> GetOutputValuesHelper(const OrtIoBinding* binding, OrtAllocator* allocator) {
   std::vector<Value> result;
-  size_t owned = 0;
   size_t output_count = 0;
-  // Lambda to release the buffer when no longer needed and
-  // make sure that we destroy all instances on exception
-  auto free_fn = [&owned, &output_count, allocator](OrtValue** buffer) {
-    if (buffer) {
-      while (owned < output_count) {
-        auto* p = buffer + owned++;
-        GetApi().ReleaseValue(*p);
-      }
-      allocator->Free(allocator, buffer);
-    }
-  };
-  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)>;
 
   OrtValue** output_buffer = nullptr;
   ThrowOnError(GetApi().GetBoundOutputValues(binding, allocator, &output_buffer, &output_count));
@@ -425,12 +429,11 @@ inline std::vector<Value> GetOutputValuesHelper(const OrtIoBinding* binding, Ort
     return result;
   }
 
-  Ptr buffer_g(output_buffer, free_fn);
+  std::unique_ptr<void, AllocatedFree> buffer_g(output_buffer, AllocatedFree(allocator));
 
   result.reserve(output_count);
   for (size_t i = 0; i < output_count; ++i) {
     result.emplace_back(output_buffer[i]);
-    ++owned;
   }
   return result;
 }
@@ -547,6 +550,10 @@ inline void KeyValuePairs::Remove(const char* key) {
   GetApi().RemoveKeyValuePair(this->p_, key);
 }
 
+inline void* SyncStream::GetHandle() const {
+  return GetApi().SyncStream_GetHandle(this->p_);
+}
+
 namespace detail {
 template <typename T>
 inline OrtHardwareDeviceType HardwareDeviceImpl<T>::Type() const {
@@ -596,6 +603,19 @@ inline ConstKeyValuePairs EpDeviceImpl<T>::EpOptions() const {
 template <typename T>
 inline ConstHardwareDevice EpDeviceImpl<T>::Device() const {
   return ConstHardwareDevice(GetApi().EpDevice_Device(this->p_));
+}
+
+template <typename T>
+inline ConstMemoryInfo EpDeviceImpl<T>::GetMemoryInfo(OrtDeviceMemoryType memory_type) const {
+  const auto* mem_info = GetApi().EpDevice_MemoryInfo(this->p_, memory_type);
+  return ConstMemoryInfo{mem_info};
+}
+
+template <typename T>
+inline SyncStream EpDeviceImpl<T>::CreateSyncStream(ConstKeyValuePairs stream_options) const {
+  OrtSyncStream* stream = nullptr;
+  ThrowOnError(GetApi().CreateSyncStreamForEpDevice(this->p_, stream_options, &stream));
+  return SyncStream{stream};
 }
 }  // namespace detail
 
@@ -676,6 +696,16 @@ inline Env& Env::CreateAndRegisterAllocatorV2(const std::string& provider_type, 
   return *this;
 }
 
+inline Env& Env::RegisterAllocator(OrtAllocator* allocator) {
+  ThrowOnError(GetApi().RegisterAllocator(p_, allocator));
+  return *this;
+}
+
+inline Env& Env::UnregisterAllocator(const OrtMemoryInfo* mem_info) {
+  ThrowOnError(GetApi().UnregisterAllocator(p_, mem_info));
+  return *this;
+}
+
 inline Env& Env::RegisterExecutionProviderLibrary(const char* registration_name,
                                                   const std::basic_string<ORTCHAR_T>& path) {
   ThrowOnError(GetApi().RegisterExecutionProviderLibrary(p_, registration_name, path.c_str()));
@@ -701,6 +731,41 @@ inline std::vector<ConstEpDevice> Env::GetEpDevices() const {
   }
 
   return devices;
+}
+
+inline Status Env::CopyTensors(const std::vector<Value>& src_tensors,
+                               const std::vector<Value>& dst_tensors,
+                               OrtSyncStream* stream) const {
+  if (src_tensors.size() != dst_tensors.size()) {
+    return Status("Source and destination tensor vectors must have the same size", ORT_INVALID_ARGUMENT);
+  }
+  if (src_tensors.empty()) {
+    return Status();
+  }
+
+  const OrtValue* const* src_tensors_ptr = reinterpret_cast<const OrtValue* const*>(src_tensors.data());
+  OrtValue* const* dst_tensors_ptr = reinterpret_cast<OrtValue* const*>(dst_tensors.data());
+  OrtStatus* status = GetApi().CopyTensors(p_, src_tensors_ptr, dst_tensors_ptr, stream, src_tensors.size());
+  return Status(status);
+}
+
+inline UnownedAllocator Env::CreateSharedAllocator(const OrtEpDevice* ep_device, OrtDeviceMemoryType mem_type,
+                                                   OrtAllocatorType allocator_type,
+                                                   const OrtKeyValuePairs* allocator_options) {
+  OrtAllocator* p;
+  ThrowOnError(GetApi().CreateSharedAllocator(p_, ep_device, mem_type, allocator_type, allocator_options, &p));
+  return UnownedAllocator{p};
+}
+
+inline UnownedAllocator Env::GetSharedAllocator(const OrtMemoryInfo* mem_info) {
+  OrtAllocator* p;
+  ThrowOnError(GetApi().GetSharedAllocator(p_, mem_info, &p));
+  return UnownedAllocator{p};
+}
+
+inline void Env::ReleaseSharedAllocator(const OrtEpDevice* ep_device,
+                                        OrtDeviceMemoryType mem_type) {
+  ThrowOnError(GetApi().ReleaseSharedAllocator(p_, ep_device, mem_type));
 }
 
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
@@ -1298,9 +1363,9 @@ inline std::vector<std::string> ConstSessionImpl<T>::GetInputNames() const {
   input_names.reserve(num_inputs);
 
   for (size_t i = 0; i < num_inputs; ++i) {
-    char* name = nullptr;
+    char* name;
     ThrowOnError(GetApi().SessionGetInputName(this->p_, i, allocator, &name));
-    input_names.push_back(name);
+    input_names.emplace_back(name);
     allocator.Free(name);
   }
 
@@ -1316,9 +1381,9 @@ inline std::vector<std::string> ConstSessionImpl<T>::GetOutputNames() const {
   output_names.reserve(num_inputs);
 
   for (size_t i = 0; i < num_inputs; ++i) {
-    char* name = nullptr;
+    char* name;
     ThrowOnError(GetApi().SessionGetOutputName(this->p_, i, allocator, &name));
-    output_names.push_back(name);
+    output_names.emplace_back(name);
     allocator.Free(name);
   }
 
@@ -1334,12 +1399,42 @@ inline std::vector<std::string> ConstSessionImpl<T>::GetOverridableInitializerNa
   initializer_names.reserve(num_initializers);
 
   for (size_t i = 0; i < num_initializers; ++i) {
-    char* name = nullptr;
+    char* name;
     ThrowOnError(GetApi().SessionGetOverridableInitializerName(this->p_, i, allocator, &name));
-    initializer_names.push_back(name);
+    initializer_names.emplace_back(name);
   }
 
   return initializer_names;
+}
+
+template <typename T>
+inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForInputs() const {
+  AllocatorWithDefaultOptions allocator;
+
+  auto num_inputs = GetInputCount();
+  std::vector<ConstMemoryInfo> mem_infos;
+  mem_infos.resize(num_inputs);
+
+  ThrowOnError(GetApi().SessionGetMemoryInfoForInputs(this->p_, reinterpret_cast<const OrtMemoryInfo**>(&mem_infos[0]),
+                                                      num_inputs));
+
+  return mem_infos;
+}
+
+template <typename T>
+inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForOutputs() const {
+  AllocatorWithDefaultOptions allocator;
+  auto num_outputs = GetOutputCount();
+  std::vector<ConstMemoryInfo> mem_infos;
+  mem_infos.reserve(num_outputs);
+
+  const OrtMemoryInfo* mem_info_ptrs;
+  ThrowOnError(GetApi().SessionGetMemoryInfoForOutputs(this->p_, &mem_info_ptrs, num_outputs));
+  for (size_t i = 0; i < num_outputs; ++i) {
+    mem_infos.emplace_back(mem_info_ptrs[i]);
+  }
+
+  return mem_infos;
 }
 
 template <typename T>
@@ -1361,6 +1456,22 @@ inline AllocatedStringPtr ConstSessionImpl<T>::GetOverridableInitializerNameAllo
   char* out;
   ThrowOnError(GetApi().SessionGetOverridableInitializerName(this->p_, index, allocator, &out));
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
+}
+
+template <typename T>
+inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() const {
+  auto num_inputs = GetInputCount();
+  std::vector<ConstEpDevice> input_devices;
+  input_devices.reserve(num_inputs);
+
+  const OrtEpDevice* device_ptrs;
+  ThrowOnError(GetApi().SessionGetEpDeviceForInputs(this->p_, &device_ptrs, num_inputs));
+
+  for (size_t i = 0; i < num_inputs; ++i) {
+    input_devices.emplace_back(device_ptrs[i]);
+  }
+
+  return input_devices;
 }
 
 template <typename T>
@@ -1857,15 +1968,15 @@ inline size_t ConstValueImpl<T>::GetTensorSizeInBytes() const {
 template <typename T>
 template <typename R>
 inline const R* ConstValueImpl<T>::GetTensorData() const {
-  R* out;
-  ThrowOnError(GetApi().GetTensorMutableData(const_cast<OrtValue*>(this->p_), (void**)&out));
+  const R* out;
+  ThrowOnError(GetApi().GetTensorData(this->p_, reinterpret_cast<const void**>(&out)));
   return out;
 }
 
 template <typename T>
 inline const void* ConstValueImpl<T>::GetTensorRawData() const {
-  void* out;
-  ThrowOnError(GetApi().GetTensorMutableData(const_cast<OrtValue*>(this->p_), &out));
+  const void* out;
+  ThrowOnError(GetApi().GetTensorData(this->p_, &out));
   return out;
 }
 

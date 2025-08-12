@@ -3316,13 +3316,9 @@ TEST(CApiTest, model_metadata) {
 }
 
 TEST(CApiTest, get_available_providers) {
-  const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  int len = 0;
-  char** providers;
-  ASSERT_EQ(g_ort->GetAvailableProviders(&providers, &len), nullptr);
-  ASSERT_GT(len, 0);
-  ASSERT_STREQ(providers[len - 1], "CPUExecutionProvider");
-  ASSERT_EQ(g_ort->ReleaseAvailableProviders(providers, len), nullptr);
+  std::vector<std::string> providers = Ort::GetAvailableProviders();
+  ASSERT_GT(providers.size(), 0);
+  ASSERT_STREQ(providers.back().c_str(), "CPUExecutionProvider");
 }
 
 TEST(CApiTest, get_available_providers_cpp) {
@@ -3348,8 +3344,6 @@ TEST(CApiTest, get_build_info_string) {
 }
 
 TEST(CApiTest, TestSharedAllocators) {
-  OrtEnv* env_ptr = (OrtEnv*)(*ort_env);
-
   // prepare inputs
   std::vector<Input<float>> inputs(1);
   auto& input = inputs.back();
@@ -3372,9 +3366,7 @@ TEST(CApiTest, TestSharedAllocators) {
   // CASE 1: We test creating and registering an ORT-internal allocator implementation instance
   // for sharing between sessions
   {
-    OrtMemoryInfo* mem_info = nullptr;
-    ASSERT_TRUE(api.CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info) == nullptr);
-    std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(mem_info, api.ReleaseMemoryInfo);
+    auto mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
     OrtArenaCfg* arena_cfg = nullptr;
     ASSERT_TRUE(api.CreateArenaCfg(0, -1, -1, -1, &arena_cfg) == nullptr);
@@ -3382,13 +3374,9 @@ TEST(CApiTest, TestSharedAllocators) {
 
     // This creates an ORT-internal allocator instance and registers it in the environment for sharing
     // NOTE: On x86 builds arenas are not supported and will default to using non-arena based allocator
-    ASSERT_TRUE(api.CreateAndRegisterAllocator(env_ptr, mem_info, arena_cfg) == nullptr);
-
+    ort_env->CreateAndRegisterAllocator(mem_info, arena_cfg);
     // Registration is always a replace operation
-    std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)> status_releaser(
-        api.CreateAndRegisterAllocator(env_ptr, mem_info, arena_cfg),
-        api.ReleaseStatus);
-    ASSERT_TRUE(status_releaser.get() == nullptr);
+    ort_env->CreateAndRegisterAllocator(mem_info, arena_cfg);
 
     {
       // create session 1
@@ -3414,7 +3402,7 @@ TEST(CApiTest, TestSharedAllocators) {
 
     // Remove the registered shared allocator for part 2 of this test
     // where-in we will register a custom allocator for the same device.
-    ASSERT_TRUE(api.UnregisterAllocator(env_ptr, mem_info) == nullptr);
+    ort_env->UnregisterAllocator(mem_info);
   }
 
   // CASE 2: We test registering a custom allocator implementation
@@ -3425,15 +3413,9 @@ TEST(CApiTest, TestSharedAllocators) {
     // need to be aligned for certain devices/build configurations/math libraries.
     // See docs/C_API.md for details.
     MockedOrtAllocator custom_allocator;
-    ASSERT_TRUE(api.RegisterAllocator(env_ptr, &custom_allocator) == nullptr);
-
+    ort_env->RegisterAllocator(&custom_allocator);
     // Registration is always a replace operation
-    std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)>
-        status_releaser(
-            api.RegisterAllocator(env_ptr, &custom_allocator),
-            api.ReleaseStatus);
-    ASSERT_TRUE(status_releaser.get() == nullptr);
-
+    ort_env->RegisterAllocator(&custom_allocator);
     {
       // Keep this scoped to destroy the underlying sessions after use
       // This should trigger frees in our custom allocator
@@ -3472,7 +3454,7 @@ TEST(CApiTest, TestSharedAllocators) {
 
     // Remove the registered shared allocator from the global environment
     // (common to all tests) to prevent its accidental usage elsewhere
-    ASSERT_TRUE(api.UnregisterAllocator(env_ptr, custom_allocator.Info()) == nullptr);
+    ort_env->UnregisterAllocator(custom_allocator.Info());
 
     // Ensure that the registered custom allocator was indeed used for both sessions
     // We should have seen 2 allocations per session (one for the sole initializer
@@ -3488,22 +3470,18 @@ TEST(CApiTest, TestSharedAllocators) {
   }
 #ifdef USE_CUDA
   {
-    OrtMemoryInfo* cuda_meminfo = nullptr;
-    ASSERT_TRUE(api.CreateMemoryInfo("Cuda", OrtArenaAllocator, 0, OrtMemTypeDefault, &cuda_meminfo) == nullptr);
-    std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(cuda_meminfo, api.ReleaseMemoryInfo);
+    auto cuda_meminfo = Ort::MemoryInfo("Cuda", OrtArenaAllocator, 0, OrtMemTypeDefault);
 
     OrtArenaCfg* arena_cfg = nullptr;
     ASSERT_TRUE(api.CreateArenaCfg(0, -1, -1, -1, &arena_cfg) == nullptr);
     std::unique_ptr<OrtArenaCfg, decltype(api.ReleaseArenaCfg)> rel_arena_cfg(arena_cfg, api.ReleaseArenaCfg);
 
-    std::vector<const char*> keys, values;
-    ASSERT_TRUE(api.CreateAndRegisterAllocatorV2(env_ptr, onnxruntime::kCudaExecutionProvider, cuda_meminfo, arena_cfg, keys.data(), values.data(), 0) == nullptr);
+    ort_env->CreateAndRegisterAllocatorV2(onnxruntime::kCudaExecutionProvider,
+                                          cuda_meminfo, {}, arena_cfg);
 
     // Registration is always a replace operation
-    std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)> status_releaser(
-        api.CreateAndRegisterAllocatorV2(env_ptr, onnxruntime::kCudaExecutionProvider, cuda_meminfo, arena_cfg, keys.data(), values.data(), 0),
-        api.ReleaseStatus);
-    ASSERT_TRUE(status_releaser.get() == nullptr);
+    ort_env->CreateAndRegisterAllocatorV2(onnxruntime::kCudaExecutionProvider,
+                                          cuda_meminfo, {}, arena_cfg);
 
     {
       // create session 1
@@ -3530,7 +3508,7 @@ TEST(CApiTest, TestSharedAllocators) {
                         nullptr);
     }
 
-    ASSERT_TRUE(api.UnregisterAllocator(env_ptr, cuda_meminfo) == nullptr);
+    ort_env->UnregisterAllocator(cuda_meminfo);
   }
 #endif
 }
@@ -3998,8 +3976,7 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
 
   ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 6) == nullptr);
 
-  OrtAllocator* allocator;
-  ASSERT_TRUE(api.GetAllocatorWithDefaultOptions(&allocator) == nullptr);
+  auto allocator = Ort::AllocatorWithDefaultOptions();
 
   char* cuda_options_str = nullptr;
   ASSERT_TRUE(api.GetCUDAProviderOptionsAsString(rel_cuda_options.get(), allocator, &cuda_options_str) == nullptr);
@@ -4015,10 +3992,10 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   ASSERT_TRUE(s.find("cudnn_conv_use_max_workspace=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv1d_pad_to_nc1d") != std::string::npos);
 
-  ASSERT_TRUE(api.AllocatorFree(allocator, (void*)cuda_options_str) == nullptr);
+  allocator.Free(cuda_options_str);
 
   Ort::SessionOptions session_options;
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(static_cast<OrtSessionOptions*>(session_options), rel_cuda_options.get()) == nullptr);
+  session_options.AppendExecutionProvider_CUDA_V2(*rel_cuda_options);
 
   // if session creation passes, model loads fine
   std::basic_string<ORTCHAR_T> model_uri = MODEL_URI;

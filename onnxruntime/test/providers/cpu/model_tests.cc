@@ -61,7 +61,7 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 // asserts that the OrtStatus* result of `status_expr` does not indicate an error
 // note: this takes ownership of the OrtStatus* result
-#define ASSERT_ORT_STATUS_OK(status_expr)                                           \
+#define ASSERT_CXX_ORTSTATUS_OK(status_expr)                                        \
   do {                                                                              \
     if (OrtStatus* _status = (status_expr); _status != nullptr) {                   \
       std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)> _rel_status{    \
@@ -180,7 +180,7 @@ TEST_P(ModelTest, Run) {
       ortso.SetLogSeverityLevel(ORT_LOGGING_LEVEL_ERROR);
       if (provider_name == "cuda") {
         OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-        ASSERT_ORT_STATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
+        ASSERT_CXX_ORTSTATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
             cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
 
@@ -189,7 +189,7 @@ TEST_P(ModelTest, Run) {
         std::string device_id = Env::Default().GetEnvironmentVar("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
         values.push_back(device_id.empty() ? "0" : device_id.c_str());
         values.push_back("0");
-        ASSERT_ORT_STATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 2));
+        ASSERT_CXX_ORTSTATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 2));
 
         ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "rocm") {
@@ -199,11 +199,11 @@ TEST_P(ModelTest, Run) {
 #ifdef USE_DNNL
       else if (provider_name == "dnnl") {
         OrtDnnlProviderOptions* ep_option;
-        ASSERT_ORT_STATUS_OK(OrtApis::CreateDnnlProviderOptions(&ep_option));
+        ASSERT_CXX_ORTSTATUS_OK(OrtApis::CreateDnnlProviderOptions(&ep_option));
         std::unique_ptr<OrtDnnlProviderOptions, decltype(&OrtApis::ReleaseDnnlProviderOptions)>
             rel_dnnl_options(ep_option, &OrtApis::ReleaseDnnlProviderOptions);
         ep_option->use_arena = 0;
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl(ortso, ep_option));
+        ASSERT_CXX_ORTSTATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl(ortso, ep_option));
       }
 #endif
       else if (provider_name == "tensorrt") {
@@ -212,14 +212,14 @@ TEST_P(ModelTest, Run) {
           ortso.AppendExecutionProvider_TensorRT_V2(params);
         } else {
           OrtTensorRTProviderOptionsV2* ep_option = nullptr;
-          ASSERT_ORT_STATUS_OK(OrtApis::CreateTensorRTProviderOptions(&ep_option));
+          ASSERT_CXX_ORTSTATUS_OK(OrtApis::CreateTensorRTProviderOptions(&ep_option));
           std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(&OrtApis::ReleaseTensorRTProviderOptions)>
               rel_cuda_options(ep_option, &OrtApis::ReleaseTensorRTProviderOptions);
           ortso.AppendExecutionProvider_TensorRT_V2(*ep_option);
         }
         // Enable CUDA fallback
         OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-        ASSERT_ORT_STATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
+        ASSERT_CXX_ORTSTATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
             cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
 
@@ -228,7 +228,7 @@ TEST_P(ModelTest, Run) {
         std::string device_id = Env::Default().GetEnvironmentVar("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
         values.push_back(device_id.empty() ? "0" : device_id.c_str());
         values.push_back("0");
-        ASSERT_ORT_STATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 2));
+        ASSERT_CXX_ORTSTATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 2));
 
         ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "migraphx") {
@@ -240,27 +240,27 @@ TEST_P(ModelTest, Run) {
       }
 #ifdef USE_NNAPI
       else if (provider_name == "nnapi") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Nnapi(ortso, 0));
+        ASSERT_CXX_ORTSTATUS_OK(OrtSessionOptionsAppendExecutionProvider_Nnapi(ortso, 0));
       }
 #endif
 #ifdef USE_VSINPU
       else if (provider_name == "vsinpu") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_VSINPU(ortso));
+        ASSERT_CXX_ORTSTATUS_OK(OrtSessionOptionsAppendExecutionProvider_VSINPU(ortso));
       }
 #endif
 #ifdef USE_RKNPU
       else if (provider_name == "rknpu") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Rknpu(ortso));
+        ASSERT_CXX_ORTSTATUS_OK(OrtSessionOptionsAppendExecutionProvider_Rknpu(ortso));
       }
 #endif
 #ifdef USE_ACL
       else if (provider_name == "acl") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_ACL(ortso, false));
+        ASSERT_CXX_ORTSTATUS_OK(OrtSessionOptionsAppendExecutionProvider_ACL(ortso, false));
       }
 #endif
 #ifdef USE_ARMNN
       else if (provider_name == "armnn") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_ArmNN(ortso));
+        ASSERT_CXX_ORTSTATUS_OK(OrtSessionOptionsAppendExecutionProvider_ArmNN(ortso));
       }
 #endif
 #ifdef USE_XNNPACK
@@ -300,11 +300,11 @@ TEST_P(ModelTest, Run) {
         std::unordered_map<std::string, Ort::Value> feeds;
         l->LoadTestData(task_id, holder, feeds, true);
         size_t output_count;
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionGetOutputCount(ort_session, &output_count));
+        ASSERT_CXX_ORTSTATUS_OK(OrtApis::SessionGetOutputCount(ort_session, &output_count));
         // Create output feed
         std::vector<char*> output_names(output_count);
         for (size_t i = 0; i != output_count; ++i) {
-          ASSERT_ORT_STATUS_OK(
+          ASSERT_CXX_ORTSTATUS_OK(
               OrtApis::SessionGetOutputName(ort_session, i, default_allocator.get(), &output_names[i]));
         }
 
