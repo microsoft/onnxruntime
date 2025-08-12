@@ -35,7 +35,15 @@ git add onnx
 1. Modify [cmake/vcpkg-ports/onnx/binskim.patch](/cmake/vcpkg-ports/onnx/binskim.patch) to be the same as [cmake/patches/onnx/onnx.patch](/cmake/patches/onnx/onnx.patch).
 2. The other patches are required/created by vcpkg repository to build ONNX. We just need to re-run diff to makes sure the patches can be applied in the updated ONNX version.
 3. Update [cmake/vcpkg-ports/onnx/portfile.cmake](/cmake/vcpkg-ports/onnx/portfile.cmake) with the correct commit id and SHA512. (alternatively, build it with the wrong SHA and ORT should tell you the expected one.)
-4. Try to build ONNXRUNTIME from source. If the build fails, please make the changes accordingly, or use binskim.patch if it's ONNX bugs. An example build:
+4. Upload your package: [Follow the instructions](https://microsoft.sharepoint.com/teams/ONNX2/_layouts/15/Doc.aspx?sourcedoc={170774be-e1c6-4f8b-a3ae-984f211fe410}&action=edit&wd=target%28Development.)one%7C63d3ab47-51d1-4a62-9965-66882234bd44%2FAdd%20or%20Update%20a%20C%2B%2B%20dependency%7Cb6ae6a97-94fc-4436-8fc6-08c21ae895da%2F%29&wdorigin=NavigationUrl
+
+Alternatively, directly run Terrapin to upload ONNX package (need SHA512):
+
+```
+C:\local\Terrapin\TerrapinRetrievalTool.exe -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p https://github.com/onnx/onnx/archive/866d145a8168e36f34741534df4c94d8e7588379.tar.gz -s 80e3a5db347bf3046a6fb8721f308c054c923aa5649ab704f0265e83bba6edac9f7e402dde2be3d9c01d3b291f5eb284eaba2df6986744161ece887e0c2fc845 -d "C:\Users\titaiwang\onnxruntime\build\Windows\vcpkg\downloads\onnx-onnx-866d145a8168e36f34741534df4c94d8e7588379.tar.gz.25136.part"
+```
+
+5. Try to build ONNXRUNTIME from source. If the build fails, please make the changes accordingly, or use binskim.patch if it's ONNX bugs. An example build:
 
 ```bash
 ./build.sh --config RelWithDebInfo --use_cuda --cuda_home /usr/local/cuda-12.6/ --cudnn_home /usr/local/cuda-12.6/ --build_wheel --parallel --skip_tests --use_vcpkg
