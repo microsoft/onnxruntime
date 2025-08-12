@@ -12,11 +12,12 @@ namespace onnxruntime {
 // OrtEpApi infrastructure to be able to use the QNN EP as an OrtEpFactory for auto EP selection.
 struct QnnEpFactory : public OrtEpFactory, public ApiPtrs {
  public:
-  QnnEpFactory(const char* ep_name, const ApiPtrs& ort_api_in);
+  QnnEpFactory(const char* ep_name, ApiPtrs ort_api_in);
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
   static const char* ORT_API_CALL GetVendorImpl(const OrtEpFactory* this_ptr) noexcept;
+  static uint32_t ORT_API_CALL GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept;
   static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* this_ptr) noexcept;
   static OrtStatus* ORT_API_CALL GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
                                                          const OrtHardwareDevice* const* devices,
@@ -48,10 +49,10 @@ struct QnnEpFactory : public OrtEpFactory, public ApiPtrs {
 
   // If the EP used NPU, and pinned/shared memory was required for data transfer, these are the
   // OrtMemoryInfo instance required for that.
-  MemoryInfoUniquePtr default_npu_memory_info_;
-  MemoryInfoUniquePtr host_accessible_npu_memory_info_;
+  // MemoryInfoUniquePtr default_npu_memory_info_;
+  // MemoryInfoUniquePtr host_accessible_npu_memory_info_;
 
-  std::unique_ptr<QnnDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
+  // std::unique_ptr<QnnDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 };
 
 }  // namespace onnxruntime
