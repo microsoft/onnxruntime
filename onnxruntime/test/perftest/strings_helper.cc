@@ -75,7 +75,10 @@ bool ParseDimensionOverride(const std::string& input, std::map<std::string, int6
         }
         free_dim_override_map[dim_identifier] = override_val;
       }
-      ORT_CATCH(...) {
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          fprintf(stderr, "Error parsing free dimension override value: %s, %s\n", override_val_str.c_str(), ex.what());
+        });
         return false;
       }
     }
