@@ -514,7 +514,7 @@ Status TopK<10, double>::Compute(OpKernelContext* p_op_kernel_context) const {
   return ComputeImplOpset1011<double>(p_op_kernel_context, axis_, true, true);
 }
 
-// Opset ver - 11
+// Opset ver since 11 - construction
 
 static void TopkOpset11ConstructorCommon(const OpKernelInfo& op_kernel_info,
                                          int& axis, bool& largest, bool& sorted) {
@@ -531,46 +531,28 @@ static void TopkOpset11ConstructorCommon(const OpKernelInfo& op_kernel_info,
   sorted = sorted_temp == 1 ? true : false;
 }
 
-template <>
-TopK<11, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
-  TopkOpset11ConstructorCommon(op_kernel_info, axis_, largest_, sorted_);
-}
+// Macro to generate template specializations for modern opsets (11+)
+#define TOPK_MODERN_OPSET_SPECIALIZATIONS(OPSET, TYPE)                                     \
+  template <>                                                                              \
+  TopK<OPSET, TYPE>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) { \
+    TopkOpset11ConstructorCommon(op_kernel_info, axis_, largest_, sorted_);                \
+  }                                                                                        \
+  template <>                                                                              \
+  Status TopK<OPSET, TYPE>::Compute(OpKernelContext* p_op_kernel_context) const {          \
+    return ComputeImplOpset1011<TYPE>(p_op_kernel_context, axis_, largest_, sorted_);      \
+  }
 
-template <>
-TopK<11, double>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
-  TopkOpset11ConstructorCommon(op_kernel_info, axis_, largest_, sorted_);
-}
+// Generate specializations for opset 11 (used by versioned kernel 11-23)
+TOPK_MODERN_OPSET_SPECIALIZATIONS(23, float);
+TOPK_MODERN_OPSET_SPECIALIZATIONS(23, double);
+TOPK_MODERN_OPSET_SPECIALIZATIONS(23, int32_t);
+TOPK_MODERN_OPSET_SPECIALIZATIONS(23, int64_t);
 
-template <>
-TopK<11, int32_t>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
-  TopkOpset11ConstructorCommon(op_kernel_info, axis_, largest_, sorted_);
-}
-
-template <>
-TopK<11, int64_t>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
-  TopkOpset11ConstructorCommon(op_kernel_info, axis_, largest_, sorted_);
-}
-
-// Opset ver - 11
-template <>
-Status TopK<11, float>::Compute(OpKernelContext* p_op_kernel_context) const {
-  return ComputeImplOpset1011<float>(p_op_kernel_context, axis_, largest_, sorted_);
-}
-
-template <>
-Status TopK<11, double>::Compute(OpKernelContext* p_op_kernel_context) const {
-  return ComputeImplOpset1011<double>(p_op_kernel_context, axis_, largest_, sorted_);
-}
-
-template <>
-Status TopK<11, int32_t>::Compute(OpKernelContext* p_op_kernel_context) const {
-  return ComputeImplOpset1011<int32_t>(p_op_kernel_context, axis_, largest_, sorted_);
-}
-
-template <>
-Status TopK<11, int64_t>::Compute(OpKernelContext* p_op_kernel_context) const {
-  return ComputeImplOpset1011<int64_t>(p_op_kernel_context, axis_, largest_, sorted_);
-}
+// Generate specializations for opset 24 (used by current kernel 24+)
+TOPK_MODERN_OPSET_SPECIALIZATIONS(24, float);
+TOPK_MODERN_OPSET_SPECIALIZATIONS(24, double);
+TOPK_MODERN_OPSET_SPECIALIZATIONS(24, int32_t);
+TOPK_MODERN_OPSET_SPECIALIZATIONS(24, int64_t);
 
 // Register necessary kernels
 // spec https://github.com/onnx/onnx/blob/main/docs/Operators.md#TopK
