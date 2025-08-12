@@ -699,11 +699,29 @@ Status DispatchOnBase(OpKernelContext& context, const Tensor& Y) {
   namespace on = ONNX_NAMESPACE;
   Status s;
   switch (Y.GetElementType()) {
+    case on::TensorProto_DataType_INT8:
+      PowImpl<B, int8_t>(context);
+      break;
+    case on::TensorProto_DataType_UINT8:
+      PowImpl<B, uint8_t>(context);
+      break;
+    case on::TensorProto_DataType_INT16:
+      PowImpl<B, int16_t>(context);
+      break;
+    case on::TensorProto_DataType_UINT16:
+      PowImpl<B, uint16_t>(context);
+      break;
     case on::TensorProto_DataType_INT32:
       PowImpl<B, int32_t>(context);
       break;
+    case on::TensorProto_DataType_UINT32:
+      PowImpl<B, uint32_t>(context);
+      break;
     case on::TensorProto_DataType_INT64:
       PowImpl<B, int64_t>(context);
+      break;
+    case on::TensorProto_DataType_UINT64:
+      PowImpl<B, uint64_t>(context);
       break;
     case on::TensorProto_DataType_FLOAT:
       PowImpl<B, float>(context);

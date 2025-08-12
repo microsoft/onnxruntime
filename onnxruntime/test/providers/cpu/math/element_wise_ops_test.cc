@@ -1423,6 +1423,60 @@ TEST(MathOpTest, Pow_double_int64) {
   test.Run();
 }
 
+TEST(MathOpTest, Pow_double_uint64) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<double>("X", dims, {1., 2., 3.});
+  test.AddInput<uint64_t>("Y", dims, {4, uint64_t(1) << 63, 6});
+  test.AddOutput<double>("Z", dims, {1., std::pow(2., uint64_t(1) << 63), 729.});
+  test.Run();
+}
+
+TEST(MathOpTest, Pow_double_uint32) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<double>("X", dims, {1., 2., 3.});
+  test.AddInput<uint32_t>("Y", dims, {4, uint32_t(1) << 31, 6});
+  test.AddOutput<double>("Z", dims, {1., std::pow(2., uint32_t(1) << 31), 729.});
+  test.Run();
+}
+
+TEST(MathOpTest, Pow_double_uint16) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<double>("X", dims, {1., 2., 3.});
+  test.AddInput<uint16_t>("Y", dims, {4, uint16_t(1) << 15, 6});
+  test.AddOutput<double>("Z", dims, {1., std::pow(2., uint16_t(1) << 15), 729.});
+  test.Run();
+}
+
+TEST(MathOpTest, Pow_double_int16) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<double>("X", dims, {1., 2., 3.});
+  test.AddInput<int16_t>("Y", dims, {4, int16_t(1) << 14, 6});
+  test.AddOutput<double>("Z", dims, {1., std::pow(2., int16_t(1) << 14), 729.});
+  test.Run();
+}
+
+TEST(MathOpTest, Pow_double_uint8) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<double>("X", dims, {1., 2., 3.});
+  test.AddInput<uint8_t>("Y", dims, {4, uint8_t(1) << 7, 6});
+  test.AddOutput<double>("Z", dims, {1., std::pow(2., uint8_t(1) << 7), 729.});
+  test.Run();
+}
+
+TEST(MathOpTest, Pow_double_int8) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<double>("X", dims, {1., 2., 3.});
+  test.AddInput<int8_t>("Y", dims, {4, int8_t(1) << 6, 6});
+  test.AddOutput<double>("Z", dims, {1., std::pow(2., int8_t(1) << 6), 729.});
+  test.Run();
+}
+
 TEST(MathOpTest, Pow_float16_float16) {
   std::vector<int64_t> dims{4};
   TestBinaryFloat16("Pow", dims, {2.0f, 2.0f, std::sqrt(2.0f), 1.0f}, dims, {0.0f, 8.0f, 2.0f, 9.0f},
