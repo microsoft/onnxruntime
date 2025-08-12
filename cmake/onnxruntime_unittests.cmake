@@ -56,8 +56,8 @@ function(AddTest)
 
   filter_test_srcs(_UT_SOURCES)
 
-  message(VERBOSE "AddTest() _UT_TARGET: ${_UT_TARGET}")
-  message(VERBOSE "AddTest() _UT_SOURCES:")
+  message(VERBOSE "AddTest() TARGET: ${_UT_TARGET}")
+  message(VERBOSE "AddTest() SOURCES:")
   foreach(ut_src ${_UT_SOURCES})
     message(VERBOSE "  ${ut_src}")
   endforeach()
