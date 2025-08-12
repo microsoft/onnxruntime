@@ -702,56 +702,406 @@ TYPED_TEST(GemmOpTypedTests, TestGemmTransB_1) {
 }
 
 TYPED_TEST(GemmOpTypedTests, TestGemmAlpha) {
-  OpTester test("Gemm");
+  // Test case 1: 2x4 * 4x3
+  {
+    OpTester test("Gemm");
 
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 0.5f);
-  test.AddAttribute("beta", 1.0f);
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 0.5f);
+    test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<TypeParam>("A", {2, 4},
-                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
-                            static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
-  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
-  test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)));
-  test.AddOutput<TypeParam>("Y", {2, 3},
-                            {static_cast<TypeParam>(6.0f), static_cast<TypeParam>(6.0f), static_cast<TypeParam>(6.0f),
-                             static_cast<TypeParam>(-4.0f), static_cast<TypeParam>(-4.0f), static_cast<TypeParam>(-4.0f)});
-  // test.AddOutput<TypeParam>("Y", {2, 3},
-  //                   {5.0f, 5.0f, 5.0f,
-  //                    -5.0f, -5.0f, -5.0f});
+    test.AddInput<TypeParam>("A", {2, 4},
+                             {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                              static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+    test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+    test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)));
+    test.AddOutput<TypeParam>("Y", {2, 3},
+                              {static_cast<TypeParam>(6.0f), static_cast<TypeParam>(6.0f), static_cast<TypeParam>(6.0f),
+                               static_cast<TypeParam>(-4.0f), static_cast<TypeParam>(-4.0f), static_cast<TypeParam>(-4.0f)});
 #if defined(OPENVINO_CONFIG_GPU)
-  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
-  test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+    test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
 #endif
-  test.Config(run_with_tunable_op)
-      .RunWithConfig();
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+
+  // Test case 2: 64x64 * 64x64
+  {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 0.5f);
+    test.AddAttribute("beta", 1.0f);
+
+    // Create 64x64 matrices with simple pattern
+    std::vector<TypeParam> A_data(64 * 64);
+    std::vector<TypeParam> B_data(64 * 64);
+    std::vector<TypeParam> C_data(64 * 64);
+    std::vector<TypeParam> Y_data(64 * 64);
+
+    // Fill A matrix with pattern
+    for (int i = 0; i < 64 * 64; ++i) {
+      A_data[i] = static_cast<TypeParam>((i % 7) + 1);
+    }
+
+    // Fill B matrix with ones
+    for (int i = 0; i < 64 * 64; ++i) {
+      B_data[i] = static_cast<TypeParam>(1.0f);
+    }
+
+    // Fill C matrix with pattern
+    for (int i = 0; i < 64 * 64; ++i) {
+      C_data[i] = static_cast<TypeParam>((i % 3) + 1);
+    }
+
+    // Calculate expected output: Y = alpha * A * B + beta * C
+    // Since B is all ones, A * B results in row sums of A
+    for (int i = 0; i < 64; ++i) {
+      TypeParam row_sum = static_cast<TypeParam>(0.0f);
+      for (int k = 0; k < 64; ++k) {
+        row_sum += A_data[i * 64 + k];
+      }
+      for (int j = 0; j < 64; ++j) {
+        Y_data[i * 64 + j] = static_cast<TypeParam>(0.5f) * row_sum + static_cast<TypeParam>(1.0f) * C_data[i * 64 + j];
+      }
+    }
+
+    test.AddInput<TypeParam>("A", {64, 64}, A_data);
+    test.AddInput<TypeParam>("B", {64, 64}, B_data);
+    test.AddInput<TypeParam>("C", {64, 64}, C_data);
+    test.AddOutput<TypeParam>("Y", {64, 64}, Y_data);
+
+#if defined(OPENVINO_CONFIG_GPU)
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+    test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+#endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
 }
 
 TYPED_TEST(GemmOpTypedTests, TestGemmBeta) {
-  OpTester test("Gemm");
+  // Test case 1: 2x4 * 4x3
+  {
+    OpTester test("Gemm");
 
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 2.0f);
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 2.0f);
 
-  test.AddInput<TypeParam>("A", {2, 4},
-                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
-                            static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
-  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
-  test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)));
-  test.AddOutput<TypeParam>("Y", {2, 3},
-                            {static_cast<TypeParam>(12.0f), static_cast<TypeParam>(12.0f), static_cast<TypeParam>(12.0f),
-                             static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f)});
+    test.AddInput<TypeParam>("A", {2, 4},
+                             {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                              static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+    test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+    test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)));
+    test.AddOutput<TypeParam>("Y", {2, 3},
+                              {static_cast<TypeParam>(12.0f), static_cast<TypeParam>(12.0f), static_cast<TypeParam>(12.0f),
+                               static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f)});
 #if defined(OPENVINO_CONFIG_GPU)
-  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
-  test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+    test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
 #endif
-  test.Config(run_with_tunable_op)
-      .RunWithConfig();
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+
+  // Test case 2: 64x64 * 64x64
+  {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 2.0f);
+
+    // Create 64x64 matrices with simple pattern
+    std::vector<TypeParam> A_data(64 * 64);
+    std::vector<TypeParam> B_data(64 * 64);
+    std::vector<TypeParam> C_data(64 * 64);
+    std::vector<TypeParam> Y_data(64 * 64);
+
+    // Fill A matrix with pattern
+    for (int i = 0; i < 64 * 64; ++i) {
+      A_data[i] = static_cast<TypeParam>((i % 7) + 1);
+    }
+
+    // Fill B matrix with ones
+    for (int i = 0; i < 64 * 64; ++i) {
+      B_data[i] = static_cast<TypeParam>(1.0f);
+    }
+
+    // Fill C matrix with pattern
+    for (int i = 0; i < 64 * 64; ++i) {
+      C_data[i] = static_cast<TypeParam>((i % 3) + 1);
+    }
+
+    // Calculate expected output: Y = alpha * A * B + beta * C
+    // Since B is all ones, A * B results in row sums of A
+    for (int i = 0; i < 64; ++i) {
+      TypeParam row_sum = static_cast<TypeParam>(0.0f);
+      for (int k = 0; k < 64; ++k) {
+        row_sum += A_data[i * 64 + k];
+      }
+      for (int j = 0; j < 64; ++j) {
+        Y_data[i * 64 + j] = static_cast<TypeParam>(1.0f) * row_sum + static_cast<TypeParam>(2.0f) * C_data[i * 64 + j];
+      }
+    }
+
+    test.AddInput<TypeParam>("A", {64, 64}, A_data);
+    test.AddInput<TypeParam>("B", {64, 64}, B_data);
+    test.AddInput<TypeParam>("C", {64, 64}, C_data);
+    test.AddOutput<TypeParam>("Y", {64, 64}, Y_data);
+
+#if defined(OPENVINO_CONFIG_GPU)
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+    test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+#endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+}
+
+TYPED_TEST(GemmOpTypedTests, TestGemmZeroAlpha) {
+  // Test case 1: 2x4 * 4x3, alpha=0, beta=2.0
+  {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 0.0f);
+    test.AddAttribute("beta", 2.0f);
+
+    test.AddInput<TypeParam>("A", {2, 4},
+                             {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                              static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+    test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+    test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)));
+    test.AddOutput<TypeParam>("Y", {2, 3},
+                              {static_cast<TypeParam>(2.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(2.0f),
+                               static_cast<TypeParam>(2.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(2.0f)});
+#if defined(OPENVINO_CONFIG_GPU)
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+    test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+#endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+
+  // Test case 2: 64x64 * 64x64, alpha=0, beta=2.0
+  {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 0.0f);
+    test.AddAttribute("beta", 2.0f);
+
+    // Create 64x64 matrices with simple pattern
+    std::vector<TypeParam> A_data(64 * 64);
+    std::vector<TypeParam> B_data(64 * 64);
+    std::vector<TypeParam> C_data(64 * 64);
+    std::vector<TypeParam> Y_data(64 * 64);
+
+    // Fill A matrix with pattern
+    for (int i = 0; i < 64 * 64; ++i) {
+      A_data[i] = static_cast<TypeParam>((i % 7) + 1);
+    }
+
+    // Fill B matrix with ones
+    for (int i = 0; i < 64 * 64; ++i) {
+      B_data[i] = static_cast<TypeParam>(1.0f);
+    }
+
+    // Fill C matrix with pattern
+    for (int i = 0; i < 64 * 64; ++i) {
+      C_data[i] = static_cast<TypeParam>((i % 3) + 1);
+    }
+
+    // Calculate expected output: Y = alpha * A * B + beta * C
+    // Since alpha=0, Y = beta * C = 2.0 * C
+    for (int i = 0; i < 64 * 64; ++i) {
+      Y_data[i] = static_cast<TypeParam>(2.0f) * C_data[i];
+    }
+
+    test.AddInput<TypeParam>("A", {64, 64}, A_data);
+    test.AddInput<TypeParam>("B", {64, 64}, B_data);
+    test.AddInput<TypeParam>("C", {64, 64}, C_data);
+    test.AddOutput<TypeParam>("Y", {64, 64}, Y_data);
+
+#if defined(OPENVINO_CONFIG_GPU)
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+    test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+#endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+}
+
+TYPED_TEST(GemmOpTypedTests, TestGemmZeroBeta) {
+  // Test case 1: 2x4 * 4x3, alpha=2.0, beta=0
+  {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 2.0f);
+    test.AddAttribute("beta", 0.0f);
+
+    test.AddInput<TypeParam>("A", {2, 4},
+                             {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                              static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+    test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+    test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)));
+    test.AddOutput<TypeParam>("Y", {2, 3},
+                              {static_cast<TypeParam>(20.0f), static_cast<TypeParam>(20.0f), static_cast<TypeParam>(20.0f),
+                               static_cast<TypeParam>(-20.0f), static_cast<TypeParam>(-20.0f), static_cast<TypeParam>(-20.0f)});
+#if defined(OPENVINO_CONFIG_GPU)
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+    test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+#endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+
+  // Test case 2: 64x64 * 64x64, alpha=2.0, beta=0
+  {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 2.0f);
+    test.AddAttribute("beta", 0.0f);
+
+    // Create 64x64 matrices with simple pattern
+    std::vector<TypeParam> A_data(64 * 64);
+    std::vector<TypeParam> B_data(64 * 64);
+    std::vector<TypeParam> C_data(64 * 64);
+    std::vector<TypeParam> Y_data(64 * 64);
+
+    // Fill A matrix with pattern
+    for (int i = 0; i < 64 * 64; ++i) {
+      A_data[i] = static_cast<TypeParam>((i % 7) + 1);
+    }
+
+    // Fill B matrix with ones
+    for (int i = 0; i < 64 * 64; ++i) {
+      B_data[i] = static_cast<TypeParam>(1.0f);
+    }
+
+    // Fill C matrix with pattern
+    for (int i = 0; i < 64 * 64; ++i) {
+      C_data[i] = static_cast<TypeParam>((i % 3) + 1);
+    }
+
+    // Calculate expected output: Y = alpha * A * B + beta * C
+    // Since beta=0, Y = alpha * A * B = 2.0 * A * B
+    // Since B is all ones, A * B results in row sums of A
+    for (int i = 0; i < 64; ++i) {
+      TypeParam row_sum = static_cast<TypeParam>(0.0f);
+      for (int k = 0; k < 64; ++k) {
+        row_sum += A_data[i * 64 + k];
+      }
+      for (int j = 0; j < 64; ++j) {
+        Y_data[i * 64 + j] = static_cast<TypeParam>(2.0f) * row_sum;
+      }
+    }
+
+    test.AddInput<TypeParam>("A", {64, 64}, A_data);
+    test.AddInput<TypeParam>("B", {64, 64}, B_data);
+    test.AddInput<TypeParam>("C", {64, 64}, C_data);
+    test.AddOutput<TypeParam>("Y", {64, 64}, Y_data);
+
+#if defined(OPENVINO_CONFIG_GPU)
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+    test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+#endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+}
+
+TYPED_TEST(GemmOpTypedTests, TestGemmZeroAlphaBeta) {
+  // Test case 1: 2x4 * 4x3, alpha=0, beta=0
+  {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 0.0f);
+    test.AddAttribute("beta", 0.0f);
+
+    test.AddInput<TypeParam>("A", {2, 4},
+                             {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                              static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+    test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+    test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)));
+    test.AddOutput<TypeParam>("Y", {2, 3}, std::vector<TypeParam>(6, static_cast<TypeParam>(0.0f)));
+#if defined(OPENVINO_CONFIG_GPU)
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+    test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+#endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+
+  // Test case 2: 64x64 * 64x64, alpha=0, beta=0
+  {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 0.0f);
+    test.AddAttribute("beta", 0.0f);
+
+    // Create 64x64 matrices with simple pattern
+    std::vector<TypeParam> A_data(64 * 64);
+    std::vector<TypeParam> B_data(64 * 64);
+    std::vector<TypeParam> C_data(64 * 64);
+    std::vector<TypeParam> Y_data(64 * 64, static_cast<TypeParam>(0.0f));  // All zeros
+
+    // Fill A matrix with pattern
+    for (int i = 0; i < 64 * 64; ++i) {
+      A_data[i] = static_cast<TypeParam>((i % 7) + 1);
+    }
+
+    // Fill B matrix with ones
+    for (int i = 0; i < 64 * 64; ++i) {
+      B_data[i] = static_cast<TypeParam>(1.0f);
+    }
+
+    // Fill C matrix with pattern
+    for (int i = 0; i < 64 * 64; ++i) {
+      C_data[i] = static_cast<TypeParam>((i % 3) + 1);
+    }
+
+    // Expected output: Y = alpha * A * B + beta * C = 0 * A * B + 0 * C = 0
+
+    test.AddInput<TypeParam>("A", {64, 64}, A_data);
+    test.AddInput<TypeParam>("B", {64, 64}, B_data);
+    test.AddInput<TypeParam>("C", {64, 64}, C_data);
+    test.AddOutput<TypeParam>("Y", {64, 64}, Y_data);
+
+#if defined(OPENVINO_CONFIG_GPU)
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+    test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+#endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
 }
 
 TYPED_TEST(GemmOpTypedTests, TestGemmNaN) {
@@ -892,22 +1242,45 @@ TYPED_TEST(GemmOpTypedTests, ZeroKWithBias) {
 }
 
 TYPED_TEST(GemmOpTypedTests, ZeroKWithNoBias) {
-  OpTester test("Gemm", 13);
+  // Test case 1: 4x4
+  {
+    OpTester test("Gemm", 13);
 
-  test.AddAttribute("transA", static_cast<int64_t>(0));
-  test.AddAttribute("transB", static_cast<int64_t>(0));
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", .0f);
+    test.AddAttribute("transA", static_cast<int64_t>(0));
+    test.AddAttribute("transB", static_cast<int64_t>(0));
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", .0f);
 
-  test.AddInput<TypeParam>("A", {4, 0}, {});
-  test.AddInput<TypeParam>("B", {0, 4}, {});
-  test.AddOutput<TypeParam>("Y", {4, 4}, std::vector<TypeParam>(16, static_cast<TypeParam>(0.0f)));
+    test.AddInput<TypeParam>("A", {4, 0}, {});
+    test.AddInput<TypeParam>("B", {0, 4}, {});
+    test.AddOutput<TypeParam>("Y", {4, 4}, std::vector<TypeParam>(16, static_cast<TypeParam>(0.0f)));
 
-  test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
-                         kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
-                         kOpenVINOExecutionProvider})
-      .Config(run_with_tunable_op)
-      .RunWithConfig();
+    test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
+                           kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
+                           kOpenVINOExecutionProvider})
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+
+  // Test case 2: 64x64 with K=0
+  {
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", static_cast<int64_t>(0));
+    test.AddAttribute("transB", static_cast<int64_t>(0));
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", .0f);
+
+    test.AddInput<TypeParam>("A", {64, 0}, {});
+    test.AddInput<TypeParam>("B", {0, 64}, {});
+    test.AddOutput<TypeParam>("Y", {64, 64}, std::vector<TypeParam>(64 * 64, static_cast<TypeParam>(0.0f)));
+
+    test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
+                           kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
+                           kOpenVINOExecutionProvider})
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
 }
 
 TYPED_TEST(GemmOpTypedTests, MissingBias) {
@@ -1038,13 +1411,13 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
 #endif
 
 // Common helper function for GEMM optimize packed tests
-auto run_gemm_optimize_packed_test = [](int64_t M, int64_t K, int64_t N, BiasType bias_type, float alpha, float beta, bool transA, bool transB) {
+auto run_gemm_optimize_packed_test = [](int64_t M, int64_t K, int64_t N, BiasType bias_type, bool transA, bool transB) {
   OpTester test("Gemm", 13);
 
   test.AddAttribute("transA", static_cast<int64_t>(transA ? 1 : 0));
   test.AddAttribute("transB", static_cast<int64_t>(transB ? 1 : 0));
-  test.AddAttribute("alpha", alpha);
-  test.AddAttribute("beta", beta);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
 
   // Initialize matrices based on transpose settings
   std::vector<float> a_data, b_data;
@@ -1098,8 +1471,8 @@ auto run_gemm_optimize_packed_test = [](int64_t M, int64_t K, int64_t N, BiasTyp
 
         sum += a_val * b_val;
       }
-      float matmul_result = alpha * sum;
-      float bias_value = beta * get_bias_value(c_data, bias_type, i, j, N);
+      float matmul_result = sum;
+      float bias_value = get_bias_value(c_data, bias_type, i, j, N);
       expected_data[i * N + j] = matmul_result + bias_value;
     }
   }
@@ -1115,7 +1488,6 @@ auto run_gemm_optimize_packed_test = [](int64_t M, int64_t K, int64_t N, BiasTyp
 struct GemmOptimizePackedParams {
   int64_t M, K, N;
   BiasType bias_type;
-  float alpha, beta;
   bool transA, transB;
 
   // Helper for readable test names
@@ -1125,24 +1497,6 @@ struct GemmOptimizePackedParams {
     // Bias type names
     const char* bias_names[] = {"noBias", "MBias", "ScalarBias", "MNBias", "NBias"};
     name += "_" + std::string(bias_names[static_cast<int>(bias_type)]);
-
-    // Convert alpha to valid test name (replace . with p for point)
-    auto alpha_str = std::to_string(alpha);
-    std::replace(alpha_str.begin(), alpha_str.end(), '.', 'p');
-    // Remove trailing zeros but keep one decimal place
-    while (alpha_str.size() > 3 && alpha_str.back() == '0') {
-      alpha_str.pop_back();
-    }
-    name += "_a" + alpha_str;
-
-    // Convert beta to valid test name
-    auto beta_str = std::to_string(beta);
-    std::replace(beta_str.begin(), beta_str.end(), '.', 'p');
-    // Remove trailing zeros but keep one decimal place
-    while (beta_str.size() > 3 && beta_str.back() == '0') {
-      beta_str.pop_back();
-    }
-    name += "_b" + beta_str;
 
     name += (transA ? "_transA" : "");
     name += (transB ? "_transB" : "");
@@ -1155,7 +1509,7 @@ class GemmOptimizePackedTest : public ::testing::TestWithParam<GemmOptimizePacke
 TEST_P(GemmOptimizePackedTest, TestVariants) {
   const auto& params = GetParam();
   run_gemm_optimize_packed_test(params.M, params.K, params.N, params.bias_type,
-                                params.alpha, params.beta, params.transA, params.transB);
+                                params.transA, params.transB);
 }
 
 // Test parameter generation
@@ -1166,8 +1520,6 @@ std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
 
   std::vector<BiasType>
       bias_types = {BiasType::noBias, BiasType::MBias, BiasType::ScalarBias, BiasType::MNBias, BiasType::NBias};
-
-  std::vector<std::pair<float, float>> alpha_beta_values = {{1.0f, 1.0f}, {0.5f, 1.0f}, {1.0f, 2.0f}, {0.5f, 2.0f}, {2.0f, 0.5f}, {0.0f, 1.0f}, {1.0f, 0.0f}, {2.0f, 2.0f}, {0.0f, 0.0f}};
 
   // Test all four transpose combinations: (transA, transB)
   std::vector<std::pair<bool, bool>> transpose_combinations = {
@@ -1181,10 +1533,8 @@ std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
   for (const auto& [transA, transB] : transpose_combinations) {
     for (const auto& size : test_sizes) {
       for (const auto& bias_type : bias_types) {
-        for (const auto& [alpha, beta] : alpha_beta_values) {
-          params.push_back({std::get<0>(size), std::get<1>(size), std::get<2>(size),
-                            bias_type, alpha, beta, transA, transB});
-        }
+        params.push_back({std::get<0>(size), std::get<1>(size), std::get<2>(size),
+                          bias_type, transA, transB});
       }
     }
   }
