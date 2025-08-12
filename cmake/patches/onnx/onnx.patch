@@ -67,6 +67,18 @@ index 47995579..6cc439f6 100644
  
  if(CMAKE_SYSTEM_NAME STREQUAL "AIX")
    # whole-archive linker option not available on AIX.
+diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
+index 40635f97..44770774 100644
+--- a/onnx/defs/nn/old.cc
++++ b/onnx/defs/nn/old.cc
+@@ -4090,7 +4090,6 @@ ONNX_OPERATOR_SET_SCHEMA(
+     GroupNormalization,
+     18,
+     OpSchema()
+-        .Deprecate()
+         .SetDoc(GroupNormalization_ver18_doc)
+         .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
+         .Attr(
 diff --git a/onnx/defs/schema.h b/onnx/defs/schema.h
 index ddd95454..34647987 100644
 --- a/onnx/defs/schema.h

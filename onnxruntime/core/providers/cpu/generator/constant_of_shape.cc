@@ -55,7 +55,7 @@ using EnabledOutputTypesOpset23 =
     ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
         kCpuExecutionProvider, kOnnxDomain, ConstantOfShape, 23, Output, 0);
 
-using EnabledOutputTypesOpset23 =
+using EnabledOutputTypesOpset24 =
     ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
         kCpuExecutionProvider, kOnnxDomain, ConstantOfShape, 24, Output, 0);
 class ConstantOfShape final : public ConstantOfShapeBase<EnabledOutputTypes>, public OpKernel {
