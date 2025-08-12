@@ -244,8 +244,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
       cached_num_experts_ != moe_params.num_experts ||
       cached_hidden_size_ != moe_params.hidden_size ||
       cached_inter_size_ != moe_params.inter_size ||
-      cached_is_swiglu_ != is_swiglu ||
-      cached_use_legacy_layout_ != moe_params.use_legacy_layout) {
+      cached_is_swiglu_ != is_swiglu) {
     // Need to prepack weights
     Status status = const_cast<QMoE*>(this)->PrepackAndDequantizeWeights<UseUInt4x2>(
         context, moe_params, fc1_experts_weights, fc2_experts_weights,
@@ -904,18 +903,12 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
   const bool is_4bit = UseUInt4x2;
   const int64_t fc1_output_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
 
-  // Calculate weight sizes and strides based on quantization type and layout
+  // Calculate weight sizes and strides based on quantization type and new layout only
   int64_t fc1_weight_stride, fc2_weight_stride;
 
-  if (moe_params.use_legacy_layout) {
-    // Legacy layout: weights are stored as [hidden_size, fc1_output_size] and [inter_size, hidden_size]
-    fc1_weight_stride = is_4bit ? (moe_params.hidden_size * fc1_output_size / 2) : (moe_params.hidden_size * fc1_output_size);
-    fc2_weight_stride = is_4bit ? (moe_params.inter_size * moe_params.hidden_size / 2) : (moe_params.inter_size * moe_params.hidden_size);
-  } else {
-    // New layout: weights are stored as [fc1_output_size, hidden_size] and [hidden_size, inter_size]
-    fc1_weight_stride = is_4bit ? (fc1_output_size * moe_params.hidden_size / 2) : (fc1_output_size * moe_params.hidden_size);
-    fc2_weight_stride = is_4bit ? (moe_params.hidden_size * moe_params.inter_size / 2) : (moe_params.hidden_size * moe_params.inter_size);
-  }
+  // New layout: weights are stored as [fc1_output_size, hidden_size] and [hidden_size, inter_size]
+  fc1_weight_stride = is_4bit ? (fc1_output_size * moe_params.hidden_size / 2) : (fc1_output_size * moe_params.hidden_size);
+  fc2_weight_stride = is_4bit ? (moe_params.hidden_size * moe_params.inter_size / 2) : (moe_params.hidden_size * moe_params.inter_size);
 
   // Get or create a persistent allocator for weights with memory optimization
   if (weights_allocator_ == nullptr) {
@@ -943,7 +936,7 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
       static_cast<double>(moe_params.hidden_size * fc1_output_size),
       [fc1_weights_data, fc1_scales_data, fc1_weight_stride, fc1_output_size,
        prepacked_fc1_weights_data = prepacked_fc1_weights_data_,
-       hidden_size = moe_params.hidden_size, use_legacy_layout = moe_params.use_legacy_layout,
+       hidden_size = moe_params.hidden_size,
        is_4bit](ptrdiff_t expert_start, ptrdiff_t expert_end) {
         // Local dequantization function
         auto DequantizeWeight = [is_4bit](const uint8_t* weights, size_t linear_idx,
@@ -996,32 +989,17 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
           const float* fc1_expert_scales = fc1_scales_data + expert_idx * fc1_output_size;
           float* dequant_fc1_expert = prepacked_fc1_weights_data + expert_idx * hidden_size * fc1_output_size;
 
-          // Handle layout-specific weight dequantization
-          if (use_legacy_layout) {
-            // Legacy layout: input weights are [hidden_size, fc1_output_size], store as standard layout
-            for (int64_t in_col = 0; in_col < hidden_size; ++in_col) {
-              for (int64_t out_col = 0; out_col < fc1_output_size; ++out_col) {
-                // Standard matrix layout for computation: [hidden_size, fc1_output_size]
-                size_t output_linear_idx = static_cast<size_t>(in_col * fc1_output_size + out_col);
-                // Legacy input layout: [hidden_size, fc1_output_size] - same indexing
-                size_t input_linear_idx = static_cast<size_t>(in_col * fc1_output_size + out_col);
+          // Handle new layout weight dequantization
+          // New layout: input weights are [fc1_output_size, hidden_size], need to transpose for computation
+          for (int64_t in_col = 0; in_col < hidden_size; ++in_col) {
+            for (int64_t out_col = 0; out_col < fc1_output_size; ++out_col) {
+              // Standard matrix layout for computation: [hidden_size, fc1_output_size]
+              size_t output_linear_idx = static_cast<size_t>(in_col * fc1_output_size + out_col);
+              // New input layout: [fc1_output_size, hidden_size] - transposed indexing
+              size_t input_linear_idx = static_cast<size_t>(out_col * hidden_size + in_col);
 
-                // Scale index corresponds to output column (feature dimension)
-                dequant_fc1_expert[output_linear_idx] = DequantizeWeight(fc1_expert_weights, input_linear_idx, fc1_expert_scales, out_col);
-              }
-            }
-          } else {
-            // New layout: input weights are [fc1_output_size, hidden_size], need to transpose for computation
-            for (int64_t in_col = 0; in_col < hidden_size; ++in_col) {
-              for (int64_t out_col = 0; out_col < fc1_output_size; ++out_col) {
-                // Standard matrix layout for computation: [hidden_size, fc1_output_size]
-                size_t output_linear_idx = static_cast<size_t>(in_col * fc1_output_size + out_col);
-                // New input layout: [fc1_output_size, hidden_size] - transposed indexing
-                size_t input_linear_idx = static_cast<size_t>(out_col * hidden_size + in_col);
-
-                // Scale index corresponds to output column (feature dimension)
-                dequant_fc1_expert[output_linear_idx] = DequantizeWeight(fc1_expert_weights, input_linear_idx, fc1_expert_scales, out_col);
-              }
+              // Scale index corresponds to output column (feature dimension)
+              dequant_fc1_expert[output_linear_idx] = DequantizeWeight(fc1_expert_weights, input_linear_idx, fc1_expert_scales, out_col);
             }
           }
         }
@@ -1034,7 +1012,7 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
       [fc2_weights_data, fc2_scales_data, fc2_weight_stride,
        prepacked_fc2_weights_data = prepacked_fc2_weights_data_,
        hidden_size = moe_params.hidden_size, inter_size = moe_params.inter_size,
-       use_legacy_layout = moe_params.use_legacy_layout, is_4bit](ptrdiff_t expert_start, ptrdiff_t expert_end) {
+       is_4bit](ptrdiff_t expert_start, ptrdiff_t expert_end) {
         // Local dequantization function
         auto DequantizeWeight = [is_4bit](const uint8_t* weights, size_t linear_idx,
                                           const float* scales, int64_t scale_idx) -> float {
@@ -1086,30 +1064,16 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
           const float* fc2_expert_scales = fc2_scales_data + expert_idx * hidden_size;
           float* dequant_fc2_expert = prepacked_fc2_weights_data + expert_idx * inter_size * hidden_size;
 
-          // Handle layout-specific weight dequantization
-          if (use_legacy_layout) {
-            // Legacy layout: input weights are [inter_size, hidden_size], store as standard layout
-            for (int64_t in_col = 0; in_col < inter_size; ++in_col) {
-              for (int64_t out_col = 0; out_col < hidden_size; ++out_col) {
-                // Standard matrix layout for computation: [inter_size, hidden_size]
-                size_t output_linear_idx = static_cast<size_t>(in_col * hidden_size + out_col);
-                // Legacy input layout: [inter_size, hidden_size] - same indexing
-                size_t input_linear_idx = static_cast<size_t>(in_col * hidden_size + out_col);
+          // Handle new layout weight dequantization
+          // New layout: input weights are [hidden_size, inter_size], need to transpose for computation
+          for (int64_t in_col = 0; in_col < inter_size; ++in_col) {
+            for (int64_t out_col = 0; out_col < hidden_size; ++out_col) {
+              // Standard matrix layout for computation: [inter_size, hidden_size]
+              size_t output_linear_idx = static_cast<size_t>(in_col * hidden_size + out_col);
+              // New input layout: [hidden_size, inter_size] - transposed indexing
+              size_t input_linear_idx = static_cast<size_t>(out_col * inter_size + in_col);
 
-                dequant_fc2_expert[output_linear_idx] = DequantizeWeight(fc2_expert_weights, input_linear_idx, fc2_expert_scales, out_col);
-              }
-            }
-          } else {
-            // New layout: input weights are [hidden_size, inter_size], need to transpose for computation
-            for (int64_t in_col = 0; in_col < inter_size; ++in_col) {
-              for (int64_t out_col = 0; out_col < hidden_size; ++out_col) {
-                // Standard matrix layout for computation: [inter_size, hidden_size]
-                size_t output_linear_idx = static_cast<size_t>(in_col * hidden_size + out_col);
-                // New input layout: [hidden_size, inter_size] - transposed indexing
-                size_t input_linear_idx = static_cast<size_t>(out_col * inter_size + in_col);
-
-                dequant_fc2_expert[output_linear_idx] = DequantizeWeight(fc2_expert_weights, input_linear_idx, fc2_expert_scales, out_col);
-              }
+              dequant_fc2_expert[output_linear_idx] = DequantizeWeight(fc2_expert_weights, input_linear_idx, fc2_expert_scales, out_col);
             }
           }
         }
@@ -1120,7 +1084,6 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
   cached_hidden_size_ = moe_params.hidden_size;
   cached_inter_size_ = moe_params.inter_size;
   cached_is_swiglu_ = is_swiglu;
-  cached_use_legacy_layout_ = moe_params.use_legacy_layout;
   is_prepacked_ = true;
 
   return Status::OK();
