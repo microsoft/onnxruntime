@@ -38,8 +38,8 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
 #include "core/session/environment.h"
-#include "core/session/ep_api.h"
-#include "core/session/ep_library_internal.h"
+#include "core/session/plugin_ep/ep_api.h"
+#include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
@@ -1378,9 +1378,16 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetOverridableInitializerTypeInfo, _In_ cons
   return GetNodeDefTypeInfoHelper(sess, get_overridable_initializers_fn, index, out);
 }
 
-char* onnxruntime::StrDup(const std::string& str, OrtAllocator* allocator) {
-  char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
-  memcpy(output_string, str.c_str(), str.size());
+char* onnxruntime::StrDup(std::string_view str, OrtAllocator* allocator) {
+  char* output_string = static_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
+  memcpy(output_string, str.data(), str.size());
+  output_string[str.size()] = '\0';
+  return output_string;
+}
+
+wchar_t* onnxruntime::StrDup(std::wstring_view str, OrtAllocator* allocator) {
+  auto* output_string = static_cast<wchar_t*>(allocator->Alloc(allocator, (str.size() + 1) * sizeof(wchar_t)));
+  memcpy(output_string, str.data(), str.size() * sizeof(wchar_t));
   output_string[str.size()] = '\0';
   return output_string;
 }
@@ -2993,7 +3000,8 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributes, _In_ const OrtNode* node,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name, _Outptr_ const OrtOpAttr** attribute) {
+ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name,
+                    _Outptr_result_maybenull_ const OrtOpAttr** attribute) {
   API_IMPL_BEGIN
   if (attribute == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'attribute' argument is NULL");
@@ -3004,14 +3012,30 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, 
     return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Node_GetAttributeByName.");
   }
 
-  *attribute = ep_node->GetAttribute(attribute_name);
+  bool is_unset_optional_attr = false;
+  *attribute = ep_node->GetAttribute(attribute_name, is_unset_optional_attr);
 
-  if (*attribute) {
+  if (*attribute || is_unset_optional_attr) {
     return nullptr;
   } else {
-    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute does not exist.");
+    std::ostringstream oss;
+    oss << "Node attribute does not exist: " << attribute_name;
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_NOT_FOUND, oss.str().c_str());
+  }
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetTensorAttributeAsOrtValue, _In_ const OrtNode* node, _In_ const OrtOpAttr* attribute, _Outptr_result_maybenull_ OrtValue** attr_tensor) {
+  API_IMPL_BEGIN
+  if (attr_tensor == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attr_tensor argument is null");
+  }
+  if (attribute == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attribute argument is null");
   }
 
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetTensorAttributeAsOrtValue(attribute, *attr_tensor));
+  return nullptr;
   API_IMPL_END
 }
 
@@ -3050,6 +3074,10 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetType, _In_ const OrtOpAttr* attribute, _O
     }
     case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH: {
       *type = OrtOpAttrType::ORT_OP_ATTR_GRAPH;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_TENSOR;
       break;
     }
     default:
@@ -4034,6 +4062,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetNumAttributes,
     &OrtApis::Node_GetAttributes,
     &OrtApis::Node_GetAttributeByName,
+    &OrtApis::Node_GetTensorAttributeAsOrtValue,
     &OrtApis::OpAttr_GetType,
     &OrtApis::OpAttr_GetName,
     &OrtApis::Node_GetNumSubgraphs,

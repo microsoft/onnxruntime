@@ -90,6 +90,92 @@ TEST(EpGraphTest, Check3LayerNestedSubgraphV2) {
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
 }
 
+TEST(EpGraphTest, GetAttributeByName) {
+  // Load model with a single Conv that has no explicit attributes set.
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/conv_default_attrs.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  //
+  // Pre-check
+  //
+
+  // Original Conv has no explicit attributes but Graph::Resolve() fills in default values for
+  // 'auto_pad' and 'group'. The other optional attributes (i.e. dilations, kernel_shape, pads, strides) do not
+  // have statically computable default values, so will not be filled in by Graph::Resolve().
+  const OrtGraph& ort_graph = test_graph->GetOrtGraph();
+  const OrtApi& ort_api = Ort::GetApi();
+
+  size_t num_nodes = 0;
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNumNodes(&ort_graph, &num_nodes));
+  ASSERT_EQ(num_nodes, 1);
+
+  std::vector<const OrtNode*> nodes(num_nodes);
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNodes(&ort_graph, nodes.data(), nodes.size()));
+
+  const OrtNode* conv_node = nodes[0];
+  const char* op_type = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.Node_GetOperatorType(conv_node, &op_type));
+  ASSERT_STREQ(op_type, "Conv");
+
+  size_t num_attrs = 0;
+  ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumAttributes(conv_node, &num_attrs));
+  ASSERT_EQ(num_attrs, 2);
+
+  std::vector<const OrtOpAttr*> attrs(num_attrs);
+  ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributes(conv_node, attrs.data(), attrs.size()));
+  for (const OrtOpAttr* attr : attrs) {
+    const char* attr_name_cstr = nullptr;
+    ASSERT_ORTSTATUS_OK(ort_api.OpAttr_GetName(attr, &attr_name_cstr));
+    std::string_view attr_name = attr_name_cstr;
+    ASSERT_TRUE(attr_name == "auto_pad" || attr_name == "group");  // Only 'auto_pad' and 'group' have been set
+  }
+
+  //
+  // Test 1: Get optional attribute that is not set (e.g., dilations). Should not get an error.
+  //
+  {
+    const OrtOpAttr* attr = nullptr;
+    Ort::Status status{ort_api.Node_GetAttributeByName(conv_node, "dilations", &attr)};
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ(attr, nullptr);
+  }
+
+  //
+  // Test 2: Get attribute that does not exist in operator schema. Should get a ORT_NOT_FOUND error.
+  //
+  {
+    const OrtOpAttr* attr = nullptr;
+    Ort::Status status{ort_api.Node_GetAttributeByName(conv_node, "_does_not_exist_", &attr)};
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_EQ(status.GetErrorCode(), ORT_NOT_FOUND);
+    ASSERT_EQ(attr, nullptr);
+  }
+
+  //
+  // Test 3: Get attribute that is known to be set.
+  //
+  {
+    const OrtOpAttr* attr = nullptr;
+    ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributeByName(conv_node, "auto_pad", &attr));
+    ASSERT_NE(attr, nullptr);
+
+    OrtOpAttrType attr_type = ORT_OP_ATTR_UNDEFINED;
+    ASSERT_ORTSTATUS_OK(ort_api.OpAttr_GetType(attr, &attr_type));
+    ASSERT_EQ(attr_type, ORT_OP_ATTR_STRING);
+
+    std::string auto_pad_val;
+
+    // First call to ReadOpAttr gets the total byte size. Second call reads the data.
+    size_t total_attr_bytes = 0;
+    Ort::Status status2{ort_api.ReadOpAttr(attr, attr_type, nullptr, 0, &total_attr_bytes)};
+    auto_pad_val.resize(total_attr_bytes);
+
+    ASSERT_ORTSTATUS_OK(ort_api.ReadOpAttr(attr, attr_type, auto_pad_val.data(), total_attr_bytes,
+                                           &total_attr_bytes));
+    ASSERT_EQ(auto_pad_val, "NOTSET");
+  }
+}
+
 // Check correctness of an OrtGraph that has external initializers.
 TEST(EpGraphTest, CheckModelExternalInitializers) {
   auto test_graph = TestGraph::Load(ORT_TSTR("testdata/conv_qdq_external_ini.onnx"));
@@ -217,6 +303,39 @@ static void RunMNISTModel(const ORTCHAR_T* model_path, std::vector<float>& outpu
 
   ASSERT_EQ(output_type_shape.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
   ASSERT_EQ(num_output_elems, 10);
+
+  // Return output data.
+  const float* output_values = ort_output.GetTensorData<float>();
+  output_data.assign(output_values, output_values + num_output_elems);
+}
+
+static void RunConstantOfShapeModel(const ORTCHAR_T* model_path, std::vector<float>& output_data) {
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  Ort::SessionOptions sess_options;
+  Ort::Session session(*ort_env, model_path, sess_options);
+
+  std::vector<int64_t> input_shape = {3};
+  std::vector<int64_t> input_data = {2, 3, 4};
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add 'x'
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<int64_t>(
+      memory_info, input_data.data(), input_data.size(), input_shape.data(), input_shape.size()));
+  ort_input_names.push_back("x");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"y"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output type and number of elements.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto output_type_shape = ort_output.GetTensorTypeAndShapeInfo();
+  size_t num_output_elems = output_type_shape.GetElementCount();
+
+  ASSERT_EQ(output_type_shape.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  ASSERT_EQ(num_output_elems, 24);
 
   // Return output data.
   const float* output_values = ort_output.GetTensorData<float>();
@@ -351,6 +470,65 @@ TEST(EpGraphTest, SerializeToProto_ExternalInitializersInMemory) {
     long long offset_int = std::stoll(offset_entry.value());
     ASSERT_EQ(offset_int, reinterpret_cast<long long>(ort_value_data));
   }
+}
+
+// Test serializing an OrtGraph (MNIST) to GraphProto. Saves initializers to external file.
+// Checks that the outputs of the serialized and original models are identical.
+TEST(EpGraphTest, SerializeToProto_ConstantOfShape) {
+  const ORTCHAR_T* original_model_path = ORT_TSTR("testdata/ort_minimal_test_models/tensor_attribute.onnx");
+  const ORTCHAR_T* serialized_model_path = ORT_TSTR("constant_of_shape.onnx");
+  std::filesystem::remove(serialized_model_path);
+
+  {
+    auto test_graph = TestGraph::Load(original_model_path);
+    ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+    // Serialize OrtGraph to GraphProto. Save initializers to external file.
+    std::string ext_ini_file_path = "constant_of_shape_serialized.bin";
+    std::filesystem::remove(ext_ini_file_path);
+    std::ofstream ext_ini_ofs(ext_ini_file_path, std::ios::binary);
+    auto handle_initializer_data = [&ext_ini_ofs, &ext_ini_file_path](const OrtValueInfo* value_info,
+                                                                      const void* data, size_t bytes,
+                                                                      bool& is_external, std::string& location,
+                                                                      int64_t& offset) -> Ort::Status {
+      // OrtValueInfo* could be used to query initializer's name, type, shape,
+      // node consumers, etc.
+      static_cast<void>(value_info);
+
+      if (bytes <= 127) {
+        is_external = false;  // Keep small initializers stored inside the TensorProto.
+        return Ort::Status{nullptr};
+      }
+
+      offset = ext_ini_ofs.tellp();
+      location = ext_ini_file_path;
+      ext_ini_ofs.write(static_cast<const char*>(data), bytes);
+      ext_ini_ofs.flush();
+      is_external = true;  // True if is external initializer.
+
+      return Ort::Status{nullptr};
+    };
+
+    ONNX_NAMESPACE::ModelProto model_proto;
+    ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto,
+                                                        handle_initializer_data));
+
+    std::ofstream ofs(serialized_model_path, std::ios::binary);
+    model_proto.SerializeToOstream(&ofs);
+    ofs.flush();
+
+    ASSERT_TRUE(std::filesystem::exists(serialized_model_path));
+    ASSERT_TRUE(std::filesystem::exists(ext_ini_file_path));
+  }
+
+  // Compare output of the original and serialized models. Should be identical.
+  std::vector<float> output_original;
+  std::vector<float> output_serialized;
+
+  RunConstantOfShapeModel(original_model_path, output_original);
+  RunConstantOfShapeModel(serialized_model_path, output_serialized);
+
+  EXPECT_EQ(output_serialized, output_original);
 }
 
 static void Run3LayerModel(const ORTCHAR_T* model_path, bool input_cond, std::vector<float>& output_data) {
@@ -893,6 +1071,10 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
           }
           case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH: {
             ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_GRAPH);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_TENSOR);
             break;
           }
           default:

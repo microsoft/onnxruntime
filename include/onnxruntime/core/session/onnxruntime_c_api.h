@@ -264,6 +264,7 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
   ORT_MODEL_LOAD_CANCELED,
   ORT_MODEL_REQUIRES_COMPILATION,
+  ORT_NOT_FOUND,
 } OrtErrorCode;
 
 typedef enum OrtOpAttrType {
@@ -275,6 +276,7 @@ typedef enum OrtOpAttrType {
   ORT_OP_ATTR_STRING,
   ORT_OP_ATTR_STRINGS,
   ORT_OP_ATTR_GRAPH,
+  ORT_OP_ATTR_TENSOR,
 } OrtOpAttrType;
 
 //! @}
@@ -752,13 +754,13 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
   int migraphx_fp8_enable;                           // MIGraphX FP8 precision. Default 0 = false, nonzero = true
   int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
-  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
+  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, nonzero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
-  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, noznero = true
+  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, nonzero = true
   const char* migraphx_save_model_path;              // migraphx model path name
-  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
+  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, nonzero = true
   const char* migraphx_load_model_path;              // migraphx model path name
-  bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
+  bool migraphx_exhaustive_tune;                     // MIGraphX tuned compile. Default = false, nonzero = true
 
   /** \brief MIGraphX memory limit (To use all possible memory pass in maximum size_t)
    *   Defaults to SIZE_MAX.
@@ -774,6 +776,7 @@ typedef struct OrtMIGraphXProviderOptions {
    */
   int migraphx_arena_extend_strategy;
 
+  // This is the legacy struct and don't add new fields here.
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -5846,14 +5849,13 @@ struct OrtApi {
 
   /** \brief Returns an OrtGraph that contains a subset of nodes in the source OrtGraph.
    *
-   * Note:
-   * The lifetime of "dst_graph" is tied to that of "src_graph", as they both internally reference
+   * \note The lifetime of "dst_graph" is tied to that of "src_graph", as they both internally reference
    * the same underlying graph.
    *
    * \param[in] src_graph The source OrtGraph instance.
    * \param[in] nodes A subset of the nodes/OrtNodes in 'graph'.
    * \param[in] num_nodes Number of nodes.
-   * \param[out] dst_sub_graph An OrtGraph created from a given set of nodes. Must be released by calling ReleaseGraph.
+   * \param[out] dst_graph An OrtGraph created from a given set of nodes. Must be released by calling ReleaseGraph.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -6032,6 +6034,11 @@ struct OrtApi {
    *                           Typical usage sets this to the result of Node_GetNumAttributes(). An error status is
    *                           returned if `num_attributes` is less than the number of node attributes.
    *
+   * \note ONNX Runtime automatically sets optional (unset) attributes to their default values if the default value
+   * is a constant expression that does not depend on other tensor/model characteristics. Conv's 'kernel_shape'
+   * attribute is an example of an optional attribute that does not have a constant default value. This function
+   * does not provide any unset optional attributes without a constant default value.
+   *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
@@ -6043,14 +6050,36 @@ struct OrtApi {
    *
    * \param[in] node The OrtNode instance.
    * \param[in] attribute_name The name of the attribute
-   * \param[out] attribute Output the attribute if its name matches 'attribute_name', otherwise output nullptr.
+   * \param[out] attribute Output parameter set to the OrtOpAttr instance if an attribute by the given name exists.
+   *                       For an unset optional attribute, `attribute` is set to NULL and a non-error status is
+   *                       returned. For an invalid attribute name, `attribute` is set to NULL and an error status with
+   *                       code ORT_NOT_FOUND is returned.
+   *
+   * \note ONNX Runtime automatically sets optional (unset) attributes to their default values if the default value
+   * is a constant expression that does not depend on other tensor/model characteristics. Conv's 'kernel_shape'
+   * attribute is an example of an optional attribute that does not have a constant default value. This function
+   * does not provide any unset optional attributes without a constant default value.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name,
-                  _Outptr_ const OrtOpAttr** attribute);
+                  _Outptr_result_maybenull_ const OrtOpAttr** attribute);
+
+  /** \brief Get the OrtNode's 'TENSOR' attribute as an OrtValue.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[in] attribute The OrtOpAttr instance.
+   * \param[out] attr_tensor If successful, contains the 'TENSOR' attribute as a newly created OrtValue.
+                             Must be freed with OrtApi::ReleaseValue.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetTensorAttributeAsOrtValue, _In_ const OrtNode* node, _In_ const OrtOpAttr* attribute,
+                  _Outptr_result_maybenull_ OrtValue** attr_tensor);
 
   /** \brief Get the attribute type as OrtOpAttrType from an OrtOpAttr.
    *

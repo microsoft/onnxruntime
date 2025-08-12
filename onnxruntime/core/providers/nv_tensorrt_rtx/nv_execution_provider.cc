@@ -123,10 +123,11 @@ void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /
   // even for empty tensors, so allocate a dummy byte.
   size = std::max(size, static_cast<uint64_t>(1));
   if (size > allocated_size) {
-    cudaFree(outputPtr);
+    alloc_->Free(alloc_, outputPtr);
     outputPtr = nullptr;
     allocated_size = 0;
-    if (cudaMalloc(&outputPtr, size) == cudaSuccess) {
+    outputPtr = alloc_->Alloc(alloc_, size);
+    if (outputPtr) {
       allocated_size = size;
     }
   }
@@ -352,193 +353,6 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
   return true;
 }
 
-/*
- * Apply TensorRT optimization profile shapes from input tensor value.
- *
- * This function supports single/multiple profile(s).
- * (Note: An optimization profile describes a range of dimensions for each network input)
- *
- * @param shape_tensor_values holds "shape tensor -> shape values" for the INT32 shape tensor input across this inference run
- * @param shape_tensor_values_int64 holds "shape tensor -> shape values" for the INT64 shape tensor input across this inference run
- */
-Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizationProfile*>& trt_profiles,
-                                              Ort::KernelContext ctx,
-                                              nvinfer1::ITensor* input,
-                                              ShapeRangesMap& shape_ranges,
-                                              const std::unordered_map<std::string, size_t>& input_indexes,
-                                              std::unordered_map<std::string, std::vector<int32_t>>& shape_tensor_values,
-                                              std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64,
-                                              cudaStream_t stream,
-                                              bool* engine_update) {
-  for (size_t i = 0; i < trt_profiles.size(); i++) {
-    const std::string& input_name = input->getName();
-    nvinfer1::Dims dims = input->getDimensions();
-    int nb_dims = dims.nbDims;
-
-    size_t input_index = 0;
-    const auto& iter = input_indexes.find(input_name);
-    if (iter != input_indexes.end()) {
-      input_index = iter->second;
-    }
-
-    auto input_tensor = ctx.GetInput(input_index);
-    auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
-    const auto tensor_shapes = tensor_info.GetShape();
-    auto& shape_ranges_per_input = shape_ranges[input_name];
-
-    auto trt_profile = trt_profiles[i];
-
-    // If there are multiple profiles, for second and rest of profiles, simply copy the min/max/opt profile values from the first profile.
-    // Following "if statement" won't be executed since TRT EP currently only allows single profile for non-explicit profiles case.
-    if (i > 0) {
-      if (input->isShapeTensor()) {
-        // shape tensor
-        int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
-        std::vector<int64_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
-        for (int j = 0; j < shape_size; j++) {
-          shapes_min[j] = *(trt_profiles[0]->getShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN));
-          shapes_max[j] = *(trt_profiles[0]->getShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX));
-          shapes_opt[j] = *(trt_profiles[0]->getShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT));
-        }
-        trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
-        trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
-        trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
-      } else {
-        // execution tensor
-        nvinfer1::Dims dims_min, dims_opt, dims_max;
-        dims_min = trt_profiles[0]->getDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN);
-        dims_max = trt_profiles[0]->getDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX);
-        dims_opt = trt_profiles[0]->getDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT);
-        trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-        trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
-        trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
-      }
-      continue;
-    }
-
-    // Create shape profile
-    if (input->isShapeTensor()) {
-      // Get shape values for shape tensor input
-      const auto tensor_type = tensor_info.GetElementType();
-      // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
-      int shape_size = dims.nbDims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
-      // For setting TRT optimization profile. (Note: the min/opt/max profile values are still int32 even though int64 is supported after TRT 10)
-      std::vector<int32_t> values(shape_size);
-
-      switch (tensor_type) {
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-          auto buffer = std::make_unique<int32_t[]>(shape_size);
-          auto status = GetShapeOfShapeTensor<int32_t>(input_tensor, buffer.get(), shape_size, stream);
-          if (status != Status::OK()) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-          }
-          shape_tensor_values[input_name].resize(shape_size);
-          for (int j = 0; j < shape_size; ++j) {
-            shape_tensor_values[input_name][j] = buffer[j];
-            values[j] = buffer[j];
-          }
-          break;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-          auto buffer = std::make_unique<int64_t[]>(shape_size);
-          auto status = GetShapeOfShapeTensor<int64_t>(input_tensor, buffer.get(), shape_size, stream);
-          if (status != Status::OK()) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-          }
-          shape_tensor_values_int64[input_name].resize(shape_size);
-          for (int j = 0; j < shape_size; ++j) {
-            shape_tensor_values_int64[input_name][j] = buffer[j];
-            values[j] = static_cast<int32_t>(buffer[j]);
-          }
-          break;
-        }
-        default: {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT shape tensor data type: " + std::to_string(tensor_type) + " not supported.");
-        }
-      }
-
-      // Update shape ranges
-      std::vector<int64_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
-      int shape_range_size = static_cast<int>(shape_ranges_per_input.size());
-      if (shape_size == shape_range_size) {
-        // If shape size matches, check/update shape range
-        for (int j = 0; j < shape_size; ++j) {
-          auto& shape_range = shape_ranges_per_input[j][0];  // only has one profile
-          shapes_min[j] = static_cast<int64_t>(shape_range[0]);
-          shapes_max[j] = static_cast<int64_t>(shape_range[1]);
-          shapes_opt[j] = static_cast<int64_t>(shape_range[2]);
-
-          const auto& tensor_shape_value = values[j];
-          // Update shape range lower bound
-          if (tensor_shape_value < shape_range[0]) {
-            shape_range[0] = tensor_shape_value;
-            shapes_min[j] = tensor_shape_value;
-            *engine_update = true;
-          }
-          // Update shape range upper bound
-          if (tensor_shape_value > shape_range[1]) {
-            shape_range[1] = tensor_shape_value;
-            shape_range[2] = tensor_shape_value;
-            shapes_max[j] = tensor_shape_value;
-            shapes_opt[j] = tensor_shape_value;
-            *engine_update = true;
-          }
-        }
-      } else {
-        // If shape size doesn't match, initialize shape_range with the new shape value
-        shape_ranges_per_input.clear();
-        for (int j = 0; j < shape_size; ++j) {
-          const auto& tensor_shape_value = values[j];
-          std::vector<std::vector<int64_t>> profile_vector;
-          std::vector<int64_t> shape_vector{tensor_shape_value, tensor_shape_value, tensor_shape_value};
-          profile_vector.push_back(shape_vector);  // only one profile needed
-          shape_ranges_per_input[j] = profile_vector;
-          shapes_min[j] = tensor_shape_value;
-          shapes_opt[j] = tensor_shape_value;
-          shapes_max[j] = tensor_shape_value;
-        }
-        *engine_update = true;
-      }
-
-      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
-      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
-      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
-    } else {  // Execution tensor
-      nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
-      for (int j = 0, end = nb_dims; j < end; ++j) {
-        const auto& tensor_shape = tensor_shapes[j];
-        if (shape_ranges_per_input.find(j) != shape_ranges_per_input.end()) {
-          auto& shape_range = shape_ranges_per_input[j][0];  // only has one profile
-          dims_min.d[j] = static_cast<int32_t>(shape_range[0]);
-          dims_max.d[j] = static_cast<int32_t>(shape_range[1]);
-          dims_opt.d[j] = static_cast<int32_t>(shape_range[2]);
-
-          // Update minimum dimension
-          if (tensor_shape < shape_range[0]) {
-            shape_range[0] = tensor_shape;
-            dims_min.d[j] = static_cast<int32_t>(tensor_shape);
-            *engine_update = true;
-          }
-          // Update maximum dimension
-          if (tensor_shape > shape_range[1]) {
-            shape_range[1] = tensor_shape;
-            shape_range[2] = tensor_shape;
-            dims_max.d[j] = static_cast<int32_t>(tensor_shape);
-            dims_opt.d[j] = static_cast<int32_t>(tensor_shape);
-            *engine_update = true;
-          }
-        }
-      }
-
-      trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-      trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
-      trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
-    }
-  }
-  return Status::OK();
-}
-
 #define CASE_GET_INPUT_TENSOR(DATA_TYPE, SrcT)                                              \
   case DATA_TYPE: {                                                                         \
     auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                             \
@@ -554,6 +368,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 #define CASE_GET_CAST_INPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                         \
   case DATA_TYPE: {                                                                                               \
     auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                   \
+    skip_input_binding_allowed = false;                                                                           \
     if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                            \
       scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
       data = scratch_buffers.back().get();                                                                        \
@@ -568,6 +383,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 #define CASE_GET_OUTPUT_TENSOR(DATA_TYPE, SrcT)                                             \
   case DATA_TYPE: {                                                                         \
     auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                    \
+    data_ptr = output_tensor_ptr;                                                           \
     if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                     \
       buffers[output_name] = output_tensor_ptr;                                             \
     } else {                                                                                \
@@ -580,6 +396,8 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 #define CASE_GET_CAST_OUTPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                        \
   case DATA_TYPE: {                                                                                               \
     auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                                          \
+    data_ptr = output_tensor_ptr;                                                                                 \
+    skip_output_binding_allowed = false;                                                                          \
     if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                           \
       scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
       buffers[output_name] = scratch_buffers.back().get();                                                        \
@@ -628,7 +446,8 @@ Status BindContextInput(Ort::KernelContext& ctx,
                         std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64,
                         std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                         OrtAllocator* alloc,
-                        cudaStream_t stream) {
+                        cudaStream_t stream,
+                        bool& skip_input_binding_allowed) {
   auto input_tensor = ctx.GetInput(input_index);
   auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
   const auto tensor_shapes = tensor_info.GetShape();
@@ -647,7 +466,7 @@ Status BindContextInput(Ort::KernelContext& ctx,
 
   if (trt_engine->isShapeInferenceIO(input_name)) {
     // Bind "shape tensor" input buffer
-
+    skip_input_binding_allowed = false;  // Shape tensor input binding cannot be skipped
     // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
     int shape_size = trt_engine->getTensorShape(input_name).nbDims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
     switch (tensor_type) {
@@ -775,19 +594,20 @@ Status BindContextOutput(Ort::KernelContext& ctx,
                          DDSOutputAllocatorMap& dds_output_allocator_map,
                          std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                          OrtAllocator* alloc,
-                         std::unordered_map<char const*, void*>& buffers) {
+                         std::unordered_map<char const*, void*>& buffers,
+                         nvinfer1::Dims& dims,
+                         void*& data_ptr,
+                         bool& skip_output_binding_allowed) {
   // Get output shape
-  nvinfer1::Dims dims = trt_context->getTensorShape(output_name);
+  dims = trt_context->getTensorShape(output_name);
   int nb_dims = dims.nbDims;
   bool is_DDS = false;
-  std::vector<int64_t> output_shapes(nb_dims);
   for (int j = 0, end = nb_dims; j < end; ++j) {
     // data-dependent shape
     if (dims.d[j] == -1) {
       is_DDS = true;
       break;
     }
-    output_shapes[j] = dims.d[j];
   }
 
   auto known_DDS = dds_output_allocator_map.find(output_name) != dds_output_allocator_map.end();
@@ -800,16 +620,19 @@ Status BindContextOutput(Ort::KernelContext& ctx,
   // Otherwise, if the shape of the output tensor is known prior to the runtime, ORT will pre-allocate memory buffer for the output tensor for enqueueV3.
   if (is_DDS || known_DDS) {
     if (!known_DDS) {
-      auto allocatorPtr = std::make_unique<OutputAllocator>();
+      auto allocatorPtr = std::make_unique<OutputAllocator>(alloc);
       trt_context->setOutputAllocator(output_name, allocatorPtr.get());
       dds_output_allocator_map[output_name] = std::move(allocatorPtr);
+      dims.nbDims = -1;    // Set to -1 to indicate that the shape is not known at this point.
+      data_ptr = nullptr;  // Set data_ptr to nullptr for DDS output binding.
     }
   } else {
-    output_tensors[i] = ctx.GetOutput(output_index, output_shapes);
+    output_tensors[i] = ctx.GetOutput(output_index, dims.d, nb_dims);
     auto& output_tensor = output_tensors[i];
     const auto elem_cnt = output_tensor.GetTensorTypeAndShapeInfo().GetElementCount();
 
     switch (output_type) {
+      // below macros set data_ptr and skip_output_binding_allowed variables
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, uint16_t)
@@ -840,7 +663,6 @@ Status BindContextOutput(Ort::KernelContext& ctx,
  * we are waiting for ORT core to support "assign" memory address to ORT context output. Some works need to be done in ORT memory planner to be aware of this memory support.
  */
 Status BindKernelOutput(Ort::KernelContext& ctx,
-                        OrtMemoryInfo* /*mem_info*/,
                         DDSOutputAllocatorMap& allocator_map,
                         char const* output_name,
                         size_t output_index,
@@ -901,31 +723,6 @@ NvExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId devi
 
 NvExecutionProvider::PerThreadContext::~PerThreadContext() {
   trt_context_map_.clear();
-}
-
-/*
- * Returns true if the shape ranges maintained by the PerThreadContext is different from the shape ragnes maintained by TRT EP, meaning the
- * engine is being updated and the execution context maintained by the PerThreadContext should be updated as well. Otherwise, returns false.
- *
- */
-bool NvExecutionProvider::PerThreadContext::CompareProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges) {
-  if (shape_ranges.size() > 0) {
-    if (input_shape_ranges_[fused_node] != shape_ranges) {
-      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] The shape ranges maintained by the PerThreadContext is different from the shape ranges maintained by TRT EP. \
-                                This means the engine is updated and will need to update the execution context as well.";
-      return true;
-    }
-  }
-  return false;
-}
-
-/*
- * Updates the shape ranges maintained by the PerThreadContext.
- * As long as the execution context maintained by the PerThreadContext is updated, the associated shape ranges should be updated as well.
- *
- */
-void NvExecutionProvider::PerThreadContext::UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges) {
-  input_shape_ranges_[fused_node] = shape_ranges;
 }
 
 void NvExecutionProvider::PerThreadContext::ResetTensorRTContext(std::string fused_node) {
@@ -1081,7 +878,6 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     engine_decryption_lib_path_ = info.engine_decryption_lib_path;
   }
   force_sequential_engine_build_ = info.force_sequential_engine_build;
-  context_memory_sharing_enable_ = info.context_memory_sharing_enable;
   sparsity_enable_ = info.sparsity_enable;
   auxiliary_streams_ = info.auxiliary_streams;
   profile_min_shapes = info.profile_min_shapes;
@@ -1225,7 +1021,6 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
                         << ", nv_engine_decryption_enable: " << engine_decryption_enable_
                         << ", nv_engine_decryption_lib_path: " << engine_decryption_lib_path_
                         << ", nv_force_sequential_engine_build: " << force_sequential_engine_build_
-                        << ", nv_context_memory_sharing_enable: " << context_memory_sharing_enable_
                         << ", nv_sparsity_enable: " << sparsity_enable_
                         << ", nv_auxiliary_streams: " << auxiliary_streams_
                         << ", nv_cuda_graph_enable: " << cuda_graph_enable_
@@ -1298,9 +1093,15 @@ void NvExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
 }
 
 std::vector<AllocatorPtr> NvExecutionProvider::CreatePreferredAllocators() {
+  OrtArenaCfg arena_cfg(0, static_cast<int>(ArenaExtendStrategy::kSameAsRequested),
+                        -1, -1, -1, -1);
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId device_id) { return std::make_unique<CUDAAllocator>(device_id, CUDA); },
-      narrow<OrtDevice::DeviceId>(device_id_));
+      narrow<OrtDevice::DeviceId>(device_id_),
+      true,
+      arena_cfg,
+      // make it stream aware
+      true);
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
@@ -2244,6 +2045,96 @@ common::Status NvExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>
   return Status::OK();
 }
 
+/**
+ * @brief Determines whether I/O binding is required for TensorRT execution.
+ *
+ * This function optimizes TensorRT inference performance by determining when tensor
+ * input/output binding operations can be skipped. Binding is an expensive operation
+ * that involves setting up tensor pointers in the TensorRT execution context, so
+ * avoiding unnecessary rebinding can significantly improve inference throughput.
+ *
+ * The function implements a three-tier decision logic:
+ * 1. First run: Always requires binding to establish initial tensor mappings
+ * 2. Subsequent runs with optimization allowed: Only rebind if tensors have changed
+ * 3. Subsequent runs without optimization: Always rebind for safety
+ *
+ * @tparam TRTState The TensorRT state type (TensorrtFuncState or TensorrtShortFuncState)
+ * @param trt_state Pointer to the TensorRT execution state containing tensor cache
+ *                  and configuration flags
+ * @param ctx ONNX Runtime kernel context providing access to current input tensors
+ *
+ * @return true if I/O binding is required (tensors changed or safety conditions apply),
+ *         false if binding can be safely skipped (optimization enabled and tensors unchanged)
+ *
+ * @note This function modifies trt_state by:
+ *       - Setting is_first_run to false after first execution
+ *       - Caching current tensor parameters in input_tensors vector
+ *       - Updating cached tensors when changes are detected
+ *
+ * @warning The skip_io_binding_allowed flag must be carefully managed as incorrect
+ *          usage can lead to inference with stale tensor bindings and incorrect results.
+ */
+template <class TRTState>
+static bool IsIOBindingRequired(TRTState* const trt_state, const Ort::KernelContext& ctx) {
+  // Check if input tensors have changed since the last run
+  // If so, we need to bind input tensors again
+  bool require_io_binding = false;
+
+  if (trt_state->is_first_run) {
+    // If this is the first run, we always bind input tensors
+    require_io_binding = true;
+    auto input_tensor_count = ctx.GetInputCount();
+    auto output_tensor_count = ctx.GetOutputCount();
+    trt_state->input_tensors.resize(input_tensor_count);
+    trt_state->output_tensors.resize(output_tensor_count);
+    for (size_t input_index = 0; input_index < input_tensor_count; ++input_index) {
+      const auto& input_tensor = ctx.GetInput(input_index);
+      const auto& tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+
+      trt_state->input_tensors[input_index] = TensorParams{input_tensor.GetTensorRawData(), tensor_info.GetShape()};
+    }
+    trt_state->is_first_run = false;
+  } else if (trt_state->skip_io_binding_allowed) {
+    // If skip_io_binding_allowed is true, we can skip binding if input tensors are the same as before
+    auto input_tensor_count = ctx.GetInputCount();
+    for (size_t input_index = 0; input_index < input_tensor_count; ++input_index) {
+      const auto& input_tensor = ctx.GetInput(input_index);
+      const auto& tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+
+      TensorParams ip_tensor{input_tensor.GetTensorRawData(), tensor_info.GetShape()};
+
+      if (ip_tensor != trt_state->input_tensors[input_index]) {
+        require_io_binding = true;
+        trt_state->input_tensors[input_index] = ip_tensor;
+      }
+    }
+  } else {
+    // If this is not the first run and skip_io_binding_allowed is false, we need to bind input tensors
+    require_io_binding = true;
+  }
+
+  if (!require_io_binding) {
+    // no need to bind inputs, but check outputs as well
+    auto output_tensor_count = ctx.GetOutputCount();
+
+    for (size_t output_index = 0; output_index < output_tensor_count; ++output_index) {
+      const auto& prev_output_tensor = trt_state->output_tensors[output_index];
+
+      if (prev_output_tensor.dims.nbDims != -1) {
+        const auto& new_output_tensor = ctx.GetOutput(output_index, prev_output_tensor.dims.d, prev_output_tensor.dims.nbDims);
+
+        // different output tensor data means we need to bind outputs again
+        if (prev_output_tensor.data != new_output_tensor.GetTensorRawData()) {
+          require_io_binding = true;
+          break;
+        }
+      }
+    }
+  }
+
+  return require_io_binding;
+}
+
 Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& graph_body_viewer,
                                                            const Node& fused_node,
                                                            std::unordered_map<std::string, size_t>& input_map,
@@ -2349,21 +2240,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   ShapeRangesMap input_explicit_shape_ranges;
   ShapeRangesMap input_implicit_shape_ranges;
 
-  auto tensor_is_dynamic = [&](nvinfer1::ITensor* tensor) -> bool {
-    if (tensor->isShapeTensor()) {
-      return true;
-    } else {
-      nvinfer1::Dims dims = tensor->getDimensions();
-      // Execution tensor
-      for (int j = 0, end = dims.nbDims; j < end; ++j) {
-        if (dims.d[j] == -1) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-
   bool has_dynamic_shape = false;  // True if input tensor has dynamic shape and no explicit profile is specified, otherwise false
   if ((!profile_min_shapes_.empty()) && (!profile_max_shapes_.empty()) && (!profile_opt_shapes_.empty())) {
     has_explicit_profile = true;
@@ -2375,7 +2251,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   } else {
     for (unsigned int i = 0, end = num_inputs; i < end; ++i) {
       auto input = trt_network->getInput(i);
-      has_dynamic_shape |= tensor_is_dynamic(input);
+      has_dynamic_shape |= checkTrtTensorIsDynamic(input);
     }
     if (has_dynamic_shape) {
       LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] No explicit optimization profile was specified. "
@@ -2574,31 +2450,18 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   // Build context
   // Note: Creating an execution context from an engine is thread safe per TRT doc
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-  if (context_memory_sharing_enable_) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
-    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-    if (mem_size > max_ctx_mem_size_) {
-      max_ctx_mem_size_ = mem_size;
-    }
-    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
-  } else {
-    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
-  }
+  trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
   if (!trt_context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "Nv EP could not build execution context for fused node: " + fused_node.Name());
   }
 
+  bool is_dynamic_shape_context = false;
   // Create input to index map
   for (int i = 0; i < num_inputs; ++i) {
     auto input = trt_network->getInput(i);
     const std::string& input_name = input->getName();
+    is_dynamic_shape_context |= checkTrtDimIsDynamic(trt_engine->getTensorShape(input_name.c_str()));
     const auto& iter = input_map.find(input_name);
     if (iter != input_map.end()) {
       input_indexes[input_name] = iter->second;
@@ -2639,10 +2502,9 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
           input_shape_ranges_[context->node_name], &tensorrt_mu_, trt_node_name_with_precision,
           engine_cache_enable_, cache_path_,
           runtime_.get(), profiles_[context->node_name],
-          context_memory_sharing_enable_, &max_ctx_mem_size_,
           engine_decryption_enable_, engine_decryption_, engine_encryption_,
           detailed_build_log_, sparsity_enable_,
-          auxiliary_streams_, cuda_graph_enable_, cache_prefix_, cache_suffix};
+          auxiliary_streams_, cuda_graph_enable_, is_dynamic_shape_context, cache_prefix_, cache_suffix};
     *state = p.release();
     return 0;
   };
@@ -2666,25 +2528,20 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
     const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
     auto fused_node_name = trt_state->fused_node_name;
-    // This map "shape_ranges" contains the shape range info for setting TRT optimization profiles.
-    // The info is used for both shape tensor and execution tensor:
-    // tensor name->(dimension->[min, max, opt])
-    auto& shape_ranges = trt_state->input_shape_ranges;
+
     std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
     std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
     auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
     auto trt_profiles = trt_state->profiles;
-    auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
-    int num_inputs = static_cast<int>(input_indexes.size());
     int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_set<std::string> input_names;
 
-    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
-                     narrow<OrtDevice::DeviceId>(device_id_));
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device);
     if (alloc_ == nullptr) {
+      OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                       narrow<OrtDevice::DeviceId>(device_id_));
+      OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device);
       Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
     }
     OrtAllocator* alloc = alloc_;
@@ -2698,67 +2555,12 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Nv EP select an optimization profile for the current context failed");
     }
 
-    // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
-    // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-    // Prepare cache name
-    std::string cache_path = "";
-    // Customize cache prefix if assigned
-    if (!cache_prefix_.empty()) {
-      cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->cache_prefix) + trt_state->cache_suffix;
-    } else {
-      cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
-    }
-
-    // Enable hardware compatility mode if assigned
-    std::string cache_hw_compat = "_sm" + compute_capability_;
-
-    // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
-    // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-    const std::string cache_path_prefix = cache_path + cache_hw_compat;
-    std::string engine_cache_path = cache_path_prefix + ".engine";
-    const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
-    const std::string profile_cache_path = cache_path_prefix + ".profile";
-
-    // If weight-stripped engine is enabled and refitted engine cache is not present,
-    // TRT EP will use the engine cache with ".stripped.engine" appended to the end.
-    const std::filesystem::path engine_cache_fs_path = engine_cache_path;
-    if (weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_fs_path)) {
-      engine_cache_path = cache_path_prefix + ".stripped.engine";
-      weight_stripped_engine_refit_ = true;
-    }
-
-    // Check and update shape ranges for dynamic shape inputs.
-    for (int i = 0, end = num_inputs; i < end; ++i) {
-      auto input = trt_state->network->get()->getInput(i);
-      const std::string& input_name = input->getName();
-      input_names.insert(input_name);
-
-      // If there is any input tensor in shape_ranges, it means this input tensor has dynamic shape and its profile shape values have not yet resolved.
-      // TRT EP will help determine the min/max/opt profile values based on current input tensor value.
-      if (shape_ranges.find(input_name) != shape_ranges.end()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Nv EP failed to parse input tensor and generate optimization profiles.");
-      }
-    }
-
-    if (weight_stripped_engine_refit_) {
-      auto status = RefitEngine(model_path_,
-                                onnx_model_folder_path_,
-                                engine_cache_path,
-                                false /* path check for security */,
-                                onnx_model_bytestream_,
-                                onnx_model_bytestream_size_,
-                                trt_engine,
-                                false /* serialize refitted engine to disk */,
-                                detailed_build_log_);
-      if (status != Status::OK()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-      }
-    }
-
     // Check before using trt_engine
     if (trt_engine == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "No engine is found.");
     }
+
+    bool require_io_binding = IsIOBindingRequired(trt_state, ctx);
 
     // Get input and output binding names
     int total_bindings = trt_engine->getNbIOTensors();
@@ -2776,23 +2578,25 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     /*
      * Set input shapes and bind input buffers
      */
-    std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
-    for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
-      char const* input_name = input_binding_names[i];
+    auto& scratch_buffers = trt_state->scratch_buffers;
+    if (require_io_binding) {
+      scratch_buffers.clear();
+      bool skip_input_binding_allowed = true;
+      for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
+        char const* input_name = input_binding_names[i];
 
-      size_t input_index = 0;
-      const auto iter = input_indexes.find(input_name);
-      if (iter != input_indexes.end()) {
-        input_index = iter->second;
-      }
-      auto input_tensor = ctx.GetInput(input_index);
-      auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
-      const auto tensor_shapes = tensor_info.GetShape();
+        size_t input_index = 0;
+        const auto iter = input_indexes.find(input_name);
+        if (iter != input_indexes.end()) {
+          input_index = iter->second;
+        }
 
-      auto status = BindContextInput(ctx, trt_engine, trt_context, input_name, input_index, shape_tensor_values, shape_tensor_values_int64, scratch_buffers, alloc, stream);
-      if (status != Status::OK()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+        auto status = BindContextInput(ctx, trt_engine, trt_context, input_name, input_index, shape_tensor_values, shape_tensor_values_int64, scratch_buffers, alloc, stream, skip_input_binding_allowed);
+        if (status != Status::OK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+        }
       }
+      trt_state->skip_io_binding_allowed = skip_input_binding_allowed;
     }
 
     /*
@@ -2806,44 +2610,51 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     std::unordered_map<size_t, int> output_dim_sizes;
     output_dim_sizes.reserve(num_outputs);
 
-    for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
-      char const* output_name = output_binding_names[i];
+    if (require_io_binding) {
+      bool skip_output_binding_allowed = true;
+      for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
+        char const* output_name = output_binding_names[i];
 
-      size_t output_index = 0;
-      const auto& index_iter = output_indexes.find(output_name);
-      if (index_iter != output_indexes.end()) {
-        output_index = index_iter->second;
+        size_t output_index = 0;
+        const auto& index_iter = output_indexes.find(output_name);
+        if (index_iter != output_indexes.end()) {
+          output_index = index_iter->second;
+        }
+
+        size_t output_type = 0;
+        const auto type_iter = output_types.find(output_name);
+        if (type_iter != output_types.end()) {
+          output_type = type_iter->second;
+        }
+
+        nvinfer1::Dims dims;
+        void* data_ptr = nullptr;
+
+        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
+                                          dds_output_allocator_map, scratch_buffers, alloc, buffers, dims, data_ptr, skip_output_binding_allowed);
+        if (status != Status::OK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+        }
+
+        trt_state->output_tensors[output_index] = TensorParams{data_ptr, dims};
       }
 
-      size_t output_type = 0;
-      const auto type_iter = output_types.find(output_name);
-      if (type_iter != output_types.end()) {
-        output_type = type_iter->second;
-      }
-
-      Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
-                                        dds_output_allocator_map, scratch_buffers, alloc, buffers);
-      if (status != Status::OK()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-      }
+      trt_state->skip_io_binding_allowed = trt_state->skip_io_binding_allowed | skip_output_binding_allowed;
     }
 
     // Set execution context memory
-    if (trt_state->context_memory_sharing_enable) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+    if (require_io_binding) {
       size_t mem_size = trt_engine->getDeviceMemorySizeV2();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-      if (mem_size > *max_context_mem_size_ptr) {
-        *max_context_mem_size_ptr = mem_size;
+      if (trt_state->is_dynamic_shape) {
+        mem_size = trt_context->updateDeviceMemorySizeForShapes();
       }
-      trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
+      if (trt_state->context_memory_size != mem_size) {
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] A new context memory was allocated with size " << mem_size;
+        trt_state->context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, mem_size, false /*use_reserve*/);
+        trt_state->context_memory_size = mem_size;
+        trt_context->setDeviceMemoryV2(trt_state->context_memory.get(), mem_size);
+      }
     }
-
     // Start CUDA graph capture.
     // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
     // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
@@ -2894,7 +2705,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
         }
-        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, stream);
+        auto status = BindKernelOutput(ctx, dds_output_allocator_map, output_name, output_index, output_type, stream);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
         }
@@ -2961,33 +2772,19 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
   //
   // Note: Creating an execution context from an engine is thread safe per TRT doc
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-  if (context_memory_sharing_enable_) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
-    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-    if (mem_size > max_ctx_mem_size_) {
-      max_ctx_mem_size_ = mem_size;
-    }
-    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
-
-  } else {
-    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
-  }
+  trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
   if (!trt_context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "Nv EP could not build execution context for fused node: " + fused_node.Name());
   }
 
+  bool is_dynamic_shape_context = false;
   // Create input/output to index maps
   for (int32_t i = 0; i < trt_engine->getNbIOTensors(); ++i) {
     auto const& name = trt_engine->getIOTensorName(i);
     auto const& mode = trt_engine->getTensorIOMode(name);
     if (mode == nvinfer1::TensorIOMode::kINPUT) {
+      is_dynamic_shape_context |= checkTrtDimIsDynamic(trt_engine->getTensorShape(name));
       const auto& iter = input_map.find(name);
       if (iter != input_map.end()) {
         input_indexes[name] = iter->second;
@@ -3027,9 +2824,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
           &contexts_[context->node_name],
           input_info_[context->node_name],
           output_info_[context->node_name],
-          context_memory_sharing_enable_,
-          &max_ctx_mem_size_,
-          &tensorrt_mu_};
+          &tensorrt_mu_,
+          is_dynamic_shape_context};
     *state = p.release();
     return 0;
   };
@@ -3056,15 +2852,14 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
-    auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
     int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
     std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
 
-    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
-                     narrow<OrtDevice::DeviceId>(device_id_));
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device);
     if (alloc_ == nullptr) {
+      OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                       narrow<OrtDevice::DeviceId>(device_id_));
+      OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device);
       Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
     }
     OrtAllocator* alloc = alloc_;
@@ -3077,6 +2872,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     if (trt_engine == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "No engine is found.");
     }
+
+    bool require_io_binding = IsIOBindingRequired(trt_state, ctx);
 
     // Get input and output binding names
     int total_bindings = trt_engine->getNbIOTensors();
@@ -3094,20 +2891,25 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     /*
      * Set input shapes and bind input buffers
      */
-    std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
-    for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
-      char const* input_name = input_binding_names[i];
+    auto& scratch_buffers = trt_state->scratch_buffers;
+    if (require_io_binding) {
+      scratch_buffers.clear();
+      bool skip_input_binding_allowed = true;
+      for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
+        char const* input_name = input_binding_names[i];
 
-      size_t input_index = 0;
-      const auto iter = input_indexes.find(input_name);
-      if (iter != input_indexes.end()) {
-        input_index = iter->second;
-      }
+        size_t input_index = 0;
+        const auto iter = input_indexes.find(input_name);
+        if (iter != input_indexes.end()) {
+          input_index = iter->second;
+        }
 
-      Status status = BindContextInput(ctx, trt_engine, trt_context, input_name, input_index, shape_tensor_values, shape_tensor_values_int64, scratch_buffers, alloc, stream);
-      if (status != Status::OK()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+        Status status = BindContextInput(ctx, trt_engine, trt_context, input_name, input_index, shape_tensor_values, shape_tensor_values_int64, scratch_buffers, alloc, stream, skip_input_binding_allowed);
+        if (status != Status::OK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+        }
       }
+      trt_state->skip_io_binding_allowed = skip_input_binding_allowed;
     }
 
     /*
@@ -3121,44 +2923,52 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     std::unordered_map<size_t, int> output_dim_sizes;
     output_dim_sizes.reserve(num_outputs);
 
-    for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
-      char const* output_name = output_binding_names[i];
+    if (require_io_binding) {
+      bool skip_output_binding_allowed = true;
+      for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
+        char const* output_name = output_binding_names[i];
 
-      size_t output_index = 0;
-      const auto& index_iter = output_indexes.find(output_name);
-      if (index_iter != output_indexes.end()) {
-        output_index = index_iter->second;
+        size_t output_index = 0;
+        const auto& index_iter = output_indexes.find(output_name);
+        if (index_iter != output_indexes.end()) {
+          output_index = index_iter->second;
+        }
+
+        size_t output_type = 0;
+        const auto type_iter = output_types.find(output_name);
+        if (type_iter != output_types.end()) {
+          output_type = type_iter->second;
+        }
+
+        nvinfer1::Dims dims;
+        void* data_ptr = nullptr;
+
+        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
+                                          dds_output_allocator_map, scratch_buffers, alloc, buffers, dims, data_ptr, skip_output_binding_allowed);
+        if (status != Status::OK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+        }
+
+        trt_state->output_tensors[output_index] = TensorParams{data_ptr, dims};
       }
 
-      size_t output_type = 0;
-      const auto type_iter = output_types.find(output_name);
-      if (type_iter != output_types.end()) {
-        output_type = type_iter->second;
-      }
-
-      Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
-                                        dds_output_allocator_map, scratch_buffers, alloc, buffers);
-      if (status != Status::OK()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-      }
+      trt_state->skip_io_binding_allowed = trt_state->skip_io_binding_allowed | skip_output_binding_allowed;
     }
 
     // Set execution context memory
-    if (trt_state->context_memory_sharing_enable) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+    if (require_io_binding) {
       size_t mem_size = trt_engine->getDeviceMemorySizeV2();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-      if (mem_size > *max_context_mem_size_ptr) {
-        *max_context_mem_size_ptr = mem_size;
+      if (trt_state->is_dynamic_shape) {
+        mem_size = trt_context->updateDeviceMemorySizeForShapes();
       }
-      trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
+      if (trt_state->context_memory_size != mem_size) {
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] A new context memory was allocated with size " << mem_size;
+        trt_state->context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, mem_size, false /*use_reserve*/);
+        // trt_state->context_memory = IAllocator::MakeUniquePtr<void>(alloc, mem_size, false /*use_reserve*/, stream);
+        trt_state->context_memory_size = mem_size;
+        trt_context->setDeviceMemoryV2(trt_state->context_memory.get(), mem_size);
+      }
     }
-
     // Start CUDA graph capture.
     // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
     // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
@@ -3209,7 +3019,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
         }
-        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, stream);
+        auto status = BindKernelOutput(ctx, dds_output_allocator_map, output_name, output_index, output_type, stream);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
         }

@@ -83,10 +83,22 @@ class ProviderOptionsParser {
   template <typename ValueParserType>
   ProviderOptionsParser& AddValueParser(
       const std::string& name, ValueParserType value_parser) {
+    return AddValueParser(std::string_view{name}, value_parser);
+  }
+
+  template <typename ValueParserType>
+  ProviderOptionsParser& AddValueParser(
+      std::string_view name, ValueParserType value_parser) {
     ORT_ENFORCE(
         value_parsers_.emplace(name, ValueParser{value_parser}).second,
         "Provider option \"", name, "\" already has a value parser.");
     return *this;
+  }
+
+  template <typename ValueParserType>
+  ProviderOptionsParser& AddValueParser(
+      const char* name, ValueParserType value_parser) {
+    return AddValueParser<ValueParserType>(std::string_view{name}, value_parser);
   }
 
   /**
@@ -104,11 +116,23 @@ class ProviderOptionsParser {
   template <typename ValueType>
   ProviderOptionsParser& AddAssignmentToReference(
       const std::string& name, ValueType& dest) {
+    return AddAssignmentToReference(std::string_view{name}, dest);
+  }
+
+  template <typename ValueType>
+  ProviderOptionsParser& AddAssignmentToReference(
+      std::string_view name, ValueType& dest) {
     return AddValueParser(
         name,
-        [&dest](const std::string& value_str) -> Status {
+        [&dest](std::string_view value_str) -> Status {
           return ParseStringWithClassicLocale(value_str, dest);
         });
+  }
+
+  template <typename ValueType>
+  ProviderOptionsParser& AddAssignmentToReference(
+      const char* name, ValueType& dest) {
+    return AddAssignmentToReference<ValueType>(std::string_view{name}, dest);
   }
 
   /**
@@ -128,11 +152,23 @@ class ProviderOptionsParser {
   template <typename EnumType>
   ProviderOptionsParser& AddAssignmentToEnumReference(
       const std::string& name, const EnumNameMapping<EnumType>& mapping, EnumType& dest) {
+    return AddAssignmentToEnumReference(std::string_view{name}, mapping, dest);
+  }
+
+  template <typename EnumType>
+  ProviderOptionsParser& AddAssignmentToEnumReference(
+      std::string_view name, const EnumNameMapping<EnumType>& mapping, EnumType& dest) {
     return AddValueParser(
         name,
         [&mapping, &dest](const std::string& value_str) -> Status {
           return NameToEnum(mapping, value_str, dest);
         });
+  }
+
+  template <typename EnumType>
+  ProviderOptionsParser& AddAssignmentToEnumReference(
+      const char* name, const EnumNameMapping<EnumType>& mapping, EnumType& dest) {
+    return AddAssignmentToEnumReference<EnumType>(std::string_view{name}, mapping, dest);
   }
 
   /**

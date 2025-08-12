@@ -20,7 +20,7 @@
 #include "core/platform/threadpool.h"
 
 #include "core/session/abi_devices.h"
-#include "core/session/ep_library.h"
+#include "core/session/plugin_ep/ep_library.h"
 #include "core/session/onnxruntime_c_api.h"
 
 struct OrtThreadingOptions;
@@ -107,6 +107,15 @@ class Environment {
   }
 
   /**
+   * Returns an AllocatorPtr for a shared IAllocator based allocator if it matches the memory info.
+   * The OrtMemoryInfo name and whether it's an arena or device allocator is ignored in the lookup, as is the
+   * alignment.
+   * The user calling this function is not expected to know the alignment, and we expect the allocator instance to be
+   * created with a valid alignment for the device.
+   */
+  AllocatorPtr GetRegisteredSharedAllocator(const OrtMemoryInfo& mem_info) const;
+
+  /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
    */
   Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
@@ -171,7 +180,7 @@ class Environment {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
 
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
 
   // shared allocators from various sources.
   // CreateAndRegisterAllocator[V2]: IAllocator allocators created by ORT

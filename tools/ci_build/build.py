@@ -203,10 +203,6 @@ def add_default_definition(definition_list, key, default_value):
     definition_list.append(key + "=" + default_value)
 
 
-def normalize_arg_list(nested_list):
-    return [i for j in nested_list for i in j] if nested_list else []
-
-
 def number_of_parallel_jobs(args):
     return os.cpu_count() if args.parallel == 0 else args.parallel
 
@@ -620,6 +616,7 @@ def generate_build_tree(
             )
             generate_vcpkg_triplets_for_emscripten(
                 build_dir,
+                configs,
                 emscripten_root_path,
                 not args.disable_rtti,
                 not args.disable_wasm_exception_catching,
@@ -627,25 +624,21 @@ def generate_build_tree(
                 args.enable_address_sanitizer,
             )
         elif args.android:
-            generate_android_triplets(build_dir, args.android_cpp_shared, args.android_api)
+            generate_android_triplets(build_dir, configs, args.android_cpp_shared, args.android_api)
         elif is_windows():
-            generate_windows_triplets(build_dir, args.msvc_toolset)
+            generate_windows_triplets(build_dir, configs, args.msvc_toolset)
         elif is_macOS():
             osx_target = args.apple_deploy_target
             if args.apple_deploy_target is None:
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, osx_target)
+            generate_macos_triplets(build_dir, configs, osx_target)
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir)
+            generate_linux_triplets(build_dir, configs)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
-        vcpkg_install_options = generate_vcpkg_install_options(build_dir, args)
-        # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
-        # Therefore, if any of the option string contains a semicolon, it must be escaped
-        add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ";".join(vcpkg_install_options))
         # Choose the cmake triplet
         triplet = None
         if args.build_wasm:
@@ -723,8 +716,6 @@ def generate_build_tree(
             cmake_args += ["-Donnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD=ON"]
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
-        cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
-        cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
 
     if args.use_tensorrt:
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
@@ -892,7 +883,7 @@ def generate_build_tree(
     # * Leave disabled if "no_kleidiai" argument was specified.
     # * Enable if the target is Android and args.android_abi contains arm64*
     # * Enable for a Windows cross compile build if compile target is an Arm one.
-    # * Finally enable if platform.machine contains "arm64". This should cover the following cases:
+    # * Finally enable if platform.machine contains "arm64" and not a WebAssembly build. This should cover the following cases:
     #     *  Linux on Arm
     #     *  MacOs (case must be ignored)
     # * TODO Delegate responsibility for Onnxruntime_USE_KLEIDIAI = ON to CMake logic
@@ -900,7 +891,7 @@ def generate_build_tree(
         if (
             (args.android and "arm64" in args.android_abi.lower())
             or (is_windows() and (args.arm64 or args.arm64ec or args.arm) and platform.architecture()[0] != "AMD64")
-            or ("arm64" in platform.machine().lower())
+            or ("arm64" in platform.machine().lower() and not args.build_wasm)
         ):
             cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
 
@@ -991,7 +982,7 @@ def generate_build_tree(
             ]
 
         # add default emscripten settings
-        emscripten_settings = normalize_arg_list(args.emscripten_settings)
+        emscripten_settings = list(args.emscripten_settings)
 
         # set -s MALLOC
         if args.wasm_malloc is not None:
@@ -1251,6 +1242,16 @@ def generate_build_tree(
             ]
         env = {}
         if args.use_vcpkg:
+            # append VCPKG_INSTALL_OPTIONS
+            #
+            # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
+            # Therefore, if any of the option string contains a semicolon, it must be escaped
+            temp_cmake_args += [
+                "-DVCPKG_INSTALL_OPTIONS={}".format(
+                    ";".join(generate_vcpkg_install_options(Path(build_dir) / config, args))
+                )
+            ]
+
             vcpkg_keep_env_vars = ["TRT_UPLOAD_AUTH_TOKEN"]
 
             if args.build_wasm:
@@ -1325,13 +1326,14 @@ def clean_targets(cmake_path, build_dir, configs):
         run_subprocess(cmd_args)
 
 
-def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, target=None):
+def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targets: list[str] | None):
     for config in configs:
         log.info("Building targets for %s configuration", config)
         build_dir2 = get_config_build_dir(build_dir, config)
         cmd_args = [cmake_path, "--build", build_dir2, "--config", config]
-        if target:
-            cmd_args.extend(["--target", target])
+        if targets:
+            log.info(f"Building specified targets: {targets}")
+            cmd_args.extend(["--target", *targets])
 
         build_tool_args = []
         if num_parallel_jobs != 1:
@@ -1661,8 +1663,6 @@ def run_ios_tests(args, source_dir, config, cwd):
                 dynamic_framework_dir,
                 "--framework_info_file",
                 framework_info_file,
-                "--variant",
-                "Full",
                 "--skip_macos_test",
             ],
             cwd=cwd,
@@ -1676,8 +1676,6 @@ def run_ios_tests(args, source_dir, config, cwd):
                 static_framework_dir,
                 "--framework_info_file",
                 framework_info_file,
-                "--variant",
-                "Full",
                 "--skip_macos_test",
             ],
             cwd=cwd,
@@ -1994,6 +1992,7 @@ def build_nuget_package(
     use_winml,
     use_qnn,
     use_dml,
+    use_migraphx,
     enable_training_apis,
     msbuild_extra_options,
 ):
@@ -2031,6 +2030,9 @@ def build_nuget_package(
     elif use_tensorrt:
         execution_provider = "/p:ExecutionProvider=tensorrt"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.TensorRT"
+    elif use_migraphx:
+        execution_provider = "/p:ExecutionProvider=migraphx"
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.MIGraphX"
     elif use_dnnl:
         execution_provider = "/p:ExecutionProvider=dnnl"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DNNL"
@@ -2055,12 +2057,12 @@ def build_nuget_package(
             # use the sln that include the mobile targets
             sln = "OnnxRuntime.CSharp.sln"
 
-    # explicitly exclude mobile targets in this case
-    if sln != "OnnxRuntime.CSharp.sln" and have_exclude_mobile_targets_option is False:
-        msbuild_extra_options.append("IncludeMobileTargets=false")
-
     # expand extra_options to add prefix
     extra_options = ["/p:" + option for option in msbuild_extra_options]
+
+    # explicitly exclude mobile targets in this case
+    if sln != "OnnxRuntime.CSharp.sln" and have_exclude_mobile_targets_option is False:
+        extra_options.append("/p:IncludeMobileTargets=false")
 
     # we have to use msbuild directly if including Xamarin targets as dotnet only supports MAUI (.net6)
     use_dotnet = sln != "OnnxRuntime.CSharp.sln"
@@ -2276,7 +2278,7 @@ def main():
                     "Running as root is not allowed. If you really want to do that, use '--allow_running_as_root'."
                 )
 
-    cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
+    cmake_extra_defines = list(args.cmake_extra_defines)
 
     if args.use_tensorrt:
         args.use_cuda = True
@@ -2555,7 +2557,7 @@ def main():
         if args.parallel < 0:
             raise BuildError(f"Invalid parallel job count: {args.parallel}")
         num_parallel_jobs = number_of_parallel_jobs(args)
-        build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.target)
+        build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.targets)
 
     if args.test:
         if args.enable_onnx_tests:
@@ -2622,8 +2624,9 @@ def main():
                 getattr(args, "use_winml", False),
                 args.use_qnn,
                 getattr(args, "use_dml", False),
+                args.use_migraphx,
                 args.enable_training_apis,
-                normalize_arg_list(args.msbuild_extra_options),
+                args.msbuild_extra_options,
             )
 
     if args.test and args.build_nuget:
@@ -2636,7 +2639,7 @@ def main():
             args.use_dnnl,
             args.enable_training_apis,
             configs,
-            normalize_arg_list(args.msbuild_extra_options),
+            args.msbuild_extra_options,
         )
 
     if args.gen_doc:

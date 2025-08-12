@@ -83,20 +83,23 @@ jobs:
       versionSpec: '3.12'
       addToPath: true
       architecture: $(buildArch)
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '22.x'
 
   - ${{if eq(parameters.WithCache, true)}}:
     - script: |
         set -ex
         cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-        ./emsdk install 4.0.8 ccache-git-emscripten-64bit
-        ./emsdk activate 4.0.8 ccache-git-emscripten-64bit
+        ./emsdk install 4.0.11 ccache-git-emscripten-64bit
+        ./emsdk activate 4.0.11 ccache-git-emscripten-64bit
       displayName: 'emsdk install and activate ccache for emscripten'
   - ${{if eq(parameters.WithCache, false)}}:
     - script: |
         set -ex
         cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-        ./emsdk install 4.0.8
-        ./emsdk activate 4.0.8
+        ./emsdk install 4.0.11
+        ./emsdk activate 4.0.11
       displayName: 'emsdk install and activate ccache for emscripten'
 
   - template: build-linux-wasm-step.yml
