@@ -200,7 +200,6 @@ Ort::Status GetAxisAttribute(const OrtNode& node, std::optional<int64_t>& axis) 
   return Ort::Status{nullptr};
 }
 
-// Get the number of input edges that come from another node upstream.
 Ort::Status GetNodeInputEdgeCount(const std::vector<const OrtValueInfo*>& inputs, size_t& num_input_edges) {
   const OrtApi& ort_api = Ort::GetApi();
 
@@ -215,6 +214,42 @@ Ort::Status GetNodeInputEdgeCount(const std::vector<const OrtValueInfo*>& inputs
     num_input_edges += static_cast<size_t>(producer_node != nullptr);
   }
 
+  return Ort::Status{nullptr};
+}
+
+Ort::Status GetNodeInputEdgeCount(const OrtNode& node, size_t& num_input_edges) {
+  std::vector<const OrtValueInfo*> inputs;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputs(node, inputs));
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputEdgeCount(inputs, num_input_edges));
+  return Ort::Status{nullptr};
+}
+
+Ort::Status GetNodeInputEdges(const std::vector<const OrtValueInfo*>& inputs, EdgeSet& input_edges) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  for (size_t input_idx = 0; input_idx < inputs.size(); ++input_idx) {
+    const OrtValueInfo* input = inputs[input_idx];
+    if (input == nullptr) continue;  // Skip missing optional input
+
+    const OrtNode* producer_node = nullptr;
+    size_t producer_output_index = 0;
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ValueInfo_GetValueProducer(input, &producer_node, &producer_output_index));
+
+    if (producer_node == nullptr) {
+      continue;  // No producer node (e.g., a graph input)
+    }
+
+    input_edges.insert(EdgeEnd(*producer_node, static_cast<int>(producer_output_index),
+                               static_cast<int>(input_idx)));
+  }
+
+  return Ort::Status{nullptr};
+}
+
+Ort::Status GetNodeInputEdges(const OrtNode& node, EdgeSet& input_edges) {
+  std::vector<const OrtValueInfo*> inputs;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputs(node, inputs));
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputEdges(inputs, input_edges));
   return Ort::Status{nullptr};
 }
 
@@ -247,6 +282,13 @@ Ort::Status GetNodeOutputEdges(const std::vector<const OrtValueInfo*>& outputs, 
     }
   }
 
+  return Ort::Status{nullptr};
+}
+
+Ort::Status GetNodeOutputEdges(const OrtNode& node, EdgeSet& output_edges) {
+  std::vector<const OrtValueInfo*> outputs;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputs(node, outputs));
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputEdges(outputs, output_edges));
   return Ort::Status{nullptr};
 }
 
@@ -315,6 +357,70 @@ bool IsBinaryQLinearOp(QLinearOpType type) {
 // Ops have 1 or more inputs
 bool IsVariadicQLinearOp(QLinearOpType type) {
   return type == QLinearOpType::QLinearConcat;
+}
+
+Ort::Status GetQDQIODefs(const OrtNode& target_node, const NodeGroup& node_group, bool is_input,
+                         /*out*/ std::vector<NodeUnitIODef>& result) {
+  const std::vector<const OrtNode*>& dq_or_q_nodes = is_input ? node_group.dq_nodes : node_group.q_nodes;
+  std::vector<const OrtValueInfo*> target_node_io_defs;
+  EdgeSet target_node_io_edges;
+
+  if (is_input) {
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputs(target_node, target_node_io_defs));
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputEdges(target_node_io_defs, target_node_io_edges));
+  } else {
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputs(target_node, target_node_io_defs));
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputEdges(target_node_io_defs, target_node_io_edges));
+  }
+
+  // Find all the quantized IO defs and indices (for the input/output of the target node)
+  std::unordered_map<size_t, NodeUnitIODef> quantized_io_defs;
+  quantized_io_defs.reserve(target_node_io_defs.size());
+
+  for (const EdgeEnd& target_node_edge : target_node_io_edges) {
+    const OrtNode& node = target_node_edge.GetNode();  // node on the other side of the edge.
+
+    // If we can find the node in the dq or q nodes this is a quantized input/output
+    if (std::find(dq_or_q_nodes.cbegin(), dq_or_q_nodes.cend(), &node) != dq_or_q_nodes.cend()) {
+      std::vector<const OrtValueInfo*> node_inputs;
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputs(node, node_inputs));
+
+      std::optional<int64_t> axis;
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetAxisAttribute(node, axis));
+
+      // quantization scale and zp are always the input[1, 2]
+      NodeUnitIODef::QuantParam quant_param{*node_inputs[1], node_inputs.size() == 3 ? node_inputs[2] : nullptr, axis};
+
+      if (is_input) {
+        // DQ is input to the target node, use the DstArgIndex
+        auto idx = target_node_edge.GetDstArgIndex();
+        // This is a DQ node, we are using x, x_scale, x_zp (input[0, 1, 2])
+        quantized_io_defs.insert({idx, NodeUnitIODef{*node_inputs[0], quant_param}});
+      } else {
+        // Q is output of the target node, use the SrcArgIndex
+        auto idx = target_node_edge.GetSrcArgIndex();
+        // This is a Q node, we are using y (output[0]), y_scale, y_zp (input[1, 2])
+        std::vector<const OrtValueInfo*> node_outputs;
+        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputs(node, node_outputs));
+
+        quantized_io_defs.insert({idx, NodeUnitIODef{*node_outputs[0], quant_param}});
+      }
+    }
+  }
+
+  // Construct the IODefs for this QDQ NodeGroup
+  result.reserve(target_node_io_defs.size());
+  for (size_t i = 0; i < target_node_io_defs.size(); i++) {
+    // If we can find the NodeUnitIODef for this index, this is a quantized input/output
+    if (quantized_io_defs.find(i) != quantized_io_defs.cend()) {
+      result.push_back(std::move(quantized_io_defs.at(i)));
+    } else {
+      // This is a regular input
+      result.push_back({*target_node_io_defs[i], std::nullopt});
+    }
+  }
+
+  return Ort::Status{nullptr};
 }
 
 }  // namespace
@@ -447,6 +553,77 @@ Ort::Status NodeUnit::MakeSingleNode(const OrtNode& node, /*out*/ std::unique_pt
   node_unit->inputs_ = std::move(node_unit_inputs);
   node_unit->outputs_ = std::move(node_unit_outputs);
   node_unit->output_edges_ = std::move(output_edges);
+
+  result = std::move(node_unit);
+  return Ort::Status{nullptr};
+}
+
+/*static*/
+Ort::Status NodeUnit::MakeQDQGroup(const OrtGraph& graph, const NodeGroup& node_group,
+                                   /*out*/ std::unique_ptr<NodeUnit>& result) {
+#if 0
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(NodeGroup::CanCreateNodeGroup(graph, *node_group.target_node,
+                                                                 node_group.redundant_clip_node,
+                                                                 node_group.dq_nodes, node_group.q_nodes));
+#else
+  (void)graph;
+#endif
+
+  std::vector<NodeUnitIODef> node_unit_inputs;
+  std::vector<NodeUnitIODef> node_unit_outputs;
+  const OrtNode* output_producer = node_group.redundant_clip_node ? node_group.redundant_clip_node
+                                                                  : node_group.target_node;
+
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetQDQIODefs(*node_group.target_node, node_group, true, node_unit_inputs));
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetQDQIODefs(*output_producer, node_group, false, node_unit_outputs));
+
+  size_t input_edge_count = 0;
+  for (const OrtNode* dq_node : node_group.dq_nodes) {
+    size_t dq_num_input_edges = 0;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputEdgeCount(*dq_node, dq_num_input_edges));
+
+    input_edge_count += dq_num_input_edges;
+  }
+
+  // add edges for inputs that are not from DQ nodes. there is one edge to each DQ node.
+  // other inputs could come from initializers or graph inputs (no edges) or other nodes (edge).
+  size_t target_node_num_input_edges = 0;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputEdgeCount(*node_group.target_node, target_node_num_input_edges));
+
+  input_edge_count += target_node_num_input_edges - node_group.dq_nodes.size();
+
+  // create output edges. each target node output either goes to Q node/s or non-Q node/s.
+  // CanCreateNodeGroup ensures this.
+  // If redundant clip node is present, the target node has only one output edge to the redundant clip node.
+  EdgeSet node_unit_output_edges;
+  EdgeSet output_edges;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputEdges(*output_producer, output_edges));
+
+  for (const EdgeEnd& cur_edge : output_edges) {
+    const OrtNode& node = cur_edge.GetNode();  // node on other side of edge.
+
+    // if node is in q_nodes we look past the Q node and add those edges.
+    if (std::find(node_group.q_nodes.cbegin(), node_group.q_nodes.cend(), &node) != node_group.q_nodes.cend()) {
+      int src_idx = cur_edge.GetSrcArgIndex();
+      EdgeSet q_out_edges;
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputEdges(node, q_out_edges));
+
+      for (const EdgeEnd& q_cur_edge : q_out_edges) {
+        node_unit_output_edges.insert(EdgeEnd{q_cur_edge.GetNode(), src_idx, q_cur_edge.GetDstArgIndex()});
+      }
+    } else {
+      // non-Q node, or Q node that isn't in the QDQ node group (unexpected but may be possible). add as-is.
+      node_unit_output_edges.insert(cur_edge);
+    }
+  }
+
+  auto node_unit = std::make_unique<NodeUnit>(*node_group.target_node, Type::QDQGroup, PrivateTag{});
+  node_unit->dq_nodes_ = node_group.dq_nodes;
+  node_unit->redundant_clip_node_ = node_group.redundant_clip_node;
+  node_unit->q_nodes_ = node_group.q_nodes;
+  node_unit->inputs_ = std::move(node_unit_inputs);
+  node_unit->outputs_ = std::move(node_unit_outputs);
+  node_unit->output_edges_ = std::move(node_unit_output_edges);
 
   result = std::move(node_unit);
   return Ort::Status{nullptr};
