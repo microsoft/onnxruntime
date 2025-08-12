@@ -97,70 +97,115 @@ Status QMoE::Compute(OpKernelContext* context) const {
   }
 }
 
+// Simplified expert processing
 void ProcessSingleExpert(const float* token_input, float* thread_fc1_output, float* thread_fc2_output,
                          float* thread_accumulation_buffer, int64_t expert_idx, float routing_weight,
                          const MoEParameters& moe_params, bool is_swiglu,
                          const float* dequant_fc1_weights, const float* dequant_fc2_weights,
                          const float* fc1_bias_float, const float* fc2_bias_float,
-                         int64_t fc1_output_size) {
-  // FC1 computation with optimized MLAS SGEMM
+                         int64_t fc1_output_size, ActivationType activation_type,
+                         onnxruntime::concurrency::ThreadPool* thread_pool,
+                         bool in_parallel_section = false) {
+  // FC1 computation: token_input [1 x hidden_size] * fc1_weights [hidden_size x fc1_output_size]
+  // Standard matrix multiplication using conventional layout
   const float* fc1_expert_weights = dequant_fc1_weights + expert_idx * moe_params.hidden_size * fc1_output_size;
-  MlasGemm(CblasNoTrans, CblasTrans,
-           1, static_cast<size_t>(fc1_output_size), static_cast<size_t>(moe_params.hidden_size),
-           1.0f,
-           token_input, static_cast<size_t>(moe_params.hidden_size),
-           fc1_expert_weights, static_cast<size_t>(fc1_output_size),
-           0.0f,
-           thread_fc1_output, static_cast<size_t>(fc1_output_size),
-           nullptr);
 
-  // Add FC1 bias if present and apply activation using MLAS optimized functions
-  if (fc1_bias_float) {
-    const float* expert_fc1_bias = fc1_bias_float + expert_idx * fc1_output_size;
-    if (is_swiglu) {
-      // SwiGLU: bias addition first, then use unified activation function
-      for (int64_t i = 0; i < fc1_output_size; ++i) {
-        thread_fc1_output[i] += expert_fc1_bias[i];
-      }
-      // Use the same interleaved SwiGLU activation as batch processing
-      contrib::ApplySwiGLUActivation(thread_fc1_output, fc1_output_size / 2, true);
-    } else {
-      // Use MLAS fused bias + ReLU activation for better performance
-      MLAS_ACTIVATION activation;
-      activation.ActivationKind = MlasReluActivation;
-      MlasActivation(&activation, thread_fc1_output, expert_fc1_bias,
-                     1, static_cast<size_t>(fc1_output_size),
-                     static_cast<size_t>(fc1_output_size));
-    }
-  } else {
-    // No bias case - use MLAS activation only
-    if (is_swiglu) {
-      // Use the same interleaved SwiGLU activation as batch processing
-      contrib::ApplySwiGLUActivation(thread_fc1_output, fc1_output_size / 2, true);
-    } else {
-      MLAS_ACTIVATION activation;
-      activation.ActivationKind = MlasReluActivation;
-      MlasActivation(&activation, thread_fc1_output, nullptr,
-                     1, static_cast<size_t>(fc1_output_size),
-                     static_cast<size_t>(fc1_output_size));
+  // Validate input values
+  for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
+    if (!std::isfinite(token_input[i])) {
+      ORT_THROW("Non-finite value in token input at index ", i, ": ", token_input[i], " for expert ", expert_idx);
     }
   }
 
-  // FC2 computation
-  // For SwiGLU interleaved format, inter_size is fc1_output_size / 2
-  // For non-SwiGLU, inter_size is fc1_output_size
+  // Validate FC1 weights (sample check)
+  for (int64_t i = 0; i < std::min<int64_t>(10, moe_params.hidden_size * fc1_output_size); ++i) {
+    if (!std::isfinite(fc1_expert_weights[i])) {
+      ORT_THROW("Non-finite value in FC1 weights at index ", i, ": ", fc1_expert_weights[i], " for expert ", expert_idx);
+    }
+  }
+
+  // Standard GEMM: input[1 x hidden_size] * weights[hidden_size x fc1_output_size] = output[1 x fc1_output_size]
+  MlasGemm(CblasNoTrans, CblasNoTrans,
+           1, static_cast<size_t>(fc1_output_size), static_cast<size_t>(moe_params.hidden_size),
+           1.0f,
+           token_input, static_cast<size_t>(moe_params.hidden_size),
+           fc1_expert_weights, static_cast<size_t>(moe_params.hidden_size),
+           0.0f,
+           thread_fc1_output, static_cast<size_t>(fc1_output_size),
+           (thread_pool && !in_parallel_section) ? thread_pool : nullptr);
+
+  // Validate FC1 GEMM output
+  for (int64_t i = 0; i < fc1_output_size; ++i) {
+    if (!std::isfinite(thread_fc1_output[i])) {
+      ORT_THROW("Non-finite value in FC1 GEMM output at index ", i, ": ", thread_fc1_output[i], " for expert ", expert_idx);
+    }
+  }
+
+  // Add FC1 bias if present
+  if (fc1_bias_float) {
+    const float* expert_fc1_bias = fc1_bias_float + expert_idx * fc1_output_size;
+    for (int64_t i = 0; i < fc1_output_size; ++i) {
+      thread_fc1_output[i] += expert_fc1_bias[i];
+    }
+  }
+
+  // Apply activation (simplified approach)
+  if (is_swiglu) {
+    // Validate FC1 output before SwiGLU activation
+    for (int64_t i = 0; i < fc1_output_size; ++i) {
+      if (!std::isfinite(thread_fc1_output[i])) {
+        ORT_THROW("Non-finite value in FC1 output before SwiGLU at index ", i, ": ", thread_fc1_output[i],
+                  " for expert ", expert_idx);
+      }
+    }
+
+    // Apply SwiGLU activation
+    ApplySwiGLUActivation(thread_fc1_output, fc1_output_size / 2, true);
+
+    // Validate FC1 output after SwiGLU activation
+    for (int64_t i = 0; i < fc1_output_size / 2; ++i) {
+      if (!std::isfinite(thread_fc1_output[i])) {
+        ORT_THROW("Non-finite value in FC1 output after SwiGLU at index ", i, ": ", thread_fc1_output[i],
+                  " for expert ", expert_idx);
+      }
+    }
+  } else {
+    // Apply other activations element-wise
+    for (int64_t i = 0; i < fc1_output_size; ++i) {
+      thread_fc1_output[i] = contrib::ApplyActivation(thread_fc1_output[i], activation_type);
+    }
+  }
+
+  // FC2 computation: fc1_output [1 x inter_size] * fc2_weights [inter_size x hidden_size]
+  // Standard matrix multiplication using conventional layout
   const int64_t inter_size = is_swiglu ? fc1_output_size / 2 : fc1_output_size;
   const float* fc2_expert_weights = dequant_fc2_weights + expert_idx * inter_size * moe_params.hidden_size;
-  MlasGemm(CblasNoTrans, CblasTrans,
+
+  // Validate FC2 weights (sample check)
+  for (int64_t i = 0; i < std::min<int64_t>(10, inter_size * moe_params.hidden_size); ++i) {
+    if (!std::isfinite(fc2_expert_weights[i])) {
+      ORT_THROW("Non-finite value in FC2 weights at index ", i, ": ", fc2_expert_weights[i], " for expert ", expert_idx);
+    }
+  }
+
+  // Standard GEMM: fc1_output[1 x inter_size] * weights[inter_size x hidden_size] = output[1 x hidden_size]
+  MlasGemm(CblasNoTrans, CblasNoTrans,
            1, static_cast<size_t>(moe_params.hidden_size), static_cast<size_t>(inter_size),
            1.0f,
            thread_fc1_output, static_cast<size_t>(inter_size),
-           fc2_expert_weights, static_cast<size_t>(moe_params.hidden_size),
+           fc2_expert_weights, static_cast<size_t>(inter_size),
            0.0f,
            thread_fc2_output, static_cast<size_t>(moe_params.hidden_size),
-           nullptr);
+           (thread_pool && !in_parallel_section) ? thread_pool : nullptr);
 
-  // Add FC2 bias and apply routing weight in single pass
+  // Validate FC2 GEMM output
+  for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
+    if (!std::isfinite(thread_fc2_output[i])) {
+      ORT_THROW("Non-finite value in FC2 GEMM output at index ", i, ": ", thread_fc2_output[i], " for expert ", expert_idx);
+    }
+  }
+
+  // Apply routing weight and FC2 bias
   if (fc2_bias_float) {
     const float* expert_fc2_bias = fc2_bias_float + expert_idx * moe_params.hidden_size;
     for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
@@ -187,15 +232,11 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
                               const Tensor* fc1_scales,
                               const Tensor* fc2_scales,
                               const Tensor* fc3_scales_optional) const {
-  // SwiGLU validation - FC3 not supported
+  // Simplified validation
   bool is_swiglu = (activation_type_ == ActivationType::SwiGLU);
   if (is_swiglu && fc3_experts_weights_optional != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "SwiGLU activation is not supported with fc3.");
-  }
-  if (!is_swiglu && fc3_experts_weights_optional != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "FC3 gating is not yet implemented on CPU.");
   }
 
   // Check if we need to repack weights
@@ -203,7 +244,8 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
       cached_num_experts_ != moe_params.num_experts ||
       cached_hidden_size_ != moe_params.hidden_size ||
       cached_inter_size_ != moe_params.inter_size ||
-      cached_is_swiglu_ != is_swiglu) {
+      cached_is_swiglu_ != is_swiglu ||
+      cached_use_legacy_layout_ != moe_params.use_legacy_layout) {
     // Need to prepack weights
     Status status = const_cast<QMoE*>(this)->PrepackAndDequantizeWeights<UseUInt4x2>(
         context, moe_params, fc1_experts_weights, fc2_experts_weights,
@@ -368,8 +410,6 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   // No need to initialize thread results - using direct output buffer
 
   // Determine activation related parameters
-  const bool is_4bit = UseUInt4x2;
-  const int64_t act_multiplier = is_swiglu ? 2 : 1;
   const int64_t fc1_output_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
 
   // Use prepacked dequantized weights with potential MLAS prepacking
@@ -409,7 +449,8 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
         ProcessSingleExpert(token_input, thread_fc1_output, thread_fc2_output, thread_accumulation_buffer,
                             expert_idx, routing_weight, moe_params, is_swiglu,
                             dequant_fc1_weights, dequant_fc2_weights,
-                            fc1_bias_float_ptr, fc2_bias_float_ptr, fc1_output_size);
+                            fc1_bias_float_ptr, fc2_bias_float_ptr, fc1_output_size, activation_type_,
+                            thread_pool, false);  // Not in parallel section
 
         // Deterministic accumulation - no race conditions
         float* token_result = output_float_ptr + token_idx * moe_params.hidden_size;
@@ -452,7 +493,8 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
               ProcessSingleExpert(token_input, thread_fc1_output, thread_fc2_output, thread_accumulation_buffer,
                                   expert_idx, routing_weight, moe_params, is_swiglu,
                                   dequant_fc1_weights, dequant_fc2_weights,
-                                  fc1_bias_float_ptr, fc2_bias_float_ptr, fc1_output_size);
+                                  fc1_bias_float_ptr, fc2_bias_float_ptr, fc1_output_size, activation_type_,
+                                  thread_pool, true);  // In parallel section
 
               // Non-deterministic accumulation with known race conditions
               // This is acceptable when deterministic compute is disabled
@@ -515,7 +557,8 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
           ProcessSingleExpert(token_input, thread_fc1_output, thread_fc2_output, thread_accumulation_buffer,
                               expert_idx, routing_weight, moe_params, is_swiglu,
                               dequant_fc1_weights, dequant_fc2_weights,
-                              fc1_bias_float_ptr, fc2_bias_float_ptr, fc1_output_size);
+                              fc1_bias_float_ptr, fc2_bias_float_ptr, fc1_output_size, activation_type_,
+                              thread_pool, false);  // Not in parallel section
 
           // Deterministic accumulation - no race conditions
           for (int64_t i = 0; i < moe_params.hidden_size; ++i) {
@@ -545,9 +588,8 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
               const int64_t num_tokens_for_expert = static_cast<int64_t>(tokens_for_expert.size());
 
-              // Get expert weights
-              const int64_t fc1_weight_offset = is_4bit ? (expert_idx * moe_params.hidden_size * fc1_output_size) : (expert_idx * moe_params.hidden_size * moe_params.inter_size * act_multiplier);
-              const float* fc1_expert_weights = dequant_fc1_weights + fc1_weight_offset;
+              // Get expert weights - use same calculation as single expert processing
+              const float* fc1_expert_weights = dequant_fc1_weights + expert_idx * moe_params.hidden_size * fc1_output_size;
               const float* fc2_expert_weights = dequant_fc2_weights + expert_idx * moe_params.inter_size * moe_params.hidden_size;
 
               // OPTIMIZED: Pre-allocate and vectorize pointer setup
@@ -571,14 +613,14 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
               if (num_tokens_for_expert <= 4) {
                 // Use individual row-wise GEMMs for small batches
                 for (int64_t token_i = 0; token_i < num_tokens_for_expert; ++token_i) {
-                  MlasGemm(CblasNoTrans, CblasTrans,
+                  MlasGemm(CblasNoTrans, CblasNoTrans,
                            1, static_cast<size_t>(fc1_output_size), static_cast<size_t>(moe_params.hidden_size),
                            1.0f,
                            token_input_ptrs[static_cast<size_t>(token_i)], static_cast<size_t>(moe_params.hidden_size),
-                           fc1_expert_weights, static_cast<size_t>(fc1_output_size),
+                           fc1_expert_weights, static_cast<size_t>(moe_params.hidden_size),  // Standard layout: leading dimension = num_rows
                            0.0f,
                            batched_fc1_output.data() + token_i * fc1_output_size, static_cast<size_t>(fc1_output_size),
-                           nullptr);
+                           nullptr);  // Disable MLAS threading to avoid nested parallelism
                 }
               } else {
                 // For larger batches, the copy cost is amortized - use optimized batched GEMM
@@ -602,15 +644,14 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
                   }
                 }
 
-                // Single large GEMM with explicit thread pool usage for better parallelization
-                // Use thread pool for large GEMMs to maximize hardware utilization
-                MlasGemm(CblasNoTrans, CblasTrans,
+                // FC1 GEMM: Standard weights [hidden_size x fc1_output_size]
+                MlasGemm(CblasNoTrans, CblasNoTrans,
                          static_cast<size_t>(num_tokens_for_expert), static_cast<size_t>(fc1_output_size),
                          static_cast<size_t>(moe_params.hidden_size), 1.0f,
                          batched_input.data(), static_cast<size_t>(moe_params.hidden_size),
-                         fc1_expert_weights, static_cast<size_t>(fc1_output_size),
+                         fc1_expert_weights, static_cast<size_t>(moe_params.hidden_size),
                          0.0f, batched_fc1_output.data(), static_cast<size_t>(fc1_output_size),
-                         (num_tokens_for_expert >= 8) ? thread_pool : nullptr);  // Use thread pool for large batches
+                         nullptr);  // Disable MLAS threading to avoid nested parallelism
               }
 
               // Apply bias and activation to all tokens using MLAS fused operations
@@ -647,7 +688,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
                 }
               }
 
-              // Fix SwiGLU memory layout: reorganize ALL tokens properly after activation
+              // Fix SwiGLU layout: reorganize ALL tokens properly after activation
               if (is_swiglu && num_tokens_for_expert > 1) {
                 // After SwiGLU activation, data is compacted to inter_size elements per token
                 // We need to reorganize the data to have proper stride for FC2 input
@@ -691,14 +732,15 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
 
                     // FC2 GEMM: (1 x inter_size) * (inter_size x hidden_size) → (1 x hidden_size)
                     // Use beta=1.0 to accumulate with existing output (expert mixing)
-                    MlasGemm(CblasNoTrans, CblasTrans,
+                    // Standard weights [inter_size x hidden_size]
+                    MlasGemm(CblasNoTrans, CblasNoTrans,
                              1, static_cast<size_t>(moe_params.hidden_size), static_cast<size_t>(moe_params.inter_size),
-                             routing_weight,                                                // Apply routing weight directly
-                             token_fc1_output, static_cast<size_t>(moe_params.inter_size),  // Correct stride for compacted data
-                             fc2_expert_weights, static_cast<size_t>(moe_params.hidden_size),
-                             1.0f,  // beta=1.0 for accumulation
+                             routing_weight,                                                  // Apply routing weight directly
+                             token_fc1_output, static_cast<size_t>(moe_params.inter_size),    // Correct stride for compacted data
+                             fc2_expert_weights, static_cast<size_t>(moe_params.inter_size),  // Standard layout: leading dimension = num_rows
+                             1.0f,                                                            // beta=1.0 for accumulation
                              token_result, static_cast<size_t>(moe_params.hidden_size),
-                             nullptr);
+                             nullptr);  // Disable MLAS threading to avoid nested parallelism
 
                     // Apply FC2 bias if present
                     if (fc2_bias_data && fc2_bias_float_ptr) {
@@ -728,14 +770,14 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
                 // For larger batches, use temporary output buffer then scatter results
                 std::vector<float> batched_fc2_output(static_cast<size_t>(num_tokens_for_expert * moe_params.hidden_size));
 
-                // Single large GEMM with thread pool for FC2: (num_tokens_for_expert x inter_size) * (inter_size x hidden_size)
-                MlasGemm(CblasNoTrans, CblasTrans,
+                // FC2 GEMM: Standard weights [inter_size x hidden_size]
+                MlasGemm(CblasNoTrans, CblasNoTrans,
                          static_cast<size_t>(num_tokens_for_expert), static_cast<size_t>(moe_params.hidden_size),
                          static_cast<size_t>(moe_params.inter_size), 1.0f,
                          fc2_input_data, fc2_input_stride,
-                         fc2_expert_weights, static_cast<size_t>(moe_params.hidden_size),
+                         fc2_expert_weights, static_cast<size_t>(moe_params.inter_size),  // Standard layout: leading dimension = num_rows
                          0.0f, batched_fc2_output.data(), static_cast<size_t>(moe_params.hidden_size),
-                         (num_tokens_for_expert >= 8) ? thread_pool : nullptr);  // Use thread pool for large batches
+                         nullptr);  // Disable MLAS threading to avoid nested parallelism
 
                 // OPTIMIZED: Vectorized scatter results with routing weights and bias to final output positions
                 // Use mutex to prevent race conditions when multiple experts write to same token
@@ -860,12 +902,20 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
 
   // Determine quantization parameters based on bit width - using symmetric quantization for TensorRT compatibility
   const bool is_4bit = UseUInt4x2;
-  const int64_t act_multiplier = is_swiglu ? 2 : 1;
   const int64_t fc1_output_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
 
-  // Calculate weight sizes and strides based on quantization type
-  const int64_t fc1_weight_stride = is_4bit ? (moe_params.hidden_size * fc1_output_size / 2) : (moe_params.hidden_size * moe_params.inter_size * act_multiplier);
-  const int64_t fc2_weight_stride = is_4bit ? (moe_params.inter_size * moe_params.hidden_size / 2) : (moe_params.inter_size * moe_params.hidden_size);
+  // Calculate weight sizes and strides based on quantization type and layout
+  int64_t fc1_weight_stride, fc2_weight_stride;
+
+  if (moe_params.use_legacy_layout) {
+    // Legacy layout: weights are stored as [hidden_size, fc1_output_size] and [inter_size, hidden_size]
+    fc1_weight_stride = is_4bit ? (moe_params.hidden_size * fc1_output_size / 2) : (moe_params.hidden_size * fc1_output_size);
+    fc2_weight_stride = is_4bit ? (moe_params.inter_size * moe_params.hidden_size / 2) : (moe_params.inter_size * moe_params.hidden_size);
+  } else {
+    // New layout: weights are stored as [fc1_output_size, hidden_size] and [hidden_size, inter_size]
+    fc1_weight_stride = is_4bit ? (fc1_output_size * moe_params.hidden_size / 2) : (fc1_output_size * moe_params.hidden_size);
+    fc2_weight_stride = is_4bit ? (moe_params.hidden_size * moe_params.inter_size / 2) : (moe_params.hidden_size * moe_params.inter_size);
+  }
 
   // Get or create a persistent allocator for weights with memory optimization
   if (weights_allocator_ == nullptr) {
@@ -875,8 +925,8 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
     weights_allocator_ = temp_allocator;
   }
 
-  // Allocate prepacked weight buffers using ORT allocator with alignment for better performance
-  const size_t fc1_weights_size = static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier));
+  // Allocate prepacked weight buffers using standard layout for better performance
+  const size_t fc1_weights_size = static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size * fc1_output_size);
   const size_t fc2_weights_size = static_cast<size_t>(moe_params.num_experts * moe_params.inter_size * moe_params.hidden_size);
 
   // Use aligned allocation for better SIMD performance (manual alignment)
@@ -887,97 +937,178 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
   prepacked_fc1_weights_data_ = prepacked_fc1_weights_.get();
   prepacked_fc2_weights_data_ = prepacked_fc2_weights_.get();
 
-  // Helper lambda for dequantizing a single weight value - optimized for symmetric quantization with better branch prediction
-  auto DequantizeWeight = [&](const uint8_t* weights, size_t linear_idx,
-                              const float* scales, int64_t scale_idx) -> float {
-    if (is_4bit) {
-      // For Int4, two values are packed in each uint8 - optimized unpacking
-      size_t packed_idx = linear_idx >> 1;  // Faster than division by 2
-      uint8_t packed_value = weights[packed_idx];
-      // Extract the 4-bit value with optimized bit operations
-      // Even indices (0, 2, 4...) use lower 4 bits (bits 0-3)
-      // Odd indices (1, 3, 5...) use upper 4 bits (bits 4-7)
-      uint8_t quantized_weight = (linear_idx & 1) ? (packed_value >> 4) : (packed_value & 0x0F);
-      // Convert uint4 to int4 with optimized mapping for symmetric quantization
-      // For 4-bit symmetric quantization, we need to map [0,15] to [-8,7]
-      // Using branchless conversion for better performance
-      int8_t signed_weight = static_cast<int8_t>(quantized_weight - 8);
-      return static_cast<float>(signed_weight) * scales[scale_idx];
-    } else {
-      // For Int8, convert uint8 to int8 for symmetric quantization with optimized conversion
-      // Branchless conversion: subtract 128 to map [0,255] to [-128,127]
-      int8_t signed_weight = static_cast<int8_t>(weights[linear_idx] - 128);
-      return static_cast<float>(signed_weight) * scales[scale_idx];
-    }
-  };
-
-  // Dequantize FC1 weights for all experts with optimized parallelization
-  double fc1_cost_per_expert = static_cast<double>(moe_params.hidden_size *
-                                                   (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier)) *
-                               0.5;  // Reduced cost due to optimizations
+  // Simplified dequantization with straightforward loops (no complex optimizations)
   concurrency::ThreadPool::TryParallelFor(
       thread_pool, static_cast<std::ptrdiff_t>(moe_params.num_experts),
-      fc1_cost_per_expert,
-      [&](ptrdiff_t expert_start, ptrdiff_t expert_end) {
+      static_cast<double>(moe_params.hidden_size * fc1_output_size),
+      [fc1_weights_data, fc1_scales_data, fc1_weight_stride, fc1_output_size,
+       prepacked_fc1_weights_data = prepacked_fc1_weights_data_,
+       hidden_size = moe_params.hidden_size, use_legacy_layout = moe_params.use_legacy_layout,
+       is_4bit](ptrdiff_t expert_start, ptrdiff_t expert_end) {
+        // Local dequantization function
+        auto DequantizeWeight = [is_4bit](const uint8_t* weights, size_t linear_idx,
+                                          const float* scales, int64_t scale_idx) -> float {
+          // Verify scale index bounds
+          ORT_ENFORCE(scale_idx >= 0, "Scale index must be non-negative");
+
+          // Validate scale value to prevent NaN propagation
+          float scale_value = scales[scale_idx];
+          if (!std::isfinite(scale_value)) {
+            ORT_THROW("Invalid scale value: ", scale_value, " at index ", scale_idx);
+          }
+          if (scale_value == 0.0f) {
+            ORT_THROW("Zero scale value at index ", scale_idx, " which would cause numerical instability");
+          }
+
+          float result;
+          if (is_4bit) {
+            // For 4-bit: Extract packed value and convert to signed int4 [-8, 7]
+            size_t packed_idx = linear_idx / 2;
+            uint8_t packed_value = weights[packed_idx];
+
+            // Extract 4-bit value
+            uint8_t quantized_weight = (linear_idx % 2 == 0) ? (packed_value & 0x0F) : ((packed_value >> 4) & 0x0F);
+
+            // Convert to signed int4: map [0,15] to [-8,7] (symmetric quantization)
+            int8_t signed_weight = static_cast<int8_t>(quantized_weight);
+            if (signed_weight >= 8) {
+              signed_weight -= 16;  // Map [8, 15] to [-8, -1]
+            }
+
+            result = static_cast<float>(signed_weight) * scale_value;
+          } else {
+            // For 8-bit: Direct conversion to signed int8 [-128, 127] (symmetric quantization)
+            int8_t signed_weight = static_cast<int8_t>(weights[linear_idx]);
+            result = static_cast<float>(signed_weight) * scale_value;
+          }
+
+          // Validate result to catch NaN/inf early
+          if (!std::isfinite(result)) {
+            ORT_THROW("Dequantized weight is not finite: ", result,
+                      " (scale=", scale_value, ", scale_idx=", scale_idx, ", linear_idx=", linear_idx, ")");
+          }
+
+          return result;
+        };
+
         for (std::ptrdiff_t expert_idx = expert_start; expert_idx < expert_end; ++expert_idx) {
           const uint8_t* fc1_expert_weights = fc1_weights_data + expert_idx * fc1_weight_stride;
-          const float* fc1_expert_scales = fc1_scales_data + expert_idx * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier);
-          float* dequant_fc1_expert = prepacked_fc1_weights_data_ + expert_idx * moe_params.hidden_size * (is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier);
+          const float* fc1_expert_scales = fc1_scales_data + expert_idx * fc1_output_size;
+          float* dequant_fc1_expert = prepacked_fc1_weights_data + expert_idx * hidden_size * fc1_output_size;
 
-          const int64_t output_cols = is_4bit ? fc1_output_size : moe_params.inter_size * act_multiplier;
-          // Handle column-major weight storage for FC1 with cache-friendly access pattern
-          // Process in blocks to improve cache locality
-          constexpr int64_t block_size = 64;  // Process 64 elements at a time for better cache usage
+          // Handle layout-specific weight dequantization
+          if (use_legacy_layout) {
+            // Legacy layout: input weights are [hidden_size, fc1_output_size], store as standard layout
+            for (int64_t in_col = 0; in_col < hidden_size; ++in_col) {
+              for (int64_t out_col = 0; out_col < fc1_output_size; ++out_col) {
+                // Standard matrix layout for computation: [hidden_size, fc1_output_size]
+                size_t output_linear_idx = static_cast<size_t>(in_col * fc1_output_size + out_col);
+                // Legacy input layout: [hidden_size, fc1_output_size] - same indexing
+                size_t input_linear_idx = static_cast<size_t>(in_col * fc1_output_size + out_col);
 
-          for (int64_t in_col = 0; in_col < moe_params.hidden_size; ++in_col) {
-            for (int64_t out_block = 0; out_block < output_cols; out_block += block_size) {
-              int64_t out_end = std::min(out_block + block_size, output_cols);
+                // Scale index corresponds to output column (feature dimension)
+                dequant_fc1_expert[output_linear_idx] = DequantizeWeight(fc1_expert_weights, input_linear_idx, fc1_expert_scales, out_col);
+              }
+            }
+          } else {
+            // New layout: input weights are [fc1_output_size, hidden_size], need to transpose for computation
+            for (int64_t in_col = 0; in_col < hidden_size; ++in_col) {
+              for (int64_t out_col = 0; out_col < fc1_output_size; ++out_col) {
+                // Standard matrix layout for computation: [hidden_size, fc1_output_size]
+                size_t output_linear_idx = static_cast<size_t>(in_col * fc1_output_size + out_col);
+                // New input layout: [fc1_output_size, hidden_size] - transposed indexing
+                size_t input_linear_idx = static_cast<size_t>(out_col * hidden_size + in_col);
 
-              // Vectorized processing within the block
-              for (int64_t out_col = out_block; out_col < out_end; ++out_col) {
-                // For column-major, linear_idx is in_col * output_cols + out_col
-                size_t linear_idx = static_cast<size_t>(in_col * output_cols + out_col);
-
-                // For the output (row-major), we need out_col * hidden_size + in_col
-                size_t output_idx = static_cast<size_t>(out_col * moe_params.hidden_size + in_col);
-
-                // For FC1, the scale index is the output column
-                dequant_fc1_expert[output_idx] = DequantizeWeight(fc1_expert_weights, linear_idx, fc1_expert_scales, out_col);
+                // Scale index corresponds to output column (feature dimension)
+                dequant_fc1_expert[output_linear_idx] = DequantizeWeight(fc1_expert_weights, input_linear_idx, fc1_expert_scales, out_col);
               }
             }
           }
         }
       });
 
-  // Dequantize FC2 weights for all experts with optimized parallelization
-  double fc2_cost_per_expert = static_cast<double>(moe_params.inter_size * moe_params.hidden_size) * 0.5;  // Reduced cost due to optimizations
+  // Simplified FC2 weight dequantization
   concurrency::ThreadPool::TryParallelFor(
       thread_pool, static_cast<std::ptrdiff_t>(moe_params.num_experts),
-      fc2_cost_per_expert,
-      [&](ptrdiff_t expert_start, ptrdiff_t expert_end) {
+      static_cast<double>(moe_params.hidden_size * moe_params.inter_size),
+      [fc2_weights_data, fc2_scales_data, fc2_weight_stride,
+       prepacked_fc2_weights_data = prepacked_fc2_weights_data_,
+       hidden_size = moe_params.hidden_size, inter_size = moe_params.inter_size,
+       use_legacy_layout = moe_params.use_legacy_layout, is_4bit](ptrdiff_t expert_start, ptrdiff_t expert_end) {
+        // Local dequantization function
+        auto DequantizeWeight = [is_4bit](const uint8_t* weights, size_t linear_idx,
+                                          const float* scales, int64_t scale_idx) -> float {
+          // Verify scale index bounds
+          ORT_ENFORCE(scale_idx >= 0, "Scale index must be non-negative");
+
+          // Validate scale value to prevent NaN propagation
+          float scale_value = scales[scale_idx];
+          if (!std::isfinite(scale_value)) {
+            ORT_THROW("Invalid scale value: ", scale_value, " at index ", scale_idx);
+          }
+          if (scale_value == 0.0f) {
+            ORT_THROW("Zero scale value at index ", scale_idx, " which would cause numerical instability");
+          }
+
+          float result;
+          if (is_4bit) {
+            // For 4-bit: Extract packed value and convert to signed int4 [-8, 7]
+            size_t packed_idx = linear_idx / 2;
+            uint8_t packed_value = weights[packed_idx];
+
+            // Extract 4-bit value
+            uint8_t quantized_weight = (linear_idx % 2 == 0) ? (packed_value & 0x0F) : ((packed_value >> 4) & 0x0F);
+
+            // Convert to signed int4: map [0,15] to [-8,7] (symmetric quantization)
+            int8_t signed_weight = static_cast<int8_t>(quantized_weight);
+            if (signed_weight >= 8) {
+              signed_weight -= 16;  // Map [8, 15] to [-8, -1]
+            }
+
+            result = static_cast<float>(signed_weight) * scale_value;
+          } else {
+            // For 8-bit: Direct conversion to signed int8 [-128, 127] (symmetric quantization)
+            int8_t signed_weight = static_cast<int8_t>(weights[linear_idx]);
+            result = static_cast<float>(signed_weight) * scale_value;
+          }
+
+          // Validate result to catch NaN/inf early
+          if (!std::isfinite(result)) {
+            ORT_THROW("Dequantized weight is not finite: ", result,
+                      " (scale=", scale_value, ", scale_idx=", scale_idx, ", linear_idx=", linear_idx, ")");
+          }
+
+          return result;
+        };
+
         for (std::ptrdiff_t expert_idx = expert_start; expert_idx < expert_end; ++expert_idx) {
           const uint8_t* fc2_expert_weights = fc2_weights_data + expert_idx * fc2_weight_stride;
-          const float* fc2_expert_scales = fc2_scales_data + expert_idx * moe_params.hidden_size;
-          float* dequant_fc2_expert = prepacked_fc2_weights_data_ + expert_idx * moe_params.inter_size * moe_params.hidden_size;
+          const float* fc2_expert_scales = fc2_scales_data + expert_idx * hidden_size;
+          float* dequant_fc2_expert = prepacked_fc2_weights_data + expert_idx * inter_size * hidden_size;
 
-          // Handle column-major weight storage for FC2 with cache-friendly access pattern
-          // Process in blocks to improve cache locality
-          constexpr int64_t block_size = 64;  // Process 64 elements at a time for better cache usage
+          // Handle layout-specific weight dequantization
+          if (use_legacy_layout) {
+            // Legacy layout: input weights are [inter_size, hidden_size], store as standard layout
+            for (int64_t in_col = 0; in_col < inter_size; ++in_col) {
+              for (int64_t out_col = 0; out_col < hidden_size; ++out_col) {
+                // Standard matrix layout for computation: [inter_size, hidden_size]
+                size_t output_linear_idx = static_cast<size_t>(in_col * hidden_size + out_col);
+                // Legacy input layout: [inter_size, hidden_size] - same indexing
+                size_t input_linear_idx = static_cast<size_t>(in_col * hidden_size + out_col);
 
-          for (int64_t in_col = 0; in_col < moe_params.inter_size; ++in_col) {
-            for (int64_t out_block = 0; out_block < moe_params.hidden_size; out_block += block_size) {
-              int64_t out_end = std::min(out_block + block_size, moe_params.hidden_size);
+                dequant_fc2_expert[output_linear_idx] = DequantizeWeight(fc2_expert_weights, input_linear_idx, fc2_expert_scales, out_col);
+              }
+            }
+          } else {
+            // New layout: input weights are [hidden_size, inter_size], need to transpose for computation
+            for (int64_t in_col = 0; in_col < inter_size; ++in_col) {
+              for (int64_t out_col = 0; out_col < hidden_size; ++out_col) {
+                // Standard matrix layout for computation: [inter_size, hidden_size]
+                size_t output_linear_idx = static_cast<size_t>(in_col * hidden_size + out_col);
+                // New input layout: [hidden_size, inter_size] - transposed indexing
+                size_t input_linear_idx = static_cast<size_t>(out_col * inter_size + in_col);
 
-              // Vectorized processing within the block
-              for (int64_t out_col = out_block; out_col < out_end; ++out_col) {
-                // For column-major, linear_idx is in_col * hidden_size + out_col
-                size_t linear_idx = static_cast<size_t>(in_col * moe_params.hidden_size + out_col);
-
-                // For the output (row-major), we need out_col * inter_size + in_col
-                size_t output_idx = static_cast<size_t>(out_col * moe_params.inter_size + in_col);
-
-                // For FC2, the scale index is the output column
-                dequant_fc2_expert[output_idx] = DequantizeWeight(fc2_expert_weights, linear_idx, fc2_expert_scales, out_col);
+                dequant_fc2_expert[output_linear_idx] = DequantizeWeight(fc2_expert_weights, input_linear_idx, fc2_expert_scales, out_col);
               }
             }
           }
@@ -989,6 +1120,7 @@ Status QMoE::PrepackAndDequantizeWeights(OpKernelContext* context,
   cached_hidden_size_ = moe_params.hidden_size;
   cached_inter_size_ = moe_params.inter_size;
   cached_is_swiglu_ = is_swiglu;
+  cached_use_legacy_layout_ = moe_params.use_legacy_layout;
   is_prepacked_ = true;
 
   return Status::OK();

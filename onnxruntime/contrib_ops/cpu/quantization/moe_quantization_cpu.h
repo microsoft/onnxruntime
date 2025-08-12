@@ -54,6 +54,7 @@ class QMoE final : public OpKernel, public MoEBaseCPU {
   mutable int64_t cached_hidden_size_{0};
   mutable int64_t cached_inter_size_{0};
   mutable bool cached_is_swiglu_{false};
+  mutable bool cached_use_legacy_layout_{false};
   mutable bool is_prepacked_{false};
 
   int64_t expert_weight_bits_;
