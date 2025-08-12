@@ -63,8 +63,6 @@ struct PluginEpInfrastructureState {
   PluginEpLibraryRegistrationHandle plugin_ep_library_registration_handle{};
   std::unique_ptr<IExecutionProviderFactory> ep_factory{};
   std::vector<const OrtEpDevice*> selected_c_ep_devices{};
-  std::vector<const char*> default_ep_option_key_cstrs{};
-  std::vector<const char*> default_ep_option_value_cstrs{};
   std::string ep_name{};
 };
 
@@ -138,8 +136,6 @@ Status Initialize(Ort::Env& env, InitializationConfig config) {
   state.plugin_ep_library_registration_handle = std::move(ep_library_registration_handle);
   state.ep_factory = std::move(ep_factory);
   state.selected_c_ep_devices = std::move(selected_c_ep_devices);
-  StrMapToKeyValueCstrVectors(state.config.default_ep_options,
-                              state.default_ep_option_key_cstrs, state.default_ep_option_value_cstrs);
   state.ep_name = std::move(ep_name);
 
   g_plugin_ep_infrastructure_state = std::move(state);
@@ -165,10 +161,14 @@ std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger) {
 
   const auto& state = *g_plugin_ep_infrastructure_state;
 
+  std::vector<const char*> default_ep_option_key_cstrs{}, default_ep_option_value_cstrs{};
+  StrMapToKeyValueCstrVectors(state.config.default_ep_options,
+                              default_ep_option_key_cstrs, default_ep_option_value_cstrs);
+
   OrtSessionOptions ort_session_options{};
   ORT_THROW_IF_ERROR(AddEpOptionsToSessionOptions(state.selected_c_ep_devices,
-                                                  state.default_ep_option_key_cstrs,
-                                                  state.default_ep_option_value_cstrs,
+                                                  default_ep_option_key_cstrs,
+                                                  default_ep_option_value_cstrs,
                                                   ort_session_options.value));
 
   return state.ep_factory->CreateProvider(ort_session_options, *logger->ToExternal());
