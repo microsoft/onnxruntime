@@ -12,13 +12,13 @@ import numpy as np
 from autoep_helper import AutoEpTestCase
 from helper import get_name
 from onnx.defs import onnx_opset_version
-from onnx import helper
+from onnx import helper, TensorProto
 from onnxruntime.capi._pybind_state import OrtValueVector, SessionIOBinding
 from onnxruntime.capi._pybind_state import OrtValue as C_OrtValue
 import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice
-
+import torch
 from numpy.testing import assert_almost_equal
 
 
@@ -65,6 +65,24 @@ class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
 
     def _create_expected_output_alternate(self):
         return np.array([[2.0, 8.0], [18.0, 32.0], [50.0, 72.0]], dtype=np.float32)
+
+    def torch_to_onnx_type(self, torch_dtype):
+        if torch_dtype == torch.float32:
+            return TensorProto.FLOAT
+        elif torch_dtype == torch.float16:
+            return TensorProto.FLOAT16
+        elif torch_dtype == torch.bfloat16:
+            return TensorProto.BFLOAT16
+        elif torch_dtype == torch.int8:
+            return TensorProto.int8
+        elif torch_dtype == torch.int32:
+            return TensorProto.INT32
+        elif torch_dtype == torch.int64:
+            return TensorProto.INT64
+        else:
+            raise TypeError(f"Unsupported dtype: {torch_dtype}")
+
+
 
     def test_nv_tensorrt_rtx_ep_register_and_inference(self):
         """
@@ -213,7 +231,7 @@ class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
         io_binding.synchronize_outputs()
 
         # Inspect contents of output_ortvalue and make sure that it has the right contents
-        self.assertTrue(np.array_equal(self._create_expected_output_alternate(), output_ortvalue.numpy()))
+        self.assertTrue(np.array_equal(self._create_expected_output(), output_ortvalue.numpy()))
 
         # Bind another ortvalue as input
         input_ortvalue_2 = self._create_ortvalue_alternate_input_on_gpu("cuda")
@@ -407,6 +425,50 @@ class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
                             ortvalue = bind.get_outputs()[0]
                             y = ortvalue.numpy()
                             assert_almost_equal(x, y)
+    def test_bind_onnx_types_from_torch(self):
+        """
+        Test I/O binding with various input data types.
+        """
+        sess_options = onnxrt.SessionOptions()
+        sess_options.set_provider_selection_policy(onnxrt.OrtExecutionProviderDevicePolicy.PREFER_GPU)
+        self.assertTrue(sess_options.has_providers())
+        opset = onnx_opset_version()
+
+        for dtype in [
+            torch.float32,
+            torch.float16,
+            torch.bfloat16,
+            torch.int32,
+            torch.int64,
+        ]:
+            with self.subTest(dtype=dtype):
+                proto_dtype = self.torch_to_onnx_type(dtype)
+
+                X = helper.make_tensor_value_info("X", proto_dtype, [None])
+                Y = helper.make_tensor_value_info("Y", proto_dtype, [None])
+                node_add = helper.make_node("Identity", ["X"], ["Y"])
+                graph_def = helper.make_graph([node_add], "lr", [X], [Y], [])
+                model_def = helper.make_model(
+                    graph_def,
+                    producer_name="dummy",
+                    ir_version=10,
+                    producer_version="0",
+                    opset_imports=[helper.make_operatorsetid("", opset)],
+                )
+                sess = onnxrt.InferenceSession(model_def.SerializeToString(), sess_options=sess_options)
+
+
+                dev = 'cuda' if torch.cuda.is_available() else 'cpu'
+                device = C_OrtDevice(C_OrtDevice.cuda(), C_OrtDevice.default_memory(), 0) if dev == 'cuda' else C_OrtDevice(C_OrtDevice.cpu(), C_OrtDevice.default_memory(), 0)
+
+                x = torch.arange(8, dtype=dtype, device=dev)
+                y = torch.empty(8, dtype=dtype, device=dev)
+
+                bind = SessionIOBinding(sess._sess)
+                bind.bind_input("X", device, proto_dtype, x.shape, x.data_ptr())
+                bind.bind_output("Y", device, proto_dtype, y.shape,  y.data_ptr())
+                sess._sess.run_with_iobinding(bind, None)
+                self.assertTrue(torch.equal(x, y))
 
 
 if __name__ == "__main__":

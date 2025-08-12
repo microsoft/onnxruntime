@@ -498,8 +498,6 @@ Status BindContextInput(Ort::KernelContext& ctx,
  * param output_type - Data type of the output
  * param i - Output iteration index
  * param output_tensors - Output iteration index to output's ORT value
- * param output_dim_sizes - Output iteration index to the multiplocation of its shape's dimensions
- * param dds_output_set - DDS output set
  * param dds_output_allocator_map - DDS output to its allocator
  * param scratch_buffer - The allocation buffer created by TRT EP
  * param allocator - ORT allocator
@@ -513,7 +511,6 @@ Status BindContextOutput(Ort::KernelContext& ctx,
                          size_t output_type,
                          size_t i,
                          std::unordered_map<size_t, Ort::UnownedValue>& output_tensors,
-                         std::unordered_map<size_t, int>& /*output_dim_sizes*/,
                          DDSOutputAllocatorMap& dds_output_allocator_map,
                          std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                          OrtAllocator* alloc,
@@ -2401,7 +2398,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   }
 
   // Save TRT engine, other TRT objects and input/output info to map
-  parsers_.emplace(fused_node.Name(), std::move(trt_parser));
   engines_.emplace(fused_node.Name(), std::move(trt_engine));
   contexts_.emplace(fused_node.Name(), std::move(trt_context));
   networks_.emplace(fused_node.Name(), std::move(trt_network));
@@ -2417,7 +2413,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
     std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
     *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
-          &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
+          &engines_[context->node_name], &contexts_[context->node_name],
           &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
           input_shape_ranges_[context->node_name], &tensorrt_mu_, trt_node_name_with_precision,
           engine_cache_enable_, cache_path_,
@@ -2527,8 +2523,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     using OutputOrtValue = Ort::UnownedValue;
     std::unordered_map<size_t, OutputOrtValue> output_tensors;
     output_tensors.reserve(num_outputs);
-    std::unordered_map<size_t, int> output_dim_sizes;
-    output_dim_sizes.reserve(num_outputs);
 
     if (require_io_binding) {
       bool skip_output_binding_allowed = true;
@@ -2550,7 +2544,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         nvinfer1::Dims dims;
         void* data_ptr = nullptr;
 
-        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
+        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors,
                                           dds_output_allocator_map, scratch_buffers, alloc, buffers, dims, data_ptr);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
@@ -2832,8 +2826,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     using OutputOrtValue = Ort::UnownedValue;
     std::unordered_map<size_t, OutputOrtValue> output_tensors;
     output_tensors.reserve(num_outputs);
-    std::unordered_map<size_t, int> output_dim_sizes;
-    output_dim_sizes.reserve(num_outputs);
 
     if (require_io_binding) {
       bool skip_output_binding_allowed = true;
@@ -2855,7 +2847,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
         nvinfer1::Dims dims;
         void* data_ptr = nullptr;
 
-        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
+        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors,
                                           dds_output_allocator_map, scratch_buffers, alloc, buffers, dims, data_ptr);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
