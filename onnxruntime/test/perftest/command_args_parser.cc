@@ -207,7 +207,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
     const auto& dim_override_str = absl::GetFlag(FLAGS_f);
     if (!dim_override_str.empty()) {
       // Abseil doesn't support the same option being provided multiple times — only the last occurrence is applied.
-      // To preserve the intended usage of '-f', where users may specify it multiple times to override different dimension names,
+      // To preserve the previous usage of '-f', where users may specify it multiple times to override different dimension names,
       // we need to manually parse argv.
       if (!ParseDimensionOverrideFromArgv(argc, utf8_argv_strings, "f", test_config.run_config.free_dim_name_overrides)) {
         return false;
