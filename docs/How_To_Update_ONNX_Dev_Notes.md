@@ -61,7 +61,14 @@ python tools/python/gen_opkernel_doc.py --output_path docs/OperatorKernels.md
 1. Update [js/web/docs/webgl-operators.md](/js/web/docs/webgl-operators.md) with the script: [generate-webgl-operator-md.ts](/js/web/script/generate-webgl-operator-md.ts)
 
 ```bash
-node /path/to/onnxruntime/js/web/script/generate-webgl-operator-md.js
+# Install dependencies at the parent JS level
+cd /path/to/onnxruntime/js
+npm install
+# Install dependencies at the web level
+cd /path/to/onnxruntime/js/web
+npm install
+# Build the doc
+npm run build:doc
 ```
 
 ### Update requirements.txt
