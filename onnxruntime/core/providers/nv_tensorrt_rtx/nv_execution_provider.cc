@@ -1025,7 +1025,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     }
   }
 
-  cuda_graph_enable_ = true; //info.cuda_graph_enable;
+  cuda_graph_enable_ = info.cuda_graph_enable;
   multi_profile_enable_ = info.multi_profile_enable;
   op_types_to_exclude_ = info.op_types_to_exclude;
 
@@ -1090,7 +1090,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   // external stream:
   // If user provides "external" cuda stream, only this cuda stream will be used even if multiple threads are running InferenceSession.Run() concurrently.
   // So, no need to synchronize different streams after enqueueV3.
-  if (cuda_graph_enable_ || external_stream_) {
+  if (external_stream_) {
     sync_stream_after_enqueue_ = false;
   }
 
@@ -1118,7 +1118,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
                         << ", nv_force_sequential_engine_build: " << force_sequential_engine_build_
                         << ", nv_sparsity_enable: " << sparsity_enable_
                         << ", nv_auxiliary_streams: " << auxiliary_streams_
-                        << ", enable_cuda_graph: " << cuda_graph_enable_
+                        << ", nv_cuda_graph_enable: " << cuda_graph_enable_
                         << ", nv_dump_ep_context_model: " << dump_ep_context_model_
                         << ", nv_ep_context_file_path: " << ep_context_file_path_
                         << ", nv_ep_context_embed_mode: " << ep_context_embed_mode_
@@ -2818,16 +2818,16 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
      * Therefore, TRT EP needs to call cudaStreamSynchronize() which means to wait until stream has completed all operations to prevent the concurrent issue mentioned above.
      * However, if cuda graph is enabled, TRT EP won't call cudaStreamSynchronize() since it's not allowed during graph capture.
      */
-    if (sync_stream_after_enqueue_ && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-    }
-
+    
     if (cuda_graph_enable_ && should_start_capture) {
       GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
       bool sync_status_flag = external_stream_ ? false : true;
       ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_status_flag));
     }
-
+    
+    if (sync_stream_after_enqueue_ && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    }
     // Assign TRT output back to ORT output
     // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
     // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
@@ -3173,7 +3173,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
       bool sync_status_flag = external_stream_ ? false : true;
       ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_status_flag));
     }
-    
+
     // Assign TRT output back to ORT output
     // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
     // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
