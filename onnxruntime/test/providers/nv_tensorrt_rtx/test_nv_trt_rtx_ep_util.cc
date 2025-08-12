@@ -151,15 +151,15 @@ ONNX_NAMESPACE::TensorProto CreateLargeWeight(
   // Here we fill with random floats, but for real data, use your trained weights.
   size_t total_size = 1;
   for (int64_t d : shape) total_size *= d;
+  std::random_device rd;
+  std::default_random_engine rng(rd());
   if (dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     std::vector<float> data(total_size);
-    std::default_random_engine rng;
     std::normal_distribution<float> dist(0.0f, scale);
     for (auto& v : data) v = dist(rng);
     tensor.set_raw_data(data.data(), total_size * sizeof(float));
   } else if (dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     std::vector<MLFloat16> data(total_size);
-    std::default_random_engine rng;
     std::normal_distribution<float> dist(0.0f, scale);
     for (auto& v : data) v = MLFloat16(dist(rng));
     tensor.set_raw_data(data.data(), total_size * sizeof(MLFloat16));
