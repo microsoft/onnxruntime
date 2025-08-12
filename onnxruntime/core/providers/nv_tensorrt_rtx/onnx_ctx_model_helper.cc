@@ -111,7 +111,8 @@ Status CreateCtxNode(const GraphViewer& graph_viewer,
     }
     attr_ep_cache_context->set_s(engine_data_str);
   } else {
-    attr_ep_cache_context->set_s(engine_cache_path);
+    std::string engine_cache_filename = std::filesystem::path(engine_cache_path).filename().string();
+    attr_ep_cache_context->set_s(engine_cache_filename);
     std::fstream engine_cache_file(engine_cache_path, std::ios::binary | std::ios::out);
     if (engine_cache_file.is_open()) {
       engine_cache_file.write(engine_data, size);
