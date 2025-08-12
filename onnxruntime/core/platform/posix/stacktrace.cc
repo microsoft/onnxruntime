@@ -3,7 +3,7 @@
 
 #include "core/common/common.h"
 
-#if !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
+#if !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX) && defined(__GLIBC__)
 #include <execinfo.h>
 #endif
 #include <vector>
@@ -13,7 +13,7 @@ namespace onnxruntime {
 std::vector<std::string> GetStackTrace() {
   std::vector<std::string> stack;
 
-#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
+#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX) && defined(__GLIBC__)
   constexpr int kCallstackLimit = 64;  // Maximum depth of callstack
 
   void* array[kCallstackLimit];
