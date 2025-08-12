@@ -1,2 +1,2 @@
-onnx==1.19.0
+onnx==1.18.0
 pytest
