@@ -624,8 +624,8 @@ public class OrtSession implements AutoCloseable {
    * options.
    *
    * <p>The order execution providers are added to an options instance is the order they will be
-   * considered for op node assignment, with the EP added first having priority. The CPU EP is
-   * a fallback and added by default.
+   * considered for op node assignment, with the EP added first having priority. The CPU EP is a
+   * fallback and added by default.
    *
    * <p>Modifying this after the session has been constructed will have no effect.
    *
@@ -1278,9 +1278,9 @@ public class OrtSession implements AutoCloseable {
 
     /**
      * Adds the specified execution provider and device tuples as an execution backend.
-     * <p>
-     * Execution provider priority is in the order added, i.e., the first provider added to a session options
-     * will be used first for op node assignment.
+     *
+     * <p>Execution provider priority is in the order added, i.e., the first provider added to a
+     * session options will be used first for op node assignment.
      *
      * @param devices The EP and device tuples. Each element must use the same EP, though they can
      *     use different devices.
@@ -1313,9 +1313,9 @@ public class OrtSession implements AutoCloseable {
     /**
      * Adds the named execution provider (backend) as an execution backend. This generic function
      * only allows a subset of execution providers.
-     * <p>
-     * Execution provider priority is in the order added, i.e., the first provider added to a session options
-     * will be used first for op node assignment.
+     *
+     * <p>Execution provider priority is in the order added, i.e., the first provider added to a
+     * session options will be used first for op node assignment.
      *
      * @param providerName The name of the execution provider.
      * @param providerOptions Configuration options for the execution provider. Refer to the
