@@ -196,15 +196,18 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   absl::SetFlagsUsageConfig(config);
   absl::SetProgramUsageMessage(CustomUsageMessage());
 
-  auto utf8_strings = utils::ConvertArgvToUtf8Strings(argc, argv);
-  auto utf8_argv = utils::CStringsFromStrings(utf8_strings);
+  auto utf8_argv_strings = utils::ConvertArgvToUtf8Strings(argc, argv);
+  auto utf8_argv = utils::CStringsFromStrings(utf8_argv_strings);
   auto positional = absl::ParseCommandLine(static_cast<int>(utf8_argv.size()), utf8_argv.data());
 
   // -f
   {
     const auto& dim_override_str = absl::GetFlag(FLAGS_f);
     if (!dim_override_str.empty()) {
-      if (!ParseDimensionOverride(dim_override_str, test_config.run_config.free_dim_name_overrides)) {
+      // Abseil doesn't support the same option being provided multiple times — only the last occurrence is applied.
+      // To preserve the intended usage of '-f', where users may specify it multiple times to override different dimension names,
+      // we need to manually parse argv.
+      if (!ParseDimensionOverrideFromArgv(argc, utf8_argv_strings, "f", test_config.run_config.free_dim_name_overrides)) {
         return false;
       }
     }
@@ -214,7 +217,8 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   {
     const auto& dim_override_str = absl::GetFlag(FLAGS_F);
     if (!dim_override_str.empty()) {
-      if (!ParseDimensionOverride(dim_override_str, test_config.run_config.free_dim_denotation_overrides)) {
+      // Same reason as '-f' above to manully parse argv.
+      if (!ParseDimensionOverrideFromArgv(argc, utf8_argv_strings, "F", test_config.run_config.free_dim_denotation_overrides)) {
         return false;
       }
     }

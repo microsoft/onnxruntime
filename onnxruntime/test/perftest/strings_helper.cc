@@ -77,13 +77,29 @@ bool ParseDimensionOverride(const std::string& input, std::map<std::string, int6
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {
-          fprintf(stderr, "Error parsing free dimension override value: %s, %s\n", override_val_str.c_str(), ex.what());
+          std::cerr << "Error parsing free dimension override value: " << override_val_str.c_str() << ", " << ex.what() << std::endl;
         });
         return false;
       }
     }
   }
 
+  return true;
+}
+
+bool ParseDimensionOverrideFromArgv(int argc, std::vector<std::string> argv, std::string option, std::map<std::string, int64_t>& free_dim_override_map) {
+  for (int i = 1; i < argc; ++i) {
+    auto utf8_arg = argv[i];
+    if (utf8_arg == ("-" + option) || utf8_arg == ("--" + option)) {
+      auto value_idx = i + 1;
+      if (value_idx >= argc || argv[value_idx][0] == '-') {
+        std::cerr << utf8_arg << " should be followed by a key-value pair." << std::endl;
+        return false;
+      }
+
+      if (!ParseDimensionOverride(argv[value_idx], free_dim_override_map)) return false;
+    }
+  }
   return true;
 }
 
