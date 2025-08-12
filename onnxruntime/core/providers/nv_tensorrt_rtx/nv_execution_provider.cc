@@ -2611,8 +2611,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         cache_path = GetCachePath(cache_path_, fused_node.Name()) + ".engine";
         ;
       }
-      auto cache_file_name = std::filesystem::path(cache_path).filename();
-      cache_path = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
       // NV TRT EP per default generates hardware compatible engines for any RTX device with compute capability > 80
       std::string compute_capability_hw_compat = "80+";
       if (!ep_context_model_) {
