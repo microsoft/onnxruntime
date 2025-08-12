@@ -19,8 +19,8 @@ Do not modify directly.*
 |**Operator Domain:** *ai.onnx*||||
 |Abs|*in* X:**T**<br> *out* Y:**T**|13+|**T** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[6, 12]|**T** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
-|Acos|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
-|||[7, 21]|**T** = tensor(float)|
+|Acos|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(double), tensor(float)|
+|||[7, 21]|**T** = tensor(double), tensor(float)|
 |Acosh|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
 |||[9, 21]|**T** = tensor(float)|
 |Add|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|14+|**T** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -35,14 +35,14 @@ Do not modify directly.*
 |ArgMin|*in* data:**T**<br> *out* reduced:**tensor(int64)**|13+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
-|Asin|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
-|||[7, 21]|**T** = tensor(float)|
-|Asinh|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
-|||[9, 21]|**T** = tensor(float)|
-|Atan|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
-|||[7, 21]|**T** = tensor(float)|
-|Atanh|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
-|||[9, 21]|**T** = tensor(float)|
+|Asin|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(double), tensor(float)|
+|||[7, 21]|**T** = tensor(double), tensor(float)|
+|Asinh|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(double), tensor(float)|
+|||[9, 21]|**T** = tensor(double), tensor(float)|
+|Atan|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(double), tensor(float)|
+|||[7, 21]|**T** = tensor(double), tensor(float)|
+|Atanh|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(double), tensor(float)|
+|||[9, 21]|**T** = tensor(double), tensor(float)|
 |Attention|*in* Q:**T1**<br> *in* K:**T1**<br> *in* V:**T2**<br> *in* attn_mask:**U**<br> *in* past_key:**T1**<br> *in* past_value:**T2**<br> *out* Y:**T1**<br> *out* present_key:**T1**<br> *out* present_value:**T2**<br> *out* qk_matmul_output:**T1**|23+|**T1** = tensor(float), tensor(float16)<br/> **T2** = tensor(float), tensor(float16)<br/> **U** = tensor(bool), tensor(float), tensor(float16)|
 |AveragePool|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(float)|
 |||[19, 21]|**T** = tensor(float)|
@@ -89,10 +89,10 @@ Do not modify directly.*
 |ConvTranspose|*in* X:**T**<br> *in* W:**T**<br> *in* B:**T**<br> *out* Y:**T**|22+|**T** = tensor(float)|
 |||[11, 21]|**T** = tensor(float)|
 |||[1, 10]|**T** = tensor(float)|
-|Cos|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
-|||[7, 21]|**T** = tensor(float)|
-|Cosh|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
-|||[9, 21]|**T** = tensor(float)|
+|Cos|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(double), tensor(float)|
+|||[7, 21]|**T** = tensor(double), tensor(float)|
+|Cosh|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(double), tensor(float)|
+|||[9, 21]|**T** = tensor(double), tensor(float)|
 |Crop|*in* input:**T**<br> *out* output:**T**|1+|**T** = tensor(float)|
 |CumSum|*in* x:**T**<br> *in* axis:**T2**<br> *out* y:**T**|14+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T2** = tensor(int32), tensor(int64)|
 |||[11, 13]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T2** = tensor(int32), tensor(int64)|
@@ -416,8 +416,8 @@ Do not modify directly.*
 |SimplifiedLayerNormalization|*in* X:**T**<br> *in* scale:**V**<br> *out* Y:**V**<br> *out* inv_std_var:**U**|1+|**T** = tensor(double), tensor(float), tensor(float16)<br/> **U** = tensor(double), tensor(float), tensor(float16)<br/> **V** = tensor(double), tensor(float), tensor(float16)|
 |Sin|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(double), tensor(float)|
 |||[7, 21]|**T** = tensor(double), tensor(float)|
-|Sinh|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
-|||[9, 21]|**T** = tensor(float)|
+|Sinh|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(double), tensor(float)|
+|||[9, 21]|**T** = tensor(double), tensor(float)|
 |Size|*in* data:**T**<br> *out* size:**T1**|23+|**T** = tensor(bool), tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **T1** = tensor(int64)|
 |||[21, 22]|**T** = tensor(bool), tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **T1** = tensor(int64)|
 |||[19, 20]|**T** = tensor(bool), tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **T1** = tensor(int64)|
@@ -457,8 +457,8 @@ Do not modify directly.*
 |Sum|*in* data_0:**T**<br> *out* sum:**T**|13+|**T** = tensor(double), tensor(float)|
 |||[8, 12]|**T** = tensor(double), tensor(float)|
 |||[6, 7]|**T** = tensor(double), tensor(float)|
-|Tan|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
-|||[7, 21]|**T** = tensor(float)|
+|Tan|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(double), tensor(float)|
+|||[7, 21]|**T** = tensor(double), tensor(float)|
 |Tanh|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float)|
 |||[6, 12]|**T** = tensor(double), tensor(float)|
 |TfIdfVectorizer|*in* X:**T**<br> *out* Y:**T1**|9+|**T** = tensor(int32), tensor(int64), tensor(string)<br/> **T1** = tensor(float)|
