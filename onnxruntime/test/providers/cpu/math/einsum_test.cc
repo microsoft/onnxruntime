@@ -542,6 +542,60 @@ TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithAllScalars) {
   test.Run();
 }
 
+TEST(Einsum, TestUint64Einsum) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i,j->");
+  test.AddInput<uint64_t>("x", {2}, {uint64_t(1) << 62, 1});
+  test.AddInput<uint64_t>("y", {2}, {1, 1});
+  test.AddOutput<uint64_t>("o", {}, {(uint64_t(1) << 62) + 1});
+  test.Run();
+}
+
+TEST(Einsum, TestUint32Einsum) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i,j->");
+  test.AddInput<uint32_t>("x", {2}, {uint32_t(1) << 30, 1});
+  test.AddInput<uint32_t>("y", {2}, {1, 1});
+  test.AddOutput<uint32_t>("o", {}, {(uint32_t(1) << 30) + 1});
+  test.Run();
+}
+
+TEST(Einsum, TestUint16Einsum) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i,j->");
+  test.AddInput<uint16_t>("x", {2}, {uint16_t(1) << 14, 1});
+  test.AddInput<uint16_t>("y", {2}, {1, 1});
+  test.AddOutput<uint16_t>("o", {}, {(uint16_t(1) << 14) + 1});
+  test.Run();
+}
+
+TEST(Einsum, TestUint8Einsum) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i,j->");
+  test.AddInput<uint8_t>("x", {2}, {uint8_t(1) << 6, 1});
+  test.AddInput<uint8_t>("y", {2}, {1, 1});
+  test.AddOutput<uint8_t>("o", {}, {(uint8_t(1) << 6) + 1});
+  test.Run();
+}
+
+TEST(Einsum, TestInt16Einsum) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i,j->");
+  test.AddInput<int16_t>("x", {2}, {int16_t(1) << 13, 1});
+  test.AddInput<int16_t>("y", {2}, {1, 1});
+  test.AddOutput<int16_t>("o", {}, {(int16_t(1) << 13) + 1});
+  test.Run();
+}
+
+TEST(Einsum, TestInt8Einsum) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i,j->");
+  test.AddInput<int8_t>("x", {2}, {int8_t(1) << 5, 1});
+  test.AddInput<int8_t>("y", {2}, {1, 1});
+  test.AddOutput<int8_t>("o", {}, {(int8_t(1) << 5) + 1});
+  test.Run();
+}
+
 // Tensor Contraction
 
 // Explicit

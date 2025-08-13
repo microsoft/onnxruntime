@@ -431,5 +431,11 @@ template class EinsumTypedComputeProcessor<int32_t>;
 template class EinsumTypedComputeProcessor<double>;
 template class EinsumTypedComputeProcessor<int64_t>;
 template class EinsumTypedComputeProcessor<MLFloat16>;
+template class EinsumTypedComputeProcessor<uint8_t>;
+template class EinsumTypedComputeProcessor<int8_t>;
+template class EinsumTypedComputeProcessor<uint16_t>;
+template class EinsumTypedComputeProcessor<int16_t>;
+template class EinsumTypedComputeProcessor<uint32_t>;
+template class EinsumTypedComputeProcessor<uint64_t>;
 
 }  // namespace onnxruntime

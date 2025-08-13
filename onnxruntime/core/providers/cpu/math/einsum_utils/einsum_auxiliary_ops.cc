@@ -453,6 +453,156 @@ template std::unique_ptr<Tensor> ReduceSum<int64_t>(
     gsl::span<const int64_t> reduce_axes, AllocatorPtr allocator,
     concurrency::ThreadPool* tp, void* einsum_cuda_assets, const DeviceHelpers::ReduceSum<int64_t>& reduce_sum_func);
 
+// uint32_t
+template Status DeviceHelpers::CpuDeviceHelpers::MatMul<uint32_t>(
+    const uint32_t* input_1_data, const uint32_t* input_2_data, uint32_t* output_data,
+    size_t left_stride, size_t right_stride, size_t output_stride,
+    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+    void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> MatMul<uint32_t>(
+    const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,
+    const Tensor& input_2, const gsl::span<const int64_t>& input_shape_2_override,
+    AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::MatMul<uint32_t>& device_matmul_func);
+
+template std::unique_ptr<Tensor> DeviceHelpers::CpuDeviceHelpers::ReduceSum<uint32_t>(
+    const Tensor& input, gsl::span<const int64_t> reduce_axes,
+    bool keep_dims, AllocatorPtr allocator,
+    const TensorShape* input_shape_override,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> ReduceSum<uint32_t>(
+    const Tensor& input, const TensorShape& input_shape_override,
+    gsl::span<const int64_t> reduce_axes, AllocatorPtr allocator,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::ReduceSum<uint32_t>& device_reduce_sum_func);
+
+// uint64_t
+template Status DeviceHelpers::CpuDeviceHelpers::MatMul<uint64_t>(
+    const uint64_t* input_1_data, const uint64_t* input_2_data, uint64_t* output_data,
+    size_t left_stride, size_t right_stride, size_t output_stride,
+    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+    void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> MatMul<uint64_t>(
+    const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,
+    const Tensor& input_2, const gsl::span<const int64_t>& input_shape_2_override,
+    AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::MatMul<uint64_t>& device_matmul_func);
+
+template std::unique_ptr<Tensor> DeviceHelpers::CpuDeviceHelpers::ReduceSum<uint64_t>(
+    const Tensor& input, gsl::span<const int64_t> reduce_axes,
+    bool keep_dims, AllocatorPtr allocator,
+    const TensorShape* input_shape_override,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> ReduceSum<uint64_t>(
+    const Tensor& input, const TensorShape& input_shape_override,
+    gsl::span<const int64_t> reduce_axes, AllocatorPtr allocator,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::ReduceSum<uint64_t>& device_reduce_sum_func);
+
+// uint16_t
+template Status DeviceHelpers::CpuDeviceHelpers::MatMul<uint16_t>(
+    const uint16_t* input_1_data, const uint16_t* input_2_data, uint16_t* output_data,
+    size_t left_stride, size_t right_stride, size_t output_stride,
+    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+    void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> MatMul<uint16_t>(
+    const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,
+    const Tensor& input_2, const gsl::span<const int64_t>& input_shape_2_override,
+    AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::MatMul<uint16_t>& device_matmul_func);
+
+template std::unique_ptr<Tensor> DeviceHelpers::CpuDeviceHelpers::ReduceSum<uint16_t>(
+    const Tensor& input, gsl::span<const int64_t> reduce_axes,
+    bool keep_dims, AllocatorPtr allocator,
+    const TensorShape* input_shape_override,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> ReduceSum<uint16_t>(
+    const Tensor& input, const TensorShape& input_shape_override,
+    gsl::span<const int64_t> reduce_axes, AllocatorPtr allocator,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::ReduceSum<uint16_t>& device_reduce_sum_func);
+
+// int16_t
+template Status DeviceHelpers::CpuDeviceHelpers::MatMul<int16_t>(
+    const int16_t* input_1_data, const int16_t* input_2_data, int16_t* output_data,
+    size_t left_stride, size_t right_stride, size_t output_stride,
+    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+    void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> MatMul<int16_t>(
+    const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,
+    const Tensor& input_2, const gsl::span<const int64_t>& input_shape_2_override,
+    AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::MatMul<int16_t>& device_matmul_func);
+
+template std::unique_ptr<Tensor> DeviceHelpers::CpuDeviceHelpers::ReduceSum<int16_t>(
+    const Tensor& input, gsl::span<const int64_t> reduce_axes,
+    bool keep_dims, AllocatorPtr allocator,
+    const TensorShape* input_shape_override,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> ReduceSum<int16_t>(
+    const Tensor& input, const TensorShape& input_shape_override,
+    gsl::span<const int64_t> reduce_axes, AllocatorPtr allocator,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::ReduceSum<int16_t>& device_reduce_sum_func);
+
+// uint8_t
+template Status DeviceHelpers::CpuDeviceHelpers::MatMul<uint8_t>(
+    const uint8_t* input_1_data, const uint8_t* input_2_data, uint8_t* output_data,
+    size_t left_stride, size_t right_stride, size_t output_stride,
+    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+    void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> MatMul<uint8_t>(
+    const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,
+    const Tensor& input_2, const gsl::span<const int64_t>& input_shape_2_override,
+    AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::MatMul<uint8_t>& device_matmul_func);
+
+template std::unique_ptr<Tensor> DeviceHelpers::CpuDeviceHelpers::ReduceSum<uint8_t>(
+    const Tensor& input, gsl::span<const int64_t> reduce_axes,
+    bool keep_dims, AllocatorPtr allocator,
+    const TensorShape* input_shape_override,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> ReduceSum<uint8_t>(
+    const Tensor& input, const TensorShape& input_shape_override,
+    gsl::span<const int64_t> reduce_axes, AllocatorPtr allocator,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::ReduceSum<uint8_t>& device_reduce_sum_func);
+
+// int8_t
+template Status DeviceHelpers::CpuDeviceHelpers::MatMul<int8_t>(
+    const int8_t* input_1_data, const int8_t* input_2_data, int8_t* output_data,
+    size_t left_stride, size_t right_stride, size_t output_stride,
+    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+    void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> MatMul<int8_t>(
+    const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,
+    const Tensor& input_2, const gsl::span<const int64_t>& input_shape_2_override,
+    AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::MatMul<int8_t>& device_matmul_func);
+
+template std::unique_ptr<Tensor> DeviceHelpers::CpuDeviceHelpers::ReduceSum<int8_t>(
+    const Tensor& input, gsl::span<const int64_t> reduce_axes,
+    bool keep_dims, AllocatorPtr allocator,
+    const TensorShape* input_shape_override,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> ReduceSum<int8_t>(
+    const Tensor& input, const TensorShape& input_shape_override,
+    gsl::span<const int64_t> reduce_axes, AllocatorPtr allocator,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::ReduceSum<int8_t>& device_reduce_sum_func);
+
 // MLFloat16
 template std::unique_ptr<Tensor> MatMul<MLFloat16>(
     const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,

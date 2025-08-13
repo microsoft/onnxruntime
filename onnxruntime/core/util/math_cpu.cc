@@ -49,6 +49,10 @@ EIGEN_MATMUL_FUNCTION(int32_t)
 EIGEN_MATMUL_FUNCTION(uint32_t)
 EIGEN_MATMUL_FUNCTION(int64_t)
 EIGEN_MATMUL_FUNCTION(uint64_t)
+EIGEN_MATMUL_FUNCTION(int16_t)
+EIGEN_MATMUL_FUNCTION(uint16_t)
+EIGEN_MATMUL_FUNCTION(int8_t)
+EIGEN_MATMUL_FUNCTION(uint8_t)
 
 ////////////////////////////////////////////////////////////////////////////////
 // BLAS alternatives.
