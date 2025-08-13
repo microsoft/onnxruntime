@@ -1024,7 +1024,7 @@ endif()
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR IOS)
    # Because we do not run these model tests in our web or iOS CI build pipelines, and some test code uses C++17
    # filesystem functions that are not available in the iOS version we target.
-   message("Disable model tests in onnxruntime_test_all")
+   message("Disable model tests")
    list(REMOVE_ITEM all_tests
       "${TEST_SRC_DIR}/providers/cpu/model_tests.cc"
     )
