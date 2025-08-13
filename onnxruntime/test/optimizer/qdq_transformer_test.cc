@@ -5471,7 +5471,7 @@ TEST(QDQTransformerTests, WeightBiasQuantization_ConvWithReLU) {
     };
 
     // Conv's weights should be quantized and folded, one additional Q/DQ pair inserted for weight
-    auto check_transformed_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto check_transformed_graph = [](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QuantizeLinear"] + op_to_count["com.microsoft.QuantizeLinear"], 2 + 1);
       EXPECT_EQ(op_to_count["DequantizeLinear"] + op_to_count["com.microsoft.DequantizeLinear"], 2 + 1);
