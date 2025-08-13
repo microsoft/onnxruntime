@@ -152,6 +152,13 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        })});
 
   test_cases.push_back(
+      {"test 3D batch with empty batch dim",
+       {0, 1, 1},
+       {1, 1, 1},
+       {0, 1, 1},
+       real_expected_vals({})});
+
+  test_cases.push_back(
       {"test 4D batch",
        {2, 2, 1, 3},
        {2, 2, 3, 2},
