@@ -88,8 +88,8 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
 
   if (is_cast_required) {
     target_tensor_type = QNN_DATATYPE_FLOAT_32;
-    std::string cast_a_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_Cast_A";
-    std::string cast_a_output_name = cast_a_name + "_output";
+    std::string cast_a_name = utils::GetUniqueName(onnxruntime::qnn::utils::GetNodeName(node_unit), "_Cast_A");
+    std::string cast_a_output_name = utils::GetUniqueName(cast_a_name, "_output");
     QnnTensorWrapper cast_a_output(cast_a_output_name,
                                    QNN_TENSOR_TYPE_NATIVE,
                                    target_tensor_type,
@@ -110,8 +110,8 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
     TensorInfo input_B_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[1], input_B_info));
     std::vector<uint32_t> input_B_shape = input_B_info.shape;
-    std::string cast_b_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_Cast_B";
-    std::string cast_b_output_name = cast_b_name + "_output";
+    std::string cast_b_name = utils::GetUniqueName(onnxruntime::qnn::utils::GetNodeName(node_unit), "_Cast_B");
+    std::string cast_b_output_name = utils::GetUniqueName(cast_b_name, "_output");
     QnnTensorWrapper cast_b_output(cast_b_output_name,
                                    QNN_TENSOR_TYPE_NATIVE,
                                    target_tensor_type,
@@ -137,8 +137,8 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
     div_input.push_back(input_a_name);
     div_input.push_back(input_b_name);
 
-    std::string div_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_Div";
-    std::string div_output_name = div_name + "_output";
+    std::string div_name = utils::GetUniqueName(onnxruntime::qnn::utils::GetNodeName(node_unit), "_Div");
+    std::string div_output_name = utils::GetUniqueName(div_name, "_output");
     QnnTensorWrapper div_output(div_output_name,
                                 QNN_TENSOR_TYPE_NATIVE,
                                 target_tensor_type,
@@ -156,8 +156,8 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                       "Failed to add Mod - ElementWiseDiv node.");
 
     // 2. ElementWiseFloor
-    std::string floor_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_Floor";
-    std::string floor_output_name = floor_name + "_output";
+    std::string floor_name = utils::GetUniqueName(onnxruntime::qnn::utils::GetNodeName(node_unit), "_Floor");
+    std::string floor_output_name =  utils::GetUniqueName(floor_name, "_output")
     QnnTensorWrapper floor_output(floor_output_name,
                                   QNN_TENSOR_TYPE_NATIVE,
                                   target_tensor_type,
@@ -178,8 +178,8 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
     std::vector<std::string> mul_input;
     mul_input.push_back(input_b_name);
     mul_input.push_back(floor_output_name);
-    std::string mul_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_Mul";
-    std::string mul_output_name = mul_name + "_output";
+    std::string mul_name = utils::GetUniqueName(onnxruntime::qnn::utils::GetNodeName(node_unit), "_Mul");
+    std::string mul_output_name = utils::GetUniqueName(mul_name, "_output");
     QnnTensorWrapper mul_output(mul_output_name,
                                 QNN_TENSOR_TYPE_NATIVE,
                                 target_tensor_type,
@@ -200,8 +200,8 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
     std::vector<std::string> sub_input;
     sub_input.push_back(input_a_name);
     sub_input.push_back(mul_output_name);
-    std::string sub_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_Sub";
-    std::string sub_output_name = is_cast_required ? sub_name + "_output" : org_output_name;
+    std::string sub_name = utils::GetUniqueName(onnxruntime::qnn::utils::GetNodeName(node_unit), "_Sub");
+    std::string sub_output_name = is_cast_required ? utils::GetUniqueName(sub_name, "_output") : org_output_name;
     QnnTensorWrapper mod_output(sub_output_name,
                                 is_cast_required ? QNN_TENSOR_TYPE_NATIVE : op_output_tensor_type,
                                 is_cast_required ? target_tensor_type : output_info.qnn_data_type,
@@ -219,7 +219,7 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                       "Failed to add Mod - ElementWiseSub node.");
 
     if (is_cast_required) {
-      std::string output_cast_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_output_Cast";
+      std::string output_cast_name = utils::GetUniqueName(onnxruntime::qnn::utils::GetNodeName(node_unit), "_output_Cast");
       QnnTensorWrapper mod_output(org_output_name,
                                   op_output_tensor_type,
                                   output_info.qnn_data_type,
