@@ -446,6 +446,15 @@ static void QuantizeValues(gsl::span<const FloatType> input, gsl::span<QuantType
 DEF_QUANTIZE_VALUES_INT4_FUNC(Int4x2, ParQuantizeLinearStdS4)
 DEF_QUANTIZE_VALUES_INT4_FUNC(UInt4x2, ParQuantizeLinearStdU4)
 
+// Refer to test_autoep_utils.h for leveraging unique pointer to unregister plugin EP.
+using RegisteredEpDeviceUniquePtr = std::unique_ptr<const OrtEpDevice, std::function<void(const OrtEpDevice*)>>;
+
+// Register QnnEP as plugin EP.
+void RegisterQnnEpLibrary(RegisteredEpDeviceUniquePtr& registered_ep_device,
+                          Ort::SessionOptions& session_options,
+                          const std::string& registration_name,
+                          const std::unordered_map<std::string, std::string>& ep_options);
+
 /**
  * Inferences a given serialized model. Returns output values via an out-param.
  *

@@ -99,7 +99,8 @@ void TryEnableQNNSaver(ProviderOptions& qnn_options) {
   }
 }
 
-void RegisterQnnEpLibrary(Ort::SessionOptions& session_options,
+void RegisterQnnEpLibrary(RegisteredEpDeviceUniquePtr& registered_ep_device,
+                          Ort::SessionOptions& session_options,
                           const std::string& registration_name,
                           const std::unordered_map<std::string, std::string>& ep_options) {
   Ort::Env* ort_env = GetOrtEnv();
@@ -140,7 +141,11 @@ void RegisterQnnEpLibrary(Ort::SessionOptions& session_options,
 
   ASSERT_NE(it, ep_devices + num_devices);
 
-  session_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(*it)}, ep_options);
+  registered_ep_device = RegisteredEpDeviceUniquePtr(*it, [registration_name](const OrtEpDevice* /*ep*/) {
+    Ort::GetApi().UnregisterExecutionProviderLibrary(*GetOrtEnv(), registration_name.c_str());
+  });
+
+  session_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(registered_ep_device.get())}, ep_options);
 }
 
 void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
@@ -178,9 +183,10 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
 #if !BUILD_QNN_EP_STATIC_LIB
   // Run with QNN-ABI.
   std::cout << "DEBUG: ABI Test" << std::endl;
+  RegisteredEpDeviceUniquePtr registered_ep_device;
   const std::string& registration_name = "QnnAbiTestProvider";
   Ort::SessionOptions session_options;
-  RegisterQnnEpLibrary(session_options, registration_name, provider_options);
+  RegisterQnnEpLibrary(registered_ep_device, session_options, registration_name, provider_options);
 
   RunAndVerifyOutputsWithEPABI(AsByteSpan(model_data.data(), model_data.size()),
                                session_options,
@@ -189,8 +195,6 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
                                helper.feeds_,
                                verification_params,
                                verify_outputs);
-
-  Ort::GetApi().UnregisterExecutionProviderLibrary(*GetOrtEnv(), registration_name.c_str());
 #endif  // !BUILD_QNN_EP_STATIC_LIB
 }
 
@@ -258,9 +262,10 @@ void InferenceModelABI(const std::string& model_data,
                        const std::unordered_map<std::string, std::string>& session_option_pairs,
                        std::function<void(const Graph&)>* graph_checker) {
   std::cout << "DEBUG: ABI InferenceModel" << std::endl;
+  RegisteredEpDeviceUniquePtr registered_ep_device;
   const std::string& registration_name = "QnnAbiTestProvider";
   Ort::SessionOptions session_options;
-  RegisterQnnEpLibrary(session_options, registration_name, provider_options);
+  RegisterQnnEpLibrary(registered_ep_device, session_options, registration_name, provider_options);
 
   session_options.SetLogId(log_id);
   for (auto key_value : session_option_pairs) {
@@ -289,8 +294,6 @@ void InferenceModelABI(const std::string& model_data,
   }
 
   RunWithEPABI(&ort_session, ort_run_options, feeds, output_vals);
-
-  Ort::GetApi().UnregisterExecutionProviderLibrary(*GetOrtEnv(), registration_name.c_str());
 }
 
 NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
