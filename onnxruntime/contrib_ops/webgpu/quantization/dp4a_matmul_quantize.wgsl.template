@@ -31,10 +31,16 @@ $MAIN {
     }
   } else if (sg_size == 16) {
     let local_a = readInput(global_idx);
-    max_values[local_idx / 16] = subgroupMax(abs(local_a));
+    let sub_max_value = subgroupMax(abs(local_a));
+    if (local_idx % 16 == 0) {
+      max_values[local_idx / 16] = sub_max_value;
+    }
+    workgroupBarrier();
+
     if (global_idx >= uniforms.output_size) {
       return;
     }
+
     var max_val = input_a_value_t(0);
     if (local_idx < 32) {
       max_val = max(max_values[0], max_values[1]);
