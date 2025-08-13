@@ -335,10 +335,10 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                    \
     data_ptr = output_tensor_ptr;                                                           \
     if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                     \
-      buffers[output_name] = output_tensor_ptr;                                             \
+      buffer = output_tensor_ptr;                                                           \
     } else {                                                                                \
       scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1)); \
-      buffers[output_name] = scratch_buffers.back().get();                                  \
+      buffer = scratch_buffers.back().get();                                                \
     }                                                                                       \
     break;                                                                                  \
   }
@@ -510,11 +510,9 @@ Status BindContextOutput(Ort::KernelContext& ctx,
                          size_t output_index,
                          size_t output_type,
                          size_t i,
-                         std::unordered_map<size_t, Ort::UnownedValue>& output_tensors,
                          DDSOutputAllocatorMap& dds_output_allocator_map,
                          std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                          OrtAllocator* alloc,
-                         std::unordered_map<char const*, void*>& buffers,
                          nvinfer1::Dims& dims,
                          void*& data_ptr) {
   // Get output shape
@@ -546,9 +544,10 @@ Status BindContextOutput(Ort::KernelContext& ctx,
       data_ptr = nullptr;  // Set data_ptr to nullptr for DDS output binding.
     }
   } else {
-    output_tensors[i] = ctx.GetOutput(output_index, dims.d, nb_dims);
-    auto& output_tensor = output_tensors[i];
+    auto output_tensor = ctx.GetOutput(output_index, dims.d, nb_dims);
     const auto elem_cnt = output_tensor.GetTensorTypeAndShapeInfo().GetElementCount();
+
+    void* buffer = nullptr;
 
     switch (output_type) {
       // below macros set data_ptr and skip_output_binding_allowed variables
@@ -565,7 +564,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
                                "Nv EP output tensor data type: " + std::to_string(output_type) + " not supported.");
       }
     }
-    trt_context->setTensorAddress(output_name, buffers[output_name]);
+    trt_context->setTensorAddress(output_name, buffer);
   }
 
   return Status::OK();
@@ -2518,14 +2517,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     /*
      * Set output shapes and bind output buffers
      */
-    std::unordered_map<char const*, void*> buffers;
-    buffers.reserve(num_outputs);
-    using OutputOrtValue = Ort::UnownedValue;
-    std::unordered_map<size_t, OutputOrtValue> output_tensors;
-    output_tensors.reserve(num_outputs);
-
     if (require_io_binding) {
-      bool skip_output_binding_allowed = true;
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         char const* output_name = output_binding_names[i];
 
@@ -2544,16 +2536,14 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         nvinfer1::Dims dims;
         void* data_ptr = nullptr;
 
-        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors,
-                                          dds_output_allocator_map, scratch_buffers, alloc, buffers, dims, data_ptr);
+        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i,
+                                          dds_output_allocator_map, scratch_buffers, alloc, dims, data_ptr);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
         }
 
         trt_state->output_tensors[output_index] = TensorParams{data_ptr, dims};
       }
-
-      trt_state->skip_io_binding_allowed = trt_state->skip_io_binding_allowed | skip_output_binding_allowed;
     }
 
     // Set execution context memory
@@ -2821,14 +2811,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     /*
      * Set output shapes and bind output buffers
      */
-    std::unordered_map<char const*, void*> buffers;
-    buffers.reserve(num_outputs);
-    using OutputOrtValue = Ort::UnownedValue;
-    std::unordered_map<size_t, OutputOrtValue> output_tensors;
-    output_tensors.reserve(num_outputs);
-
     if (require_io_binding) {
-      bool skip_output_binding_allowed = true;
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         char const* output_name = output_binding_names[i];
 
@@ -2847,16 +2830,14 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
         nvinfer1::Dims dims;
         void* data_ptr = nullptr;
 
-        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors,
-                                          dds_output_allocator_map, scratch_buffers, alloc, buffers, dims, data_ptr);
+        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i,
+                                          dds_output_allocator_map, scratch_buffers, alloc, dims, data_ptr);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
         }
 
         trt_state->output_tensors[output_index] = TensorParams{data_ptr, dims};
       }
-
-      trt_state->skip_io_binding_allowed = trt_state->skip_io_binding_allowed | skip_output_binding_allowed;
     }
 
     // Set execution context memory
