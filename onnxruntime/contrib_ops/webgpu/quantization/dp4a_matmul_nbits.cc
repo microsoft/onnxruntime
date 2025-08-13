@@ -48,12 +48,12 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   ORT_ENFORCE(tile_size_ % sub_tile_count == 0, "tile_size_ must be divisible by sub_tile_count");
 
   return WGSL_TEMPLATE_APPLY(shader, "quantization/dp4a_matmul_small_m.wgsl.template",
-                            WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
-                            WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
-                            WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
-                            WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
-                            WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
-                            WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_));
+                             WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
+                             WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
+                             WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
+                             WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
+                             WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
+                             WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_));
 }
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
