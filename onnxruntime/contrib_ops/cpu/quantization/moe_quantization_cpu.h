@@ -32,6 +32,17 @@ class QMoE final : public OpKernel, public MoEBaseCPU {
                           const Tensor* fc2_scales,
                           const Tensor* fc3_scales_optional) const;
 
+  Status DirectFP32MoEImpl(OpKernelContext* context,
+                           MoEParameters& moe_params,
+                           const Tensor* input,
+                           const Tensor* router_probs,
+                           const Tensor* fc1_experts_weights,
+                           const Tensor* fc1_experts_bias_optional,
+                           const Tensor* fc2_experts_weights,
+                           const Tensor* fc2_experts_bias_optional,
+                           const Tensor* fc3_experts_weights_optional,
+                           const Tensor* fc3_experts_bias_optional) const;
+
   template <bool UseUInt4x2>
   Status PrepackAndDequantizeWeights(OpKernelContext* context,
                                      MoEParameters& moe_params,

@@ -9,7 +9,8 @@ namespace onnxruntime {
 namespace contrib {
 
 float ApplyActivation(float x, ActivationType activation_type);
-void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_format);
+void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_format,
+                           float activation_alpha = 1.702f, float activation_beta = 1.0f);
 
 }  // namespace contrib
 }  // namespace onnxruntime

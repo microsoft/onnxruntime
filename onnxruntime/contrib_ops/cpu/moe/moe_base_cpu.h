@@ -46,12 +46,18 @@ class MoEBaseCPU {
     if (use_sparse_mixer_) {
       ORT_ENFORCE(k_ == 2, "Sparse mixer only supports k=2");
     }
+
+    // Read activation parameters for SwiGLU
+    activation_alpha_ = op_kernel_info.GetAttrOrDefault<float>("activation_alpha", 1.702f);  // Default 1.702f for SwiGLU
+    activation_beta_ = op_kernel_info.GetAttrOrDefault<float>("activation_beta", 1.0f);      // Default 1.0f for SwiGLU
   }
 
   bool normalize_routing_weights_;
   bool use_sparse_mixer_;
   int64_t k_;
   ActivationType activation_type_;
+  float activation_alpha_;
+  float activation_beta_;
 };
 
 }  // namespace contrib
