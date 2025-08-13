@@ -85,6 +85,20 @@ class NodeUnit {
   static Ort::Status MakeSingleNode(const OrtNode& node, /*out*/ std::unique_ptr<NodeUnit>& node_unit);
   static Ort::Status MakeQDQGroup(const NodeGroup& node_group, /*out*/ std::unique_ptr<NodeUnit>& node_unit);
 
+  Type UnitType() const noexcept { return type_; }
+
+  const std::vector<NodeUnitIODef>& Inputs() const noexcept { return inputs_; }
+  const std::vector<NodeUnitIODef>& Outputs() const noexcept { return outputs_; }
+  const OrtNode& GetNode() const noexcept { return target_node_; }
+  const OrtNode* GetRedundantClipNode() const noexcept { return redundant_clip_node_; }
+  const std::vector<const OrtNode*>& GetDQNodes() const noexcept { return dq_nodes_; }
+  const std::vector<const OrtNode*>& GetQNodes() const noexcept { return q_nodes_; }
+  std::vector<const OrtNode*> GetAllNodesInGroup() const noexcept;
+
+  size_t InputEdgeCount() const noexcept { return input_edge_count_; }
+  EdgeConstIterator OutputEdgesBegin() const;
+  EdgeConstIterator OutputEdgesEnd() const;
+
  private:
   std::vector<const OrtNode*> dq_nodes_;  // dq nodes for this NodeUnit, not necessarily all inputs
   const OrtNode& target_node_;
@@ -667,6 +681,31 @@ Ort::Status NodeUnit::MakeQDQGroup(const NodeGroup& node_group, /*out*/ std::uni
   return Ort::Status{nullptr};
 }
 
+std::vector<const OrtNode*> NodeUnit::GetAllNodesInGroup() const noexcept {
+  std::vector<const OrtNode*> all_nodes = dq_nodes_;
+  all_nodes.push_back(&target_node_);
+
+  if (redundant_clip_node_) {
+    all_nodes.push_back(redundant_clip_node_);
+  }
+
+  all_nodes.reserve(all_nodes.size() + q_nodes_.size());
+
+  for (auto& n : q_nodes_) {
+    all_nodes.push_back(n);
+  }
+
+  return all_nodes;
+}
+
+EdgeConstIterator NodeUnit::OutputEdgesBegin() const {
+  return output_edges_.begin();
+}
+
+EdgeConstIterator NodeUnit::OutputEdgesEnd() const {
+  return output_edges_.end();
+}
+
 Ort::Status NodeGroup::CanCreateNodeGroup(const OrtNode& target_node,
                                           const OrtNode* redundant_clip_node,
                                           const std::vector<const OrtNode*>& dq_nodes,
@@ -771,8 +810,8 @@ Ort::Status NodeGroup::CanCreateNodeGroup(const OrtNode& target_node,
 
         if (!valid) {
           std::ostringstream oss;
-          oss << "QDQ node group cannot have an output from the target (or clip) node being consumed by a Q node and "
-              << "a non-Q node. target (or clip) node: " << node_produce_outputs_name;
+          oss << "QDQ node group cannot have an output from the target (or clip) node that is consumed by both "
+              << "a Q node and a non-Q node. target (or clip) node: " << node_produce_outputs_name;
           return Ort::Status(oss.str().c_str(), OrtErrorCode::ORT_FAIL);
         }
       } else {
