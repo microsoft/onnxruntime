@@ -520,14 +520,12 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   const T* zero_point = x_zero_point ? x_zero_point->Data<T>() : nullptr;
 
 #if !defined(DISABLE_FLOAT8_TYPES)
-  if constexpr (boost::mp11::mp_contains<boost::mp11::mp_append<element_type_lists::AllFloat8,
-                                                                TypeList<int32_t>>,
-                                         T>::value) {
+  if constexpr (boost::mp11::mp_contains<element_type_lists::AllFloat8, T>::value) {
     ORT_ENFORCE(zero_point == nullptr ||
                     std::all_of(zero_point,
                                 zero_point + x_zero_point->Shape().Size(),
                                 [](T zp) { return zp == T{0}; }),
-                "DequantizeLinear with type int32 or float8 should have no zero point or all zero points should be 0");
+                "DequantizeLinear with type float8 should have no zero point or all zero points should be 0");
   }
 #endif
 
