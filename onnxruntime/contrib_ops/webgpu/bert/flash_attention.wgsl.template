@@ -149,10 +149,14 @@ $MAIN {
     var qk_4 : vec4<q_element_t>;
     if (sg_size > 8) {
       for (var i : u32 = 0u; i < head_size_vec; i++) {
+#if is_qualcomm
         var k_local = q_value_t(0);
         if (sg_id < max_k_step) {
           k_local = k_tile[sg_id][i];
         }
+#else
+        var k_local = k_tile[capped_sg_id][i];
+#endif
         var q_own = q_tile[i];
         qk_1[0] += dot(q_own, subgroupShuffle(k_local, 0));
         qk_1[1] += dot(q_own, subgroupShuffle(k_local, 1));
