@@ -79,20 +79,20 @@ $MAIN {
                 let b_offset = b_global * uniforms.K32 + k_offset;
                 let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
                 let own_scale_b = scales_b[b_global * uniforms.K / uniforms.block_size + block_idx];
-        #if n_bits == 4
+#if n_bits == 4
                 let b_value = input_b[b_offset];
                 let own_b = DequantizedFrom4BitsTo8Bits(b_value.xy, zero);
                 let own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw, zero);
                 inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
-        #else
+#else
                 let own_b = AlignWithZeroPoint(input_b[b_offset * 2]);
                 let own_b1 = AlignWithZeroPoint(input_b[b_offset * 2 + 1]);
-            #if has_zero_points
+#if has_zero_points
                 inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b, zero);
-            #else
+#else
                 inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
-            #endif
-        #endif
+#endif
+#endif
             }
         }
         workgroupBarrier();

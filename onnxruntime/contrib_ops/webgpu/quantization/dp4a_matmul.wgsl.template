@@ -43,8 +43,8 @@ var<workgroup> tile_B : array<array<vec4<u32>, tile_size>, tile_size_k_vec>;    
 var<workgroup> scale_B : array<output_element_t, tile_size>;                                     // 64 x 1
 
 #if has_zero_points
-var<workgroup> zeroes : array<i32, tile_size>;
-#end
+    var<workgroup> zeroes : array<i32, tile_size>;
+#endif
 
 fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
 {
@@ -98,9 +98,9 @@ fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
             // kidx_v - each kidx_v covers 16 values of k
             let block_idx = kidx_v/(block_size/16);
             scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + block_idx];
-    #if has_zero_points
+#if has_zero_points
             zeroes[row] = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
-    #endif
+#endif
         }
     }
 #endif
@@ -150,7 +150,7 @@ $MAIN {
         var own_a1: vec4<u32> = tile_A[1][base_A + a_idx];
         var own_scale_a: output_element_t = scale_A[base_A + a_idx];
 
-#if has_zero_points_
+#if has_zero_points
         if (sg_size == 16)
         {
             var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
