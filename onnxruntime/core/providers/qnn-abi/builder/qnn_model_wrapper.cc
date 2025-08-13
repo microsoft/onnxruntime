@@ -653,15 +653,12 @@ void QnnModelWrapper::GetGraphInputOutputTensorWrapper(const std::vector<std::st
 
 Status QnnModelWrapper::UnpackInitializerData(OrtValueInfo& initializer,
                                               std::vector<uint8_t>& unpacked_tensor) const {
-  //  TODO: Enable this when OrtValueInfo supports external data
-  //   if (initializer.data_location() == onnx::TensorProto_DataLocation_EXTERNAL) {
-  //     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, ort_graph_.ModelPath(),
-  //                                                                   unpacked_tensor));
-  //   } else {
-  //     utils::UnpackInitializerData(api_ptrs_.ort_api, initializer, std::filesystem::path(), unpacked_tensor)
-  //   }
-  ORT_RETURN_IF_ERROR(
-      utils::UnpackInitializerData(api_ptrs_.ort_api, initializer, std::filesystem::path(), unpacked_tensor));
+  const ORTCHAR_T* model_path = nullptr;
+  RETURN_STATUS_IF_ERROR(api_ptrs_.ort_api.Graph_GetModelPath(&ort_graph_, &model_path), api_ptrs_.ort_api);
+  ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(api_ptrs_.ort_api,
+                                                   initializer,
+                                                   std::filesystem::path(model_path),
+                                                   unpacked_tensor));
 
   const OrtTypeInfo* type_info = nullptr;
   api_ptrs_.ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);

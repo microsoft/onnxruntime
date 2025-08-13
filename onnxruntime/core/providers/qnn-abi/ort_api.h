@@ -321,4 +321,17 @@ Status OrtUnloadDynamicLibrary(void* handle);
 
 Status OrtGetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol);
 
+// non-macro equivalent of TEMP_FAILURE_RETRY, described here:
+// https://www.gnu.org/software/libc/manual/html_node/Interrupted-Primitives.html
+template <typename TFunc, typename... TFuncArgs>
+long int TempFailureRetry(TFunc retriable_operation, TFuncArgs&&... args) {
+  long int result;
+  do {
+    result = retriable_operation(std::forward<TFuncArgs>(args)...);
+  } while (result == -1 && errno == EINTR);
+  return result;
+}
+
+Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, int64_t offset, size_t length, gsl::span<char> buffer);
+
 }  // namespace onnxruntime

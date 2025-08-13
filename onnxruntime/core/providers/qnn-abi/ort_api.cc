@@ -3,12 +3,17 @@
 
 #include "core/providers/qnn-abi/ort_api.h"
 
+#include <fcntl.h>
+
 #include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include <gsl/gsl>
+#ifdef _WIN32
+#include <wil/Resource.h>
+#endif
 
 namespace onnxruntime {
 
@@ -656,6 +661,114 @@ Status OrtGetSymbolFromLibrary(void* handle, const std::string& symbol_name, voi
     return Status(ONNXRUNTIME, FAIL, "Failed to get symbol " + symbol_name + " with error: " + error_str);
   }
   // it's possible to get a NULL symbol in our case when Schemas are not custom.
+  return Status::OK();
+#endif
+}
+
+Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, int64_t offset, size_t length, gsl::span<char> buffer) {
+  ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
+  ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
+  ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
+
+#ifdef _WIN32
+  wil::unique_hfile file_handle{CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
+  if (file_handle.get() == INVALID_HANDLE_VALUE) {
+    const auto error_code = GetLastError();
+    return ORT_MAKE_STATUS(ONNXRUNTIME,
+                           FAIL,
+                           "Open file ",
+                           file_path,
+                           " fail, errcode = ",
+                           error_code,
+                           " - ",
+                           std::system_category().message(error_code));
+  }
+
+  if (length == 0)
+    return Status::OK();
+
+  if (offset > 0) {
+    LARGE_INTEGER current_position;
+    current_position.QuadPart = offset;
+    if (!SetFilePointerEx(file_handle.get(), current_position, &current_position, FILE_BEGIN)) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME,
+                             FAIL,
+                             "SetFilePointerEx ",
+                             file_path,
+                             " fail, errcode = ",
+                             error_code,
+                             " - ",
+                             std::system_category().message(error_code));
+    }
+  }
+
+  size_t total_bytes_read = 0;
+  while (total_bytes_read < length) {
+    constexpr DWORD k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
+    const size_t bytes_remaining = length - total_bytes_read;
+    const DWORD bytes_to_read = static_cast<DWORD>(std::min<size_t>(bytes_remaining, k_max_bytes_to_read));
+    DWORD bytes_read;
+
+    if (!ReadFile(file_handle.get(), buffer.data() + total_bytes_read, bytes_to_read, &bytes_read, nullptr)) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME,
+                             FAIL,
+                             "ReadFile ",
+                             file_path,
+                             " fail, errcode = ",
+                             error_code,
+                             " - ",
+                             std::system_category().message(error_code));
+    }
+
+    if (bytes_read != bytes_to_read) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", file_path, " fail: unexpected end");
+    }
+
+    total_bytes_read += bytes_read;
+  }
+
+  return Status::OK();
+#else
+  int file_descriptor = open(file_path, O_RDONLY);
+  if (file_descriptor == -1) {
+    return ORT_MAKE_STATUS(common::SYSTEM, FAIL, "Failed to open ", file_path);
+  }
+
+  if (length == 0) {
+    close(file_descriptor);
+    return Status::OK();
+  }
+
+  if (offset > 0) {
+    const int64_t seek_result = lseek(file_descriptor.Get(), offset, SEEK_SET);
+    if (seek_result == -1) {
+      close(file_descriptor);
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "Failed to lseek ", file_path);
+    }
+  }
+
+  size_t total_bytes_read = 0;
+  while (total_bytes_read < length) {
+    constexpr size_t k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
+    const size_t bytes_remaining = length - total_bytes_read;
+    const size_t bytes_to_read = std::min(bytes_remaining, k_max_bytes_to_read);
+
+    const ssize_t bytes_read = TempFailureRetry(read, file_descriptor.Get(), buffer.data() + total_bytes_read, bytes_to_read);
+
+    if (bytes_read == -1) {
+      close(file_descriptor);
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "Failed to read ", file_path);
+    }
+
+    if (bytes_read == 0) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "Failed to read ", file_path);
+    }
+
+    total_bytes_read += bytes_read;
+  }
+
   return Status::OK();
 #endif
 }

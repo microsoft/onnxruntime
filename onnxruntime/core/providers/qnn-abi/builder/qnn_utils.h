@@ -473,56 +473,15 @@ Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& pe
     return Status::OK();                                                                                       \
   }
 
-inline Status UnpackInitializerData(const OrtApi& ort_api,
-                                    OrtValueInfo& initializer,
-                                    const std::filesystem::path& model_path,
-                                    std::vector<uint8_t>& unpacked_tensor) {
-  std::cout << "DEBUG: model_path: " << model_path << std::endl;
-  // TODO: Handle external data if needed
-  // // TODO, if std::vector does not use a custom allocator, the default std::allocator will
-  // // allocation the memory aligned to std::max_align_t, need look into allocating
-  // // forced aligned memory (align as 16 or larger)for unpacked_tensor
-  // if (HasExternalData(initializer)) {
-  //   ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(
-  //       initializer,
-  //       model_path.parent_path(),
-  //       unpacked_tensor));
-  //   return Status::OK();
-  // }
+Status ReadExternalData(const OrtApi& ort_api,
+                        const OrtExternalInitializerInfo* initializer,
+                        const std::filesystem::path& model_path,
+                        std::vector<uint8_t>& unpacked_tensor);
 
-  const OrtTypeInfo* type_info = nullptr;
-  ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
-  const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
-  ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
-  ONNXTensorElementDataType onnx_data_type;
-  ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
-
-  switch (onnx_data_type) {
-    CASE_UNPACK(FLOAT, float, float_data_size);
-    CASE_UNPACK(DOUBLE, double, double_data_size);
-    CASE_UNPACK(BOOL, bool, int32_data_size);
-    CASE_UNPACK(INT8, int8_t, int32_data_size);
-    CASE_UNPACK(INT16, int16_t, int32_data_size);
-    CASE_UNPACK(INT32, int32_t, int32_data_size);
-    CASE_UNPACK(INT64, int64_t, int64_data_size);
-    CASE_UNPACK(UINT8, uint8_t, int32_data_size);
-    CASE_UNPACK(UINT16, uint16_t, int32_data_size);
-    CASE_UNPACK(UINT32, uint32_t, uint64_data_size);
-    CASE_UNPACK(UINT64, uint64_t, uint64_data_size);
-    CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
-    CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
-#if !defined(DISABLE_FLOAT8_TYPES)
-    CASE_UNPACK(FLOAT8E4M3FN, onnxruntime::Float8E4M3FN, int32_data_size);
-    CASE_UNPACK(FLOAT8E4M3FNUZ, onnxruntime::Float8E4M3FNUZ, int32_data_size);
-    CASE_UNPACK(FLOAT8E5M2, onnxruntime::Float8E5M2, int32_data_size);
-    CASE_UNPACK(FLOAT8E5M2FNUZ, onnxruntime::Float8E5M2FNUZ, int32_data_size);
-#endif
-    CASE_UNPACK_INT4(INT4, Int4x2, int32_data_size);
-    CASE_UNPACK_INT4(UINT4, UInt4x2, int32_data_size);
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type: ", onnx_data_type);
-  }
-}
+Status UnpackInitializerData(const OrtApi& ort_api,
+                             OrtValueInfo& initializer,
+                             const std::filesystem::path& model_path,
+                             std::vector<uint8_t>& unpacked_tensor);
 
 }  // namespace utils
 }  // namespace qnn
