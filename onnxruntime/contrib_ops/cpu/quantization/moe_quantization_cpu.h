@@ -10,6 +10,7 @@
 namespace onnxruntime {
 namespace contrib {
 
+template <typename T>
 class QMoE final : public OpKernel, public MoEBaseCPU {
  public:
   explicit QMoE(const OpKernelInfo& op_kernel_info);
@@ -17,15 +18,6 @@ class QMoE final : public OpKernel, public MoEBaseCPU {
 
  private:
   template <bool UseUInt4x2>
-  Status PrepackAndDequantizeWeights(OpKernelContext* context,
-                                     MoEParameters& moe_params,
-                                     const Tensor* fc1_experts_weights,
-                                     const Tensor* fc2_experts_weights,
-                                     const Tensor* fc1_scales,
-                                     const Tensor* fc2_scales,
-                                     bool is_swiglu);
-
-  template <bool UseUInt4x2, typename T>
   Status QuantizedMoEImpl(OpKernelContext* context,
                           MoEParameters& moe_params,
                           const Tensor* input,
@@ -39,6 +31,17 @@ class QMoE final : public OpKernel, public MoEBaseCPU {
                           const Tensor* fc1_scales,
                           const Tensor* fc2_scales,
                           const Tensor* fc3_scales_optional) const;
+
+  template <bool UseUInt4x2>
+  Status PrepackAndDequantizeWeights(OpKernelContext* context,
+                                     MoEParameters& moe_params,
+                                     const Tensor* fc1_experts_weights,
+                                     const Tensor* fc2_experts_weights,
+                                     const Tensor* fc1_scales,
+                                     const Tensor* fc2_scales,
+                                     bool is_swiglu);
+
+  int64_t expert_weight_bits_;
 
   // Prepacked dequantized weights stored for reuse
   IAllocatorUniquePtr<float> prepacked_fc1_weights_;
@@ -55,8 +58,6 @@ class QMoE final : public OpKernel, public MoEBaseCPU {
   mutable int64_t cached_inter_size_{0};
   mutable bool cached_is_swiglu_{false};
   mutable bool is_prepacked_{false};
-
-  int64_t expert_weight_bits_;
 };
 
 }  // namespace contrib
