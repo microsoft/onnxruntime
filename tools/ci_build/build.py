@@ -1549,15 +1549,14 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test")
             if os.path.exists(test_data_dir):
                 adb_push(test_data_dir, device_dir + "/test", cwd=cwd)
-        adb_push("onnxruntime_test_all", device_dir, cwd=cwd)
-        adb_shell(f"chmod +x {device_dir}/onnxruntime_test_all")
-        adb_push("onnx_test_runner", device_dir, cwd=cwd)
-        adb_shell(f"chmod +x {device_dir}/onnx_test_runner")
-        run_adb_shell(f"{device_dir}/onnxruntime_test_all")
 
-        # remove onnxruntime_test_all as it takes up a _lot_ of space and can cause insufficient storage errors
-        # when we try to copy the java app to the device.
-        adb_shell(f"rm {device_dir}/onnxruntime_test_all")
+        for test_program_name in ["onnxruntime_test_all", "onnxruntime_provider_test"]:
+            adb_push(test_program_name, device_dir, cwd=cwd)
+            adb_shell(f"chmod +x {device_dir}/{test_program_name}")
+            run_adb_shell(f"{device_dir}/{test_program_name}")
+
+            # remove test program when we are done testing to free up space
+            adb_shell(f"rm {device_dir}/{test_program_name}")
 
         if args.build_java:
             # use the gradle wrapper under <repo root>/java
@@ -1573,6 +1572,9 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 ],
                 cwd=android_test_path,
             )
+
+        adb_push("onnx_test_runner", device_dir, cwd=cwd)
+        adb_shell(f"chmod +x {device_dir}/onnx_test_runner")
 
         if args.use_nnapi:
             run_adb_shell(f"{device_dir}/onnx_test_runner -e nnapi {device_dir}/test")
@@ -1624,6 +1626,7 @@ def run_ios_tests(args, source_dir, config, cwd):
 
     xc_test_schemes = [
         "onnxruntime_test_all_xc",
+        "onnxruntime_provider_test_xc",
     ]
 
     if args.build_shared_lib:
@@ -1703,7 +1706,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             dll_path = os.pathsep.join(dll_path_list)
 
         if not ctest_path and not is_windows():
-            executables = ["onnxruntime_test_all", "onnxruntime_mlas_test"]
+            executables = ["onnxruntime_test_all", "onnxruntime_mlas_test", "onnxruntime_provider_test"]
             if args.build_shared_lib:
                 executables.append("onnxruntime_shared_lib_test")
                 executables.append("onnxruntime_global_thread_pools_test")
@@ -1712,7 +1715,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 test_output = f"--gtest_output=xml:{cwd}/{exe}.{config}.results.xml"
                 run_subprocess([os.path.join(cwd, exe), test_output], cwd=cwd, dll_path=dll_path)
         else:
-            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", args.test_all_timeout]
+            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", args.ctest_timeout]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
@@ -2324,7 +2327,7 @@ def main():
         if args.test and args.disable_wasm_exception_catching and not args.minimal_build:
             raise BuildError("WebAssembly tests need exception catching enabled to run if it's not minimal build")
         if args.test and args.enable_wasm_debug_info:
-            # With flag --enable_wasm_debug_info, onnxruntime_test_all.wasm will be very huge (>1GB). This will fail
+            # With flag --enable_wasm_debug_info, the test program .wasm file will be very huge (>1GB). This will fail
             # Node.js when trying to load the .wasm file.
             # To debug ONNX Runtime WebAssembly, use ONNX Runtime Web to debug ort-wasm.wasm in browsers.
             raise BuildError("WebAssembly tests cannot be enabled with flag --enable_wasm_debug_info")
