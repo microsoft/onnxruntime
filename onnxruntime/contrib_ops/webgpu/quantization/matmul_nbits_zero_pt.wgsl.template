@@ -10,8 +10,10 @@
 
 #if n_bits == 4
   const default_zero_point = 8;
+  const bit_mask = 0xFu;
 #elif n_bits == 8
   const default_zero_point = 128;
+  const bit_mask = 0xFFu;
 #endif
 
 #if has_zero_points
@@ -29,7 +31,7 @@
       // Extract the nbits component
       let shift_amount = component_index * n_bits;
 
-      let masked_value = (packed_value >> shift_amount) & (n_bits == 4 ? "0xFu" : "0xFF");
+      let masked_value = (packed_value >> shift_amount) & bit_mask;
       return output_type(masked_value);
     }
     return output_type(0);

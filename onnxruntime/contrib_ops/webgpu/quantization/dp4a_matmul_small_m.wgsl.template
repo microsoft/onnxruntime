@@ -27,7 +27,7 @@
 //    - Performs final reduction sum in inter_results for output
 // sub_tile_count is the number of concurrent b rows processed by the workgroup.
 
-const double_tile_size_k_vec = 2 * tile_size_k_vec_;
+const double_tile_size_k_vec = 2 * tile_size_k_vec;
 
 var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
 // Need 2 * tile_size_k_vec to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
