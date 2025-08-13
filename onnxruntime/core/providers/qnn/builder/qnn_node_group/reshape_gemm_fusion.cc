@@ -68,7 +68,7 @@ bool CheckShape(const Node& reshape_node) {
 Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& reshape_node_unit,
                              const NodeUnit& gemm_node_unit, bool validate) {
   assert(reshape_node_unit.OpType() == "Reshape" && gemm_node_unit.OpType() == "Gemm");
-  const auto& node_name = utils::GetNodeName(gemm_node_unit);
+  const auto& node_name = utils::GetUniqueName(gemm_node_unit);
   const NodeUnitIODef& input_def = reshape_node_unit.Inputs()[0];
   const NodeUnitIODef& weight_def = gemm_node_unit.Inputs()[1];
   const NodeUnitIODef* bias_def_ptr = nullptr;
