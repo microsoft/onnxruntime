@@ -199,9 +199,14 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateCumSumOpBuilder("CumSum", *this);
   }
-
   {
     CreateGatherNDOpBuilder("GatherND", *this);
+  }
+  {
+    CreateModOpBuilder("Mod", *this);
+  }
+  {
+    CreateModOpBuilder("Mod", *this);
   }
 }
 

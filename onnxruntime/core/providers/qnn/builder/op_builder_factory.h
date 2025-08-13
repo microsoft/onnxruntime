@@ -115,5 +115,9 @@ void CreateMeanOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 
 void CreateGatherNDOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateModOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateModOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 }  // namespace qnn
 }  // namespace onnxruntime
