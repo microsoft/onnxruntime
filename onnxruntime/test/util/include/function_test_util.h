@@ -5,13 +5,13 @@
 
 #include <vector>
 
-#include "core/common/narrow.h"
 #include "core/framework/to_tensor_proto_element_type.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/framework/float16.h"
 
+#include "test/common/random_generator.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 
@@ -26,11 +26,9 @@ inline std::vector<T> random(std::vector<int64_t> shape) {
 
 template <>
 inline std::vector<int64_t> random<int64_t>(std::vector<int64_t> shape) {
-  int64_t size = 1;
-  for (auto dim : shape)
-    size *= dim;
+  const auto size = detail::SizeFromDims(shape);
 
-  std::vector<int64_t> data(narrow<size_t>(size));
+  std::vector<int64_t> data(size);
   for (size_t i = 0; i < size; i++)
     data[i] = static_cast<int64_t>(rand());
   return data;
@@ -38,11 +36,9 @@ inline std::vector<int64_t> random<int64_t>(std::vector<int64_t> shape) {
 
 template <>
 inline std::vector<bool> random<bool>(std::vector<int64_t> shape) {
-  int64_t size = 1;
-  for (auto dim : shape)
-    size *= dim;
+  const auto size = detail::SizeFromDims(shape);
 
-  std::vector<bool> data(narrow<size_t>(size));
+  std::vector<bool> data(size);
   for (size_t i = 0; i < size; i++)
     data[i] = bool(rand() % 2);
   return data;
