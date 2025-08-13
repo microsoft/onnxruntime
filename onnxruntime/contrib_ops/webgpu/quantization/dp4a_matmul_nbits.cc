@@ -26,10 +26,10 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   return WGSL_TEMPLATE_APPLY(shader, "quantization/dp4a_matmul.wgsl.template",
-                              WGSL_TEMPLATE_PARAMETER(block_size, block_size_),
-                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
-                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
-                              WGSL_TEMPLATE_PARAMETER(output_type_i32, true));
+                             WGSL_TEMPLATE_PARAMETER(block_size, block_size_),
+                             WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
+                             WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
+                             WGSL_TEMPLATE_PARAMETER(output_type_i32, true));
 }
 
 // scale_A components = 1, b components = 4, output components = 1
