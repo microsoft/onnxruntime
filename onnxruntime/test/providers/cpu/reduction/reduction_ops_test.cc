@@ -1471,6 +1471,40 @@ TEST(ReductionOpTest, ReduceMax_uint8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
 }
 
+TEST(ReductionOpTest, ReduceMax_uint64) {
+  OpTester test("ReduceMax", 12);
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<uint64_t>("data", {3, 2, 2},
+                          {1, 2,
+                           3, 4,
+
+                           5, 6,
+                           7, 8,
+
+                           9, 10,
+                           11, 12});
+  test.AddOutput<uint64_t>("reduced", {3, 1, 1}, {4, 8, 12});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+}
+
+TEST(ReductionOpTest, ReduceMax_uint32) {
+  OpTester test("ReduceMax", 12);
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<uint32_t>("data", {3, 2, 2},
+                          {1, 2,
+                           3, 4,
+
+                           5, 6,
+                           7, 8,
+
+                           9, 10,
+                           11, 12});
+  test.AddOutput<uint32_t>("reduced", {3, 1, 1}, {4, 8, 12});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+}
+
 TEST(ReductionOpTest, ReduceMax0DTensor) {
   OpTester test("ReduceMax");
   test.AddInput<float>("data", {}, {2});
@@ -1890,6 +1924,40 @@ TEST(ReductionOpTest, ReduceMean_int64) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceMean_uint32) {
+  OpTester test("ReduceMean");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<uint32_t>("data", {3, 2, 2},
+                          {10, 20,
+                           30, 40,
+
+                           50, 60,
+                           70, 80,
+
+                           90, 100,
+                           110, 120});
+  test.AddOutput<uint32_t>("reduced", {1, 2, 1}, {55, 75});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMean_uint64) {
+  OpTester test("ReduceMean");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<uint64_t>("data", {3, 2, 2},
+                          {10, 20,
+                           30, 40,
+
+                           50, 60,
+                           70, 80,
+
+                           90, 100,
+                           110, 120});
+  test.AddOutput<uint64_t>("reduced", {1, 2, 1}, {55, 75});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceMean_axes_input) {
   OpTester test("ReduceMean", 18, onnxruntime::kOnnxDomain);
   test.AddAttribute("keepdims", (int64_t)1);
@@ -2242,6 +2310,40 @@ TEST(ReductionOpTest, ReduceMin_uint8) {
                           9, 10,
                           11, 12});
   test.AddOutput<uint8_t>("reduced", {1, 2, 1}, {1, 3});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMin_uint32) {
+  OpTester test("ReduceMin", 12);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<uint32_t>("data", {3, 2, 2},
+                          {1, 2,
+                           3, 4,
+
+                           5, 6,
+                           7, 8,
+
+                           9, 10,
+                           11, 12});
+  test.AddOutput<uint32_t>("reduced", {1, 2, 1}, {1, 3});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMin_uint64) {
+  OpTester test("ReduceMin", 12);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<uint64_t>("data", {3, 2, 2},
+                          {1, 2,
+                           3, 4,
+
+                           5, 6,
+                           7, 8,
+
+                           9, 10,
+                           11, 12});
+  test.AddOutput<uint64_t>("reduced", {1, 2, 1}, {1, 3});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -3200,6 +3302,38 @@ TEST(ReductionOpTest, ReduceProd_int64) {
                           9, 10,
                           11, 12});
   test.AddOutput<int64_t>("reduced", {1, 2, 1}, {5400, 88704});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceProd_uint32) {
+  OpTester test("ReduceProd");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddInput<uint32_t>("data", {3, 2, 2},
+                          {1, 2,
+                           3, 4,
+
+                           5, 6,
+                           7, 8,
+
+                           9, 10,
+                           11, 12});
+  test.AddOutput<uint32_t>("reduced", {1, 2, 1}, {5400, 88704});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceProd_uint64) {
+  OpTester test("ReduceProd");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddInput<uint64_t>("data", {3, 2, 2},
+                          {1, 2,
+                           3, 4,
+
+                           5, 6,
+                           7, 8,
+
+                           9, 10,
+                           11, 12});
+  test.AddOutput<uint64_t>("reduced", {1, 2, 1}, {5400, 88704});
   test.Run();
 }
 
