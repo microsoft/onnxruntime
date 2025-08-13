@@ -13,7 +13,7 @@ namespace onnxruntime {
 std::vector<std::string> GetStackTrace() {
   std::vector<std::string> stack;
 
-#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_)
+#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
   constexpr int kCallstackLimit = 64;  // Maximum depth of callstack
 
   void* array[kCallstackLimit];
