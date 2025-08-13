@@ -174,7 +174,7 @@ static Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
                                            std::move(cast_output_shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(indices_cast_tensor)),
                         "Failed to add gather indices cast tensor.");
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(indices_casted_name,
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(indices_tensor_name, QNN_OP_CAST),
                                                         QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                         QNN_OP_CAST,
                                                         {indices_tensor_name},
@@ -298,9 +298,9 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
   // If a cast to int64 is needed, add the cast node
   if (needs_int64_cast) {
-    std::string cast_node_name = output_name + "_cast_int64";
-    std::string cast_input_name = output_name + "_cast_int64_aux";
-    std::string cast_output_name = output_name;
+    const std::string cast_node_name = utils::GetUniqueName(node_unit, "_cast_int64");
+    const std::string cast_input_name = utils::GetUniqueName(output_name, "_cast_int64");
+    const std::string cast_output_name = output_name;
 
     // Create the cast input tensor wrapper
     QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
@@ -310,7 +310,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                               std::move(qnn_output_shape));
 
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
-    cast_node_info_vec.push_back({cast_node_name, cast_input_name, cast_output_name});
+    cast_node_info_vec.emplace_back(CastNodeInfo{cast_node_name, cast_input_name, cast_output_name});
     Qnn_TensorType_t cast_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
     QnnTensorWrapper cast_output(output_name, cast_tensor_type, qnn_data_type, std::move(quantize_param),
                                  std::move(target_output_shape));
@@ -319,16 +319,16 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
   std::string gather_output_name = output_name;
   if (reshape_required) {
-    gather_output_name += "_ort_qnn_ep_reshape";
+    gather_output_name = utils::GetUniqueName(output_name, "_reshape");
   } else if (needs_int64_cast) {
-    gather_output_name += "_cast_int64_aux";
+    gather_output_name = utils::GetUniqueName(output_name, "_cast_int64");
   }
 
   Qnn_TensorType_t tensor_type = (!reshape_required && is_graph_output) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
   QnnTensorWrapper gather_output_wrapper(gather_output_name, tensor_type, qnn_data_type, quantize_param.Copy(),
                                          std::move(qnn_output_shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(gather_output_wrapper)), "Failed to add tensor.");
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     GetQnnOpType(node_unit.OpType()),
                                                     std::move(input_names),
@@ -347,9 +347,9 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
     if (needs_int64_cast) {
       // If needs_int64 is true, the output name should be the input name of the cast node
-      node_output_name = output_name + "_cast_int64_aux";
+      node_output_name = utils::GetUniqueName(output_name, "_cast_int64");
     }
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(output_name,
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit, QNN_OP_RESHAPE),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       QNN_OP_RESHAPE,
                                                       {gather_output_name},
