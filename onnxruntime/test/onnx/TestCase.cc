@@ -1454,6 +1454,11 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"gelu_tanh_2", "y:expected -0.0131778 (bc57e7d5), got -0.0136333 (bc5f5e38), diff: 0.000455472, tol=2.31778e-05."});
     broken_tests->insert({"averagepool_2d_ceil", "result differs. expected 13.5 (41580000), got 0 (0)"});
     broken_tests->insert({"scatter_elements_with_negative_indices", "unknown version"});
+    // Fails since ONNX==1.19.0
+    broken_tests->insert({"attention_4d_diff_heads_mask4d_padded_kv", "unknown version"});
+    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal", "unknown version"});
+    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal", "unknown version"});
+    broken_tests->insert({"l2normalization_axis_0", "unknown version"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS
