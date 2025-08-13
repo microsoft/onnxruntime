@@ -836,9 +836,10 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
 
   cudaDeviceProp prop;
   CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
-  if (prop.major < 8 || (prop.major == 8 && prop.minor < 6) || prop.major == 9 || prop.major == 10) {
+  auto cc = prop.major * 10 + prop.minor;
+  if (!(cc == 86 || cc == 89 || cc >= 120)) {
     ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                       "[NvTensorRTRTX EP] The execution provider only supports RTX devices with compute capabilities >= 86."));
+                                       "[NvTensorRTRTX EP] The execution provider only supports RTX devices with compute capabilities 86, 89, 120 and above"));
   }
   compute_capability_ = GetComputeCapability(prop);
   if (info.has_user_compute_stream) {
