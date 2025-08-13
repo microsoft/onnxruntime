@@ -149,7 +149,10 @@ $MAIN {
     var qk_4 : vec4<q_element_t>;
     if (sg_size > 8) {
       for (var i : u32 = 0u; i < head_size_vec; i++) {
-        var k_local = k_tile[capped_sg_id][i];
+        var k_local = q_value_t(0);
+        if (sg_id < max_k_step) {
+          k_local = k_tile[sg_id][i];
+        }
         var q_own = q_tile[i];
         qk_1[0] += dot(q_own, subgroupShuffle(k_local, 0));
         qk_1[1] += dot(q_own, subgroupShuffle(k_local, 1));
@@ -243,7 +246,10 @@ $MAIN {
 #if is_qualcomm
     if (sg_size > 8) {
       for (var i : u32 = 0; i < half_head_size_vec; i++) {
-        var val = v_tile[capped_sg_id][i];
+        var val = q_value_t(0);
+        if (sg_id < max_k_step) {
+          val = v_tile[sg_id][i];
+        }
         var sum = subgroupShuffle(val, 0) * qk_1[0];
         sum += subgroupShuffle(val, 1) * qk_1[1];
         sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -262,7 +268,9 @@ $MAIN {
         sum += subgroupShuffle(val, 15) * qk_4[3];
         o_tile[i] = o_tile[i] * o_ratio + sum;
 
-        val = v_tile[capped_sg_id][half_head_size_vec + i];
+        if (sg_id < max_k_step) {
+          val = v_tile[sg_id][half_head_size_vec + i];
+        }
         sum = subgroupShuffle(val, 0) * qk_1[0];
         sum += subgroupShuffle(val, 1) * qk_1[1];
         sum += subgroupShuffle(val, 2) * qk_1[2];
