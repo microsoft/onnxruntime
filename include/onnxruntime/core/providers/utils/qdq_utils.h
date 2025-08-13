@@ -48,8 +48,7 @@ struct NodeGroup {
   // Validator to check if the set of nodes can form a valid QDQ NodeGroup.
   // Checks target node is only consumer of each DQ, and that the outputs remain valid if the QDQ node group was to
   // be converted into a single node with a quantized operator.
-  static Ort::Status CanCreateNodeGroup(const OrtGraph& graph,
-                                        const OrtNode& target_node,
+  static Ort::Status CanCreateNodeGroup(const OrtNode& target_node,
                                         const OrtNode* redundant_clip_node,
                                         const std::vector<const OrtNode*>& dq_nodes,
                                         const std::vector<const OrtNode*>& q_nodes);
@@ -84,8 +83,7 @@ class NodeUnit {
   NodeUnit(const OrtNode& target_node, Type type, PrivateTag tag);
 
   static Ort::Status MakeSingleNode(const OrtNode& node, /*out*/ std::unique_ptr<NodeUnit>& node_unit);
-  static Ort::Status MakeQDQGroup(const OrtGraph& graph, const NodeGroup& node_group,
-                                  /*out*/ std::unique_ptr<NodeUnit>& node_unit);
+  static Ort::Status MakeQDQGroup(const NodeGroup& node_group, /*out*/ std::unique_ptr<NodeUnit>& node_unit);
 
  private:
   std::vector<const OrtNode*> dq_nodes_;  // dq nodes for this NodeUnit, not necessarily all inputs
@@ -116,6 +114,7 @@ class NodeUnit {
 
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <sstream>
 #include <utility>
 
@@ -152,6 +151,9 @@ namespace OrtEpUtils {
 namespace QDQ {
 
 namespace {
+constexpr const char* DQ_OP_TYPE = "DequantizeLinear";
+constexpr const char* Q_OP_TYPE = "QuantizeLinear";
+
 Ort::Status GetNodeInputs(const OrtNode& node, std::vector<const OrtValueInfo*>& node_inputs) {
   const OrtApi& ort_api = Ort::GetApi();
 
@@ -424,6 +426,46 @@ Ort::Status GetQDQIODefs(const OrtNode& target_node, const NodeGroup& node_group
   return Ort::Status{nullptr};
 }
 
+enum class CheckConsumerResult {
+  kOK,
+  kErrorProducesGraphOutput,
+  kErrorWrongConsumer,
+};
+
+Ort::Status CheckOnlyOneNodeConsumer(const OrtNode& node, const OrtNode& expected_consumer,
+                                     CheckConsumerResult& result) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  std::vector<const OrtValueInfo*> node_outputs;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputs(node, node_outputs));
+
+  // Node should only have one output.
+  if (node_outputs.size() != 1 || node_outputs[0] == nullptr) {
+    result = CheckConsumerResult::kErrorWrongConsumer;
+    return Ort::Status{nullptr};
+  }
+
+  // Check that node does not produce a graph output.
+  bool is_graph_output = false;
+  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ValueInfo_IsGraphOutput(node_outputs[0], &is_graph_output));
+
+  if (is_graph_output) {
+    result = CheckConsumerResult::kErrorProducesGraphOutput;
+    return Ort::Status{nullptr};
+  }
+
+  // Check for one consumer.
+  EdgeSet output_edges;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputEdges(node_outputs, output_edges));
+
+  if (output_edges.size() != 1 || &output_edges.begin()->GetNode() != &expected_consumer) {
+    result = CheckConsumerResult::kErrorWrongConsumer;
+    return Ort::Status{nullptr};
+  }
+
+  return Ort::Status{nullptr};
+}
+
 }  // namespace
 
 EdgeEnd::EdgeEnd(const OrtNode& node, int src_arg_index, int dst_arg_index) noexcept
@@ -560,15 +602,10 @@ Ort::Status NodeUnit::MakeSingleNode(const OrtNode& node, /*out*/ std::unique_pt
 }
 
 /*static*/
-Ort::Status NodeUnit::MakeQDQGroup(const OrtGraph& graph, const NodeGroup& node_group,
-                                   /*out*/ std::unique_ptr<NodeUnit>& result) {
-#if 0
-  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(NodeGroup::CanCreateNodeGroup(graph, *node_group.target_node,
+Ort::Status NodeUnit::MakeQDQGroup(const NodeGroup& node_group, /*out*/ std::unique_ptr<NodeUnit>& result) {
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(NodeGroup::CanCreateNodeGroup(*node_group.target_node,
                                                                  node_group.redundant_clip_node,
                                                                  node_group.dq_nodes, node_group.q_nodes));
-#else
-  (void)graph;
-#endif
 
   std::vector<NodeUnitIODef> node_unit_inputs;
   std::vector<NodeUnitIODef> node_unit_outputs;
@@ -630,8 +667,7 @@ Ort::Status NodeUnit::MakeQDQGroup(const OrtGraph& graph, const NodeGroup& node_
   return Ort::Status{nullptr};
 }
 
-Ort::Status NodeGroup::CanCreateNodeGroup(const OrtGraph& graph,
-                                          const OrtNode& target_node,
+Ort::Status NodeGroup::CanCreateNodeGroup(const OrtNode& target_node,
                                           const OrtNode* redundant_clip_node,
                                           const std::vector<const OrtNode*>& dq_nodes,
                                           const std::vector<const OrtNode*>& q_nodes) {
@@ -647,25 +683,17 @@ Ort::Status NodeGroup::CanCreateNodeGroup(const OrtGraph& graph,
     const char* dq_node_name = nullptr;
     ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetName(dq_node, &dq_node_name));
 
-    std::vector<const OrtValueInfo*> dq_outputs;
-    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputs(*dq_node, dq_outputs));
+    CheckConsumerResult check_consumer_result = CheckConsumerResult::kOK;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(CheckOnlyOneNodeConsumer(*dq_node, target_node, check_consumer_result));
 
-    bool dq_produces_graph_output = false;
-    for (const OrtValueInfo* dq_output : dq_outputs) {
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ValueInfo_IsGraphOutput(dq_output, &dq_produces_graph_output));
-      if (dq_produces_graph_output) {
-        std::ostringstream oss;
-        oss << "QDQ node group cannot have DQ node that produces a graph output. DQ node: " << dq_node_name
-            << ", target node: " << target_node_name;
-        return Ort::Status(oss.str().c_str(), OrtErrorCode::ORT_FAIL);
-      }
+    if (check_consumer_result == CheckConsumerResult::kErrorProducesGraphOutput) {
+      std::ostringstream oss;
+      oss << "QDQ node group cannot have DQ node that produces a graph output. DQ node: " << dq_node_name
+          << ", target node: " << target_node_name;
+      return Ort::Status(oss.str().c_str(), OrtErrorCode::ORT_FAIL);
     }
 
-    EdgeSet dq_output_edges;
-    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputEdges(dq_outputs, dq_output_edges));
-    bool dq_has_single_output_edge_to_target = dq_output_edges.size() == 1 &&
-                                               &dq_output_edges.begin()->GetNode() == &target_node;
-    if (!dq_has_single_output_edge_to_target) {
+    if (check_consumer_result == CheckConsumerResult::kErrorWrongConsumer) {
       std::ostringstream oss;
       oss << "QDQ node group cannot have a DQ that doesn't have a single output edge to the target node. "
           << "DQ node: " << dq_node_name << ", target node: " << target_node_name;
@@ -673,10 +701,111 @@ Ort::Status NodeGroup::CanCreateNodeGroup(const OrtGraph& graph,
     }
   }
 
-  // TODO
-  (void)graph;
-  (void)redundant_clip_node;
-  (void)q_nodes;
+  if (redundant_clip_node != nullptr) {
+    const char* clip_node_name = nullptr;
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetName(redundant_clip_node, &clip_node_name));
+
+    CheckConsumerResult target_consumer_check = CheckConsumerResult::kOK;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(CheckOnlyOneNodeConsumer(target_node, *redundant_clip_node,
+                                                              target_consumer_check));
+
+    if (target_consumer_check != CheckConsumerResult::kOK) {
+      std::ostringstream oss;
+      oss << "A redundant Clip/Relu node in a QDQ node group must be the only consumer of the target node. "
+          << "target node: " << target_node_name << ", redundant Clip/Relu node: " << clip_node_name;
+      return Ort::Status(oss.str().c_str(), OrtErrorCode::ORT_FAIL);
+    }
+
+    if (q_nodes.size() != 1) {
+      return Ort::Status(
+          "Currently only support QDQ node groups with a redundant Clip/Relu node if there is only one Q",
+          OrtErrorCode::ORT_FAIL);
+    }
+
+    CheckConsumerResult clip_consumer_check = CheckConsumerResult::kOK;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(CheckOnlyOneNodeConsumer(*redundant_clip_node, *q_nodes[0],
+                                                              clip_consumer_check));
+    if (clip_consumer_check != CheckConsumerResult::kOK) {
+      std::ostringstream oss;
+      oss << "A redundant Clip/Relu node in a QDQ node group must have a single output edge to a Q node. "
+          << "target node: " << target_node_name << ", redundant Clip/Relu node: " << clip_node_name;
+      return Ort::Status(oss.str().c_str(), OrtErrorCode::ORT_FAIL);
+    }
+  }
+
+  // an output from the target node can have either Q consumers or direct consumers. it cannot have both.
+  // this must be checked on a per output basis.
+  // e.g. TopK produces values and indices. The indices output won't be quantized, so even if we replace the TopK QDQ
+  // node group with a quantized TopK, an int64_t indices value will be produced and can provide a graph output.
+  if (!q_nodes.empty()) {
+    const OrtNode& node_producing_outputs = redundant_clip_node ? *redundant_clip_node : target_node;
+    const char* node_produce_outputs_name = nullptr;
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetName(&node_producing_outputs, &node_produce_outputs_name));
+
+    std::vector<const OrtValueInfo*> outputs;
+    EdgeSet output_edges;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputs(node_producing_outputs, outputs));
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputEdges(outputs, output_edges));
+
+    std::vector<const OrtNode*> output_to_first_consumer(outputs.size(), nullptr);
+
+    for (const EdgeEnd& cur_edge : output_edges) {
+      int output_idx = cur_edge.GetSrcArgIndex();
+      const OrtNode& this_consumer = cur_edge.GetNode();
+      const OrtNode* existing_consumer = output_to_first_consumer[output_idx];
+
+      if (existing_consumer != nullptr) {
+        // another edge for this output. either both are Q or both are not.
+        // note: a single output could lead to multiple Q nodes if the output is variadic.
+        const char* this_consumer_op_type = nullptr;
+        const char* existing_consumer_op_type = nullptr;
+        ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetOperatorType(&this_consumer, &this_consumer_op_type));
+        ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetOperatorType(existing_consumer, &existing_consumer_op_type));
+
+        bool valid = true;
+        if (std::strcmp(existing_consumer_op_type, Q_OP_TYPE) == 0) {
+          valid = std::strcmp(this_consumer_op_type, Q_OP_TYPE) == 0;
+        } else {
+          valid = std::strcmp(this_consumer_op_type, Q_OP_TYPE) != 0;
+        }
+
+        if (!valid) {
+          std::ostringstream oss;
+          oss << "QDQ node group cannot have an output from the target (or clip) node being consumed by a Q node and "
+              << "a non-Q node. target (or clip) node: " << node_produce_outputs_name;
+          return Ort::Status(oss.str().c_str(), OrtErrorCode::ORT_FAIL);
+        }
+      } else {
+        output_to_first_consumer[output_idx] = &this_consumer;
+      }
+    }
+
+    // Check that any output with a Q cannot be a graph output as it will disappear if the QDQ node unit is converted to
+    // a quantized op.
+    for (size_t idx = 0, end = output_to_first_consumer.size(); idx < end; ++idx) {
+      if (output_to_first_consumer[idx] == nullptr) {
+        continue;
+      }
+
+      const char* op_type = nullptr;
+      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetOperatorType(output_to_first_consumer[idx], &op_type));
+
+      if (std::strcmp(op_type, Q_OP_TYPE) != 0) {
+        continue;
+      }
+
+      bool is_graph_output = false;
+      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ValueInfo_IsGraphOutput(outputs[idx], &is_graph_output));
+
+      if (is_graph_output) {
+        std::ostringstream oss;
+        oss << "QDQ node group cannot have an output from the target (or clip/relu) node that is consumed by a Q "
+            << "node and a graph output. target (or clip/relu) node: " << node_produce_outputs_name << ", output idx: "
+            << idx;
+        return Ort::Status(oss.str().c_str(), OrtErrorCode::ORT_FAIL);
+      }
+    }
+  }
 
   return Ort::Status{nullptr};
 }
