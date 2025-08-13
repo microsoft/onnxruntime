@@ -7,7 +7,6 @@
 #ifndef INCLUDE_ONNXRUNTIME_CORE_PROVIDERS_UTILS_QDQ_UTILS_H_
 #define INCLUDE_ONNXRUNTIME_CORE_PROVIDERS_UTILS_QDQ_UTILS_H_
 
-#include <gsl/gsl>
 #include <functional>
 #include <optional>
 #include <set>
@@ -52,8 +51,8 @@ struct NodeGroup {
   static Ort::Status CanCreateNodeGroup(const OrtGraph& graph,
                                         const OrtNode& target_node,
                                         const OrtNode* redundant_clip_node,
-                                        gsl::span<const OrtNode* const> dq_nodes,
-                                        gsl::span<const OrtNode* const> q_nodes);
+                                        const std::vector<const OrtNode*>& dq_nodes,
+                                        const std::vector<const OrtNode*>& q_nodes);
 };
 
 // Definition of one input or output
@@ -115,8 +114,10 @@ class NodeUnit {
 //
 #ifdef ORT_EP_UTILS_QDQ_UTILS_IMPL
 
+#include <algorithm>
 #include <cassert>
 #include <sstream>
+#include <utility>
 
 #ifndef ORT_EP_UTILS_C_RETURN_IF_ERROR
 #define ORT_EP_UTILS_C_RETURN_IF_ERROR(fn) \
@@ -478,7 +479,7 @@ Ort::Status NodeUnit::MakeSingleNode(const OrtNode& node, /*out*/ std::unique_pt
   auto qlinear_type = GetQLinearOpType(op_type);
   if (qlinear_type == QLinearOpType::Unknown) {
     // Not a Qlinear op, add all inputs / outputs.
-    auto add_all_io = [](std::vector<NodeUnitIODef>& node_unit_defs, gsl::span<const OrtValueInfo* const> node_defs) {
+    auto add_all_io = [](std::vector<NodeUnitIODef>& node_unit_defs, const std::vector<const OrtValueInfo*>& node_defs) {
       node_unit_defs.reserve(node_defs.size());
 
       for (const auto& node_def : node_defs) {
@@ -626,6 +627,57 @@ Ort::Status NodeUnit::MakeQDQGroup(const OrtGraph& graph, const NodeGroup& node_
   node_unit->output_edges_ = std::move(node_unit_output_edges);
 
   result = std::move(node_unit);
+  return Ort::Status{nullptr};
+}
+
+Ort::Status NodeGroup::CanCreateNodeGroup(const OrtGraph& graph,
+                                          const OrtNode& target_node,
+                                          const OrtNode* redundant_clip_node,
+                                          const std::vector<const OrtNode*>& dq_nodes,
+                                          const std::vector<const OrtNode*>& q_nodes) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  const char* target_node_name = nullptr;
+  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetName(&target_node, &target_node_name));
+
+  // Within a QDQ node group, a target node input is the only consumer of each DQ.
+  // This should have been ensured by the EnsureUniqueDQForNodeUnit graph transformer, but other graph modifications
+  // may have happened since. Verify that this is still true.
+  for (const OrtNode* dq_node : dq_nodes) {
+    const char* dq_node_name = nullptr;
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetName(dq_node, &dq_node_name));
+
+    std::vector<const OrtValueInfo*> dq_outputs;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputs(*dq_node, dq_outputs));
+
+    bool dq_produces_graph_output = false;
+    for (const OrtValueInfo* dq_output : dq_outputs) {
+      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ValueInfo_IsGraphOutput(dq_output, &dq_produces_graph_output));
+      if (dq_produces_graph_output) {
+        std::ostringstream oss;
+        oss << "QDQ node group cannot have DQ node that produces a graph output. DQ node: " << dq_node_name
+            << ", target node: " << target_node_name;
+        return Ort::Status(oss.str().c_str(), OrtErrorCode::ORT_FAIL);
+      }
+    }
+
+    EdgeSet dq_output_edges;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputEdges(dq_outputs, dq_output_edges));
+    bool dq_has_single_output_edge_to_target = dq_output_edges.size() == 1 &&
+                                               &dq_output_edges.begin()->GetNode() == &target_node;
+    if (!dq_has_single_output_edge_to_target) {
+      std::ostringstream oss;
+      oss << "QDQ node group cannot have a DQ that doesn't have a single output edge to the target node. "
+          << "DQ node: " << dq_node_name << ", target node: " << target_node_name;
+      return Ort::Status(oss.str().c_str(), OrtErrorCode::ORT_FAIL);
+    }
+  }
+
+  // TODO
+  (void)graph;
+  (void)redundant_clip_node;
+  (void)q_nodes;
+
   return Ort::Status{nullptr};
 }
 
