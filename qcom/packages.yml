@@ -79,7 +79,7 @@ ninja_windows_x86_64:
   url: https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-win.zip
   sha256: f550fec705b6d6ff58f2db3c374c2277a37691678d6aba463adcbb129108467a
 qairt:
-  version: 2.37.0.250724
+  version: 2.37.1.250807
   url: https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/{version}/v{version}.zip
   content_root: qairt/{version}
   bindir: bin
