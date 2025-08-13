@@ -1,6 +1,7 @@
-#param has_zero_points
-#param output_type
-#param n_bits
+// Note: Files that include this file need to declare the following param.
+// #param has_zero_points
+// #param output_type
+// #param n_bits
 
 #if has_zero_points
 const elements_in_uint32:u32 = 32u / n_bits;

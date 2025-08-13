@@ -1,5 +1,6 @@
-#param n_bits
-#param has_zero_points
+// Note: Files that include this file need to declare the following param.
+// #param n_bits
+// #param has_zero_points
 
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
@@ -31,7 +32,9 @@
         local_sum += dot4I8Packed(a2[3], b2[3]);
         return output_element_t(local_sum) * scale;
     }
-#else n_bits == 8
+
+#elif n_bits == 8
+
     fn AlignWithZeroPoint(in: vec4<u32>) -> vec4<u32>
     {
         var out = vec4<u32>(0);
