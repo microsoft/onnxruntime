@@ -1,6 +1,5 @@
-// Note: Files that include this file need to declare the following param.
-// #param n_bits
-// #param has_zero_points
+#param n_bits
+#param has_zero_points
 
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
