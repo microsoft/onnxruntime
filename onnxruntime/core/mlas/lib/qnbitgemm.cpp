@@ -35,6 +35,7 @@ enum QNBitGemmVariant {
     SQ8BitGemmVariant_CompInt8,
 
     SQNBitGemmVariant_BitWidth2_CompInt8,
+    SQ2BitGemmVariant_CompFp32, // TODO: determine if this makes sense
     // End of valid variants
 
     // Keep this element last and ensure that its value is the number of valid QNBitGemmVariant values.
@@ -53,6 +54,8 @@ GetQNBitGemmVariant(
         if (BlkBitWidth == 2) {
             if (ComputeType == SQNBIT_CompInt8) {
                 return SQNBitGemmVariant_BitWidth2_CompInt8;
+            } else if (ComputeType == SQNBIT_CompFp32) {
+                return SQ2BitGemmVariant_CompFp32;
             }
         } else if (BlkBitWidth == 4) {
             if (ComputeType == SQNBIT_CompFp32) {

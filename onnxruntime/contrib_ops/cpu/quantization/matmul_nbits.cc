@@ -39,6 +39,7 @@ typedef enum {
   Level2, /*!< input fp16, accumulator fp16 */
   Level3, /*!< input bf16, accumulator fp32 */
   Level4, /*!< input int8, accumulator int32 */
+  Level5, /*!< input uint8, use TMAC LUT approach  TODO: fix this comment*/
 } ACCURACY_LEVEL;
 
 // T: A data type.
