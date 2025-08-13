@@ -186,7 +186,7 @@ class QnnModelWrapper {
                           bool is_for_input = true,
                           bool is_for_output = false);
 
-  // Tranpose NCHW->HWCN for QNN weight
+  // Transpose NCHW->HWCN for QNN weight
   Status AddNchwToHwcnTranspose(NodeIndex node_index,
                                 const std::string& input_name,
                                 const std::string& output_name,
