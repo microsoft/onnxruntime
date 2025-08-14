@@ -158,7 +158,7 @@ bool QnnModelWrapper::CreateQnnInputOutputTensors(const std::string& qnn_node_na
       return false;
     }
 
-    // During graph patitioning, we only need to do op validation, it's not required to create Qnn graph tensor
+    // During graph partitioning, we only need to do op validation, it's not required to create Qnn graph tensor
     // We only need to create the Qnn graph tensor during Compile to create Qnn graph
     if (!do_op_validation) {
       std::string error_string;
