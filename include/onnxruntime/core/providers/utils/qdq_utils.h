@@ -849,6 +849,33 @@ Ort::Status NodeGroup::CanCreateNodeGroup(const OrtNode& target_node,
   return Ort::Status{nullptr};
 }
 
+//
+// QDQ Operator selection logic (ported from core/optimizers/qdq_transformer/selectors_actions/qdq_selectors.cc
+//
+
+class NodeGroupSelector {
+ public:
+  std::optional<NodeGroup> GetQDQSelection(const OrtNode& node) const;
+  virtual ~NodeGroupSelector() = default;
+
+ protected:
+  // base check that we have the expected number of QDQ inputs/outputs, and `node` isn't producing a graph output.
+  // num_dq_inputs defaults to the number of inputs `node` has if not explicitly specified
+  bool CheckQDQNodes(const OrtNode& node, const OrtNode* redundant_clip_node,
+                     const std::vector<const OrtNode*>& dq_nodes,
+                     const std::vector<const OrtNode*>& q_nodes,
+                     int num_dq_inputs = -1,
+                     bool is_empty_q_nodes_allowed = false) const;
+
+ private:
+  // derived classes should implement this check
+  bool virtual Check(const OrtNode& node, const OrtNode* redundant_clip_node,
+                     const std::vector<const OrtNode*>& dq_nodes,
+                     const std::vector<const OrtNode*>& q_nodes) const = 0;
+};
+
+
+
 }  // namespace QDQ
 }  // namespace OrtEpUtils
 
