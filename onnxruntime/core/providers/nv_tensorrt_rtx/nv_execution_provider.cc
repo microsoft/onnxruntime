@@ -509,7 +509,6 @@ Status BindContextOutput(Ort::KernelContext& ctx,
                          const char* output_name,
                          size_t output_index,
                          size_t output_type,
-                         size_t i,
                          DDSOutputAllocatorMap& dds_output_allocator_map,
                          std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                          OrtAllocator* alloc,
@@ -2450,7 +2449,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
     auto trt_profiles = trt_state->profiles;
-    int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_set<std::string> input_names;
 
     if (alloc_ == nullptr) {
@@ -2536,7 +2534,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         nvinfer1::Dims dims;
         void* data_ptr = nullptr;
 
-        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i,
+        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type,
                                           dds_output_allocator_map, scratch_buffers, alloc, dims, data_ptr);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
@@ -2748,7 +2746,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
-    int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
     std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
 
@@ -2830,7 +2827,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
         nvinfer1::Dims dims;
         void* data_ptr = nullptr;
 
-        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i,
+        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type,
                                           dds_output_allocator_map, scratch_buffers, alloc, dims, data_ptr);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
