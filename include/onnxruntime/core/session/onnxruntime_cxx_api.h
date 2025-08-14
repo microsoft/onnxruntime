@@ -166,7 +166,7 @@ inline const OrtApi* detail::Global::DefaultInit() noexcept {
   // This makes it safe to have a Ort::Env constructed as a static member.
   //
   // This DOES NOT make it safe to _use_ arbitrary ORT C++ APIs when
-  // initializaing static members, however.
+  // initializing static members, however.
   static const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   return api;
 }

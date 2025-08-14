@@ -229,7 +229,7 @@ int vitisai_ep_set_ep_dynamic_options(
 struct MyCustomOpKernel : OpKernel {
   MyCustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
     op_kernel_ =
-        op_.CreateKernel(&op_, &Ort::GetApi() _, reinterpret_cast<const OrtKernelInfo*>(&info));
+        op_.CreateKernel(&op_, &Ort::GetApi(), reinterpret_cast<const OrtKernelInfo*>(&info));
   }
 
   ~MyCustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
