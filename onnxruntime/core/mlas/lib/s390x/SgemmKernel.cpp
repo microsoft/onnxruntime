@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    SgemmKernelPower.cpp
+    SgemmKernel.cpp
 
 Abstract:
 
@@ -14,7 +14,7 @@ Abstract:
     multiply operation (SGEMM).
 
 --*/
-#include "SgemmKernelpower.h"
+#include "SgemmKernelZVECTOR.h"
 
 size_t
 MLASCALL

@@ -1,6 +1,6 @@
 #include <type_traits>
 #include "mlasi.h"
-#include <altivec.h>
+#include <vecintrin.h>
 
 // NOTE: Vector commands (e.g., vec_xst) need C-style casting to support various compiler versions.
 // ONNX Runtime CI pipelines do not build with all compiler versions.
@@ -54,20 +54,20 @@ Return Value:
         auto FloatVector2 = vec_xl(0, Input + 8);
         auto FloatVector3 = vec_xl(0, Input + 12);
 
-        FloatVector0 = vec_div(FloatVector0, ScaleVector);
-        FloatVector1 = vec_div(FloatVector1, ScaleVector);
-        FloatVector2 = vec_div(FloatVector2, ScaleVector);
-        FloatVector3 = vec_div(FloatVector3, ScaleVector);
+        FloatVector0 = FloatVector0 / ScaleVector;
+        FloatVector1 = FloatVector1 / ScaleVector;
+        FloatVector2 = FloatVector2 / ScaleVector;
+        FloatVector3 = FloatVector3 / ScaleVector;
 
         FloatVector0 = vec_round(FloatVector0);
         FloatVector1 = vec_round(FloatVector1);
         FloatVector2 = vec_round(FloatVector2);
         FloatVector3 = vec_round(FloatVector3);
 
-        FloatVector0 = vec_add(FloatVector0, ZeroPointVector);
-        FloatVector1 = vec_add(FloatVector1, ZeroPointVector);
-        FloatVector2 = vec_add(FloatVector2, ZeroPointVector);
-        FloatVector3 = vec_add(FloatVector3, ZeroPointVector);
+        FloatVector0 = FloatVector0 + ZeroPointVector;
+        FloatVector1 = FloatVector1 + ZeroPointVector;
+        FloatVector2 = FloatVector2 + ZeroPointVector;
+        FloatVector3 = FloatVector3 + ZeroPointVector;
 
         FloatVector0 = vec_max(FloatVector0, MinimumValueVector);
         FloatVector1 = vec_max(FloatVector1, MinimumValueVector);
@@ -102,7 +102,6 @@ Return Value:
     }
 
     for (size_t n = 0; n < N; n++) {
-
         float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
         FloatValue = std::max(FloatValue, float(MinimumValue));
         FloatValue = std::min(FloatValue, float(MaximumValue));
@@ -163,20 +162,20 @@ Return Value:
         auto FloatVector2 = vec_xl(0, Input + 8);
         auto FloatVector3 = vec_xl(0, Input + 12);
 
-        FloatVector0 = vec_div(FloatVector0, ScaleVector);
-        FloatVector1 = vec_div(FloatVector1, ScaleVector);
-        FloatVector2 = vec_div(FloatVector2, ScaleVector);
-        FloatVector3 = vec_div(FloatVector3, ScaleVector);
+        FloatVector0 = FloatVector0 / ScaleVector;
+        FloatVector1 = FloatVector1 / ScaleVector;
+        FloatVector2 = FloatVector2 / ScaleVector;
+        FloatVector3 = FloatVector3 / ScaleVector;
 
         FloatVector0 = vec_round(FloatVector0);
         FloatVector1 = vec_round(FloatVector1);
         FloatVector2 = vec_round(FloatVector2);
         FloatVector3 = vec_round(FloatVector3);
 
-        FloatVector0 = vec_add(FloatVector0, ZeroPointVector);
-        FloatVector1 = vec_add(FloatVector1, ZeroPointVector);
-        FloatVector2 = vec_add(FloatVector2, ZeroPointVector);
-        FloatVector3 = vec_add(FloatVector3, ZeroPointVector);
+        FloatVector0 = FloatVector0 + ZeroPointVector;
+        FloatVector1 = FloatVector1 + ZeroPointVector;
+        FloatVector2 = FloatVector2 + ZeroPointVector;
+        FloatVector3 = FloatVector3 + ZeroPointVector;
 
         FloatVector0 = vec_max(FloatVector0, MinimumValueVector);
         FloatVector1 = vec_max(FloatVector1, MinimumValueVector);
@@ -213,7 +212,6 @@ Return Value:
     }
 
     for (size_t n = 0; n < N; n++) {
-
         float FloatValue = std::nearbyintf(Input[n] / Scale) + static_cast<float>(ZeroPoint);
         FloatValue = std::max(FloatValue, static_cast<float>(MinimumValue));
         FloatValue = std::min(FloatValue, static_cast<float>(MaximumValue));
@@ -300,4 +298,3 @@ MlasQuantizeLinearS4Kernel(
 {
     MlasQuantizeLinearInt4Kernel<true>(Input, Output, N, Scale, ZeroPoint);
 }
-

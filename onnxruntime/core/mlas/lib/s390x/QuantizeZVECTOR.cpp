@@ -1,10 +1,10 @@
 #include "mlasi.h"
-#include <altivec.h>
+#include <vecintrin.h>
 
 template <typename OutputType>
 void
 MLASCALL
-MlasQuantizeLinearVSX(
+MlasQuantizeLinearZVECTOR(
     const float* Input,
     OutputType* Output,
     size_t N,
@@ -29,20 +29,20 @@ MlasQuantizeLinearVSX(
         auto FloatVector2 = vec_xl(0, Input + 8);
         auto FloatVector3 = vec_xl(0, Input + 12);
 
-        FloatVector0 = vec_div(FloatVector0, ScaleVector);
-        FloatVector1 = vec_div(FloatVector1, ScaleVector);
-        FloatVector2 = vec_div(FloatVector2, ScaleVector);
-        FloatVector3 = vec_div(FloatVector3, ScaleVector);
+        FloatVector0 /= ScaleVector;
+        FloatVector1 /= ScaleVector;
+        FloatVector2 /= ScaleVector;
+        FloatVector3 /= ScaleVector;
 
         FloatVector0 = vec_round(FloatVector0);
         FloatVector1 = vec_round(FloatVector1);
         FloatVector2 = vec_round(FloatVector2);
         FloatVector3 = vec_round(FloatVector3);
 
-        FloatVector0 = vec_add(FloatVector0, ZeroPointVector);
-        FloatVector1 = vec_add(FloatVector1, ZeroPointVector);
-        FloatVector2 = vec_add(FloatVector2, ZeroPointVector);
-        FloatVector3 = vec_add(FloatVector3, ZeroPointVector);
+        FloatVector0 += ZeroPointVector;
+        FloatVector1 += ZeroPointVector;
+        FloatVector2 += ZeroPointVector;
+        FloatVector3 += ZeroPointVector;
 
         FloatVector0 = vec_max(FloatVector0, MinimumValueVector);
         FloatVector1 = vec_max(FloatVector1, MinimumValueVector);
@@ -64,6 +64,9 @@ MlasQuantizeLinearVSX(
         auto CharVector = vec_pack(ShortVector0, ShortVector1);
         vec_xst(CharVector, 0, (int8_t *) Output);
 
+        // Workaround for bad GCC warning that variable is set but not used.
+        MLAS_UNREFERENCED_PARAMETER(CharVector);
+
         Output += 16;
         Input += 16;
         N -= 16;
@@ -71,9 +74,9 @@ MlasQuantizeLinearVSX(
 
     while (N >= 4) {
         auto FloatVector = vec_xl(0, Input);
-        FloatVector = vec_div(FloatVector, ScaleVector);
+        FloatVector /= ScaleVector;
         FloatVector = vec_round(FloatVector);
-        FloatVector = vec_add(FloatVector, ZeroPointVector);
+        FloatVector += ZeroPointVector;
 
         FloatVector = vec_max(FloatVector, MinimumValueVector);
         FloatVector = vec_min(FloatVector, MaximumValueVector);
@@ -81,7 +84,13 @@ MlasQuantizeLinearVSX(
 
         auto ShortVector = vec_pack(IntegerVector, vec_splats((int32_t) 0));
         auto CharVector = vec_pack(ShortVector, vec_splats((int16_t) 0));
-        vec_xst_len(CharVector, (int8_t *) Output, N);
+
+        OutputType tmp_output[sizeof(__vector float)/sizeof(OutputType)];
+        vec_xst(CharVector, 0, (int8_t *) tmp_output);
+        memcpy(Output, tmp_output, N);
+
+        // Workaround for bad GCC warning that variable is set but not used.
+        MLAS_UNREFERENCED_PARAMETER(CharVector);
 
         Output += 4;
         Input += 4;
@@ -89,11 +98,13 @@ MlasQuantizeLinearVSX(
     }
 
     if (N > 0) {
-        auto FloatVector = vec_xl_len( const_cast<float*>(Input), 4*N);
+        float tmp_input[sizeof(__vector float) / sizeof(float)] = {};
+        memcpy(tmp_input, Input, 4*N);
+        auto FloatVector = vec_xl(0, &(tmp_input[0]));
 
-        FloatVector = vec_div(FloatVector, ScaleVector);
+        FloatVector /= ScaleVector;
         FloatVector = vec_round(FloatVector);
-        FloatVector = vec_add(FloatVector, ZeroPointVector);
+        FloatVector += ZeroPointVector;
 
         FloatVector = vec_max(FloatVector, MinimumValueVector);
         FloatVector = vec_min(FloatVector, MaximumValueVector);
@@ -101,13 +112,19 @@ MlasQuantizeLinearVSX(
 
         auto ShortVector = vec_pack(IntegerVector, vec_splats((int32_t) 0));
         auto CharVector = vec_pack(ShortVector, vec_splats((int16_t) 0));
-        vec_xst_len(CharVector, (int8_t *) Output, N);
+
+        OutputType tmp_output[sizeof(__vector float)/sizeof(OutputType)];
+        vec_xst(CharVector, 0, (int8_t *) tmp_output);
+        memcpy(Output, tmp_output, N);
+
+        // Workaround for bad GCC warning that variable is set but not used.
+        MLAS_UNREFERENCED_PARAMETER(CharVector);
     }
 }
 
 void
 MLASCALL
-MlasQuantizeLinearU8KernelVSX(
+MlasQuantizeLinearU8KernelZVECTOR(
     const float* Input,
     uint8_t* Output,
     size_t N,
@@ -115,12 +132,12 @@ MlasQuantizeLinearU8KernelVSX(
     uint8_t ZeroPoint
     )
 {
-    MlasQuantizeLinearVSX<uint8_t>(Input, Output, N, Scale, ZeroPoint);
+    MlasQuantizeLinearZVECTOR<uint8_t>(Input, Output, N, Scale, ZeroPoint);
 }
 
 void
 MLASCALL
-MlasQuantizeLinearS8KernelVSX(
+MlasQuantizeLinearS8KernelZVECTOR(
     const float* Input,
     int8_t* Output,
     size_t N,
@@ -128,5 +145,5 @@ MlasQuantizeLinearS8KernelVSX(
     int8_t ZeroPoint
     )
 {
-    MlasQuantizeLinearVSX<int8_t>(Input, Output, N, Scale, ZeroPoint);
+    MlasQuantizeLinearZVECTOR<int8_t>(Input, Output, N, Scale, ZeroPoint);
 }
