@@ -469,15 +469,7 @@ void DataOps::populate_op_mode_supported() {
                                  }
                                }
 
-                               // check for input dimensions
                                const auto& x_arg = node->InputDefs()[0];
-                               auto shape = x_arg->Shape();
-                               if (shape != nullptr) {
-                                 // input tensor rank cannot be of one dimension
-                                 if (shape->dim_size() == 1 || shape->dim_size() == 4) {
-                                   return true;
-                                 }
-                               }
                                // x_arg supports only float, int8 and float16 type
                                if ((x_arg->TypeAsProto()->tensor_type().elem_type() ==
                                     ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
