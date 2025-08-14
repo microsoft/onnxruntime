@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    SgemmKernelPower.cpp
+    SgemmKernelZVECTOR.cpp
 
 Abstract:
 
@@ -15,8 +15,11 @@ Abstract:
 
 --*/
 
-#include "SgemmKernelpower.h"
-struct MlasSgemmBroadcastAElementsMMA
+#include "SgemmKernelZVECTOR.h"
+
+#include <vecintrin.h>
+
+struct MlasSgemmBroadcastAElementsZVECTOR
 {
     template<size_t RowCount, size_t Row>
     MLAS_FORCEINLINE
@@ -40,47 +43,99 @@ MlasSgemmComputeAElements(
     MLAS_FLOAT32X4 ABroadcast[RowCount]
     )
 {
+        const __vector unsigned char mask0 = { 0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23 };
+        const __vector unsigned char mask3 = { 8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31 };
+        const __vector unsigned char mask_even = { 0, 1, 2, 3, 16, 17, 18, 19, 8, 9, 10, 11, 24, 25, 26, 27 };
+        const __vector unsigned char mask_odd = { 4, 5, 6, 7, 20, 21, 22, 23, 12, 13, 14, 15, 28, 29, 30, 31 };
+
         __vector float a1,a2;
-        a1 = vec_mergee (AElements[0], AElements[1]);
-        a2 = vec_mergee (AElements[2], AElements[3]);
-        ABroadcast[0] =vec_xxpermdi(a1,a2,0);
-        ABroadcast[2] =vec_xxpermdi(a1,a2,3);
-        a1 = vec_mergeo (AElements[0], AElements[1]);
-        a2 = vec_mergeo (AElements[2], AElements[3]);
-        ABroadcast[1] =vec_xxpermdi(a1,a2,0);
-        ABroadcast[3] =vec_xxpermdi(a1,a2,3);
+
+        a1 = vec_perm(AElements[0], AElements[1], mask_even);
+        a2 = vec_perm(AElements[2], AElements[3], mask_even);
+        ABroadcast[0] = vec_perm(a1, a2, mask0);
+        ABroadcast[2] = vec_perm(a1, a2, mask3);
+        a1 = vec_perm(AElements[0], AElements[1], mask_odd);
+        a2 = vec_perm(AElements[2], AElements[3], mask_odd);
+        ABroadcast[1] = vec_perm(a1, a2, mask0);
+        ABroadcast[3] = vec_perm(a1, a2, mask3);
 }
 template<size_t RowCount>
 MLAS_FORCEINLINE
 void
-MlasSgemmComputeBlockMMA(
-    __vector_quad acc[8],
+MlasSgemmComputeBlockZVECTOR(
+    MLAS_FLOAT32X4 acc[32],
     MLAS_FLOAT32X4 ABroadcast,
     MLAS_FLOAT32X4 A2Broadcast,
     const float* B,
     size_t CountM
     )
 {
+
+    MLAS_FLOAT32X4 AElements[8];
+
+    AElements[0] = vec_splats(ABroadcast[0]);
+    AElements[1] = vec_splats(ABroadcast[1]);
+    AElements[2] = vec_splats(ABroadcast[2]);
+    AElements[3] = vec_splats(ABroadcast[3]);
+
+    if (CountM == 8) {
+        AElements[4] = vec_splats(A2Broadcast[0]);
+        AElements[5] = vec_splats(A2Broadcast[1]);
+        AElements[6] = vec_splats(A2Broadcast[2]);
+        AElements[7] = vec_splats(A2Broadcast[3]);
+    }
+
     MLAS_FLOAT32X4 BElements[4];
-    typedef __vector unsigned char  vec_t;
 
     BElements[0] = MlasLoadFloat32x4(B);
     BElements[1] = MlasLoadFloat32x4(B + 4);
     BElements[2] = MlasLoadFloat32x4(B + 8);
     BElements[3] = MlasLoadFloat32x4(B + 12);
-   __builtin_mma_xvf32gerpp (&acc[0], reinterpret_cast<vec_t>(ABroadcast), reinterpret_cast<vec_t>(BElements[0]));
-   __builtin_mma_xvf32gerpp (&acc[1], reinterpret_cast<vec_t>(ABroadcast), reinterpret_cast<vec_t>(BElements[1]));
-   __builtin_mma_xvf32gerpp (&acc[2], reinterpret_cast<vec_t>(ABroadcast), reinterpret_cast<vec_t>(BElements[2]));
-   __builtin_mma_xvf32gerpp (&acc[3], reinterpret_cast<vec_t>(ABroadcast), reinterpret_cast<vec_t>(BElements[3]));
-   if (CountM == 8) {
-       __builtin_mma_xvf32gerpp (&acc[4], reinterpret_cast<vec_t>(A2Broadcast), reinterpret_cast<vec_t>(BElements[0]));
-       __builtin_mma_xvf32gerpp (&acc[5], reinterpret_cast<vec_t>(A2Broadcast), reinterpret_cast<vec_t>(BElements[1]));
-       __builtin_mma_xvf32gerpp (&acc[6], reinterpret_cast<vec_t>(A2Broadcast), reinterpret_cast<vec_t>(BElements[2]));
-       __builtin_mma_xvf32gerpp (&acc[7], reinterpret_cast<vec_t>(A2Broadcast), reinterpret_cast<vec_t>(BElements[3]));
-   }
+
+    acc[0]  = __builtin_s390_vfmasb(AElements[0], BElements[0], acc[0]);
+    acc[1]  = __builtin_s390_vfmasb(AElements[1], BElements[0], acc[1]);
+    acc[2]  = __builtin_s390_vfmasb(AElements[2], BElements[0], acc[2]);
+    acc[3]  = __builtin_s390_vfmasb(AElements[3], BElements[0], acc[3]);
+
+    acc[4]  = __builtin_s390_vfmasb(AElements[0], BElements[1], acc[4]);
+    acc[5]  = __builtin_s390_vfmasb(AElements[1], BElements[1], acc[5]);
+    acc[6]  = __builtin_s390_vfmasb(AElements[2], BElements[1], acc[6]);
+    acc[7]  = __builtin_s390_vfmasb(AElements[3], BElements[1], acc[7]);
+
+    acc[8]  = __builtin_s390_vfmasb(AElements[0], BElements[2], acc[8]);
+    acc[9]  = __builtin_s390_vfmasb(AElements[1], BElements[2], acc[9]);
+    acc[10] = __builtin_s390_vfmasb(AElements[2], BElements[2], acc[10]);
+    acc[11] = __builtin_s390_vfmasb(AElements[3], BElements[2], acc[11]);
+
+    acc[12] = __builtin_s390_vfmasb(AElements[0], BElements[3], acc[12]);
+    acc[13] = __builtin_s390_vfmasb(AElements[1], BElements[3], acc[13]);
+    acc[14] = __builtin_s390_vfmasb(AElements[2], BElements[3], acc[14]);
+    acc[15] = __builtin_s390_vfmasb(AElements[3], BElements[3], acc[15]);
+
+    if (CountM == 8) {
+        acc[16] = __builtin_s390_vfmasb(AElements[4], BElements[0], acc[16]);
+        acc[17] = __builtin_s390_vfmasb(AElements[5], BElements[0], acc[17]);
+        acc[18] = __builtin_s390_vfmasb(AElements[6], BElements[0], acc[18]);
+        acc[19] = __builtin_s390_vfmasb(AElements[7], BElements[0], acc[19]);
+
+        acc[20] = __builtin_s390_vfmasb(AElements[4], BElements[1], acc[20]);
+        acc[21] = __builtin_s390_vfmasb(AElements[5], BElements[1], acc[21]);
+        acc[22] = __builtin_s390_vfmasb(AElements[6], BElements[1], acc[22]);
+        acc[23] = __builtin_s390_vfmasb(AElements[7], BElements[1], acc[23]);
+
+        acc[24] = __builtin_s390_vfmasb(AElements[4], BElements[2], acc[24]);
+        acc[25] = __builtin_s390_vfmasb(AElements[5], BElements[2], acc[25]);
+        acc[26] = __builtin_s390_vfmasb(AElements[6], BElements[2], acc[26]);
+        acc[27] = __builtin_s390_vfmasb(AElements[7], BElements[2], acc[27]);
+
+        acc[28] = __builtin_s390_vfmasb(AElements[4], BElements[3], acc[28]);
+        acc[29] = __builtin_s390_vfmasb(AElements[5], BElements[3], acc[29]);
+        acc[30] = __builtin_s390_vfmasb(AElements[6], BElements[3], acc[30]);
+        acc[31] = __builtin_s390_vfmasb(AElements[7], BElements[3], acc[31]);
+    }
 }
 template<size_t VectorCount>
-struct MlasSgemmStoreVectorMMA
+struct MlasSgemmStoreVectorZVECTOR
 {
     template<size_t RowCount, size_t Row>
     MLAS_FORCEINLINE
@@ -105,7 +160,7 @@ struct MlasSgemmStoreVectorMMA
     }
 };
 
-struct MlasSgemmMultiplyAlphaTrailingMMA
+struct MlasSgemmMultiplyAlphaTrailingZVECTOR
 {
     template<size_t RowCount, size_t Row>
     MLAS_FORCEINLINE
@@ -120,7 +175,7 @@ struct MlasSgemmMultiplyAlphaTrailingMMA
     }
 };
 template<unsigned Lane>
-struct MlasSgemmStoreScalarMMA
+struct MlasSgemmStoreScalarZVECTOR
 {
     template<size_t RowCount, size_t Row>
     MLAS_FORCEINLINE
@@ -146,7 +201,7 @@ struct MlasSgemmStoreScalarMMA
 template<size_t RowCount>
 MLAS_FORCEINLINE
 size_t
-MlasSgemmMMAProcessCount(
+MlasSgemmZVECTORProcessCount(
     const float* A,
     const float* B,
     float* C,
@@ -164,24 +219,11 @@ MlasSgemmMMAProcessCount(
         const float* a = A;
         size_t k = CountK;
 
-        MLAS_FLOAT32X4 Accumulators[2][RowCount] = {{ 0 }};
-        MLAS_FLOAT32X4 Result[RowCount];
         MLAS_FLOAT32X4 AElements[RowCount];
         MLAS_FLOAT32X4 ABroadcast[RowCount] = { 0 };
         MLAS_FLOAT32X4 A2Broadcast[RowCount] = { 0 };
-        __vector_quad acc[8];
-
-        //
-        // Clear the block accumulators.
-        //
-        __builtin_mma_xxsetaccz(&acc[0]);
-        __builtin_mma_xxsetaccz(&acc[1]);
-        __builtin_mma_xxsetaccz(&acc[2]);
-        __builtin_mma_xxsetaccz(&acc[3]);
-        __builtin_mma_xxsetaccz(&acc[4]);
-        __builtin_mma_xxsetaccz(&acc[5]);
-        __builtin_mma_xxsetaccz(&acc[6]);
-        __builtin_mma_xxsetaccz(&acc[7]);
+        MLAS_FLOAT32X4 acc[32] = { 0 };
+        MLAS_FLOAT32X4 Accumulators[2][RowCount] = {{0}};
 
         //
         // Compute the output block.
@@ -194,21 +236,21 @@ MlasSgemmMMAProcessCount(
                 MlasLoopUnroll<RowCount, MlasFgemmLoadAElements>()(AElements, a + ( lda * 4), lda);
                 MlasSgemmComputeAElements<RowCount>(AElements, A2Broadcast);
             }
-            MlasSgemmComputeBlockMMA<RowCount>(&acc[0], ABroadcast[0], A2Broadcast[0], B, CountM);
-            MlasSgemmComputeBlockMMA<RowCount>(&acc[0], ABroadcast[1], A2Broadcast[1], B+16, CountM);
-            MlasSgemmComputeBlockMMA<RowCount>(&acc[0], ABroadcast[2], A2Broadcast[2], B+32, CountM);
-            MlasSgemmComputeBlockMMA<RowCount>(&acc[0], ABroadcast[3], A2Broadcast[3], B+48, CountM);
+            MlasSgemmComputeBlockZVECTOR<RowCount>(&acc[0], ABroadcast[0], A2Broadcast[0], B, CountM);
+            MlasSgemmComputeBlockZVECTOR<RowCount>(&acc[0], ABroadcast[1], A2Broadcast[1], B+16, CountM);
+            MlasSgemmComputeBlockZVECTOR<RowCount>(&acc[0], ABroadcast[2], A2Broadcast[2], B+32, CountM);
+            MlasSgemmComputeBlockZVECTOR<RowCount>(&acc[0], ABroadcast[3], A2Broadcast[3], B+48, CountM);
             B += 16 * 4;
             a += 4;
             k -= 4;
         }
 
         while (k > 0) {
-            MlasLoopUnroll<RowCount, MlasSgemmBroadcastAElementsMMA>()(ABroadcast, a, lda);
+            MlasLoopUnroll<RowCount, MlasSgemmBroadcastAElementsZVECTOR>()(ABroadcast, a, lda);
             if (CountM == 8)  {
-                MlasLoopUnroll<RowCount, MlasSgemmBroadcastAElementsMMA>()(A2Broadcast, a + (lda * 4), lda);
+                MlasLoopUnroll<RowCount, MlasSgemmBroadcastAElementsZVECTOR>()(A2Broadcast, a + (lda * 4), lda);
             }
-            MlasSgemmComputeBlockMMA<RowCount>(&acc[0], ABroadcast[0], A2Broadcast[0], B, CountM);
+            MlasSgemmComputeBlockZVECTOR<RowCount>(&acc[0], ABroadcast[0], A2Broadcast[0], B, CountM);
             a += 1;
             B += 16;
             k -= 1;
@@ -218,23 +260,15 @@ MlasSgemmMMAProcessCount(
             //
             // Store the entire output block.
             //
-            __builtin_mma_disassemble_acc (Result, &acc[0]);
-            MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
-            __builtin_mma_disassemble_acc (Result, &acc[1]);
-            MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<4>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
-            __builtin_mma_disassemble_acc (Result, &acc[2]);
-            MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<8>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
-            __builtin_mma_disassemble_acc (Result, &acc[3]);
-            MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<12>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
+            MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<0>>()(acc, C, ldc, AlphaBroadcast, ZeroMode);
+            MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<4>>()(acc + 4, C, ldc, AlphaBroadcast, ZeroMode);
+            MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<8>>()(acc + 8, C, ldc, AlphaBroadcast, ZeroMode);
+            MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<12>>()(acc + 12, C, ldc, AlphaBroadcast, ZeroMode);
             if (CountM == 8) {
-                __builtin_mma_disassemble_acc (Result, &acc[4]);
-                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
-                __builtin_mma_disassemble_acc (Result, &acc[5]);
-                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<4>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
-                __builtin_mma_disassemble_acc (Result, &acc[6]);
-                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<8>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
-                __builtin_mma_disassemble_acc (Result, &acc[7]);
-                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<12>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<0>>()(acc + 16, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<4>>()(acc + 20, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<8>>()(acc + 24, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<12>>()(acc + 28, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
             }
         } else {
 
@@ -243,60 +277,65 @@ MlasSgemmMMAProcessCount(
             //
 
             if (CountN >= 12) {
-                __builtin_mma_disassemble_acc (Result, &acc[0]);
-                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
-                __builtin_mma_disassemble_acc (Result, &acc[1]);
-                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<4>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
-                __builtin_mma_disassemble_acc (Result, &acc[2]);
-                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<8>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<0>>()(acc, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<4>>()(acc + 4, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<8>>()(acc + 8, C, ldc, AlphaBroadcast, ZeroMode);
                 if (CountM == 8) {
-                    __builtin_mma_disassemble_acc (Result, &acc[4]);
-                    MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
-                    __builtin_mma_disassemble_acc (Result, &acc[5]);
-                    MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<4>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
-                    __builtin_mma_disassemble_acc (Result, &acc[6]);
-                    MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<8>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<0>>()(acc + 16, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<4>>()(acc + 20, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<8>>()(acc + 24, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
                     if (CountN - 12 > 0) {
-                        __builtin_mma_disassemble_acc (Accumulators[1], &acc[7]);
+                        for (size_t i = 0; i < 4; ++i) {
+                            Accumulators[1][i] = acc[i + 28];
+                        }
                     }
                 }
                 if (CountN - 12 > 0) {
-                    __builtin_mma_disassemble_acc (Accumulators[0], &acc[3]);
+                    for (size_t i = 0; i < 4; ++i) {
+                        Accumulators[0][i] = acc[i + 12];
+                    }
                 }
             } else if (CountN >= 8) {
-                __builtin_mma_disassemble_acc (Result, &acc[0]);
-                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
-                __builtin_mma_disassemble_acc (Result, &acc[1]);
-                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<4>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<0>>()(acc, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<4>>()(acc + 4, C, ldc, AlphaBroadcast, ZeroMode);
                 if (CountM == 8) {
-                    __builtin_mma_disassemble_acc (Result, &acc[4]);
-                    MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
-                    __builtin_mma_disassemble_acc (Result, &acc[5]);
-                    MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<4>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<0>>()(acc + 16, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<4>>()(acc + 20, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
                     if (CountN - 8 > 0) {
-                        __builtin_mma_disassemble_acc (Accumulators[1], &acc[6]);
+                        for (size_t i = 0; i < 4; ++i) {
+                            Accumulators[1][i] = acc[i + 24];
+                        }
                     }
                 }
                 if (CountN - 8 > 0) {
-                    __builtin_mma_disassemble_acc (Accumulators[0], &acc[2]);
+                    for (size_t i = 0; i < 4; ++i) {
+                        Accumulators[0][i] = acc[i + 8];
+                    }
                 }
             } else if (CountN >= 4) {
-                __builtin_mma_disassemble_acc (Result, &acc[0]);
-                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<0>>()(acc, C, ldc, AlphaBroadcast, ZeroMode);
                 if (CountM == 8) {
-                    __builtin_mma_disassemble_acc (Result, &acc[4]);
-                    MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasSgemmStoreVectorZVECTOR<0>>()(acc + 16, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
                     if (CountN - 4 > 0) {
-                        __builtin_mma_disassemble_acc (Accumulators[1], &acc[5]);
+                        for (size_t i = 0; i < 4; ++i) {
+                            Accumulators[1][i] = acc[i + 20];
+                        }
                     }
                 }
                 if (CountN - 4 > 0) {
-                    __builtin_mma_disassemble_acc (Accumulators[0], &acc[1]);
+                    for (size_t i = 0; i < 4; ++i) {
+                        Accumulators[0][i] = acc[i + 4];
+                    }
                 }
             } else {
-                __builtin_mma_disassemble_acc (Accumulators[0], &acc[0]);
+                for (size_t i = 0; i < 4; ++i) {
+                    Accumulators[0][i] = acc[i];
+                }
+
                 if (CountM == 8) {
-                    __builtin_mma_disassemble_acc (Accumulators[1], &acc[4]);
+                    for (size_t i = 0; i < 4; ++i) {
+                        Accumulators[1][i] = acc[i + 16];
+                    }
                 }
            }
 
@@ -309,22 +348,22 @@ MlasSgemmMMAProcessCount(
 
             if (CountN > 0) {
 
-                MlasLoopUnroll<RowCount, MlasSgemmMultiplyAlphaTrailingMMA>()(Accumulators[0], AlphaBroadcast);
-                MlasLoopUnroll<RowCount, MlasSgemmStoreScalarMMA<0>>()(Accumulators[0], C, ldc, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmMultiplyAlphaTrailingZVECTOR>()(Accumulators[0], AlphaBroadcast);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreScalarZVECTOR<0>>()(Accumulators[0], C, ldc, ZeroMode);
                 if (CountM == 8) {
-                    MlasLoopUnroll<RowCount, MlasSgemmMultiplyAlphaTrailingMMA>()(Accumulators[1], AlphaBroadcast);
-                    MlasLoopUnroll<RowCount, MlasSgemmStoreScalarMMA<0>>()(Accumulators[1], C + (ldc*4), ldc, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasSgemmMultiplyAlphaTrailingZVECTOR>()(Accumulators[1], AlphaBroadcast);
+                    MlasLoopUnroll<RowCount, MlasSgemmStoreScalarZVECTOR<0>>()(Accumulators[1], C + (ldc*4), ldc, ZeroMode);
                 }
                 if (CountN >= 2) {
-                    MlasLoopUnroll<RowCount, MlasSgemmStoreScalarMMA<1>>()(Accumulators[0], C, ldc, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasSgemmStoreScalarZVECTOR<1>>()(Accumulators[0], C, ldc, ZeroMode);
                     if (CountM == 8)  {
-                        MlasLoopUnroll<RowCount, MlasSgemmStoreScalarMMA<1>>()(Accumulators[1], C + (ldc*4), ldc, ZeroMode);
+                        MlasLoopUnroll<RowCount, MlasSgemmStoreScalarZVECTOR<1>>()(Accumulators[1], C + (ldc*4), ldc, ZeroMode);
                     }
                 }
                 if (CountN >= 3) {
-                    MlasLoopUnroll<RowCount, MlasSgemmStoreScalarMMA<2>>()(Accumulators[0], C, ldc, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasSgemmStoreScalarZVECTOR<2>>()(Accumulators[0], C, ldc, ZeroMode);
                     if (CountM == 8)  {
-                        MlasLoopUnroll<RowCount, MlasSgemmStoreScalarMMA<2>>()(Accumulators[1], C + (ldc*4), ldc, ZeroMode);
+                        MlasLoopUnroll<RowCount, MlasSgemmStoreScalarZVECTOR<2>>()(Accumulators[1], C + (ldc*4), ldc, ZeroMode);
                     }
                 }
             }
@@ -342,7 +381,7 @@ MlasSgemmMMAProcessCount(
 
 size_t
 MLASCALL
-MlasSgemmKernelPOWER10(
+MlasSgemmKernelZVECTOR(
     const float* A,
     const float* B,
     float* C,
@@ -399,9 +438,9 @@ Return Value:
     MLAS_FLOAT32X4 AlphaBroadcast = MlasBroadcastFloat32x4(alpha);
 
     if (CountM >= 8) {
-        RowsHandled = MlasSgemmMMAProcessCount<4>(A, B, C, 8 ,CountK, CountN, lda, ldc, AlphaBroadcast, ZeroMode);
+        RowsHandled = MlasSgemmZVECTORProcessCount<4>(A, B, C, 8 ,CountK, CountN, lda, ldc, AlphaBroadcast, ZeroMode);
     } else if (CountM >= 4) {
-        RowsHandled = MlasSgemmMMAProcessCount<4>(A, B, C, 4, CountK, CountN, lda, ldc, AlphaBroadcast, ZeroMode);
+        RowsHandled = MlasSgemmZVECTORProcessCount<4>(A, B, C, 4, CountK, CountN, lda, ldc, AlphaBroadcast, ZeroMode);
     } else if (CountM >= 2) {
         RowsHandled = MlasSgemmProcessCount<2>(A, B, C, CountK, CountN, lda, ldc, AlphaBroadcast, ZeroMode);
     } else {
