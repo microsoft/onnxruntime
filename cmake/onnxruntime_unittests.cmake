@@ -1289,6 +1289,14 @@ block()
     #   set_property(TARGET onnxruntime_provider_test APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2")
     set_property(TARGET onnxruntime_provider_test APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=0 -s SAFE_HEAP=0 -s STACK_OVERFLOW_CHECK=1")
   endif()
+
+  if (IOS)
+    add_custom_command(
+      TARGET onnxruntime_provider_test POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${TEST_DATA_SRC}
+      $<TARGET_FILE_DIR:onnxruntime_provider_test>/testdata)
+  endif()
 endblock()
 endif()
 
