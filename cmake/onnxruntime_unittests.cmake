@@ -807,7 +807,9 @@ if(NOT IOS)
     set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)
     file(GLOB onnx_test_runner_common_srcs CONFIGURE_DEPENDS
         ${onnx_test_runner_src_dir}/*.h
-        ${onnx_test_runner_src_dir}/*.cc)
+        ${onnx_test_runner_src_dir}/*.cc
+        ${onnx_test_runner_src_dir}/utils/*.h
+        ${onnx_test_runner_src_dir}/utils/*.cc)
 
     list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
 

@@ -58,7 +58,7 @@ void ParseSessionConfigs(const std::string& configs_string,
 }
 
 void ParseEpOptions(const std::string& input, std::vector<std::unordered_map<std::string, std::string>>& result) {
-  auto tokens = utils::SplitString(input, ";", true);
+  auto tokens = onnxruntime::utils::SplitString(input, ";", true);
 
   for (const auto& token : tokens) {
     result.emplace_back();  // Adds a new empty map

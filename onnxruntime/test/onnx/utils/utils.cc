@@ -1,13 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "utils.h"
+#include "strings_helper.h"
+#include <core/platform/path_lib.h>
 
 #include <cstdint>
 #include <filesystem>
 
 namespace onnxruntime {
 namespace test {
-namepsace utils {
+namespace utils {
   void ListEpDevices(const Ort::Env& env) {
     std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
 
@@ -36,7 +38,7 @@ namepsace utils {
                                         std::vector<std::string> & registered_plugin_eps) {
     if (!plugin_ep_names_and_libs.empty()) {
       std::unordered_map<std::string, std::string> ep_names_to_libs;
-      ParseSessionConfigs(ToUTF8String(plugin_ep_names_and_libs), ep_names_to_libs);
+      ParseSessionConfigs(onnxruntime::ToUTF8String(plugin_ep_names_and_libs), ep_names_to_libs);
       if (ep_names_to_libs.size() > 0) {
         for (auto& pair : ep_names_to_libs) {
           const std::filesystem::path library_path = pair.second;
