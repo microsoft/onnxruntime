@@ -150,7 +150,7 @@ $MAIN {
         var own_a1: vec4<u32> = tile_A[1][base_A + a_idx];
         var own_scale_a: output_element_t = scale_A[base_A + a_idx];
 
-#if has_zero_points
+#if has_zero_points && n_bits == 8
         if (sg_size == 16)
         {
             var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];

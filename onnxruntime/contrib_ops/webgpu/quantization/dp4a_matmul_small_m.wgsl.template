@@ -92,6 +92,7 @@ $MAIN {
 #else
                 inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 #endif
+
 #endif
             }
         }
