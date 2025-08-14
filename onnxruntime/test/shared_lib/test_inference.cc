@@ -2175,7 +2175,7 @@ TEST(CApiTest, io_binding) {
 TEST(CApiTest, io_binding_cuda) {
   Ort::SessionOptions session_options;
 #ifdef USE_TENSORRT
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
+  session_options.AppendExecutionProvider_TensorRT({});
 #else
   OrtCUDAProviderOptionsV2* options;
   Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
@@ -2376,22 +2376,17 @@ TEST(CApiTest, io_binding_qnn_htp_shared) {
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM) || defined(USE_DML)
 TEST(CApiTest, basic_cuda_graph) {
-  const auto& api = Ort::GetApi();
+  [[maybe_unused]] const auto& api = Ort::GetApi();
   Ort::SessionOptions session_options;
 
 #if defined(USE_TENSORRT)
   // Enable cuda graph in TRT provider option.
-  OrtTensorRTProviderOptionsV2* trt_options;
-  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
-  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
-      rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
-  std::vector<const char*> keys{"trt_cuda_graph_enable"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
+  Ort::TensorRTProviderOptions trt_options;
+  std::unordered_map<std::string, std::string> trt_options_map = {{"trt_cuda_graph_enable",
+                                                                   "1"}};
+  trt_options.Update(trt_options_map);
+  session_options.AppendExecutionProvider_TensorRT_V2(*trt_options);
 
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_trt_options.get()) == nullptr);
 #elif defined(USE_CUDA)
   // Enable cuda graph in cuda provider option.
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
@@ -3368,10 +3363,7 @@ TEST(CApiTest, TestSharedAllocators) {
   {
     auto mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
-    OrtArenaCfg* arena_cfg = nullptr;
-    ASSERT_TRUE(api.CreateArenaCfg(0, -1, -1, -1, &arena_cfg) == nullptr);
-    std::unique_ptr<OrtArenaCfg, decltype(api.ReleaseArenaCfg)> rel_arena_cfg(arena_cfg, api.ReleaseArenaCfg);
-
+    Ort::ArenaCfg arena_cfg(0, -1, -1, -1);
     // This creates an ORT-internal allocator instance and registers it in the environment for sharing
     // NOTE: On x86 builds arenas are not supported and will default to using non-arena based allocator
     ort_env->CreateAndRegisterAllocator(mem_info, arena_cfg);
@@ -3472,10 +3464,7 @@ TEST(CApiTest, TestSharedAllocators) {
   {
     auto cuda_meminfo = Ort::MemoryInfo("Cuda", OrtArenaAllocator, 0, OrtMemTypeDefault);
 
-    OrtArenaCfg* arena_cfg = nullptr;
-    ASSERT_TRUE(api.CreateArenaCfg(0, -1, -1, -1, &arena_cfg) == nullptr);
-    std::unique_ptr<OrtArenaCfg, decltype(api.ReleaseArenaCfg)> rel_arena_cfg(arena_cfg, api.ReleaseArenaCfg);
-
+    Ort::ArenaCfg arena_cfg(0, -1, -1, -1);
     ort_env->CreateAndRegisterAllocatorV2(onnxruntime::kCudaExecutionProvider,
                                           cuda_meminfo, {}, arena_cfg);
 
@@ -3696,24 +3685,16 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 
 #ifdef USE_TENSORRT
 TEST(TensorrtExecutionProviderTest, ShapeTensorTest) {
-  const auto& api = Ort::GetApi();
-
   // Test input tensor which is shape tensor with explicit trt profile shapes
   Ort::SessionOptions session_options;
-  OrtTensorRTProviderOptionsV2* trt_options;
-  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
-  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
-      rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
+  Ort::TensorRTProviderOptions trt_options;
 
-  const char* trt_profile_min_shapes = "data:2x2,shape:4x1";
-  const char* trt_profile_max_shapes = "data:2x2,shape:4x1";
-  const char* trt_profile_opt_shapes = "data:2x2,shape:4x1";
-  std::vector<const char*> keys{"trt_profile_min_shapes", "trt_profile_max_shapes", "trt_profile_opt_shapes"};
-  std::vector<const char*> values{trt_profile_min_shapes, trt_profile_max_shapes, trt_profile_opt_shapes};
-  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_trt_options.get()) == nullptr);
+  std::unordered_map<std::string, std::string> trt_options_map = {
+      {"trt_profile_min_shapes", "data:2x2,shape:4x1"},
+      {"trt_profile_max_shapes", "data:2x2,shape:4x1"},
+      {"trt_profile_opt_shapes", "data:2x2,shape:4x1"}};
+  trt_options.Update(trt_options_map);
+  session_options.AppendExecutionProvider_TensorRT_V2(*trt_options);
 
   auto model_path = ORT_TSTR("testdata/trt_reshape.onnx");
 
@@ -3736,37 +3717,24 @@ TEST(TensorrtExecutionProviderTest, ShapeTensorTest) {
 
   // Test input tensor which is shape tensor with implicit trt profile shapes
   Ort::SessionOptions session_options_2;
-  OrtTensorRTProviderOptionsV2* trt_options_2;
-  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options_2) == nullptr);
-  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
-      rel_trt_options_2(trt_options_2, api.ReleaseTensorRTProviderOptions);
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
-                  static_cast<OrtSessionOptions*>(session_options_2),
-                  rel_trt_options_2.get()) == nullptr);
+  Ort::TensorRTProviderOptions trt_options_2;
+  session_options_2.AppendExecutionProvider_TensorRT_V2(*trt_options_2);
   Ort::Session session_2(*ort_env, model_path, session_options_2);
-  session_2.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
+  session_2.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names, std::size(output_names));
 }
 
 TEST(CApiTest, TestExternalCUDAStreamWithIOBinding) {
-  const auto& api = Ort::GetApi();
   Ort::SessionOptions session_options;
-
-  OrtTensorRTProviderOptionsV2* trt_options;
-  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
-  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
-      rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
+  Ort::TensorRTProviderOptions trt_options;
 
   // updating provider option with user provided compute stream
   cudaStream_t compute_stream = nullptr;
-  void* user_compute_stream = nullptr;
   cudaStreamCreate(&compute_stream);
-  ASSERT_TRUE(api.UpdateTensorRTProviderOptionsWithValue(rel_trt_options.get(), "user_compute_stream", compute_stream) == nullptr);
-  ASSERT_TRUE(api.GetTensorRTProviderOptionsByName(rel_trt_options.get(), "user_compute_stream", &user_compute_stream) == nullptr);
+  trt_options.UpdateWithValue("user_compute_stream", compute_stream);
+  void* user_compute_stream = trt_options.GetptionByName("user_compute_stream");
   ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
 
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_trt_options.get()) == nullptr);
+  session_options.AppendExecutionProvider_TensorRT_V2(*trt_options);
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
@@ -3879,36 +3847,30 @@ class CApiTensorRTTest : public testing::Test, public ::testing::WithParamInterf
 TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
   std::string param = GetParam();
   size_t pos = param.find("=");
-  std::string option_name = param.substr(0, pos);
-  std::string option_value = param.substr(pos + 1);
+  const std::string option_name = param.substr(0, pos);
+  const std::string option_value = param.substr(pos + 1);
   ASSERT_NE(pos, std::string::npos);
-
-  const auto& api = Ort::GetApi();
-  OrtTensorRTProviderOptionsV2* trt_options;
-  OrtAllocator* allocator;
-  char* trt_options_str;
-  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
-  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
 
   const char* engine_cache_path = "./trt_engine_folder";
 
-  std::vector<const char*> keys{"device_id", "has_user_compute_stream", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable",
-                                "trt_engine_cache_path", option_name.c_str()};
+  Ort::TensorRTProviderOptions trt_options;
+  std::unordered_map<std::string, std::string> trt_options_map = {
+      {"device_id", "0"},
+      {"has_user_compute_stream", "0"},
+      {"trt_fp16_enable", "1"},
+      {"trt_int8_enable", "0"},
+      {"trt_engine_cache_enable", "1"},
+      {"trt_engine_cache_path", engine_cache_path},
+      {option_name, option_value}};
 
-  std::vector<const char*> values{"0", "0", "1", "0", "1",
-                                  engine_cache_path, option_value.c_str()};
+  trt_options.Update(trt_options_map);
 
-  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
-
-  ASSERT_TRUE(api.GetAllocatorWithDefaultOptions(&allocator) == nullptr);
-  ASSERT_TRUE(api.GetTensorRTProviderOptionsAsString(rel_trt_options.get(), allocator, &trt_options_str) == nullptr);
-  std::string s(trt_options_str);
-  ASSERT_TRUE(s.find(engine_cache_path) != std::string::npos);
-  ASSERT_TRUE(s.find(param.c_str()) != std::string::npos);
-  ASSERT_TRUE(api.AllocatorFree(allocator, (void*)trt_options_str) == nullptr);
+  std::string trt_options_str = trt_options.GetTensorRTProviderOptionsAsString();
+  ASSERT_NE(trt_options_str.find(engine_cache_path), std::string::npos);
+  ASSERT_NE(trt_options_str.find(param), std::string::npos);
 
   Ort::SessionOptions session_options;
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(static_cast<OrtSessionOptions*>(session_options), rel_trt_options.get()) == nullptr);
+  session_options.AppendExecutionProvider_TensorRT_V2(*trt_options);
 
   // simple inference test
   // prepare inputs

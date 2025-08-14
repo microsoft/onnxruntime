@@ -488,6 +488,40 @@ inline ThreadingOptions& ThreadingOptions::SetGlobalCustomJoinThreadFn(OrtCustom
   return *this;
 }
 
+inline TensorRTProviderOptions::TensorRTProviderOptions() {
+  ThrowOnError(GetApi().CreateTensorRTProviderOptions(&this->p_));
+}
+
+inline void TensorRTProviderOptions::Update(const std::unordered_map<std::string, std::string>& options) {
+  std::vector<const char*> keys;
+  std::vector<const char*> values;
+  keys.reserve(options.size());
+  values.reserve(options.size());
+  for (const auto& kv : options) {
+    keys.push_back(kv.first.c_str());
+    values.push_back(kv.second.c_str());
+  }
+  ThrowOnError(GetApi().UpdateTensorRTProviderOptions(p_, keys.data(), values.data(), options.size()));
+}
+
+inline void TensorRTProviderOptions::UpdateWithValue(const char* key, void* value) {
+  ThrowOnError(GetApi().UpdateTensorRTProviderOptionsWithValue(p_, key, value));
+}
+
+inline void* TensorRTProviderOptions::GetptionByName(const char* name) const {
+  void* value = nullptr;
+  ThrowOnError(GetApi().GetTensorRTProviderOptionsByName(p_, name, &value));
+  return value;
+}
+
+inline std::string TensorRTProviderOptions::GetTensorRTProviderOptionsAsString() const {
+  AllocatorWithDefaultOptions allocator;
+  char* options_str = nullptr;
+  ThrowOnError(GetApi().GetTensorRTProviderOptionsAsString(p_, allocator, &options_str));
+  std::unique_ptr<void, detail::AllocatedFree> options_str_g(options_str, detail::AllocatedFree(allocator));
+  return std::string(options_str);
+}
+
 namespace detail {
 template <typename T>
 inline const char* KeyValuePairsImpl<T>::GetValue(const char* key) const {

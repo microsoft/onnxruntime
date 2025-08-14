@@ -574,9 +574,13 @@ ORT_DEFINE_RELEASE(ValueInfo);
 ORT_DEFINE_RELEASE(Node);
 ORT_DEFINE_RELEASE(Graph);
 ORT_DEFINE_RELEASE(Model);
-ORT_DEFINE_RELEASE(KeyValuePairs)
+ORT_DEFINE_RELEASE(KeyValuePairs);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
+
+// This is defined explicitly since OrtTensorRTProviderOptionsV2 is not a C API type,
+// but the struct has V2 in its name to indicate that it is the second version of the options.
+inline void OrtRelease(OrtTensorRTProviderOptionsV2* ptr) { GetApi().ReleaseTensorRTProviderOptions(ptr); }
 
 #undef ORT_DEFINE_RELEASE
 #undef ORT_DEFINE_RELEASE_FROM_API_STRUCT
@@ -629,6 +633,7 @@ struct Base {
   }
 
   constexpr operator contained_type*() const noexcept { return p_; }
+  constexpr contained_type& operator*() const noexcept { return *p_; }
 
   /// \brief Relinquishes ownership of the contained C object pointer
   /// The underlying object is not destroyed
@@ -673,6 +678,7 @@ struct Base<Unowned<T>> {
   }
 
   constexpr operator contained_type*() const noexcept { return p_; }
+  constexpr contained_type& operator*() const noexcept { return *p_; }
 
  protected:
   contained_type* p_{};
@@ -701,6 +707,7 @@ struct TypeInfo;
 struct Session;
 struct SessionOptions;
 struct SyncStream;
+struct TensorRTProviderOptions;
 struct Value;
 struct ValueInfo;
 
@@ -756,6 +763,25 @@ struct ThreadingOptions : detail::Base<OrtThreadingOptions> {
 
   /// \brief Wraps OrtApi::SetGlobalCustomJoinThreadFn
   ThreadingOptions& SetGlobalCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);
+};
+
+/** \brief The TensorRTOptions (V2)
+ *
+ * Used to pass options to TRT EP
+ */
+struct TensorRTProviderOptions : detail::Base<OrtTensorRTProviderOptionsV2> {
+  TensorRTProviderOptions(std::nullptr_t) {}
+  /// \brief Wraps OrtApi::CreateTensorRTProviderOptionsV2
+  TensorRTProviderOptions();
+  ///< Wrapper around OrtApi::UpdateTensorRTProviderOptions
+  void Update(const std::unordered_map<std::string, std::string>& options);
+  ///< Wrapper around OrtApi::UpdateTensorRTProviderOptions
+  void UpdateWithValue(const char* key, void* value);
+
+  ///< Wrapper around  OrtApi::GetTensorRTProviderOptionsByName
+  void* GetptionByName(const char* name) const;
+  ///< Wrapper around  OrtApi::GetTensorRTProviderOptionsAsString
+  std::string GetTensorRTProviderOptionsAsString() const;
 };
 
 namespace detail {

@@ -208,13 +208,10 @@ TEST_P(ModelTest, Run) {
 #endif
       else if (provider_name == "tensorrt") {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
-          OrtTensorRTProviderOptionsV2 params;
-          ortso.AppendExecutionProvider_TensorRT_V2(params);
+          Ort::TensorRTProviderOptions params;
+          ortso.AppendExecutionProvider_TensorRT_V2(*params);
         } else {
-          OrtTensorRTProviderOptionsV2* ep_option = nullptr;
-          ASSERT_CXX_ORTSTATUS_OK(OrtApis::CreateTensorRTProviderOptions(&ep_option));
-          std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(&OrtApis::ReleaseTensorRTProviderOptions)>
-              rel_cuda_options(ep_option, &OrtApis::ReleaseTensorRTProviderOptions);
+          Ort::TensorRTProviderOptions ep_option;
           ortso.AppendExecutionProvider_TensorRT_V2(*ep_option);
         }
         // Enable CUDA fallback
