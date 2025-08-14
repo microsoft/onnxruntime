@@ -1560,19 +1560,26 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         adb_shell(f"rm {device_dir}/onnxruntime_test_all")
 
         if args.build_java:
-            # use the gradle wrapper under <repo root>/java
-            gradle_executable = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
-            android_test_path = os.path.join(cwd, "java", "androidtest", "android")
-            run_subprocess(
-                [
-                    gradle_executable,
-                    "--no-daemon",
-                    f"-DminSdkVer={args.android_api}",
-                    "clean",
-                    "connectedDebugAndroidTest",
-                ],
-                cwd=android_test_path,
-            )
+            try:
+                run_subprocess([sdk_tool_paths.adb, "logcat", "-c"])
+
+                # use the gradle wrapper under <repo root>/java
+                gradle_executable = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
+                android_test_path = os.path.join(cwd, "java", "androidtest", "android")
+                run_subprocess(
+                    [
+                        gradle_executable,
+                        "--no-daemon",
+                        f"-DminSdkVer={args.android_api}",
+                        "clean",
+                        "connectedDebugAndroidTest",
+                    ],
+                    cwd=android_test_path,
+                )
+            except:
+                log.warning("test failed, dumping android logs with logcat")
+                run_subprocess([sdk_tool_paths.adb, "logcat", "-d"])
+                raise
 
         if args.use_nnapi:
             run_adb_shell(f"{device_dir}/onnx_test_runner -e nnapi {device_dir}/test")
