@@ -22,6 +22,10 @@ std::vector<OrtHardwareDevice> GetDevicesByType(OrtHardwareDeviceType device_typ
 }  // namespace
 
 TEST(DeviceDiscoveryTest, HasCpuDevice) {
+#if defined(__wasm__)
+  GTEST_SKIP() << "CPU device discovery is not implemented for this platform.";
+#endif  // defined(__WASM__)
+
   const auto cpu_devices = GetDevicesByType(OrtHardwareDeviceType_CPU);
   ASSERT_GT(cpu_devices.size(), 0);
   ASSERT_NE(cpu_devices[0].vendor_id, 0);
