@@ -27,6 +27,10 @@
 #include "testenv.h"
 #include "providers.h"
 
+#include "command_args_parser.h"
+#include "utils/utils.h"
+#include "utils/strings_helper.h"
+
 #include <google/protobuf/stubs/common.h>
 #include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -42,73 +46,6 @@
 using namespace onnxruntime;
 
 namespace {
-void usage() {
-  auto version_string = Ort::GetVersionString();
-  printf(
-      "onnx_test_runner [options...] <data_root>\n"
-      "Options:\n"
-      "\t-j [models]: Specifies the number of models to run simultaneously.\n"
-      "\t-A : Disable memory arena\n"
-      "\t-M : Disable memory pattern\n"
-      "\t-c [runs]: Specifies the number of Session::Run() to invoke simultaneously for each model.\n"
-      "\t-r [repeat]: Specifies the number of times to repeat\n"
-      "\t-I [inference_mode]: Use inference mode. Save the inference result and skip the output value comparison.\n"
-      "\t-v: verbose\n"
-      "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
-      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
-      "Default: 'cpu'.\n"
-      "\t-p: Pause after launch, can attach debugger and continue\n"
-      "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
-      "\t-t: Specify custom relative tolerance values for output value comparison. default: 1e-5\n"
-      "\t-a: Specify custom absolute tolerance values for output value comparison. default: 1e-5\n"
-      "\t-C: Specify session configuration entries as key-value pairs: -C \"<key1>|<value1> <key2>|<value2>\" \n"
-      "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
-      "\t    [Example] -C \"session.disable_cpu_ep_fallback|1 ep.context_enable|1\" \n"
-      "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
-      "\t    [QNN only] [backend_type]: QNN backend type. E.g., 'cpu', 'htp'. Mutually exclusive with 'backend_path'.\n"
-      "\t    [QNN only] [backend_path]: QNN backend path. E.g., '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. Mutually exclusive with 'backend_type'.\n"
-      "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
-      "\t    [QNN only] [profiling_file_path]: QNN profiling file path if ETW not enabled.\n"
-      "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
-      "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
-      "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
-      "\t    'high_power_saver', 'low_balanced', 'extreme_power_saver', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
-      "\t    [QNN only] [op_packages]: QNN UDO package, allowed format: \n"
-      "\t    op_packages|<op_type>:<op_package_path>:<interface_symbol_name>[:<target>],<op_type2>:<op_package_path2>:<interface_symbol_name2>[:<target2>]. \n"
-      "\t    [QNN only] [qnn_context_priority]: QNN context priority, options: 'low', 'normal', 'normal_high', 'high'. Default to 'normal'. \n"
-      "\t    0 means dump the QNN context binary into separate bin file and set the path in the Onnx skeleton model.\n"
-      "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
-      "\t    [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: \n"
-      "\t    '0', '1', '2', '3', default is '0'.\n"
-      "\t    [QNN only] [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
-      "\t    [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. \n"
-      "\t    Options are '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
-      "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
-      "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
-      "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
-      "\t    [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
-      "\t    Defaults to '0' (QNN EP handles the graph I/O quantization and dequantization). \n"
-      "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
-      "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_type|cpu\" \n\n"
-      "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
-      "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
-      "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
-      "\t    [SNPE only] [enable_init_cache]: enable SNPE init caching feature, set to 1 to enabled it. Disabled by default. \n"
-      "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
-      "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
-      "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 3 (layout), 99 (all).\n"
-      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. "
-      "\t-f: Enable EP context cache generation.\n"
-      "\t-b: Disable EP context embed mode.\n"
-      "\n"
-      "\t-h: help\n"
-      "\n"
-      "onnxruntime version: %s\n",
-      version_string.c_str());
-}
-
 static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino, bool useCustom, double atol, double rtol) {
   TestTolerances::Map absolute_overrides;
   TestTolerances::Map relative_overrides;
@@ -139,67 +76,6 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino,
   return TestTolerances(
       overrides_json["atol_default"], overrides_json["rtol_default"], absolute_overrides, relative_overrides);
 }
-
-static bool ParseSessionConfigs(const std::string& configs_string,
-                                std::unordered_map<std::string, std::string>& session_configs) {
-  std::istringstream ss(configs_string);
-  std::string token;
-
-  while (ss >> token) {
-    if (token == "") {
-      continue;
-    }
-
-    std::string_view token_sv(token);
-
-    auto pos = token_sv.find("|");
-    if (pos == std::string_view::npos || pos == 0 || pos == token_sv.length()) {
-      // Error: must use a '|' to separate the key and value for session configuration entries.
-      return false;
-    }
-
-    std::string key(token_sv.substr(0, pos));
-    std::string value(token_sv.substr(pos + 1));
-
-    auto it = session_configs.find(key);
-    if (it != session_configs.end()) {
-      // Error: specified duplicate session configuration entry: {key}
-      return false;
-    }
-
-    session_configs.insert(std::make_pair(std::move(key), std::move(value)));
-  }
-
-  return true;
-}
-
-#ifdef _WIN32
-int GetNumCpuCores() {
-  SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
-  DWORD returnLength = sizeof(buffer);
-  if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
-    // try GetSystemInfo
-    SYSTEM_INFO sysInfo;
-    GetSystemInfo(&sysInfo);
-    if (sysInfo.dwNumberOfProcessors <= 0) {
-      ORT_THROW("Fatal error: 0 count processors from GetSystemInfo");
-    }
-    // This is the number of logical processors in the current group
-    return sysInfo.dwNumberOfProcessors;
-  }
-  int processorCoreCount = 0;
-  int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-  for (int i = 0; i != count; ++i) {
-    if (buffer[i].Relationship == RelationProcessorCore) {
-      ++processorCoreCount;
-    }
-  }
-  if (!processorCoreCount) ORT_THROW("Fatal error: 0 count processors from GetLogicalProcessorInformation");
-  return processorCoreCount;
-}
-#else
-int GetNumCpuCores() { return static_cast<int>(std::thread::hardware_concurrency()); }
-#endif
 }  // namespace
 
 #ifdef _WIN32
@@ -207,225 +83,22 @@ int real_main(int argc, wchar_t* argv[], Ort::Env& env) {
 #else
 int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
-  // if this var is not empty, only run the tests with name in this list
-  std::vector<std::basic_string<PATH_CHAR_TYPE>> whitelisted_test_cases;
-  int concurrent_session_runs = GetNumCpuCores();
-  bool enable_cpu_mem_arena = true;
-  ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-  int repeat_count = 1;
-  bool inference_mode = false;
-  int p_models = GetNumCpuCores();
-  bool enable_cuda = false;
-  bool enable_dnnl = false;
-  bool enable_openvino = false;
-  bool enable_tensorrt = false;
-  bool enable_mem_pattern = true;
-  bool enable_qnn = false;
-  bool enable_nnapi = false;
-  bool enable_vsinpu = false;
-  bool enable_coreml = false;
-  bool enable_snpe = false;
-  bool enable_dml = false;
-  bool enable_acl = false;
-  bool enable_armnn = false;
-  bool enable_rocm = false;
-  bool enable_migraphx = false;
-  bool enable_webgpu = false;
-  bool enable_xnnpack = false;
-  bool override_tolerance = false;
-  double atol = 1e-5;
-  double rtol = 1e-5;
-  int device_id = 0;
-  GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
-  bool user_graph_optimization_level_set = false;
-  bool set_denormal_as_zero = false;
-  std::basic_string<ORTCHAR_T> ep_runtime_config_string;
-  std::unordered_map<std::string, std::string> session_config_entries;
-  std::string provider_name = "cpu";
-
+  test::TestConfig test_config;
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
-  bool verbose_logging_required = false;
-  bool ep_context_enable = false;
-  bool disable_ep_context_embed_mode = false;
 
-  bool pause = false;
-  {
-    int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:IMn:r:e:t:a:xvo:d:C:i:pzfb"))) != -1) {
-      switch (ch) {
-        case 'A':
-          enable_cpu_mem_arena = false;
-          break;
-        case 'v':
-          verbose_logging_required = true;
-          break;
-        case 'c':
-          concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-          if (concurrent_session_runs <= 0) {
-            usage();
-            return -1;
-          }
-          break;
-        case 'j':
-          p_models = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-          if (p_models <= 0) {
-            usage();
-            return -1;
-          }
-          break;
-        case 'r':
-          repeat_count = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-          if (repeat_count <= 0) {
-            usage();
-            return -1;
-          }
-          break;
-        case 'I':
-          inference_mode = true;
-          break;
-        case 'M':
-          enable_mem_pattern = false;
-          break;
-        case 'n':
-          // run only some whitelisted tests
-          // TODO: parse name str to an array
-          whitelisted_test_cases.emplace_back(optarg);
-          break;
-        case 'e':
-          provider_name = ToUTF8String(optarg);
-          if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
-            // do nothing
-          } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
-            enable_cuda = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
-            enable_dnnl = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
-            enable_openvino = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
-            enable_tensorrt = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
-            enable_qnn = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
-            enable_nnapi = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("vsinpu"))) {
-            enable_vsinpu = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
-            enable_coreml = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("snpe"))) {
-            enable_snpe = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
-            enable_dml = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
-            enable_acl = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
-            enable_armnn = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("rocm"))) {
-            enable_rocm = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
-            enable_migraphx = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("webgpu"))) {
-            enable_webgpu = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("xnnpack"))) {
-            enable_xnnpack = true;
-          } else {
-            usage();
-            return -1;
-          }
-          break;
-        case 't':
-          override_tolerance = true;
-          rtol = OrtStrtod<PATH_CHAR_TYPE>(optarg, nullptr);
-          break;
-        case 'a':
-          override_tolerance = true;
-          atol = OrtStrtod<PATH_CHAR_TYPE>(optarg, nullptr);
-          break;
-        case 'x':
-          execution_mode = ExecutionMode::ORT_PARALLEL;
-          break;
-        case 'p':
-          pause = true;
-          break;
-        case 'o': {
-          int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-          switch (tmp) {
-            case ORT_DISABLE_ALL:
-              graph_optimization_level = ORT_DISABLE_ALL;
-              break;
-            case ORT_ENABLE_BASIC:
-              graph_optimization_level = ORT_ENABLE_BASIC;
-              break;
-            case ORT_ENABLE_EXTENDED:
-              graph_optimization_level = ORT_ENABLE_EXTENDED;
-              break;
-            case ORT_ENABLE_LAYOUT:
-              graph_optimization_level = ORT_ENABLE_LAYOUT;
-              break;
-            case ORT_ENABLE_ALL:
-              graph_optimization_level = ORT_ENABLE_ALL;
-              break;
-            default: {
-              if (tmp > ORT_ENABLE_ALL) {  // relax constraint
-                graph_optimization_level = ORT_ENABLE_ALL;
-              } else {
-                fprintf(stderr, "See usage for valid values of graph optimization level\n");
-                usage();
-                return -1;
-              }
-            }
-          }
-          user_graph_optimization_level_set = true;
-          break;
-        }
-        case 'd':
-          device_id = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-          if (device_id < 0) {
-            usage();
-            return -1;
-          }
-          break;
-        case 'C':
-          if (!ParseSessionConfigs(ToUTF8String(optarg), session_config_entries)) {
-            return -1;
-          }
-          break;
-        case 'i':
-          ep_runtime_config_string = optarg;
-          break;
-        case 'z':
-          set_denormal_as_zero = true;
-          break;
-        case 'b':
-          disable_ep_context_embed_mode = true;
-          break;
-        case 'f':
-          ep_context_enable = true;
-          break;
-        case '?':
-        case 'h':
-        default:
-          usage();
-          return -1;
-      }
-    }
+  if (!test::CommandLineParser::ParseArguments(test_config, argc, argv)) {
+    std::cerr << "See 'onnx_test_runner --help'." << std::endl;
+    return -1;
   }
 
   // TODO: Support specifying all valid levels of logging
   // Currently the logging level is ORT_LOGGING_LEVEL_ERROR by default and
   // if the user adds -v, the logging level is ORT_LOGGING_LEVEL_VERBOSE
-  if (verbose_logging_required) {
+  if (test_config.verbose_logging_required) {
     logging_level = ORT_LOGGING_LEVEL_VERBOSE;
   }
 
-  argc -= optind;
-  argv += optind;
-  if (argc < 1) {
-    fprintf(stderr, "please specify a test data dir\n");
-    usage();
-    return -1;
-  }
-
-  if (pause) {
+  if (test_config.pause) {
     printf("Enter to continue...\n");
     fflush(stdout);
     (void)getchar();
@@ -447,6 +120,16 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
   }
 
+  if (!test_config.plugin_ep_names_and_libs.empty()) {
+    test::utils::RegisterExecutionProviderLibrary(env, test_config.plugin_ep_names_and_libs, test_config.registered_plugin_eps);
+  }
+
+  auto unregister_plugin_eps_at_scope_exit = gsl::finally([&]() {
+    if (!test_config.registered_plugin_eps.empty()) {
+      test::utils::UnregisterExecutionProviderLibrary(env, test_config.registered_plugin_eps);  // this won't throw
+    }
+  });
+
   std::vector<std::basic_string<PATH_CHAR_TYPE>> data_dirs;
   TestResultStat stat;
 
@@ -458,36 +141,121 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   {
     Ort::SessionOptions sf;
 
-    if (enable_cpu_mem_arena)
+    // Add EP devices if any (created by plugin EP)
+    if (!test_config.registered_plugin_eps.empty()) {
+      std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
+      // EP -> associated EP devices (All OrtEpDevice instances must be from the same execution provider)
+      std::unordered_map<std::string, std::vector<Ort::ConstEpDevice>> added_ep_devices;
+      std::unordered_set<int> added_ep_device_index_set;
+
+      auto& ep_list = test_config.plugin_ep_list;
+      std::unordered_set<std::string> ep_set(ep_list.begin(), ep_list.end());
+
+      // Select EP devices by provided device index
+      if (!test_config.selected_ep_device_indices.empty()) {
+        std::vector<int> device_list;
+        device_list.reserve(test_config.selected_ep_device_indices.size());
+        test::utils::ParseEpDeviceIndexList(test_config.selected_ep_device_indices, device_list);
+        for (auto index : device_list) {
+          if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
+            fprintf(stderr, "%s", "The device index provided is not correct. Will skip this device id.");
+            continue;
+          }
+
+          Ort::ConstEpDevice& device = ep_devices[index];
+          if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
+            if (added_ep_device_index_set.find(index) == added_ep_device_index_set.end()) {
+              added_ep_devices[device.EpName()].push_back(device);
+              added_ep_device_index_set.insert(index);
+              fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s] has been added to session.\n", index, device.EpName());
+            }
+          } else {
+            std::string ep_list_string;
+            for (size_t i = 0; i < ep_list.size(); ++i) {
+              ep_list_string += ep_list[i];
+              if (i + 1 < ep_list.size()) {
+                ep_list_string += ", ";
+              }
+            }
+            std::string err_msg = "[Plugin EP] [WARNING] : The EP device index and its corresponding OrtEpDevice is not created from " +
+                                  ep_list_string + ". Will skip adding this device.\n";
+            fprintf(stderr, "%s", err_msg.c_str());
+          }
+        }
+      } else {
+        // Find and select the OrtEpDevice associated with the EP in "--plugin_eps".
+        for (size_t index = 0; index < ep_devices.size(); ++index) {
+          Ort::ConstEpDevice& device = ep_devices[index];
+          if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
+            added_ep_devices[device.EpName()].push_back(device);
+            fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.\n", static_cast<int>(index), device.EpName());
+          }
+        }
+      }
+
+      if (added_ep_devices.empty()) {
+        ORT_THROW("[ERROR] [Plugin EP]: No matching EP devices found.");
+      }
+
+      std::string ep_option_string = ToUTF8String(test_config.ep_runtime_config_string);
+
+      // EP's associated provider option lists
+      std::vector<std::unordered_map<std::string, std::string>> ep_options_list;
+      test::utils::ParseEpOptions(ep_option_string, ep_options_list);
+
+      // If user only provide the EPs' provider option lists for the first several EPs,
+      // add empty provider option lists for the rest EPs.
+      if (ep_options_list.size() < ep_list.size()) {
+        for (size_t i = ep_options_list.size(); i < ep_list.size(); ++i) {
+          ep_options_list.emplace_back();  // Adds a new empty map
+        }
+      } else if (ep_options_list.size() > ep_list.size()) {
+        ORT_THROW("[ERROR] [Plugin EP]: Too many EP provider option lists provided.");
+      }
+
+      // EP -> associated provider options
+      std::unordered_map<std::string, std::unordered_map<std::string, std::string>> ep_options_map;
+      for (size_t i = 0; i < ep_list.size(); ++i) {
+        ep_options_map.emplace(ep_list[i], ep_options_list[i]);
+      }
+
+      for (auto& ep_and_devices : added_ep_devices) {
+        auto& ep = ep_and_devices.first;
+        auto& devices = ep_and_devices.second;
+        sf.AppendExecutionProvider_V2(env, devices, ep_options_map[ep]);
+      }
+    }
+
+    if (test_config.enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
     else
       sf.DisableCpuMemArena();
-    if (enable_mem_pattern)
+    if (test_config.enable_mem_pattern)
       sf.EnableMemPattern();
     else
       sf.DisableMemPattern();
-    sf.SetExecutionMode(execution_mode);
-    if (set_denormal_as_zero)
+    sf.SetExecutionMode(test_config.execution_mode);
+    if (test_config.set_denormal_as_zero)
       sf.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
 
-    if (ep_context_enable)
+    if (test_config.ep_context_enable)
       sf.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-    if (disable_ep_context_embed_mode) {
+    if (test_config.disable_ep_context_embed_mode) {
       sf.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "0");
     } else {
       sf.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "1");
     }
 
-    for (auto& it : session_config_entries) {
+    for (auto& it : test_config.session_config_entries) {
       sf.AddConfigEntry(it.first.c_str(), it.second.c_str());
     }
 
-    if (enable_tensorrt) {
+    if (test_config.enable_tensorrt) {
 #ifdef USE_TENSORRT
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, test_config.device_id));
 #ifdef USE_CUDA
       OrtCUDAProviderOptionsV2 cuda_options;
-      cuda_options.device_id = device_id;
+      cuda_options.device_id = test_config.device_id;
       cuda_options.do_copy_in_default_stream = true;
       cuda_options.use_tf32 = false;
       // TODO: Support arena configuration for users of test runner
@@ -498,7 +266,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_openvino) {
+    if (test_config.enable_openvino) {
 #ifdef USE_OPENVINO
       // Setting default optimization level for OpenVINO can be overridden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
@@ -508,10 +276,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_cuda) {
+    if (test_config.enable_cuda) {
 #ifdef USE_CUDA
       OrtCUDAProviderOptionsV2 cuda_options;
-      cuda_options.device_id = device_id;
+      cuda_options.device_id = test_config.device_id;
       cuda_options.do_copy_in_default_stream = true;
       cuda_options.use_tf32 = false;
       // TODO: Support arena configuration for users of test runner
@@ -521,7 +289,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_dnnl) {
+    if (test_config.enable_dnnl) {
 #ifdef USE_DNNL
       // Generate dnnl_options to optimize dnnl performance
       OrtDnnlProviderOptions dnnl_options;
@@ -536,7 +304,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_qnn) {
+    if (test_config.enable_qnn) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
       std::string option_string = ToUTF8String(ep_runtime_config_string);
@@ -640,7 +408,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_nnapi) {
+    if (test_config.enable_nnapi) {
 #ifdef USE_NNAPI
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf, 0));
 #else
@@ -648,7 +416,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_vsinpu) {
+    if (test_config.enable_vsinpu) {
 #ifdef USE_VSINPU
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_VSINPU(sf));
 #else
@@ -656,7 +424,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_coreml) {
+    if (test_config.enable_coreml) {
 #ifdef USE_COREML
       sf.AppendExecutionProvider("CoreML", {});
 #else
@@ -664,7 +432,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_snpe) {
+    if (test_config.enable_snpe) {
 #ifdef USE_SNPE
 #ifdef _MSC_VER
       std::string option_string = ToUTF8String(ep_runtime_config_string);
@@ -719,7 +487,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       return -1;
 #endif
     }
-    if (enable_dml) {
+    if (test_config.enable_dml) {
 #ifdef USE_DML
       fprintf(stderr, "Disabling mem pattern and forcing single-threaded execution since DML is used");
       sf.DisableMemPattern();
@@ -732,7 +500,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       return -1;
 #endif
     }
-    if (enable_acl) {
+    if (test_config.enable_acl) {
 #ifdef USE_ACL
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, false));
 #else
@@ -740,7 +508,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       return -1;
 #endif
     }
-    if (enable_armnn) {
+    if (test_config.enable_armnn) {
 #ifdef USE_ARMNN
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
@@ -748,7 +516,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       return -1;
 #endif
     }
-    if (enable_rocm) {
+    if (test_config.enable_rocm) {
 #ifdef USE_ROCM
       OrtROCMProviderOptions rocm_options;
       rocm_options.do_copy_in_default_stream = true;
@@ -759,7 +527,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       return -1;
 #endif
     }
-    if (enable_migraphx) {
+    if (test_config.enable_migraphx) {
 #ifdef USE_MIGRAPHX
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(sf, device_id));
 #else
@@ -768,7 +536,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
     }
 
-    if (enable_xnnpack) {
+    if (test_config.enable_xnnpack) {
 #ifdef USE_XNNPACK
       sf.AppendExecutionProvider("XNNPACK", {});
 #else
@@ -777,7 +545,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
     }
 
-    if (enable_webgpu) {
+    if (test_config.enable_webgpu) {
 #ifdef USE_WEBGPU
       sf.AppendExecutionProvider("WebGPU", {});
 #else
@@ -786,8 +554,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
     }
 
-    if (user_graph_optimization_level_set) {
-      sf.SetGraphOptimizationLevel(graph_optimization_level);
+    if (test_config.user_graph_optimization_level_set) {
+      sf.SetGraphOptimizationLevel(test_config.graph_optimization_level);
     }
 
     // TODO: Get these from onnx_backend_test_series_filters.jsonc.
@@ -923,19 +691,19 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
 
-    if (enable_cuda) {
+    if (test_config.enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     }
-    if (enable_dml) {
+    if (test_config.enable_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
     }
-    if (enable_dnnl) {
+    if (test_config.enable_dnnl) {
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
       all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
-    if (enable_qnn) {
+    if (test_config.enable_qnn) {
       all_disabled_tests.insert(std::begin(qnn_disabled_tests), std::end(qnn_disabled_tests));
       all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
@@ -945,11 +713,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
-    auto broken_tests = GetBrokenTests(provider_name);
-    auto broken_tests_keyword_set = GetBrokenTestsKeyWordSet(provider_name);
+    auto broken_tests = GetBrokenTests(test_config.provider_name);
+    auto broken_tests_keyword_set = GetBrokenTestsKeyWordSet(test_config.provider_name);
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases,
-              LoadTestTolerances(enable_cuda, enable_openvino, override_tolerance, atol, rtol),
+    LoadTests(data_dirs, test_config.whitelisted_test_cases,
+              LoadTestTolerances(test_config.enable_cuda, test_config.enable_openvino, test_config.override_tolerance, test_config.atol, test_config.rtol),
               all_disabled_tests,
               std::move(broken_tests),
               std::move(broken_tests_keyword_set),
@@ -959,8 +727,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               });
 
     auto tp = TestEnv::CreateThreadPool(Env::Default());
-    TestEnv test_env(env, sf, tp.get(), std::move(tests), stat, inference_mode);
-    Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
+    TestEnv test_env(env, sf, tp.get(), std::move(tests), stat, test_config.inference_mode);
+    Status st = test_env.Run(test_config.p_models, test_config.concurrent_session_runs, test_config.repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;

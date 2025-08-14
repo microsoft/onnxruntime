@@ -37,7 +37,7 @@ std::vector<std::shared_ptr<TestCaseResult>> TestCaseDriver::RunParallel(const T
                                                                          size_t concurrent_runs, bool inference_mode) {
   assert(parallel_models > 1);
   parallel_models = std::min(parallel_models, test_env.GetTests().size());
-  LOGF_DEFAULT(ERROR, "Running tests in parallel: at most %u models at any time", static_cast<unsigned int>(parallel_models));
+  // LOGF_DEFAULT(ERROR, "Running tests in parallel: at most %u models at any time", static_cast<unsigned int>(parallel_models));
   TestCaseDriver driver(test_env, concurrent_runs, inference_mode);
   driver.RunModelsAsync(parallel_models);
   auto results = driver.TakeResults();
@@ -59,7 +59,7 @@ void TestCaseDriver::RunModelsAsync(size_t parallel_models) {
   // This thread is not on a threadpool so we are not using it
   // to run anything. Just wait.
   Wait();
-  LOGF_DEFAULT(ERROR, "Running tests finished. Generating report");
+  // LOGF_DEFAULT(ERROR, "Running tests finished. Generating report");
 }
 
 void TestCaseDriver::OnTestCaseComplete(size_t test_case_id, std::shared_ptr<TestCaseResult> result) {
