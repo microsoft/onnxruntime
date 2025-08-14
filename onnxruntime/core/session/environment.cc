@@ -182,11 +182,6 @@ Status Environment::UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool 
     shared_ort_allocators_.erase(it2);
   }
 
-  // also remove an arena wrapped allocator from an EP if the user called CreateSharedAllocator to create one
-  if (auto it3 = arena_ort_allocators_.find(&mem_info); it3 != arena_ort_allocators_.end()) {
-    arena_ort_allocators_.erase(it3);
-  }
-
   if (found_shared_allocator) {
     shared_allocators_.erase(it);
   }
@@ -436,6 +431,10 @@ Environment::~Environment() {
   // instance and will call Release on it. If the plugin EP has been freed the Release will fail.
   shared_allocators_.clear();
 
+  // and as any OrtAllocator instances in shared_ort_allocators_ were owned by values in shared_allocators_ and have 
+  // now been released we need to clear that too before calling UnregisterExecutionProviderLibrary().
+  shared_ort_allocators_.clear();
+
 #if !defined(ORT_MINIMAL_BUILD)
   // unregister any remaining EP libraries so they're cleaned up in a determistic way.
   while (!ep_libraries_.empty()) {
@@ -671,11 +670,6 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
   if (auto it = FindExistingAllocator(shared_ort_allocators_, memory_info, /*match_name*/ true);
       it != shared_ort_allocators_.end()) {
     shared_ort_allocators_.erase(it);
-  }
-
-  // if a previous call created an arena wrapped allocator for the EP's memory_info we also need to remove that
-  if (auto it = arena_ort_allocators_.find(&memory_info); it != arena_ort_allocators_.end()) {
-    arena_ort_allocators_.erase(it);
   }
 
   // we only want one shared allocator for an OrtDevice in the shared_allocators_ so that it's deterministic which
