@@ -98,6 +98,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                !subgraph_context_.has_dynamic_input_shape &&
                                !session_context_.so_context_enable &&
                                session_context_.reshape.empty() &&
+                               session_context_.layout.empty() &&
                                !enable_causallm &&
                                !eligible_for_cpu_fallback &&
                                auto_unified_compile);
