@@ -179,6 +179,18 @@ struct TensorCheck {
   }
 };
 
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+struct TensorCheck<Float4E2M1x2> {
+  void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
+                  const std::string& /*provider_type*/) const {
+    // TODO: Implement
+    return;
+
+  }
+};
+#endif
+
 template <>
 struct TensorCheck<Int4x2> {
   void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
@@ -200,16 +212,16 @@ struct TensorCheck<Int4x2> {
 };
 
 template <>
-struct TensorCheck<UInt4x2> {
+struct TensorCheck<Int4x2> {
   void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
                   const std::string& /*provider_type*/) const {
     ORT_UNUSED_PARAMETER(params);
     Tensor expected_sorted, actual_sorted;
-    const UInt4x2* cur_expected;
-    const UInt4x2* cur_actual;
+    const Int4x2* cur_expected;
+    const Int4x2* cur_actual;
     const auto size = actual.Shape().Size();
-    cur_expected = expected.Data<UInt4x2>();
-    cur_actual = actual.Data<UInt4x2>();
+    cur_expected = expected.Data<Int4x2>();
+    cur_actual = actual.Data<Int4x2>();
 
     for (size_t i = 0; i < static_cast<size_t>(size); ++i) {
       size_t r = i >> 1;
@@ -498,8 +510,10 @@ void Check<Tensor>(std::string_view name, const OrtValue& expected, const Tensor
                               int8_t, int16_t, int32_t, int64_t, std::string,
                               Int4x2, UInt4x2,
 #if !defined(DISABLE_FLOAT8_TYPES)
-
                               Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ,
+#endif
+#if !defined(DISABLE_FLOAT4_TYPES)
+                              Float4E2M1x2,
 #endif
                               MLFloat16, BFloat16>
       t_disp(actual.GetElementType());
