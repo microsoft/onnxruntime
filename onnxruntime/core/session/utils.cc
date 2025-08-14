@@ -232,7 +232,7 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
 
   // Check if user wants to fail on suboptimal models
   bool fail_on_suboptimal = sess.GetSessionOptions().config_options.GetConfigEntry(
-      kOrtSessionOptionsFailOnSuboptimalCompiledModel) == "1";
+                                kOrtSessionOptionsFailOnSuboptimalCompiledModel) == "1";
 
   const auto& custom_metadata = model_metadata->custom_metadata_map;
   const auto& registered_provider_types = sess.GetRegisteredProviderTypes();
@@ -273,14 +273,14 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
             case OrtCompiledModelCompatibility_EP_UNSUPPORTED:
               // Always fail for unsupported models
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                  "Compiled model is not supported by execution provider: " + ep_type);
+                                     "Compiled model is not supported by execution provider: " + ep_type);
 
             case OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION:
               // Behavior depends on user setting
               if (fail_on_suboptimal) {
                 return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                    "Compiled model is suboptimal for execution provider: " + ep_type +
-                    ". Recompilation recommended for better performance.");
+                                       "Compiled model is suboptimal for execution provider: " + ep_type +
+                                           ". Recompilation recommended for better performance.");
               }
               // Otherwise continue with warning
               LOGS(*sess.GetLogger(), WARNING)
@@ -297,8 +297,8 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
         } else {
           // Validation failed - this should cause session initialization to fail
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-              "Failed to validate compiled model compatibility for EP " + ep_type +
-              ": " + validation_result.ErrorMessage());
+                                 "Failed to validate compiled model compatibility for EP " + ep_type +
+                                     ": " + validation_result.ErrorMessage());
         }
       }
     } else {

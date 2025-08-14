@@ -98,9 +98,9 @@ class ModelBuilderWithCompatibility {
     domain_to_version[onnxruntime::kOnnxDomain] = 7;
 
     auto p_model = std::make_unique<Model>("test_model", true, ModelMetaData(), PathString(),
-                                          IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-                                          std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                                          DefaultLoggingManager().DefaultLogger());
+                                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                                           std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                           DefaultLoggingManager().DefaultLogger());
 
     onnxruntime::Graph& graph = p_model->MainGraph();
 
@@ -183,7 +183,7 @@ Status InitializeSessionWithValidation(InferenceSession& session) {
   return ToStatusAndRelease(ort_status);
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 class EpCompatibilityTest : public ::testing::Test {
  protected:
@@ -218,8 +218,7 @@ TEST_F(EpCompatibilityTest, TestCompatibilityStringStorage) {
 
   // Create model with pre-populated compatibility metadata
   std::map<std::string, std::string> compatibility_info = {
-    {ep_type, expected_compatibility_string}
-  };
+      {ep_type, expected_compatibility_string}};
   auto model_with_metadata = ModelBuilderWithCompatibility::CreateModelWithCompatibilityMetadata(compatibility_info);
 
   // Verify metadata was stored correctly
@@ -234,10 +233,9 @@ TEST_F(EpCompatibilityTest, TestCompatibilityStringStorage) {
 // Test multiple EPs generating different compatibility strings
 TEST_F(EpCompatibilityTest, TestMultipleEpCompatibilityStrings) {
   std::map<std::string, std::string> compatibility_info = {
-    {"EP_A", "ep_a_compatibility_v1.0"},
-    {"EP_B", "ep_b_compatibility_v2.1"},
-    {"EP_C", "ep_c_compatibility_v1.5"}
-  };
+      {"EP_A", "ep_a_compatibility_v1.0"},
+      {"EP_B", "ep_b_compatibility_v2.1"},
+      {"EP_C", "ep_c_compatibility_v1.5"}};
 
   auto model_with_metadata = ModelBuilderWithCompatibility::CreateModelWithCompatibilityMetadata(compatibility_info);
 
@@ -254,11 +252,11 @@ TEST_F(EpCompatibilityTest, TestMultipleEpCompatibilityStrings) {
 // Test empty compatibility string handling
 TEST_F(EpCompatibilityTest, TestEmptyCompatibilityString) {
   auto test_ep = std::make_unique<TestCompatibilityExecutionProvider>();
-  test_ep->SetMockCompatibilityString(""); // Empty string
+  test_ep->SetMockCompatibilityString("");  // Empty string
 
   auto session = SessionBuilderWithCompatibility::CreateTestSession(std::move(test_model_));
   ASSERT_STATUS_OK(session->RegisterExecutionProvider(std::move(test_ep)));
-  ASSERT_STATUS_OK(InitializeSessionWithValidation(*session)); // Should succeed even with empty compatibility string
+  ASSERT_STATUS_OK(InitializeSessionWithValidation(*session));  // Should succeed even with empty compatibility string
 }
 
 // Test compatibility validation with optimal status
@@ -276,7 +274,7 @@ TEST_F(EpCompatibilityTest, TestCompatibilityValidation_Optimal) {
 
   auto session = SessionBuilderWithCompatibility::CreateTestSession(std::move(model_with_metadata));
   ASSERT_STATUS_OK(session->RegisterExecutionProvider(std::move(test_ep)));
-  ASSERT_STATUS_OK(InitializeSessionWithValidation(*session)); // Should succeed with optimal compatibility
+  ASSERT_STATUS_OK(InitializeSessionWithValidation(*session));  // Should succeed with optimal compatibility
 }
 
 // Test compatibility validation with suboptimal status (default session settings)
@@ -291,9 +289,9 @@ TEST_F(EpCompatibilityTest, TestCompatibilityValidation_Suboptimal_DefaultSettin
   std::map<std::string, std::string> compatibility_info = {{ep_type, compatibility_string}};
   auto model_with_metadata = ModelBuilderWithCompatibility::CreateModelWithCompatibilityMetadata(compatibility_info);
 
-  auto session = SessionBuilderWithCompatibility::CreateTestSession(std::move(model_with_metadata), false); // Don't fail on suboptimal
+  auto session = SessionBuilderWithCompatibility::CreateTestSession(std::move(model_with_metadata), false);  // Don't fail on suboptimal
   ASSERT_STATUS_OK(session->RegisterExecutionProvider(std::move(test_ep)));
-  ASSERT_STATUS_OK(InitializeSessionWithValidation(*session)); // Should succeed by default with suboptimal compatibility
+  ASSERT_STATUS_OK(InitializeSessionWithValidation(*session));  // Should succeed by default with suboptimal compatibility
 }
 
 // Test compatibility validation with suboptimal status (fail on suboptimal enabled)
@@ -308,7 +306,7 @@ TEST_F(EpCompatibilityTest, TestCompatibilityValidation_Suboptimal_FailEnabled) 
   std::map<std::string, std::string> compatibility_info = {{ep_type, compatibility_string}};
   auto model_with_metadata = ModelBuilderWithCompatibility::CreateModelWithCompatibilityMetadata(compatibility_info);
 
-  auto session = SessionBuilderWithCompatibility::CreateTestSession(std::move(model_with_metadata), true); // Fail on suboptimal
+  auto session = SessionBuilderWithCompatibility::CreateTestSession(std::move(model_with_metadata), true);  // Fail on suboptimal
   ASSERT_STATUS_OK(session->RegisterExecutionProvider(std::move(test_ep)));
 
   // Should fail during initialization due to suboptimal compatibility
@@ -331,7 +329,7 @@ TEST_F(EpCompatibilityTest, TestCompatibilityValidation_Unsupported) {
   std::map<std::string, std::string> compatibility_info = {{ep_type, stored_compatibility_string}};
   auto model_with_metadata = ModelBuilderWithCompatibility::CreateModelWithCompatibilityMetadata(compatibility_info);
 
-  auto session = SessionBuilderWithCompatibility::CreateTestSession(std::move(model_with_metadata), false); // Even with fail_on_suboptimal=false
+  auto session = SessionBuilderWithCompatibility::CreateTestSession(std::move(model_with_metadata), false);  // Even with fail_on_suboptimal=false
   ASSERT_STATUS_OK(session->RegisterExecutionProvider(std::move(test_ep)));
 
   // Should fail during initialization due to unsupported compatibility
@@ -345,7 +343,7 @@ TEST_F(EpCompatibilityTest, TestCompatibilityValidation_NotApplicable) {
   const std::string ep_type = "TestCompatibilityExecutionProvider";
 
   auto test_ep = std::make_unique<TestCompatibilityExecutionProvider>();
-  test_ep->SetMockCompatibilityString(""); // Empty compatibility string
+  test_ep->SetMockCompatibilityString("");  // Empty compatibility string
   test_ep->SetMockCompatibilityStatus(OrtCompiledModelCompatibility_EP_NOT_APPLICABLE);
 
   // Model has some compatibility string, but EP returns not applicable
@@ -354,7 +352,7 @@ TEST_F(EpCompatibilityTest, TestCompatibilityValidation_NotApplicable) {
 
   auto session = SessionBuilderWithCompatibility::CreateTestSession(std::move(model_with_metadata));
   ASSERT_STATUS_OK(session->RegisterExecutionProvider(std::move(test_ep)));
-  ASSERT_STATUS_OK(InitializeSessionWithValidation(*session)); // Should succeed with not applicable status
+  ASSERT_STATUS_OK(InitializeSessionWithValidation(*session));  // Should succeed with not applicable status
 }
 
 // Test missing compatibility info in model metadata
@@ -365,7 +363,7 @@ TEST_F(EpCompatibilityTest, TestMissingCompatibilityInfo) {
   // Use model without any compatibility metadata
   auto session = SessionBuilderWithCompatibility::CreateTestSession(std::move(test_model_));
   ASSERT_STATUS_OK(session->RegisterExecutionProvider(std::move(test_ep)));
-  ASSERT_STATUS_OK(InitializeSessionWithValidation(*session)); // Should succeed when no compatibility info is present
+  ASSERT_STATUS_OK(InitializeSessionWithValidation(*session));  // Should succeed when no compatibility info is present
 }
 
 // Test EP validation failure
@@ -375,7 +373,7 @@ TEST_F(EpCompatibilityTest, TestEpValidationFailure) {
 
   auto test_ep = std::make_unique<TestCompatibilityExecutionProvider>();
   test_ep->SetMockCompatibilityString(compatibility_string);
-  test_ep->SetShouldFailValidation(true); // Force validation failure
+  test_ep->SetShouldFailValidation(true);  // Force validation failure
 
   std::map<std::string, std::string> compatibility_info = {{ep_type, compatibility_string}};
   auto model_with_metadata = ModelBuilderWithCompatibility::CreateModelWithCompatibilityMetadata(compatibility_info);
@@ -396,7 +394,7 @@ TEST_F(EpCompatibilityTest, TestSessionOptionConfiguration) {
   // Test default value
   std::string config_value;
   bool has_config = so.config_options.TryGetConfigEntry(kOrtSessionOptionsFailOnSuboptimalCompiledModel, config_value);
-  EXPECT_FALSE(has_config); // Should not be set by default
+  EXPECT_FALSE(has_config);  // Should not be set by default
 
   // Test setting the option
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsFailOnSuboptimalCompiledModel, "1"));

@@ -665,7 +665,7 @@ std::string PluginExecutionProvider::GetCompiledModelCompatibilityInfo(const onn
 Status PluginExecutionProvider::ValidateCompiledModelCompatibilityInfo(const std::string& compatibility_info,
                                                                        OrtCompiledModelCompatibility& model_compatibility) const {
   // Delegate to the EP factory's validation method
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory_.ValidateCompiledModelCompatibilityInfo(&ep_factory_, 
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory_.ValidateCompiledModelCompatibilityInfo(&ep_factory_,
                                                                                             compatibility_info.c_str(),
                                                                                             &model_compatibility)));
   return Status::OK();
