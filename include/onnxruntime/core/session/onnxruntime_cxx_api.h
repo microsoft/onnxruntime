@@ -133,7 +133,7 @@ struct Global {
 inline void InitApi(const OrtApi* api) noexcept { detail::Global::api_ = api; }
 inline void InitApi() noexcept { InitApi(OrtGetApiBase()->GetApi(ORT_API_VERSION)); }
 
-#if defined(__clang__) || defined(_MSC_VER)
+#ifdef _MSC_VER
 // If you get a linker error about a mismatch here, you are trying to
 // link two compilation units that have different definitions for
 // ORT_API_MANUAL_INIT together. All compilation units must agree on the
@@ -149,7 +149,7 @@ inline const OrtApi* detail::Global::DefaultInit() noexcept {
 
 #else  // ORT_API_MANUAL_INIT
 
-#if defined(__clang__) || defined(_MSC_VER)
+#ifdef _MSC_VER
 // If you get a linker error about a mismatch here, you are trying to link
 // two compilation units that have different definitions for
 // ORT_API_MANUAL_INIT together. All compilation units must agree on the
