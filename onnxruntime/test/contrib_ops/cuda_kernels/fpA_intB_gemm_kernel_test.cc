@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 // Test can be run like the following:
-//  ./onnxruntime_test_all --gtest_filter=CUDA_EP_Unittest.*
+//  ./onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.*
 
 #include <cuda_profiler_api.h>
 #include <cuda_runtime.h>

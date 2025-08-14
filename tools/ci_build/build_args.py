@@ -212,7 +212,7 @@ def add_testing_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--skip_onnx_tests", action="store_true", help="Explicitly disable ONNX related tests.")
     parser.add_argument("--skip_winml_tests", action="store_true", help="Explicitly disable WinML related tests.")
     parser.add_argument("--skip_nodejs_tests", action="store_true", help="Explicitly disable Node.js binding tests.")
-    parser.add_argument("--test_all_timeout", default="10800", help="Timeout for onnxruntime_test_all (seconds).")
+    parser.add_argument("--ctest_timeout", default="10800", help="Timeout provided to CTest --timeout (seconds).")
     parser.add_argument("--enable_transformers_tool_test", action="store_true", help="Enable transformers tool test.")
     parser.add_argument("--build_micro_benchmarks", action="store_true", help="Build ONNXRuntime micro-benchmarks.")
     parser.add_argument("--code_coverage", action="store_true", help="Generate code coverage report (Android only).")
