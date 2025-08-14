@@ -17,7 +17,7 @@
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
-#include "strings_helper.h"
+#include "test/onnx/utils/strings_helper.h"
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
 #include <cuda_runtime.h>
@@ -76,7 +76,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     if (!performance_test_config.selected_ep_device_indices.empty()) {
       std::vector<int> device_list;
       device_list.reserve(performance_test_config.selected_ep_device_indices.size());
-      ParseEpDeviceIndexList(performance_test_config.selected_ep_device_indices, device_list);
+      test::utils::ParseEpDeviceIndexList(performance_test_config.selected_ep_device_indices, device_list);
       for (auto index : device_list) {
         if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
           fprintf(stderr, "%s", "The device index provided is not correct. Will skip this device id.");
@@ -91,8 +91,15 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
             fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s] has been added to session.\n", index, device.EpName());
           }
         } else {
+          std::string ep_list_string;
+          for (size_t i = 0; i < ep_list.size(); ++i) {
+            ep_list_string += ep_list[i];
+            if (i + 1 < ep_list.size()) {
+              ep_list_string += ", ";
+            }
+          }
           std::string err_msg = "[Plugin EP] [WARNING] : The EP device index and its corresponding OrtEpDevice is not created from " +
-                                performance_test_config.machine_config.provider_type_name + ". Will skip adding this device.\n";
+                                ep_list_string + ". Will skip adding this device.\n";
           fprintf(stderr, "%s", err_msg.c_str());
         }
       }
@@ -115,7 +122,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
     // EP's associated provider option lists
     std::vector<std::unordered_map<std::string, std::string>> ep_options_list;
-    ParseEpOptions(ep_option_string, ep_options_list);
+    test::utils::ParseEpOptions(ep_option_string, ep_options_list);
 
     // If user only provide the EPs' provider option lists for the first several EPs,
     // add empty provider option lists for the rest EPs.
@@ -210,7 +217,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    ParseSessionConfigs(ov_string, provider_options);
+    test::utils::ParseSessionConfigs(ov_string, provider_options);
     for (const auto& provider_option : provider_options) {
       option_keys.push_back(provider_option.first.c_str());
       option_values.push_back(provider_option.second.c_str());
@@ -249,7 +256,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    ParseSessionConfigs(ov_string, provider_options);
+    test::utils::ParseSessionConfigs(ov_string, provider_options);
     for (const auto& provider_option : provider_options) {
       option_keys.push_back(provider_option.first.c_str());
       option_values.push_back(provider_option.second.c_str());
