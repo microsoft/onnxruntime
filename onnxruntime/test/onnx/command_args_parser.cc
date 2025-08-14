@@ -340,7 +340,7 @@ bool CommandLineParser::ParseArguments(TestConfig& test_config, int argc, ORTCHA
   }
 
   if (positional.size() > 1) {
-    for (int i = 1; i < positional.size(); ++i) {
+    for (size_t i = 1; i < positional.size(); ++i) {
       test_config.data_dirs.emplace_back(ToPathString(positional[i]));
     }
   } else {
