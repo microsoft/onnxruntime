@@ -10,7 +10,7 @@
 #endif
 
 #if !defined(__wasm__)
-#if !defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#if !defined(BUILD_DAWN_SHARED_LIBRARY)
 #include "dawn/dawn_proc.h"
 #endif
 #if !defined(USE_EXTERNAL_DAWN)
@@ -161,6 +161,12 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
                                                buffer_cache_config.storage.mode,
                                                buffer_cache_config.uniform.mode,
                                                buffer_cache_config.query_resolve.mode);
+
+    // create initializer buffer manager. cache is always disabled for initializer buffer manager
+    initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
+                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::Disabled);
 
     // create program manager
     program_mgr_ = std::make_unique<ProgramManager>(Device(), DeviceLimits());
@@ -373,26 +379,57 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       continue;
     }
 
-    bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
-
-    size_t element_size = ProgramUniformVariableDataTypeSize[static_cast<int>(uniform.data_type)];
+    // Calculate the size and alignment of the uniform variable.
+    //
     // https://www.w3.org/TR/WGSL/#alignof
-    size_t base_alignment = is_f16
-                                ? (length > 4 ? 16 : length > 2 ? 8
-                                                                : length * element_size)
-                                : (length > 2 ? 16 : length * element_size);
-    size_t struct_size = is_f16 && length <= 4 ? length * element_size : 16;
+    //
+    // For f16:
+    // - length > 8      : array<vec4<u32>, N>   (align 16) (size 16 * N, N = ceil(length / 8))
+    // - length == 7 or 8: vec4<u32>             (align 16) (size 16)
+    // - length == 5 or 6: vec3<u32>             (align 16) (size 12)
+    // - length == 3 or 4: vec2<u32>             (align 8)  (size 8)
+    // - length == 1 or 2: u32                   (align 4)  (size 4)
+    //
+    // For other types (i32, u32, f32):
+    // - length > 4      : array<vec4<T>, N>     (align 16) (size 16 * N, N = ceil(length / 4))
+    // - length == 4     : vec4<T>               (align 16) (size 16)
+    // - length == 3     : vec3<T>               (align 16) (size 12)
+    // - length == 2     : vec2<T>               (align 8)  (size 8)
+    // - length == 1     : T                     (align 4)  (size 4)
+    //
 
-    current_offset = (current_offset + base_alignment - 1) / base_alignment * base_alignment;
+    const bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
+
+    size_t variable_alignment = 4;  // default alignment for scalar types
+    size_t variable_size = 4;       // default size for scalar types
+
+    if (is_f16) {
+      if (length > 6) {
+        variable_alignment = 16;
+        variable_size = 16 * ((length + 7) / 8);
+      } else if (length > 4) {
+        variable_alignment = 16;
+        variable_size = 12;
+      } else if (length > 2) {
+        variable_alignment = 8;
+        variable_size = 8;
+      }
+    } else {
+      if (length > 3) {
+        variable_alignment = 16;
+        variable_size = 16 * ((length + 3) / 4);
+      } else if (length > 2) {
+        variable_alignment = 16;
+        variable_size = 12;
+      } else if (length > 1) {
+        variable_alignment = 8;
+        variable_size = 8;
+      }
+    }
+    current_offset = (current_offset + variable_alignment - 1) / variable_alignment * variable_alignment;
     uniform_and_offsets.emplace_back(uniform, current_offset);
 
-    // For non-float16 type, when length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where
-    // N = ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N * SizeOf(vec4<i32|u32|f32>).
-    // For float16 type, when length > 4, the uniform variable is of type array<mat2x4<f16>,N>, where
-    // N = ceil(data.length / 8) and SizeOf(mat2x4<f16>) = 16. The total byte length is N * SizeOf(mat2x4<f16>).
-    size_t element_per_struct = is_f16 ? 8 : 4;
-    current_offset +=
-        length > 4 ? (length + element_per_struct - 1) / element_per_struct * struct_size : length * element_size;
+    current_offset += variable_size;
   }
 
   // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
@@ -829,7 +866,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 
 #if !defined(__wasm__)
     const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
-#if defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
     ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
 #else
 #if !defined(USE_EXTERNAL_DAWN)
@@ -844,8 +881,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 #endif
 
     // Step.2 - Create wgpu::Instance
+    wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
     wgpu::InstanceDescriptor instance_desc{};
-    instance_desc.capabilities.timedWaitAnyEnable = true;
+    instance_desc.requiredFeatures = required_instance_features;
+    instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
     default_instance_ = wgpu::CreateInstance(&instance_desc);
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");

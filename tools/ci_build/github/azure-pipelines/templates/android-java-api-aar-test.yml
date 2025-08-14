@@ -19,7 +19,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.36.1.250708'
+  default: '2.37.0.250724'
 
 - name: enableWebGpu
   displayName: Enable WebGPU test
@@ -58,7 +58,7 @@ jobs:
         mkdir -p android_test/android/app/libs
         cd android_test/android
         cp -av $(Build.SourcesDirectory)/java/src/test/android/* ./
-        cp $(Pipeline.Workspace)/build/onnxruntime-android-full-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
+        cp $(Pipeline.Workspace)/build/${{parameters.artifactName}}/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
     displayName: Copy Android test files and AAR to android_test directory
     workingDirectory: $(Build.BinariesDirectory)
 

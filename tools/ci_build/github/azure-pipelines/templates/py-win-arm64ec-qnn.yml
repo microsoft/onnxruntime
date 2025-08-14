@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.36.1.250708
+  default: 2.37.0.250724
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -18,11 +18,6 @@ parameters:
     Extra parameters to pass to build.py. Don't put newlines in here.
   type: string
   default: ''
-
-- name: is1ES
-  displayName: 'Whether the pipeline is running in 1ES'
-  type: boolean
-  default: false
 
 jobs:
 - job: Win_py_x64_qnn_Wheels

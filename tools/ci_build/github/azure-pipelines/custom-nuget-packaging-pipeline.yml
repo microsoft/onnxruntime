@@ -6,7 +6,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.36.1.250708
+  default: 2.37.0.250724
 
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
@@ -157,7 +157,7 @@ extends:
               targetType: 'inline'
               script: |
                 mkdir -p $(Build.BinariesDirectory)/osx-x64
-                 Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-x86_64* -Destination $(Build.BinariesDirectory)/osx-x64
+                Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-x86_64* -Destination $(Build.BinariesDirectory)/osx-x64
 
                 mkdir -p $(Build.BinariesDirectory)/osx-arm64
                 Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-arm64* -Destination $(Build.BinariesDirectory)/osx-arm64
