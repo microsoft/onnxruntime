@@ -19,7 +19,7 @@ _ALWAYS_REJECT_RE = re.compile("|".join(_ALWAYS_REJECT_PATTERNS))
 
 _ORT_REJECT_PATTERNS = [
     *_ALWAYS_REJECT_PATTERNS,
-    r".*\.(a|cc?|h|py)$",
+    r".*\.(a|cc?|h|lib|py)$",
     r".*/\.ninja_deps$",
     r".*/\.ninja_log$",
     r".*/CMakeCache.txt$",
@@ -106,15 +106,22 @@ def archive_windows(target_platform: str, config: str) -> None:
 
     logging.info(f"Creating test archive in {archive_path}.")
     with zipfile.ZipFile(archive_path, "x", compression=zipfile.ZIP_DEFLATED) as archive:
-        logging.debug("Adding individual files.")
-        archive.write(build_dir / config / "CTestTestfile.cmake", "CTestTestfile.cmake")
-        archive.write(build_dir / config / "ctest.exe", "ctest.exe")
-        archive.write(build_dir / config / "run_tests.ps1", "run_tests.ps1")
+        if (build_dir / config / config).exists():
+            # This is a multi-config build with a redundant configuration name
+            ep_build_dir = build_dir / config / config
+            relative_to = build_dir / config
+            logging.debug("Adding individual files.")
+            archive.write(build_dir / config / "CTestTestfile.cmake", "CTestTestfile.cmake")
+            archive.write(build_dir / config / "ctest.exe", "ctest.exe")
+            archive.write(build_dir / config / "run_tests.ps1", "run_tests.ps1")
+        else:
+            ep_build_dir = build_dir / config
+            relative_to = ep_build_dir
 
-        logging.debug(f"Adding ONNX build from {build_dir / config / config}")
-        for filename in (build_dir / config / config).glob("**/*"):
+        logging.debug(f"Adding ONNX build from {ep_build_dir}")
+        for filename in ep_build_dir.glob("**/*"):
             if _should_archive(filename, reject=_ORT_REJECT_RE):
-                arcname = str(filename.relative_to(build_dir / config))
+                arcname = str(filename.relative_to(relative_to))
                 archive.write(filename, arcname)
 
 

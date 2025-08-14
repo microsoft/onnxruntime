@@ -203,7 +203,7 @@ class TaskLibrary:
                 self.__venv_path,
                 "windows",
                 "arm64",
-                "RelWithDebInfo",
+                "Release",
                 self.__qairt_sdk_root,
                 "archive",
             )
@@ -218,7 +218,7 @@ class TaskLibrary:
                 self.__venv_path,
                 "windows",
                 "x86_64",
-                "RelWithDebInfo",
+                "Release",
                 self.__qairt_sdk_root,
                 "archive",
             )
@@ -284,7 +284,7 @@ class TaskLibrary:
                 self.__venv_path,
                 "windows",
                 "arm64",
-                "RelWithDebInfo",
+                "Release",
                 self.__qairt_sdk_root,
                 "build",
             )
@@ -309,7 +309,7 @@ class TaskLibrary:
                 self.__venv_path,
                 "windows",
                 "x86_64",
-                "RelWithDebInfo",
+                "Release",
                 self.__qairt_sdk_root,
                 "build",
             )
@@ -335,7 +335,7 @@ class TaskLibrary:
             ExtractArchiveTask(
                 "Extracting ONNX Runtime for Windows on ARM64",
                 REPO_ROOT / "build" / "onnxruntime-tests-windows-arm64.zip",
-                REPO_ROOT / "build" / "windows-arm64" / "RelWithDebInfo",
+                REPO_ROOT / "build" / "windows-arm64" / "Release",
             )
         )
 
@@ -345,7 +345,22 @@ class TaskLibrary:
             ExtractArchiveTask(
                 "Extracting ONNX Runtime for Windows on x86_64",
                 REPO_ROOT / "build" / "onnxruntime-tests-windows-x86_64.zip",
-                REPO_ROOT / "build" / "windows-x86_64" / "RelWithDebInfo",
+                REPO_ROOT / "build" / "windows-x86_64" / "Release",
+            )
+        )
+
+    @public_task("Generate build\\vs\\Debug\\onnxruntime.sln")
+    @depends(["create_venv"])
+    def generate_sln(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpWindowsTask(
+                "Generating Visual Studio .sln",
+                self.__venv_path,
+                "windows",
+                "x86_64",
+                "Debug",
+                self.__qairt_sdk_root,
+                "generate_sln",
             )
         )
 
@@ -467,7 +482,7 @@ class TaskLibrary:
                 self.__venv_path,
                 "windows",
                 "arm64",
-                "RelWithDebInfo",
+                "Release",
                 self.__qairt_sdk_root,
                 "test",
             )
@@ -482,7 +497,7 @@ class TaskLibrary:
                 self.__venv_path,
                 "windows",
                 "x86_64",
-                "RelWithDebInfo",
+                "Release",
                 self.__qairt_sdk_root,
                 "test",
             )

@@ -38,6 +38,11 @@ cmake_macos:
   url: https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-macos-universal.tar.gz
   sha256: 1cb11aa2edae8551bb0f22807c6f5246bd0eb60ae9fa1474781eb4095d299aca
   content_root: cmake-{version}-macos-universal/CMake.app/Contents
+cmake_windows_arm64:
+  version: 3.31.7
+  url: https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-windows-arm64.zip
+  sha256: 5b72d0dcd66dadbbb90789c70789db92302342cc7b91df62059a26e230544f05
+  content_root: cmake-{version}-windows-arm64
   bindir: bin
 cmake_windows_x86_64:
   version: 3.31.7

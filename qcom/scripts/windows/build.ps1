@@ -15,12 +15,12 @@ param (
     [string]$QairtSdkRoot,
 
     [Parameter(Mandatory = $false,
-               HelpMessage = "What to do: build|test.")]
-    [string]$Mode = "Build",
+               HelpMessage = "What to do: build|test|generate_sln.")]
+    [string]$Mode = "build",
 
     [Parameter(Mandatory = $false,
                HelpMessage = "The configuration to build.")]
-    [string]$Config = "RelWithDebInfo",
+    [string]$Config = "Release",
 
     [Parameter(Mandatory = $false,
                HelpMessage = "Force regeneration of build system.")]
@@ -34,20 +34,30 @@ param (
 $RepoRoot = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)\..\..\..").Path
 
 . "$RepoRoot\qcom\scripts\windows\tools.ps1"
+. "$RepoRoot\qcom\scripts\windows\utils.ps1"
 
 $BuildRoot = (Join-Path $RepoRoot "build")
 if ($TargetPlatform -eq "android") {
     $TargetPlatformArch = $TargetPlatform
-    $CMakeGenerator = "Ninja"
 } else {
     $TargetPlatformArch = "$TargetPlatform-$Arch"
-    $CMakeGenerator = "Visual Studio 17 2022"
 }
-$BuildDir = (Join-Path $BuildRoot "$TargetPlatformArch")
+
+if ($Mode -eq "generate_sln") {
+    $BuildDir = (Join-Path $BuildRoot "vs")
+}
+else {
+    $BuildDir = (Join-Path $BuildRoot "$TargetPlatformArch")
+}
+
 $ValidArchs = "arm64", "arm64ec", "x86_64"
 
+if (-Not ($ValidArchs -contains $Arch)) {
+    throw "Invalid arch $Arch. Supported architectures: $ValidArchs"
+}
+
 if ($PyVEnv -ne "") {
-    . (Join-Path $PyVEnv "Scripts\Activate.ps1")
+    Enter-PyVenv $PyVEnv
 }
 
 if ($QairtSdkRoot -eq "") {
@@ -57,81 +67,45 @@ else {
     $QairtSdkRoot = Resolve-Path -Path $QairtSdkRoot
 }
 
-function Get-QairtSdkFilePath() {
-    "$BuildDir\qairt-sdk-path-$Config.txt"
+if ($Mode -eq "generate_sln") {
+    $CMakeGenerator = "Visual Studio 17 2022"
+    $BuildIsDirty = $true
 }
+else {
+    $CMakeGenerator = (Get-DefaultCMakeGenerator -TargetPlatform $TargetPlatform -Arch $Arch)
 
-function Save-QairtSdkFilePath() {
-    $SdkFilePath = (Get-QairtSdkFilePath)
-    if (-Not (Test-Path "$SdkFilePath\..")) {
-        New-Item -Path "$SdkFilePath\.." -ItemType Directory | Out-Null
-    }
-    $QairtSdkRoot | Out-File -FilePath $SdkFilePath
-}
-
-function Test-QairtSdkDiffers() {
-    $QairtSdkPathPath = Get-QairtSdkFilePath
-    if (-Not (Test-Path -Path $QairtSdkPathPath)) {
-        return $True
-    }
-
-    $LastSdkPath = Get-Content -Path $QairtSdkPathPath
-    return $LastSdkPath -ne $QairtSdkRoot
-}
-function Test-UpdateNeeded() {
-    if ($Update) {
-        Write-Host "Build system update was requested."
-        return $True
-    }
-
-    if ($CMakeGenerator -eq "Ninja") {
-        $BuildNinjaPath = "$BuildDir\$Config\build.ninja"
-        if (-Not (Test-Path -Path $BuildNinjaPath)) {
-            Write-Host "$BuildNinjaPath does not exist."
-            return $True
-        }
+    if (Test-UpdateNeeded -BuildDir $BuildDir -TargetPlatform $TargetPlatform -Config $Config -CMakeGenerator $CMakeGenerator -Update $Update) {
+        $BuildIsDirty = $true
+        Save-QairtSdkFilePath -BuildDir $BuildDir -Config $Config
     } else {
-        $SlnPath = "$BuildDir\$Config\onnxruntime.sln"
-        if (-Not (Test-Path -Path $SlnPath)) {
-            Write-Host "VS Solution $SlnPath does not exist."
-            return $True
-        }
+        $BuildIsDirty = $false
     }
-
-    if (Test-QairtSdkDiffers) {
-        Write-Host "Previous build used a different QAIRT SDK."
-        return $True
-    }
-
-    Write-Host "No need to update build system."
-    return $False
-}
-
-if (-Not ($ValidArchs -contains $Arch)) {
-    throw "Invalid arch $Arch. Supported architectures: $ValidArchs"
 }
 
 $ArchArgs = @()
-if ($Arch -eq "x86_64")
-{
-    $HostArch = [System.Runtime.InteropServices.RuntimeInformation,mscorlib]::OSArchitecture
-    if ($HostArch -ne "x64") {
-        throw "Cross-compilation to $Arch is not supported on $HostArch host."
+$EpBuildDir = $BuildDir
+if ($TargetPlatform -eq "windows") {
+    if ($CMakeGenerator -eq "Ninja") {
+        # We don't have Visual Studio to set up the build environment so do it
+        # manually with somthing akin to vcvarsall.bat.
+        Enter-MsvcEnv -TargetArch $Arch
+    } elseif ($Arch -ne "x86_64") {
+        # Tell the EP build that we're cross-compiling to ARM64.
+        # We do not do this when using Ninja because our fake vcvars handles
+        # cross-compilation flags.
+        $ArchArgs += "--$Arch"
     }
-    $ArchArgs += "--build_wheel"
-} else {
-    $ArchArgs += "--$Arch"
-}
 
-if (Test-UpdateNeeded) {
-    $BuildIsDirty = $true
-    Save-QairtSdkFilePath
-} else {
-    $BuildIsDirty = $false
+    if ($Arch -eq (Get-HostArch) -and $Arch -eq "x86_64")
+    {
+        # Wheels only supported when not cross-compiling
+        # Currently disabled on ARM64 until we can confirm python is native.
+        $ArchArgs += "--build_wheel"
+    }
 }
 
 $CommonArgs = `
-    "--build_dir", $BuildDir, `
+    "--build_dir", $EpBuildDir, `
     "--build_shared_lib", `
     "--cmake_generator", $CmakeGenerator, `
     "--config", $Config, `
@@ -145,9 +119,24 @@ $MakeTestArchive = $false
 $RunTests = $false
 $TestRunner = $null
 
+if ($CMakeGenerator -eq "Ninja") {
+    $CommonArgs += "--use_cache"
+    $env:Path = "$(Get-PackageBinDir ccache_windows_x86_64);" + $env:Path
+}
+
 switch ($TargetPlatform) {
     "windows" {
         $TestRunner = "$RepoRoot\qcom\scripts\windows\run_tests.ps1"
+
+        # The ORT build incorrectly enables use of Kleidiai when using Ninja on Windows,
+        # even if ArmNN is not requested. Manually turn it off.
+        $PlatformArgs = $ArchArg, "--no_kleidiai"
+
+        if ($CMakeGenerator -eq "Ninja") {
+            # The default somehow gives us paths that are too long in CI
+            $PlatformArgs += "--cmake_extra_defines", "CMAKE_OBJECT_PATH_MAX=240"
+        }
+
         switch ($Mode) {
             "build" {
                 if ($BuildIsDirty) {
@@ -155,7 +144,9 @@ switch ($TargetPlatform) {
                 }
 
                 $Actions += "--build"
-                $PlatformArgs = $ArchArg
+            }
+            "generate_sln" {
+                $Actions += "--update"
             }
             "test" {
                 $RunTests = $true
@@ -180,7 +171,6 @@ switch ($TargetPlatform) {
         }
 
         $env:Path = "$(Get-PackageBinDir java_windows_x86_64);" + $env:Path
-        $env:Path = "$(Get-PackageBinDir ccache_windows_x86_64);" + $env:Path
 
         if ($null -ne $env:ANDROID_HOME -and $null -ne $env:ANDROID_NDK_HOME) {
             $AndroidSdkPath = $env:ANDROID_HOME
@@ -192,7 +182,7 @@ switch ($TargetPlatform) {
         }
 
         $QnnArgs = "--use_qnn", "static_lib", "--qnn_home", "$QairtSdkRoot"
-        $PlatformArgs = "--use_cache", `
+        $PlatformArgs = `
             "--android_sdk_path", $AndroidSdkPath, `
             "--android_ndk_path", $AndroidNdkPath, `
             "--android_abi", "arm64-v8a", `
@@ -218,7 +208,7 @@ switch ($TargetPlatform) {
     }
 }
 
-$CmakeBinDir = (Get-PackageBinDir cmake_windows_x86_64)
+$CmakeBinDir = (Get-PackageBinDir cmake_windows_$(Get-HostArch))
 $env:Path = "$CmakeBinDir;" + $env:Path
 
 Optimize-ToolsDir
@@ -243,9 +233,11 @@ else {
     # This platform supports running tests on the host. Prep the build directory
     # to run with our ctest wrapper
     if ($TestRunner) {
-        New-Item -ItemType Directory "$BuildDir\$Config" -Force | Out-Null
-        Copy-Item -Path $TestRunner -Destination "$BuildDir\$Config"
-        Copy-Item "$CMakeBinDir\ctest.exe" -Destination "$BuildDir\$Config"
+        if (-not (Test-Path (Join-Path $BuildDir $Config))) {
+            New-Item -ItemType Directory (Join-Path $BuildDir $Config) | Out-Null
+        }
+        Copy-Item -Path $TestRunner -Destination (Join-Path $BuildDir $Config)
+        Copy-Item "$CMakeBinDir\ctest.exe" -Destination (Join-Path $BuildDir $Config)
     }
 
     if ($Actions.Count -gt 0) {

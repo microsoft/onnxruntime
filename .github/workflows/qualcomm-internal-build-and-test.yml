@@ -105,7 +105,7 @@ jobs:
         with:
           name: ORT Windows x86_64 Python Wheel
           path: |
-            ${{ github.workspace }}/build/windows-x86_64/RelWithDebInfo/RelWithDebInfo/dist/onnxruntime_qnn*.whl
+            ${{ github.workspace }}/build/windows-x86_64/Release/dist/onnxruntime_qnn*.whl
 
   lint:
     if: ${{ inputs.do_all }}
@@ -119,7 +119,6 @@ jobs:
         run: |
           python3 qcom/build_and_test.py lint
 
-  # TODO: [AISW-140530] combine Android and Windows
   test-android:
     if: ${{ inputs.do_all }}
     runs-on: ["self-hosted", "Linux", "QDC"]
@@ -213,14 +212,14 @@ jobs:
         if: always() # always run even if the previous step fails
         with:
           check_name: windows-arm64-test-results
-          report_paths: ${{ github.workspace }}/build/windows-arm64/RelWithDebInfo/RelWithDebInfo/*.results.xml
+          report_paths: ${{ github.workspace }}/build/windows-arm64/Release/Release/*.results.xml
 
       - uses: actions/upload-artifact@v3
         if: always() # always run even if the previous step fails
         with:
           name: ORT Windows arm64 Test Results
           path: |
-            ${{ github.workspace }}/build/windows-arm64/RelWithDebInfo/RelWithDebInfo/*.results.xml
+            ${{ github.workspace }}/build/windows-arm64/Release/Release/*.results.xml
 
   test-windows-x86_64:
     if: ${{ inputs.do_all }}
@@ -247,11 +246,11 @@ jobs:
         if: always() # always run even if the previous step fails
         with:
           check_name: windows-x86_64-test-results
-          report_paths: ${{ github.workspace }}/build/windows-x86_64/RelWithDebInfo/RelWithDebInfo/*.results.xml
+          report_paths: ${{ github.workspace }}/build/windows-x86_64/Release/*.results.xml
 
       - uses: actions/upload-artifact@v3
         if: always() # always run even if the previous step fails
         with:
           name: ORT Windows x86_64 Test Results
           path: |
-            ${{ github.workspace }}/build/windows-x86_64/RelWithDebInfo/RelWithDebInfo/*.results.xml
+            ${{ github.workspace }}/build/windows-x86_64/Release/*.results.xml
