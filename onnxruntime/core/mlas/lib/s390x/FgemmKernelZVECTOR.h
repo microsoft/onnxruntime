@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    FgemmKernelPower.h
+    FgemmKernelZVECTOR.h
 
 Abstract:
 

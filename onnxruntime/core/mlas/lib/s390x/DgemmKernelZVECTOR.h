@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    DgemmKernelpower.h
+    DgemmKernelZVECTOR.h
 
 Abstract:
 
@@ -15,7 +15,7 @@ Abstract:
 
 --*/
 
-#include "FgemmKernelpower.h"
+#include "FgemmKernelZVECTOR.h"
 
 template<size_t RowCount>
 MLAS_FORCEINLINE

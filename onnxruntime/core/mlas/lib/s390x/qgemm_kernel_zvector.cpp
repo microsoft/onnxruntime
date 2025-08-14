@@ -6,11 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    qgemm_kernel_power10.cpp
+    qgemm_kernel_zvector.cpp
 
 Abstract:
 
-    This module implements QGEMM kernel for POWER10.
+    This module implements QGEMM kernel for S390X.
 
 --*/
 
@@ -18,7 +18,7 @@ Abstract:
 #include "qgemm.h"
 #include <inttypes.h>
 
-struct MLAS_GEMM_QUANT_KERNEL_POWER10
+struct MLAS_GEMM_QUANT_KERNEL_ZVECTOR
 {
     typedef int8_t PackedAType;
     typedef uint8_t PackedBType;
@@ -29,9 +29,28 @@ struct MLAS_GEMM_QUANT_KERNEL_POWER10
     static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{ 16, 128, 128 };
 };
 
-constexpr size_t MLAS_GEMM_QUANT_KERNEL_POWER10::PackedK;
-constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_QUANT_KERNEL_POWER10::Strides;
-constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_QUANT_KERNEL_POWER10::PackedStrides;
+constexpr size_t MLAS_GEMM_QUANT_KERNEL_ZVECTOR::PackedK;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_QUANT_KERNEL_ZVECTOR::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_QUANT_KERNEL_ZVECTOR::PackedStrides;
+
+using vector_int = __attribute__((vector_size(16))) int;
+
+template <typename Vtype>
+MLAS_FORCEINLINE
+static
+vector_int vec_sum4s_impl(Vtype value)
+{
+    const __vector unsigned char mask_interleave = { 0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15 };
+
+    __vector signed char signed_value = (__vector signed char) vec_perm(value, value, mask_interleave);
+
+    auto tmp1 = vec_unpackh(vec_unpackh(signed_value));
+    auto tmp2 = vec_unpackl(vec_unpackh(signed_value));
+    auto tmp3 = vec_unpackh(vec_unpackl(signed_value));
+    auto tmp4 = vec_unpackl(vec_unpackl(signed_value));
+
+    return (__vector int) (tmp1 + tmp2 + tmp3 + tmp4);
+}
 
 #define INC_BUFFER(cnt) \
    ColumnSumBuffer += cnt; \
@@ -41,13 +60,13 @@ constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_QUANT_KERNEL_POWER10::PackedStrides;
 template<>
 MLAS_FORCEINLINE constexpr
 int32_t
-MlasGemmQuantFixupZeroPointA<MLAS_GEMM_QUANT_KERNEL_POWER10>(
+MlasGemmQuantFixupZeroPointA<MLAS_GEMM_QUANT_KERNEL_ZVECTOR>(
     int32_t ZeroPointA,
     bool AIsSigned
     )
 {
     if (!AIsSigned) {
-        ZeroPointA = MLAS_GEMM_QUANT_KERNEL_POWER10::OffsetAType(ZeroPointA ^ 0x80);
+        ZeroPointA = MLAS_GEMM_QUANT_KERNEL_ZVECTOR::OffsetAType(ZeroPointA ^ 0x80);
     }
     return ZeroPointA;
 }
@@ -55,13 +74,13 @@ MlasGemmQuantFixupZeroPointA<MLAS_GEMM_QUANT_KERNEL_POWER10>(
 template<>
 MLAS_FORCEINLINE
 int32_t
-MlasGemmQuantFixupZeroPointB<MLAS_GEMM_QUANT_KERNEL_POWER10>(
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_QUANT_KERNEL_ZVECTOR>(
     int32_t ZeroPointB,
     bool BIsSigned
     )
 {
     if (BIsSigned) {
-        ZeroPointB = MLAS_GEMM_QUANT_KERNEL_POWER10::OffsetBType(ZeroPointB ^ 0x80);
+        ZeroPointB = MLAS_GEMM_QUANT_KERNEL_ZVECTOR::OffsetBType(ZeroPointB ^ 0x80);
     }
     return ZeroPointB;
 
@@ -70,7 +89,7 @@ MlasGemmQuantFixupZeroPointB<MLAS_GEMM_QUANT_KERNEL_POWER10>(
 template<typename Vtype, bool AIsSigned>
 void
 MlasGemmQuantCopyPackA8x8(
-    MLAS_GEMM_QUANT_KERNEL_POWER10::PackedAType* D,
+    MLAS_GEMM_QUANT_KERNEL_ZVECTOR::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
@@ -80,7 +99,11 @@ MlasGemmQuantCopyPackA8x8(
 {
     constexpr uint8_t Flip = (AIsSigned ? 0 : 0x80);
     Vtype vmask = reinterpret_cast<Vtype>(vec_splats(Flip));
-    typedef __vector signed char vec_t;
+
+    const __vector unsigned char mask0 = { 0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23 };
+    const __vector unsigned char mask3 = { 8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31 };
+    const __vector unsigned char mask_even = { 0, 1, 2, 3, 16, 17, 18, 19, 8, 9, 10, 11, 24, 25, 26, 27 };
+    const __vector unsigned char mask_odd = { 4, 5, 6, 7, 20, 21, 22, 23, 12, 13, 14, 15, 28, 29, 30, 31 };
 
     // Process eight rows of matrix A in a loop.
     //
@@ -96,8 +119,8 @@ MlasGemmQuantCopyPackA8x8(
     //
     while (CountM >= 8) {
         const uint8_t *a = A;
-        __vector signed int vsum = { 0 };
-        __vector signed int vsum2 = { 0 };
+        __vector int vsum = { 0 };
+        __vector int vsum2 = { 0 };
         size_t y = CountK;
         while (y >= 16) {
             Vtype a1 = *reinterpret_cast<const Vtype *>(&a[0]);
@@ -105,74 +128,73 @@ MlasGemmQuantCopyPackA8x8(
             Vtype a3 = *reinterpret_cast<const Vtype *>(&a[lda * 2]);
             Vtype a4 = *reinterpret_cast<const Vtype *>(&a[lda * 3]);
             Vtype vx =
-               reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a1),
-                           reinterpret_cast<__vector int>(a2)));
+               reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a1),
+                           reinterpret_cast<__vector int>(a2),
+                           mask_even));
             Vtype vx1 =
-               reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a3),
-                           reinterpret_cast<__vector int>(a4)));
+               reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a3),
+                           reinterpret_cast<__vector int>(a4),
+                           mask_even));
             Vtype vx2 =
-               reinterpret_cast<Vtype>(vec_mergeo(reinterpret_cast<__vector int>(a1),
-                           reinterpret_cast<__vector int>(a2)));
+               reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a1),
+                           reinterpret_cast<__vector int>(a2),
+                           mask_odd));
             Vtype vx3 =
-               reinterpret_cast<Vtype>(vec_mergeo(reinterpret_cast<__vector int>(a3),
-                           reinterpret_cast<__vector int>(a4)));
-            Vtype vx4 = vec_xxpermdi(vx, vx1, 0);
-            Vtype vx5 = vec_xxpermdi(vx2, vx3, 0);
-            Vtype vx6 = vec_xxpermdi(vx, vx1, 3);
-            Vtype vx7 = vec_xxpermdi(vx2, vx3, 3);
+               reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a3),
+                           reinterpret_cast<__vector int>(a4),
+                           mask_odd));
+            Vtype vx4 = vec_perm(vx, vx1, mask0);
+            Vtype vx5 = vec_perm(vx2, vx3, mask0);
+            Vtype vx6 = vec_perm(vx, vx1, mask3);
+            Vtype vx7 = vec_perm(vx2, vx3, mask3);
             a1 = *reinterpret_cast<const Vtype *>(&a[lda*4]);
             a2 = *reinterpret_cast<const Vtype *>(&a[lda*5]);
             a3 = *reinterpret_cast<const Vtype *>(&a[lda*6]);
             a4 = *reinterpret_cast<const Vtype *>(&a[lda*7]);
             vx =
-              reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a1),
-                               reinterpret_cast<__vector int>(a2)));
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a1),
+                               reinterpret_cast<__vector int>(a2),
+                               mask_even));
             vx1 =
-              reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a3),
-                               reinterpret_cast<__vector int>(a4)));
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a3),
+                               reinterpret_cast<__vector int>(a4),
+                               mask_even));
             vx2 =
-              reinterpret_cast<Vtype>(vec_mergeo(reinterpret_cast<__vector int>(a1),
-                               reinterpret_cast<__vector int>(a2)));
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a1),
+                               reinterpret_cast<__vector int>(a2),
+                               mask_odd));
             vx3 =
-              reinterpret_cast<Vtype>(vec_mergeo(reinterpret_cast<__vector int>(a3),
-                               reinterpret_cast<__vector int>(a4)));
-            Vtype vx8 = vec_xxpermdi(vx, vx1, 0);
-            Vtype vx9 = vec_xxpermdi(vx2, vx3, 0);
-            Vtype vx10 = vec_xxpermdi(vx, vx1, 3);
-            Vtype vx11 = vec_xxpermdi(vx2, vx3, 3);
-            vec_t vxx =
-              AIsSigned ? reinterpret_cast<vec_t>(vx4) :
-                          reinterpret_cast<vec_t>(vec_sub(vx4, vmask));
-            vsum = vec_sum4s(vxx, vsum);
-            *reinterpret_cast<vec_t *>(&D[0]) = vxx;
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx5) :
-                              reinterpret_cast<vec_t>(vec_sub(vx5, vmask));
-            vsum = vec_sum4s(vxx, vsum);
-            *reinterpret_cast<vec_t *>(&D[16]) = vxx;
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx6) :
-                              reinterpret_cast<vec_t>(vec_sub(vx6, vmask));
-            vsum = vec_sum4s(vxx, vsum);
-            *reinterpret_cast<vec_t *>(&D[32]) = vxx;
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx7) :
-                              reinterpret_cast<vec_t>(vec_sub(vx7, vmask));
-            vsum = vec_sum4s(vxx, vsum);
-            *reinterpret_cast<vec_t *>(&D[48]) = vxx;
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx8) :
-                              reinterpret_cast<vec_t>(vec_sub(vx8, vmask));
-            *reinterpret_cast<vec_t *>(&D[64]) = vxx;
-            vsum2 = vec_sum4s(vxx, vsum2);
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx9) :
-                              reinterpret_cast<vec_t>(vec_sub(vx9, vmask));
-            *reinterpret_cast<vec_t *>(&D[80]) = vxx;
-            vsum2 = vec_sum4s(vxx, vsum2);
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx10) :
-                              reinterpret_cast<vec_t>(vec_sub(vx10, vmask));
-            *reinterpret_cast<vec_t *>(&D[96]) = vxx;
-            vsum2 = vec_sum4s(vxx, vsum2);
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx11) :
-                              reinterpret_cast<vec_t>(vec_sub(vx11, vmask));
-            *reinterpret_cast<vec_t *>(&D[112]) = vxx;
-            vsum2 = vec_sum4s(vxx, vsum2);
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a3),
+                               reinterpret_cast<__vector int>(a4),
+                               mask_odd));
+            Vtype vx8 = vec_perm(vx, vx1, mask0);
+            Vtype vx9 = vec_perm(vx2, vx3, mask0);
+            Vtype vx10 = vec_perm(vx, vx1, mask3);
+            Vtype vx11 = vec_perm(vx2, vx3, mask3);
+            Vtype vxx = AIsSigned ? vx4 : vx4 - vmask;
+            vsum += vec_sum4s_impl(vxx);
+            *reinterpret_cast<Vtype *>(&D[0]) = vxx;
+            vxx = AIsSigned ? vx5 : vx5 - vmask;
+            vsum += vec_sum4s_impl(vxx);
+            *reinterpret_cast<Vtype *>(&D[16]) = vxx;
+            vxx = AIsSigned ? vx6 : vx6 - vmask;
+            vsum += vec_sum4s_impl(vxx);
+            *reinterpret_cast<Vtype *>(&D[32]) = vxx;
+            vxx = AIsSigned ? vx7 : vx7 - vmask;
+            vsum += vec_sum4s_impl(vxx);
+            *reinterpret_cast<Vtype *>(&D[48]) = vxx;
+            vxx = AIsSigned ? vx8 : vx8 - vmask;
+            *reinterpret_cast<Vtype *>(&D[64]) = vxx;
+            vsum2 += vec_sum4s_impl(vxx);
+            vxx = AIsSigned ? vx9 : vx9 - vmask;
+            *reinterpret_cast<Vtype *>(&D[80]) = vxx;
+            vsum2 += vec_sum4s_impl(vxx);
+            vxx = AIsSigned ? vx10 : vx10 - vmask;
+            *reinterpret_cast<Vtype *>(&D[96]) = vxx;
+            vsum2 += vec_sum4s_impl(vxx);
+            vxx = AIsSigned ? vx11 : vx11 - vmask;
+            *reinterpret_cast<Vtype *>(&D[112]) = vxx;
+            vsum2 += vec_sum4s_impl(vxx);
             D += 16 * 8;
             a += 16;
             y -= 16;
@@ -185,34 +207,31 @@ MlasGemmQuantCopyPackA8x8(
             int a3 = *reinterpret_cast<const int *>(&a[lda*2]);
             int a4 = *reinterpret_cast<const int *>(&a[lda*3]);
             __vector int vx1 = { a1, a2, a3, a4};
-            vec_t vx =
-              AIsSigned ? reinterpret_cast<vec_t>(vx1) :
-                          reinterpret_cast<vec_t>(vec_sub(reinterpret_cast<Vtype>(vx1), vmask));
-            vsum = vec_sum4s(vx, vsum);
-            *reinterpret_cast<vec_t *>(&D[0]) = vx;
+            Vtype vx = AIsSigned ? reinterpret_cast<Vtype>(vx1) : reinterpret_cast<Vtype>(vx1) - vmask;
+            vsum += vec_sum4s_impl(vx);
+            *reinterpret_cast<Vtype *>(&D[0]) = vx;
             a1 = *reinterpret_cast<const int *>(&a[lda*4]);
             a2 = *reinterpret_cast<const int *>(&a[lda*5]);
             a3 = *reinterpret_cast<const int *>(&a[lda*6]);
             a4 = *reinterpret_cast<const int *>(&a[lda*7]);
             __vector int vx2 = { a1, a2, a3, a4};
-            vx = AIsSigned ? reinterpret_cast<vec_t>(vx2) :
-                             reinterpret_cast<vec_t>(vec_sub(reinterpret_cast<Vtype>(vx2), vmask));
-            vsum2 = vec_sum4s(vx, vsum2);
+            vx = AIsSigned ? reinterpret_cast<Vtype>(vx2) : reinterpret_cast<Vtype>(vx2) - vmask;
+            vsum2 += vec_sum4s_impl(vx);
             if (CountK & 3) {
                 if (yval >= 12) {
-                     *reinterpret_cast<vec_t *>(&D[64]) = vx;
+                     *reinterpret_cast<Vtype *>(&D[64]) = vx;
                 } else if (yval >= 8) {
-                     *reinterpret_cast<vec_t *>(&D[48]) = vx;
+                     *reinterpret_cast<Vtype *>(&D[48]) = vx;
                 } else {
-                     *reinterpret_cast<vec_t *>(&D[32]) = vx;
+                     *reinterpret_cast<Vtype *>(&D[32]) = vx;
                 }
             } else {
                 if (yval >= 12) {
-                     *reinterpret_cast<vec_t *>(&D[48]) = vx;
+                     *reinterpret_cast<Vtype *>(&D[48]) = vx;
                 } else if (yval >= 8) {
-                     *reinterpret_cast<vec_t *>(&D[32]) = vx;
+                     *reinterpret_cast<Vtype *>(&D[32]) = vx;
                 } else {
-                     *reinterpret_cast<vec_t *>(&D[16]) = vx;
+                     *reinterpret_cast<Vtype *>(&D[16]) = vx;
                 }
             }
             D += 16;
@@ -254,18 +273,18 @@ MlasGemmQuantCopyPackA8x8(
                 a3[2] = a[lda * 2 + 2];
                 a4[2] = a[lda * 3 + 2];
             }
-            Vtype vx =
-              reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a1),
-                               reinterpret_cast<__vector int>(a2)));
+            Vtype vx = reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a1),
+                               reinterpret_cast<__vector int>(a2),
+                               mask_even));
             Vtype vx1 =
-              reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a3),
-                               reinterpret_cast<__vector int>(a4)));
-            Vtype vx2 = vec_xxpermdi(vx, vx1, 0);
-            vec_t vx3 =
-              AIsSigned ? reinterpret_cast<vec_t>(vx2) :
-                          reinterpret_cast<vec_t>(vec_sub(vx2, vmask));
-            vsum = vec_sum4s(vx3, vsum);
-            *reinterpret_cast<vec_t *>(&D[0]) = vx3;
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a3),
+                               reinterpret_cast<__vector int>(a4),
+                               mask_even));
+            Vtype vx2 = vec_perm(vx, vx1, mask0);
+            Vtype vx3 = AIsSigned ? vx2 : vx2 - vmask;
+            vsum += vec_sum4s_impl(vx3);
+
+            *reinterpret_cast<Vtype *>(&D[0]) = vx3;
             a1 = vmask;
             a2 = vmask;
             a3 = vmask;
@@ -287,39 +306,37 @@ MlasGemmQuantCopyPackA8x8(
                 a4[2] = a[lda * 7 + 2];
             }
             vx =
-              reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a1),
-                               reinterpret_cast<__vector int>(a2)));
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a1),
+                               reinterpret_cast<__vector int>(a2),
+                               mask_even));
             vx1 =
-              reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a3),
-                               reinterpret_cast<__vector int>(a4)));
-            vx2 = vec_xxpermdi(vx, vx1, 0);
-            vx3 = AIsSigned ? reinterpret_cast<vec_t>(vx2) :
-                              reinterpret_cast<vec_t>(vec_sub(vx2, vmask));
-            vsum2 = vec_sum4s(vx3, vsum2);
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a3),
+                               reinterpret_cast<__vector int>(a4),
+                               mask_even));
+            vx2 = vec_perm(vx, vx1, mask0);
+            vx3 = AIsSigned ? vx2 : vx2 - vmask;
+            vsum2 += vec_sum4s_impl(vx3);
             if (CountK % 16 >= 12) {
-                *reinterpret_cast<vec_t *>(&D[64]) = vx3;
+                *reinterpret_cast<Vtype *>(&D[64]) = vx3;
                 D += 80;
             } else if (CountK % 16 >= 8) {
-                *reinterpret_cast<vec_t *>(&D[48]) = vx3;
+                *reinterpret_cast<Vtype *>(&D[48]) = vx3;
                 D += 64;
             } else if (CountK % 16 >= 4) {
-                *reinterpret_cast<vec_t *>(&D[32]) = vx3;
+                *reinterpret_cast<Vtype *>(&D[32]) = vx3;
                 D += 48;
             } else {
-                *reinterpret_cast<vec_t *>(&D[16]) = vx3;
+                *reinterpret_cast<Vtype *>(&D[16]) = vx3;
                 D += 16 * 2;
             }
             a += 16;
         }
         A += lda * 8;
-        *RowSumBuffer++ = vsum[0];
-        *RowSumBuffer++ = vsum[1];
-        *RowSumBuffer++ = vsum[2];
-        *RowSumBuffer++ = vsum[3];
-        *RowSumBuffer++ = vsum2[0];
-        *RowSumBuffer++ = vsum2[1];
-        *RowSumBuffer++ = vsum2[2];
-        *RowSumBuffer++ = vsum2[3];
+
+        vec_xst(vsum, 0, &(RowSumBuffer[0]));
+        vec_xst(vsum2, 16, &(RowSumBuffer[0]));
+
+        RowSumBuffer += 8;
         CountM -= 8;
     }
 
@@ -328,7 +345,7 @@ MlasGemmQuantCopyPackA8x8(
     if (CountM >= 4)
     {
         const uint8_t *a = A;
-        __vector signed int vsum = { 0 };
+        __vector int vsum = { 0 };
         size_t y = CountK;
 
         while (y >= 16)
@@ -338,38 +355,37 @@ MlasGemmQuantCopyPackA8x8(
             Vtype a3 = *reinterpret_cast<const Vtype *>(&a[lda * 2]);
             Vtype a4 = *reinterpret_cast<const Vtype *>(&a[lda * 3]);
             Vtype vx =
-              reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a1),
-                               reinterpret_cast<__vector int>(a2)));
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a1),
+                               reinterpret_cast<__vector int>(a2),
+                               mask_even));
             Vtype vx1 =
-              reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a3),
-                               reinterpret_cast<__vector int>(a4)));
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a3),
+                               reinterpret_cast<__vector int>(a4),
+                               mask_even));
             Vtype vx2 =
-              reinterpret_cast<Vtype>(vec_mergeo(reinterpret_cast<__vector int>(a1),
-                               reinterpret_cast<__vector int>(a2)));
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a1),
+                               reinterpret_cast<__vector int>(a2),
+                               mask_odd));
             Vtype vx3 =
-              reinterpret_cast<Vtype>(vec_mergeo(reinterpret_cast<__vector int>(a3),
-                               reinterpret_cast<__vector int>(a4)));
-            Vtype vx4 = vec_xxpermdi(vx, vx1, 0);
-            Vtype vx5 = vec_xxpermdi(vx2, vx3, 0);
-            Vtype vx6 = vec_xxpermdi(vx, vx1, 3);
-            Vtype vx7 = vec_xxpermdi(vx2, vx3, 3);
-            vec_t vx0 =
-              AIsSigned ? reinterpret_cast<vec_t>(vx4) :
-                          reinterpret_cast<vec_t>(vec_sub(vx4, vmask));
-            *reinterpret_cast<vec_t *>(&D[0]) = vx0;
-            vsum = vec_sum4s(vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx5) :
-                              reinterpret_cast<vec_t>(vec_sub(vx5, vmask));
-            *reinterpret_cast<vec_t *>(&D[16]) = vx0;
-            vsum = vec_sum4s(vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx6) :
-                              reinterpret_cast<vec_t>(vec_sub(vx6, vmask));
-            *reinterpret_cast<vec_t *>(&D[32]) = vx0;
-            vsum = vec_sum4s(vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx7) :
-                              reinterpret_cast<vec_t>(vec_sub(vx7, vmask));
-            *reinterpret_cast<vec_t *>(&D[48]) = vx0;
-            vsum = vec_sum4s(vx0, vsum);
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a3),
+                               reinterpret_cast<__vector int>(a4),
+                               mask_odd));
+            Vtype vx4 = vec_perm(vx, vx1, mask0);
+            Vtype vx5 = vec_perm(vx2, vx3, mask0);
+            Vtype vx6 = vec_perm(vx, vx1, mask3);
+            Vtype vx7 = vec_perm(vx2, vx3, mask3);
+            Vtype vx0 = AIsSigned ? vx4 : vx4 - vmask;
+            *reinterpret_cast<Vtype *>(&D[0]) = vx0;
+            vsum += vec_sum4s_impl(vx0);
+            vx0 = AIsSigned ? vx5 : vx5 - vmask;
+            *reinterpret_cast<Vtype *>(&D[16]) = vx0;
+            vsum += vec_sum4s_impl(vx0);
+            vx0 = AIsSigned ? vx6 : vx6 - vmask;
+            *reinterpret_cast<Vtype *>(&D[32]) = vx0;
+            vsum += vec_sum4s_impl(vx0);
+            vx0 = AIsSigned ? vx7 : vx7 - vmask;
+            *reinterpret_cast<Vtype *>(&D[48]) = vx0;
+            vsum += vec_sum4s_impl(vx0);
             D += 16 * 4;
             a += 16;
             y -= 16;
@@ -381,11 +397,9 @@ MlasGemmQuantCopyPackA8x8(
             int a3 = *reinterpret_cast<const int *>(&a[lda*2]);
             int a4 = *reinterpret_cast<const int *>(&a[lda*3]);
             __vector int vx1 = { a1, a2, a3, a4};
-            vec_t vx =
-              AIsSigned ? reinterpret_cast<vec_t>(vx1) :
-                          reinterpret_cast<vec_t>(vec_sub(reinterpret_cast<Vtype>(vx1), vmask));
-            *reinterpret_cast<vec_t *>(&D[0]) = vx;
-            vsum = vec_sum4s(vx, vsum);
+            Vtype vx = AIsSigned ? reinterpret_cast<Vtype>(vx1) : reinterpret_cast<Vtype>(vx1) - vmask;
+            *reinterpret_cast<Vtype *>(&D[0]) = vx;
+            vsum += vec_sum4s_impl(vx);
             D += 16;
             a += 4;
             y -= 4;
@@ -409,19 +423,17 @@ MlasGemmQuantCopyPackA8x8(
                 vx[10] = a[lda * 2 + 2];
                 vx[14] = a[lda * 3 + 2];
             }
-            vec_t vx1 =
-               AIsSigned ? reinterpret_cast<vec_t>(vx) :
-                           reinterpret_cast<vec_t>(vec_sub(vx, vmask));
-            *reinterpret_cast<vec_t *>(&D[0]) = vx1;
-            vsum = vec_sum4s(vx1, vsum);
+            Vtype vx1 = AIsSigned ? vx : vx - vmask;
+            *reinterpret_cast<Vtype *>(&D[0]) = vx1;
+            vsum += vec_sum4s_impl(vx1);
             D += 16;
             a += 16;
         }
         A += lda * 4;
-        *RowSumBuffer++ = vsum[0];
-        *RowSumBuffer++ = vsum[1];
-        *RowSumBuffer++ = vsum[2];
-        *RowSumBuffer++ = vsum[3];
+
+        vec_xst(vsum, 0, &(RowSumBuffer[0]));
+
+        RowSumBuffer += 4;
         CountM -= 4;
     }
 
@@ -430,7 +442,7 @@ MlasGemmQuantCopyPackA8x8(
     if (CountM <= 3 && CountM > 0) {
         const uint8_t *a = A;
         size_t y = CountK;
-        __vector signed int vsum = { 0 };
+        __vector int vsum = { 0 };
 
         while (y >= 16) {
             Vtype a4 = vmask;
@@ -444,38 +456,37 @@ MlasGemmQuantCopyPackA8x8(
                 a2 = *reinterpret_cast<const Vtype *>(&a[lda]);
             }
             Vtype vx =
-              reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a1),
-                               reinterpret_cast<__vector int>(a2)));
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a1),
+                               reinterpret_cast<__vector int>(a2),
+                               mask_even));
             Vtype vx1 =
-              reinterpret_cast<Vtype>(vec_mergee(reinterpret_cast<__vector int>(a3),
-                               reinterpret_cast<__vector int>(a4)));
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a3),
+                               reinterpret_cast<__vector int>(a4),
+                               mask_even));
             Vtype vx2 =
-              reinterpret_cast<Vtype>(vec_mergeo(reinterpret_cast<__vector int>(a1),
-                               reinterpret_cast<__vector int>(a2)));
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a1),
+                               reinterpret_cast<__vector int>(a2),
+                               mask_odd));
             Vtype vx3 =
-              reinterpret_cast<Vtype>(vec_mergeo(reinterpret_cast<__vector int>(a3),
-                               reinterpret_cast<__vector int>(a4)));
-            Vtype vx4 = vec_xxpermdi(vx, vx1, 0);
-            Vtype vx5 = vec_xxpermdi(vx2, vx3, 0);
-            Vtype vx6 = vec_xxpermdi(vx, vx1, 3);
-            Vtype vx7 = vec_xxpermdi(vx2, vx3, 3);
-            vec_t vx0 =
-              AIsSigned ? reinterpret_cast<vec_t>(vx4) :
-                          reinterpret_cast<vec_t>(vec_sub(vx4, vmask));
-            *reinterpret_cast<vec_t *>(&D[0]) = vx0;
-            vsum = vec_sum4s(vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx5) :
-                              reinterpret_cast<vec_t>(vec_sub(vx5, vmask));
-            *reinterpret_cast<vec_t *>(&D[16]) = vx0;
-            vsum = vec_sum4s(vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx6) :
-                              reinterpret_cast<vec_t>(vec_sub(vx6, vmask));
-            *reinterpret_cast<vec_t *>(&D[32]) = vx0;
-            vsum = vec_sum4s(vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx7) :
-                              reinterpret_cast<vec_t>(vec_sub(vx7, vmask));
-            *reinterpret_cast<vec_t *>(&D[48]) = vx0;
-            vsum = vec_sum4s(vx0, vsum);
+              reinterpret_cast<Vtype>(vec_perm(reinterpret_cast<__vector int>(a3),
+                               reinterpret_cast<__vector int>(a4),
+                               mask_odd));
+            Vtype vx4 = vec_perm(vx, vx1, mask0);
+            Vtype vx5 = vec_perm(vx2, vx3, mask0);
+            Vtype vx6 = vec_perm(vx, vx1, mask3);
+            Vtype vx7 = vec_perm(vx2, vx3, mask3);
+            Vtype vx0 = AIsSigned ? vx4 : vx4 - vmask;
+            *reinterpret_cast<Vtype *>(&D[0]) = vx0;
+            vsum += vec_sum4s_impl(vx0);
+            vx0 = AIsSigned ? vx5 : vx5 - vmask;
+            *reinterpret_cast<Vtype *>(&D[16]) = vx0;
+            vsum += vec_sum4s_impl(vx0);
+            vx0 = AIsSigned ? vx6 : vx6 - vmask;
+            *reinterpret_cast<Vtype *>(&D[32]) = vx0;
+            vsum += vec_sum4s_impl(vx0);
+            vx0 = AIsSigned ? vx7 : vx7 - vmask;
+            *reinterpret_cast<Vtype *>(&D[48]) = vx0;
+            vsum += vec_sum4s_impl(vx0);
             D += 16 * 4;
             a += 16;
             y -= 16;
@@ -491,19 +502,16 @@ MlasGemmQuantCopyPackA8x8(
             if (CountM >= 3) {
                 vx1[2] = *reinterpret_cast<const int *>(&a[lda*2]);
             }
-            vec_t vx =
-              AIsSigned ? reinterpret_cast<vec_t>(vx1) :
-                          reinterpret_cast<vec_t>(vec_sub(reinterpret_cast<Vtype>(vx1), vmask));
-            *reinterpret_cast<vec_t *>(&D[0]) = vx;
-            vsum = vec_sum4s(vx, vsum);
+            Vtype vx = AIsSigned ? reinterpret_cast<Vtype>(vx1) : reinterpret_cast<Vtype>(vx1) - vmask;
+            *reinterpret_cast<Vtype *>(&D[0]) = vx;
+            vsum += vec_sum4s_impl(vx);
             D += 16;
             a += 4;
             y -= 4;
         }
         if (y >= 1)
         {
-            int8_t vz = 0;
-            vec_t vx = vec_splats(vz);
+            Vtype vx = (Vtype) vec_splats(0);
             vx[0] = a[0] ^ Flip;
             if (y >= 2) {
                 vx[1] = a[1] ^ Flip;
@@ -529,8 +537,8 @@ MlasGemmQuantCopyPackA8x8(
                     vx[10] = a[lda * 2 + 2] ^ Flip;
                 }
             }
-            *reinterpret_cast<vec_t *>(&D[0]) = vx;
-            vsum = vec_sum4s(vx, vsum);
+            *reinterpret_cast<Vtype *>(&D[0]) = vx;
+            vsum += vec_sum4s_impl(vx);
             D += 16;
         }
         *RowSumBuffer++ = vsum[0];
@@ -546,7 +554,7 @@ MlasGemmQuantCopyPackA8x8(
 template<typename Vtype, bool BIsSigned>
 void
 MlasGemmQuantCopyPackB8x8(
-    MLAS_GEMM_QUANT_KERNEL_POWER10::PackedBType* D,
+    MLAS_GEMM_QUANT_KERNEL_ZVECTOR::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
     size_t CountN,
@@ -558,6 +566,8 @@ MlasGemmQuantCopyPackB8x8(
     typedef __vector unsigned char vec_t;
     Vtype vmask = reinterpret_cast<Vtype>(vec_splats(BitFlipValue));
     vec_t mask = {0,4,8,12,1,5,9,13,2,6,10,14,3,7,11,15};
+
+    const __vector unsigned char vec_zero = { 0 };
 
     // Copy columns from matrix B to the packed buffer. Signed buffers are
     // converted to unsigned buffers in order to share a common kernel.
@@ -593,22 +603,22 @@ MlasGemmQuantCopyPackB8x8(
                 b2 = vec_mergel(t1, t3);
                 b3 = vec_mergeh(t2, t4);
                 b4 = vec_mergel(t2, t4);
-                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b1, vmask)) :
+                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(b1 + vmask) :
                                         reinterpret_cast<vec_t>(b1);
-                vec_t vx2 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b2, vmask)) :
+                vec_t vx2 = BIsSigned ? reinterpret_cast<vec_t>(b2 + vmask) :
                                         reinterpret_cast<vec_t>(b2);
-                vec_t vx3 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b3, vmask)) :
+                vec_t vx3 = BIsSigned ? reinterpret_cast<vec_t>(b3 + vmask) :
                                         reinterpret_cast<vec_t>(b3);
-                vec_t vx4 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b4, vmask)) :
+                vec_t vx4 = BIsSigned ? reinterpret_cast<vec_t>(b4 + vmask) :
                                         reinterpret_cast<vec_t>(b4);
                 *reinterpret_cast<vec_t *>(&D[0]) = vx1;
                 *reinterpret_cast<vec_t *>(&D[k2]) = vx2;
                 *reinterpret_cast<vec_t *>(&D[k3]) = vx3;
                 *reinterpret_cast<vec_t *>(&D[k4]) = vx4;
-                vsum = vec_sum4s(vx1, vsum);
-                vsum2 = vec_sum4s(vx2, vsum2);
-                vsum3 = vec_sum4s(vx3, vsum3);
-                vsum4 = vec_sum4s(vx4, vsum4);
+                vsum  += vec_sum4(vx1, vec_zero);
+                vsum2 += vec_sum4(vx2, vec_zero);
+                vsum3 += vec_sum4(vx3, vec_zero);
+                vsum4 += vec_sum4(vx4, vec_zero);
                 D += 16;
                 b += ldb*4;
                 y -= 4;
@@ -627,40 +637,31 @@ MlasGemmQuantCopyPackB8x8(
             b2 = vec_mergel(t1, t3);
             b3 = vec_mergeh(t2, t4);
             b4 = vec_mergel(t2, t4);
-            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b1, vmask)) :
+            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(b1 + vmask) :
                                     reinterpret_cast<vec_t>(b1);
-            vec_t vx2 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b2, vmask)) :
+            vec_t vx2 = BIsSigned ? reinterpret_cast<vec_t>(b2 + vmask) :
                                     reinterpret_cast<vec_t>(b2);
-            vec_t vx3 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b3, vmask)) :
+            vec_t vx3 = BIsSigned ? reinterpret_cast<vec_t>(b3 + vmask) :
                                     reinterpret_cast<vec_t>(b3);
-            vec_t vx4 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b4, vmask)) :
+            vec_t vx4 = BIsSigned ? reinterpret_cast<vec_t>(b4 + vmask) :
                                     reinterpret_cast<vec_t>(b4);
             *reinterpret_cast<vec_t *>(&D[0]) = vx1;
             *reinterpret_cast<vec_t *>(&D[k2]) = vx2;
             *reinterpret_cast<vec_t *>(&D[k3]) = vx3;
             *reinterpret_cast<vec_t *>(&D[k4]) = vx4;
-            vsum = vec_sum4s(vx1, vsum);
-            vsum2 = vec_sum4s(vx2, vsum2);
-            vsum3 = vec_sum4s(vx3, vsum3);
-            vsum4 = vec_sum4s(vx4, vsum4);
+            vsum  += vec_sum4(vx1, vec_zero);
+            vsum2 += vec_sum4(vx2, vec_zero);
+            vsum3 += vec_sum4(vx3, vec_zero);
+            vsum4 += vec_sum4(vx4, vec_zero);
             D += 16;
         }
-        *ColumnSumBuffer++ = vsum[0];
-        *ColumnSumBuffer++ = vsum[1];
-        *ColumnSumBuffer++ = vsum[2];
-        *ColumnSumBuffer++ = vsum[3];
-        *ColumnSumBuffer++ = vsum2[0];
-        *ColumnSumBuffer++ = vsum2[1];
-        *ColumnSumBuffer++ = vsum2[2];
-        *ColumnSumBuffer++ = vsum2[3];
-        *ColumnSumBuffer++ = vsum3[0];
-        *ColumnSumBuffer++ = vsum3[1];
-        *ColumnSumBuffer++ = vsum3[2];
-        *ColumnSumBuffer++ = vsum3[3];
-        *ColumnSumBuffer++ = vsum4[0];
-        *ColumnSumBuffer++ = vsum4[1];
-        *ColumnSumBuffer++ = vsum4[2];
-        *ColumnSumBuffer++ = vsum4[3];
+
+        vec_xst(vsum,   0, (unsigned int*) ColumnSumBuffer);
+        vec_xst(vsum2, 16, (unsigned int*) ColumnSumBuffer);
+        vec_xst(vsum3, 32, (unsigned int*) ColumnSumBuffer);
+        vec_xst(vsum4, 48, (unsigned int*) ColumnSumBuffer);
+
+        ColumnSumBuffer += 16;
         B += 16;
         CountN -= 16;
         D += k4;
@@ -680,10 +681,10 @@ MlasGemmQuantCopyPackB8x8(
                 int b4 = *reinterpret_cast<const int *>(&b[ldb*3]);
                 __vector int vb = {b1, b2, b3, b4};
                 Vtype vx = vec_perm(reinterpret_cast<Vtype>(vb), reinterpret_cast<Vtype>(vb), mask);
-                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(vx, vmask)) :
+                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vx + vmask) :
                                         reinterpret_cast<vec_t>(vx);
                 *reinterpret_cast<vec_t *>(&D[0]) = vx1;
-                vsum = vec_sum4s(vx1, vsum);
+                vsum += vec_sum4(vx1, vec_zero);
                 D += 16;
                 b += ldb*4;
                 y -= 4;
@@ -700,16 +701,16 @@ MlasGemmQuantCopyPackB8x8(
                 vb1[2] = *reinterpret_cast<const int *>(&b[ldb*2]);
             }
             Vtype vx = vec_perm(reinterpret_cast<Vtype>(vb1), reinterpret_cast<Vtype>(vb1), mask);
-            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(vx, vmask)) :
+            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vx + vmask) :
                                     reinterpret_cast<vec_t>(vx);
             *reinterpret_cast<vec_t *>(&D[0]) = vx1;
-            vsum = vec_sum4s(vx1, vsum);
+            vsum += vec_sum4(vx1, vec_zero);
             D += 16;
         }
-        *ColumnSumBuffer++ = vsum[0];
-        *ColumnSumBuffer++ = vsum[1];
-        *ColumnSumBuffer++ = vsum[2];
-        *ColumnSumBuffer++ = vsum[3];
+
+        vec_xst(vsum,   0, (unsigned int*) ColumnSumBuffer);
+
+        ColumnSumBuffer += 4;
         B += 4;
         CountN -= 4;
     }
@@ -755,10 +756,10 @@ MlasGemmQuantCopyPackB8x8(
                     vb[14] = b[ldb*3+2];
                 }
                 Vtype vx = vec_perm(reinterpret_cast<Vtype>(vb), reinterpret_cast<Vtype>(vb), mask);
-                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(vx, vmask)) :
+                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vx + vmask) :
                                         reinterpret_cast<vec_t>(vx);
                 *reinterpret_cast<vec_t *>(&D[0]) = vx1;
-                vsum = vec_sum4s(vx1, vsum);
+                vsum += vec_sum4(vx1, vec_zero);
                 D += 16;
                 b += ldb*4;
                 y -= 4;
@@ -803,10 +804,10 @@ MlasGemmQuantCopyPackB8x8(
                 }
             }
             Vtype vx = vec_perm(reinterpret_cast<Vtype>(vb), reinterpret_cast<Vtype>(vb), mask);
-            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(vx, vmask)) :
+            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vx + vmask) :
                                     reinterpret_cast<vec_t>(vx);
             *reinterpret_cast<vec_t *>(&D[0]) = vx1;
-            vsum = vec_sum4s(vx1, vsum);
+            vsum += vec_sum4(vx1, vec_zero);
             D += 16;
         }
         *ColumnSumBuffer++ = vsum[0];
@@ -821,8 +822,8 @@ MlasGemmQuantCopyPackB8x8(
 
 template<>
 void
-MlasGemmQuantCopyPackA<MLAS_GEMM_QUANT_KERNEL_POWER10>(
-    MLAS_GEMM_QUANT_KERNEL_POWER10::PackedAType* D,
+MlasGemmQuantCopyPackA<MLAS_GEMM_QUANT_KERNEL_ZVECTOR>(
+    MLAS_GEMM_QUANT_KERNEL_ZVECTOR::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
@@ -832,15 +833,15 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_QUANT_KERNEL_POWER10>(
     )
 {
     if (AIsSigned) {
-        MlasGemmQuantCopyPackA8x8<__vector signed char, true>(D, A, lda, CountM, CountK, RowSumBuffer);
+        MlasGemmQuantCopyPackA8x8<__vector   signed char, true> (D, A, lda, CountM, CountK, RowSumBuffer);
     } else {
         MlasGemmQuantCopyPackA8x8<__vector unsigned char, false>(D, A, lda, CountM, CountK, RowSumBuffer);
     }
 }
 template<>
 void
-MlasGemmQuantCopyPackB<MLAS_GEMM_QUANT_KERNEL_POWER10>(
-    MLAS_GEMM_QUANT_KERNEL_POWER10::PackedBType* D,
+MlasGemmQuantCopyPackB<MLAS_GEMM_QUANT_KERNEL_ZVECTOR>(
+    MLAS_GEMM_QUANT_KERNEL_ZVECTOR::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
     size_t CountN,
@@ -859,7 +860,7 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_QUANT_KERNEL_POWER10>(
 template<size_t VectorCount>
 MLAS_FORCEINLINE
 void
-MlasQgemmStoreVectorMMA
+MlasQgemmStoreVectorZVECTOR
     (
     MLAS_INT32X4 result[4],
     int32_t* C,
@@ -874,18 +875,10 @@ MlasQgemmStoreVectorMMA
 {
     size_t RowCount;
     __vector signed int vsum0, vsum1, vsum2, vsum3;
-#if defined(_AIX) && defined(__clang__)
-    __vector signed int columnsum = *reinterpret_cast<const __vector int *>(&ColumnSumBuffer[pos]);
-#else
     __vector signed int columnsum = *reinterpret_cast<const __vector int32_t *>(&ColumnSumBuffer[pos]);
-#endif
     C += VectorCount;
     if (ZeroPointB != nullptr) {
-#if defined(_AIX) && defined(__clang__)
-        __vector signed int zeropoint = *reinterpret_cast<const __vector int *>(&ZeroPointB[pos]);
-#else
         __vector signed int zeropoint = *reinterpret_cast<const __vector int32_t *>(&ZeroPointB[pos]);
-#endif
         if (ZeroMode) {
             for (RowCount = 0; RowCount + 4 <= row; RowCount += 4, C += ldc*4) {
                 vsum0 = vec_splats(RowSumBuffer[RowCount + 0]) * zeropoint + columnsum;
@@ -974,7 +967,7 @@ MlasQgemmStoreVectorMMA
 template<size_t Lane>
 MLAS_FORCEINLINE
 void
-MlasQgemmStoreScalarMMA(
+MlasQgemmStoreScalarZVECTOR(
     MLAS_INT32X4 result[4],
     int32_t* C,
     size_t ldc,
@@ -1015,55 +1008,100 @@ MlasQgemmStoreScalarMMA(
         }
     }
 };
+
+MLAS_FORCEINLINE
+void
+xvi8ger4pp_impl(
+    MLAS_INT32X4 acc[4],
+    __vector unsigned char va,
+    __vector unsigned char vb
+    )
+{
+    const __vector unsigned char maska[4] = {
+        {  0,  1,  2,  3,  0,  1,  2,  3,  0,  1,  2  ,3,  0,  1,  2,  3 },
+        {  4,  5,  6,  7,  4,  5,  6,  7,  4,  5,  6,  7,  4,  5,  6,  7 },
+        {  8,  9, 10, 11,  8,  9, 10, 11,  8,  9, 10, 11,  8,  9, 10, 11 },
+        { 12, 13, 14, 15, 12, 13, 14, 15, 12, 13, 14, 15, 12, 13, 14, 15 }
+    };
+
+    const __vector unsigned char maskb = { 0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15 };
+
+    __vector int va_interm[4];
+    __vector unsigned char vb_interm = vec_perm(vb, vb, maskb);
+
+    __vector int va_prep;
+    __vector int vb_prep[4];
+
+    va_interm[0] = (__vector int) vec_unpackh(vec_unpackh((__vector signed char) va));
+    va_interm[1] = (__vector int) vec_unpackl(vec_unpackh((__vector signed char) va));
+    va_interm[2] = (__vector int) vec_unpackh(vec_unpackl((__vector signed char) va));
+    va_interm[3] = (__vector int) vec_unpackl(vec_unpackl((__vector signed char) va));
+
+    vb_prep[0] = (__vector int) vec_unpackh(vec_unpackh(vb_interm));
+    vb_prep[1] = (__vector int) vec_unpackl(vec_unpackh(vb_interm));
+    vb_prep[2] = (__vector int) vec_unpackh(vec_unpackl(vb_interm));
+    vb_prep[3] = (__vector int) vec_unpackl(vec_unpackl(vb_interm));
+
+    for (size_t i = 0; i < 4; ++i)
+    {
+        for (size_t k = 0; k < 4; ++k)
+        {
+            va_prep = vec_perm(va_interm[i], va_interm[i], maska[k]);
+
+            acc[i] += va_prep * vb_prep[k];
+        }
+    }
+}
+
 template<bool CountM, size_t CountK>
 MLAS_FORCEINLINE
 void
-MlasQgemmComputeMMA(
-    __vector_quad *acc0,
-    __vector_quad *acc1,
+MlasQgemmComputeZVECTOR(
+    MLAS_INT32X4 acc0[4],
+    MLAS_INT32X4 acc1[4],
     __vector unsigned char *va,
     __vector unsigned char *vb
     )
 {
     if (CountK == 16) {
-        __builtin_mma_xvi8ger4pp(acc0, va[0], vb[0]);
-        __builtin_mma_xvi8ger4pp(acc0, va[1], vb[1]);
-        __builtin_mma_xvi8ger4pp(acc0, va[2], vb[2]);
-        __builtin_mma_xvi8ger4pp(acc0, va[3], vb[3]);
+        xvi8ger4pp_impl(acc0, va[0], vb[0]);
+        xvi8ger4pp_impl(acc0, va[1], vb[1]);
+        xvi8ger4pp_impl(acc0, va[2], vb[2]);
+        xvi8ger4pp_impl(acc0, va[3], vb[3]);
         if (CountM) {
-            __builtin_mma_xvi8ger4pp(acc1, va[4], vb[0]);
-            __builtin_mma_xvi8ger4pp(acc1, va[5], vb[1]);
-            __builtin_mma_xvi8ger4pp(acc1, va[6], vb[2]);
-            __builtin_mma_xvi8ger4pp(acc1, va[7], vb[3]);
+            xvi8ger4pp_impl(acc1, va[4], vb[0]);
+            xvi8ger4pp_impl(acc1, va[5], vb[1]);
+            xvi8ger4pp_impl(acc1, va[6], vb[2]);
+            xvi8ger4pp_impl(acc1, va[7], vb[3]);
         }
     } else if (CountK == 12) {
-        __builtin_mma_xvi8ger4pp(acc0, va[0], vb[0]);
-        __builtin_mma_xvi8ger4pp(acc0, va[1], vb[1]);
-        __builtin_mma_xvi8ger4pp(acc0, va[2], vb[2]);
+        xvi8ger4pp_impl(acc0, va[0], vb[0]);
+        xvi8ger4pp_impl(acc0, va[1], vb[1]);
+        xvi8ger4pp_impl(acc0, va[2], vb[2]);
         if (CountM) {
-            __builtin_mma_xvi8ger4pp(acc1, va[3], vb[0]);
-            __builtin_mma_xvi8ger4pp(acc1, va[4], vb[1]);
-            __builtin_mma_xvi8ger4pp(acc1, va[5], vb[2]);
+            xvi8ger4pp_impl(acc1, va[3], vb[0]);
+            xvi8ger4pp_impl(acc1, va[4], vb[1]);
+            xvi8ger4pp_impl(acc1, va[5], vb[2]);
         }
     } else if (CountK == 8) {
-        __builtin_mma_xvi8ger4pp(acc0, va[0], vb[0]);
-        __builtin_mma_xvi8ger4pp(acc0, va[1], vb[1]);
+        xvi8ger4pp_impl(acc0, va[0], vb[0]);
+        xvi8ger4pp_impl(acc0, va[1], vb[1]);
         if (CountM) {
-            __builtin_mma_xvi8ger4pp(acc1, va[2], vb[0]);
-            __builtin_mma_xvi8ger4pp(acc1, va[3], vb[1]);
+            xvi8ger4pp_impl(acc1, va[2], vb[0]);
+            xvi8ger4pp_impl(acc1, va[3], vb[1]);
         }
     } else {
-        __builtin_mma_xvi8ger4pp(acc0, va[0], vb[0]);
+        xvi8ger4pp_impl(acc0, va[0], vb[0]);
         if (CountM) {
-            __builtin_mma_xvi8ger4pp(acc1, va[1], vb[0]);
+            xvi8ger4pp_impl(acc1, va[1], vb[0]);
         }
     }
 };
 template<>
 size_t
-MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
-    const MLAS_GEMM_QUANT_KERNEL_POWER10::PackedAType* A,
-    const MLAS_GEMM_QUANT_KERNEL_POWER10::PackedBType* B,
+MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_ZVECTOR>(
+    const MLAS_GEMM_QUANT_KERNEL_ZVECTOR::PackedAType* A,
+    const MLAS_GEMM_QUANT_KERNEL_ZVECTOR::PackedBType* B,
     int32_t* C,
     size_t PackedCountK,
     size_t CountM,
@@ -1087,21 +1125,17 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
         typedef __vector unsigned char vec_t;
         const uint8_t *b = B;
         int32_t *C1;
-        __vector_quad acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7;
-        //
-        // Initialize the accumulators with zero.
-        //
-        __builtin_mma_xxsetaccz(&acc0);
-        __builtin_mma_xxsetaccz(&acc1);
-        __builtin_mma_xxsetaccz(&acc2);
-        __builtin_mma_xxsetaccz(&acc3);
-        __builtin_mma_xxsetaccz(&acc4);
-        __builtin_mma_xxsetaccz(&acc5);
-        __builtin_mma_xxsetaccz(&acc6);
-        __builtin_mma_xxsetaccz(&acc7);
+        MLAS_INT32X4 acc0[4] = {0};
+        MLAS_INT32X4 acc1[4] = {0};
+        MLAS_INT32X4 acc2[4] = {0};
+        MLAS_INT32X4 acc3[4] = {0};
+        MLAS_INT32X4 acc4[4] = {0};
+        MLAS_INT32X4 acc5[4] = {0};
+        MLAS_INT32X4 acc6[4] = {0};
+        MLAS_INT32X4 acc7[4] = {0};
         MLAS_INT32X4 result[4] = {0};
         MLAS_INT32X4 result1[4] = {0};
-        size_t k = PackedCountK * MLAS_GEMM_QUANT_KERNEL_POWER10::PackedK;
+        size_t k = PackedCountK * MLAS_GEMM_QUANT_KERNEL_ZVECTOR::PackedK;
         size_t k1 = PackedCountK;
         //
         // Compute the output block using POWER10 MMA builtins.
@@ -1110,27 +1144,27 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
             vec_t *va = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(a));
             vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(b));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 16>(&acc0, &acc4, va, vb);
+                MlasQgemmComputeZVECTOR<true, 16>(acc0, acc4, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 16>(&acc0, &acc4, va, vb);
+                MlasQgemmComputeZVECTOR<false, 16>(acc0, acc4, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*16]));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 16>(&acc1, &acc5, va, vb);
+                MlasQgemmComputeZVECTOR<true, 16>(acc1, acc5, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 16>(&acc1, &acc5, va, vb);
+                MlasQgemmComputeZVECTOR<false, 16>(acc1, acc5, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*32]));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 16>(&acc2, &acc6, va, vb);
+                MlasQgemmComputeZVECTOR<true, 16>(acc2, acc6, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 16>(&acc2, &acc6, va, vb);
+                MlasQgemmComputeZVECTOR<false, 16>(acc2, acc6, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*48]));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 16>(&acc3, &acc7, va, vb);
+                MlasQgemmComputeZVECTOR<true, 16>(acc3, acc7, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 16>(&acc3, &acc7, va, vb);
+                MlasQgemmComputeZVECTOR<false, 16>(acc3, acc7, va, vb);
             }
             b += 64;
             if (CountM >= 8) {
@@ -1144,27 +1178,27 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
             vec_t *va = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(a));
             vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(b));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 12>(&acc0, &acc4, va, vb);
+                MlasQgemmComputeZVECTOR<true, 12>(acc0, acc4, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 12>(&acc0, &acc4, va, vb);
+                MlasQgemmComputeZVECTOR<false, 12>(acc0, acc4, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*16]));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 12>(&acc1, &acc5, va, vb);
+                MlasQgemmComputeZVECTOR<true, 12>(acc1, acc5, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 12>(&acc1, &acc5, va, vb);
+                MlasQgemmComputeZVECTOR<false, 12>(acc1, acc5, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*32]));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 12>(&acc2, &acc6, va, vb);
+                MlasQgemmComputeZVECTOR<true, 12>(acc2, acc6, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 12>(&acc2, &acc6, va, vb);
+                MlasQgemmComputeZVECTOR<false, 12>(acc2, acc6, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*48]));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 12>(&acc3, &acc7, va, vb);
+                MlasQgemmComputeZVECTOR<true, 12>(acc3, acc7, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 12>(&acc3, &acc7, va, vb);
+                MlasQgemmComputeZVECTOR<false, 12>(acc3, acc7, va, vb);
             }
             if (CountM >= 8) {
                 a += 96;
@@ -1178,27 +1212,27 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
             vec_t *va = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(a));
             vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(b));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 8>(&acc0, &acc4, va, vb);
+                MlasQgemmComputeZVECTOR<true, 8>(acc0, acc4, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 8>(&acc0, &acc4, va, vb);
+                MlasQgemmComputeZVECTOR<false, 8>(acc0, acc4, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*16]));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 8>(&acc1, &acc5, va, vb);
+                MlasQgemmComputeZVECTOR<true, 8>(acc1, acc5, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 8>(&acc1, &acc5, va, vb);
+                MlasQgemmComputeZVECTOR<false, 8>(acc1, acc5, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*32]));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 8>(&acc2, &acc6, va, vb);
+                MlasQgemmComputeZVECTOR<true, 8>(acc2, acc6, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 8>(&acc2, &acc6, va, vb);
+                MlasQgemmComputeZVECTOR<false, 8>(acc2, acc6, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*48]));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 8>(&acc3, &acc7, va, vb);
+                MlasQgemmComputeZVECTOR<true, 8>(acc3, acc7, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 8>(&acc3, &acc7, va, vb);
+                MlasQgemmComputeZVECTOR<false, 8>(acc3, acc7, va, vb);
             }
             if (CountM >= 8) {
                 a += 64;
@@ -1212,49 +1246,43 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
             vec_t *va = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(a));
             vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(b));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 4>(&acc0, &acc4, va, vb);
+                MlasQgemmComputeZVECTOR<true, 4>(acc0, acc4, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 4>(&acc0, &acc4, va, vb);
+                MlasQgemmComputeZVECTOR<false, 4>(acc0, acc4, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*16]));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 4>(&acc1, &acc5, va, vb);
+                MlasQgemmComputeZVECTOR<true, 4>(acc1, acc5, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 4>(&acc1, &acc5, va, vb);
+                MlasQgemmComputeZVECTOR<false, 4>(acc1, acc5, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*32]));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 4>(&acc2, &acc6, va, vb);
+                MlasQgemmComputeZVECTOR<true, 4>(acc2, acc6, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 4>(&acc2, &acc6, va, vb);
+                MlasQgemmComputeZVECTOR<false, 4>(acc2, acc6, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*48]));
             if (CountM >= 8) {
-                MlasQgemmComputeMMA<true, 4>(&acc3, &acc7, va, vb);
+                MlasQgemmComputeZVECTOR<true, 4>(acc3, acc7, va, vb);
             } else {
-                MlasQgemmComputeMMA<false, 4>(&acc3, &acc7, va, vb);
+                MlasQgemmComputeZVECTOR<false, 4>(acc3, acc7, va, vb);
             }
         }
         // Store matrix C with accumulator result.
-        if (CountN >=16) {
-            __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc0);
-            MlasQgemmStoreVectorMMA<0>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 0);
-            __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc1);
-            MlasQgemmStoreVectorMMA<4>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 4);
-            __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc2);
-            MlasQgemmStoreVectorMMA<8>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 8);
-            __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc3);
-            MlasQgemmStoreVectorMMA<12>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 12);
+        if (CountN >= 16) {
+            MlasQgemmStoreVectorZVECTOR<0>(acc0, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 0);
+            MlasQgemmStoreVectorZVECTOR<4>(acc1, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 4);
+            MlasQgemmStoreVectorZVECTOR<8>(acc2, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 8);
+            MlasQgemmStoreVectorZVECTOR<12>(acc3, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 12);
+
             if (CountM >= 8) {
                 C1 = C+ldc*4;
-                __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc4);
-                MlasQgemmStoreVectorMMA<0>(result, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 0);
-                __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc5);
-                MlasQgemmStoreVectorMMA<4>(result, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 4);
-                __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc6);
-                MlasQgemmStoreVectorMMA<8>(result, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 8);
-                __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc7);
-                MlasQgemmStoreVectorMMA<12>(result, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 12);
+
+                MlasQgemmStoreVectorZVECTOR<0>(acc4, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 0);
+                MlasQgemmStoreVectorZVECTOR<4>(acc5, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 4);
+                MlasQgemmStoreVectorZVECTOR<8>(acc6, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 8);
+                MlasQgemmStoreVectorZVECTOR<12>(acc7, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 12);
             }
             INC_BUFFER(16);
             CountN -= 16;
@@ -1262,72 +1290,79 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
             C += 16;
         } else {
             if (CountN >=12 ) {
-                __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc0);
-                MlasQgemmStoreVectorMMA<0>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 0);
-                __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc1);
-                MlasQgemmStoreVectorMMA<4>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 4);
-                __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc2);
-                MlasQgemmStoreVectorMMA<8>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 8);
+                MlasQgemmStoreVectorZVECTOR<0>(acc0, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 0);
+                MlasQgemmStoreVectorZVECTOR<4>(acc1, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 4);
+                MlasQgemmStoreVectorZVECTOR<8>(acc2, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 8);
                 if (CountM >= 8) {
                     C1 = C+ldc*4;
-                    __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc4);
-                    MlasQgemmStoreVectorMMA<0>(result, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 0);
-                    __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc5);
-                    MlasQgemmStoreVectorMMA<4>(result, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 4);
-                    __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc6);
-                    MlasQgemmStoreVectorMMA<8>(result, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 8);
+
+                    MlasQgemmStoreVectorZVECTOR<0>(acc4, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 0);
+                    MlasQgemmStoreVectorZVECTOR<4>(acc5, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 4);
+                    MlasQgemmStoreVectorZVECTOR<8>(acc6, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 8);
                 }
                 INC_BUFFER(12);
                 if (CountN - 12 > 0) {
-                    __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc3);
+                    for (size_t i = 0; i < 4; ++i) {
+                        result[i] = acc3[i];
+                    }
                     if (CountM >= 8) {
-                        __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result1), &acc7);
+                        for (size_t i = 0; i < 4; ++i) {
+                            result1[i] = acc7[i];
+                        }
                     }
                 }
                 CountN -= 12;
                 C += 12;
             } else if (CountN >= 8) {
-                __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc0);
-                MlasQgemmStoreVectorMMA<0>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 0);
-                __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc1);
-                MlasQgemmStoreVectorMMA<4>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 4);
+                MlasQgemmStoreVectorZVECTOR<0>(acc0, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 0);
+                MlasQgemmStoreVectorZVECTOR<4>(acc1, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 4);
                 if (CountM >= 8) {
                     C1 = C+ldc*4;
-                    __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc4);
-                    MlasQgemmStoreVectorMMA<0>(result, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 0);
-                    __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc5);
-                    MlasQgemmStoreVectorMMA<4>(result, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 4);
+
+                    MlasQgemmStoreVectorZVECTOR<0>(acc4, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 0);
+                    MlasQgemmStoreVectorZVECTOR<4>(acc5, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 4);
                 }
                 INC_BUFFER(8);
                 if (CountN - 8 > 0) {
-                    __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc2);
+                    for (size_t i = 0; i < 4; ++i) {
+                        result[i] = acc2[i];
+                    }
                     if (CountM >= 8) {
-                        __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result1), &acc6);
+                        for (size_t i = 0; i < 4; ++i) {
+                            result1[i] = acc6[i];
+                        }
                     }
                 }
                 CountN -= 8;
                 C += 8;
             } else if (CountN >= 4) {
-                __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc0);
-                MlasQgemmStoreVectorMMA<0>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 0);
+                MlasQgemmStoreVectorZVECTOR<0>(acc0, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB, 0);
                 if (CountM >= 8) {
                     C1 = C+ldc*4;
-                    __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc4);
-                    MlasQgemmStoreVectorMMA<0>(result, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 0);
-                    if (CountN - 4 > 0) {
-                        __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result1), &acc5);
-                    }
+
+                    MlasQgemmStoreVectorZVECTOR<0>(acc4, C1, ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB, 0);
                 }
                 INC_BUFFER(4);
                 if (CountN - 4 > 0) {
-                     __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc1);
+                    for (size_t i = 0; i < 4; ++i) {
+                        result[i] = acc1[i];
+                    }
+                    if (CountM >= 8) {
+                        for (size_t i = 0; i < 4; ++i) {
+                            result1[i] = acc5[i];
+                        }
+                    }
                 }
                 CountN -= 4;
                 C += 4;
             } else {
-                __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result), &acc0);
+                for (size_t i = 0; i < 4; ++i) {
+                    result[i] = acc0[i];
+                }
                 if (CountM >= 8) {
-                    __builtin_mma_disassemble_acc(reinterpret_cast<void*>(result1), &acc4);
+                    for (size_t i = 0; i < 4; ++i) {
+                        result1[i] = acc4[i];
+                    }
                 }
             }
             CountN &= 3;
@@ -1335,22 +1370,22 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
             // Output the remaining partial output block.
             //
             if (CountN > 0) {
-                MlasQgemmStoreScalarMMA<0>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+                MlasQgemmStoreScalarZVECTOR<0>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB);
                 if (CountM >= 8) {
-                    MlasQgemmStoreScalarMMA<0>(result1, C + (ldc*4), ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB);
+                    MlasQgemmStoreScalarZVECTOR<0>(result1, C + (ldc*4), ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB);
                 }
                 INC_BUFFER(1);
                 if (CountN >= 2) {
-                     MlasQgemmStoreScalarMMA<1>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+                     MlasQgemmStoreScalarZVECTOR<1>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB);
                      if (CountM >= 8) {
-                         MlasQgemmStoreScalarMMA<1>(result1, C + (ldc*4), ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB);
+                         MlasQgemmStoreScalarZVECTOR<1>(result1, C + (ldc*4), ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB);
                      }
                      INC_BUFFER(1);
                 }
                 if (CountN >= 3) {
-                     MlasQgemmStoreScalarMMA<2>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+                     MlasQgemmStoreScalarZVECTOR<2>(result, C, ldc, Mval, ZeroMode, RowSumBuffer, ColumnSumBuffer, ZeroPointB);
                      if (CountM >= 8) {
-                         MlasQgemmStoreScalarMMA<2>(result1, C + (ldc*4), ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB);
+                         MlasQgemmStoreScalarZVECTOR<2>(result1, C + (ldc*4), ldc, 4, ZeroMode, RowSumBuffer+4, ColumnSumBuffer, ZeroPointB);
                      }
                      INC_BUFFER(1);
                 }
@@ -1364,11 +1399,11 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
     return CountM;
 }
 
-const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10 = {
-    MlasGemmQuantOperation<MLAS_GEMM_QUANT_KERNEL_POWER10>,
-    MlasGemmQuantPackedOperation<MLAS_GEMM_QUANT_KERNEL_POWER10>,
-    MlasGemmQuantCopyPackB<MLAS_GEMM_QUANT_KERNEL_POWER10>,
-    MLAS_GEMM_QUANT_KERNEL_POWER10::PackedK,
-    MLAS_GEMM_QUANT_KERNEL_POWER10::PackedStrides.K,
+const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchZVECTOR = {
+    MlasGemmQuantOperation<MLAS_GEMM_QUANT_KERNEL_ZVECTOR>,
+    MlasGemmQuantPackedOperation<MLAS_GEMM_QUANT_KERNEL_ZVECTOR>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_QUANT_KERNEL_ZVECTOR>,
+    MLAS_GEMM_QUANT_KERNEL_ZVECTOR::PackedK,
+    MLAS_GEMM_QUANT_KERNEL_ZVECTOR::PackedStrides.K,
     8 // Kernel M stride
 };

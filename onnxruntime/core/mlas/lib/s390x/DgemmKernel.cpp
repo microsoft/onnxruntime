@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    DgemmKernelPower.cpp
+    DgemmKernel.cpp
 
 Abstract:
 
@@ -14,7 +14,7 @@ Abstract:
     multiply operation (DGEMM).
 
 --*/
-#include "DgemmKernelpower.h"
+#include "DgemmKernelZVECTOR.h"
 
 size_t
 MLASCALL
