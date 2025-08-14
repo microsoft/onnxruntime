@@ -32,13 +32,6 @@ class QnnBackendManager;
 
 class QnnEp : public OrtEp, public ApiPtrs {
  public:
-  struct Config {
-    bool enable_ep_context{false};
-    bool share_ep_contexts{false};
-    bool enable_vtcm_backup_buffer_sharing{false};
-    bool disable_cpu_ep_fallback{false};
-  };
-
   QnnEp(QnnEpFactory& factory,
         const std::string& name,
         const OrtSessionOptions& session_options,
@@ -169,7 +162,6 @@ class QnnEp : public OrtEp, public ApiPtrs {
 
   const QnnEpFactory& factory_;
   std::string name_;
-  Config config_;
   const OrtLogger& logger_;
   const logging::Logger& logger_in_;
   bool context_cache_enabled_;

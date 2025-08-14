@@ -995,47 +995,29 @@ static bool EpSharedContextsHasAllGraphs(const OrtGraph* graph, const OrtApi& or
     return false;
   }
 
-  bool all_graphs_found = true;
-
-  for (size_t i = 0; i < num_nodes; ++i) {
-    const OrtNode* node = graph_nodes[i];
+  for (const OrtNode* node : graph_nodes) {
     const char* op_type = nullptr;
+    if (ort_api.Node_GetOperatorType(node, &op_type) != nullptr) {
+      return false;
+    }
 
-    if (ort_api.Node_GetOperatorType(node, &op_type) == nullptr && op_type != nullptr) {
-      if (std::string(op_type) == "EPContext") {
-        // Check the 'source' attribute to verify it's from QNN
-        const OrtOpAttr* source_attr = nullptr;
-        if (ort_api.Node_GetAttributeByName(node, "source", &source_attr) == nullptr && source_attr != nullptr) {
-          char source_buffer[256] = {0};
-          size_t source_len = 0;
-          if (ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len) == nullptr) {
-            std::string cache_source(source_buffer, source_len);
+    OrtNodeAttrHelper node_helper(ort_api, *node);
+    std::string cache_source = qnn::utils::GetLowercaseString(node_helper.Get(qnn::SOURCE, ""));
 
-            // Convert to lowercase for comparison
-            std::transform(cache_source.begin(), cache_source.end(), cache_source.begin(),
-                           [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+    if (op_type == qnn::EPCONTEXT_OP && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
+      const char* node_name = nullptr;
+      if (ort_api.Node_GetName(node, &node_name) != nullptr) {
+        return false;
+      }
 
-            if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
-              // Get the graph name (node name)
-              const char* node_name = nullptr;
-              if (ort_api.Node_GetName(node, &node_name) == nullptr && node_name != nullptr) {
-                std::string graph_name(node_name);
-                bool has_shared_qnn_model = SharedContext::GetInstance().HasQnnModel(graph_name);
-                if (!has_shared_qnn_model) {
-                  // Log the missing graph (equivalent to LOGS(logger, VERBOSE))
-                  std::string log_message = "Graph: " + graph_name + " from EpContext node not found from shared EP contexts.";
-                  LOGS(logger, VERBOSE) << log_message;
-                  all_graphs_found = false;
-                  break;
-                }
-              }
-            }
-          }
-        }
+      if (!SharedContext::GetInstance().HasQnnModel(node_name)) {
+        LOGS(logger, VERBOSE) << "Graph: " << node_name << " from EpContext node not found from shared EP contexts.";
+        return false;
       }
     }
   }
-  return all_graphs_found;
+
+  return true;
 }
 
 static void GetMainEPCtxNodes(const OrtGraph* graph,
@@ -1052,47 +1034,26 @@ static void GetMainEPCtxNodes(const OrtGraph* graph,
     return;
   }
 
-  for (size_t i = 0; i < num_nodes; ++i) {
-    const OrtNode* node = graph_nodes[i];
+  for (size_t node_idx = 0; node_idx < num_nodes; ++node_idx) {
+    const OrtNode* node = graph_nodes[node_idx];
+
     const char* op_type = nullptr;
+    if (ort_api.Node_GetOperatorType(node, &op_type) != nullptr) {
+      continue;
+    }
 
-    if (ort_api.Node_GetOperatorType(node, &op_type) == nullptr && op_type != nullptr) {
-      if (std::string(op_type) == "EPContext") {
-        // Check main_context attribute
-        const OrtOpAttr* main_context_attr = nullptr;
-        if (ort_api.Node_GetAttributeByName(node, "main_context", &main_context_attr) == nullptr && main_context_attr != nullptr) {
-          int64_t is_main_context = 0;
-          size_t out_size = 0;
-          if (ort_api.ReadOpAttr(main_context_attr, ORT_OP_ATTR_INT, &is_main_context, sizeof(is_main_context), &out_size) == nullptr) {
-            // Check source attribute
-            const OrtOpAttr* source_attr = nullptr;
-            if (ort_api.Node_GetAttributeByName(node, "source", &source_attr) == nullptr && source_attr != nullptr) {
-              char source_buffer[256] = {0};
-              size_t source_len = 0;
-              if (ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len) == nullptr) {
-                std::string cache_source(source_buffer, source_len);
+    OrtNodeAttrHelper node_helper(ort_api, *node);
+    bool is_main_context = node_helper.Get(qnn::MAIN_CONTEXT, static_cast<int64_t>(0));
+    std::string cache_source = qnn::utils::GetLowercaseString(node_helper.Get(qnn::SOURCE, ""));
 
-                // Convert to lowercase for comparison
-                std::transform(cache_source.begin(), cache_source.end(), cache_source.begin(),
-                               [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+    if (is_main_context &&
+        op_type == qnn::EPCONTEXT_OP &&
+        (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
+      const char* node_name = nullptr;
+      ort_api.Node_GetName(node, &node_name);
+      LOGS(logger, VERBOSE) << "EPContext Node found: [1] index: [" << node_idx << "] name: [" << node_name << "]";
 
-                if (is_main_context && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
-                  // Log the found EPContext node
-                  const char* node_name = nullptr;
-                  size_t node_id = 0;
-                  ort_api.Node_GetName(node, &node_name);
-                  ort_api.Node_GetId(node, &node_id);
-
-                  std::string log_message = "EPContext Node found: [1] index: [" + std::to_string(node_id) +
-                                            "] name: [" + (node_name ? node_name : "unknown") + "]";
-                  LOGS(logger, VERBOSE) << log_message;
-                  ep_context_nodes.insert(node);
-                }
-              }
-            }
-          }
-        }
-      }
+      ep_context_nodes.insert(node);
     }
   }
 }
@@ -1109,65 +1070,45 @@ void QnnEp::PartitionCtxModel(const OrtGraph* graph, OrtEpGraphSupportInfo* grap
     return;
   }
 
-  std::vector<const OrtNode*> supported_nodes;
   std::vector<std::vector<const OrtNode*>> supported_groups;
+  size_t num_supported_groups = 0;
 
-  for (size_t i = 0; i < num_nodes; ++i) {
-    const OrtNode* node = graph_nodes[i];
+  for (size_t node_idx = 0; node_idx < num_nodes; ++node_idx) {
+    const OrtNode* node = graph_nodes[node_idx];
+
     const char* op_type = nullptr;
-
-    if (ort_api.Node_GetOperatorType(node, &op_type) && op_type != nullptr) {
-      if (std::string(op_type) == "EPContext") {
-        const OrtOpAttr* source_attr = nullptr;
-        if (ort_api.Node_GetAttributeByName(node, "source", &source_attr) && source_attr != nullptr) {
-          char source_buffer[256] = {0};
-          size_t source_len = 0;
-          if (ort_api.ReadOpAttr(source_attr, ORT_OP_ATTR_STRING, source_buffer, sizeof(source_buffer) - 1, &source_len)) {
-            std::string cache_source(source_buffer, source_len);
-
-            std::transform(cache_source.begin(), cache_source.end(), cache_source.begin(),
-                           [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
-
-            if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
-              const char* node_name = nullptr;
-              size_t node_id = 0;
-              ort_api.Node_GetName(node, &node_name);
-              ort_api.Node_GetId(node, &node_id);
-
-              std::string log_message = "Node supported: [1] index: [" + std::to_string(node_id) +
-                                        "] name: [" + (node_name ? node_name : "unknown") +
-                                        "] Operator type: [EPContext] index: [" + std::to_string(node_id) + "]";
-              LOGS(logger_in_, VERBOSE) << log_message;
-
-              supported_nodes.push_back(node);
-
-              std::vector<const OrtNode*> supported_group{node};
-              supported_groups.emplace_back(std::move(supported_group));
-            }
-          }
-        }
-      }
+    if (ort_api.Node_GetOperatorType(node, &op_type) != nullptr) {
+      continue;
     }
-  }
 
-  for (const auto& supported_partition : supported_groups) {
-    if (!supported_partition.empty()) {
+    OrtNodeAttrHelper node_helper(ort_api, *node);
+    std::string cache_source = qnn::utils::GetLowercaseString(node_helper.Get(qnn::SOURCE, ""));
+
+    if (op_type == qnn::EPCONTEXT_OP && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
+      const char* node_name = nullptr;
+      ort_api.Node_GetName(node, &node_name);
+
+      std::string log_message = "Node supported: [1] index: [" + std::to_string(node_idx) +
+                                "] name: [" + (node_name ? node_name : "unknown") +
+                                "] Operator type: [EPContext] index: [" + std::to_string(node_idx) + "]";
+      LOGS(logger_in_, VERBOSE) << log_message;
+
+      std::vector<const OrtNode*> supported_group{node};
       OrtNodeFusionOptions node_fusion_options = {};
       node_fusion_options.ort_version_supported = ORT_API_VERSION;
-      node_fusion_options.drop_constant_initializers = false;
 
       ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
-                                               supported_partition.data(),
-                                               supported_partition.size(),
+                                               supported_group.data(),
+                                               supported_group.size(),
                                                &node_fusion_options);
+
+      ++num_supported_groups;
     }
   }
 
-  const size_t num_of_partitions = supported_groups.size();
-
-  std::string summary_msg = "Number of cf supported by QNN EP: " + std::to_string(num_of_partitions) +
+  std::string summary_msg = "Number of partitions supported by QNN EP: " + std::to_string(num_supported_groups) +
                             ", number of nodes in the graph: " + std::to_string(num_nodes) +
-                            ", number of nodes supported by QNN: " + std::to_string(num_of_partitions);
+                            ", number of nodes supported by QNN: " + std::to_string(num_supported_groups);
   LOGS(logger_in_, INFO) << summary_msg;
 }
 
@@ -1201,12 +1142,9 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   }
 
   bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph, ep->ort_api);
+  std::cout << "DEBUG: is_qnn_ctx_model=" << is_qnn_ctx_model << std::endl;
 
-  // auto gen_metadef_name = [ep, graph]() -> std::string {
-  //     return ep->MakeMetadefName(graph);
-  // };
-
-  if (is_qnn_ctx_model && ep->config_.share_ep_contexts && SharedContext::GetInstance().HasSharedQnnModels()) {
+  if (is_qnn_ctx_model && ep->share_ep_contexts_ && SharedContext::GetInstance().HasSharedQnnModels()) {
     if (EpSharedContextsHasAllGraphs(graph, ep->ort_api, ep->logger_in_)) {
       ep->PartitionCtxModel(graph, graph_support_info);
       return nullptr;
@@ -1269,7 +1207,7 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   }
 
   // Report error if QNN CPU backend is loaded while CPU fallback is disabled
-  if (ep->config_.disable_cpu_ep_fallback && ep->qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::CPU) {
+  if (ep->disable_cpu_ep_fallback_ && ep->qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::CPU) {
     LOGS(ep->logger_in_, ERROR) << "Qnn CPU backend is loaded while CPU fallback is disabled.";
     return nullptr;
   }

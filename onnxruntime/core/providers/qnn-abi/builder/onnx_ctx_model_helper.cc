@@ -18,7 +18,6 @@ namespace qnn {
 bool GraphHasEpContextNode(const OrtGraph* graph, const OrtApi& ort_api) {
   // It's an Onnx model with Qnn context cache binary if it has a node with EPContext type
   // and the source is QNN or QNNExecutionProvider.
-
   size_t num_nodes = 0;
   OrtStatus* status = ort_api.Graph_GetNumNodes(graph, &num_nodes);
   if (status != nullptr) {
@@ -33,70 +32,19 @@ bool GraphHasEpContextNode(const OrtGraph* graph, const OrtApi& ort_api) {
     return false;
   }
 
-  for (size_t i = 0; i < num_nodes; ++i) {
-    const OrtNode* node = nodes[i];
+  for (const OrtNode* node : nodes) {
     const char* op_type = nullptr;
     status = ort_api.Node_GetOperatorType(node, &op_type);
     if (status != nullptr) {
       ort_api.ReleaseStatus(status);
-      continue;
+      return false;
     }
 
-    if (EPCONTEXT_OP == op_type) {
-      size_t num_attributes = 0;
-      status = ort_api.Node_GetNumAttributes(node, &num_attributes);
-      if (status != nullptr) {
-        ort_api.ReleaseStatus(status);
-        continue;
-      }
-
-      std::vector<const OrtOpAttr*> attributes(num_attributes);
-      status = ort_api.Node_GetAttributes(node, attributes.data(), attributes.size());
-      if (status != nullptr) {
-        ort_api.ReleaseStatus(status);
-        continue;
-      }
-
-      for (size_t attr_idx = 0; attr_idx < num_attributes; ++attr_idx) {
-        const OrtOpAttr* attr = attributes[attr_idx];
-        const char* attr_name = nullptr;
-        status = ort_api.OpAttr_GetName(attr, &attr_name);
-        if (status != nullptr) {
-          ort_api.ReleaseStatus(status);
-          continue;
-        }
-
-        if (std::string(attr_name) == SOURCE) {
-          OrtOpAttrType attr_type;
-          status = ort_api.OpAttr_GetType(attr, &attr_type);
-          if (status != nullptr) {
-            ort_api.ReleaseStatus(status);
-            continue;
-          }
-
-          if (attr_type == ORT_OP_ATTR_STRING) {
-            size_t string_len = 0;
-            status = ort_api.ReadOpAttr(attr, ORT_OP_ATTR_STRING, nullptr, 0, &string_len);
-            if (status != nullptr) {
-              ort_api.ReleaseStatus(status);
-              continue;
-            }
-
-            std::string cache_source_str(string_len, '\0');
-            status = ort_api.ReadOpAttr(attr, ORT_OP_ATTR_STRING, &cache_source_str[0], string_len, &string_len);
-            if (status != nullptr) {
-              ort_api.ReleaseStatus(status);
-              continue;
-            }
-            cache_source_str.resize(string_len);  // Remove null terminator if it was added
-
-            std::string cache_source = qnn::utils::GetLowercaseString(cache_source_str);
-
-            if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
-              return true;
-            }
-          }
-        }
+    if (op_type == EPCONTEXT_OP) {
+      OrtNodeAttrHelper node_helper(ort_api, *node);
+      std::string cache_source = qnn::utils::GetLowercaseString(node_helper.Get(SOURCE, ""));
+      if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
+        return true;
       }
     }
   }
