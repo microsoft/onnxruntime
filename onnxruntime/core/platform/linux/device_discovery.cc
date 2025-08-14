@@ -30,6 +30,8 @@ OrtHardwareDevice GetCpuDevice() {
   return cpu_device;
 }
 
+#if !defined(__ANDROID__)
+
 struct GpuSysfsPathInfo {
   size_t card_idx;
   fs::path path;
@@ -63,12 +65,12 @@ std::vector<GpuSysfsPathInfo> DetectGpuSysfsPaths() {
 
   std::vector<GpuSysfsPathInfo> gpu_sysfs_paths{};
   for (const auto& dir_item : fs::directory_iterator{sysfs_class_drm_path}) {
-    auto dir_item_path = dir_item.path();
+    const auto& dir_item_path = dir_item.path();
 
     if (size_t card_idx{}; detect_card_path(dir_item_path, card_idx)) {
       GpuSysfsPathInfo path_info{};
       path_info.card_idx = card_idx;
-      path_info.path = std::move(dir_item_path);
+      path_info.path = dir_item_path;
       gpu_sysfs_paths.emplace_back(std::move(path_info));
     }
   }
@@ -90,7 +92,7 @@ ValueType ReadValueFromFile(const fs::path& file_path) {
   return ParseStringWithClassicLocale<ValueType>(file_text);
 }
 
-OrtHardwareDevice GetGpuDevice(const GpuSysfsPathInfo& path_info) {
+OrtHardwareDevice GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info) {
   OrtHardwareDevice gpu_device{};
   const auto& sysfs_path = path_info.path;
 
@@ -117,15 +119,25 @@ OrtHardwareDevice GetGpuDevice(const GpuSysfsPathInfo& path_info) {
   return gpu_device;
 }
 
+#endif  // !defined(__ANDROID__)
+
 std::vector<OrtHardwareDevice> GetGpuDevices() {
-  const auto gpu_sysfs_path_infos = DetectGpuSysfsPaths();
   std::vector<OrtHardwareDevice> gpu_devices{};
+
+#if !defined(__ANDROID__)
+
+  const auto gpu_sysfs_path_infos = DetectGpuSysfsPaths();
   gpu_devices.reserve(gpu_sysfs_path_infos.size());
 
   for (const auto& gpu_sysfs_path_info : gpu_sysfs_path_infos) {
-    auto gpu_device = GetGpuDevice(gpu_sysfs_path_info);
+    auto gpu_device = GetGpuDeviceFromSysfs(gpu_sysfs_path_info);
     gpu_devices.emplace_back(std::move(gpu_device));
   }
+
+#else  // defined(__ANDROID__)
+  // In an Android app, we don't have permission to read sysfs.
+  // TODO detect GPU devices on Android
+#endif  // defined(__ANDROID__)
 
   return gpu_devices;
 }
