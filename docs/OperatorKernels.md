@@ -287,7 +287,7 @@ Do not modify directly.*
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[2, 10]|**T** = tensor(double), tensor(float)|
 |ParametricSoftplus|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
-|Pow|*in* X:**T**<br> *in* Y:**T**<br> *out* Z:**T**<br><br>or<br><br>*in* X:**T**<br> *in* Y:**T1**<br> *out* Z:**T**|15+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T1** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
+|Pow|*in* X:**T**<br> *in* Y:**T**<br> *out* Z:**T**<br><br>or<br><br>*in* X:**T**<br> *in* Y:**T1**<br> *out* Z:**T**|15+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T1** = tensor(double), tensor(float), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64)|
 |||[13, 14]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T1** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||12|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T1** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||[7, 11]|**T** = tensor(double), tensor(float)|
