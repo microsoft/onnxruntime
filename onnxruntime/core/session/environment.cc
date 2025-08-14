@@ -431,7 +431,7 @@ Environment::~Environment() {
   // instance and will call Release on it. If the plugin EP has been freed the Release will fail.
   shared_allocators_.clear();
 
-  // and as any OrtAllocator instances in shared_ort_allocators_ were owned by values in shared_allocators_ and have 
+  // and as any OrtAllocator instances in shared_ort_allocators_ were owned by values in shared_allocators_ and have
   // now been released we need to clear that too before calling UnregisterExecutionProviderLibrary().
   shared_ort_allocators_.clear();
 
