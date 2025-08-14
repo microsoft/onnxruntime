@@ -135,8 +135,10 @@ std::vector<OrtHardwareDevice> GetGpuDevices() {
   }
 
 #else  // defined(__ANDROID__)
+
   // In an Android app, we don't have permission to read sysfs.
   // TODO detect GPU devices on Android
+
 #endif  // defined(__ANDROID__)
 
   return gpu_devices;
