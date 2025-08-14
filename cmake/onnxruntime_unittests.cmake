@@ -1116,7 +1116,32 @@ if (NOT IOS)
       endif()
     endif()
 
-    target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} nlohmann_json::nlohmann_json)
+    if (onnxruntime_BUILD_SHARED_LIB)
+      # onnx_test_runner calls functions from onnx_test_runner_common, which depend on ORT internal C++ APIs not exposed through the public C API.
+      # Therefore, we ensure that all necessary internal ORT libraries are linked here.
+      # For example:
+      # - CompareOrtValue()
+      #     - Uses onnxruntime::DataTypeImpl::TypeFromProto(), onnxruntime::DataTypeImpl::ToString(), etc. from onnxruntime_framework
+      #     - Uses onnxruntime::concurrency::ThreadPool from onnxruntime_util
+      #
+      # Once onnxruntime_framework is linked, additional internal dependencies such as onnxruntime_graph and onnxruntime_mlas must also be linked,
+      # as they are transitively required by symbols used in onnxruntime_framework.
+      set(onnx_test_runner_libs
+            #onnx_test_runner_common onnxruntime_test_utils onnxruntime_framework onnxruntime_common onnxruntime_util onnxruntime_graph onnxruntime_mlas onnx
+            onnx_test_runner_common onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_graph onnxruntime_util onnxruntime_mlas
+            onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
+            ${onnxruntime_EXTERNAL_LIBRARIES}
+            ${GETOPT_LIB_WIDE} absl::flags absl::flags_parse ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+
+      target_link_libraries(onnx_test_runner PRIVATE ${onnx_test_runner_libs} nlohmann_json::nlohmann_json)
+
+      if(WIN32)
+        target_link_libraries(onnx_test_runner PRIVATE debug dbghelp advapi32)
+      endif()
+    else()
+      target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} nlohmann_json::nlohmann_json)
+    endif()
+
     target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 
     if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
