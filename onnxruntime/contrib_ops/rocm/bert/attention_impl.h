@@ -14,6 +14,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
+typedef struct __align__(32) {
+    long long int  x, y, z, w;
+} LongLong4;
+
 size_t GetAttentionScratchSize(
     size_t element_size,
     int batch_size,
@@ -162,14 +166,14 @@ Status ClassifyAttentionMode(AttentionType type,
 template <typename T>
 Status LaunchStridedCopy(
     hipStream_t stream,
-    const T* in, int4 in_shape, longlong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
-    T* out, longlong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
+    const T* in, int4 in_shape, LongLong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
+    T* out, LongLong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
     int max_threads_per_block);
 
 template <typename T>
 Status LaunchStridedCopy(hipStream_t stream,
-                         const T* in, int4 in_shape, longlong4 in_strides,  // coord (b,n,s,h)
-                         T* out, longlong4 out_strides,                     // coord (b,n,s,h)
+                         const T* in, int4 in_shape, LongLong4 in_strides,  // coord (b,n,s,h)
+                         T* out, LongLong4 out_strides,                     // coord (b,n,s,h)
                          int max_threads_per_block);
 }  // namespace rocm
 }  // namespace contrib
