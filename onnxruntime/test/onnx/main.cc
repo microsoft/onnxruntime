@@ -14,9 +14,6 @@
 #include <crtdbg.h>
 #endif
 
-#ifndef _WIN32
-#include <thread>
-#endif
 #include "TestResultStat.h"
 #include "TestCase.h"
 #include "testenv.h"

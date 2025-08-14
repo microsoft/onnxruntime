@@ -5,6 +5,10 @@
 #include <core/session/onnxruntime_c_api.h>
 #include <core/platform/path_lib.h>
 
+#ifndef _WIN32
+#include <thread>
+#endif
+
 namespace onnxruntime {
 namespace test {
 #ifdef _WIN32
