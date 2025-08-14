@@ -1142,7 +1142,6 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   }
 
   bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph, ep->ort_api);
-  std::cout << "DEBUG: is_qnn_ctx_model=" << is_qnn_ctx_model << std::endl;
 
   if (is_qnn_ctx_model && ep->share_ep_contexts_ && SharedContext::GetInstance().HasSharedQnnModels()) {
     if (EpSharedContextsHasAllGraphs(graph, ep->ort_api, ep->logger_in_)) {
@@ -1491,8 +1490,6 @@ OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
   if (qnn::IsOrtGraphHasCtxNode(graphs, count, ep->ort_api)) {
     return ep->CompileContextModel(graphs, fused_nodes, count, node_compute_infos);
   }
-
-  ep_context_nodes;
 
   for (size_t graph_idx = 0; graph_idx < count; ++graph_idx) {
     const OrtGraph* graph = graphs[graph_idx];
