@@ -77,7 +77,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
       fc2_experts_weights, fc2_experts_bias_optional, nullptr,
       fc3_experts_weights_optional, fc3_experts_bias_optional, nullptr,
       1,  // no quantization so pack size is 1
-      activation_type_ == ort_fastertransformer::ActivationType::SwiGLU));
+      activation_type_ == ort_fastertransformer::ActivationType::Swiglu));
 
   ORT_RETURN_IF_NOT(moe_params.num_experts % nccl_->Size() == 0, "num_experts should be divisible by world_size");
 

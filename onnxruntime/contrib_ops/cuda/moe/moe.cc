@@ -47,7 +47,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       fc2_experts_weights, fc2_experts_bias_optional, nullptr,
       fc3_experts_weights_optional, fc3_experts_bias_optional, nullptr,
       1,  //  no quantization so pack size is 1
-      activation_type_ == ort_fastertransformer::ActivationType::SwiGLU));
+      activation_type_ == ort_fastertransformer::ActivationType::Swiglu));
 
   using CudaT = typename OrtToCudaType<T>::type;
   auto stream = context->GetComputeStream();

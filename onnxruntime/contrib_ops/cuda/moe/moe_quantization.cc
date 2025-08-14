@@ -91,7 +91,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       fc2_experts_weights, fc2_experts_bias_optional, fc2_scales,
       fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional,
       expert_weight_bits_ == 4 ? 2 : 1,
-      activation_type_ == ort_fastertransformer::ActivationType::SwiGLU));
+      activation_type_ == ort_fastertransformer::ActivationType::Swiglu));
 
   constexpr bool use_lora = false;
   constexpr bool use_deepseek_fp8_block_scale = false;

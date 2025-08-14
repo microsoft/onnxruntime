@@ -62,7 +62,7 @@ Status QMoE::Compute(OpKernelContext* context) const {
       fc2_experts_weights, fc2_experts_bias_optional, fc2_scales,
       fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional,
       expert_weight_bits_ == 4 ? 2 : 1,
-      activation_type_ == ActivationType::SwiGLU));
+      activation_type_ == ActivationType::Swiglu));
 
   // Dispatch based on input data type
   if (input->IsDataType<MLFloat16>()) {
@@ -110,11 +110,11 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
                               const Tensor* fc1_scales,
                               const Tensor* fc2_scales,
                               const Tensor* fc3_scales_optional) const {
-  // SwiGLU validation - FC3 not supported
-  bool is_swiglu = (activation_type_ == ActivationType::SwiGLU);
+  // Swiglu validation - FC3 not supported
+  bool is_swiglu = (activation_type_ == ActivationType::Swiglu);
   if (is_swiglu && fc3_experts_weights_optional != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SwiGLU activation is not supported with fc3.");
+                           "Swiglu activation is not supported with fc3.");
   }
   if (!is_swiglu && fc3_experts_weights_optional != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -324,7 +324,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
               }
               contrib::ApplySwiGLUActivation(thread_fc1_output, moe_params.inter_size, is_4bit);
             } else {
-              // Standard activation (non-SwiGLU)
+              // Standard activation (non-Swiglu)
               if (fc1_bias_data) {
                 // Use the pre-converted float bias data
                 const float* fc1_expert_bias_float = fc1_bias_float.get() + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.inter_size;
@@ -380,7 +380,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   }
   // For float, no conversion needed as we directly wrote to output_data
 
-  // Suppress unused parameter warnings for optional parameters that are not used in non-SwiGLU modes
+  // Suppress unused parameter warnings for optional parameters that are not used in non-Swiglu modes
   if (!is_swiglu) {
     ORT_UNUSED_PARAMETER(fc3_experts_bias_optional);
     ORT_UNUSED_PARAMETER(fc3_scales_optional);

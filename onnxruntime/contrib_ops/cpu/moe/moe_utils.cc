@@ -18,15 +18,15 @@ float ApplyActivation(float x, ActivationType activation_type) {
       return x * (1.0f / (1.0f + std::exp(-x)));
     case ActivationType::Identity:
       return x;
-    case ActivationType::SwiGLU:
-      // SwiGLU: This is handled specially as it requires gating, not applied here
+    case ActivationType::Swiglu:
+      // Swiglu: This is handled specially as it requires gating, not applied here
       return x;
     default:
       return x;  // Default to identity
   }
 }
 
-// Helper method for applying SwiGLU activation with different memory layouts
+// Helper method for applying Swiglu activation with different memory layouts
 void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_format) {
   constexpr float swiglu_alpha = 1.702f;
   constexpr float clamp_limit = 7.0f;  // Clamping limit as specified
@@ -48,7 +48,7 @@ void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_
       if (linear_val > clamp_limit) linear_val = clamp_limit;  // Clamp linear min/max
       if (linear_val < -clamp_limit) linear_val = -clamp_limit;
 
-      // SwiGLU: gate * sigmoid(alpha * gate) * (linear + 1)
+      // Swiglu: gate * sigmoid(alpha * gate) * (linear + 1)
       float sigmoid_arg = swiglu_alpha * gate_val;
       float sigmoid_out = 1.0f / (1.0f + std::exp(-sigmoid_arg));
       float swish_out = gate_val * sigmoid_out;
@@ -70,7 +70,7 @@ void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_
       // Apply clamping to the gate value (max only)
       if (gate_val > clamp_limit) gate_val = clamp_limit;
 
-      // Compute the gate part of SwiGLU
+      // Compute the gate part of Swiglu
       float sigmoid_arg = swiglu_alpha * gate_val;
       float sigmoid_out = 1.0f / (1.0f + std::exp(-sigmoid_arg));
       computed_gates[idx] = gate_val * sigmoid_out;

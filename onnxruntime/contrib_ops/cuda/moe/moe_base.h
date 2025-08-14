@@ -28,7 +28,7 @@ class MoEBase {
     } else if (activation_type_str == "silu") {
       activation_type_ = ActivationType::Silu;
     } else if (activation_type_str == "swiglu") {
-      activation_type_ = ActivationType::SwiGLU;
+      activation_type_ = ActivationType::Swiglu;
     } else if (activation_type_str == "identity") {
       activation_type_ = ActivationType::Identity;
     } else {
