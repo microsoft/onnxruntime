@@ -11,8 +11,8 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-__global__ void StridedCopy(const T* in, const int H, longlong4 in_strides,  // coord (b,n,s,h)
-                            T* out, longlong4 out_strides,                   // coord (b,n,s,h)
+__global__ void StridedCopy(const T* in, const int H, longlong4_32a in_strides,  // coord (b,n,s,h)
+                            T* out, longlong4_32a out_strides,                   // coord (b,n,s,h)
                             const int32_t* in_seqlens_offset, const int32_t* out_seqlens_offset) {
   const int h = threadIdx.x;
   const int n = threadIdx.y;
@@ -30,8 +30,8 @@ __global__ void StridedCopy(const T* in, const int H, longlong4 in_strides,  // 
 }
 
 template <typename T>
-__global__ void StridedCopyLarge(const T* in, const int H, longlong4 in_strides,  // coord (b,n,s,h)
-                                 T* out, longlong4 out_strides,                   // coord (b,n,s,h)
+__global__ void StridedCopyLarge(const T* in, const int H, longlong4_32a in_strides,  // coord (b,n,s,h)
+                                 T* out, longlong4_32a out_strides,                   // coord (b,n,s,h)
                                  const int* in_seqlens_offset, const int* out_seqlens_offset) {
   // Use when (H*)*num_heads > 1024
   int h = threadIdx.x;
@@ -77,7 +77,7 @@ struct ToByteType<16> {
 
 template <>
 struct ToByteType<32> {
-  using T = ulonglong4;
+  using T = longlong4_32a;
 };
 
 template <int NumBytes>
@@ -86,8 +86,8 @@ using ToBytes = typename ToByteType<NumBytes>::T;
 template <typename T>
 Status LaunchStridedCopy(
     cudaStream_t stream,
-    const T* in, int4 in_shape, longlong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
-    T* out, longlong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
+    const T* in, int4 in_shape, longlong4_32a in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
+    T* out, longlong4_32a out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
     int max_threads_per_block) {
   int batch_size = in_shape.x;
   int num_heads = in_shape.y;
@@ -157,8 +157,8 @@ Status LaunchStridedCopy(
 
 template <typename T>
 Status LaunchStridedCopy(cudaStream_t stream,
-                         const T* in, int4 in_shape, longlong4 in_strides,  // coord (b,n,s,h)
-                         T* out, longlong4 out_strides,                     // coord (b,n,s,h)
+                         const T* in, int4 in_shape, longlong4_32a in_strides,  // coord (b,n,s,h)
+                         T* out, longlong4_32a out_strides,                     // coord (b,n,s,h)
                          int max_threads_per_block) {
   const int* in_seqlens_offset = nullptr;
   const int* out_seqlens_offset = nullptr;
@@ -170,14 +170,14 @@ Status LaunchStridedCopy(cudaStream_t stream,
 
 template Status LaunchStridedCopy<float>(
     cudaStream_t stream,
-    const float* in, int4 in_shape, longlong4 in_strides,
-    float* out, longlong4 out_strides,
+    const float* in, int4 in_shape, longlong4_32a in_strides,
+    float* out, longlong4_32a out_strides,
     int max_threads_per_block);
 
 template Status LaunchStridedCopy<half>(
     cudaStream_t stream,
-    const half* in, int4 in_shape, longlong4 in_strides,
-    half* out, longlong4 out_strides,
+    const half* in, int4 in_shape, longlong4_32a in_strides,
+    half* out, longlong4_32a out_strides,
     int max_threads_per_block);
 
 }  // namespace cuda

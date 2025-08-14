@@ -31,12 +31,13 @@
 
 #pragma once
 
+#include "core/providers/cuda/curand_wrapper.h"
+
 #ifdef HAS_PYTORCH
 #include <ATen/cuda/CUDAGeneratorImpl.h>
 #include <ATen/cuda/CUDAGraphsUtils.cuh>
 #endif
 
-#include <curand_kernel.h>
 #include <cmath>
 #include <cinttypes>
 #include <vector>
@@ -697,7 +698,7 @@ struct AttentionKernel {
     };
 
     auto createOutputAccumIter = [&](int col) ->
-        typename MM1::OutputTileIteratorAccum {
+        typename MM1::OutpuptTileIteratorAccum {
           using OutputTileIteratorAccum = typename MM1::OutputTileIteratorAccum;
           return OutputTileIteratorAccum(
               typename OutputTileIteratorAccum::Params{

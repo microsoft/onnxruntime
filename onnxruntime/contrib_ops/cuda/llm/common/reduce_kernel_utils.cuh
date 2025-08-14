@@ -16,6 +16,7 @@
 #pragma once
 #include <array>
 #include <assert.h>
+#include "core/providers/cuda/curand_wrapper.h"
 #if ((__CUDACC_VER_MAJOR__ > 11) || (__CUDACC_VER_MAJOR__ == 11 && __CUDACC_VER_MINOR__ >= 0))
 #include <cooperative_groups/reduce.h>
 #else
@@ -24,7 +25,6 @@
 #include "contrib_ops/cuda/llm/common/cuda_type_utils.cuh"
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
-#include <curand_kernel.h>
 #include <float.h>
 #include <type_traits>
 

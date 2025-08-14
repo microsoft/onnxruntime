@@ -10,9 +10,9 @@
 */
 // NV_TODO: optimize speed -- pass things needed in, optimize kernel speed, add half2
 // NV_TODO: investigate cub support for half
-
+#include "core/providers/cuda/curand_wrapper.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include <curand_kernel.h>
+
 
 #define TRANS_TILE_DIM 32
 #define BLOCK_ROWS 8

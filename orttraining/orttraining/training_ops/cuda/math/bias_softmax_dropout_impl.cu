@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include "core/providers/cuda/curand_wrapper.h"
 #include "orttraining/training_ops/cuda/math/bias_softmax_dropout_impl.h"
 
-#include <curand_kernel.h>
 #include <algorithm>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/math/softmax_warpwise_impl.cuh"

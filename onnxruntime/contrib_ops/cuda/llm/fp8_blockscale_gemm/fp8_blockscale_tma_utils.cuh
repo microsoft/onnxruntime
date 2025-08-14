@@ -58,7 +58,7 @@ inline CUtensorMapDataType get_CUtensorMapDataType() {
   }
 }
 
-PFN_cuTensorMapEncodeTiled get_cuTensorMapEncodeTiled() {
+PFN_cuTensorMapEncodeTiled_v12000 get_cuTensorMapEncodeTiled() {
   // Get pointer to cuTensorMapEncodeTiled
   cudaDriverEntryPointQueryResult driver_status;
   void* cuTensorMapEncodeTiled_ptr = nullptr;
@@ -73,12 +73,12 @@ PFN_cuTensorMapEncodeTiled get_cuTensorMapEncodeTiled() {
     ORT_THROW("driver_status != cudaDriverEntryPointSuccess");
   }
 
-  return reinterpret_cast<PFN_cuTensorMapEncodeTiled>(cuTensorMapEncodeTiled_ptr);
+  return reinterpret_cast<PFN_cuTensorMapEncodeTiled_v12000>(cuTensorMapEncodeTiled_ptr);
 }
 
 template <typename data_type>
 CUtensorMap make_2d_tma_copy_desc(data_type* global_address, uint64_t gmem_dim[2], uint64_t stride_in_bytes,
-                                  uint32_t smem_dim[2], CUtensorMapSwizzle swizzle_type, PFN_cuTensorMapEncodeTiled encode_func = nullptr) {
+                                  uint32_t smem_dim[2], CUtensorMapSwizzle swizzle_type, PFN_cuTensorMapEncodeTiled_v12000 encode_func = nullptr) {
   CUtensorMap tensor_map{};
   constexpr uint32_t rank = 2;
   uint64_t global_stride[rank - 1] = {stride_in_bytes};

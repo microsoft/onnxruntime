@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "core/providers/cuda/curand_wrapper.h"
 #include <algorithm>
 #include <cuda.h>
 #include <cuda_fp16.h>
@@ -57,7 +58,6 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
 
 #include <cub/cub.cuh>
-#include <curand_kernel.h>
 #include <curand_philox4x32_x.h>
 
 using namespace onnxruntime::llm::kernels;

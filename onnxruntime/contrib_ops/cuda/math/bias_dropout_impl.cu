@@ -15,10 +15,9 @@
  */
 
 /* Modifications Copyright (c) Microsoft. */
-
+#include "core/providers/cuda/curand_wrapper.h"
 #include "contrib_ops/cuda/math/bias_dropout.h"
 
-#include <curand_kernel.h>
 #include <algorithm>
 #include "core/providers/cuda/cu_inc/bitmask.cuh"
 
