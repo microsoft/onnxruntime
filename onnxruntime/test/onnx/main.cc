@@ -14,12 +14,7 @@
 #include <crtdbg.h>
 #endif
 
-#ifdef _WIN32
-#include "getopt.h"
-#elif defined(_AIX)
-#include <thread>
-#else
-#include <getopt.h>
+#ifndef _WIN32
 #include <thread>
 #endif
 #include "TestResultStat.h"
