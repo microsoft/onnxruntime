@@ -4,12 +4,71 @@
 // DO NOT include ORT header files as this is meant to be a header-only utility that can be copied
 // to other projects.
 
+/*
+ SUMMARY:
+   Example utilities to group OrtGraph nodes into NodeUnits. Only supports QDQ Conv for now.
+
+   !! Users may copy this file and modify as needed. !!
+
+ USAGE:
+   This is a header-only implementation that includes both the function declarations and definitions. Copy this file
+   into a project that links with both ONNX Runtime and ONNX.
+
+   Define the ORT_EP_UTILS_QDQ_UTILS_IMPL preprocessor macro before the #include statement in exactly one C++
+   file to define the implementation. Example:
+
+     #define ORT_EP_UTILS_QDQ_UTILS_IMPL
+     #include "qdq_utils.h"
+
+   Other compilation units that depend on these utilities should include this file without defining the
+   preprocessor macro.
+
+   Example program snippets are shown below. Refer to the function declarations for detailed usage information.
+
+ EXAMPLE SNIPPET:
+
+   ```C++
+   #define ORT_EP_UTILS_QDQ_UTILS_IMPL
+   #include "qdq_utils.h"
+
+   OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* ort_graph,
+                                             OrtEpGraphSupportInfo* graph_support_info) {
+
+     std::vector<std::unique_ptr<OrtEpUtils::QDQ::NodeUnit>> node_units;
+     std::unordered_map<const OrtNode*, const OrtEpUtils::QDQ::NodeUnit*> node_unit_map;
+
+     // Group all nodes into NodeUnit instances.
+     Ort::Status status = OrtEpUtils::QDQ::GetAllNodeUnits(graph, logger, node_units, node_unit_map);
+
+     // ...
+   }
+   ```
+
+ HOW TO ADD SUPPORT FOR NEW OPERATOR:
+   This utility only supports QDQ Conv. To add a new operator type:
+     1. Create a new class the derives from `NodeGroupSelector`. Ex: struct ConvNodeGroupSelector: NodeGroupSelector.
+     2. Implement the virtual NodeGroupSelector::Check() function, which should check for allowed structure
+        and data types.
+     3. Update SelectorManager::CreateSelectors() to register your new `NodeGroupSelector` derived class.
+
+   The code in this file was ported from the following internal ONNX Runtime files. Please use them as a reference:
+     - onnxruntime/core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h (and qdq_selectors.cc)
+       - Contains NodeGroupSelector classes and utilities.
+     - onnxruntime/core/optimizer/qdq_transformer/selectors_actions/shared/utils.h (and utils.cc)
+       - Contains SelectorManger classes and implementation of GetAllNodeUnits().
+     - onnxruntime/core/framework/node_unit.h (and node_unit.cc)
+       - Contains NodeUnit class and utilities.
+
+*/
+
 #ifndef INCLUDE_ONNXRUNTIME_CORE_PROVIDERS_UTILS_QDQ_UTILS_H_
 #define INCLUDE_ONNXRUNTIME_CORE_PROVIDERS_UTILS_QDQ_UTILS_H_
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <set>
+#include <unordered_map>
 #include <vector>
 
 #include "core/session/onnxruntime_cxx_api.h"
@@ -115,6 +174,10 @@ class NodeUnit {
   EdgeSet output_edges_;
 };
 
+Ort::Status GetAllNodeUnits(const OrtGraph& graph, const Ort::Logger& logger,
+                            /*out*/ std::vector<std::unique_ptr<NodeUnit>>& node_units,
+                            /*out*/ std::unordered_map<const OrtNode*, const NodeUnit*>& node_to_node_unit);
+
 }  // namespace QDQ
 }  // namespace OrtEpUtils
 
@@ -130,6 +193,8 @@ class NodeUnit {
 #include <cassert>
 #include <cstring>
 #include <sstream>
+#include <string_view>
+#include <unordered_set>
 #include <utility>
 
 #ifndef ORT_EP_UTILS_C_RETURN_IF_ERROR
@@ -270,6 +335,61 @@ Ort::Status GetNodeInputEdges(const OrtNode& node, EdgeSet& input_edges) {
   return Ort::Status{nullptr};
 }
 
+Ort::Status FindParentsByType(const std::vector<const OrtValueInfo*>& inputs, std::string_view parent_type,
+                              std::vector<const OrtNode*>& result) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  std::vector<const OrtNode*> parents;
+  parents.reserve(inputs.size());
+
+  for (const OrtValueInfo* input : inputs) {
+    if (input == nullptr) continue;  // Skip missing optional input
+
+    const OrtNode* producer_node = nullptr;
+    size_t producer_output_index = 0;
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ValueInfo_GetValueProducer(input, &producer_node, &producer_output_index));
+
+    if (producer_node == nullptr) {
+      continue;  // No producer node (e.g., a graph input)
+    }
+
+    const char* producer_op_type = nullptr;
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetOperatorType(producer_node, &producer_op_type));
+
+    if (parent_type == producer_op_type) {
+      parents.push_back(producer_node);
+    }
+  }
+
+  result = std::move(parents);
+  return Ort::Status{nullptr};
+}
+
+Ort::Status GetNodeOutputEdgeCount(const std::vector<const OrtValueInfo*>& outputs, size_t& num_output_edges) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  num_output_edges = 0;
+  for (const OrtValueInfo* output : outputs) {
+    size_t num_consumers = 0;
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ValueInfo_GetValueNumConsumers(output, &num_consumers));
+
+    std::vector<const OrtNode*> consumer_nodes(num_consumers);
+    std::vector<int64_t> consumer_indices(num_consumers);
+
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ValueInfo_GetValueConsumers(output, consumer_nodes.data(),
+                                                                       consumer_indices.data(), num_consumers));
+
+    // Could all edges
+    for (int64_t index : consumer_indices) {
+      if (index >= 0) {  // Do not count implicit inputs to a consumer node.
+        num_output_edges += 1;
+      }
+    }
+  }
+
+  return Ort::Status{nullptr};
+}
+
 Ort::Status GetNodeOutputEdges(const std::vector<const OrtValueInfo*>& outputs, EdgeSet& output_edges) {
   const OrtApi& ort_api = Ort::GetApi();
 
@@ -306,6 +426,91 @@ Ort::Status GetNodeOutputEdges(const OrtNode& node, EdgeSet& output_edges) {
   std::vector<const OrtValueInfo*> outputs;
   ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputs(node, outputs));
   ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputEdges(outputs, output_edges));
+  return Ort::Status{nullptr};
+}
+
+Ort::Status GetChildrenByType(const std::vector<const OrtValueInfo*>& outputs, std::string_view child_type,
+                              std::vector<const OrtNode*>& result) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  std::vector<const OrtNode*> children;
+  children.reserve(outputs.size());  // Can be larger than `outputs.size()` if an output is consumed by multiple nodes
+
+  for (const OrtValueInfo* output : outputs) {
+    size_t num_consumers = 0;
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ValueInfo_GetValueNumConsumers(output, &num_consumers));
+
+    std::vector<const OrtNode*> consumer_nodes(num_consumers);
+    std::vector<int64_t> consumer_indices(num_consumers);
+
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ValueInfo_GetValueConsumers(output, consumer_nodes.data(),
+                                                                       consumer_indices.data(), num_consumers));
+
+    // Build up an edge with consumer nodes as the destinations.
+    for (size_t c_idx = 0; c_idx < num_consumers; c_idx++) {
+      const OrtNode* consumer_node = consumer_nodes[c_idx];
+      int64_t consumer_input_index = consumer_indices[c_idx];
+
+      if (consumer_input_index < 0) {
+        continue;  // Skip implicit input to consumer node.
+      }
+
+      const char* consumer_op_type = nullptr;
+      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetOperatorType(consumer_node, &consumer_op_type));
+
+      if (child_type == consumer_op_type) {
+        children.push_back(consumer_node);
+      }
+    }
+  }
+
+  result = std::move(children);
+  return Ort::Status{nullptr};
+}
+
+Ort::Status CountActualNodeIOValues(const std::vector<const OrtValueInfo*>& io_values, int& num_actual_values) {
+  num_actual_values = 0;
+  for (const OrtValueInfo* value : io_values) {
+    if (value != nullptr) {
+      num_actual_values += 1;
+    }
+  }
+
+  return Ort::Status{nullptr};
+}
+
+Ort::Status ProducesGraphOutput(const std::vector<const OrtValueInfo*>& outputs, bool& any_is_graph_output) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  any_is_graph_output = false;
+  for (const OrtValueInfo* output : outputs) {
+    bool is_graph_output = false;
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ValueInfo_IsGraphOutput(output, &is_graph_output));
+    if (is_graph_output) {
+      any_is_graph_output = true;
+      break;
+    }
+  }
+
+  return Ort::Status{nullptr};
+}
+
+Ort::Status GetTensorElemType(const OrtValueInfo& ort_value_info, /*out*/ ONNXTensorElementDataType& elem_type) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+
+  const OrtTypeInfo* ort_type_info = nullptr;
+  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetValueInfoTypeInfo(&ort_value_info, &ort_type_info));
+
+  ONNXType ort_onnx_type = ONNX_TYPE_UNKNOWN;
+  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetOnnxTypeFromTypeInfo(ort_type_info, &ort_onnx_type));
+  ORT_EP_UTILS_C_RETURN_IF(ort_onnx_type != ONNX_TYPE_TENSOR, ort_api, "Expected OrtValueInfo to represent a Tensor");
+
+  const OrtTensorTypeAndShapeInfo* ort_type_shape = nullptr;
+  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.CastTypeInfoToTensorInfo(ort_type_info, &ort_type_shape));
+  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetTensorElementType(ort_type_shape, &elem_type));
+
   return Ort::Status{nullptr};
 }
 
@@ -853,28 +1058,449 @@ Ort::Status NodeGroup::CanCreateNodeGroup(const OrtNode& target_node,
 // QDQ Operator selection logic (ported from core/optimizers/qdq_transformer/selectors_actions/qdq_selectors.cc
 //
 
+namespace {
 class NodeGroupSelector {
  public:
-  std::optional<NodeGroup> GetQDQSelection(const OrtNode& node) const;
+  Ort::Status GetQDQSelection(const OrtNode& node, std::optional<NodeGroup>& result) const;
   virtual ~NodeGroupSelector() = default;
 
  protected:
   // base check that we have the expected number of QDQ inputs/outputs, and `node` isn't producing a graph output.
   // num_dq_inputs defaults to the number of inputs `node` has if not explicitly specified
-  bool CheckQDQNodes(const OrtNode& node, const OrtNode* redundant_clip_node,
-                     const std::vector<const OrtNode*>& dq_nodes,
-                     const std::vector<const OrtNode*>& q_nodes,
-                     int num_dq_inputs = -1,
-                     bool is_empty_q_nodes_allowed = false) const;
+  Ort::Status CheckQDQNodes(/*out*/ bool& is_valid, const OrtNode& node, const OrtNode* redundant_clip_node,
+                            const std::vector<const OrtNode*>& dq_nodes,
+                            const std::vector<const OrtNode*>& q_nodes,
+                            int num_dq_inputs = -1,
+                            bool is_empty_q_nodes_allowed = false) const;
 
  private:
   // derived classes should implement this check
-  bool virtual Check(const OrtNode& node, const OrtNode* redundant_clip_node,
-                     const std::vector<const OrtNode*>& dq_nodes,
-                     const std::vector<const OrtNode*>& q_nodes) const = 0;
+  virtual Ort::Status Check(const OrtNode& node, const OrtNode* redundant_clip_node,
+                            const std::vector<const OrtNode*>& dq_nodes,
+                            const std::vector<const OrtNode*>& q_nodes,
+                            /*out*/ bool& is_valid) const = 0;
 };
 
+Ort::Status NodeGroupSelector::CheckQDQNodes(/*out*/ bool& is_valid, const OrtNode& node,
+                                             const OrtNode* redundant_clip_node,
+                                             const std::vector<const OrtNode*>& dq_nodes,
+                                             const std::vector<const OrtNode*>& q_nodes,
+                                             int num_dq_inputs, bool is_empty_q_nodes_allowed) const {
+  is_valid = false;
 
+  if (num_dq_inputs == -1) {
+    std::vector<const OrtValueInfo*> inputs;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputs(node, inputs));
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(CountActualNodeIOValues(inputs, num_dq_inputs));
+  }
+
+  if (num_dq_inputs != static_cast<int>(dq_nodes.size())) {
+    return Ort::Status{nullptr};
+  }
+
+  if (const auto qdq_validation_status = NodeGroup::CanCreateNodeGroup(node, redundant_clip_node, dq_nodes, q_nodes);
+      !qdq_validation_status.IsOK()) {
+    return Ort::Status{nullptr};
+  }
+
+  if (q_nodes.empty()) {
+    is_valid = is_empty_q_nodes_allowed;
+    return Ort::Status{nullptr};
+  }
+
+  std::vector<const OrtValueInfo*> outputs;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputs(node, outputs));
+
+  bool produces_graph_output = false;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(ProducesGraphOutput(outputs, produces_graph_output));
+  if (produces_graph_output) {
+    return Ort::Status{nullptr};
+  }
+
+  int num_actual_outputs = 0;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(CountActualNodeIOValues(outputs, num_actual_outputs));
+  if (num_actual_outputs != static_cast<int>(q_nodes.size())) {
+    return Ort::Status{nullptr};
+  }
+
+  size_t num_output_edges = 0;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputEdgeCount(outputs, num_output_edges));
+  if (num_output_edges != q_nodes.size()) {
+    return Ort::Status{nullptr};
+  }
+
+  is_valid = true;
+  return Ort::Status{nullptr};
+}
+
+Ort::Status IsClipMadeRedundantByQ(const OrtNode& clip_node, const OrtNode& q_node, bool& is_clip_redundant) {
+  (void)clip_node;
+  (void)q_node;
+  is_clip_redundant = true;  // TODO: implement
+  return Ort::Status{nullptr};
+}
+
+constexpr bool Is16BitIntType(ONNXTensorElementDataType data_type) {
+  return (data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16) ||
+         (data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16);
+}
+
+constexpr bool Is4BitIntType(ONNXTensorElementDataType data_type) {
+  return (data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4) ||
+         (data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
+}
+
+Ort::Status NodeGroupSelector::GetQDQSelection(const OrtNode& node, std::optional<NodeGroup>& result) const {
+  const OrtApi& ort_api = Ort::GetApi();
+  result = std::nullopt;
+
+  std::vector<const OrtValueInfo*> node_inputs;
+  std::vector<const OrtValueInfo*> node_outputs;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputs(node, node_inputs));
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputs(node, node_outputs));
+
+  std::vector<const OrtNode*> dq_nodes;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(FindParentsByType(node_inputs, DQ_OP_TYPE, dq_nodes));
+
+  // For redundant clip node, currently only support node with only one output, which is consumed by Clip/Relu->Q.
+  const OrtNode* clip_node = nullptr;
+  EdgeSet output_edges;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputEdges(node_outputs, output_edges));
+
+  if (output_edges.size() == 1) {
+    const OrtNode& next_node = output_edges.begin()->GetNode();
+
+    const char* next_op_type = nullptr;
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetOperatorType(&next_node, &next_op_type));
+
+    if (std::strcmp(next_op_type, "Clip") == 0 || std::strcmp(next_op_type, "Relu") == 0) {
+      std::vector<const OrtValueInfo*> clip_outputs;
+      size_t clip_num_output_edges = 0;
+      bool produces_graph_output = false;
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputs(next_node, clip_outputs));
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputEdgeCount(clip_outputs, clip_num_output_edges));
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(ProducesGraphOutput(clip_outputs, produces_graph_output));
+
+      if (clip_num_output_edges == 1 && !produces_graph_output) {
+        clip_node = &next_node;
+      }
+    }
+  }
+
+  std::vector<const OrtNode*> q_nodes;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetChildrenByType(node_outputs, Q_OP_TYPE, q_nodes));
+
+  if (clip_node != nullptr) {
+    bool is_clip_redundant = false;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(IsClipMadeRedundantByQ(*clip_node, *q_nodes[0], is_clip_redundant));
+
+    if (q_nodes.size() != 1 || !is_clip_redundant) {
+      return Ort::Status{nullptr};
+    }
+  }
+
+  bool check_result = false;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(Check(node, clip_node, dq_nodes, q_nodes, check_result));
+  if (!check_result) {
+    return Ort::Status{nullptr};
+  }
+
+  NodeGroup node_group;
+  node_group.dq_nodes = dq_nodes;
+  node_group.q_nodes = q_nodes;
+  node_group.target_node = &node;
+  node_group.redundant_clip_node = clip_node;
+
+  result = std::move(node_group);
+  return Ort::Status{nullptr};
+}
+
+// DQ nodes for X, W and optionally B -> node -> Q
+class ConvNodeGroupSelector : public NodeGroupSelector {
+ public:
+  // default to 'true'
+  ConvNodeGroupSelector(bool int8_allowed = true, bool allow_16bit = true, bool allow_4bit_weight = true)
+      : int8_allowed_(int8_allowed), allow_16bit_(allow_16bit), allow_4bit_weight_(allow_4bit_weight) {}
+
+ private:
+  Ort::Status Check(const OrtNode& node, const OrtNode* redundant_clip_node,
+                    const std::vector<const OrtNode*>& dq_nodes,
+                    const std::vector<const OrtNode*>& q_nodes,
+                    /*out*/ bool& is_valid) const override;
+
+  bool int8_allowed_;
+  bool allow_16bit_;
+  bool allow_4bit_weight_;
+};
+
+Ort::Status ConvNodeGroupSelector::Check(const OrtNode& node, const OrtNode* redundant_clip_node,
+                                         const std::vector<const OrtNode*>& dq_nodes,
+                                         const std::vector<const OrtNode*>& q_nodes,
+                                         /*out*/ bool& result) const {
+  result = false;
+
+  bool check_result = false;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(CheckQDQNodes(check_result, node, redundant_clip_node, dq_nodes, q_nodes));
+  if (!check_result) {
+    return Ort::Status{nullptr};
+  }
+
+  std::vector<const OrtValueInfo*> dq_0_inputs;
+  std::vector<const OrtValueInfo*> dq_1_inputs;
+  std::vector<const OrtValueInfo*> q_0_outputs;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputs(*dq_nodes[0], dq_0_inputs));
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputs(*dq_nodes[1], dq_1_inputs));
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeOutputs(*q_nodes[0], q_0_outputs));
+
+  // input and output types need to be same
+  ONNXTensorElementDataType dt_input = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  ONNXTensorElementDataType dt_weight = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  ONNXTensorElementDataType dt_output = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetTensorElemType(*dq_0_inputs[0], dt_input));
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetTensorElemType(*dq_1_inputs[0], dt_weight));
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetTensorElemType(*q_0_outputs[0], dt_output));
+
+  if (dt_input != dt_output) {
+    return Ort::Status{nullptr};
+  }
+
+  if (!allow_4bit_weight_ && Is4BitIntType(dt_weight)) {
+    return Ort::Status{nullptr};
+  }
+
+  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if (!int8_allowed_ || dt_weight != dt_input) {
+      return Ort::Status{nullptr};
+    }
+  }
+
+  if (dq_nodes.size() == 3) {  // has bias
+    std::vector<const OrtValueInfo*> dq_2_inputs;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputs(*dq_nodes[2], dq_2_inputs));
+
+    ONNXTensorElementDataType dt_bias = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetTensorElemType(*dq_2_inputs[0], dt_bias));
+
+    if (dt_bias != ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
+      return Ort::Status{nullptr};
+    }
+  }
+
+  // 16-bit int types must be explicitly allowed.
+  if (!allow_16bit_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
+    return Ort::Status{nullptr};
+  }
+
+  result = true;
+  return Ort::Status{nullptr};
+}
+
+// struct that provides a join between selector and op versions supported
+struct OpVersionsAndSelector {
+  using OpVersionsMap = std::unordered_map<std::string, std::vector<int>>;
+
+  OpVersionsAndSelector(const OpVersionsMap& ops_and_versions_in,
+                        std::unique_ptr<NodeGroupSelector> selector_in)
+      : op_versions_map{ops_and_versions_in},
+        selector{std::move(selector_in)} {}
+
+  OpVersionsMap op_versions_map;
+  std::unique_ptr<NodeGroupSelector> selector;
+
+  // ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpVersionsAndSelector);
+};
+
+// class that manages a set of node group selectors
+class Selectors {
+ public:
+  Selectors() = default;
+
+  // register a selector for the specified ops.
+  void RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
+                        std::unique_ptr<NodeGroupSelector> selector_in);
+
+  const std::unordered_set<std::unique_ptr<OpVersionsAndSelector>>& SelectorsSet() const {
+    return selectors_set_;
+  }
+
+  // ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Selectors);
+
+ private:
+  std::unordered_set<std::unique_ptr<OpVersionsAndSelector>> selectors_set_;
+};
+
+// class that manages qdq node group selections
+class SelectorManager {
+ public:
+  SelectorManager();
+
+  // Methods that finds and returns a vector of QDQ::NodeGroup in a given set of graph nodes.
+  // Can be used in QDQ support in different EPs
+  Ort::Status GetQDQSelections(const std::vector<const OrtNode*>& nodes, const Ort::Logger& logger,
+                               /*out*/ std::vector<NodeGroup>& node_groups) const;
+
+ private:
+  Selectors qdq_selectors_;
+
+  std::unordered_map<std::string, const OpVersionsAndSelector*> op_type_to_selectors_map_;
+
+  void InitializeSelectorsMap();
+
+  void CreateSelectors();
+
+  // ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SelectorManager);
+};
+
+void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
+                                 std::unique_ptr<NodeGroupSelector> selector_in) {
+  auto entry = std::make_unique<OpVersionsAndSelector>(
+      ops_and_versions_in,
+      std::move(selector_in));
+
+  (void)selectors_set_.insert(std::move(entry));
+}
+
+void RegisterConvSelector(Selectors& qdq_selectors) {
+  static OpVersionsAndSelector::OpVersionsMap conv_version_map = {{"Conv", {}}};
+  /* register selector for conv op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ConvNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(conv_version_map, std::move(selector));
+}
+
+void SelectorManager::CreateSelectors() {
+  RegisterConvSelector(qdq_selectors_);
+}
+
+void SelectorManager::InitializeSelectorsMap() {
+  for (const auto& entry : qdq_selectors_.SelectorsSet()) {
+    for (const auto& op_info : entry->op_versions_map) {
+      (void)op_type_to_selectors_map_.insert({op_info.first, &*entry}).second;
+    }
+  }
+}
+
+SelectorManager::SelectorManager() {
+  CreateSelectors();
+  InitializeSelectorsMap();
+}
+
+constexpr const char* ONNX_DOMAIN = "";
+constexpr const char* MS_INTERNAL_NHWC_DOMAIN = "com.ms.internal.nhwc";
+constexpr const char* MS_DOMAIN = "com.microsoft";
+
+Ort::Status SelectorManager::GetQDQSelections(const std::vector<const OrtNode*>& nodes, const Ort::Logger& logger,
+                                              /*out*/ std::vector<NodeGroup>& result) const {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  std::vector<NodeGroup> qdq_selections;
+  for (const OrtNode* node : nodes) {
+    const char* domain = nullptr;
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetDomain(node, &domain));
+
+    bool is_onnx_domain = std::strcmp(domain, ONNX_DOMAIN) == 0;
+    bool is_nhwc_domain = std::strcmp(domain, MS_INTERNAL_NHWC_DOMAIN) == 0;
+    bool is_ms_domain = std::strcmp(domain, MS_DOMAIN) == 0;
+
+    // post layout transformation all the layout sensitive nodes are converted to domain
+    // kMSInternalNHWCDomain. Therefore need to allow this domain as well.
+    // Allow kMSDomain for contrib op like Gelu
+    if (!is_onnx_domain && !is_nhwc_domain && !is_ms_domain) {
+      continue;
+    }
+
+    const char* op_type_cstr = nullptr;
+    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetOperatorType(node, &op_type_cstr));
+    std::string op_type = op_type_cstr;
+
+    auto op_rule = op_type_to_selectors_map_.find(op_type);
+    if (op_rule == op_type_to_selectors_map_.cend()) {
+      continue;
+    }
+
+    const auto& op_versions_and_selector = *op_rule->second;
+
+    // check the supported versions if specified
+    const std::vector<int>& versions = op_versions_and_selector.op_versions_map.find(op_type)->second;
+    if (!versions.empty()) {
+      int since_version = 0;
+      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetSinceVersion(node, &since_version));
+
+      if (std::find(versions.cbegin(), versions.cend(), since_version) == versions.cend()) {
+        ORT_CXX_LOGF(logger, ORT_LOGGING_LEVEL_VERBOSE, "Op version is not supported for %s", op_type_cstr);
+        continue;
+      }
+    }
+
+    std::optional<NodeGroup> qdq_node_group;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(op_versions_and_selector.selector->GetQDQSelection(*node, qdq_node_group));
+    if (qdq_node_group.has_value()) {
+      const auto& qdq_group = *qdq_node_group;
+      qdq_selections.push_back(qdq_group);
+    }
+  }
+
+  result = std::move(qdq_selections);
+  return Ort::Status{nullptr};
+}
+}  // namespace
+
+Ort::Status GetAllNodeUnits(const OrtGraph& graph, const Ort::Logger& logger,
+                            /*out*/ std::vector<std::unique_ptr<NodeUnit>>& node_units,
+                            /*out*/ std::unordered_map<const OrtNode*, const NodeUnit*>& node_to_node_unit) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  size_t num_nodes = 0;
+  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetNumNodes(&graph, &num_nodes));
+
+  std::vector<const OrtNode*> nodes(num_nodes);
+  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetNodes(&graph, nodes.data(), nodes.size()));
+
+  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+  std::unordered_map<const OrtNode*, const NodeUnit*> node_unit_map;
+
+  const auto add_node_unit_to_map = [&](const std::vector<const OrtNode*>& nodes, const NodeUnit* node_unit) {
+    for (const OrtNode* node : nodes) {
+      node_unit_map.insert({node, node_unit});
+    }
+  };
+
+  // Get QDQ NodeUnits first
+  QDQ::SelectorManager selector_mgr;
+  std::vector<NodeGroup> qdq_selections;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(selector_mgr.GetQDQSelections(nodes, logger, qdq_selections));
+
+  for (const NodeGroup& qdq_selection : qdq_selections) {
+    std::unique_ptr<NodeUnit> qdq_unit;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(NodeUnit::MakeQDQGroup(qdq_selection, qdq_unit));
+
+    // Fill the node to node_unit map for all nodes in the QDQ Group
+    add_node_unit_to_map(qdq_selection.dq_nodes, qdq_unit.get());
+    add_node_unit_to_map(qdq_selection.q_nodes, qdq_unit.get());
+    add_node_unit_to_map({qdq_selection.target_node}, qdq_unit.get());
+    if (qdq_selection.redundant_clip_node != nullptr) {
+      node_unit_map.insert({qdq_selection.redundant_clip_node, qdq_unit.get()});
+    }
+
+    node_unit_holder.push_back(std::move(qdq_unit));
+  }
+
+  // Get the left over SingleNode NodeUnits
+  for (const OrtNode* node : nodes) {
+    // This is already part of a QDQ NodeUnit
+    if (node_unit_map.find(node) != node_unit_map.cend()) {
+      continue;
+    }
+
+    std::unique_ptr<NodeUnit> node_unit;
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(NodeUnit::MakeSingleNode(*node, node_unit));
+    node_unit_map[node] = node_unit.get();
+    node_unit_holder.push_back(std::move(node_unit));
+  }
+
+  node_units = std::move(node_unit_holder);
+  node_to_node_unit = std::move(node_unit_map);
+  return Ort::Status{nullptr};
+}
 
 }  // namespace QDQ
 }  // namespace OrtEpUtils
