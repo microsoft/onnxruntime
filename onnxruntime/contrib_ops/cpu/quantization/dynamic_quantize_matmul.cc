@@ -199,6 +199,17 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
       const bool b_scale_available = Info().TryGetConstantInput(IN_B_SCALE, &b_scale_tensor);
 
       can_use_dynamic_quant_mlas_ = (!b_quantization_might_be_asymmetric && b_scale_available);
+      // Kleidi dynamic path expects non-negative scales. Disable if any negative scale is detected.
+      if (can_use_dynamic_quant_mlas_) {
+        const float* bs_data = b_scale_tensor->Data<float>();
+        const size_t bs_size = static_cast<size_t>(b_scale_tensor->Shape().Size());
+        for (size_t i = 0; i < bs_size; ++i) {
+          if (bs_data[i] < 0.0f) {
+            can_use_dynamic_quant_mlas_ = false;
+            break;
+          }
+        }
+      }
 
       // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
       // We check that here too before attempting to use them.
@@ -379,7 +390,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     if (y->Shape().Size() == 0)
       return Status::OK();
 
-    auto a_data = static_cast<const uint8_t*>(ctx->Input<Tensor>(IN_A)->DataRaw());
+    auto a_data = ctx->Input<Tensor>(IN_A)->Data<float>();
     auto* y_data = y->MutableData<float>();
 
     // batch gemm
@@ -393,7 +404,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
 
     for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
       auto& params = gemm_data_vec[gemm_idx];
-      params.A = reinterpret_cast<const float*>(a_data + helper.LeftOffsets()[gemm_idx]);
+      params.A = a_data + helper.LeftOffsets()[gemm_idx];
       params.lda = gemm_shape.K;
       params.PackedB = packed_b_.get();
       params.C = y_data + helper.OutputOffsets()[gemm_idx];
@@ -401,22 +412,6 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     }
 
     MlasDynamicQGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool());
-    // This evaluates to true if bias data was not provided as constant data for prepacking stage
-    if (!dynamic_quant_mlas_bias_data_was_packed_) {
-      if (ctx->Input<Tensor>(IN_BIAS) != nullptr) {
-        const auto biases = std::vector<float>(&ctx->Input<Tensor>(IN_BIAS)->Data<float>()[0],
-                                               &ctx->Input<Tensor>(IN_BIAS)->Data<float>()[gemm_shape.N]);
-
-        // deferred adding of bias
-        for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
-          float* MxN = y_data + helper.OutputOffsets()[gemm_idx];
-          for (auto l = gemm_shape.M; l > 0; --l) {
-            MlasEltwiseAdd<float>(MxN, biases.data(), MxN, gemm_shape.N);
-            MxN += gemm_shape.N;
-          }
-        }
-      }
-    }
   }
 #endif
   return Status::OK();

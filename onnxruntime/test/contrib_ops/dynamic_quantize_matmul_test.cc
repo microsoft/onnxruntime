@@ -28,17 +28,17 @@ static void CalculateDynamicQuantizeMatMul(const int64_t M, const int64_t N, con
                                            std::vector<float>& B_scale, std::vector<T>& B_zero_point,
                                            const std::vector<float>& Bias, std::vector<float>& Y_data,
                                            bool per_column, bool has_zp, bool has_bias) {
-  // DynamicQuantize Matrix A
+  // Dynamic Quantize Matrix A
   const uint32_t num_elements = static_cast<uint32_t>(M * K);
-  std::vector<T> QuantA_data(num_elements);
+  std::vector<uint8_t> QuantA_data(num_elements);
   std::vector<float> A_scale;
-  std::vector<T> A_zero_point;
+  std::vector<uint8_t> A_zero_point;
 
   // Get max and min
   float min = std::numeric_limits<float>::max();
   float max = std::numeric_limits<float>::lowest();
-  float qmax = static_cast<float>(std::numeric_limits<T>::max());
-  float qmin = static_cast<float>(std::numeric_limits<T>::lowest());
+  float qmax = static_cast<float>(std::numeric_limits<uint8_t>::max());
+  float qmin = static_cast<float>(std::numeric_limits<uint8_t>::lowest());
 
   for (uint32_t i = 0; i < num_elements; ++i) {
     max = std::max(A_data[i], max);
@@ -50,14 +50,19 @@ static void CalculateDynamicQuantizeMatMul(const int64_t M, const int64_t N, con
   min = std::min(min, 0.0f);
 
   float scale = static_cast<float>(max - min) / (qmax - qmin);
-  T zeroPoint = std::round(std::clamp(qmin - min / scale, qmin, qmax));
+  float initial_zero_point = qmin - min / scale;
+  float clamped_zp = std::max(qmin, std::min(qmax, initial_zero_point));
+  uint8_t zeroPoint = static_cast<uint8_t>(RoundHalfToEven(clamped_zp));
 
   A_scale.push_back(scale);
   A_zero_point.push_back(zeroPoint);
 
   // Matrix Multiplication
   for (uint32_t i = 0; i < num_elements; ++i) {
-    QuantA_data[i] = static_cast<T>(std::round((A_data[i] / scale) + zeroPoint));
+    float val = (A_data[i] / scale) + static_cast<float>(zeroPoint);
+    float rq = std::nearbyintf(val);
+    rq = std::min(qmax, std::max(qmin, rq));
+    QuantA_data[i] = static_cast<uint8_t>(rq);
   }
   if (!per_column) {
     B_zero_point.resize(N, B_zero_point[0]);
@@ -123,7 +128,7 @@ void TestDynamicQuantizeMatMul(const TestDynamicQuantizeMatMulOptions& opts) {
   int64_t K = 128;
   std::vector<int64_t> A_dims{opts.empty_input ? 0 : M, K};
   std::vector<int64_t> B_dims{K, N};
-  std::vector<int64_t> Y_dims{opts.empty_input ? 0 : M, K};
+  std::vector<int64_t> Y_dims{opts.empty_input ? 0 : M, N};
   std::vector<float> A_data = random.Uniform<float>(A_dims, -1.0f, 1.0f);
   std::vector<T> B_data;
   std::vector<T> tmp_B_data = random.Uniform<T>(B_dims,
