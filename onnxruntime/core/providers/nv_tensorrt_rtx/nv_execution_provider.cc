@@ -2066,7 +2066,7 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
     refitter->getAllWeights(required_weights, refit_names_prealocated.data());
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refitter requires " << required_weights << " weights";
     std::unordered_set<std::string> refit_names(std::make_move_iterator(refit_names_prealocated.begin()),
-                                      std::make_move_iterator(refit_names_prealocated.end()));
+                                                std::make_move_iterator(refit_names_prealocated.end()));
 
     // Vectors to keep track of data pointers.
     std::vector<std::string> names;
