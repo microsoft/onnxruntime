@@ -11,6 +11,7 @@
 namespace onnxruntime {
 namespace contrib {
 
+// TODO: add a namespace for this
 enum class ActivationType {
   Relu = 0,
   Gelu = 1,

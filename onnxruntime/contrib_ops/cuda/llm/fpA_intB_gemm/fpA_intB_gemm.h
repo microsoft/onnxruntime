@@ -27,15 +27,6 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace cutlass_kernels {
 
-// TRT Activation Type does not have Gelu or Silu
-enum class ActivationType {
-  Gelu,
-  Relu,
-  Silu,
-  Identity,
-  InvalidType
-};
-
 /*
   This runner only supports:
   T in {half, __nv_bfloat} WeightType in {int8_t, cutlass::uint4b_t}

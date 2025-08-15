@@ -435,8 +435,8 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
   static constexpr bool use_fp4 = false;
 #endif
 
-  // Added by ORT
-
+  // Added by ORT, not used yet.
+  int sm_;
   ActivationType activation_type_;
   bool has_fc3_;
   bool normalize_routing_weights_;

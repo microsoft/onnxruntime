@@ -49,7 +49,7 @@
 #include "contrib_ops/cuda/llm/common/memory_utils.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/common/data_type.h"
-// #include "contrib_ops/cuda/llm/common/env_utils.h"
+#include "contrib_ops/cuda/llm/common/env_utils.h" // for getEnvEnablePDL()
 #include "contrib_ops/cuda/llm/common/workspace.h"
 #include "contrib_ops/cuda/llm/cutlass_type_conversion.h"
 #include "contrib_ops/cuda/llm/kernels/pre_quant_scale_kernel.h"

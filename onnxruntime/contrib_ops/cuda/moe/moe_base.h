@@ -14,11 +14,13 @@ namespace contrib {
 namespace cuda {
 
 class MoEBase {
- protected:
+public:  
+  using ActivationType = onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
+
+protected:
   MoEBase(const OpKernelInfo& op_kernel_info, const cudaDeviceProp& device_prop) {
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
 
-    using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
     std::string activation_type_str;
     ORT_ENFORCE(op_kernel_info.GetAttr<std::string>("activation_type", &activation_type_str).IsOK());
     if (activation_type_str == "relu") {
@@ -48,7 +50,7 @@ class MoEBase {
   bool normalize_routing_weights_;
   bool use_sparse_mixer_;
   int64_t k_;
-  onnxruntime::llm::kernels::cutlass_kernels::ActivationType activation_type_;
+  ActivationType activation_type_;
   int sm_;
 };
 

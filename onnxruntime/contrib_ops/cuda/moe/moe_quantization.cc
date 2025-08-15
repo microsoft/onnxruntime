@@ -75,14 +75,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc2_scales = context->Input<Tensor>(6);
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(7);
   const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(8);
-  // const Tensor* fc3_scales_optional = context->Input<Tensor>(9);
+  const Tensor* fc3_scales_optional = context->Input<Tensor>(9);
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(10);
 
   // TODO: Add support for fc1_zeros and fc2_zeros
   const Tensor* fc1_zeros = nullptr;
   const Tensor* fc2_zeros = nullptr;
 
-  MoEQuantType quant_type = expert_weight_bits_ == 4 ? MoEQuantType::UINT4 : MoEQuantType::UINT8;
+  // MoEQuantType quant_type = expert_weight_bits_ == 4 ? MoEQuantType::UINT4 : MoEQuantType::UINT8;
 
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
@@ -91,13 +91,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       fc2_experts_weights, fc2_experts_bias_optional, fc2_scales,
       fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional,
       expert_weight_bits_ == 4 ? 2 : 1,
-      activation_type_ == ort_fastertransformer::ActivationType::Swiglu));
+      activation_type_ == ActivationType::Swiglu));
 
   constexpr bool use_lora = false;
   constexpr bool use_deepseek_fp8_block_scale = false;
   constexpr bool min_latency_mode = false;
   bool use_awq = (fc1_zeros != nullptr);
-  onnxruntime::llm::kernels::MOEParallelismConfig parallelism_config{};
+  
+  onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig parallelism_config{};
 
   size_t workspace_size = m_moe_runner->getWorkspaceSize(
       moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
