@@ -7,7 +7,7 @@ from logging import getLogger
 import numpy
 import onnx
 from numpy import array_equal, ndarray
-from onnx import NodeProto, helper, numpy_helper
+from onnx import TensorProto, NodeProto, helper, numpy_helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -19,7 +19,7 @@ class FusionUtils:
 
     def cast_graph_input_to_int32(self, input_name: str) -> tuple[bool, str]:
         graph_input = self.model.find_graph_input(input_name)
-        if graph_input is not None and graph_input.type.tensor_type.elem_type != onnx.TensorProto.INT32:
+        if graph_input is not None and graph_input.type.tensor_type.elem_type != TensorProto.INT32:
             cast_output, cast_node = self.cast_input_to_int32(input_name)
             logger.debug(f"Casted graph input {input_name} to int32")
             return True, cast_output
@@ -31,11 +31,11 @@ class FusionUtils:
         output_name = input_name + "_" + target_type
 
         if target_type == "int32":
-            to_type = int(onnx.TensorProto.INT32)
+            to_type = int(TensorProto.INT32)
         elif target_type == "float32":
-            to_type = int(onnx.TensorProto.FLOAT)
+            to_type = int(TensorProto.FLOAT)
         elif target_type == "float16":
-            to_type = int(onnx.TensorProto.FLOAT16)
+            to_type = int(TensorProto.FLOAT16)
         else:
             raise ValueError("Invalid target_type: {target_type}")
 
@@ -80,7 +80,7 @@ class FusionUtils:
             if node.op_type == "Cast":
                 is_int32 = False
                 for att in node.attribute:
-                    if att.name == "to" and att.i == int(onnx.TensorProto.INT32):
+                    if att.name == "to" and att.i == int(TensorProto.INT32):
                         is_int32 = True
                         break
                 if is_int32:
@@ -163,17 +163,17 @@ class FusionUtils:
             return value == expected_value
 
     @staticmethod
-    def transpose_2d_int8_tensor(tensor: onnx.TensorProto):
+    def transpose_2d_int8_tensor(tensor: TensorProto):
         """Transpose a 2-D INT8 TensorProto
         Args:
             tensor (TensorProto): tensor to be transposed
         Returns:
             tensor (TensorProto): transposed tensor
         """
-        if not isinstance(tensor, onnx.TensorProto):
+        if not isinstance(tensor, TensorProto):
             raise TypeError(f"Expected input type is an ONNX TensorProto but got {type(tensor)}")
 
-        if len(tensor.dims) != 2 or tensor.data_type != onnx.TensorProto.INT8:
+        if len(tensor.dims) != 2 or tensor.data_type != TensorProto.INT8:
             raise ValueError("Only INT8 2-D tensors can be transposed")
 
         if tensor.raw_data:
@@ -305,7 +305,7 @@ class FusionUtils:
 
 class NumpyHelper:
     @staticmethod
-    def to_array(tensor: onnx.TensorProto, fill_zeros: bool = False) -> ndarray:
+    def to_array(tensor: TensorProto, fill_zeros: bool = False) -> ndarray:
         # When weights are in external data format but not presented, we can still test the optimizer with two changes:
         # (1) set fill_zeros = True  (2) change load_external_data=False in optimizer.py
         if fill_zeros:
@@ -314,7 +314,7 @@ class NumpyHelper:
                 dtype=helper.tensor_dtype_to_np_dtype(tensor.data_type),
             )
 
-        if tensor.data_type == onnx.TensorProto.BFLOAT16:
+        if tensor.data_type == TensorProto.BFLOAT16:
             import onnx_ir as ir  # noqa: PLC0415
 
             # Use onnx_ir to correctly handle bfloat16 tensors
