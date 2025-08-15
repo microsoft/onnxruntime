@@ -3624,16 +3624,18 @@ TEST(CApiTest, AllocateInitializersFromNonArenaMemory) {
 
 // Usage example showing how to use CreateArenaCfgV2() API to configure the default memory CUDA arena allocator
 TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
-  const auto& api = Ort::GetApi();
-
   Ort::SessionOptions session_options;
 
-  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_growth_chunk_size_bytes", "max_power_of_two_extend_bytes"};
-  const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256, 1L << 24};
+  const std::unordered_map<std::string, size_t> config_map = {
+      {"max_mem", 0},                              // let ort pick default max memory
+      {"arena_extend_strategy", 0},                // use default extend strategy
+      {"initial_chunk_size_bytes", 1024},          // initial chunk size in bytes
+      {"max_dead_bytes_per_chunk", 0},             // no dead bytes per chunk
+      {"initial_growth_chunk_size_bytes", 256},    // initial growth chunk size in bytes
+      {"max_power_of_two_extend_bytes", 1L << 24}  // max power of two extend bytes
+  };
 
-  OrtArenaCfg* arena_cfg = nullptr;
-  ASSERT_TRUE(api.CreateArenaCfgV2(keys, values, 5, &arena_cfg) == nullptr);
-  std::unique_ptr<OrtArenaCfg, decltype(api.ReleaseArenaCfg)> rel_arena_cfg(arena_cfg, api.ReleaseArenaCfg);
+  Ort::ArenaCfg arena_cfg(config_map);
 
   OrtCUDAProviderOptions cuda_provider_options = CreateDefaultOrtCudaProviderOptionsWithCustomStream(nullptr);
   cuda_provider_options.default_memory_arena_cfg = arena_cfg;

@@ -449,6 +449,18 @@ inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial
   ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk, &p_));
 }
 
+inline ArenaCfg::ArenaCfg(const std::unordered_map<std::string, size_t>& arena_config) {
+  std::vector<const char*> keys;
+  std::vector<size_t> values;
+  keys.reserve(arena_config.size());
+  values.reserve(arena_config.size());
+  for (const auto& kv : arena_config) {
+    keys.push_back(kv.first.c_str());
+    values.push_back(kv.second);
+  }
+  ThrowOnError(GetApi().CreateArenaCfgV2(keys.data(), values.data(), arena_config.size(), &p_));
+}
+
 inline ThreadingOptions::ThreadingOptions() {
   ThrowOnError(GetApi().CreateThreadingOptions(&p_));
 }

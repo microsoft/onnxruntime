@@ -791,7 +791,6 @@ struct TensorRTProviderOptions : detail::Base<OrtTensorRTProviderOptionsV2> {
  *
  * Used to pass options to CUDA EP
  */
-
 struct CUDAProviderOptions : detail::Base<OrtCUDAProviderOptionsV2> {
   CUDAProviderOptions(std::nullptr_t) {}
   /// \brief Wraps OrtApi::CreateCUDAProviderOptions
@@ -806,10 +805,17 @@ struct CUDAProviderOptions : detail::Base<OrtCUDAProviderOptionsV2> {
   void* GetOptionByName(const char* name) const;
 };
 
+/** \brief The PrepackedWeightsContainer
+ *
+ * Create only and pass to Ort::Session constructor for multiple sessions
+ * to share pre-packed weights.
+ */
 struct PrepackedWeightsContainer : detail::Base<OrtPrepackedWeightsContainer> {
   using Base = detail::Base<OrtPrepackedWeightsContainer>;
-  explicit PrepackedWeightsContainer(std::nullptr_t) {}                             ///< No instance is created
-  explicit PrepackedWeightsContainer(OrtPrepackedWeightsContainer* p) : Base{p} {}  ///< Take ownership of a pointer created by C API
+  ///< No instance is created
+  explicit PrepackedWeightsContainer(std::nullptr_t) {}
+  ///< Take ownership of a pointer created by C API
+  explicit PrepackedWeightsContainer(OrtPrepackedWeightsContainer* p) : Base{p} {}
   /// \brief Wraps OrtApi::CreatePrepackedWeightsContainer
   PrepackedWeightsContainer();
 };
@@ -2340,6 +2346,12 @@ struct ArenaCfg : detail::Base<OrtArenaCfg> {
    * See docs/C_API.md for details on what the following parameters mean and how to choose these values
    */
   ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk);
+
+  /**
+   * Wraps Ort::CreateArenaCfgV2
+   * See C API for details on what the following parameters mean and how to choose these values
+   */
+  explicit ArenaCfg(const std::unordered_map<std::string, size_t>& arena_config);
 };
 
 //
