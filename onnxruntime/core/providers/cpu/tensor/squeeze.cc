@@ -46,10 +46,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Squeeze);
 
 // Opset 23 added support for float4e2m1.
-// TODO(titaiwang): Add support for float4e2m1.
-ONNX_CPU_OPERATOR_KERNEL(
+// TODO: Add support for float4e2m1.
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Squeeze,
     23,
+    23,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .Alias(0, 0),
+    Squeeze);
+
+// Opset 24
+ONNX_CPU_OPERATOR_KERNEL(
+    Squeeze,
+    24,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .Alias(0, 0),

@@ -20,7 +20,7 @@ namespace onnxruntime {
 #define REGISTER_ONNX_KERNEL_TYPED(T)                                 \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                     \
       Attention,                                                      \
-      23,                                                             \
+      24,                                                             \
       T,                                                              \
       KernelDefBuilder()                                              \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())     \
@@ -30,6 +30,21 @@ namespace onnxruntime {
 
 REGISTER_ONNX_KERNEL_TYPED(float)
 REGISTER_ONNX_KERNEL_TYPED(MLFloat16)
+
+#define REGISTER_ONNX_KERNEL_VERSIONED_TYPED(T)                       \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                           \
+      Attention,                                                      \
+      23,                                                             \
+      23,                                                             \
+      T,                                                              \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())     \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>())     \
+          .TypeConstraint("U", BuildKernelDefConstraints<bool, T>()), \
+      Attention<T>);
+
+REGISTER_ONNX_KERNEL_VERSIONED_TYPED(float)
+REGISTER_ONNX_KERNEL_VERSIONED_TYPED(MLFloat16)
 
 template <typename T, typename U>
 void make_copy(T* mask_data, const U* mask_index, size_t size);
