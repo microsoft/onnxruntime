@@ -15,7 +15,7 @@
 
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
-#include "test/providers/internal_testing/internal_testing_execution_provider.h"
+#include "test/internal_testing_ep/internal_testing_execution_provider.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_utils.h"

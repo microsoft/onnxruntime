@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/graph/constants.h"
-#include "test/providers/base_tester.h"
+#include "test/util/include/base_tester.h"
 
 namespace onnxruntime {
 class InferenceSession;

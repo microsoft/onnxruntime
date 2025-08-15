@@ -6,8 +6,8 @@
 #include <string>
 #include <unordered_map>
 
-#include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
+#include "test/util/include/qdq_test_utils.h"
 
 #include "core/graph/onnx_protobuf.h"
 

@@ -134,22 +134,23 @@ jobs:
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
 
-      - name: Run tests (onnxruntime_test_all) with verbose logging
+      - name: Run tests (onnxruntime_test_all, onnxruntime_provider_test) with verbose logging
         shell: pwsh
         run: |
           $env:ORT_UNIT_TEST_MAIN_LOG_LEVEL = "0"
-          .\onnxruntime_test_all.exe 2>.\onnxruntime_test_all_stderr.log
+          .\onnxruntime_test_all.exe 2> .\onnxruntime_test_stderr.log
+          .\onnxruntime_provider_test.exe 2>> .\onnxruntime_test_stderr.log
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
 
       - name: Check log file
         shell: cmd
         run: |
-          dir ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_all_stderr.log
+          dir ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
 
       - name: Validate shader keys
         uses: ./.github/actions/webgpu-validate-shader-key
         with:
-          log_file_path: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_all_stderr.log
+          log_file_path: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py

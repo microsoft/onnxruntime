@@ -14,11 +14,12 @@
 #include "core/framework/run_options.h"
 #include "core/framework/tensor.h"
 #include "core/framework/TensorSeq.h"
+#include "core/graph/graph.h"
 #include "core/graph/model.h"
 
 #include "test/framework/TestAllocatorManager.h"
-#include "test/providers/checkers.h"
-#include "test/providers/tester_types.h"
+#include "test/util/include/checkers.h"
+#include "test/util/include/tester_types.h"
 
 namespace onnxruntime {
 class InferenceSession;
