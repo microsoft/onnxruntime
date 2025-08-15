@@ -163,7 +163,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif  // defined(_MSC_VER)
     int num_threads = 0;
-    ParseSessionConfigs(ov_string, provider_options, {"num_of_threads"});
+    test::utils::ParseSessionConfigs(ov_string, provider_options, {"num_of_threads"});
     for (const auto& provider_option : provider_options) {
       if (provider_option.first == "num_of_threads") {
         std::stringstream sstream(provider_option.second);
@@ -395,7 +395,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    ParseSessionConfigs(option_string, provider_options, {"runtime", "priority", "buffer_type", "enable_init_cache"});
+    test::utils::ParseSessionConfigs(option_string, provider_options, {"runtime", "priority", "buffer_type", "enable_init_cache"});
     for (const auto& provider_option : provider_options) {
       if (key == "runtime") {
         std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
@@ -471,7 +471,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                                                                    kCoremlProviderOption_ProfileComputePlan,
                                                                    kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU,
                                                                    kCoremlProviderOption_ModelCacheDirectory};
-    ParseSessionConfigs(ov_string, provider_options, available_keys);
+    test::utils::ParseSessionConfigs(ov_string, provider_options, available_keys);
 
     std::unordered_map<std::string, std::string> available_options = {
         {"CPUAndNeuralEngine", "1"},
@@ -514,7 +514,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    ParseSessionConfigs(ov_string, provider_options,
+    test::utils::ParseSessionConfigs(ov_string, provider_options,
                         {"device_filter", "performance_preference", "disable_metacommands",
                          "enable_graph_capture", "enable_graph_serialization"});
     for (const auto& provider_option : provider_options) {
@@ -587,7 +587,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif  // defined(_MSC_VER)
     bool enable_fast_math = false;
-    ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"});
+    test::utils::ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -651,7 +651,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    ParseSessionConfigs(option_string, provider_options);
+    test::utils::ParseSessionConfigs(option_string, provider_options);
 
     session_options.AppendExecutionProvider_VitisAI(provider_options);
 #else

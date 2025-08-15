@@ -294,9 +294,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (test_config.enable_qnn) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
-      std::string option_string = ToUTF8String(ep_runtime_config_string);
+      std::string option_string = ToUTF8String(test_config.ep_runtime_config_string);
 #else
-      std::string option_string = ep_runtime_config_string;
+      std::string option_string = test_config.ep_runtime_config_string;
 #endif
       std::istringstream ss(option_string);
       std::string token;
@@ -422,9 +422,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (test_config.enable_snpe) {
 #ifdef USE_SNPE
 #ifdef _MSC_VER
-      std::string option_string = ToUTF8String(ep_runtime_config_string);
+      std::string option_string = ToUTF8String(test_config.ep_runtime_config_string);
 #else
-      std::string option_string = ep_runtime_config_string;
+      std::string option_string = test_config.ep_runtime_config_string;
 #endif
       std::istringstream ss(option_string);
       std::string token;
