@@ -16,7 +16,9 @@ using namespace onnxruntime;
 namespace onnxruntime {
 
 struct VitisAIProviderFactory : IExecutionProviderFactory {
-  VitisAIProviderFactory(const ProviderOptions& info) : info_(info) {}
+  VitisAIProviderFactory(const ProviderOptions& info) : info_(info) {
+    vitisai_on_ep_factory_created(info);
+  }
   ~VitisAIProviderFactory() = default;
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;

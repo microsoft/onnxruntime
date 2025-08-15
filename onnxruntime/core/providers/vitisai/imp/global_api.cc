@@ -7,6 +7,11 @@
 #include <iostream>
 #include <codecvt>
 #include <fstream>
+#include "core/framework/op_kernel.h"
+#include "core/framework/provider_options.h"
+#include "core/providers/shared_library/provider_api.h"
+#include "core/providers/shared_library/provider_wrappedtypes.h"
+#include "onnxruntime_c_api.h"
 #ifdef _WIN32
 #include <Windows.h>
 #endif
@@ -74,6 +79,7 @@ static onnxruntime::PathString GetDynamicLibraryLocationByAddress(const void* ad
 vaip_core::OrtApiForVaip* create_org_api_hook();
 struct OrtVitisAIEpAPI {
   void (*initialize_onnxruntime_vitisai_ep)(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
+  void (*vitisai_on_ep_factory_created)(const onnxruntime::ProviderOptions& options);
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_with_options)(
       const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_with_error_handling)(
@@ -130,6 +136,7 @@ struct OrtVitisAIEpAPI {
       ::onnxruntime::LogRuntimeError(0, status2, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
       ORT_THROW(status2);
     }
+    std::ignore = env.GetSymbolFromLibrary(handle_, "vitisai_on_ep_factory_created", (void**)&vitisai_on_ep_factory_created);
     std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
                                            (void**)&vaip_get_version);
     std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_collect", (void**)&profiler_collect);
@@ -318,6 +325,12 @@ void deinitialize_vitisai_ep() {
 
   s_library_vitisaiep.Clear();
   s_kernel_registry_vitisaiep.reset();
+}
+
+void vitisai_on_ep_factory_created(const onnxruntime::ProviderOptions& options) {
+  if (s_library_vitisaiep.vitisai_on_ep_factory_created) {
+    s_library_vitisaiep.vitisai_on_ep_factory_created(options);
+  }
 }
 
 static void set_version_info(vaip_core::OrtApiForVaip& api) {
