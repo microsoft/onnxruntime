@@ -33,6 +33,7 @@ struct MoEParameters {
   MoEParallelType parallel_type{MoEParallelType::None};
   int64_t tensor_shards{1};
 };
+
 namespace moe_helper {
 
 template <typename Tensor>

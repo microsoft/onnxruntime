@@ -6,12 +6,11 @@
 #include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/op_kernel.h"
-#include "contrib_ops/cpu/quantization/moe_helper.h"
+#include "contrib_ops/cpu/moe/moe_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
-
-// TODO: add a namespace for this
+namespace moe {
 enum class ActivationType {
   Relu = 0,
   Gelu = 1,
@@ -19,8 +18,12 @@ enum class ActivationType {
   Identity = 3,
   Swiglu = 4,
 };
+}
 
 class MoEBaseCPU {
+ public:
+  using ActivationType = moe::ActivationType;
+
  protected:
   MoEBaseCPU(const OpKernelInfo& op_kernel_info) {
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());

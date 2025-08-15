@@ -322,7 +322,7 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
                   thread_fc1_output[i] += fc1_expert_bias_float[i];
                 }
               }
-              contrib::ApplySwiGLUActivation(thread_fc1_output, moe_params.inter_size, is_4bit);
+              moe::ApplySwiGLUActivation(thread_fc1_output, moe_params.inter_size, is_4bit);
             } else {
               // Standard activation (non-Swiglu)
               if (fc1_bias_data) {
@@ -330,11 +330,11 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
                 const float* fc1_expert_bias_float = fc1_bias_float.get() + static_cast<int64_t>(SafeInt<int64_t>(expert_idx)) * moe_params.inter_size;
                 for (int64_t i = 0; i < moe_params.inter_size; ++i) {
                   thread_fc1_output[i] += fc1_expert_bias_float[i];
-                  thread_fc1_output[i] = ApplyActivation(thread_fc1_output[i], activation_type_);
+                  thread_fc1_output[i] = moe::ApplyActivation(thread_fc1_output[i], activation_type_);
                 }
               } else {
                 for (int64_t i = 0; i < moe_params.inter_size; ++i) {
-                  thread_fc1_output[i] = ApplyActivation(thread_fc1_output[i], activation_type_);
+                  thread_fc1_output[i] = moe::ApplyActivation(thread_fc1_output[i], activation_type_);
                 }
               }
             }

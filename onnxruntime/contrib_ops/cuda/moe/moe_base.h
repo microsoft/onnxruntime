@@ -5,7 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "contrib_ops/cpu/quantization/moe_helper.h"
+#include "contrib_ops/cpu/moe/moe_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
 

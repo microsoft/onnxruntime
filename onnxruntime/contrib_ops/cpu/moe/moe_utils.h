@@ -7,9 +7,11 @@
 
 namespace onnxruntime {
 namespace contrib {
+namespace moe {
 
 float ApplyActivation(float x, ActivationType activation_type);
 void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_format);
 
+}  // namespace moe
 }  // namespace contrib
 }  // namespace onnxruntime
