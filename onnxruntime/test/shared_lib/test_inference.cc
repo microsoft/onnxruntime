@@ -3705,7 +3705,7 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding) {
   cudaStream_t compute_stream = nullptr;
   cudaStreamCreate(&compute_stream);
   trt_options.UpdateWithValue("user_compute_stream", compute_stream);
-  void* user_compute_stream = trt_options.GetptionByName("user_compute_stream");
+  void* user_compute_stream = trt_options.GetOptionByName("user_compute_stream");
   ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
 
   session_options.AppendExecutionProvider_TensorRT_V2(*trt_options);

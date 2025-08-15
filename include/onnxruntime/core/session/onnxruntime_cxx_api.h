@@ -782,7 +782,7 @@ struct TensorRTProviderOptions : detail::Base<OrtTensorRTProviderOptionsV2> {
   void UpdateWithValue(const char* key, void* value);
 
   ///< Wrapper around  OrtApi::GetTensorRTProviderOptionsByName
-  void* GetptionByName(const char* name) const;
+  void* GetOptionByName(const char* name) const;
   ///< Wrapper around  OrtApi::GetTensorRTProviderOptionsAsString
   std::string GetTensorRTProviderOptionsAsString() const;
 };

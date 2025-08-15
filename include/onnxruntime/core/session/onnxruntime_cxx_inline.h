@@ -520,7 +520,7 @@ inline void TensorRTProviderOptions::UpdateWithValue(const char* key, void* valu
   ThrowOnError(GetApi().UpdateTensorRTProviderOptionsWithValue(p_, key, value));
 }
 
-inline void* TensorRTProviderOptions::GetptionByName(const char* name) const {
+inline void* TensorRTProviderOptions::GetOptionByName(const char* name) const {
   void* value = nullptr;
   ThrowOnError(GetApi().GetTensorRTProviderOptionsByName(p_, name, &value));
   return value;
