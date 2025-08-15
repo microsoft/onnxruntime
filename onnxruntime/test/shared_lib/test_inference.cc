@@ -1973,7 +1973,7 @@ static bool CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(PATH_TYPE model
 
 TEST(CApiTest, get_allocator_cpu) {
   Ort::SessionOptions session_options;
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
+  session_options.AppendExecutionProvider_CPU(1);
   Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
   Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
   Ort::Allocator cpu_allocator(session, info_cpu);
@@ -2018,8 +2018,7 @@ TEST(CApiTest, get_allocator_cpu) {
 #ifdef USE_CUDA
 TEST(CApiTest, get_allocator_cuda) {
   Ort::SessionOptions session_options;
-  OrtCUDAProviderOptionsV2* options;
-  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  Ort::CUDAProviderOptions options;
   session_options.AppendExecutionProvider_CUDA_V2(*options);
   Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
 
@@ -2101,7 +2100,7 @@ TEST(CApiTest, get_allocator_qnn_htp_shared) {
 
 TEST(CApiTest, io_binding) {
   Ort::SessionOptions session_options;
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
+  session_options.AppendExecutionProvider_CPU(1);
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
   Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
@@ -2177,9 +2176,8 @@ TEST(CApiTest, io_binding_cuda) {
 #ifdef USE_TENSORRT
   session_options.AppendExecutionProvider_TensorRT({});
 #else
-  OrtCUDAProviderOptionsV2* options;
-  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
-  session_options.AppendExecutionProvider_CUDA_V2(*options);
+  Ort::CUDAProviderOptions cuda_options;
+  session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 #endif
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
@@ -2389,17 +2387,12 @@ TEST(CApiTest, basic_cuda_graph) {
 
 #elif defined(USE_CUDA)
   // Enable cuda graph in cuda provider option.
-  OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-  ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
-  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
-      rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
-  std::vector<const char*> keys{"enable_cuda_graph"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
+  Ort::CUDAProviderOptions cuda_options;
+  std::unordered_map<std::string, std::string> options_map = {{"enable_cuda_graph",
+                                                               "1"}};
+  cuda_options.Update(options_map);
+  session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_cuda_options.get()) == nullptr);
 #elif defined(USE_ROCM)
   // Enable hip graph in rocm provider option.
   OrtROCMProviderOptions* rocm_options = nullptr;
@@ -2694,7 +2687,7 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
 }
 
 TEST(CApiTest, basic_cuda_graph_with_annotation) {
-  const auto& api = Ort::GetApi();
+  [[maybe_unused]] const auto& api = Ort::GetApi();
   Ort::SessionOptions session_options;
 
 #ifdef USE_DML
@@ -2707,17 +2700,11 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
   Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
 #elif defined(USE_CUDA)
   // Enable cuda graph in cuda provider option.
-  OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-  ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
-  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
-      rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
-  std::vector<const char*> keys{"enable_cuda_graph"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
+  Ort::CUDAProviderOptions cuda_options;
+  std::unordered_map<std::string, std::string> options_map = {{"enable_cuda_graph", "1"}};
+  cuda_options.Update(options_map);
+  session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_cuda_options.get()) == nullptr);
   Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #elif defined(USE_ROCM)
   // Enable hip graph in rocm provider option.
@@ -2766,21 +2753,15 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
 #ifndef REDUCED_OPS_BUILD
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
 TEST(CApiTest, cuda_graph_with_shape_nodes) {
-  const auto& api = Ort::GetApi();
+  [[maybe_unused]] const auto& api = Ort::GetApi();
 
   // Enable cuda graph in cuda provider option.
-  OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-  ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
-  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
-      rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
-  std::vector<const char*> keys{"enable_cuda_graph"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
+  Ort::CUDAProviderOptions cuda_options;
+  const std::unordered_map<std::string, std::string> options_map = {{"enable_cuda_graph", "1"}};
+  cuda_options.Update(options_map);
 
   Ort::SessionOptions session_options;
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_cuda_options.get()) == nullptr);
+  session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 
   // Successful loading of the ONNX model with shape nodes with cuda graph feature enabled
   Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
@@ -3356,8 +3337,6 @@ TEST(CApiTest, TestSharedAllocators) {
   // Turn on sharing of the allocator between sessions
   session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
 
-  const auto& api = Ort::GetApi();
-
   // CASE 1: We test creating and registering an ORT-internal allocator implementation instance
   // for sharing between sessions
   {
@@ -3525,16 +3504,10 @@ TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
   Ort::Value val = Ort::Value::CreateTensor<float>(mem_info, data, data_len, shape, shape_len);
   session_options.AddInitializer("W", val);
 
-  const auto& api = Ort::GetApi();
-
-  OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr;
-  ASSERT_TRUE(api.CreatePrepackedWeightsContainer(&prepacked_weights_container) == nullptr);
-  std::unique_ptr<OrtPrepackedWeightsContainer, decltype(api.ReleasePrepackedWeightsContainer)>
-      rel_prepacked_weights_container(prepacked_weights_container, api.ReleasePrepackedWeightsContainer);
-
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   // create session 1 (using model path)
+  Ort::PrepackedWeightsContainer prepacked_weights_container;
   Ort::Session session1(*ort_env, MATMUL_MODEL_URI, session_options, prepacked_weights_container);
   RunSession<float>(default_allocator.get(),
                     session1,
@@ -3631,12 +3604,11 @@ TEST(CApiTest, AllocateInitializersFromNonArenaMemory) {
   Ort::SessionOptions session_options;
 
 #ifdef USE_CUDA
-  OrtCUDAProviderOptionsV2* options;
-  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  Ort::CUDAProviderOptions options;
   session_options.AppendExecutionProvider_CUDA_V2(*options);
 #else
   // arena is enabled but the sole initializer will still be allocated from non-arena memory
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
+  session_options.AppendExecutionProvider_CPU(1);
 #endif
 
   // disable using arena for the sole initializer in the model
@@ -3913,39 +3885,32 @@ INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest,
 
 // This test uses CreateCUDAProviderOptions/UpdateCUDAProviderOptions/UpdateCUDAProviderOptionsWithValue APIs to configure and create a CUDA Execution Provider instance
 TEST(CApiTest, TestConfigureCUDAProviderOptions) {
-  const auto& api = Ort::GetApi();
-
-  OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-  ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
-  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+  Ort::CUDAProviderOptions cuda_options;
 
   // Only test updating OrtCUDAProviderOptionsV2 instance with user provided compute stream not running the inference
   cudaStream_t compute_stream = nullptr;
   void* user_compute_stream = nullptr;
   cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
-  ASSERT_TRUE(api.UpdateCUDAProviderOptionsWithValue(rel_cuda_options.get(), "user_compute_stream", compute_stream) == nullptr);
-  ASSERT_TRUE(api.GetCUDAProviderOptionsByName(rel_cuda_options.get(), "user_compute_stream", &user_compute_stream) == nullptr);
+  cuda_options.UpdateWithValue("user_compute_stream", compute_stream);
+  user_compute_stream = cuda_options.GetOptionByName("user_compute_stream");
   ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
   cudaStreamDestroy(compute_stream);
 
-  std::vector<const char*> keys{
-      "device_id", "has_user_compute_stream", "gpu_mem_limit", "arena_extend_strategy",
-      "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "cudnn_conv1d_pad_to_nc1d"};
+  std::unordered_map<std::string, std::string> cuda_options_map = {
+      {"device_id", "0"},
+      {"has_user_compute_stream", "0"},
+      {"gpu_mem_limit", "1024"},
+      {"arena_extend_strategy", "kSameAsRequested"},
+      {"cudnn_conv_algo_search", "DEFAULT"},
+      {"do_copy_in_default_stream", "1"},
+      {"cudnn_conv_use_max_workspace", "1"},
+      {"cudnn_conv1d_pad_to_nc1d", "1"}};
 
-  std::vector<const char*> values{
-      "0", "0", "1024", "kSameAsRequested",
-      "DEFAULT", "1", "1"};
-
-  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 6) == nullptr);
+  cuda_options.Update(cuda_options_map);
 
   auto allocator = Ort::AllocatorWithDefaultOptions();
 
-  char* cuda_options_str = nullptr;
-  ASSERT_TRUE(api.GetCUDAProviderOptionsAsString(rel_cuda_options.get(), allocator, &cuda_options_str) == nullptr);
-  std::string s;
-  if (cuda_options_str != nullptr) {
-    s = std::string(cuda_options_str, strnlen(cuda_options_str, 2048));
-  }
+  std::string s = cuda_options.GetCUDAProviderOptionsAsString();
   ASSERT_TRUE(s.find("device_id=0") != std::string::npos);
   ASSERT_TRUE(s.find("gpu_mem_limit=1024") != std::string::npos);
   ASSERT_TRUE(s.find("arena_extend_strategy=kSameAsRequested") != std::string::npos);
@@ -3954,10 +3919,8 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   ASSERT_TRUE(s.find("cudnn_conv_use_max_workspace=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv1d_pad_to_nc1d") != std::string::npos);
 
-  allocator.Free(cuda_options_str);
-
   Ort::SessionOptions session_options;
-  session_options.AppendExecutionProvider_CUDA_V2(*rel_cuda_options);
+  session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 
   // if session creation passes, model loads fine
   std::basic_string<ORTCHAR_T> model_uri = MODEL_URI;
@@ -4056,9 +4019,8 @@ TEST(CApiTest, GitHubIssue10179) {
   auto load_model_thread_fn = []() {
     try {
       const auto* model_path = MODEL_URI;
-      Ort::SessionOptions session_options{};
-      OrtCUDAProviderOptionsV2* options;
-      Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+      Ort::SessionOptions session_options;
+      Ort::CUDAProviderOptions options;
       session_options.AppendExecutionProvider_CUDA_V2(*options);
       Ort::Session session{*ort_env, model_path, session_options};
     } catch (const std::exception& e) {
@@ -4089,8 +4051,7 @@ TEST(CApiTest, GitHubIssue10179) {
 TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
   const auto* model_path = SEQUENCE_MODEL_URI_2;
   Ort::SessionOptions session_options{};
-  OrtCUDAProviderOptionsV2* options;
-  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  Ort::CUDAProviderOptions options;
   session_options.AppendExecutionProvider_CUDA_V2(*options);
   Ort::Session session{*ort_env, model_path, session_options};
 

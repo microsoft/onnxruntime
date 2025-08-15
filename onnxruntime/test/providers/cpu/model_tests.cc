@@ -179,17 +179,14 @@ TEST_P(ModelTest, Run) {
       ortso.SetLogId(ToUTF8String(test_case_name).c_str());
       ortso.SetLogSeverityLevel(ORT_LOGGING_LEVEL_ERROR);
       if (provider_name == "cuda") {
-        OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-        ASSERT_CXX_ORTSTATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
-        std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
-            cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
+        Ort::CUDAProviderOptions cuda_options;
 
-        std::vector<const char*> keys{"device_id", "use_tf32"};
-        std::vector<const char*> values;
         std::string device_id = Env::Default().GetEnvironmentVar("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
-        values.push_back(device_id.empty() ? "0" : device_id.c_str());
-        values.push_back("0");
-        ASSERT_CXX_ORTSTATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 2));
+
+        std::unordered_map<std::string, std::string> options;
+        options["device_id"] = (device_id.empty() ? "0" : device_id.c_str());
+        options["use_tf32"] = "0";  // Disable TF32 for CUDA provider
+        cuda_options.Update(options);
 
         ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "rocm") {
@@ -208,24 +205,20 @@ TEST_P(ModelTest, Run) {
 #endif
       else if (provider_name == "tensorrt") {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
-          Ort::TensorRTProviderOptions params;
-          ortso.AppendExecutionProvider_TensorRT_V2(*params);
+          OrtTensorRTProviderOptionsV2 params;
+          ortso.AppendExecutionProvider_TensorRT_V2(params);
         } else {
           Ort::TensorRTProviderOptions ep_option;
           ortso.AppendExecutionProvider_TensorRT_V2(*ep_option);
         }
         // Enable CUDA fallback
-        OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-        ASSERT_CXX_ORTSTATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
-        std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
-            cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
+        Ort::CUDAProviderOptions cuda_options;
 
-        std::vector<const char*> keys{"device_id", "use_tf32"};
-        std::vector<const char*> values;
         std::string device_id = Env::Default().GetEnvironmentVar("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
-        values.push_back(device_id.empty() ? "0" : device_id.c_str());
-        values.push_back("0");
-        ASSERT_CXX_ORTSTATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 2));
+        std::unordered_map<std::string, std::string> options;
+        options["device_id"] = (device_id.empty() ? "0" : device_id.c_str());
+        options["use_tf32"] = "0";  // Disable TF32 for CUDA provider
+        cuda_options.Update(options);
 
         ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "migraphx") {

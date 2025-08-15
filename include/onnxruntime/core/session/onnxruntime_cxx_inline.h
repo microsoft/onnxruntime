@@ -522,6 +522,44 @@ inline std::string TensorRTProviderOptions::GetTensorRTProviderOptionsAsString()
   return std::string(options_str);
 }
 
+inline CUDAProviderOptions::CUDAProviderOptions() {
+  ThrowOnError(GetApi().CreateCUDAProviderOptions(&this->p_));
+}
+
+inline void CUDAProviderOptions::Update(const std::unordered_map<std::string, std::string>& options) {
+  std::vector<const char*> keys;
+  std::vector<const char*> values;
+  keys.reserve(options.size());
+  values.reserve(options.size());
+  for (const auto& kv : options) {
+    keys.push_back(kv.first.c_str());
+    values.push_back(kv.second.c_str());
+  }
+  ThrowOnError(GetApi().UpdateCUDAProviderOptions(p_, keys.data(), values.data(), options.size()));
+}
+
+inline std::string CUDAProviderOptions::GetCUDAProviderOptionsAsString() const {
+  AllocatorWithDefaultOptions allocator;
+  char* options_str = nullptr;
+  ThrowOnError(GetApi().GetCUDAProviderOptionsAsString(p_, allocator, &options_str));
+  std::unique_ptr<void, detail::AllocatedFree> options_str_g(options_str, detail::AllocatedFree(allocator));
+  return std::string(options_str);
+}
+
+inline void CUDAProviderOptions::UpdateWithValue(const char* key, void* value) {
+  ThrowOnError(GetApi().UpdateCUDAProviderOptionsWithValue(p_, key, value));
+}
+
+inline void* CUDAProviderOptions::GetOptionByName(const char* name) const {
+  void* value = nullptr;
+  ThrowOnError(GetApi().GetCUDAProviderOptionsByName(p_, name, &value));
+  return value;
+}
+
+inline PrepackedWeightsContainer::PrepackedWeightsContainer() {
+  ThrowOnError(GetApi().CreatePrepackedWeightsContainer(&this->p_));
+}
+
 namespace detail {
 template <typename T>
 inline const char* KeyValuePairsImpl<T>::GetValue(const char* key) const {
@@ -1152,6 +1190,12 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializersFrom
   }
   ThrowOnError(GetApi().AddExternalInitializersFromFilesInMemory(this->p_, names_ptr.data(), buffer_array.data(),
                                                                  file_lengths.data(), inputs_num));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_CPU(int use_arena) {
+  ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(this->p_, use_arena));
   return *this;
 }
 

@@ -575,12 +575,14 @@ ORT_DEFINE_RELEASE(Node);
 ORT_DEFINE_RELEASE(Graph);
 ORT_DEFINE_RELEASE(Model);
 ORT_DEFINE_RELEASE(KeyValuePairs);
+ORT_DEFINE_RELEASE(PrepackedWeightsContainer);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 
 // This is defined explicitly since OrtTensorRTProviderOptionsV2 is not a C API type,
 // but the struct has V2 in its name to indicate that it is the second version of the options.
 inline void OrtRelease(OrtTensorRTProviderOptionsV2* ptr) { GetApi().ReleaseTensorRTProviderOptions(ptr); }
+inline void OrtRelease(OrtCUDAProviderOptionsV2* ptr) { GetApi().ReleaseCUDAProviderOptions(ptr); }
 
 #undef ORT_DEFINE_RELEASE
 #undef ORT_DEFINE_RELEASE_FROM_API_STRUCT
@@ -704,6 +706,7 @@ struct Model;
 struct Node;
 struct ModelMetadata;
 struct TypeInfo;
+struct PrepackedWeightsContainer;
 struct Session;
 struct SessionOptions;
 struct SyncStream;
@@ -782,6 +785,33 @@ struct TensorRTProviderOptions : detail::Base<OrtTensorRTProviderOptionsV2> {
   void* GetptionByName(const char* name) const;
   ///< Wrapper around  OrtApi::GetTensorRTProviderOptionsAsString
   std::string GetTensorRTProviderOptionsAsString() const;
+};
+
+/** \brief The CUDAProviderOptions (V2)
+ *
+ * Used to pass options to CUDA EP
+ */
+
+struct CUDAProviderOptions : detail::Base<OrtCUDAProviderOptionsV2> {
+  CUDAProviderOptions(std::nullptr_t) {}
+  /// \brief Wraps OrtApi::CreateCUDAProviderOptions
+  CUDAProviderOptions();
+  ///< Wrapper around OrtApi::UpdateCUDAProviderOptions
+  void Update(const std::unordered_map<std::string, std::string>& options);
+  ///< Wrapper around OrtApi::GetCUDAProviderOptionsAsString
+  std::string GetCUDAProviderOptionsAsString() const;
+  ///< Wrapper around OrtApi::UpdateCUDAProviderOptionsWithValue
+  void UpdateWithValue(const char* key, void* value);
+  ///< Wrapper around OrtApi::GetCUDAProviderOptionsByName
+  void* GetOptionByName(const char* name) const;
+};
+
+struct PrepackedWeightsContainer : detail::Base<OrtPrepackedWeightsContainer> {
+  using Base = detail::Base<OrtPrepackedWeightsContainer>;
+  explicit PrepackedWeightsContainer(std::nullptr_t) {}                             ///< No instance is created
+  explicit PrepackedWeightsContainer(OrtPrepackedWeightsContainer* p) : Base{p} {}  ///< Take ownership of a pointer created by C API
+  /// \brief Wraps OrtApi::CreatePrepackedWeightsContainer
+  PrepackedWeightsContainer();
 };
 
 namespace detail {
@@ -1230,6 +1260,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
                                                                const std::vector<char*>& external_initializer_file_buffer_array,
                                                                const std::vector<size_t>& external_initializer_file_lengths);  ///< Wraps OrtApi::AddExternalInitializersFromFilesInMemory
 
+  SessionOptionsImpl& AppendExecutionProvider_CPU(int use_arena);                                            ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CPU
   SessionOptionsImpl& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
   SessionOptionsImpl& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);     ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2
   SessionOptionsImpl& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_ROCM
