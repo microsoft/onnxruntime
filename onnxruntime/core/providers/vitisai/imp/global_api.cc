@@ -7,10 +7,6 @@
 #include <iostream>
 #include <codecvt>
 #include <fstream>
-#include "core/framework/op_kernel.h"
-#include "core/framework/provider_options.h"
-#include "core/providers/shared_library/provider_api.h"
-#include "core/providers/shared_library/provider_wrappedtypes.h"
 #include "onnxruntime_c_api.h"
 #ifdef _WIN32
 #include <Windows.h>
@@ -19,6 +15,7 @@
 
 #include "core/common/exceptions.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/provider_options.h"
 #include "core/providers/shared/common.h"
 
 #include "vaip/dll_safe.h"
