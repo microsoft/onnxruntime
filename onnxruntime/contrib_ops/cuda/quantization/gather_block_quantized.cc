@@ -69,7 +69,7 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   auto indices_shape = indices->Shape().GetDims();
   auto indices_rank = indices->Shape().NumDimensions();
 
-  ORT_ENFORCE(quantize_axis_ == data_rank - 1);
+  ORT_ENFORCE(quantize_axis_ == static_cast<int64_t>(data_rank) - 1);
 
   TensorShapeVector output_shape;
   output_shape.reserve(data_rank - 1 + indices_rank);
@@ -92,7 +92,7 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   }
 
   // 3) dims after gather_axis
-  for (int64_t i = gather_axis_ + 1; i < data_rank; ++i) {
+  for (int64_t i = gather_axis_ + 1; i < static_cast<int64_t>(data_rank); ++i) {
     output_shape.push_back(data_shape[i]);
     after_gather_dim *= data_shape[i];
   }

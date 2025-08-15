@@ -359,7 +359,7 @@ struct MoeFCGemm {
       return Status::kInvalid;
     }
     // Handle the case the input is too short
-    else if (args.gemm_n < Mma::IteratorB::AccessType::kElements) {
+    else if (static_cast<size_t>(args.gemm_n) < Mma::IteratorB::AccessType::kElements) {
       CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - gemm_n is smaller than the input alignment");
       return Status::kInvalid;
     }
