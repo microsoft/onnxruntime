@@ -317,6 +317,10 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
   const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T1>();
   auto* y_data = y->MutableData<T1>();
 
+  // TODO: add the logic for generating lookup table here -- for now we can assume that
+  // 2 bits + acc level 4 = use look up table but in the future adapt so that we use a mamtulnbits attr to decide
+  // if we want to do lut generation
+
   const size_t batch_count = helper.OutputOffsets().size();
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
