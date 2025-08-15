@@ -293,7 +293,7 @@ class NvExecutionProvider : public IExecutionProvider {
                 const GraphOptimizerRegistry& graph_optimizer_registry,
                 IResourceAccountant* /* resource_accountant */) const override;
 
-  int GetDeviceId() const { return device_id_; }
+  int GetDeviceId() const override { return device_id_; }
   Status Sync() const;
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
