@@ -7,6 +7,10 @@
 #include <cstdint>
 #include <filesystem>
 
+#ifndef _WIN32
+#include <thread>
+#endif
+
 namespace onnxruntime {
 namespace test {
 namespace utils {
@@ -62,6 +66,34 @@ void UnregisterExecutionProviderLibrary(Ort::Env& env, std::vector<std::string>&
     }
   }
 }
+
+#ifdef _WIN32
+int GetNumCpuCores() {
+  SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
+  DWORD returnLength = sizeof(buffer);
+  if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
+    // try GetSystemInfo
+    SYSTEM_INFO sysInfo;
+    GetSystemInfo(&sysInfo);
+    if (sysInfo.dwNumberOfProcessors <= 0) {
+      ORT_THROW("Fatal error: 0 count processors from GetSystemInfo");
+    }
+    // This is the number of logical processors in the current group
+    return sysInfo.dwNumberOfProcessors;
+  }
+  int processorCoreCount = 0;
+  int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+  for (int i = 0; i != count; ++i) {
+    if (buffer[i].Relationship == RelationProcessorCore) {
+      ++processorCoreCount;
+    }
+  }
+  if (!processorCoreCount) ORT_THROW("Fatal error: 0 count processors from GetLogicalProcessorInformation");
+  return processorCoreCount;
+}
+#else
+int GetNumCpuCores() { return static_cast<int>(std::thread::hardware_concurrency()); }
+#endif
 
 }  // namespace utils
 }  // namespace test

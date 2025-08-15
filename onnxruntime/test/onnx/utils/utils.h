@@ -17,6 +17,8 @@ void UnregisterExecutionProviderLibrary(Ort::Env& env, std::vector<std::string>&
 
 void ListEpDevices(const Ort::Env& env);
 
+int GetNumCpuCores();
+
 }  // namespace utils
 }  // namespace test
 }  // namespace onnxruntime

@@ -2,52 +2,21 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <core/session/onnxruntime_c_api.h>
-#include <core/platform/path_lib.h>
-
-#ifndef _WIN32
-#include <thread>
-#endif
+#include "core/session/onnxruntime_c_api.h"
+#include "core/platform/path_lib.h"
+#include "utils/utils.h"
 
 namespace onnxruntime {
 namespace test {
-#ifdef _WIN32
-int GetNumCpuCores() {
-  SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
-  DWORD returnLength = sizeof(buffer);
-  if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
-    // try GetSystemInfo
-    SYSTEM_INFO sysInfo;
-    GetSystemInfo(&sysInfo);
-    if (sysInfo.dwNumberOfProcessors <= 0) {
-      ORT_THROW("Fatal error: 0 count processors from GetSystemInfo");
-    }
-    // This is the number of logical processors in the current group
-    return sysInfo.dwNumberOfProcessors;
-  }
-  int processorCoreCount = 0;
-  int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-  for (int i = 0; i != count; ++i) {
-    if (buffer[i].Relationship == RelationProcessorCore) {
-      ++processorCoreCount;
-    }
-  }
-  if (!processorCoreCount) ORT_THROW("Fatal error: 0 count processors from GetLogicalProcessorInformation");
-  return processorCoreCount;
-}
-#else
-int GetNumCpuCores() { return static_cast<int>(std::thread::hardware_concurrency()); }
-#endif
-
 struct TestConfig {
   // if this var is not empty, only run the tests with name in this list
   std::vector<std::basic_string<PATH_CHAR_TYPE>> whitelisted_test_cases;
-  int concurrent_session_runs = GetNumCpuCores();
+  int concurrent_session_runs = utils::GetNumCpuCores();
   bool enable_cpu_mem_arena = true;
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
   int repeat_count = 1;
   bool inference_mode = false;
-  int p_models = GetNumCpuCores();
+  int p_models = utils::GetNumCpuCores();
   bool enable_cuda = false;
   bool enable_dnnl = false;
   bool enable_openvino = false;
