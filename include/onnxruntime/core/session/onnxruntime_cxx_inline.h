@@ -1499,13 +1499,15 @@ inline std::vector<std::string> ConstSessionImpl<T>::GetOverridableInitializerNa
 
 template <typename T>
 inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForInputs() const {
-  AllocatorWithDefaultOptions allocator;
+  static_assert(sizeof(ConstMemoryInfo) == sizeof(OrtMemoryInfo*),
+                "ConstMemoryInfo must be compatible with OrtMemoryInfo*");
 
   auto num_inputs = GetInputCount();
   std::vector<ConstMemoryInfo> mem_infos;
   mem_infos.resize(num_inputs);
 
-  ThrowOnError(GetApi().SessionGetMemoryInfoForInputs(this->p_, reinterpret_cast<const OrtMemoryInfo**>(&mem_infos[0]),
+  ThrowOnError(GetApi().SessionGetMemoryInfoForInputs(this->p_,
+                                                      reinterpret_cast<const OrtMemoryInfo**>(&mem_infos[0]),
                                                       num_inputs));
 
   return mem_infos;
@@ -1513,14 +1515,15 @@ inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForInputs(
 
 template <typename T>
 inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForOutputs() const {
-  AllocatorWithDefaultOptions allocator;
+  static_assert(sizeof(ConstMemoryInfo) == sizeof(OrtMemoryInfo*),
+                "ConstMemoryInfo must be compatible with OrtMemoryInfo*");
+
   auto num_outputs = GetOutputCount();
   std::vector<ConstMemoryInfo> mem_infos;
   mem_infos.resize(num_outputs);
 
-  ThrowOnError(GetApi().SessionGetMemoryInfoForOutputs(this->p_, reinterpret_cast<const OrtMemoryInfo**>(&mem_infos[0],
-      num_outputs));
-
+  ThrowOnError(GetApi().SessionGetMemoryInfoForOutputs(this->p_, reinterpret_cast<const OrtMemoryInfo**>(&mem_infos[0]),
+                                                       num_outputs));
   return mem_infos;
 }
 

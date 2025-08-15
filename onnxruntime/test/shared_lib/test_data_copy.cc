@@ -82,7 +82,16 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
     size_t num_inputs = session.GetInputCount();
 
     // find the input location so we know which inputs can be provided on device.
-    std::vector<Ort::ConstMemoryInfo> input_locations = session.GetMemoryInfoForInputs();
+    auto input_locations = session.GetMemoryInfoForInputs();
+    ASSERT_EQ(session.GetInputCount(), input_locations.size());
+
+    // Testing coverage
+    auto input_ep_devices = session.GetEpDeviceForInputs();
+    ASSERT_EQ(session.GetInputCount(), input_ep_devices.size());
+
+    // This is for testing
+    auto output_locations = session.GetMemoryInfoForOutputs();
+    ASSERT_EQ(session.GetOutputCount(), output_locations.size());
 
     std::vector<Ort::Value> cpu_tensors;
 
