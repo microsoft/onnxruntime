@@ -36,6 +36,7 @@ class GraphOptimizerRegistry;
 #include "core/framework/framework_provider_common.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
+#include "core/session/onnxruntime_c_api.h"
 
 struct OrtEpDevice;
 struct OrtRunOptions;
@@ -321,6 +322,24 @@ class IExecutionProvider {
   */
   virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                  std::vector<NodeComputeInfo>& node_compute_funcs);
+
+  // TODO: add documentation comment.
+  virtual std::string GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const {
+    // graph_viewer and model_metadata are not used in the default implementation.
+    ORT_UNUSED_PARAMETER(graph_viewer);
+    // Default implementation returns empty string
+    return std::string();
+  }
+
+  /**
+   * Validate the compatibility of a compiled model with this execution provider.
+   */
+  virtual common::Status ValidateCompiledModelCompatibilityInfo(const std::string& /*compatibility_info*/,
+                                                                OrtCompiledModelCompatibility& model_compatibility) const {
+    // Default implementation indicates this EP does not support model compatibility validation
+    model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return Status::OK();
+  }
 
 #endif
 
