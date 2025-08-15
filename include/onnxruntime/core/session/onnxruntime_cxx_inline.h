@@ -1516,13 +1516,10 @@ inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForOutputs
   AllocatorWithDefaultOptions allocator;
   auto num_outputs = GetOutputCount();
   std::vector<ConstMemoryInfo> mem_infos;
-  mem_infos.reserve(num_outputs);
+  mem_infos.resize(num_outputs);
 
-  const OrtMemoryInfo* mem_info_ptrs;
-  ThrowOnError(GetApi().SessionGetMemoryInfoForOutputs(this->p_, &mem_info_ptrs, num_outputs));
-  for (size_t i = 0; i < num_outputs; ++i) {
-    mem_infos.emplace_back(mem_info_ptrs[i]);
-  }
+  ThrowOnError(GetApi().SessionGetMemoryInfoForOutputs(this->p_, reinterpret_cast<const OrtMemoryInfo**>(&mem_infos[0],
+      num_outputs));
 
   return mem_infos;
 }
@@ -1552,14 +1549,11 @@ template <typename T>
 inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() const {
   auto num_inputs = GetInputCount();
   std::vector<ConstEpDevice> input_devices;
-  input_devices.reserve(num_inputs);
+  input_devices.resize(num_inputs);
 
-  const OrtEpDevice* device_ptrs;
-  ThrowOnError(GetApi().SessionGetEpDeviceForInputs(this->p_, &device_ptrs, num_inputs));
-
-  for (size_t i = 0; i < num_inputs; ++i) {
-    input_devices.emplace_back(device_ptrs[i]);
-  }
+  ThrowOnError(GetApi().SessionGetEpDeviceForInputs(this->p_,
+                                                    reinterpret_cast<const OrtEpDevice**>(&input_devices[0]),
+                                                    num_inputs));
 
   return input_devices;
 }
