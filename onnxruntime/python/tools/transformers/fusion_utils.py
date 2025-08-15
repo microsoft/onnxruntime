@@ -6,9 +6,8 @@ from logging import getLogger
 
 import numpy
 import onnx
-import onnx_ir as ir
 from numpy import array_equal, ndarray
-from onnx import NodeProto, helper
+from onnx import NodeProto, helper, numpy_helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -312,7 +311,12 @@ class NumpyHelper:
         if fill_zeros:
             return ndarray(
                 shape=tensor.dims,
-                dtype=ir.DataType(tensor.data_type).numpy(),
+                dtype=helper.tensor_dtype_to_np_dtype(tensor.data_type),
             )
 
-        return ir.from_proto(tensor).numpy()
+        if tensor.data_type == onnx.TensorProto.BFLOAT16:
+            import onnx_ir as ir  # noqa: PLC0415
+
+            # Use onnx_ir to correctly handle bfloat16 tensors
+            return ir.from_proto(tensor).numpy()
+        return numpy_helper.to_array(tensor)
