@@ -35,7 +35,6 @@ TEST(StringUtilsTest, TryParseStringWithClassicLocale) {
   TestSuccessfulParse("-1", -1);
   TestSuccessfulParse("42", 42u);
   TestSuccessfulParse("2.5", 2.5f);
-  // TestSuccessfulParse("0x2.8", 2.5f);  // we don't handle floating point hex yet
   TestSuccessfulParse("0x100", uint32_t{0x100});
 
   // out of range
