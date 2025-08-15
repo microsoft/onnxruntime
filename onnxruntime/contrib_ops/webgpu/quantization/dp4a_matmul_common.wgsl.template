@@ -7,6 +7,7 @@
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
 #if n_bits == 4
+    alias mul_precision = output_element_t;
     fn DequantizedFrom4BitsTo8Bits(in: vec2<u32>, zero: i32) -> vec4<u32>
     {
         var out = vec4<u32>(0);
@@ -23,6 +24,9 @@
 #endif
 
 #if n_bits == 8
+    // For 8bits, in case data overflow when converting from int32 (output of dot4I8Packed) to f16, we force it convert to f32.
+    // Then do the scale. Finally, convert to output element type.
+    alias mul_precision = f32;
     fn AlignWithZeroPoint(in: vec4<u32>) -> vec4<u32>
     {
         var out = vec4<u32>(0);
@@ -34,8 +38,6 @@
     }
 #endif
 
-// For 8bits, in case data overflow when converting from int32 (output of dot4I8Packed) to f16, we force it convert to f32.
-// Then do the scale. Finally, convert to output element type.
 #if has_zero_points && n_bits == 8
     // If has_zero_points is true, vec4<i32>(unpack4xU8(b_data)) - vec4<i32>(zero) may be out of the range [-128, 127] since zero can be any value between [0, 255].
     // To avoid the data overflow when use pack4xI8, we still use |pack4xI8(vec4<i32>(unpack4xU8(xxx)) - vec4<i32>(128))| to process the b data. In SDP8AI, we use the
@@ -61,7 +63,7 @@
         local_sum += dot4I8Packed(a2[3], b2[3]);
         dequantized_a_sum += vec4<i32>(unpack4xI8(a2[3]));
         local_sum -= dot(dequantized_a_sum, vec4<i32>(bias_zero));
-        return output_element_t(f32(local_sum) * f32(scale));
+        return output_element_t(mul_precision(local_sum) * mul_precision(scale));
     }
 #else
     // Scaled dot product of 8 packed unsigned integers.
@@ -75,6 +77,6 @@
         local_sum += dot4I8Packed(a2[1], b2[1]);
         local_sum += dot4I8Packed(a2[2], b2[2]);
         local_sum += dot4I8Packed(a2[3], b2[3]);
-        return output_element_t(f32(local_sum) * f32(scale));
+        return output_element_t(mul_precision(local_sum) * mul_precision(scale));
     }
 #endif
