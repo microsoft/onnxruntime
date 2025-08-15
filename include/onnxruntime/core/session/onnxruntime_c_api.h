@@ -5829,7 +5829,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph,
+  ORT_API2_STATUS(Graph_GetNodes, _In_ const OrtGraph* graph,
                   _Out_writes_(num_nodes) const OrtNode** nodes, _In_ size_t num_nodes);
 
   /** \brief Get the parent node for the given graph, if any exists.

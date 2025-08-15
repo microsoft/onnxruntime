@@ -146,15 +146,10 @@ static void RunOneTest(
       execution_providers.push_back(DefaultRocmExecutionProvider());
     } else {
       if (strict) {
-        const auto& api = Ort::GetApi();
-        OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-        ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
-        std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
-            rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
-        std::vector<const char*> keys{"enable_skip_layer_norm_strict_mode"};
-        std::vector<const char*> values{"1"};
-        ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
-        execution_providers.push_back(CudaExecutionProviderWithOptions(std::move(rel_cuda_options.get())));
+        Ort::CUDAProviderOptions cuda_options;
+        std::unordered_map<std::string, std::string> options = {{"enable_skip_layer_norm_strict_mode", "1"}};
+        cuda_options.Update(options);
+        execution_providers.push_back(CudaExecutionProviderWithOptions(std::move(cuda_options)));
       } else {
         execution_providers.push_back(DefaultCudaExecutionProvider());
       }

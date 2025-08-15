@@ -1094,7 +1094,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorMutableData, _Inout_ OrtValue* value, _Out
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetTensorData, _Inout_ const OrtValue* value, _Outptr_ const void** output) {
+ORT_API_STATUS_IMPL(OrtApis::GetTensorData, _In_ const OrtValue* value, _Outptr_ const void** output) {
   TENSOR_READ_API_BEGIN
   *output = tensor.DataRaw();
   return nullptr;
@@ -2761,7 +2761,8 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetNodes, _In_ const OrtGraph* graph,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_ const OrtNode** node) {
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph,
+                    _Outptr_result_maybenull_ const OrtNode** node) {
   API_IMPL_BEGIN
   if (node == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'node' argument is NULL");
@@ -3209,7 +3210,7 @@ ORT_API(void, OrtApis::GetKeyValuePairs, _In_ const OrtKeyValuePairs* kvps,
   *num_entries = kvps->Entries().size();
 }
 
-ORT_API(void, OrtApis::RemoveKeyValuePair, _Frees_ptr_opt_ OrtKeyValuePairs* kvps, _In_ const char* key) {
+ORT_API(void, OrtApis::RemoveKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key) {
   kvps->Remove(key);
 }
 
@@ -3218,7 +3219,7 @@ ORT_API(void, OrtApis::ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs* k
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* registration_name,
+ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name,
                     const ORTCHAR_T* path) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().RegisterExecutionProviderLibrary(registration_name, path));
@@ -3226,7 +3227,7 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* env,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* registration_name) {
+ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().UnregisterExecutionProviderLibrary(registration_name));
   return nullptr;
@@ -3413,7 +3414,7 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
 }
 
 #else  // defined(ORT_MINIMAL_BUILD)
-ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, const char* /*registration_name*/,
+ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, _In_ const char* /*registration_name*/,
                     const ORTCHAR_T* /*path*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
@@ -3421,7 +3422,7 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*en
 }
 
 ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/,
-                    const char* /*registration_name*/) {
+                    _In_ const char* /*registration_name*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
   API_IMPL_END

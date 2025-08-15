@@ -31,7 +31,7 @@ struct IndexedSubGraph {
     std::string domain;  ///< Domain of customized SubGraph/FunctionProto
     int since_version;   ///< Since version of customized SubGraph/FunctionProto.
 
-    ONNX_NAMESPACE::OperatorStatus status;  ///< Status of customized SubGraph/FunctionProto.
+    ONNX_NAMESPACE::OperatorStatus status{ONNX_NAMESPACE::OperatorStatus::STABLE};  ///< Status of customized SubGraph/FunctionProto.
 
     std::vector<std::string> inputs;                 ///< Inputs of customized SubGraph/FunctionProto.
     std::vector<std::string> outputs;                ///< Outputs of customized SubGraph/FunctionProto.
