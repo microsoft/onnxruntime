@@ -41,6 +41,7 @@ class CPUIDInfo {
   bool HasArmSVE_I8MM() const { return has_arm_sve_i8mm_; }
   bool HasArmNeon_BF16() const { return has_arm_neon_bf16_; }
   bool HasArm_SME() const { return has_arm_sme_; }
+  bool HasArm_SME2() const { return has_arm_sme2_; }
 
   uint32_t GetCurrentCoreIdx() const;
 
@@ -129,6 +130,7 @@ class CPUIDInfo {
   bool has_arm_sve_i8mm_{false};
   bool has_arm_neon_bf16_{false};
   bool has_arm_sme_{false};
+  bool has_arm_sme2_{false};
 
   std::string vendor_;
   uint32_t vendor_id_;

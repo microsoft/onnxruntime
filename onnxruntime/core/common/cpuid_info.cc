@@ -191,6 +191,7 @@ void CPUIDInfo::ArmLinuxInit() {
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
     has_arm_sme_ = cpuinfo_has_arm_sme();
+    has_arm_sme2_ = cpuinfo_has_arm_sme2();
 
     const uint32_t core_cnt = cpuinfo_get_cores_count();
     core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
