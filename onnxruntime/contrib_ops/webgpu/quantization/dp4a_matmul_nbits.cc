@@ -68,7 +68,6 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   onnxruntime::webgpu::ComputeContext& context,
                                   Tensor* y) {
   constexpr uint32_t kVec4Components = 4;
-  constexpr uint32_t kVec2Components = 2;
   constexpr uint32_t kU32Components = 4;
 
   constexpr uint32_t kBlockSizeA = 128;
@@ -84,7 +83,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                    {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), 1}});
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
   const bool has_zero_points = zero_points != nullptr;
-  if (M < min_M_for_tile_optimization) {
+  if (M < min_M_for_tile_optimization && nbits != 2) {
     uint32_t tile_size_k_vec = 16;
     uint32_t tile_size = 32;
 
@@ -119,7 +118,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   mul_program.SetDispatchGroupSize(num_M_tile * num_N_tile);
   mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
                          {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kVec2Components * kU32Components : kVec4Components * kU32Components)},
+                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>((nbits/2) * kU32Components)},
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
       .AddUniformVariables({{static_cast<uint32_t>(M)},
                             {static_cast<uint32_t>(N)},
