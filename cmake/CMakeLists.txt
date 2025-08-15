@@ -29,6 +29,7 @@ include(CheckLanguage)
 include(CMakeDependentOption)
 include(FetchContent)
 include(CheckFunctionExists)
+include(CheckSymbolExists)
 include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
 
 # TODO: update this once all system adapt c++20
@@ -47,9 +48,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Enable CTest
 enable_testing()
-include(CTest)
 if (NOT CMAKE_BUILD_TYPE)
   message(STATUS "Build type not set - using RelWithDebInfo")
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
@@ -85,6 +84,11 @@ option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
+# iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so
+if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+    message(WARNING "Disabling KleidiAI: not supported on Apple x86_64 platforms")
+  set(onnxruntime_USE_KLEIDIAI OFF CACHE BOOL "" FORCE)
+endif()
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -137,7 +141,7 @@ option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C+
 option(onnxruntime_WGSL_TEMPLATE "Specify the code generator for WGSL template. Default is static." "static")
 option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
-option(onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY "Build Dawn as a monolithic library" OFF)
+option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
 option(onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP "Adding frame present for PIX to capture a frame" OFF)
 # The following 2 options are only for Windows
 option(onnxruntime_ENABLE_DAWN_BACKEND_VULKAN "Enable Vulkan backend for Dawn (on Windows)" OFF)
@@ -275,8 +279,6 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
     "Please use the --enable_training flag instead of the --enable_training_apis flag.")
   endif()
 endif()
-
-
 
 
 # Single output director for all binaries
@@ -557,10 +559,12 @@ else()
   check_cxx_compiler_flag(-Wambiguous-reversed-operator HAS_AMBIGUOUS_REVERSED_OPERATOR)
   # -Winterference-size was added in GCC 13
   check_cxx_compiler_flag(-Winterference-size HAS_INTERFERENCE_SIZE)
+  check_cxx_compiler_flag(-Warray-bounds HAS_ARRAY_BOUNDS)
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
   check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
   check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
   check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
+  check_cxx_compiler_flag(-Wcharacter-conversion HAS_CHARACTER_CONVERSION)
   check_cxx_compiler_flag(-Wdangling-reference HAS_DANGLING_REFERENCE)
   check_cxx_compiler_flag(-Wdeprecated-anon-enum-enum-conversion HAS_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
   check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
@@ -650,17 +654,25 @@ else()
   endif()
 endif()
 
-if (onnxruntime_USE_KLEIDIAI AND NOT MSVC AND (
-    (onnxruntime_target_platform STREQUAL "aarch64") OR
-    (onnxruntime_target_platform STREQUAL "ARM64") OR
-    (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
-  check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
-  check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
-  if (NOT HAS_ARM64_DOTPROD)
-    message(FATAL_ERROR  "The compiler doesn't support dotprod")
-  endif()
-  if (NOT HAS_ARM64_I8MM)
-    message(FATAL_ERROR  "The compiler doesn't support i8mm")
+if (onnxruntime_USE_KLEIDIAI AND (
+      (onnxruntime_target_platform STREQUAL "aarch64") OR
+      (onnxruntime_target_platform STREQUAL "ARM64") OR
+      (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
+
+  # TODO Add checks for MSVC Compilation
+  if(NOT MSVC)
+    check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
+    check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
+    if (NOT HAS_ARM64_DOTPROD)
+      message(FATAL_ERROR "The compiler doesn't support dotprod")
+    endif()
+    if (NOT HAS_ARM64_I8MM)
+      message(FATAL_ERROR "The compiler doesn't support i8mm")
+    endif()
+  else()
+    message(STATUS "Skipping -march= checks on MSVC (not supported), assuming dotprod/i8mm support manually.")
+    set(HAS_ARM64_DOTPROD TRUE)
+    set(HAS_ARM64_I8MM TRUE)
   endif()
 endif()
 
@@ -858,6 +870,11 @@ if (onnxruntime_USE_MIGRAPHX)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_MIGRAPHX=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES migraphx)
 endif()
+
+if (onnxruntime_USE_MIGRAPHX_INTERFACE AND (NOT onnxruntime_USE_MIGRAPHX))
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_MIGRAPHX_PROVIDER_INTERFACE=1)
+endif()
+
 if (onnxruntime_USE_ARMNN)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ARMNN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES armnn)
@@ -883,8 +900,8 @@ if (onnxruntime_USE_WEBGPU)
   #
   # if (onnxruntime_USE_VCPKG AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (FALSE)
-    if (NOT onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
-      message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=OFF")
+    if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
+      message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON")
     endif()
     if (onnxruntime_USE_EXTERNAL_DAWN)
       message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_USE_EXTERNAL_DAWN=ON")
@@ -905,8 +922,8 @@ if (onnxruntime_USE_WEBGPU)
     endif()
   endif()
 
-  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
-    list(APPEND ORT_PROVIDER_FLAGS -DBUILD_DAWN_MONOLITHIC_LIBRARY=1)
+  if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
+    list(APPEND ORT_PROVIDER_FLAGS -DBUILD_DAWN_SHARED_LIBRARY=1)
   endif()
   if (onnxruntime_USE_EXTERNAL_DAWN)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_EXTERNAL_DAWN=1)
@@ -1004,6 +1021,10 @@ function(onnxruntime_set_compile_flags target_name)
 
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
+    endif()
+    # TODO: Narrow scope for Kleidiai compile
+    if (onnxruntime_USE_KLEIDIAI)
+      target_compile_definitions(${target_name} PRIVATE USE_KLEIDIAI)
     endif()
 
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
@@ -1769,4 +1790,13 @@ else()
 
     include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
   endif()
+endif()
+
+if(onnxruntime_BUILD_UNIT_TESTS)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_test_pch.cmake")
+endif()
+
+# Include precompiled header configuration for providers
+if(TARGET onnxruntime_providers)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_providers_pch.cmake")
 endif()

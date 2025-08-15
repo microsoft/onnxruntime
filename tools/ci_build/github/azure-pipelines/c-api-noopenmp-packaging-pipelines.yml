@@ -9,11 +9,6 @@ parameters:
   type: boolean
   default: false
 
-- name: DoEsrp
-  displayName: Run code sign tasks? Must be true if you are doing an ONNX Runtime release
-  type: boolean
-  default: true
-
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an ONNX Runtime release.
   type: boolean
@@ -60,7 +55,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.36.1.250708
+  default: 2.37.0.250724
 
 resources:
   repositories:
@@ -90,13 +85,17 @@ extends:
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
+    featureFlags:
+      binskimScanAllExtensions: true
     sdl:
       binskim:
         enabled: true
-        analyzeTargetGlob: $(Build.ArtifactStagingDirectory)/**.dll
-      sourceAnalysisPool: "Onnxruntime-Win-CPU-2022"
+        scanOutputDirectoryOnly: true
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows
       componentgovernance:
-        ignoreDirectories: $(Build.SourcesDirectory)/onnxruntime-inference-examples
+        ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
       sourceRepositoriesToScan:
         exclude:
         - repository: onnxruntime-inference-examples
@@ -107,6 +106,15 @@ extends:
         compiled:
           enabled: false
           justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
+      tsa:
+        enabled: true
+      codeSignValidation:
+        enabled: true
+        break: true
+      policheck:
+        enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
+
     stages:
     - template: stages/set_packaging_variables_stage.yml
       parameters:
@@ -119,14 +127,13 @@ extends:
     - template: templates/c-api-cpu.yml
       parameters:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        DoEsrp: ${{ parameters.DoEsrp }}
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
           OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
         ${{ else }}:
           OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
         AdditionalBuildFlags: ''
-        AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
+        AdditionalWinBuildFlags: '--enable_onnx_tests ${{parameters.AdditionalBuildFlag}}'
         BuildVariant: 'default'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
@@ -146,7 +153,7 @@ extends:
         UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
         win_trt_home: ${{ variables.win_trt_home }}
         win_cuda_home: ${{ variables.win_cuda_home }}
-        DoEsrp: ${{ parameters.DoEsrp }}
+        DoEsrp: true
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         buildJava: true
         buildNodejs: true
@@ -162,7 +169,7 @@ extends:
         BuildArch: 'x64'
         EnvSetupScript: 'setup_env.bat'
         sln_platform: 'x64'
-        DoEsrp: ${{ parameters.DoEsrp }}
+        DoEsrp: true
         PublishWebGpuBuildTools: true
 
     - template: stages/nodejs-win-packaging-stage.yml
@@ -174,5 +181,5 @@ extends:
         BuildArch: 'x64'
         EnvSetupScript: 'setup_env.bat'
         sln_platform: 'arm64'
-        DoEsrp: ${{ parameters.DoEsrp }}
+        DoEsrp: true
         DependsOnStageName: Windows_Nodejs_Packaging_x64

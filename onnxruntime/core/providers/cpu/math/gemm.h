@@ -12,6 +12,15 @@
 
 namespace onnxruntime {
 
+void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,     // 0, 1
+                    ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,                // 2, 3, 4
+                    MLFloat16 alpha,                                      // 5
+                    const MLFloat16* a_data, const MLFloat16* b_data,     // 6, 7
+                    MLFloat16 beta,                                       // 8
+                    const MLFloat16* c_data, const TensorShape* c_shape,  // 9, 10
+                    MLFloat16* y_data,                                    // 11
+                    concurrency::ThreadPool* thread_pool);                // 12
+
 template <typename T>
 class Gemm : protected GemmBase, public OpKernel {
  public:

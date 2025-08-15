@@ -18,13 +18,14 @@
 
 #include "core/framework/bfc_arena.h"
 
-using Status = onnxruntime::common::Status;
+using namespace onnxruntime;
+using Status = common::Status;
 
 Status OrtArenaCfg::FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg& cfg) {
   cfg = OrtArenaCfg{};  // reset to default values
 
   const auto from_string = [](const std::string& key, const std::string& str, auto& value) -> Status {
-    if (!onnxruntime::ParseStringWithClassicLocale(str, value).IsOK()) {
+    if (!ParseStringWithClassicLocale(str, value).IsOK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to parse value for ", key, " from ", str);
     }
 
@@ -163,19 +164,16 @@ void CPUAllocator::Free(void* p) {
   AllocatorDefaultFreeAligned(p, alignment);
 }
 
-void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
-  if (use_reserve)
+void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream,
+                                WaitNotificationFn /*ignored*/) {
+  if (use_reserve) {
     return alloc.Reserve(size);
-  if (stream && alloc.Info().alloc_type == OrtArenaAllocator) {
-#ifdef ORT_ENABLE_STREAM
-    auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(static_cast<BFCArena&>(alloc));
-    if (stream_aware_alloc) {
-      return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
-    }
-#else
-    ORT_UNUSED_PARAMETER(wait_fn);
-#endif  // ORT_ENABLE_STREAM
   }
+
+  if (stream && alloc.IsStreamAware()) {
+    return alloc.AllocOnStream(size, stream);
+  }
+
   return alloc.Alloc(size);
 }
 }  // namespace onnxruntime
@@ -250,7 +248,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo_V2, _In_ const char* name, _In_ enum OrtMemoryInfoDeviceType device_type,
-                    _In_ uint32_t vendor_id, _In_ int16_t device_id, _In_ enum OrtDeviceMemoryType mem_type,
+                    _In_ uint32_t vendor_id, _In_ int32_t device_id, _In_ enum OrtDeviceMemoryType mem_type,
                     _In_ size_t alignment, enum OrtAllocatorType type,
                     _Outptr_ OrtMemoryInfo** out) {
   // map the public enum values to internal OrtDevice values
@@ -275,7 +273,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo_V2, _In_ const char* name, _In_ en
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid device type specified.");
   }
 
-  *out = new OrtMemoryInfo(name, type, OrtDevice{dt, mt, vendor_id, device_id, alignment},
+  *out = new OrtMemoryInfo(name, type, OrtDevice{dt, mt, vendor_id, narrow<int16_t>(device_id), alignment},
                            mem_type == OrtDeviceMemoryType_DEFAULT ? OrtMemTypeDefault : OrtMemTypeCPU);
   return nullptr;
 }
@@ -312,4 +310,12 @@ ORT_API_STATUS_IMPL(OrtApis::CompareMemoryInfo, _In_ const OrtMemoryInfo* info1,
 
 ORT_API(void, OrtApis::MemoryInfoGetDeviceType, _In_ const OrtMemoryInfo* info, _Out_ OrtMemoryInfoDeviceType* out) {
   *out = static_cast<OrtMemoryInfoDeviceType>(info->device.Type());
+}
+
+ORT_API(OrtDeviceMemoryType, OrtApis::MemoryInfoGetDeviceMemType, _In_ const OrtMemoryInfo* ptr) {
+  return static_cast<OrtDeviceMemoryType>(ptr->device.MemType());
+}
+
+ORT_API(uint32_t, OrtApis::MemoryInfoGetVendorId, _In_ const OrtMemoryInfo* ptr) {
+  return ptr->device.Vendor();
 }

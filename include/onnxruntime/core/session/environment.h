@@ -15,11 +15,12 @@
 #include "core/common/status.h"
 #include "core/framework/allocator.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/platform/device_discovery.h"
 #include "core/platform/threadpool.h"
 
 #include "core/session/abi_devices.h"
-#include "core/session/ep_library.h"
+#include "core/session/plugin_ep/ep_library.h"
 #include "core/session/onnxruntime_c_api.h"
 
 struct OrtThreadingOptions;
@@ -106,6 +107,15 @@ class Environment {
   }
 
   /**
+   * Returns an AllocatorPtr for a shared IAllocator based allocator if it matches the memory info.
+   * The OrtMemoryInfo name and whether it's an arena or device allocator is ignored in the lookup, as is the
+   * alignment.
+   * The user calling this function is not expected to know the alignment, and we expect the allocator instance to be
+   * created with a valid alignment for the device.
+   */
+  AllocatorPtr GetRegisteredSharedAllocator(const OrtMemoryInfo& mem_info) const;
+
+  /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
    */
   Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
@@ -140,6 +150,10 @@ class Environment {
                                OrtDeviceMemoryType mem_type, OrtAllocatorType allocator_type,
                                const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator);
   Status ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type);
+
+  const DataTransferManager& GetDataTransferManager() const {
+    return data_transfer_mgr_;
+  }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // return a shared allocator from a plugin EP or custom allocator added with RegisterAllocator
@@ -166,7 +180,7 @@ class Environment {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
 
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
 
   // shared allocators from various sources.
   // CreateAndRegisterAllocator[V2]: IAllocator allocators created by ORT
@@ -207,7 +221,9 @@ class Environment {
 
     std::unique_ptr<EpLibrary> library;
     std::vector<std::unique_ptr<OrtEpDevice>> execution_devices;
-    std::vector<EpFactoryInternal*> internal_factories;  // factories that can create IExecutionProvider instances
+    std::vector<OrtEpFactory*> factories;
+    std::vector<EpFactoryInternal*> internal_factories;    // factories that can create IExecutionProvider instances
+    std::vector<plugin_ep::DataTransfer*> data_transfers;  // data transfer instances for this EP.
 
    private:
     EpInfo() = default;
@@ -223,6 +239,9 @@ class Environment {
 
   // lookup set for internal EPs so we can create an IExecutionProvider directly
   std::unordered_set<EpFactoryInternal*> internal_ep_factories_;
+
+  DataTransferManager data_transfer_mgr_;  // plugin EP IDataTransfer instances
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
 

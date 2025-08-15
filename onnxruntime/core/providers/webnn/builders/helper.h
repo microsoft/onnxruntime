@@ -38,19 +38,6 @@ WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type);
 // Collects all the initializer tensors in the subGraph and its ancestor graphs.
 InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer);
 
-inline std::vector<int64_t> convertAxesFromNCHWtoNHWC(const std::vector<int64_t>& axes) {
-  constexpr std::array<int64_t, 4> nchw_to_nhwc = {0, 3, 1, 2};
-  std::vector<int64_t> new_axes;
-  new_axes.reserve(axes.size());
-  for (int64_t axis : axes) {
-    if (axis >= nchw_to_nhwc.size()) {
-      ORT_THROW("Invalid axis value: ", axis);
-    }
-    new_axes.push_back(nchw_to_nhwc[static_cast<size_t>(axis)]);
-  }
-  return new_axes;
-}
-
 inline std::vector<int64_t> HandleNegativeAxes(const std::vector<int64_t>& axes, size_t input_size) {
   std::vector<int64_t> new_axes(axes.size());
   for (size_t i = 0; i < axes.size(); ++i) {
@@ -84,7 +71,7 @@ inline std::string GetTensorName(const ConstPointerContainer<std::vector<NodeArg
 }
 
 template <typename T>
-inline std::vector<T> GetNarrowedIntfromInt64(gsl::span<const int64_t> int64_vec) {
+inline std::vector<T> GetNarrowedIntFromInt64(gsl::span<const int64_t> int64_vec) {
   std::vector<T> vec;
   vec.reserve(int64_vec.size());
   std::transform(int64_vec.begin(), int64_vec.end(),

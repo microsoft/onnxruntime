@@ -31,14 +31,14 @@ jobs:
   workspace:
     clean: all
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '13.3'
+    MACOSX_DEPLOYMENT_TARGET: '13.4'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/ccache_proto
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ccache_ort
   pool:
     name: "Azure Pipelines"
-    image: 'macOS-14'
+    image: 'macOS-15'
     os: macOS
   timeoutInMinutes: 300
   steps:
@@ -53,7 +53,7 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '20.x'
+      versionSpec: '22.x'
 
   - task: JavaToolInstaller@0
     inputs:
@@ -64,6 +64,8 @@ jobs:
   - template: set-version-number-variables-step.yml
 
   - template: use-xcode-version.yml
+    parameters:
+      xcodeVersion: 16.4
 
   - script: |
       set -e -x
@@ -101,7 +103,7 @@ jobs:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
         BuildJava: true
         BuildNodejs: true
         WithCache: ${{ parameters.WithCache }}

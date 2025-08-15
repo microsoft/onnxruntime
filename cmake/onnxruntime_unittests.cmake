@@ -120,6 +120,9 @@ function(AddTest)
     if (${HAS_NOERROR})
       target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=uninitialized>")
     endif()
+    if (${HAS_CHARACTER_CONVERSION})
+      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=character-conversion>")
+    endif()
   endif()
 
   set(TEST_ARGS ${_UT_TEST_ARGS})
@@ -198,13 +201,8 @@ function(AddTest)
     # xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      # We might have already executed the following "find_program" code when we build ORT nodejs binding.
-      # Then the program is found the result is stored in the variable and the search will not be repeated.
-      find_program(NPM_CLI
-         NAMES "npm.cmd" "npm"
-         DOC "NPM command line client"
-         REQUIRED
-      )
+      # Include the Node.js helper for finding and validating Node.js and NPM
+      include(node_helper.cmake)
 
       if (onnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER)
         add_custom_command(TARGET ${_UT_TARGET} POST_BUILD
@@ -498,17 +496,19 @@ set (ONNXRUNTIME_AUTOEP_TEST_SRC_DIR "${TEST_SRC_DIR}/autoep")
 set (ONNXRUNTIME_EP_GRAPH_TEST_SRC_DIR "${TEST_SRC_DIR}/ep_graph")
 
 set (onnxruntime_shared_lib_test_SRC
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_allocator.cc
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_data_copy.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc)
+          )
 
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
@@ -610,7 +610,6 @@ endif()
 
 if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_COREML)
@@ -691,9 +690,6 @@ endif()
 
 if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/migraphx/*)
-  list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/migraphx/migraphx_execution_provider_utils.h")
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
@@ -722,6 +718,7 @@ endif()
 if(onnxruntime_USE_QNN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/*)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/qnn_node_group/*)
+  list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/optimizer/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
   if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
@@ -789,6 +786,9 @@ if(MSVC)
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
 else()
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  if (HAS_CHARACTER_CONVERSION)
+    target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=character-conversion>")
+  endif()
 endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_test_utils PRIVATE ${NCCL_INCLUDE_DIRS})
@@ -1254,7 +1254,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
             onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
             ${onnxruntime_EXTERNAL_LIBRARIES}
-            ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+            absl::flags absl::flags_parse ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
       if(NOT WIN32)
         if(onnxruntime_USE_SNPE)
           list(APPEND onnxruntime_perf_test_libs onnxruntime_providers_snpe)
@@ -1274,7 +1274,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         target_link_libraries(onnxruntime_perf_test PRIVATE debug dbghelp advapi32)
       endif()
     else()
-      target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+      target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common absl::flags absl::flags_parse ${onnx_test_libs})
     endif()
     set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 

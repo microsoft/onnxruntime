@@ -23,8 +23,7 @@ class IOpBuilder;
 class ModelBuilder {
  public:
   ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger, const emscripten::val& context,
-               const DataLayout preferred_layout, const WebnnDeviceType wnn_device_type,
-               const emscripten::val& wnn_limits);
+               const WebnnDeviceType wnn_device_type, const emscripten::val& wnn_limits);
   ~ModelBuilder() = default;
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
@@ -54,15 +53,6 @@ class ModelBuilder {
   const emscripten::val& CreateOrGetConstant(const int32_t& data_type, std::string name, std::vector<T> value,
                                              const std::vector<uint32_t>& shape = {});
 
-  // Use the buffers to persist WebNN allocated data like transposed weight.
-  // It ensures the validity during inference session.
-  std::vector<std::unique_ptr<uint8_t[]>> mem_persist_buffers_;
-  // Add a constant operand (allocate persist buffer and move the ownership to mem_persist_buffers_).
-  Status AddOperandFromPersistMemoryBuffer(const std::string& name, const void* buffer, const size_t size,
-                                           const std::vector<uint32_t> shape, const int32_t data_type);
-
-  DataLayout GetPreferredLayout() const { return preferred_layout_; }
-
   WebnnDeviceType GetWebnnDeviceType() const { return wnn_device_type_; }
 
   // The initializer will be processed separately, skip it as an initializer.
@@ -83,7 +73,6 @@ class ModelBuilder {
   emscripten::val wnn_context_ = emscripten::val::undefined();
   emscripten::val wnn_builder_ = emscripten::val::undefined();
   bool is_int64_supported_ = false;
-  DataLayout preferred_layout_;
   WebnnDeviceType wnn_device_type_;
   emscripten::val wnn_limits_ = emscripten::val::undefined();
   InlinedHashMap<std::string, emscripten::val> wnn_operands_;
@@ -120,7 +109,7 @@ class ModelBuilder {
 // Create or retrieve one of the following:
 // - A WebNN constant MLOperand filled with the specified value, data type, and shape.
 // - A WebNN scalar constant MLOperand with the specified value and data type.
-// For scalar constant, it is workaround for builer.constant(type, value) method since
+// For scalar constant, it is workaround for builder.constant(type, value) method since
 // it has not been implemented now.
 // https://webmachinelearning.github.io/webnn/#api-mlgraphbuilder-constant-type-value
 //
