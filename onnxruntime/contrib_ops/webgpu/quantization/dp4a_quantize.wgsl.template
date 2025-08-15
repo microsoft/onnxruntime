@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 $MAIN {
     var local_a : array<vec4<input_a_element_t>, 32>;
     var max_value:vec4<input_a_element_t> = vec4<input_a_element_t>(0);
