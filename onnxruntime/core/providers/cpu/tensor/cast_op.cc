@@ -262,6 +262,7 @@ struct ToInt4Converter<SrcType, Int4x2,
 // See https://onnx.ai/onnx/operators/onnx__Cast.html#summary for casting from
 // fixed point to fixed point: when OOR, discard higher bits and reinterpret
 // (with respect to two's complement representation for signed types).
+
 template <typename SrcType>
 struct ToInt4Converter<SrcType, UInt4x2,
                        std::enable_if_t<IsStandardIntegerType<SrcType>::value>> {
@@ -390,13 +391,35 @@ struct TensorCaster<MLFloat16, float> {
 // tensor float -> MLFloat16
 template <>
 struct TensorCaster<float, MLFloat16> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    auto in_data = in.Data<float>();
+  void Cast(const OpKernelContext& ctx, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     auto out_data = out.MutableData<MLFloat16>();
+    auto in_data = in.Data<float>();
     const size_t shape_size = narrow<size_t>(shape.Size());
-    MlasConvertFloatToHalfBuffer(in_data, out_data, shape_size);
+
+    // Check if the tensor is long enough to use threads
+    if (shape_size <= 128000) {
+      MlasConvertFloatToHalfBuffer(in_data, out_data, shape_size);
+      return;
+    }
+    // Calculate the number of compute cyles per implementation
+    auto cpu_info = CPUIDInfo::GetCPUIDInfo();
+    double num_compute_cycles;
+    if (cpu_info.HasSSE3()) {
+      num_compute_cycles = static_cast<double>(shape_size >> 1);
+    } else if (cpu_info.HasAVX2()) {
+      num_compute_cycles = static_cast<double>(shape_size >> 2);
+    } else {
+      num_compute_cycles = static_cast<double>(shape_size * 10);
+    }
+
+    concurrency::ThreadPool::TryParallelFor(ctx.GetOperatorThreadPool(), shape_size,
+                                            {shape_size * 2.f, shape_size * 4.f, num_compute_cycles},
+                                            [in_data, out_data](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
+                                              MlasConvertFloatToHalfBuffer(in_data + first_span, out_data + first_span, static_cast<size_t>(last_span - first_span));
+                                            });
   }
 };
+
 
 // (U)Int4x2 -> string or numeric types
 template <typename SrcType, typename DstType>

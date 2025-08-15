@@ -11,6 +11,7 @@
 #include "core/providers/common.h"
 #include "core/util/force_inline.h"
 #include "core/util/math_cpuonly.h"
+#include <Eigen/Core>
 
 namespace onnxruntime {
 
@@ -80,6 +81,7 @@ void ComputeJob(
   }
 }
 
+
 template <typename U>
 void ComputeJob(
     const MLFloat16* X_data,
@@ -96,60 +98,62 @@ void ComputeJob(
     U* mean_data,
     U* inv_std_dev_data,
     AllocatorPtr alloc) {
-  ORT_UNUSED_PARAMETER(scale_data);  // only used in float/double overload
-  ORT_UNUSED_PARAMETER(bias_data);   // only used in float/double overload
 
-  const MLFloat16* p_input = X_data + task_idx * norm_size;
-  MLFloat16* p_output = Y_data + task_idx * norm_size;
+  ORT_UNUSED_PARAMETER(scale_data);
+  ORT_UNUSED_PARAMETER(bias_data);
+  ORT_UNUSED_PARAMETER(alloc);  
 
-  float mean(0.0f);
-  float mean_square(0.0f);
+  // reinterpret input/output MLFloat16* as Eigen::half*
+  const Eigen::half* p_input = reinterpret_cast<const Eigen::half*>(X_data + task_idx * norm_size);
+  Eigen::half* p_output = reinterpret_cast<Eigen::half*>(Y_data + task_idx * norm_size);
 
-  const size_t num_elems = static_cast<size_t>(norm_size);
-  IAllocatorUniquePtr<float> input_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-  MlasConvertHalfToFloatBuffer(p_input, input_float_uptr.get(), num_elems);
+  Eigen::Map<const Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> input_vec(p_input, norm_size);
+  Eigen::Map<Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> output_vec(p_output, norm_size);
 
-  IAllocatorUniquePtr<float> output_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-  float* output_float_ptr = output_float_uptr.get();
+  // Compute mean and mean_square in float for precision
+  float mean = 0.0f;
+  float mean_square = 0.0f;
 
-  const float* input_float_ptr = input_float_uptr.get();
-  for (size_t h = 0; h < num_elems; h++) {
-    output_float_ptr[h] = input_float_ptr[h];
-    mean += input_float_ptr[h];
-    mean_square += input_float_ptr[h] * input_float_ptr[h];
+  for (int64_t i = 0; i < norm_size; ++i) {
+    float val = static_cast<float>(input_vec[i]);
+    mean += val;
+    mean_square += val * val;
   }
 
-  mean = mean / norm_size;
+  mean /= static_cast<float>(norm_size);
   if (simplified) {
-    mean_square = sqrt(mean_square / norm_size + epsilon);
+    mean_square = std::sqrt(mean_square / norm_size + epsilon);
   } else {
-    mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
+    mean_square = std::sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  // Compute the offset of gamma and beta to support broadcasting.
+  // Offset calculation for broadcasting
   int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
 
-  for (size_t h = 0; h < num_elems; h++, i++) {
+  for (int64_t h = 0; h < norm_size; ++h, ++i) {
+    float x = static_cast<float>(input_vec[h]);
+
+    float y = 0.0f;
     if (simplified) {
-      output_float_ptr[h] = output_float_ptr[h] / mean_square * scale_float_ptr[i];
-    } else if (nullptr == bias_float_ptr) {
-      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[i];
+      y = x / mean_square * scale_float_ptr[i];
+    } else if (bias_float_ptr == nullptr) {
+      y = (x - mean) / mean_square * scale_float_ptr[i];
     } else {
-      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[i] + bias_float_ptr[i];
+      y = (x - mean) / mean_square * scale_float_ptr[i] + bias_float_ptr[i];
     }
+
+    output_vec[h] = static_cast<Eigen::half>(y);
   }
 
-  MlasConvertFloatToHalfBuffer(output_float_ptr, p_output, num_elems);
-
   if (mean_data != nullptr) {
-    // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
     mean_data[task_idx] = MLFloat16(mean);
   }
 
   if (inv_std_dev_data != nullptr) {
-    inv_std_dev_data[task_idx] = MLFloat16(1 / mean_square);
+    inv_std_dev_data[task_idx] = MLFloat16(1.0f / mean_square);
   }
 }
+
 
 void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, IAllocatorUniquePtr<float>& dest, bool& is_packed) {
   if (tensor.GetElementType() == utils::ToTensorProtoElementType<MLFloat16>()) {
