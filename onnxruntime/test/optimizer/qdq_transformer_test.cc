@@ -5444,8 +5444,59 @@ TEST(QDQTransformerTests, WeightBiasQuantization_Conv_Weight_Bias) {
 #endif
 }
 
+// Tests that the WeightBiasQuantization optimizer still processes nodes that contain a type-preserving no
+// branch ReLU op to QuantizeLinear e.g., Q -> DQ -> Conv (w/ float weight initializer) -> ReLU -> Q -> DQ
+TEST(QDQTransformerTests, WeightBiasQuantization_ConvWithReLU) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_fp32 = builder.MakeInput<float>({1, 1, 4, 4}, -1.0f, 1.0f);
+      NodeArg* weight_fp32 = builder.MakeInitializer<float>({2, 1, 3, 3}, -1.0f, 1.0f);
+      NodeArg* input_q = builder.MakeIntermediate();
+      NodeArg* input_dq = builder.MakeIntermediate();
+      NodeArg* conv_fp32 = builder.MakeIntermediate();
+      NodeArg* relu_fp32 = builder.MakeIntermediate();
+      NodeArg* relu_q = builder.MakeIntermediate();
+      NodeArg* relu_dq = builder.MakeOutput();
+      builder.AddQuantizeLinearNode<uint8_t>(input_fp32, 0.18f, static_cast<uint8_t>(127), input_q, use_contrib_qdq);
+      builder.AddDequantizeLinearNode<uint8_t>(input_q, 0.18f, static_cast<uint8_t>(127), input_dq, use_contrib_qdq);
+      auto& conv_node = builder.AddNode("Conv", {input_dq, weight_fp32}, {conv_fp32});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("group", static_cast<int64_t>(1));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+      builder.AddNode("Relu", {conv_fp32}, {relu_fp32});
+      builder.AddQuantizeLinearNode<uint8_t>(relu_fp32, 0.69f, static_cast<uint8_t>(127), relu_q, use_contrib_qdq);
+      builder.AddDequantizeLinearNode<uint8_t>(relu_q, 0.69f, static_cast<uint8_t>(127), relu_dq, use_contrib_qdq);
+    };
+
+    // Conv's weights should be quantized and folded, one additional Q/DQ pair inserted for weight
+    auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"] + op_to_count["com.microsoft.QuantizeLinear"], 2 + 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"] + op_to_count["com.microsoft.DequantizeLinear"], 2 + 1);
+      EXPECT_EQ(op_to_count["Conv"], 1);
+      EXPECT_EQ(op_to_count["Relu"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_transformed_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      /*opset_version=*/20,
+                      /*per_sample_tolerance=*/0.01,
+                      /*relative_per_sample_tolerance=*/0.01,
+                      /*transformer=*/std::make_unique<WeightBiasQuantization>());
+  };
+
+  test_case(false);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case(true);
+#endif
+}
+
 // Tests that the WeightBiasQuantization optimizer does not process nodes that do not
-// already have an output that is consumed by a single QuantizeLinear node.
+// already have an output that is consumed by a valid path to QuantizeLinear node.
 TEST(QDQTransformerTests, WeightBiasQuantization_SkipIfOutputNotQuantized) {
   auto test_case = [](bool add_final_reshape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
