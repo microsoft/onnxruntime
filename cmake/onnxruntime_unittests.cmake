@@ -811,7 +811,10 @@ if(NOT IOS)
         ${onnx_test_runner_src_dir}/utils/*.h
         ${onnx_test_runner_src_dir}/utils/*.cc)
 
-    list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
+    list(REMOVE_ITEM onnx_test_runner_common_srcs 
+        ${onnx_test_runner_src_dir}/main.cc
+        ${onnx_test_runner_src_dir}/command_args_parser.cc
+        ${onnx_test_runner_src_dir}/command_args_parser.h)
 
     onnxruntime_add_static_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
     if(MSVC)
@@ -1105,7 +1108,10 @@ set(onnx_test_libs
   ${onnxruntime_EXTERNAL_LIBRARIES})
 
 if (NOT IOS)
-    onnxruntime_add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
+    onnxruntime_add_executable(onnx_test_runner
+                               ${onnx_test_runner_src_dir}/main.cc
+                               ${onnx_test_runner_src_dir}/command_args_parser.cc
+                               ${onnx_test_runner_src_dir}/command_args_parser.h)
     if(MSVC)
       target_compile_options(onnx_test_runner PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
               "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -1129,7 +1135,7 @@ if (NOT IOS)
       # Once onnxruntime_framework is linked, additional internal dependencies such as onnxruntime_graph and onnxruntime_mlas must also be linked,
       # as they are transitively required by symbols used in onnxruntime_framework.
       set(onnx_test_runner_libs
-            onnx_test_runner_common onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_graph onnxruntime_util onnxruntime_mlas
+            onnx_test_runner_common onnxruntime_test_utils onnxruntime_framework onnxruntime_common onnxruntime_graph onnxruntime_util onnxruntime_mlas
             onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
             ${onnxruntime_EXTERNAL_LIBRARIES}
             absl::flags absl::flags_parse ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})

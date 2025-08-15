@@ -122,12 +122,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
   });
 
-  std::vector<std::basic_string<PATH_CHAR_TYPE>> data_dirs;
   TestResultStat stat;
-
-  for (int i = 0; i != argc; ++i) {
-    data_dirs.emplace_back(argv[i]);
-  }
 
   std::vector<std::unique_ptr<ITestCase>> owned_tests;
   {
@@ -708,7 +703,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     auto broken_tests = GetBrokenTests(test_config.provider_name);
     auto broken_tests_keyword_set = GetBrokenTestsKeyWordSet(test_config.provider_name);
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, test_config.whitelisted_test_cases,
+    LoadTests(test_config.data_dirs, test_config.whitelisted_test_cases,
               LoadTestTolerances(test_config.enable_cuda, test_config.enable_openvino, test_config.override_tolerance, test_config.atol, test_config.rtol),
               all_disabled_tests,
               std::move(broken_tests),
