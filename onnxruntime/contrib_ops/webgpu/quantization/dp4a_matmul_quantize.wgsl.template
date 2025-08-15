@@ -1,4 +1,7 @@
-//  Template for DP4A Matrix Multiply Quantization
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Template for DP4A Matrix Multiply Quantization
 // Quantizes input matrix A for DP4A computation
 // This shader quantizes float values to 8-bit signed integers using pack4x8snorm
 
@@ -67,6 +70,7 @@ $MAIN {
     }
 
     var max_val = input_a_value_t(0);
+    // TODO: Optimize this part so that all the threads are not computing the same value.
     for (var i = 0u; i < 32u; i++)
     {
       max_val = max(max_val, abs(a_values[local_row][i]));
