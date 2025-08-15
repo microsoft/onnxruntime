@@ -662,7 +662,7 @@ Do not modify directly.*
 |||[10, 11]|**T** = tensor(double), tensor(float), tensor(float16)<br/> **T1** = tensor(bool)|
 |||[7, 9]|**T** = tensor(double), tensor(float), tensor(float16)|
 |DynamicSlice|*in* data:**T**<br> *in* starts:**Tind**<br> *in* ends:**Tind**<br> *in* axes:**Tind**<br> *out* output:**T**|1+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **Tind** = tensor(int32), tensor(int64)|
-|Einsum|*in* Inputs:**T**<br> *out* Output:**T**|12+|**T** = tensor(double), tensor(float), tensor(float16)|
+|Einsum|*in* Inputs:**T**<br> *out* Output:**T**|12+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64) tensor(uint8)|
 |Elu|*in* X:**T**<br> *out* Y:**T**|6+|**T** = tensor(double), tensor(float), tensor(float16)|
 |Equal|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|13+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T1** = tensor(bool)|
 |||[11, 12]|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
