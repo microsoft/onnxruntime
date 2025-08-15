@@ -196,9 +196,9 @@ void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_CUDA().cudaMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
-const std::unordered_map<OrtDevice, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetCudaToHostMemCpyFunction(const OrtDevice& device) {
   static std::unordered_map<OrtDevice, MemCpyFunc> map{
-      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0}, CudaToCpuMemCpy},
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, device.Id()}, CudaToCpuMemCpy},
   };
 
   return &map;
@@ -246,6 +246,7 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
 #endif
 
 #ifdef USE_MIGRAPHX
+
 void CpuToMIGraphXMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_MIGraphX().MIGraphXMemcpy_HostToDevice(dst, src, num_bytes);
 }
@@ -256,7 +257,7 @@ void MIGraphXToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
 
 const std::unordered_map<OrtDevice, MemCpyFunc>* GetMIGraphXToHostMemCpyFunction(const OrtDevice& device) {
   static std::unordered_map<OrtDevice, MemCpyFunc> map{
-      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, 0}, MIGraphXToCpuMemCpy},
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, device.Id()}, MIGraphXToCpuMemCpy},
   };
 
   return &map;
@@ -270,7 +271,11 @@ AllocatorPtr GetMIGraphXAllocator(OrtDevice::DeviceId id) {
 
   if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
     // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
-    id_to_allocator_map->insert({id, GetProviderInfo_MIGraphX().CreateMIGraphXAllocator(id, gpu_mem_limit, arena_extend_strategy, migx_external_allocator_info, nullptr)});
+    id_to_allocator_map->insert(
+        {id, GetProviderInfo_MIGraphX().CreateMIGraphXAllocator(
+                 id, gpu_mem_limit, arena_extend_strategy,
+                 migraphx::external::alloc_fn, migraphx::external::free_fn, migraphx::external::empty_cache_fn,
+                 nullptr)});
   }
 
   return (*id_to_allocator_map)[id];
@@ -374,9 +379,9 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
       D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
-const std::unordered_map<OrtDevice, MemCpyFunc>* GetDmlToHostMemCpyFunction() {
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetDmlToHostMemCpyFunction(const OrtDevice& device) {
   static std::unordered_map<OrtDevice, MemCpyFunc> map{
-      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::MICROSOFT, 0}, DmlToCpuMemCpy},
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::MICROSOFT, device.Id()}, DmlToCpuMemCpy},
   };
 
   return &map;
@@ -444,9 +449,9 @@ void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_ROCM().rocmMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
-const std::unordered_map<OrtDevice, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetRocmToHostMemCpyFunction(const OrtDevice& device) {
   static std::unordered_map<OrtDevice, MemCpyFunc> map{
-      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, 0}, RocmToCpuMemCpy},
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, device.Id()}, RocmToCpuMemCpy},
   };
 
   return &map;

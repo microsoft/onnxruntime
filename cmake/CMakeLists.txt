@@ -29,6 +29,7 @@ include(CheckLanguage)
 include(CMakeDependentOption)
 include(FetchContent)
 include(CheckFunctionExists)
+include(CheckSymbolExists)
 include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
 
 # TODO: update this once all system adapt c++20
@@ -1789,4 +1790,13 @@ else()
 
     include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
   endif()
+endif()
+
+if(onnxruntime_BUILD_UNIT_TESTS)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_test_pch.cmake")
+endif()
+
+# Include precompiled header configuration for providers
+if(TARGET onnxruntime_providers)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_providers_pch.cmake")
 endif()

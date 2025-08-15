@@ -63,7 +63,7 @@ jobs:
     runs-on: macos-15
 
     env:
-      xcode_version: 16
+      xcode_version: 16.4
 
     strategy:
       matrix:

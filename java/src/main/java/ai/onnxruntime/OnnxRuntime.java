@@ -146,6 +146,8 @@ final class OnnxRuntime {
       detectedArch = "aarch64";
     } else if (arch.startsWith("ppc64")) {
       detectedArch = "ppc64";
+    } else if (arch.startsWith("loongarch64")) {
+      detectedArch = "loongarch64";
     } else if (isAndroid()) {
       detectedArch = arch;
     } else {
