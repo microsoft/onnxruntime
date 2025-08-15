@@ -417,7 +417,7 @@ struct NvTrtRtxSyncNotificationImpl : OrtSyncNotificationImpl {
     Release = ReleaseImpl;
   }
 
-  cudaStream_t& stream_;
+  cudaStream_t stream_;
   cudaEvent_t event_;
 
   const OrtApi& ort_api;
