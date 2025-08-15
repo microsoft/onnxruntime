@@ -328,13 +328,6 @@ Ort::Status GetNodeInputEdges(const std::vector<const OrtValueInfo*>& inputs, Ed
   return Ort::Status{nullptr};
 }
 
-Ort::Status GetNodeInputEdges(const OrtNode& node, EdgeSet& input_edges) {
-  std::vector<const OrtValueInfo*> inputs;
-  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputs(node, inputs));
-  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetNodeInputEdges(inputs, input_edges));
-  return Ort::Status{nullptr};
-}
-
 Ort::Status FindParentsByType(const std::vector<const OrtValueInfo*>& inputs, std::string_view parent_type,
                               std::vector<const OrtNode*>& result) {
   const OrtApi& ort_api = Ort::GetApi();
@@ -1268,7 +1261,7 @@ Ort::Status ConvNodeGroupSelector::Check(const OrtNode& node, const OrtNode* red
     return Ort::Status{nullptr};
   }
 
-  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+  if (dt_input == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
     if (!int8_allowed_ || dt_weight != dt_input) {
       return Ort::Status{nullptr};
     }
