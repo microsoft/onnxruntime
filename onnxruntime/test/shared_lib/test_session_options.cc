@@ -57,13 +57,11 @@ TEST(CApiTest, session_options_provider_interface_fail_add_cuda) {
   Ort::SessionOptions session_options;
 
   Ort::CUDAProviderOptions cuda_options;
-  bool thrown = false;
   try {
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
     ASSERT_TRUE(false) << "Appending CUDA options have thrown exception";
   } catch (const Ort::Exception& ex) {
     ASSERT_THAT(ex.what(), testing::HasSubstr("Failed to load"));
-    thrown = true;
   }
 }
 #endif  // defined(USE_CUDA_PROVIDER_INTERFACE)
