@@ -6,8 +6,14 @@
 namespace onnxruntime {
 
 std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
-  // This is a default implementation which does not try to discover anything.
-  return {};
+  // This is a default implementation.
+  // We assume that there is a CPU device and do not attempt to discover anything else.
+
+  std::unordered_set<OrtHardwareDevice> devices{};
+
+  devices.emplace(GetCpuDeviceFromCPUIDInfo());
+
+  return devices;
 }
 
 }  // namespace onnxruntime

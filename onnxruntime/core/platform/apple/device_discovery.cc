@@ -6,7 +6,6 @@
 #include <sys/utsname.h>
 #include <TargetConditionals.h>
 
-#include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {
@@ -15,18 +14,6 @@ namespace {
 
 constexpr auto kApplePciVendorId = 0x106B;
 constexpr auto kAppleVendorName = "Apple";
-
-OrtHardwareDevice GetCpuDevice() {
-  const auto& cpuid_info = CPUIDInfo::GetCPUIDInfo();
-
-  OrtHardwareDevice cpu_device{};
-  cpu_device.vendor = cpuid_info.GetCPUVendor();
-  cpu_device.vendor_id = cpuid_info.GetCPUVendorId();
-  cpu_device.device_id = 0;
-  cpu_device.type = OrtHardwareDeviceType_CPU;
-
-  return cpu_device;
-}
 
 std::vector<OrtHardwareDevice> GetGpuDevices() {
   std::vector<OrtHardwareDevice> result{};
@@ -100,7 +87,7 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
   std::unordered_set<OrtHardwareDevice> devices;
 
   // get CPU devices
-  devices.insert(GetCpuDevice());
+  devices.insert(GetCpuDeviceFromCPUIDInfo());
 
   // get GPU devices
   {

@@ -9,7 +9,6 @@
 #include <string_view>
 
 #include "core/common/common.h"
-#include "core/common/cpuid_info.h"
 #include "core/common/parse_string.h"
 #include "core/common/string_utils.h"
 
@@ -18,19 +17,6 @@ namespace fs = std::filesystem;
 namespace onnxruntime {
 
 namespace {
-OrtHardwareDevice GetCpuDevice() {
-  const auto& cpuid_info = CPUIDInfo::GetCPUIDInfo();
-
-  OrtHardwareDevice cpu_device{};
-  cpu_device.vendor = cpuid_info.GetCPUVendor();
-  cpu_device.vendor_id = cpuid_info.GetCPUVendorId();
-  cpu_device.device_id = 0;
-  cpu_device.type = OrtHardwareDeviceType_CPU;
-
-  return cpu_device;
-}
-
-#if !defined(__ANDROID__)
 
 struct GpuSysfsPathInfo {
   size_t card_idx;
@@ -119,12 +105,8 @@ OrtHardwareDevice GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info) {
   return gpu_device;
 }
 
-#endif  // !defined(__ANDROID__)
-
 std::vector<OrtHardwareDevice> GetGpuDevices() {
   std::vector<OrtHardwareDevice> gpu_devices{};
-
-#if !defined(__ANDROID__)
 
   const auto gpu_sysfs_path_infos = DetectGpuSysfsPaths();
   gpu_devices.reserve(gpu_sysfs_path_infos.size());
@@ -133,13 +115,6 @@ std::vector<OrtHardwareDevice> GetGpuDevices() {
     auto gpu_device = GetGpuDeviceFromSysfs(gpu_sysfs_path_info);
     gpu_devices.emplace_back(std::move(gpu_device));
   }
-
-#else  // defined(__ANDROID__)
-
-  // In an Android app, we don't have permission to read sysfs.
-  // TODO detect GPU devices on Android
-
-#endif  // defined(__ANDROID__)
 
   return gpu_devices;
 }
@@ -150,7 +125,7 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
   std::unordered_set<OrtHardwareDevice> devices;
 
   // get CPU devices
-  devices.emplace(GetCpuDevice());
+  devices.emplace(GetCpuDeviceFromCPUIDInfo());
 
   // get GPU devices
   {

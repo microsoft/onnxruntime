@@ -82,7 +82,7 @@ endif()
 if (WIN32)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/windows/device_discovery.cc")
-elseif (LINUX OR ANDROID)
+elseif (LINUX)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/linux/device_discovery.cc")
 elseif (APPLE)

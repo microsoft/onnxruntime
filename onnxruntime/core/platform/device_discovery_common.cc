@@ -7,6 +7,7 @@
 
 #include <sstream>
 
+#include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {
@@ -37,6 +38,18 @@ const std::unordered_set<OrtHardwareDevice>& DeviceDiscovery::GetDevices() {
   }();
 
   return devices;
+}
+
+OrtHardwareDevice DeviceDiscovery::GetCpuDeviceFromCPUIDInfo() {
+  const auto& cpuid_info = CPUIDInfo::GetCPUIDInfo();
+
+  OrtHardwareDevice cpu_device{};
+  cpu_device.vendor = cpuid_info.GetCPUVendor();
+  cpu_device.vendor_id = cpuid_info.GetCPUVendorId();
+  cpu_device.device_id = 0;
+  cpu_device.type = OrtHardwareDeviceType_CPU;
+
+  return cpu_device;
 }
 
 }  // namespace onnxruntime

@@ -18,5 +18,9 @@ class DeviceDiscovery {
 
   // platform specific code implements this method
   static std::unordered_set<OrtHardwareDevice> DiscoverDevicesForPlatform();
+
+  // Gets a CPU device by querying `CPUIDInfo`.
+  static OrtHardwareDevice GetCpuDeviceFromCPUIDInfo();
 };
+
 }  // namespace onnxruntime
