@@ -13,7 +13,6 @@
 #include <string>
 #include <type_traits>
 #include <vector>
-#include "onnxruntime_cxx_api.h"
 
 // Convert OrtStatus to Ort::Status and return
 // instead of throwing
