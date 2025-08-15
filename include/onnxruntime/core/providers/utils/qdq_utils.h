@@ -873,6 +873,7 @@ Ort::Status NodeUnit::MakeQDQGroup(const NodeGroup& node_group, /*out*/ std::uni
   node_unit->q_nodes_ = node_group.q_nodes;
   node_unit->inputs_ = std::move(node_unit_inputs);
   node_unit->outputs_ = std::move(node_unit_outputs);
+  node_unit->input_edge_count_ = input_edge_count;
   node_unit->output_edges_ = std::move(node_unit_output_edges);
 
   result = std::move(node_unit);
