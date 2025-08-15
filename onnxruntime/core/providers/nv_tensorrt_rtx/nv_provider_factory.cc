@@ -743,7 +743,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
  private:
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
-  const OrtLogger& default_logger;
+  [[maybe_unused]] const OrtLogger& default_logger;
   const std::string ep_name{kNvTensorRTRTXExecutionProvider};
   const std::string vendor{"NVIDIA"};
 
