@@ -38,7 +38,7 @@ struct NvProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
   std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
-                                                     const OrtLogger& session_logger);
+                                                     const OrtLogger& session_logger) override;
 
  private:
   NvExecutionProviderInfo info_;
@@ -86,7 +86,7 @@ struct Nv_Provider : Provider {
     return std::make_shared<NvProviderFactory>(info);
   }
 
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) {
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) override {
     if (param == nullptr) {
       LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Passed NULL options to CreateExecutionProviderFactory()";
       return nullptr;
