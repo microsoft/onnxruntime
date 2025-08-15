@@ -20,6 +20,9 @@
 #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
 #include "core/providers/utils/ort_graph_to_proto.h"
 
+#define ORT_EP_UTILS_QDQ_UTILS_IMPL
+#include "core/providers/utils/qdq_utils.h"
+
 #include "test/ep_graph/test_ep_graph_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
@@ -179,6 +182,62 @@ TEST(EpGraphTest, CheckModelExternalInitializers) {
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
+// Check correctness utils to get all QDQ NodeUnits. Input model has a single QDQ Conv node unit
+// (and standalone Q and DQ at the graph I/O).
+TEST(EpGraphTest, GetAllNodeUnits_SingleConv) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/conv_qdq_s8s8.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  const logging::Logger& logger = DefaultLoggingManager().DefaultLogger();
+  Ort::Logger ort_logger(logger.ToExternal());
+  const OrtGraph& graph = test_graph->GetOrtGraph();
+
+  std::vector<std::unique_ptr<OrtEpUtils::QDQ::NodeUnit>> node_units;
+  std::unordered_map<const OrtNode*, const OrtEpUtils::QDQ::NodeUnit*> node_unit_map;
+
+  Ort::Status status = OrtEpUtils::QDQ::GetAllNodeUnits(graph, ort_logger, node_units, node_unit_map);
+  ASSERT_TRUE(status.IsOK());
+
+  ASSERT_EQ(node_units.size(), 3);  // input-> Q -> Conv(unit) -> DQ -> output
+
+  const OrtApi& ort_api = Ort::GetApi();
+  const OrtEpUtils::QDQ::NodeUnit* q_unit = nullptr;
+  const OrtEpUtils::QDQ::NodeUnit* conv_unit = nullptr;
+  const OrtEpUtils::QDQ::NodeUnit* dq_unit = nullptr;
+
+  for (const auto& node_unit : node_units) {
+    const char* op_type = nullptr;
+    ASSERT_ORTSTATUS_OK(ort_api.Node_GetOperatorType(&node_unit->GetNode(), &op_type));
+
+    if (std::strcmp(op_type, "QuantizeLinear") == 0) {
+      q_unit = node_unit.get();
+    } else if (std::strcmp(op_type, "Conv") == 0) {
+      conv_unit = node_unit.get();
+    } else {
+      ASSERT_STREQ(op_type, "DequantizeLinear");
+      dq_unit = node_unit.get();
+    }
+  }
+
+  ASSERT_NE(q_unit, nullptr);
+  ASSERT_NE(conv_unit, nullptr);
+  ASSERT_NE(dq_unit, nullptr);
+
+  auto check_nodes_in_map = [&node_unit_map](gsl::span<const OrtNode* const> nodes_in_unit, size_t expected_num_nodes) {
+    ASSERT_EQ(nodes_in_unit.size(), expected_num_nodes);
+    for (const OrtNode* node : nodes_in_unit) {
+      ASSERT_EQ(node_unit_map.count(node), 1);
+    }
+  };
+
+  std::vector<const OrtNode*> dq_unit_nodes = dq_unit->GetAllNodesInGroup();
+  std::vector<const OrtNode*> conv_unit_nodes = conv_unit->GetAllNodesInGroup();
+  std::vector<const OrtNode*> q_unit_nodes = q_unit->GetAllNodesInGroup();
+  check_nodes_in_map(dq_unit_nodes, 1);
+  check_nodes_in_map(conv_unit_nodes, 5);
+  check_nodes_in_map(q_unit_nodes, 1);
 }
 
 static void RunConvQDQExtIni(const ORTCHAR_T* model_path, std::vector<float>& output_data) {
