@@ -224,7 +224,9 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
     pi.cache_dir = provider_options.at("cache_dir");
   }
 
-  pi.precision = OpenVINOParserUtils::ParsePrecision(provider_options, pi.device_type, "precision");
+  if (provider_options.contains("precision")) {
+    pi.precision = OpenVINOParserUtils::ParsePrecision(provider_options, pi.device_type, "precision");
+  }
 
   if (provider_options.contains("reshape_input")) {
     pi.reshape = OpenVINOParserUtils::ParseInputShape(provider_options.at("reshape_input"));
