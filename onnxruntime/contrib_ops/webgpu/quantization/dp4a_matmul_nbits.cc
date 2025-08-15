@@ -118,7 +118,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   mul_program.SetDispatchGroupSize(num_M_tile * num_N_tile);
   mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
                          {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>((nbits/2) * kU32Components)},
+                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>((nbits / 2) * kU32Components)},
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
       .AddUniformVariables({{static_cast<uint32_t>(M)},
                             {static_cast<uint32_t>(N)},
