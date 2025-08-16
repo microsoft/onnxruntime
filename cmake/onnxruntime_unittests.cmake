@@ -1280,6 +1280,27 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
 endif()
 
+# onnxruntime_show_ep_devices
+block()
+  set(onnxruntime_show_ep_devices_srcs
+    ${TEST_SRC_DIR}/show_ep_devices/main.cc
+    ${TEST_SRC_DIR}/show_ep_devices/printer.h
+    ${TEST_SRC_DIR}/show_ep_devices/printer.cc
+  )
+
+  set(onnxruntime_show_ep_devices_libs
+    onnxruntime
+    absl::flags
+    absl::flags_parse
+    nlohmann_json::nlohmann_json
+  )
+
+  onnxruntime_add_executable(onnxruntime_show_ep_devices ${onnxruntime_show_ep_devices_srcs})
+
+  target_link_libraries(onnxruntime_show_ep_devices PRIVATE ${onnxruntime_show_ep_devices_libs})
+
+  source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_show_ep_devices_srcs})
+endblock()
 
   if(onnxruntime_USE_QNN)
     #qnn ctx generator
