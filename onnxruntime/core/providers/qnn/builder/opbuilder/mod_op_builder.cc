@@ -45,6 +45,7 @@ Status ModOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                    const logging::Logger& logger,
                                    std::vector<std::string>& input_names,
                                    bool do_op_validation) const {
+  ORT_UNUSED_PARAMETER(do_op_validation);
   NodeAttrHelper node_helper(node_unit);
   int64_t fmod = node_helper.Get("fmod", static_cast<int64_t>(0));  // 0=integer mod. 1=float mod.
   if (1 == fmod) {
@@ -65,6 +66,7 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                                  std::vector<std::string>&& input_names,
                                                  const logging::Logger& logger,
                                                  bool do_op_validation) const {
+  ORT_UNUSED_PARAMETER(logger);
   TensorInfo input_info = {};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_info));
   TensorInfo output_info = {};
@@ -157,7 +159,7 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
 
     // 2. ElementWiseFloor
     std::string floor_name = utils::GetUniqueName(node_unit, "_Floor");
-    std::string floor_output_name =  utils::GetUniqueName(node_unit, "_Floor_output");
+    std::string floor_output_name = utils::GetUniqueName(node_unit, "_Floor_output");
     QnnTensorWrapper floor_output(floor_output_name,
                                   QNN_TENSOR_TYPE_NATIVE,
                                   target_tensor_type,
