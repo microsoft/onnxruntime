@@ -203,6 +203,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateGatherNDOpBuilder("GatherND", *this);
   }
+
+  {
+    CreateModOpBuilder("Mod", *this);
+  }
 }
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type) {
