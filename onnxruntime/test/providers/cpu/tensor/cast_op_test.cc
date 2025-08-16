@@ -58,7 +58,8 @@ void TestCastOp(gsl::span<const SrcType> input,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& expected_failure_string = "",
                 int opset = 21,
-                Saturate saturate = Saturate::None) {
+                Saturate saturate = Saturate::None,
+                bool cuda_only = false) {
   OpTester test("Cast", opset);
   test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<DstType>());
   test.AddInput<SrcType>("input", dimensions, input.data(), input.size());
@@ -74,8 +75,19 @@ void TestCastOp(gsl::span<const SrcType> input,
     excluded_provider_types.insert(kCudaExecutionProvider);
   }
 
+  if (cuda_only && (excluded_provider_types.count(kCudaExecutionProvider) > 0)) {
+      return;
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (cuda_only) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(expect_result, expected_failure_string, {}, nullptr, &execution_providers);
+    return;
+  }
+
   test.Run(expect_result, expected_failure_string, excluded_provider_types);
-}
+  }
 
 template <typename T>
 using RequiresCastThroughFloat =
@@ -1456,6 +1468,79 @@ TEST(CastOpTest, Float8E4M3FNToUInt4x2) {
   // so it's sufficient to test with the default saturate = 1 here, since we are not converting to float 8.
   TestCastOp<Float8E4M3FN, UInt4x2>(gsl::make_span(uint_float8_input), gsl::make_span(expected_uint4x2_output), shape);
 }
+
+#endif
+
+#if !defined(DISABLE_FLOAT4_TYPES) && defined(USE_CUDA)
+
+template <typename F4>
+void CastOpTestFloatFloat4(std::vector<int64_t> shape, 
+                           std::vector<float> float_data,
+                           bool is_fp4_input = false) {
+
+  int num_pairs = static_cast<int>(float_data.size()) / 2;
+  int num_fp4_elements = static_cast<int>((float_data.size() + 1) / 2);
+  bool is_odd_count = (float_data.size() % 2 != 0);
+
+  std::vector<F4> fp4_data;
+  fp4_data.reserve(num_fp4_elements);
+
+  for (size_t i = 0; i < num_pairs; ++i) {
+    fp4_data.emplace_back(F4(float_data[i * 2], float_data[i * 2 + 1]));
+  }
+
+  if (is_odd_count)
+  {
+    fp4_data.emplace_back(F4(float_data[num_pairs] + 1, 0));  // Padding zero
+  }
+
+  if (!is_fp4_input)
+  {
+    TestCastOp<float, F4>(gsl::make_span(float_data), gsl::make_span(fp4_data), shape,
+                          OpTester::ExpectResult::kExpectSuccess, "", 23, Saturate::None, true);
+
+  } else {
+    TestCastOp<F4, float>(gsl::make_span(fp4_data), gsl::make_span(float_data), shape,
+                          OpTester::ExpectResult::kExpectSuccess, "", 23, Saturate::None, true);  
+  }
+}
+
+TEST(CastOpTest, FloatToFloat4E2M1x2) {
+   // Even count tests
+  CastOpTestFloatFloat4<Float4E2M1x2>({2, 2, 2},
+                                 {std::numeric_limits<float>::infinity(), 
+                                  -std::numeric_limits<float>::infinity(),
+                                  7.f, -7.f,
+                                  0.5f, -0.5f,
+                                  std::numeric_limits<float>::quiet_NaN(), 
+                                  -std::numeric_limits<float>::quiet_NaN()});
+
+  // Odd count tests
+  //CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
+  //                                     {0.256f,
+  //                                      0.987f,
+  //                                      43.8f});
+}
+
+
+TEST(CastOpTest, Float4E2M1x2ToFloat) {
+  // Even count tests
+  CastOpTestFloatFloat4<Float4E2M1x2>({2, 2, 2},
+                                      {0.5f, 2.f,
+                                       1.f, 1.5f,
+                                       2.f, 3.f,
+                                       4.f, 6.f},
+                                       true);
+
+  // Odd count tests
+  //CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
+  //                                    {0.256f,
+  //                                     0.987f,
+  //                                     43.8f},
+  //                                     true);
+}
+
+
 
 #endif
 

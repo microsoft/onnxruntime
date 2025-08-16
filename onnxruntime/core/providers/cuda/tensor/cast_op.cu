@@ -9,9 +9,13 @@
 #include "cuda_fp8.h"
 #endif
 
+#include "core/framework/float4.h"
+
+#include "cast_op.h"
+
 namespace onnxruntime {
 namespace cuda {
-
+namespace cast_helper_impl {
 template <typename OutT, typename InT>
 struct CastStd;
 
@@ -143,6 +147,78 @@ struct CastSat<Float8E5M2, half> {
 
 #endif  // DISABLE_FLOAT8_TYPES
 
+#if !defined(DISABLE_FLOAT4_TYPES)
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
+
+template <>
+struct CastStd<float2, Float4E2M1x2> {
+  __host__ __device__ __forceinline__ float2 operator()(Float4E2M1x2 v) const {
+    return v.ToCudaFloat2();
+  }
+};
+
+template <>
+struct CastStd<Float4E2M1x2, float2> {
+  __host__ __device__ __forceinline__ Float4E2M1x2 operator()(float2 v) const {
+    return Float4E2M1x2(v);
+  }
+};
+
+template <>
+struct CastStd<float, Float4E2M1x2> {
+  __host__ __device__ __forceinline__ float operator()(Float4E2M1x2 v) const {
+    return v.ToCudaFloat2().x;
+  }
+};
+
+template <>
+struct CastStd<Float4E2M1x2, float> {
+  __host__ __device__ __forceinline__ Float4E2M1x2 operator()(float v) const {
+    return Float4E2M1x2(v, 0);
+  }
+};
+
+#else
+template <>
+struct CastStd<float2, Float4E2M1x2> {
+  __host__ __device__ __forceinline__ float2 operator()(Float4E2M1x2 v) const {
+    auto float_pair = v.ToFloat2();
+    
+    float2 res;
+    res.x = float_pair.first;
+    res.y = float_pair.second;
+
+    return res;
+  }
+};
+
+template <>
+struct CastStd<Float4E2M1x2, float2> {
+  __host__ __device__ __forceinline__ Float4E2M1x2 operator()(float2 v) const {
+    return Float4E2M1x2(v.x, v.y);
+  }
+};
+
+template <>
+struct CastStd<float, Float4E2M1x2> {
+  __host__ __device__ __forceinline__ float operator()(Float4E2M1x2 v) const {
+    auto float_pair = v.ToFloat2();
+    return float_pair.x;
+  }
+};
+
+template <>
+struct CastStd<Float4E2M1x2, float> {
+  __host__ __device__ __forceinline__ Float4E2M1x2 operator()(float v) const {
+    return Float4E2M1x2(v, 0);
+  }
+};
+
+#endif
+
+#endif // DISABLE_FLOAT4_TYPES
+
 template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
 __global__ void CastKernelStd(const InT* input, OutT* output, CUDA_LONG N, CastStd<OutT, InT> cast) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
@@ -157,18 +233,83 @@ __global__ void CastKernelStd(const InT* input, OutT* output, CUDA_LONG N, CastS
 }
 
 template <class OutT, class InT>
-Status CudaCastStd(cudaStream_t stream, const InT* input, OutT* output, size_t num_of_element) {
-  if (num_of_element <= 0)
+Status CudaCastStd(cudaStream_t stream, const InT* input, OutT* output, size_t num_of_elements) {
+  if (num_of_elements <= 0)
     return Status::OK();
 
-  int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  int blocksPerGrid = static_cast<int>(CeilDiv(num_of_elements, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CastKernelStd<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, OutT, InT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input,
       output,
-      static_cast<int>(num_of_element),
+      static_cast<int>(num_of_elements),
       CastStd<OutT, InT>());
   return Status::OK();
 }
+
+
+template <class OutT, class InT>
+Status CudaCastPairwiseStd(cudaStream_t stream, const InT* input, OutT* output, size_t num_of_elements) {
+  // There is no generic implementation - specialized implementation for the packed type(s) follow
+  return Status::OK();
+}
+
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+Status CudaCastPairwiseStd(cudaStream_t stream, const Float4E2M1x2* input, float* output, size_t num_of_elements) {
+  if (num_of_elements <= 0)
+    return Status::OK();
+
+  int int_casted_num_of_elements = static_cast<int>(num_of_elements);
+
+  bool even_count = (int_casted_num_of_elements & 0x01) == 0;
+  int pairwise_num_of_elements = static_cast<int>(num_of_elements / 2);
+
+  int blocksPerGrid = static_cast<int>(CeilDiv(pairwise_num_of_elements, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  CastKernelStd<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, float2, Float4E2M1x2><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      input,
+      reinterpret_cast<float2*>(output),
+      pairwise_num_of_elements,
+      CastStd<float2, Float4E2M1x2>());
+
+  // Process last singleton element
+  if (!even_count) {
+    output[pairwise_num_of_elements * 2] = CastStd<float, Float4E2M1x2>()(input[pairwise_num_of_elements]);
+  }
+
+  return Status::OK();
+}
+
+
+template <>
+Status CudaCastPairwiseStd(cudaStream_t stream, const float* input, Float4E2M1x2* output, size_t num_of_elements) {
+  if (num_of_elements <= 0)
+    return Status::OK();
+
+  int int_casted_num_of_elements = static_cast<int>(num_of_elements);
+
+  bool even_count = (int_casted_num_of_elements & 0x01) == 0;
+  int pairwise_num_of_elements = static_cast<int>(num_of_elements / 2);
+
+  int blocksPerGrid = static_cast<int>(CeilDiv(pairwise_num_of_elements, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  CastKernelStd<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, Float4E2M1x2, float2><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      reinterpret_cast<const float2*>(input),
+      output,
+      pairwise_num_of_elements,
+      CastStd<Float4E2M1x2, float2>());
+
+  // Process last singleton element
+  if (!even_count) {
+    output[pairwise_num_of_elements] = CastStd<Float4E2M1x2, float>()(input[pairwise_num_of_elements * 2]);
+  }
+
+  return Status::OK();
+}
+
+template Status CudaCastPairwiseStd<float, Float4E2M1x2>(cudaStream_t stream, const Float4E2M1x2* input, float* output, size_t num_of_element);
+template Status CudaCastPairwiseStd<Float4E2M1x2, float>(cudaStream_t stream, const float* input, Float4E2M1x2* output, size_t num_of_element);
+
+#endif
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
@@ -214,5 +355,6 @@ template Status CudaCastSat<Float8E5M2, half>(cudaStream_t stream, const half* i
 
 #endif
 
+}  // namespace cast_helper_impl
 }  // namespace cuda
 }  // namespace onnxruntime

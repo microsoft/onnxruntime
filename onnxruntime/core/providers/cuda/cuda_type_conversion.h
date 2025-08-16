@@ -95,7 +95,7 @@ struct OrtToCudaType<Float8E5M2FNUZ> {
 #if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
 template <>
 struct OrtToCudaType<Float4E2M1x2> {
-  using type = __nv_fp4x2_e2m1;
+  using type = Float4E2M1x2::PackedCudaType;
 };
 #endif
 

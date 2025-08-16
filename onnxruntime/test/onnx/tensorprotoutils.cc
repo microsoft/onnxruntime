@@ -400,9 +400,14 @@ void UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_dat
         ORT_CXX_API_THROW("UnpackTensor: the pre-allocated size does not match the size in proto",          
                         OrtErrorCode::ORT_FAIL);                                                          
     }                                                                                                     
-                                                                                                          
+
+    constexpr int max_value = std::numeric_limits<uint8_t>::max();
     for (int i = 0; i < static_cast<int>(tensor.int32_data_size()); i++) {
         int v = tensor.int32_data()[i]; 
+        if (v < 0 || v > max_value) {
+            ORT_CXX_API_THROW(
+                "data overflow", OrtErrorCode::ORT_FAIL);
+        }                                                                                                    \
         p_data[i] = Float4E2M1x2(static_cast<uint8_t>(v), Float4E2M1x2::FromBits());  
     }                                                                                                     
 }

@@ -13,6 +13,7 @@
 #include "core/common/status.h"
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/float4.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
@@ -97,6 +98,14 @@ class ToCudaType<Float8E5M2FNUZ> {
   }
 };
 
+#endif
+
+#if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
+template <>
+class ToCudaType<Float4E2M1x2> {
+ public:
+  typedef __nv_fp4x2_e2m1 MappedType;
+};
 #endif
 
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {
