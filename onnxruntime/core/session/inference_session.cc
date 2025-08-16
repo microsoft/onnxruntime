@@ -10,6 +10,7 @@
 #include <string>
 #include <thread>
 #include <queue>
+#include <iostream>
 
 #include "core/common/denormal.h"
 #include "core/common/logging/isink.h"
@@ -868,6 +869,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
+  std::cerr << "[RegisterExecutionProvider] p_exec_provider->SetLogger(session_logger_) = " << session_logger_ << std::endl;
   p_exec_provider->SetLogger(session_logger_);
   session_profiler_.AddEpProfilers(p_exec_provider->GetProfiler());
   return execution_providers_.Add(provider_type, p_exec_provider);
@@ -3738,11 +3740,13 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
 void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   // create logger for session, using provided logging manager if possible
   if (logging_manager != nullptr) {
+    std::cerr << "[InferenceSession::InitLogger] loggin_manager != nullptr" << std::endl;
     logging::Severity severity = GetSeverity(session_options_);
     owned_session_logger_ = logging_manager_->CreateLogger(session_options_.session_logid, severity, false,
                                                            session_options_.session_log_verbosity_level);
     session_logger_ = owned_session_logger_.get();
   } else {
+    std::cerr << "[InferenceSession::InitLogger] loggin_manager == nullptr, session_logger_ = &logging::LoggingManager::DefaultLogger()" << std::endl;
     session_logger_ = &logging::LoggingManager::DefaultLogger();
   }
 }

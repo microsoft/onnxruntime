@@ -7,6 +7,7 @@
 #include <optional>
 #include <string_view>
 #include <unordered_set>
+#include <iostream>
 
 #include "core/common/string_utils.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
@@ -888,8 +889,9 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return result;
   }
   const size_t num_nodes_in_graph = static_cast<size_t>(graph_viewer.NumberOfNodes());
-
+  std::cerr << "[QNNExecutionProvider::GetCapability] before GetLogger" << std::endl;
   const auto& logger = *GetLogger();
+  std::cerr << "[QNNExecutionProvider::GetCapability] after GetLogger" << std::endl;
   bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph_viewer);
 
   const auto gen_metadef_name = [&]() {
