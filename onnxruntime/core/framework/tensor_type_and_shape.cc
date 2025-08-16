@@ -199,6 +199,9 @@ constexpr ONNXTensorElementDataType TensorDataTypeToOnnxRuntimeTensorElementData
     case o::TensorProto_DataType_UINT4:
       type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
       break;
+    case o::TensorProto_DataType_FLOAT4E2M1:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1;
+      break;
     default:
       type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
       break;
