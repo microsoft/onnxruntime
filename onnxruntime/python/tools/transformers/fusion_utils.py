@@ -7,7 +7,6 @@ from logging import getLogger
 import numpy
 from numpy import array_equal, ndarray
 from onnx import NodeProto, TensorProto, helper, numpy_helper
-from onnx import onnx_pb as onnx_proto
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -163,17 +162,17 @@ class FusionUtils:
             return value == expected_value
 
     @staticmethod
-    def transpose_2d_int8_tensor(tensor: onnx_proto.TensorProto):
+    def transpose_2d_int8_tensor(tensor: TensorProto):
         """Transpose a 2-D INT8 TensorProto
         Args:
             tensor (TensorProto): tensor to be transposed
         Returns:
             tensor (TensorProto): transposed tensor
         """
-        if not isinstance(tensor, onnx_proto.TensorProto):
-            raise ValueError(f"Expected input type is an ONNX TensorProto but got {type(tensor)}")
+        if not isinstance(tensor, TensorProto):
+            raise TypeError(f"Expected input type is an ONNX TensorProto but got {type(tensor)}")
 
-        if len(tensor.dims) != 2 or tensor.data_type != onnx_proto.TensorProto.INT8:
+        if len(tensor.dims) != 2 or tensor.data_type != TensorProto.INT8:
             raise ValueError("Only INT8 2-D tensors can be transposed")
 
         if tensor.raw_data:
@@ -314,4 +313,9 @@ class NumpyHelper:
                 dtype=helper.tensor_dtype_to_np_dtype(tensor.data_type),
             )
 
+        if tensor.data_type == TensorProto.BFLOAT16:
+            import onnx_ir as ir  # noqa: PLC0415
+
+            # Use onnx_ir to correctly handle bfloat16 tensors
+            return ir.from_proto(tensor).numpy()
         return numpy_helper.to_array(tensor)
