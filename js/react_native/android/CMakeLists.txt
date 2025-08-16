@@ -41,14 +41,31 @@ find_library(
   PATHS ${onnxruntime_link_DIRS}
   NO_CMAKE_FIND_ROOT_PATH)
 
+set(RN_INCLUDES
+    "${NODE_MODULES_DIR}/react-native/React"
+    "${NODE_MODULES_DIR}/react-native/React/Base"
+    "${NODE_MODULES_DIR}/react-native/ReactCommon"
+    "${NODE_MODULES_DIR}/react-native/ReactCommon/jsi"
+    "${NODE_MODULES_DIR}/react-native/ReactCommon/callinvoker")
+if(${ReactAndroid_VERSION_MINOR} VERSION_GREATER_EQUAL "0.76")
+  set(RN_LIBS
+      ReactAndroid::reactnative
+      ReactAndroid::jsi)
+else()
+  list(
+    APPEND
+    RN_INCLUDES
+    "${NODE_MODULES_DIR}/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/jni"
+  )
+  set(RN_LIBS
+      ReactAndroid::jsi
+      ReactAndroid::react_nativemodule_core
+      ReactAndroid::turbomodulejsijni)
+endif()
+
 include_directories(
-  "${NODE_MODULES_DIR}/react-native/React"
-  "${NODE_MODULES_DIR}/react-native/React/Base"
-  "${NODE_MODULES_DIR}/react-native/ReactCommon"
-  "${NODE_MODULES_DIR}/react-native/ReactCommon/jsi"
-  "${NODE_MODULES_DIR}/react-native/ReactCommon/callinvoker"
-  "${NODE_MODULES_DIR}/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/jni"
   ../cpp
+  ${RN_INCLUDES}
   ${onnxruntime_include_DIRS}
   ${libfbjni_include_DIRS})
 
@@ -72,7 +89,10 @@ set_target_properties(
 find_library(log-lib log)
 
 target_link_libraries(
-  onnxruntimejsi ${onnxruntime-lib} fbjni::fbjni
-  ReactAndroid::turbomodulejsijni ${log-lib} # <-- Logcat logger
+  onnxruntimejsi
+  ${onnxruntime-lib}
+  fbjni::fbjni
+  ${RN_LIBS}
+  ${log-lib} # <-- Logcat logger
   android # <-- Android JNI core
 )
