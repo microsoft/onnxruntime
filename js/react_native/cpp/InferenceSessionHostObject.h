@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Env.h"
-#include "JsiHelper.hpp"
+#include "JsiHelper.h"
 #include <jsi/jsi.h>
 #include <memory>
 #include <onnxruntime_cxx_api.h>
@@ -15,16 +15,17 @@ class InferenceSessionHostObject
     : public HostObjectHelper,
       public std::enable_shared_from_this<InferenceSessionHostObject> {
  public:
-  InferenceSessionHostObject(std::shared_ptr<Env> env) : env_(env), HostObjectHelper({
-                                                                                         METHOD_INFO(InferenceSessionHostObject, loadModel, 2),
-                                                                                         METHOD_INFO(InferenceSessionHostObject, run, 2),
-                                                                                         METHOD_INFO(InferenceSessionHostObject, dispose, 0),
-                                                                                         METHOD_INFO(InferenceSessionHostObject, endProfiling, 0),
-                                                                                     },
-                                                                                     {
-                                                                                         GETTER_INFO(InferenceSessionHostObject, inputMetadata),
-                                                                                         GETTER_INFO(InferenceSessionHostObject, outputMetadata),
-                                                                                     }) {}
+  InferenceSessionHostObject(std::shared_ptr<Env> env) : HostObjectHelper({
+                                                                              METHOD_INFO(InferenceSessionHostObject, loadModel, 2),
+                                                                              METHOD_INFO(InferenceSessionHostObject, run, 2),
+                                                                              METHOD_INFO(InferenceSessionHostObject, dispose, 0),
+                                                                              METHOD_INFO(InferenceSessionHostObject, endProfiling, 0),
+                                                                          },
+                                                                          {
+                                                                              GETTER_INFO(InferenceSessionHostObject, inputMetadata),
+                                                                              GETTER_INFO(InferenceSessionHostObject, outputMetadata),
+                                                                          }),
+                                                         env_(env) {}
 
   static inline facebook::jsi::Value
   constructor(std::shared_ptr<Env> env, facebook::jsi::Runtime& runtime,

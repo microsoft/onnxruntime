@@ -33,7 +33,7 @@
   }
 
 #define GETTER_INFO(cls, name) \
-  { #name, BIND_THIS_GETTER(cls, name) }
+  {#name, BIND_THIS_GETTER(cls, name)}
 
 #define DEFINE_METHOD(name)                                     \
   Value name##_method(Runtime& runtime, const Value& thisValue, \
@@ -77,10 +77,10 @@ class HostObjectHelper : public facebook::jsi::HostObject {
   getPropertyNames(facebook::jsi::Runtime& runtime) override {
     std::vector<facebook::jsi::PropNameID> names;
     for (auto& [name, _] : methods_) {
-      names.push_back(PropNameID::forUtf8(runtime, name));
+      names.push_back(facebook::jsi::PropNameID::forUtf8(runtime, name));
     }
     for (auto& [name, _] : getters_) {
-      names.push_back(PropNameID::forUtf8(runtime, name));
+      names.push_back(facebook::jsi::PropNameID::forUtf8(runtime, name));
     }
     return names;
   }
@@ -89,8 +89,8 @@ class HostObjectHelper : public facebook::jsi::HostObject {
                            const facebook::jsi::PropNameID& name) override {
     auto method = methods_.find(name.utf8(runtime));
     if (method != methods_.end()) {
-      return Function::createFromHostFunction(runtime, name, method->second.count,
-                                              method->second.method);
+      return facebook::jsi::Function::createFromHostFunction(runtime, name, method->second.count,
+                                                             method->second.method);
     }
 
     auto getter = getters_.find(name.utf8(runtime));

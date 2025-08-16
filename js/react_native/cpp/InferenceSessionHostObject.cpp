@@ -135,8 +135,8 @@ class InferenceSessionHostObject::RunAsyncWorker : public AsyncWorker {
   }
 
  private:
-  Ort::MemoryInfo memoryInfo_;
   std::shared_ptr<InferenceSessionHostObject> session_;
+  Ort::MemoryInfo memoryInfo_;
   Ort::RunOptions runOptions_;
   std::vector<std::string> inputNames_;
   std::vector<Ort::Value> inputValues_;

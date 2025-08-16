@@ -10,7 +10,7 @@ import { version } from './version';
 
 const backends = listSupportedBackends();
 for (const backend of backends) {
-  registerBackend(backend.name, onnxruntimeBackend, 100);
+  registerBackend(backend.name, onnxruntimeBackend, 1);
 }
 
 Object.defineProperty(env.versions, 'react-native', { value: version, enumerable: true });

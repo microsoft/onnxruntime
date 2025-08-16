@@ -6,7 +6,7 @@ package ai.onnxruntime.reactnative;
 import android.util.Log;
 
 class OnnxruntimeExtensions {
-  public String getLibraryPath() {
+  static public String getLibraryPath() {
     Log.i("OnnxruntimeExtensions",
           "ORT Extensions is not enabled in the current configuration. If you want to enable this support, "
               + "please add \"onnxruntimeEnableExtensions\": \"true\" in your project root directory package.json.");

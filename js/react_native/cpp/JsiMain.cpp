@@ -1,6 +1,6 @@
 #include "JsiMain.h"
 #include "InferenceSessionHostObject.h"
-#include "JsiHelper.hpp"
+#include "JsiHelper.h"
 #include "SessionUtils.h"
 #include <memory>
 

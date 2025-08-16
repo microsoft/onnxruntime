@@ -1,12 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import type {
-  Backend,
-  InferenceSession,
-  InferenceSessionHandler,
-  SessionHandler,
-} from 'onnxruntime-common';
+import type { Backend, InferenceSession, InferenceSessionHandler, SessionHandler } from 'onnxruntime-common';
 import { env, Tensor } from 'onnxruntime-common';
 import type { InferenceSessionImpl, ValueMetadata, SessionOptions } from './api';
 import { OrtApi, Module } from './binding';
@@ -40,7 +35,7 @@ const dataTypeStrings = [
 type RunOptions = InferenceSession.RunOptions;
 
 const fillNamesAndMetadata = (
-  rawMetadata: readonly ValueMetadata[]
+  rawMetadata: readonly ValueMetadata[],
 ): [names: string[], metadata: InferenceSession.ValueMetadata[]] => {
   const names: string[] = [];
   const metadata: InferenceSession.ValueMetadata[] = [];
@@ -89,7 +84,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
       outputNames: string[];
       inputMetadata: InferenceSession.ValueMetadata[];
       outputMetadata: InferenceSession.ValueMetadata[];
-    }
+    },
   ) {
     this.#inferenceSession = session;
     this.inputNames = info.inputNames;
@@ -99,12 +94,6 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   }
 
   static async create(pathOrBuffer: string | Uint8Array, options: SessionOptions) {
-    if (typeof OrtApi === 'undefined') {
-      throw new Error(
-        'Not found OrtApi, please make sure Onnxruntime installation is successful.'
-      );
-    }
-
     if (!OnnxruntimeSessionHandler.#initialized) {
       OnnxruntimeSessionHandler.#initialized = true;
 
@@ -141,16 +130,12 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
         pathOrBuffer.buffer as ArrayBuffer,
         pathOrBuffer.byteOffset,
         pathOrBuffer.byteLength,
-        options
+        options,
       );
     }
 
-    const [inputNames, inputMetadata] = fillNamesAndMetadata(
-      session.inputMetadata
-    );
-    const [outputNames, outputMetadata] = fillNamesAndMetadata(
-      session.outputMetadata
-    );
+    const [inputNames, inputMetadata] = fillNamesAndMetadata(session.inputMetadata);
+    const [outputNames, outputMetadata] = fillNamesAndMetadata(session.outputMetadata);
 
     return new OnnxruntimeSessionHandler(session, {
       inputNames,
@@ -182,7 +167,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   async run(
     feeds: SessionHandler.FeedsType,
     fetches: SessionHandler.FetchesType,
-    options: RunOptions
+    options: RunOptions,
   ): Promise<SessionHandler.ReturnType> {
     return await this.#inferenceSession.run(feeds, fetches, options);
   }
@@ -195,7 +180,7 @@ class OnnxruntimeBackend implements Backend {
 
   async createInferenceSessionHandler(
     pathOrBuffer: string | Uint8Array,
-    options?: SessionOptions
+    options?: SessionOptions,
   ): Promise<InferenceSessionHandler> {
     return await OnnxruntimeSessionHandler.create(pathOrBuffer, {
       ...options,

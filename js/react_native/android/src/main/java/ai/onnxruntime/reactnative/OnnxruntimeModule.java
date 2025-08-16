@@ -3,6 +3,8 @@
 
 package ai.onnxruntime.reactnative;
 
+import java.util.Map;
+import java.util.HashMap;
 import android.os.Build;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
@@ -11,7 +13,6 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.turbomodule.core.CallInvokerHolderImpl;
-import com.facebook.react.common.annotations.FrameworkAPI;
 
 @RequiresApi(api = Build.VERSION_CODES.N)
 public class OnnxruntimeModule extends ReactContextBaseJavaModule {
@@ -28,7 +29,6 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
     return "Onnxruntime";
   }
 
-  @OptIn(FrameworkAPI::class)
   native void nativeInstall(long jsiPointer, CallInvokerHolderImpl jsCallInvokerHolder);
 
   native void nativeCleanup();
@@ -43,12 +43,12 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
    * Install onnxruntime JSI API
    */
   @ReactMethod(isBlockingSynchronousMethod = true)
-  @OptIn(FrameworkAPI::class)
   public boolean install() {
     try {
       System.loadLibrary("onnxruntimejsi");
       JavaScriptContextHolder jsContext = getReactApplicationContext().getJavaScriptContextHolder();
-      CallInvokerHolderImpl jsCallInvokerHolder = getReactApplicationContext().getCatalystInstance().getJSCallInvokerHolder();
+      CallInvokerHolderImpl jsCallInvokerHolder =
+        (CallInvokerHolderImpl) getReactApplicationContext().getCatalystInstance().getJSCallInvokerHolder();
       nativeInstall(jsContext.get(), jsCallInvokerHolder);
       return true;
     } catch (Exception e) {
@@ -58,7 +58,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
 
   @Override
   public Map<String, Object> getConstants() {
-    final Map<String, Object> constants = new HashMap<>();
+    final Map<String, Object> constants = new HashMap();
     constants.put("ORT_EXTENSIONS_PATH", OnnxruntimeExtensions.getLibraryPath());
     return constants;
   }

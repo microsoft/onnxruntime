@@ -41,6 +41,7 @@
   "main": "dist/commonjs/index",
   "homepage": "https://github.com/microsoft/onnxruntime/blob/main/js/react_native/README.md",
   "files": [
+    "cpp",
     "lib",
     "dist",
     "android",

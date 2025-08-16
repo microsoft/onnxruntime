@@ -22,7 +22,7 @@ namespace onnxruntimejsi {
  */
 class AsyncWorker : public std::enable_shared_from_this<AsyncWorker> {
  public:
-  AsyncWorker(Runtime& rt, std::shared_ptr<Env> env) : env_(env) {}
+  AsyncWorker(Runtime& rt, std::shared_ptr<Env> env) : rt_(rt), env_(env) {}
 
   ~AsyncWorker() {
     if (worker_.joinable()) {
@@ -85,18 +85,22 @@ class AsyncWorker : public std::enable_shared_from_this<AsyncWorker> {
  private:
   void dispatchResolve() {
     auto self = shared_from_this();
-    env_->getJsInvoker()->invokeAsync([self](Runtime& rt) {
-      auto resVal = self->onResolve(rt);
-      self->resolveFunc_->asObject(rt).asFunction(rt).call(rt, resVal);
+    env_->getJsInvoker()->invokeAsync([self]() {
+      auto resVal = self->onResolve(self->rt_);
+      self->resolveFunc_->asObject(self->rt_)
+          .asFunction(self->rt_)
+          .call(self->rt_, resVal);
       self->clearKeeps();
     });
   }
 
   void dispatchReject(const std::string& err) {
     auto self = shared_from_this();
-    env_->getJsInvoker()->invokeAsync([self, err](Runtime& rt) {
-      auto resVal = self->onReject(rt, err);
-      self->rejectFunc_->asObject(rt).asFunction(rt).call(rt, resVal);
+    env_->getJsInvoker()->invokeAsync([self, err]() {
+      auto resVal = self->onReject(self->rt_, err);
+      self->rejectFunc_->asObject(self->rt_)
+          .asFunction(self->rt_)
+          .call(self->rt_, resVal);
       self->clearKeeps();
     });
   }
@@ -107,6 +111,7 @@ class AsyncWorker : public std::enable_shared_from_this<AsyncWorker> {
     rejectFunc_.reset();
   }
 
+  Runtime& rt_;
   std::shared_ptr<Env> env_;
   std::vector<std::shared_ptr<Value>> keptValues_;
   std::shared_ptr<Value> resolveFunc_;

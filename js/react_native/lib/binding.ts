@@ -14,4 +14,13 @@ if (typeof globalThis.OrtApi === 'undefined') {
   Module.install();
 }
 
-export const OrtApi = globalThis.OrtApi;
+export const OrtApi =
+  globalThis.OrtApi ??
+  new Proxy(
+    {},
+    {
+      get: () => {
+        throw new Error('OrtApi is not initialized. Please make sure Onnxruntime installation is successful.');
+      },
+    },
+  );

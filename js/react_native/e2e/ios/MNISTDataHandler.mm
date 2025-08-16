@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #import "MNISTDataHandler.h"
-#import "OnnxruntimeModule.h"
-#import "TensorHelper.h"
 #import <Foundation/Foundation.h>
 #import <React/RCTLog.h>
 
@@ -119,7 +117,7 @@ RCT_EXPORT_METHOD(postprocess : (NSDictionary*)result resolve : (RCTPromiseResol
   inputTensorMap[@"dims"] = dims;
 
   // type
-  inputTensorMap[@"type"] = JsTensorTypeFloat;
+  inputTensorMap[@"type"] = @"float32";
 
   // encoded data
   NSString* data = [byteBufferRef base64EncodedStringWithOptions:0];
