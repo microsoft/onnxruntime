@@ -302,6 +302,11 @@ struct OrtGraph {
   virtual const std::string& GetName() const = 0;
 
   /// <summary>
+  /// Returns the model's metadata.
+  /// </summary>
+  /// <returns>The model metadata.</returns>
+  virtual OrtModelMetadata* GetModelMetadata() const = 0;
+  /// <summary>
   /// Returns the model's path, which is empty if unknown.
   /// </summary>
   /// <returns>The model path.</returns>

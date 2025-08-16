@@ -2626,6 +2626,17 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetName, _In_ const OrtGraph* graph, _Outptr_
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetModelMetadata, _In_ const OrtGraph* graph, _Outptr_ OrtModelMetadata** out) {
+  API_IMPL_BEGIN
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'out' argument is NULL");
+  }
+  *out = graph->GetModelMetadata();
+  //
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetModelPath, _In_ const OrtGraph* graph, _Outptr_ const ORTCHAR_T** model_path) {
   API_IMPL_BEGIN
   if (model_path == nullptr) {
@@ -4034,6 +4045,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ValueInfo_IsConstantInitializer,
     &OrtApis::ValueInfo_IsFromOuterScope,
     &OrtApis::Graph_GetName,
+    &OrtApis::Graph_GetModelMetadata,
     &OrtApis::Graph_GetModelPath,
     &OrtApis::Graph_GetOnnxIRVersion,
     &OrtApis::Graph_GetNumOperatorSets,

@@ -13,7 +13,7 @@
 #include "core/framework/ort_value.h"
 #include "core/graph/abi_graph_types.h"
 #include "core/graph/onnx_protobuf.h"
-
+#include "core/session/inference_session.h"
 namespace onnxruntime {
 
 /// <summary>
@@ -184,6 +184,9 @@ struct ModelEditorGraph : public OrtGraph {
 
   const std::string& GetName() const override { return name; }
 
+  OrtModelMetadata* GetModelMetadata() const override {
+    return reinterpret_cast<OrtModelMetadata*>(std::make_unique<ModelMetadata>(model_metadata).release());
+  }
   const ORTCHAR_T* GetModelPath() const override { return model_path.c_str(); }
 
   int64_t GetOnnxIRVersion() const override {
@@ -241,6 +244,7 @@ struct ModelEditorGraph : public OrtGraph {
   std::vector<std::unique_ptr<onnxruntime::ModelEditorNode>> nodes;
   std::string name = "ModelEditorGraph";
   std::filesystem::path model_path;
+  ModelMetadata model_metadata;
 };
 
 }  // namespace onnxruntime
