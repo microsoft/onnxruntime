@@ -1027,6 +1027,10 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE USE_KLEIDIAI)
     endif()
 
+    if (onnxruntime_BUILD_SHARED_LIB)
+      target_compile_definitions(${target_name} PRIVATE BUILD_SHARED_LIB)
+    endif()
+
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span

@@ -2560,6 +2560,8 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const IKernelLookup& /*kernel_lookup*/,
                                          const GraphOptimizerRegistry& graph_optimizer_registry,
                                          IResourceAccountant* /* resource_accountant */) const {
+  const auto& logger = *GetLogger();
+  LOGS(logger, ERROR) << "test";
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
   // Get ModelPath
@@ -2827,11 +2829,11 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   const size_t number_of_subgraphs = supported_nodes_vector.size();
   if (number_of_trt_nodes == 0) {
-    LOGS_DEFAULT(WARNING) << "[TensorRT EP] No graph will run on TensorRT execution provider";
+    LOGS_DEFAULT(ERROR) << "[TensorRT EP] No graph will run on TensorRT execution provider";
   } else if (number_of_trt_nodes == number_of_ort_nodes) {
-    LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
+    LOGS_DEFAULT(ERROR) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
   } else {
-    LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT execution provider is " << number_of_subgraphs;
+    LOGS_DEFAULT(ERROR) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT execution provider is " << number_of_subgraphs;
   }
 
   // The context map is only used during EP compile time, release it to save memory space.

@@ -12,7 +12,8 @@
 #include "core/common/string_utils.h"
 
 namespace onnxruntime {
-namespace perftest {
+namespace test {
+namespace utils {
 
 void ParseSessionConfigs(const std::string& configs_string,
                          std::unordered_map<std::string, std::string>& session_configs,
@@ -57,7 +58,7 @@ void ParseSessionConfigs(const std::string& configs_string,
 }
 
 void ParseEpOptions(const std::string& input, std::vector<std::unordered_map<std::string, std::string>>& result) {
-  auto tokens = utils::SplitString(input, ";", true);
+  auto tokens = onnxruntime::utils::SplitString(input, ";", true);
 
   for (const auto& token : tokens) {
     result.emplace_back();  // Adds a new empty map
@@ -90,5 +91,33 @@ void ParseEpDeviceIndexList(const std::string& input, std::vector<int>& result) 
     }
   }
 }
-}  // namespace perftest
+
+std::vector<std::string> ConvertArgvToUtf8Strings(int argc, ORTCHAR_T* argv[]) {
+  std::vector<std::string> utf8_args;
+  utf8_args.reserve(argc);
+  for (int i = 0; i < argc; ++i) {
+    std::string utf8_string = ToUTF8String(argv[i]);
+
+    // Abseil flags doens't natively alias "-h" to "--help".
+    // We make "-h" alias to "--help" here.
+    if (utf8_string == "-h" || utf8_string == "--h") {
+      utf8_args.push_back("--help");
+    } else {
+      utf8_args.push_back(utf8_string);
+    }
+  }
+  return utf8_args;
+}
+
+std::vector<char*> CStringsFromStrings(std::vector<std::string>& utf8_args) {
+  std::vector<char*> utf8_argv;
+  utf8_argv.reserve(utf8_args.size());
+  for (auto& str : utf8_args) {
+    utf8_argv.push_back(&str[0]);
+  }
+  return utf8_argv;
+}
+
+}  // namespace utils
+}  // namespace test
 }  // namespace onnxruntime

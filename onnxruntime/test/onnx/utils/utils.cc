@@ -1,18 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
-#include "test/perftest/utils.h"
-#include "test/perftest/strings_helper.h"
+#include "utils.h"
+#include "strings_helper.h"
 #include <core/platform/path_lib.h>
 
 #include <cstdint>
-
 #include <filesystem>
 
-namespace onnxruntime {
-namespace perftest {
-namespace utils {
+#ifndef _WIN32
+#include <thread>
+#endif
 
+namespace onnxruntime {
+namespace test {
+namespace utils {
 void ListEpDevices(const Ort::Env& env) {
   std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
 
@@ -36,17 +37,19 @@ void ListEpDevices(const Ort::Env& env) {
   }
 }
 
-void RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config) {
-  if (!test_config.plugin_ep_names_and_libs.empty()) {
+void RegisterExecutionProviderLibrary(Ort::Env& env,
+                                      std::basic_string<ORTCHAR_T>& plugin_ep_names_and_libs,
+                                      std::vector<std::string>& registered_plugin_eps) {
+  if (!plugin_ep_names_and_libs.empty()) {
     std::unordered_map<std::string, std::string> ep_names_to_libs;
-    ParseSessionConfigs(ToUTF8String(test_config.plugin_ep_names_and_libs), ep_names_to_libs);
+    ParseSessionConfigs(onnxruntime::ToUTF8String(plugin_ep_names_and_libs), ep_names_to_libs);
     if (ep_names_to_libs.size() > 0) {
       for (auto& pair : ep_names_to_libs) {
         const std::filesystem::path library_path = pair.second;
         const std::string registration_name = pair.first;
         Ort::Status status(Ort::GetApi().RegisterExecutionProviderLibrary(env, registration_name.c_str(), ToPathString(library_path.string()).c_str()));
         if (status.IsOK()) {
-          test_config.registered_plugin_eps.push_back(registration_name);
+          registered_plugin_eps.push_back(registration_name);
         } else {
           fprintf(stderr, "Can't register %s plugin library: %s\n", registration_name.c_str(), status.GetErrorMessage().c_str());
         }
@@ -55,8 +58,8 @@ void RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test
   }
 }
 
-void UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config) {
-  for (auto& registration_name : test_config.registered_plugin_eps) {
+void UnregisterExecutionProviderLibrary(Ort::Env& env, std::vector<std::string>& registered_plugin_eps) {
+  for (auto& registration_name : registered_plugin_eps) {
     Ort::Status status(Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str()));
     if (!status.IsOK()) {
       fprintf(stderr, "%s", status.GetErrorMessage().c_str());
@@ -64,32 +67,34 @@ void UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& te
   }
 }
 
-std::vector<std::string> ConvertArgvToUtf8Strings(int argc, ORTCHAR_T* argv[]) {
-  std::vector<std::string> utf8_args;
-  utf8_args.reserve(argc);
-  for (int i = 0; i < argc; ++i) {
-    std::string utf8_string = ToUTF8String(argv[i]);
-
-    // Abseil flags doens't natively alias "-h" to "--help".
-    // We make "-h" alias to "--help" here.
-    if (utf8_string == "-h" || utf8_string == "--h") {
-      utf8_args.push_back("--help");
-    } else {
-      utf8_args.push_back(utf8_string);
+#ifdef _WIN32
+int GetNumCpuCores() {
+  SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
+  DWORD returnLength = sizeof(buffer);
+  if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
+    // try GetSystemInfo
+    SYSTEM_INFO sysInfo;
+    GetSystemInfo(&sysInfo);
+    if (sysInfo.dwNumberOfProcessors <= 0) {
+      ORT_THROW("Fatal error: 0 count processors from GetSystemInfo");
+    }
+    // This is the number of logical processors in the current group
+    return sysInfo.dwNumberOfProcessors;
+  }
+  int processorCoreCount = 0;
+  int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+  for (int i = 0; i != count; ++i) {
+    if (buffer[i].Relationship == RelationProcessorCore) {
+      ++processorCoreCount;
     }
   }
-  return utf8_args;
+  if (!processorCoreCount) ORT_THROW("Fatal error: 0 count processors from GetLogicalProcessorInformation");
+  return processorCoreCount;
 }
-
-std::vector<char*> CStringsFromStrings(std::vector<std::string>& utf8_args) {
-  std::vector<char*> utf8_argv;
-  utf8_argv.reserve(utf8_args.size());
-  for (auto& str : utf8_args) {
-    utf8_argv.push_back(&str[0]);
-  }
-  return utf8_argv;
-}
+#else
+int GetNumCpuCores() { return static_cast<int>(std::thread::hardware_concurrency()); }
+#endif
 
 }  // namespace utils
-}  // namespace perftest
+}  // namespace test
 }  // namespace onnxruntime
