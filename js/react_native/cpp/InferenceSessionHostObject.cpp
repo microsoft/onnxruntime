@@ -8,59 +8,9 @@ using namespace facebook::jsi;
 
 namespace onnxruntimejsi {
 
-InferenceSessionHostObject::InferenceSessionHostObject(std::shared_ptr<Env> env)
-    : env_(env), methods_({
-                     METHOD_INFO(InferenceSessionHostObject, loadModel, 2),
-                     METHOD_INFO(InferenceSessionHostObject, run, 2),
-                     METHOD_INFO(InferenceSessionHostObject, dispose, 0),
-                     METHOD_INFO(InferenceSessionHostObject, endProfiling, 0),
-                 }),
-      getters_({
-          GETTER_INFO(InferenceSessionHostObject, inputMetadata),
-          GETTER_INFO(InferenceSessionHostObject, outputMetadata),
-      }) {}
-
-std::vector<PropNameID>
-InferenceSessionHostObject::getPropertyNames(Runtime &rt) {
-  std::vector<PropNameID> names;
-  for (auto &[name, _] : methods_) {
-    names.push_back(PropNameID::forUtf8(rt, name));
-  }
-  for (auto &[name, _] : getters_) {
-    names.push_back(PropNameID::forUtf8(rt, name));
-  }
-  return names;
-}
-
-Value InferenceSessionHostObject::get(Runtime &runtime,
-                                      const PropNameID &name) {
-  auto propName = name.utf8(runtime);
-  auto method = methods_.find(propName);
-  if (method != methods_.end()) {
-    return Function::createFromHostFunction(runtime, name, method->second.count,
-                                            method->second.method);
-  }
-
-  auto getter = getters_.find(propName);
-  if (getter != getters_.end()) {
-    return getter->second(runtime);
-  }
-
-  return Value::undefined();
-}
-
-void InferenceSessionHostObject::set(Runtime &runtime, const PropNameID &name,
-                                     const Value &value) {
-  auto propName = name.utf8(runtime);
-  auto setter = setters_.find(propName);
-  if (setter != setters_.end()) {
-    setter->second(runtime, value);
-  }
-}
-
 class InferenceSessionHostObject::LoadModelAsyncWorker : public AsyncWorker {
-public:
-  LoadModelAsyncWorker(Runtime &runtime, const Value *arguments, size_t count,
+ public:
+  LoadModelAsyncWorker(Runtime& runtime, const Value* arguments, size_t count,
                        std::shared_ptr<InferenceSessionHostObject> session)
       : AsyncWorker(runtime, session->env_), session_(session) {
     if (count < 1)
@@ -85,7 +35,7 @@ public:
     }
   }
 
-protected:
+ protected:
   void execute() {
     if (modelPath_.empty()) {
       session_->session_ = std::make_unique<Ort::Session>(
@@ -97,12 +47,12 @@ protected:
     }
   }
 
-  Value onResolve(Runtime &rt) { return Value::undefined(); }
+  Value onResolve(Runtime& rt) { return Value::undefined(); }
 
-private:
+ private:
   std::string error_;
   std::string modelPath_;
-  void *modelData_;
+  void* modelData_;
   size_t modelDataLength_;
   std::shared_ptr<InferenceSessionHostObject> session_;
   Ort::SessionOptions sessionOptions_;
@@ -119,26 +69,24 @@ DEFINE_METHOD(InferenceSessionHostObject::loadModel) {
 }
 
 class InferenceSessionHostObject::RunAsyncWorker : public AsyncWorker {
-public:
-  RunAsyncWorker(Runtime &runtime, const Value *arguments, size_t count,
+ public:
+  RunAsyncWorker(Runtime& runtime, const Value* arguments, size_t count,
                  std::shared_ptr<InferenceSessionHostObject> session)
-      : AsyncWorker(runtime, session->env_), session_(session),
-        memoryInfo_(
-            Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault)) {
+      : AsyncWorker(runtime, session->env_), session_(session), memoryInfo_(Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault)) {
     if (count < 1)
       throw JSError(runtime, "run requires at least 1 argument");
     if (count > 2 && !arguments[2].isUndefined()) {
       parseRunOptions(runtime, arguments[2], runOptions_);
     }
     forEach(runtime, arguments[0].asObject(runtime),
-            [&](const std::string &key, const Value &value, size_t index) {
+            [&](const std::string& key, const Value& value, size_t index) {
               inputNames_.push_back(key);
               inputValues_.push_back(TensorUtils::createOrtValueFromJSTensor(
                   runtime, value.asObject(runtime), memoryInfo_));
               keepValue(runtime, value);
             });
     forEach(runtime, arguments[1].asObject(runtime),
-            [&](const std::string &key, const Value &value, size_t index) {
+            [&](const std::string& key, const Value& value, size_t index) {
               outputNames_.push_back(key);
               if (value.isObject() &&
                   TensorUtils::isTensor(runtime, value.asObject(runtime))) {
@@ -154,21 +102,21 @@ public:
             });
   }
 
-protected:
+ protected:
   void execute() {
-    auto inputNames = std::vector<const char *>(inputNames_.size());
+    auto inputNames = std::vector<const char*>(inputNames_.size());
     std::transform(inputNames_.begin(), inputNames_.end(), inputNames.begin(),
-                   [](const std::string &name) { return name.c_str(); });
-    auto outputNames = std::vector<const char *>(outputNames_.size());
+                   [](const std::string& name) { return name.c_str(); });
+    auto outputNames = std::vector<const char*>(outputNames_.size());
     std::transform(outputNames_.begin(), outputNames_.end(),
                    outputNames.begin(),
-                   [](const std::string &name) { return name.c_str(); });
+                   [](const std::string& name) { return name.c_str(); });
     session_->session_->Run(runOptions_, inputNames.data(), inputValues_.data(),
                             inputValues_.size(), outputNames.data(),
                             outputValues_.data(), outputValues_.size());
   }
 
-  Value onResolve(Runtime &rt) {
+  Value onResolve(Runtime& rt) {
     auto resultObject = Object(rt);
     auto tensorConstructor =
         session_->env_->getTensorConstructor(rt).asObject(rt);
@@ -186,7 +134,7 @@ protected:
     return Value(rt, resultObject);
   }
 
-private:
+ private:
   Ort::MemoryInfo memoryInfo_;
   std::shared_ptr<InferenceSessionHostObject> session_;
   Ort::RunOptions runOptions_;
@@ -214,7 +162,7 @@ DEFINE_METHOD(InferenceSessionHostObject::endProfiling) {
     Ort::AllocatorWithDefaultOptions allocator;
     auto filename = session_->EndProfilingAllocated(allocator);
     return String::createFromUtf8(runtime, std::string(filename.get()));
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     throw JSError(runtime, std::string(e.what()));
   }
 }
@@ -265,7 +213,7 @@ DEFINE_GETTER(InferenceSessionHostObject::inputMetadata) {
         }
         item.setProperty(runtime, "symbolicDimensions",
                          symbolicDimensionsArray);
-      } catch (const std::exception &) {
+      } catch (const std::exception&) {
         // Fallback for unknown types
         item.setProperty(runtime, "type",
                          String::createFromUtf8(runtime, "unknown"));
@@ -277,7 +225,7 @@ DEFINE_GETTER(InferenceSessionHostObject::inputMetadata) {
     }
 
     return Value(runtime, array);
-  } catch (const Ort::Exception &e) {
+  } catch (const Ort::Exception& e) {
     throw JSError(runtime, std::string(e.what()));
   }
 }
@@ -328,7 +276,7 @@ DEFINE_GETTER(InferenceSessionHostObject::outputMetadata) {
         }
         item.setProperty(runtime, "symbolicDimensions",
                          symbolicDimensionsArray);
-      } catch (const std::exception &) {
+      } catch (const std::exception&) {
         // Fallback for unknown types
         item.setProperty(runtime, "type",
                          String::createFromUtf8(runtime, "unknown"));
@@ -340,9 +288,9 @@ DEFINE_GETTER(InferenceSessionHostObject::outputMetadata) {
     }
 
     return Value(runtime, array);
-  } catch (const Ort::Exception &e) {
+  } catch (const Ort::Exception& e) {
     throw JSError(runtime, std::string(e.what()));
   }
 }
 
-} // namespace onnxruntimejsi
+}  // namespace onnxruntimejsi

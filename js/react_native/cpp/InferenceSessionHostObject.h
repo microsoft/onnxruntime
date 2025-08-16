@@ -12,25 +12,29 @@ using namespace facebook::jsi;
 namespace onnxruntimejsi {
 
 class InferenceSessionHostObject
-    : public HostObject,
+    : public HostObjectHelper,
       public std::enable_shared_from_this<InferenceSessionHostObject> {
-public:
-  InferenceSessionHostObject(std::shared_ptr<Env> env);
-
-  std::vector<PropNameID> getPropertyNames(Runtime &rt) override;
-  Value get(Runtime &runtime, const PropNameID &name) override;
-  void set(Runtime &runtime, const PropNameID &name,
-           const Value &value) override;
+ public:
+  InferenceSessionHostObject(std::shared_ptr<Env> env) : env_(env), HostObjectHelper({
+                                                                                         METHOD_INFO(InferenceSessionHostObject, loadModel, 2),
+                                                                                         METHOD_INFO(InferenceSessionHostObject, run, 2),
+                                                                                         METHOD_INFO(InferenceSessionHostObject, dispose, 0),
+                                                                                         METHOD_INFO(InferenceSessionHostObject, endProfiling, 0),
+                                                                                     },
+                                                                                     {
+                                                                                         GETTER_INFO(InferenceSessionHostObject, inputMetadata),
+                                                                                         GETTER_INFO(InferenceSessionHostObject, outputMetadata),
+                                                                                     }) {}
 
   static inline facebook::jsi::Value
-  constructor(std::shared_ptr<Env> env, facebook::jsi::Runtime &runtime,
-              const facebook::jsi::Value &thisValue,
-              const facebook::jsi::Value *arguments, size_t count) {
+  constructor(std::shared_ptr<Env> env, facebook::jsi::Runtime& runtime,
+              const facebook::jsi::Value& thisValue,
+              const facebook::jsi::Value* arguments, size_t count) {
     return facebook::jsi::Object::createFromHostObject(
         runtime, std::make_shared<InferenceSessionHostObject>(env));
   }
 
-private:
+ private:
   std::shared_ptr<Env> env_;
   std::shared_ptr<Ort::Session> session_;
 
@@ -44,10 +48,6 @@ private:
 
   DEFINE_GETTER(inputMetadata);
   DEFINE_GETTER(outputMetadata);
-
-  JsiMethodMap methods_;
-  JsiGetterMap getters_;
-  JsiSetterMap setters_;
 };
 
-} // namespace onnxruntimejsi
+}  // namespace onnxruntimejsi

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import type {
   SessionHandler,
   InferenceSession,
@@ -19,10 +22,10 @@ export interface ValueMetadata {
 type FeedsType = SessionHandler.FeedsType;
 type FetchesType = SessionHandler.FetchesType;
 type ReturnType = SessionHandler.ReturnType;
-type SessionOptions = InferenceSession.SessionOptions & {
+export type SessionOptions = InferenceSession.SessionOptions & {
   ortExtLibPath?: string;
 };
-type RunOptions = InferenceSession.RunOptions;
+export type RunOptions = InferenceSession.RunOptions;
 
 export interface InferenceSessionImpl {
   loadModel(modelPath: string, options: SessionOptions): Promise<void>;

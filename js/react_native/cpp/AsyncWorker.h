@@ -13,9 +13,16 @@ using namespace facebook::jsi;
 
 namespace onnxruntimejsi {
 
+/**
+ * @brief AsyncWorker is a helper class to run a function asynchronously and
+ * return a promise.
+ *
+ * @param rt The runtime to use.
+ * @param env The environment to use.
+ */
 class AsyncWorker : public std::enable_shared_from_this<AsyncWorker> {
-public:
-  AsyncWorker(Runtime &rt, std::shared_ptr<Env> env) : env_(env) {}
+ public:
+  AsyncWorker(Runtime& rt, std::shared_ptr<Env> env) : env_(env) {}
 
   ~AsyncWorker() {
     if (worker_.joinable()) {
@@ -27,18 +34,31 @@ public:
     }
   }
 
-  void keepValue(Runtime &rt, const Value &value) {
+  /**
+   * @brief Make sure the value won't be garbage collected during the async
+   * operation.
+   *
+   * @param rt The runtime to use.
+   * @param value The value to keep.
+   */
+  void keepValue(Runtime& rt, const Value& value) {
     keptValues_.push_back(std::make_shared<Value>(rt, value));
   }
 
-  Value toPromise(Runtime &rt) {
+  /**
+   * @brief Create a promise to be used in the async operation.
+   *
+   * @param rt The runtime to use.
+   * @return The promise.
+   */
+  Value toPromise(Runtime& rt) {
     auto promiseCtor = rt.global().getPropertyAsFunction(rt, "Promise");
     auto self = shared_from_this();
 
     return promiseCtor.callAsConstructor(
         rt, Function::createFromHostFunction(
                 rt, PropNameID::forAscii(rt, "executor"), 2,
-                [self](Runtime &rt, const Value &thisVal, const Value *args,
+                [self](Runtime& rt, const Value& thisVal, const Value* args,
                        size_t count) -> Value {
                   self->resolveFunc_ = std::make_shared<Value>(rt, args[0]);
                   self->rejectFunc_ = std::make_shared<Value>(rt, args[1]);
@@ -46,7 +66,7 @@ public:
                     try {
                       self->execute();
                       self->dispatchResolve();
-                    } catch (const std::exception &e) {
+                    } catch (const std::exception& e) {
                       self->dispatchReject(e.what());
                     }
                   });
@@ -54,27 +74,27 @@ public:
                 }));
   }
 
-protected:
+ protected:
   virtual void execute() = 0;
 
-  virtual Value onResolve(Runtime &rt) = 0;
-  virtual Value onReject(Runtime &rt, const std::string &err) {
+  virtual Value onResolve(Runtime& rt) = 0;
+  virtual Value onReject(Runtime& rt, const std::string& err) {
     return String::createFromUtf8(rt, err);
   }
 
-private:
+ private:
   void dispatchResolve() {
     auto self = shared_from_this();
-    env_->getJsInvoker()->invokeAsync([self](Runtime &rt) {
+    env_->getJsInvoker()->invokeAsync([self](Runtime& rt) {
       auto resVal = self->onResolve(rt);
       self->resolveFunc_->asObject(rt).asFunction(rt).call(rt, resVal);
       self->clearKeeps();
     });
   }
 
-  void dispatchReject(const std::string &err) {
+  void dispatchReject(const std::string& err) {
     auto self = shared_from_this();
-    env_->getJsInvoker()->invokeAsync([self, err](Runtime &rt) {
+    env_->getJsInvoker()->invokeAsync([self, err](Runtime& rt) {
       auto resVal = self->onReject(rt, err);
       self->rejectFunc_->asObject(rt).asFunction(rt).call(rt, resVal);
       self->clearKeeps();
@@ -94,4 +114,4 @@ private:
   std::thread worker_;
 };
 
-} // namespace onnxruntimejsi
+}  // namespace onnxruntimejsi

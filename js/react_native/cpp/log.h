@@ -5,11 +5,11 @@
 
 #define LOG_TAG "onnxruntimejsi"
 
-#define LOGI(fmt, ...)                                                         \
+#define LOGI(fmt, ...) \
   __android_log_print(ANDROID_LOG_INFO, LOG_TAG, fmt, ##__VA_ARGS__)
-#define LOGE(fmt, ...)                                                         \
+#define LOGE(fmt, ...) \
   __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, fmt, ##__VA_ARGS__)
-#define LOGD(fmt, ...)                                                         \
+#define LOGD(fmt, ...) \
   __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, fmt, ##__VA_ARGS__)
 
 #elif defined(__APPLE__)

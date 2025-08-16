@@ -77,7 +77,6 @@
     "output": "dist"
   },
   "dependencies": {
-    "buffer": "^6.0.3",
     "onnxruntime-common": "file:../common"
   },
   "scripts": {

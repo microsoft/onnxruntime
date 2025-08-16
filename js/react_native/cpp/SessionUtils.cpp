@@ -25,8 +25,9 @@ using namespace facebook::jsi;
 
 namespace onnxruntimejsi {
 
-const std::vector<const char *> supportedBackends = {
-    "cpu",    "xnnpack",
+const std::vector<const char*> supportedBackends = {
+    "cpu",
+    "xnnpack",
 #ifdef USE_COREML
     "coreml",
 #endif
@@ -39,7 +40,7 @@ const std::vector<const char *> supportedBackends = {
 };
 
 class ExtendedSessionOptions : public Ort::SessionOptions {
-public:
+ public:
   ExtendedSessionOptions() = default;
 
   void AppendExecutionProvider_CPU(int use_arena) {
@@ -47,7 +48,7 @@ public:
         OrtSessionOptionsAppendExecutionProvider_CPU(this->p_, use_arena));
   }
 
-  void AddFreeDimensionOverrideByName(const char *name, int64_t value) {
+  void AddFreeDimensionOverrideByName(const char* name, int64_t value) {
     Ort::ThrowOnError(
         Ort::GetApi().AddFreeDimensionOverrideByName(this->p_, name, value));
   }
@@ -65,8 +66,8 @@ public:
 #endif
 };
 
-void parseSessionOptions(Runtime &runtime, const Value &optionsValue,
-                         Ort::SessionOptions &sessionOptions) {
+void parseSessionOptions(Runtime& runtime, const Value& optionsValue,
+                         Ort::SessionOptions& sessionOptions) {
   if (!optionsValue.isObject())
     return;
 
@@ -117,8 +118,8 @@ void parseSessionOptions(Runtime &runtime, const Value &optionsValue,
       if (prop.isObject()) {
         auto overrides = prop.asObject(runtime);
         forEach(runtime, overrides,
-                [&](const std::string &key, const Value &value, size_t index) {
-                  reinterpret_cast<ExtendedSessionOptions &>(sessionOptions)
+                [&](const std::string& key, const Value& value, size_t index) {
+                  reinterpret_cast<ExtendedSessionOptions&>(sessionOptions)
                       .AddFreeDimensionOverrideByName(
                           key.c_str(), static_cast<int64_t>(value.asNumber()));
                 });
@@ -236,10 +237,10 @@ void parseSessionOptions(Runtime &runtime, const Value &optionsValue,
       if (prop.isArray(runtime)) {
         auto externalDataArray = prop.asArray(runtime);
         std::vector<std::string> paths;
-        std::vector<char *> buffs;
+        std::vector<char*> buffs;
         std::vector<size_t> sizes;
         forEach(
-            runtime, externalDataArray, [&](const Value &value, size_t index) {
+            runtime, externalDataArray, [&](const Value& value, size_t index) {
               if (value.isObject()) {
                 auto externalDataObject = value.asObject(runtime);
                 if (externalDataObject.hasProperty(runtime, "path")) {
@@ -258,7 +259,7 @@ void parseSessionOptions(Runtime &runtime, const Value &optionsValue,
                                            .asObject(runtime)
                                            .getArrayBuffer(runtime);
                     buffs.push_back(
-                        reinterpret_cast<char *>(arrayBuffer.data(runtime)));
+                        reinterpret_cast<char*>(arrayBuffer.data(runtime)));
                     sizes.push_back(arrayBuffer.size(runtime));
                   }
                 }
@@ -274,7 +275,7 @@ void parseSessionOptions(Runtime &runtime, const Value &optionsValue,
       auto prop = options.getProperty(runtime, "executionProviders");
       if (prop.isObject() && prop.asObject(runtime).isArray(runtime)) {
         auto providers = prop.asObject(runtime).asArray(runtime);
-        forEach(runtime, providers, [&](const Value &epValue, size_t index) {
+        forEach(runtime, providers, [&](const Value& epValue, size_t index) {
           std::string epName;
           std::unique_ptr<Object> providerObj;
           if (epValue.isString()) {
@@ -295,7 +296,7 @@ void parseSessionOptions(Runtime &runtime, const Value &optionsValue,
                 use_arena = 1;
               }
             }
-            reinterpret_cast<ExtendedSessionOptions &>(sessionOptions)
+            reinterpret_cast<ExtendedSessionOptions&>(sessionOptions)
                 .AppendExecutionProvider_CPU(use_arena);
           } else if (epName == "xnnpack") {
             sessionOptions.AppendExecutionProvider("XNNPACK");
@@ -311,7 +312,7 @@ void parseSessionOptions(Runtime &runtime, const Value &optionsValue,
                 flags = static_cast<int>(flagsValue.asNumber());
               }
             }
-            reinterpret_cast<ExtendedSessionOptions &>(sessionOptions)
+            reinterpret_cast<ExtendedSessionOptions&>(sessionOptions)
                 .AppendExecutionProvider_CoreML(flags);
           }
 #endif
@@ -344,7 +345,7 @@ void parseSessionOptions(Runtime &runtime, const Value &optionsValue,
                 nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
               }
             }
-            reinterpret_cast<ExtendedSessionOptions &>(sessionOptions)
+            reinterpret_cast<ExtendedSessionOptions&>(sessionOptions)
                 .AppendExecutionProvider_Nnapi(nnapi_flags);
           }
 #endif
@@ -385,16 +386,16 @@ void parseSessionOptions(Runtime &runtime, const Value &optionsValue,
         });
       }
     }
-  } catch (const JSError &e) {
+  } catch (const JSError& e) {
     throw e;
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     throw JSError(runtime,
                   "Failed to parse session options: " + std::string(e.what()));
   }
 }
 
-void parseRunOptions(Runtime &runtime, const Value &optionsValue,
-                     Ort::RunOptions &runOptions) {
+void parseRunOptions(Runtime& runtime, const Value& optionsValue,
+                     Ort::RunOptions& runOptions) {
   if (!optionsValue.isObject())
     return;
 
@@ -440,10 +441,10 @@ void parseRunOptions(Runtime &runtime, const Value &optionsValue,
       }
     }
 
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     throw JSError(runtime,
                   "Failed to parse run options: " + std::string(e.what()));
   }
 }
 
-} // namespace onnxruntimejsi
+}  // namespace onnxruntimejsi

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import type {
   Backend,
   InferenceSession,
@@ -5,7 +8,7 @@ import type {
   SessionHandler,
 } from 'onnxruntime-common';
 import { env, Tensor } from 'onnxruntime-common';
-import type { InferenceSessionImpl, ValueMetadata } from './api';
+import type { InferenceSessionImpl, ValueMetadata, SessionOptions } from './api';
 import { OrtApi, Module } from './binding';
 
 const dataTypeStrings = [
@@ -34,7 +37,6 @@ const dataTypeStrings = [
   'int4',
 ] as const;
 
-type SessionOptions = InferenceSession.SessionOptions;
 type RunOptions = InferenceSession.RunOptions;
 
 const fillNamesAndMetadata = (
@@ -96,10 +98,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
     this.outputMetadata = info.outputMetadata;
   }
 
-  static async create(
-    pathOrBuffer: string | Uint8Array,
-    options: SessionOptions
-  ) {
+  static async create(pathOrBuffer: string | Uint8Array, options: SessionOptions) {
     if (typeof OrtApi === 'undefined') {
       throw new Error(
         'Not found OrtApi, please make sure Onnxruntime installation is successful.'
@@ -173,9 +172,9 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
 
   startProfiling(): void {
     // startProfiling is a no-op.
-    //
     // if sessionOptions.enableProfiling is true, profiling will be enabled when the model is loaded.
   }
+
   endProfiling(): void {
     this.#inferenceSession.endProfiling();
   }

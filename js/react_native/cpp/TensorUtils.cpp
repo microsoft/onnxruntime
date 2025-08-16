@@ -8,7 +8,7 @@ using namespace facebook::jsi;
 
 namespace onnxruntimejsi {
 
-static const std::unordered_map<ONNXTensorElementDataType, const char *>
+static const std::unordered_map<ONNXTensorElementDataType, const char*>
     dataTypeToStringMap = {
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, "float32"},
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, "uint8"},
@@ -34,7 +34,7 @@ static const std::unordered_map<ONNXTensorElementDataType, size_t>
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, sizeof(int16_t)},
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, sizeof(int32_t)},
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, sizeof(int64_t)},
-        {ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, sizeof(char *)},
+        {ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, sizeof(char*)},
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, sizeof(bool)},
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, 2},
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, sizeof(double)},
@@ -42,7 +42,7 @@ static const std::unordered_map<ONNXTensorElementDataType, size_t>
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64, sizeof(uint64_t)},
 };
 
-static const std::unordered_map<ONNXTensorElementDataType, const char *>
+static const std::unordered_map<ONNXTensorElementDataType, const char*>
     dataTypeToTypedArrayMap = {
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, "Float32Array"},
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, "Float64Array"},
@@ -68,12 +68,12 @@ inline size_t getElementSize(ONNXTensorElementDataType dataType) {
                               std::to_string(static_cast<int>(dataType)));
 }
 
-bool TensorUtils::isTensor(Runtime &runtime, const Object &obj) {
+bool TensorUtils::isTensor(Runtime& runtime, const Object& obj) {
   return obj.hasProperty(runtime, "cpuData") &&
          obj.hasProperty(runtime, "dims") && obj.hasProperty(runtime, "type");
 }
 
-inline Object getTypedArrayConstructor(Runtime &runtime,
+inline Object getTypedArrayConstructor(Runtime& runtime,
                                        const ONNXTensorElementDataType type) {
   auto it = dataTypeToTypedArrayMap.find(type);
   if (it != dataTypeToTypedArrayMap.end()) {
@@ -90,7 +90,7 @@ inline Object getTypedArrayConstructor(Runtime &runtime,
                     std::to_string(static_cast<int>(type)));
 }
 
-size_t getElementCount(const std::vector<int64_t> &shape) {
+size_t getElementCount(const std::vector<int64_t>& shape) {
   size_t count = 1;
   for (auto dim : shape) {
     count *= dim;
@@ -99,9 +99,9 @@ size_t getElementCount(const std::vector<int64_t> &shape) {
 }
 
 Ort::Value
-TensorUtils::createOrtValueFromJSTensor(Runtime &runtime,
-                                        const Object &tensorObj,
-                                        const Ort::MemoryInfo &memoryInfo) {
+TensorUtils::createOrtValueFromJSTensor(Runtime& runtime,
+                                        const Object& tensorObj,
+                                        const Ort::MemoryInfo& memoryInfo) {
   if (!isTensor(runtime, tensorObj)) {
     throw JSError(
         runtime,
@@ -134,7 +134,7 @@ TensorUtils::createOrtValueFromJSTensor(Runtime &runtime,
     throw JSError(runtime, "Unsupported tensor data type: " + typeStr);
   }
 
-  void *data = nullptr;
+  void* data = nullptr;
   auto dataObj = dataProperty.asObject(runtime);
 
   if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
@@ -143,10 +143,10 @@ TensorUtils::createOrtValueFromJSTensor(Runtime &runtime,
     }
     auto array = dataObj.asArray(runtime);
     auto size = array.size(runtime);
-    data = new char *[size];
+    data = new char*[size];
     for (size_t i = 0; i < size; ++i) {
       auto item = array.getValueAtIndex(runtime, i);
-      static_cast<char **>(data)[i] =
+      static_cast<char**>(data)[i] =
           strdup(item.toString(runtime).utf8(runtime).c_str());
     }
   } else {
@@ -174,8 +174,8 @@ TensorUtils::createOrtValueFromJSTensor(Runtime &runtime,
 }
 
 Object
-TensorUtils::createJSTensorFromOrtValue(Runtime &runtime, Ort::Value &ortValue,
-                                        const Object &tensorConstructor) {
+TensorUtils::createJSTensorFromOrtValue(Runtime& runtime, Ort::Value& ortValue,
+                                        const Object& tensorConstructor) {
   auto typeInfo = ortValue.GetTensorTypeAndShapeInfo();
   auto shape = typeInfo.GetShape();
   auto elementType = typeInfo.GetElementType();
@@ -196,7 +196,7 @@ TensorUtils::createJSTensorFromOrtValue(Runtime &runtime, Ort::Value &ortValue,
   }
 
   if (elementType != ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
-    void *rawData = ortValue.GetTensorMutableRawData();
+    void* rawData = ortValue.GetTensorMutableRawData();
     size_t elementCount =
         ortValue.GetTensorTypeAndShapeInfo().GetElementCount();
     size_t elementSize = getElementSize(elementType);
@@ -233,4 +233,4 @@ TensorUtils::createJSTensorFromOrtValue(Runtime &runtime, Ort::Value &ortValue,
   }
 }
 
-} // namespace onnxruntimejsi
+}  // namespace onnxruntimejsi
