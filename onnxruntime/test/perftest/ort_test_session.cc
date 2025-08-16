@@ -515,8 +515,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
     test::utils::ParseSessionConfigs(ov_string, provider_options,
-                        {"device_filter", "performance_preference", "disable_metacommands",
-                         "enable_graph_capture", "enable_graph_serialization"});
+                                     {"device_filter", "performance_preference", "disable_metacommands",
+                                      "enable_graph_capture", "enable_graph_serialization"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
