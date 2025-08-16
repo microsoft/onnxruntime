@@ -3,14 +3,13 @@
 
 package ai.onnxruntime.reactnative;
 
-import ai.onnxruntime.OrtSession.SessionOptions;
 import android.util.Log;
 
 class OnnxruntimeExtensions {
-  public void registerOrtExtensionsIfEnabled(SessionOptions sessionOptions) {
+  public String getLibraryPath() {
     Log.i("OnnxruntimeExtensions",
           "ORT Extensions is not enabled in the current configuration. If you want to enable this support, "
               + "please add \"onnxruntimeEnableExtensions\": \"true\" in your project root directory package.json.");
-    return;
+    return null;
   }
 }

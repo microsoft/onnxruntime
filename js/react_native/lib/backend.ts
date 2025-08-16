@@ -1,186 +1,191 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-
-import {
-  type Backend,
+import type {
+  Backend,
   InferenceSession,
-  type InferenceSessionHandler,
-  type SessionHandler,
-  Tensor,
+  InferenceSessionHandler,
+  SessionHandler,
 } from 'onnxruntime-common';
-import { Platform } from 'react-native';
+import { env, Tensor } from 'onnxruntime-common';
+import type { InferenceSessionImpl, ValueMetadata } from './api';
+import { OrtApi, Module } from './binding';
 
-import { binding, type Binding, type JSIBlob, jsiHelper } from './binding';
+const dataTypeStrings = [
+  undefined, // 0
+  'float32',
+  'uint8',
+  'int8',
+  'uint16',
+  'int16',
+  'int32',
+  'int64',
+  'string',
+  'bool',
+  'float16',
+  'float64',
+  'uint32',
+  'uint64',
+  undefined, // 14
+  undefined, // 15
+  undefined, // 16
+  undefined, // 17
+  undefined, // 18
+  undefined, // 19
+  undefined, // 20
+  'uint4',
+  'int4',
+] as const;
 
-type SupportedTypedArray = Exclude<Tensor.DataType, string[]>;
+type SessionOptions = InferenceSession.SessionOptions;
+type RunOptions = InferenceSession.RunOptions;
 
-const tensorTypeToTypedArray = (
-  type: Tensor.Type,
-):
-  | Float32ArrayConstructor
-  | Int8ArrayConstructor
-  | Int16ArrayConstructor
-  | Int32ArrayConstructor
-  | BigInt64ArrayConstructor
-  | Float64ArrayConstructor
-  | Uint8ArrayConstructor => {
-  switch (type) {
-    case 'float32':
-      return Float32Array;
-    case 'int8':
-      return Int8Array;
-    case 'uint8':
-      return Uint8Array;
-    case 'int16':
-      return Int16Array;
-    case 'int32':
-      return Int32Array;
-    case 'bool':
-      return Int8Array;
-    case 'float64':
-      return Float64Array;
-    case 'int64':
-      /* global BigInt64Array */
-      /* eslint no-undef: ["error", { "typeof": true }] */
-      return BigInt64Array;
-    default:
-      throw new Error(`unsupported type: ${type}`);
-  }
-};
+const fillNamesAndMetadata = (
+  rawMetadata: readonly ValueMetadata[]
+): [names: string[], metadata: InferenceSession.ValueMetadata[]] => {
+  const names: string[] = [];
+  const metadata: InferenceSession.ValueMetadata[] = [];
 
-const normalizePath = (path: string): string => {
-  // remove 'file://' prefix in iOS
-  if (Platform.OS === 'ios' && path.toLowerCase().startsWith('file://')) {
-    return path.substring(7);
-  }
-
-  return path;
-};
-
-class OnnxruntimeSessionHandler implements InferenceSessionHandler {
-  #inferenceSession: Binding.InferenceSession;
-  #key: string;
-
-  #pathOrBuffer: string | Uint8Array;
-
-  inputNames: string[];
-  outputNames: string[];
-
-  get inputMetadata(): readonly InferenceSession.ValueMetadata[] {
-    throw new Error('Getting model metadata is currently not implemented for react-native backend.');
-  }
-  get outputMetadata(): readonly InferenceSession.ValueMetadata[] {
-    throw new Error('Getting model metadata is currently not implemented for react-native backend.');
-  }
-
-  constructor(pathOrBuffer: string | Uint8Array) {
-    this.#inferenceSession = binding;
-    this.#pathOrBuffer = pathOrBuffer;
-    this.#key = '';
-
-    this.inputNames = [];
-    this.outputNames = [];
-  }
-
-  async loadModel(options: InferenceSession.SessionOptions): Promise<void> {
-    try {
-      let results: Binding.ModelLoadInfoType;
-      // load a model
-      if (typeof this.#pathOrBuffer === 'string') {
-        // load model from model path
-        results = await this.#inferenceSession.loadModel(normalizePath(this.#pathOrBuffer), options);
-      } else {
-        // load model from buffer
-        if (!this.#inferenceSession.loadModelFromBlob) {
-          throw new Error('Native module method "loadModelFromBlob" is not defined');
-        }
-        const modelBlob = jsiHelper.storeArrayBuffer(this.#pathOrBuffer.buffer);
-        results = await this.#inferenceSession.loadModelFromBlob(modelBlob, options);
+  for (const m of rawMetadata) {
+    names.push(m.name);
+    if (!m.isTensor) {
+      metadata.push({ name: m.name, isTensor: false });
+    } else {
+      const type = dataTypeStrings[m.type];
+      if (type === undefined) {
+        throw new Error(`Unsupported data type: ${m.type}`);
       }
-      // resolve promise if onnxruntime session is successfully created
-      this.#key = results.key;
-      this.inputNames = results.inputNames;
-      this.outputNames = results.outputNames;
-    } catch (e) {
-      throw new Error(`Can't load a model: ${(e as Error).message}`);
+      const shape: Array<number | string> = [];
+      for (let i = 0; i < m.shape.length; ++i) {
+        const dim = m.shape[i]!;
+        if (dim === -1) {
+          shape.push(m.symbolicDimensions[i]!);
+        } else if (dim >= 0) {
+          shape.push(dim);
+        } else {
+          throw new Error(`Invalid dimension: ${dim}`);
+        }
+      }
+      metadata.push({
+        name: m.name,
+        isTensor: m.isTensor,
+        type,
+        shape,
+      });
     }
   }
 
-  async dispose(): Promise<void> {
-    return this.#inferenceSession.dispose(this.#key);
+  return [names, metadata];
+};
+
+class OnnxruntimeSessionHandler implements InferenceSessionHandler {
+  #inferenceSession: InferenceSessionImpl;
+
+  static #initialized = false;
+
+  private constructor(
+    session: InferenceSessionImpl,
+    info: {
+      inputNames: string[];
+      outputNames: string[];
+      inputMetadata: InferenceSession.ValueMetadata[];
+      outputMetadata: InferenceSession.ValueMetadata[];
+    }
+  ) {
+    this.#inferenceSession = session;
+    this.inputNames = info.inputNames;
+    this.outputNames = info.outputNames;
+    this.inputMetadata = info.inputMetadata;
+    this.outputMetadata = info.outputMetadata;
   }
 
+  static async create(
+    pathOrBuffer: string | Uint8Array,
+    options: SessionOptions
+  ) {
+    if (typeof OrtApi === 'undefined') {
+      throw new Error(
+        'Not found OrtApi, please make sure Onnxruntime installation is successful.'
+      );
+    }
+
+    if (!OnnxruntimeSessionHandler.#initialized) {
+      OnnxruntimeSessionHandler.#initialized = true;
+
+      let logLevel = 2;
+      if (env.logLevel) {
+        switch (env.logLevel) {
+          case 'verbose':
+            logLevel = 0;
+            break;
+          case 'info':
+            logLevel = 1;
+            break;
+          case 'warning':
+            logLevel = 2;
+            break;
+          case 'error':
+            logLevel = 3;
+            break;
+          case 'fatal':
+            logLevel = 4;
+            break;
+          default:
+            throw new Error(`Unsupported log level: ${env.logLevel}`);
+        }
+      }
+      OrtApi.initOrtOnce(logLevel, Tensor);
+    }
+
+    const session = OrtApi.createInferenceSession();
+    if (typeof pathOrBuffer === 'string') {
+      await session.loadModel(pathOrBuffer, options);
+    } else {
+      await session.loadModel(
+        pathOrBuffer.buffer as ArrayBuffer,
+        pathOrBuffer.byteOffset,
+        pathOrBuffer.byteLength,
+        options
+      );
+    }
+
+    const [inputNames, inputMetadata] = fillNamesAndMetadata(
+      session.inputMetadata
+    );
+    const [outputNames, outputMetadata] = fillNamesAndMetadata(
+      session.outputMetadata
+    );
+
+    return new OnnxruntimeSessionHandler(session, {
+      inputNames,
+      outputNames,
+      inputMetadata,
+      outputMetadata,
+    });
+  }
+
+  async dispose(): Promise<void> {
+    this.#inferenceSession.dispose();
+  }
+
+  readonly inputNames: string[];
+  readonly outputNames: string[];
+
+  readonly inputMetadata: InferenceSession.ValueMetadata[];
+  readonly outputMetadata: InferenceSession.ValueMetadata[];
+
   startProfiling(): void {
-    // TODO: implement profiling
+    // startProfiling is a no-op.
+    //
+    // if sessionOptions.enableProfiling is true, profiling will be enabled when the model is loaded.
   }
   endProfiling(): void {
-    // TODO: implement profiling
+    this.#inferenceSession.endProfiling();
   }
 
   async run(
     feeds: SessionHandler.FeedsType,
     fetches: SessionHandler.FetchesType,
-    options: InferenceSession.RunOptions,
+    options: RunOptions
   ): Promise<SessionHandler.ReturnType> {
-    const outputNames: Binding.FetchesType = [];
-    for (const name in fetches) {
-      if (Object.prototype.hasOwnProperty.call(fetches, name)) {
-        if (fetches[name]) {
-          throw new Error(
-            'Preallocated output is not supported and only names as string array is allowed as parameter',
-          );
-        }
-        outputNames.push(name);
-      }
-    }
-    const input = this.encodeFeedsType(feeds);
-    const results: Binding.ReturnType = await this.#inferenceSession.run(this.#key, input, outputNames, options);
-    const output = this.decodeReturnType(results);
-    return output;
-  }
-
-  encodeFeedsType(feeds: SessionHandler.FeedsType): Binding.FeedsType {
-    const returnValue: { [name: string]: Binding.EncodedTensorType } = {};
-    for (const key in feeds) {
-      if (Object.hasOwnProperty.call(feeds, key)) {
-        let data: JSIBlob | string[];
-
-        if (Array.isArray(feeds[key].data)) {
-          data = feeds[key].data as string[];
-        } else {
-          const buffer = (feeds[key].data as SupportedTypedArray).buffer;
-          data = jsiHelper.storeArrayBuffer(buffer);
-        }
-
-        returnValue[key] = {
-          dims: feeds[key].dims,
-          type: feeds[key].type,
-          data,
-        };
-      }
-    }
-    return returnValue;
-  }
-
-  decodeReturnType(results: Binding.ReturnType): SessionHandler.ReturnType {
-    const returnValue: SessionHandler.ReturnType = {};
-
-    for (const key in results) {
-      if (Object.hasOwnProperty.call(results, key)) {
-        let tensorData: Tensor.DataType;
-        if (Array.isArray(results[key].data)) {
-          tensorData = results[key].data as string[];
-        } else {
-          const buffer = jsiHelper.resolveArrayBuffer(results[key].data as JSIBlob) as SupportedTypedArray;
-          const typedArray = tensorTypeToTypedArray(results[key].type as Tensor.Type);
-          tensorData = new typedArray(buffer, buffer.byteOffset, buffer.byteLength / typedArray.BYTES_PER_ELEMENT);
-        }
-
-        returnValue[key] = new Tensor(results[key].type as Tensor.Type, tensorData, results[key].dims);
-      }
-    }
-
-    return returnValue;
+    return await this.#inferenceSession.run(feeds, fetches, options);
   }
 }
 
@@ -191,12 +196,14 @@ class OnnxruntimeBackend implements Backend {
 
   async createInferenceSessionHandler(
     pathOrBuffer: string | Uint8Array,
-    options?: InferenceSession.SessionOptions,
+    options?: SessionOptions
   ): Promise<InferenceSessionHandler> {
-    const handler = new OnnxruntimeSessionHandler(pathOrBuffer);
-    await handler.loadModel(options || {});
-    return handler;
+    return await OnnxruntimeSessionHandler.create(pathOrBuffer, {
+      ...options,
+      ortExtLibPath: Module.ORT_EXTENSIONS_PATH,
+    });
   }
 }
 
 export const onnxruntimeBackend = new OnnxruntimeBackend();
+export const listSupportedBackends = OrtApi.listSupportedBackends;

@@ -2,17 +2,15 @@
 // Licensed under the MIT License.
 
 export * from 'onnxruntime-common';
+export { listSupportedBackends } from './backend';
+
 import { registerBackend, env } from 'onnxruntime-common';
-import { Platform } from 'react-native';
-import { onnxruntimeBackend } from './backend';
+import { onnxruntimeBackend, listSupportedBackends } from './backend';
 import { version } from './version';
 
-registerBackend('cpu', onnxruntimeBackend, 1);
-registerBackend('xnnpack', onnxruntimeBackend, 1);
-if (Platform.OS === 'android') {
-  registerBackend('nnapi', onnxruntimeBackend, 1);
-} else if (Platform.OS === 'ios') {
-  registerBackend('coreml', onnxruntimeBackend, 1);
+const backends = listSupportedBackends();
+for (const backend of backends) {
+  registerBackend(backend.name, onnxruntimeBackend, 100);
 }
 
 Object.defineProperty(env.versions, 'react-native', { value: version, enumerable: true });

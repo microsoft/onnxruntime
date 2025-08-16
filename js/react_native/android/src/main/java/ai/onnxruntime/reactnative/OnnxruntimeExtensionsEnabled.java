@@ -3,12 +3,10 @@
 
 package ai.onnxruntime.reactnative;
 
-import ai.onnxruntime.OrtException;
-import ai.onnxruntime.OrtSession.SessionOptions;
 import ai.onnxruntime.extensions.OrtxPackage;
 
-class OnnxruntimeExtensions {
-  public void registerOrtExtensionsIfEnabled(SessionOptions sessionOptions) throws OrtException {
-    sessionOptions.registerCustomOpLibrary(OrtxPackage.getLibraryPath());
+class OnnxruntimeExtensionsEnabled {
+  public String getLibraryPath() {
+    return OrtxPackage.getLibraryPath();
   }
 }
