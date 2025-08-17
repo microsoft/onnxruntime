@@ -65,8 +65,11 @@ LoggingManager* LoggingManager::GetDefaultInstance() {
 #endif
 
 static std::mutex& DefaultLoggerMutex() noexcept {
-  static std::mutex mutex;
-  return mutex;
+  // Fix for static destruction order issue:
+  // Use a heap-allocated mutex that we intentionally leak to avoid
+  // destruction order problems during program termination
+  static std::mutex* mutex = new std::mutex();
+  return *mutex;
 }
 
 Logger* LoggingManager::s_default_logger_ = nullptr;

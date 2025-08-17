@@ -253,7 +253,12 @@ Status GetMinimalBuildOptimizationHandling(
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 #ifdef _WIN32
-std::mutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
+// Fix for static destruction order issue:
+// Use a function-local static to ensure mutex is not destroyed early
+static std::mutex& GetActiveSessionsMutex() {
+  static std::mutex* mutex = new std::mutex();
+  return *mutex;
+}
 onnxruntime::WindowsTelemetry::EtwInternalCallback InferenceSession::callback_ML_ORT_provider_;
 #endif
 
@@ -520,7 +525,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
 
 #ifdef _WIN32
-  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+  std::lock_guard<std::mutex> lock(GetActiveSessionsMutex());
   active_sessions_[session_id_] = this;
 
   // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
@@ -751,7 +756,7 @@ InferenceSession::~InferenceSession() {
 
   // Unregister the session and ETW callbacks
 #ifdef _WIN32
-  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+  std::lock_guard<std::mutex> lock(GetActiveSessionsMutex());
   if (callback_ML_ORT_provider_ != nullptr) {
     WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
   }
@@ -3851,7 +3856,7 @@ IOBinding* SessionIOBinding::Get() {
 void InferenceSession::LogAllSessions() {
   const Env& env = Env::Default();
 
-  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+  std::lock_guard<std::mutex> lock(GetActiveSessionsMutex());
   for (const auto& session_pair : active_sessions_) {
     InferenceSession* session = session_pair.second;
 

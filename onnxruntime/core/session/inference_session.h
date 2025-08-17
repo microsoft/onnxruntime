@@ -136,7 +136,7 @@ class InferenceSession {
   using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
   static std::map<uint32_t, InferenceSession*> active_sessions_;
 #ifdef _WIN32
-  static std::mutex active_sessions_mutex_;  // Protects access to active_sessions_
+  // Mutex is now accessed through GetActiveSessionsMutex() function to avoid static destruction issues
   static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
 #endif
