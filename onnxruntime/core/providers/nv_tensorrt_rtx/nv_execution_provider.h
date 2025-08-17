@@ -156,23 +156,36 @@ struct TensorParams {
 // Data structure to hold user weights when ModelProtos are serialized with external data
 class TensorrtUserWeights {
  public:
-  TensorrtUserWeights(const std::string& name, const std::string& data) : name_(name), data_(data) {};
+  TensorrtUserWeights(const std::string& name, const std::string& data) : name_(name),
+                                                                          data_cpy_(data) {
+                                                                          };
+
+  TensorrtUserWeights(const std::string& name, const void* data, size_t size) : name_(name), data_(data), size_(size) {
+                                                                                };
 
   const char* Name() const {
     return name_.c_str();
   };
 
   const void* Data() const {
-    return static_cast<void const*>(data_.data());
+    if (!data_cpy_.empty()) {
+      return data_cpy_.data();
+    }
+    return data_;
   }
 
   int64_t Size() const {
-    return static_cast<int64_t>(data_.size());
+    if (!data_cpy_.empty()) {
+      return static_cast<int64_t>(data_cpy_.size());
+    }
+    return static_cast<int64_t>(size_);
   }
 
  private:
   std::string name_{};
-  std::string data_{};
+  std::string data_cpy_{};
+  void const* data_;
+  size_t size_;
 };
 
 // Information to construct kernel function state.

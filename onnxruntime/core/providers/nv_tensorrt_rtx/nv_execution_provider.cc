@@ -1156,6 +1156,9 @@ nvinfer1::IBuilder* NvExecutionProvider::GetBuilder(TensorrtLogger& trt_logger) 
     {
       auto lock = GetApiLock();
       builder_ = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+      unsigned int num_threads = std::thread::hardware_concurrency();
+      builder_->setMaxThreads(num_threads / 2);
+      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Set threads that the builder can use to:" << builder_->getMaxThreads();
     }
   }
   return builder_.get();
@@ -1465,14 +1468,6 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
           SetGraphOuterScopeValuesAndInputs(graph_build, graph.GetGraph());
           SetAllGraphInputs(graph_build);
         }
-        // for (auto& tensor:graph.GetAllInitializedTensors()) {
-        //   if (utils::HasExternalDataInMemory(*tensor.second)) {
-        //     std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-        //     ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tensor.second, full_init));
-        //     (*tensor.second).clear_external_data();
-        //     (*tensor.second).set_raw_data(full_init->raw_data());
-        //   }
-        // }
 
         auto status = graph_build.Resolve();
         if (!status.IsOK()) {
@@ -1533,17 +1528,18 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         // save user provided external data in memory instead of writing to ModelProto
         // needed for models > 2GB
         std::vector<TensorrtUserWeights> userWeights;
-        auto allInitializers = graph_viewer->GetAllInitializedTensors();
-
         if (use_external_data_initializer_) {
+          const InitializedTensorSet& allInitializers = graph_viewer->GetAllInitializedTensors();
+          userWeights.reserve(allInitializers.size());
           for (auto& entry : allInitializers) {
             auto* tp = entry.second;
-            if (tp->has_raw_data()) {
-              userWeights.emplace_back(tp->name(), tp->raw_data());
+            if (utils::HasRawData(*tp)) {
+              userWeights.emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size()));
             } else if (utils::HasExternalDataInMemory(*tp)) {
+              // TODO(maximilianm) remove this memory copy inside `GetTensorProtoWithDataIfInMemory` by using https://github.com/microsoft/onnxruntime/pull/25761
               std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
               ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
-              userWeights.emplace_back(full_init->name(), full_init->raw_data());
+              userWeights.emplace_back(std::move(full_init->name()), std::move(full_init->raw_data()));
             }
           }
         }
@@ -1575,11 +1571,15 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
           auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
 
           if (use_external_data_initializer_) {
+#if TRT_MAJOR_RTX > 1 || TRT_MINOR_RTX >= 1
             trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
             for (auto const& userWeight : userWeights) {
               trt_parser->loadInitializer(userWeight.Name(), userWeight.Data(), userWeight.Size());
             }
             is_model_supported = trt_parser->parseModelProto();
+#else
+            ORT_THROW("'nv_use_external_data_initializer' is only supported on TensorRT RTX 1.1.x.x and above.");
+#endif
           } else {
             is_model_supported = trt_parser->supportsModelV2(string_buf.data(), string_buf.size(), model_path_);
           }
@@ -2049,6 +2049,7 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
 
   // New refit APIs
   if (refit_with_external_data) {
+#if TRT_MAJOR_RTX > 1 || TRT_MINOR_RTX >= 1
     // A valid model bytestream must be passed.
     if (refit_from_file) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -2156,6 +2157,9 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
                              "NvTensorRTRTX EP's IParserRefitter refitModelProto() failed with the provided external data bytestream.");
     }
     refit_complete = true;
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Refit with external data is only supported on TensorRT RTX 1.1.x.x and above.");
+#endif
   }
 
   // If new refit flow was not completed, then fallback to refit_from_file.
@@ -2334,18 +2338,19 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   auto model_proto = model->ToProto();
 
   // exclude weights if external
-  auto userWeights = std::make_unique<std::vector<TensorrtUserWeights>>();
-
+  std::vector<TensorrtUserWeights> userWeights;
   if (use_external_data_initializer_) {
-    auto allInitializers = graph_body_viewer.GetAllInitializedTensors();
+    const InitializedTensorSet& allInitializers = graph_body_viewer.GetAllInitializedTensors();
+    userWeights.reserve(allInitializers.size());
     for (auto& entry : allInitializers) {
       auto* tp = entry.second;
-      if (tp->has_raw_data()) {
-        userWeights->emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data()));
+      if (utils::HasRawData(*tp)) {
+        userWeights.emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size()));
       } else if (utils::HasExternalDataInMemory(*tp)) {
+        // TODO(maximilianm) remove this memory copy inside `GetTensorProtoWithDataIfInMemory` by using https://github.com/microsoft/onnxruntime/pull/25761
         std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
         ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
-        userWeights->emplace_back(TensorrtUserWeights(full_init->name(), full_init->raw_data()));
+        userWeights.emplace_back(TensorrtUserWeights(std::move(full_init->name()), std::move(full_init->raw_data())));
       }
     }
   }
@@ -2373,11 +2378,15 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
 
   if (use_external_data_initializer_) {
+#if TRT_MAJOR_RTX > 1 || TRT_MINOR_RTX >= 1
     trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
-    for (auto const& userWeight : *userWeights) {
+    for (auto const& userWeight : userWeights) {
       trt_parser->loadInitializer(userWeight.Name(), userWeight.Data(), userWeight.Size());
     }
     trt_parser->parseModelProto();
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "'nv_use_external_data_initializer' is only supported on TensorRT RTX 1.1.x.x and above.");
+#endif
   } else {
     trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
   }
