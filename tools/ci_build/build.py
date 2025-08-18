@@ -380,7 +380,7 @@ def generate_build_tree(
     disable_float8_types = args.android or ("float8" in types_to_disable)
 
     # enable/disable float 4 type
-    disable_float4_types = args.android or args.rocm or ("float4" in types_to_disable)    
+    disable_float4_types = args.android or args.use_rocm or ("float4" in types_to_disable)
     
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
