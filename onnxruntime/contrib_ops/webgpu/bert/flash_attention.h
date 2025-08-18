@@ -56,7 +56,6 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"is_unidirectional", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"alpha", ProgramUniformVariableDataType::Float32},
                                           {"num_seq_tile", ProgramUniformVariableDataType::Uint32});

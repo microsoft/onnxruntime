@@ -179,7 +179,12 @@ class IExecutionProvider {
   /**
      Get the device id of current execution provider
   */
-  virtual int GetDeviceId() const { return default_device_.Id(); };
+  virtual int GetDeviceId() const { return default_device_.Id(); }
+
+  /**
+   * Get the OrtDevice the execution provider was registered with.
+   */
+  const OrtDevice& GetDevice() const { return default_device_; }
 
   /**
      Get execution provider's configuration options.

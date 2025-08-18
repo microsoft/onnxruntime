@@ -224,11 +224,6 @@ onnxruntime_fetchcontent_makeavailable(Protobuf)
 if(Protobuf_FOUND)
   message(STATUS "Using protobuf from find_package(or vcpkg). Protobuf version: ${Protobuf_VERSION}")
 else()
-  if(protobuf_SOURCE_DIR)
-    if(onnxruntime_USE_WEBGPU)
-      set(DAWN_PROTOBUF_DIR ${protobuf_SOURCE_DIR})
-    endif()
-  endif()
   # Adjust warning flags
   if (TARGET libprotoc)
     if (NOT MSVC)
@@ -645,19 +640,28 @@ if (onnxruntime_USE_WEBGPU)
     set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
     set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
     set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
+    set(DAWN_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
     set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
-        set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
+      if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
+        set(DAWN_BUILD_MONOLITHIC_LIBRARY SHARED CACHE BOOL "" FORCE)
         set(DAWN_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
 
         if (onnxruntime_USE_EXTERNAL_DAWN)
-          message(FATAL_ERROR "onnxruntime_USE_EXTERNAL_DAWN and onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY cannot be enabled at the same time.")
+          message(FATAL_ERROR "onnxruntime_USE_EXTERNAL_DAWN and onnxruntime_BUILD_DAWN_SHARED_LIBRARY cannot be enabled at the same time.")
         endif()
       else()
         # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
         set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
         set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+
+        # use the same protobuf/abseil for ORT and Dawn when static linking
+        if(abseil_cpp_SOURCE_DIR)
+          set(DAWN_ABSEIL_DIR ${abseil_cpp_SOURCE_DIR})
+        endif()
+        if(protobuf_SOURCE_DIR)
+          set(DAWN_PROTOBUF_DIR ${protobuf_SOURCE_DIR})
+        endif()
       endif()
 
       if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
@@ -714,6 +718,7 @@ if (onnxruntime_USE_WEBGPU)
         set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
       endif()
     endif()
+
     if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
       # use the custom dawn source path if provided
       #
@@ -747,7 +752,11 @@ if (onnxruntime_USE_WEBGPU)
           #
           # - (private) Fulfill the BinSkim requirements
           #   Some build warnings are not allowed to be disabled in project level.
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch)
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch &&
+
+          # Android devices doesn't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
+          # in the uniform and converting to fp16 before using.
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/uniform_and_storage_buffer_16_bit_access.patch)
 
       onnxruntime_fetchcontent_declare(
         dawn
@@ -762,7 +771,7 @@ if (onnxruntime_USE_WEBGPU)
   endif()
 
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+    if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::webgpu_dawn)
     else()
       if (NOT onnxruntime_USE_EXTERNAL_DAWN)

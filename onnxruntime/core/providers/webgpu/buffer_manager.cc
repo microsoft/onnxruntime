@@ -508,27 +508,10 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) const {
   wgpu::BufferDescriptor desc{};
   desc.size = buffer_size;
   desc.usage = usage;
+  if (usage & wgpu::BufferUsage::MapWrite) {
+    desc.mappedAtCreation = true;  // ensure the buffer is mapped for writing at creation
+  }
   buffer = context_.Device().CreateBuffer(&desc).MoveToCHandle();
-
-  ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
-
-  cache.RegisterBuffer(buffer, size);
-  return buffer;
-}
-
-WGPUBuffer BufferManager::CreateUMA(size_t size, wgpu::BufferUsage usage) const {
-  ORT_ENFORCE(usage & wgpu::BufferUsage::Storage, "UMA buffer must be a storage buffer.");
-  auto& cache = GetCacheManager(usage);
-  auto buffer_size = cache.CalculateBufferSize(size);
-
-  // Ensure the buffer is mapped for writing at creation.
-  usage |= wgpu::BufferUsage::MapWrite;
-
-  wgpu::BufferDescriptor desc{};
-  desc.size = buffer_size;
-  desc.usage = usage;
-  desc.mappedAtCreation = true;
-  auto buffer = context_.Device().CreateBuffer(&desc).MoveToCHandle();
 
   ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
 
