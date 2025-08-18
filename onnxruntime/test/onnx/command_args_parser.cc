@@ -220,21 +220,35 @@ bool CommandLineParser::ParseArguments(TestConfig& test_config, int argc, ORTCHA
     }
   }
 
+  // Helper function to check if the option is explicitly specified.
+  // Abseil Flags does not provide this capability by default.
+  // It cannot distinguish between cases where:
+  //   - The user typed `-t 1e-5` (explicitly passing the default value), and
+  //   - The user omitted `-t` entirely.
+  // To determine this accurately, we must inspect argv directly.
+  auto is_option_specified = [&](std::string option) {
+    for (int i = 1; i < argc; ++i) {
+      auto utf8_arg = ToUTF8String(argv[i]);
+      if (utf8_arg == ("-" + option) || utf8_arg == ("--" + option)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // -t
   {
-    const auto& override_relative_tolerance_value = absl::GetFlag(FLAGS_t);
-    if (!override_relative_tolerance_value.empty()) {
+    if (is_option_specified("t")) {
       test_config.override_tolerance = true;
-      test_config.rtol = OrtStrtod<char>(override_relative_tolerance_value.c_str(), nullptr);
+      test_config.rtol = OrtStrtod<char>(absl::GetFlag(FLAGS_t).c_str(), nullptr);
     }
   }
 
   // -a
   {
-    const auto& override_absolute_tolerance_value = absl::GetFlag(FLAGS_t);
-    if (!override_absolute_tolerance_value.empty()) {
+    if (is_option_specified("a")) {
       test_config.override_tolerance = true;
-      test_config.atol = OrtStrtod<char>(override_absolute_tolerance_value.c_str(), nullptr);
+      test_config.atol = OrtStrtod<char>(absl::GetFlag(FLAGS_a).c_str(), nullptr);
     }
   }
 
