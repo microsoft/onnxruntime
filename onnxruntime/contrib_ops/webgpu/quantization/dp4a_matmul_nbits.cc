@@ -28,6 +28,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/dp4a_matmul.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(block_size, block_size_),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
+                             WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, true));
 }
@@ -114,7 +115,8 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   TensorShape reshaped_y_shape{1, M, N / kVec4Components};
   uint32_t num_M_tile = (M + kTileSize - 1) / kTileSize;
   uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
-  DP4AMatMulNBitsProgram mul_program{block_size, nbits, has_zero_points};
+  bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
+  DP4AMatMulNBitsProgram mul_program{block_size, nbits, has_zero_points, is_qualcomm};
   mul_program.SetWorkgroupSize(256);
   mul_program.SetDispatchGroupSize(num_M_tile * num_N_tile);
   mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
@@ -129,7 +131,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {num_N_tile},
                             {zero_blocks_per_col}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
-      .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points);
+      .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points, is_qualcomm);
   if (has_zero_points) {
     mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
