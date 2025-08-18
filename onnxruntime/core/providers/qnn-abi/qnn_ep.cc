@@ -441,11 +441,10 @@ QnnEp::QnnEp(QnnEpFactory& factory,
                                    FormatEPConfigKey("backend_path"),
                                    "",
                                    backend_path_option);
-    std::cout << "DEBUG: BackendType " << backend_type << std::endl;
 
     // Check if both options are provided
     if (!backend_type.empty() && !backend_path_option.empty()) {
-      LOGS(logger_in_, ERROR) << "Only one of 'backend_type' and 'backend_path' should be set.";
+      throw std::runtime_error("Only one of 'backend_type' and 'backend_path' should be set.");
     }
     if (!backend_type.empty()) {
       if (std::string parsed_backend_path; ParseBackendTypeName(backend_type, parsed_backend_path, logger_in_)) {

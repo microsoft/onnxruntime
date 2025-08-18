@@ -68,6 +68,10 @@ std::vector<OrtNodeUnitIODef> GetQDQIODefs(const OrtNode* target_node,
   quantized_io_defs.reserve(num_ios);
 
   for (size_t io_idx = 0; io_idx < num_ios; ++io_idx) {
+    if (target_node_ios[io_idx] == nullptr) {
+      continue;
+    }
+
     const OrtNode* node = nullptr;
     if (is_input) {
       ort_api.ValueInfo_GetValueProducer(target_node_ios[io_idx], &node, nullptr);
@@ -124,6 +128,12 @@ std::vector<OrtNodeUnitIODef> GetQDQIODefs(const OrtNode* target_node,
   std::vector<OrtNodeUnitIODef> io_defs;
   io_defs.reserve(num_ios);
   for (size_t io_idx = 0; io_idx < num_ios; ++io_idx) {
+    if (target_node_ios[io_idx] == nullptr) {
+      // Optional IO.
+      io_defs.push_back(OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}});
+      continue;
+    }
+
     // If we can find the NodeUnitIODef for this index, this is a quantized input/output.
     if (quantized_io_defs.find(io_idx) != quantized_io_defs.end()) {
       io_defs.push_back(std::move(quantized_io_defs.at(io_idx)));

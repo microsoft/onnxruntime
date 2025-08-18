@@ -134,9 +134,14 @@ OrtStatus* ORT_API_CALL QnnEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                      OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
                                                      "Creating QNN EP", ORT_FILE, __LINE__, __FUNCTION__));
 
-  auto dummy_ep = std::make_unique<QnnEp>(*factory, factory->ep_name_, *session_options, *logger);
+  std::unique_ptr<QnnEp> qnn_ep;
+  try {
+    qnn_ep = std::make_unique<QnnEp>(*factory, factory->ep_name_, *session_options, *logger);
+  } catch (const std::runtime_error& e) {
+    return factory->ort_api.CreateStatus(ORT_FAIL, e.what());
+  }
 
-  *ep = dummy_ep.release();
+  *ep = qnn_ep.release();
   return nullptr;
 }
 

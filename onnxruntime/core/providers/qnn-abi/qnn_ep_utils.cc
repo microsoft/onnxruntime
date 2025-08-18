@@ -1467,6 +1467,9 @@ std::optional<OrtNodeGroup> GetOrtQDQSelection(const OrtGraph* graph, const OrtA
   // For each input, get the producer node
   for (size_t i = 0; i < num_inputs; ++i) {
     const OrtValueInfo* value_info = inputs[i];
+    if (value_info == nullptr) {
+      continue;
+    }
 
     // Get the producer node
     const OrtNode* producer_node = nullptr;
@@ -1603,6 +1606,9 @@ std::optional<OrtNodeGroup> GetOrtQDQSelection(const OrtGraph* graph, const OrtA
   // For each output, get the consumer nodes
   for (size_t i = 0; i < num_outputs; ++i) {
     const OrtValueInfo* value_info = outputs[i];
+    if (value_info == nullptr) {
+      continue;
+    }
 
     // Get the number of consumers
     size_t num_consumers = 0;
