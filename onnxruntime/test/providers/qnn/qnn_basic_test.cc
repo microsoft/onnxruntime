@@ -1297,7 +1297,7 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
           EXPECT_TRUE(produces_graph_output);
           num_dq += 1;
         } else {
-          EXPECT_EQ(ep_name, kQnnExecutionProvider);
+          EXPECT_TRUE((ep_name == kQnnExecutionProvider) || (ep_name == "QnnAbiTestProvider"));
           num_qnn_fused_node += 1;
         }
       }
