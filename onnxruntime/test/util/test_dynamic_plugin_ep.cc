@@ -36,7 +36,7 @@ PluginEpLibraryRegistrationHandle RegisterPluginEpLibrary(Ort::Env& env,
     ORT_TRY {
       env.UnregisterExecutionProviderLibrary(registration_name.c_str());
     }
-    ORT_CATCH(Ort::Exception & e) {
+    ORT_CATCH(const Ort::Exception& e) {
       ORT_HANDLE_EXCEPTION([&]() {
         std::cerr << "Failed to unregister EP library with name '" << registration_name << "': " << e.what() << "\n";
       });
