@@ -5,13 +5,6 @@
 
 #if !defined(DISABLE_FLOAT4_TYPES)
 
-#if defined(USE_CUDA)
-// If building with CUDA support, include the CUDA header that includes the
-// CUDA_VERSION macro that in turn will determine if we can leverage CUDA's
-// native fp4 support (it requires CUDA 12.8+)
-#include<cuda.h>
-#endif
-
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
 
 #if defined(_MSC_VER)
@@ -53,7 +46,7 @@ struct Float4E2M1x2 {
 #endif
 
   private:
-      UnpackedType Fp4ToFloatConversionCpuHelper(uint8_t fp4x2, size_t shift) const {
+      ORT_HOST_DEVICE UnpackedType Fp4ToFloatConversionCpuHelper(uint8_t fp4x2, size_t shift) const {
         assert(shift == 0 || shift == 4);
 
         constexpr uint8_t sign_bitmask = 0x08;
@@ -76,7 +69,7 @@ struct Float4E2M1x2 {
 
       }
 
-      uint8_t FloatToFp4ConversionCpuHelper(float f, size_t shift) const {
+      ORT_HOST_DEVICE uint8_t FloatToFp4ConversionCpuHelper(float f, size_t shift) const {
         assert(shift == 0 || shift == 4);
 
         constexpr uint32_t sign_bitmask = 0x80000000;
