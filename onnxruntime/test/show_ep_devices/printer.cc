@@ -73,9 +73,9 @@ void PrintEpDeviceInfoAsText(const std::vector<Ort::ConstEpDevice>& ep_devices,
     const auto& ep_device = ep_devices[i];
     const auto device = ep_device.Device();
     output_stream << "===== EP Device " << i << " =====\n"
-                  << "EP name: " << ep_device.EpName() << "\n"
-                  << "EP vendor: " << ep_device.EpVendor() << "\n"
-                  << "EP metadata:\n";
+                  << "EP Name: " << ep_device.EpName() << "\n"
+                  << "EP Vendor: " << ep_device.EpVendor() << "\n"
+                  << "EP Metadata:\n";
     print_kvp_entries(ep_device.EpMetadata(), 1, output_stream);
     output_stream << "Device:\n"
                   << "  Type: " << DeviceTypeAsStr(device.Type()) << "\n"

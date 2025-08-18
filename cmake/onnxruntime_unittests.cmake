@@ -1299,6 +1299,8 @@ block()
 
   target_link_libraries(onnxruntime_show_ep_devices PRIVATE ${onnxruntime_show_ep_devices_libs})
 
+  set_target_properties(onnxruntime_show_ep_devices PROPERTIES FOLDER "ONNXRuntimeTest")
+
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_show_ep_devices_srcs})
 endblock()
 
