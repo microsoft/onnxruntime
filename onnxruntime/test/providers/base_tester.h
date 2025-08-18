@@ -10,6 +10,7 @@
 #include <type_traits>
 
 #include "core/framework/customregistry.h"
+#include "core/framework/float4.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/run_options.h"
 #include "core/framework/tensor.h"
