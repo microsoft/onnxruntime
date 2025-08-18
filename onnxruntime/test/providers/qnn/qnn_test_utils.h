@@ -5,12 +5,14 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include <cmath>
+#include <filesystem>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 #include "core/framework/provider_options.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/float16.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/qmath.h"
 
 #include "test/optimizer/qdq_test_utils.h"
@@ -768,13 +770,36 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
                       qnn_abi_qdq_outputs,
                       session_option_pairs);
   } else {
+    // Create modified session options for ABI to use different context file path
+    std::unordered_map<std::string, std::string> abi_session_option_pairs = session_option_pairs;
+    std::string abi_context_file_path;
+
+    // If context generation is enabled, modify the file path for ABI to avoid conflicts
+    auto context_enable_it = abi_session_option_pairs.find(kOrtSessionOptionEpContextEnable);
+    auto context_path_it = abi_session_option_pairs.find(kOrtSessionOptionEpContextFilePath);
+
+    if (context_enable_it != abi_session_option_pairs.end() &&
+        context_enable_it->second == "1" &&
+        context_path_it != abi_session_option_pairs.end()) {
+      // Modify the context file path to add "_abi" suffix
+      std::string original_path = context_path_it->second;
+      size_t dot_pos = original_path.find_last_of('.');
+      if (dot_pos != std::string::npos) {
+        abi_context_file_path = original_path.substr(0, dot_pos) + "_abi" + original_path.substr(dot_pos);
+        abi_session_option_pairs[kOrtSessionOptionEpContextFilePath] = abi_context_file_path;
+
+        // Clean up any existing ABI context file to prevent conflicts
+        std::filesystem::remove(abi_context_file_path);
+      }
+    }
+
     InferenceModelABI(qdq_model_data,
                       "qdq_abi_model_logger",
                       qnn_options,
                       expected_ep_assignment,
                       qdq_helper.feeds_,
                       qnn_abi_qdq_outputs,
-                      session_option_pairs,
+                      abi_session_option_pairs,
                       qnn_ep_graph_checker);
   }
 

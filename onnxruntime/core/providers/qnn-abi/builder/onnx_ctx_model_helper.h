@@ -70,7 +70,8 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
                             uint64_t max_spill_fill_buffer_size,
                             const logging::Logger& logger,
                             bool share_ep_contexts,
-                            bool stop_share_ep_contexts);
+                            bool stop_share_ep_contexts,
+                            const std::string& ep_name);
 
 }  // namespace qnn
 }  // namespace onnxruntime

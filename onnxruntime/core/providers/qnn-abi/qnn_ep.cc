@@ -1004,7 +1004,7 @@ static bool EpSharedContextsHasAllGraphs(const OrtGraph* graph, const OrtApi& or
     OrtNodeAttrHelper node_helper(ort_api, *node);
     std::string cache_source = qnn::utils::GetLowercaseString(node_helper.Get(qnn::SOURCE, ""));
 
-    if (op_type == qnn::EPCONTEXT_OP && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
+    if (op_type == qnn::EPCONTEXT_OP && (cache_source == "qnnexecutionprovider" || cache_source == "qnn" || cache_source == "qnnabitestprovider")) {
       const char* node_name = nullptr;
       if (ort_api.Node_GetName(node, &node_name) != nullptr) {
         return false;
@@ -1048,7 +1048,7 @@ static void GetMainEPCtxNodes(const OrtGraph* graph,
 
     if (is_main_context &&
         op_type == qnn::EPCONTEXT_OP &&
-        (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
+        (cache_source == "qnnexecutionprovider" || cache_source == "qnn" || cache_source == "qnnabitestprovider")) {
       const char* node_name = nullptr;
       ort_api.Node_GetName(node, &node_name);
       LOGS(logger, VERBOSE) << "EPContext Node found: [1] index: [" << node_idx << "] name: [" << node_name << "]";
@@ -1084,7 +1084,7 @@ void QnnEp::PartitionCtxModel(const OrtGraph* graph, OrtEpGraphSupportInfo* grap
     OrtNodeAttrHelper node_helper(ort_api, *node);
     std::string cache_source = qnn::utils::GetLowercaseString(node_helper.Get(qnn::SOURCE, ""));
 
-    if (op_type == qnn::EPCONTEXT_OP && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
+    if (op_type == qnn::EPCONTEXT_OP && (cache_source == "qnnexecutionprovider" || cache_source == "qnn" || cache_source == "qnnabitestprovider")) {
       const char* node_name = nullptr;
       ort_api.Node_GetName(node, &node_name);
 
@@ -1401,17 +1401,25 @@ OrtStatus* QnnEp::CompileContextModel(const OrtGraph** graphs,
   for (size_t graph_idx = 0; graph_idx < count; ++graph_idx) {
     std::tie(graph_name, ep_context_node_name) = names[graph_idx];
 
-    RETURN_IF(qnn_models.find(ep_context_node_name) == qnn_models.end(),
+    // Try to find the model using ep_context_node_name first, then try the main context node name
+    auto qnn_model_it = qnn_models.find(ep_context_node_name);
+    if (qnn_model_it == qnn_models.end()) {
+      // For single graph contexts, the model might be stored with the main context node name
+      qnn_model_it = qnn_models.find(names[main_context_pos_list[0]].second);
+    }
+
+    RETURN_IF(qnn_model_it == qnn_models.end(),
               ort_api,
               (ep_context_node_name + " context node name not exists in table qnn_models.").c_str());
-    auto qnn_model = std::move(qnn_models[ep_context_node_name]);
+
+    auto qnn_model = std::move(qnn_model_it->second);
     RETURN_IF_NOT_OK(qnn_model->SetGraphInputOutputInfo(*graphs[graph_idx], *fused_nodes[graph_idx], logger_in_), ort_api);
     RETURN_IF_NOT_OK(qnn_model->SetupQnnInputOutput(logger_in_), ort_api);
 
     // fused node name is QNNExecutionProvider_QNN_[hash_id]_[id]
     // the name here must be same with context->node_name in compute_info
     qnn_models_.emplace(graph_name, std::move(qnn_model));
-    qnn_models.erase(ep_context_node_name);
+    qnn_models.erase(qnn_model_it->first);
 
     auto node_compute_info = std::make_unique<QnnNodeComputeInfo>(*this);
     node_compute_infos[graph_idx] = node_compute_info.release();
@@ -1450,6 +1458,16 @@ OrtStatus* QnnEp::CreateEPContextNodes(const OrtNode** fused_nodes, size_t count
   PathString context_model_path;
   GetContextOnnxModelFilePath(context_cache_path_cfg_, ToPathString(""), context_model_path);
 
+  // For InferenceModelABI (QnnAbiTestProvider), modify the context model path to use _abi.onnx suffix
+  if (name_ == "QnnAbiTestProvider" && !context_model_path.empty()) {
+    auto pos = context_model_path.find_last_of(ORT_TSTR("."));
+    if (pos != std::string::npos) {
+      context_model_path = context_model_path.substr(0, pos) + ToPathString("_abi.onnx");
+    } else {
+      context_model_path = context_model_path + ToPathString("_abi.onnx");
+    }
+  }
+
   RETURN_IF_NOT_OK(qnn::CreateEPContextNodes(fused_nodes,
                                              count,
                                              ep_context_nodes,
@@ -1464,7 +1482,8 @@ OrtStatus* QnnEp::CreateEPContextNodes(const OrtNode** fused_nodes, size_t count
                                              max_spill_fill_buffer_size,
                                              *(logger_.ToInternal()),
                                              share_ep_contexts_,
-                                             stop_share_ep_contexts_),
+                                             stop_share_ep_contexts_,
+                                             name_),
                    ort_api);
 
   if (share_ep_contexts_ &&
@@ -1779,6 +1798,14 @@ OrtStatus* QnnEp::QnnNodeComputeInfo::CreateStateImpl(OrtNodeComputeInfo* this_p
 
   std::string fused_node_name = ep.ep_api.NodeComputeContext_NodeName(compute_context);
   auto qnn_model_it = ep.qnn_models_.find(fused_node_name);
+
+  // If not found with the fused_node_name, try to find with any available key
+  // This handles the case where context models might have different naming
+  if (qnn_model_it == ep.qnn_models_.end() && !ep.qnn_models_.empty()) {
+    // For context models, there might be only one model, so use the first available
+    qnn_model_it = ep.qnn_models_.begin();
+  }
+
   if (qnn_model_it == ep.qnn_models_.end()) {
     std::string message = "Unable to get QnnModel with name " + fused_node_name;
     return ep.ort_api.CreateStatus(ORT_EP_FAIL, message.c_str());

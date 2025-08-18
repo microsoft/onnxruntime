@@ -43,7 +43,7 @@ bool GraphHasEpContextNode(const OrtGraph* graph, const OrtApi& ort_api) {
     if (op_type == EPCONTEXT_OP) {
       OrtNodeAttrHelper node_helper(ort_api, *node);
       std::string cache_source = qnn::utils::GetLowercaseString(node_helper.Get(SOURCE, ""));
-      if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
+      if (cache_source == "qnnexecutionprovider" || cache_source == "qnn" || cache_source == "qnnabitestprovider") {
         return true;
       }
     }
@@ -252,7 +252,8 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
                             uint64_t max_spill_fill_buffer_size,
                             const logging::Logger& logger,
                             bool share_ep_contexts,
-                            bool stop_share_ep_contexts) {
+                            bool stop_share_ep_contexts,
+                            const std::string& ep_name) {
   // Still need more work to support multiple partition, it's out of EP's scope.
   // Already have code to make sure it's single partition before this method get invoked.
   for (size_t idx = 0; idx < count; ++idx) {
@@ -367,10 +368,9 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
                                                 &attributes[4]),
                            ort_api);
 
-    std::string source(kQnnExecutionProvider);
     RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(SOURCE.c_str(),
-                                                source.c_str(),
-                                                static_cast<int>(source.length()),
+                                                ep_name.c_str(),
+                                                static_cast<int>(ep_name.length()),
                                                 ORT_OP_ATTR_STRING,
                                                 &attributes[5]),
                            ort_api);
