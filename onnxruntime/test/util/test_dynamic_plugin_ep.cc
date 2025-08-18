@@ -28,7 +28,11 @@ PluginEpLibraryRegistrationHandle RegisterPluginEpLibrary(Ort::Env& env,
                                                           const std::basic_string<ORTCHAR_T>& ep_library_path) {
   env.RegisterExecutionProviderLibrary(ep_library_registration_name.c_str(), ep_library_path);
 
-  auto unregister_ep_library = [&env, registration_name = ep_library_registration_name](void*) {
+  auto unregister_ep_library = [&env, registration_name = ep_library_registration_name](void* p) {
+    if (p == nullptr) {
+      return;
+    }
+
     ORT_TRY {
       env.UnregisterExecutionProviderLibrary(registration_name.c_str());
     }
