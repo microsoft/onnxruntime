@@ -87,7 +87,7 @@ bool ParseDimensionOverride(const std::string& input, std::map<std::string, int6
   return true;
 }
 
-bool ParseDimensionOverrideFromArgv(int argc, std::vector<std::string> argv, std::string option, std::map<std::string, int64_t>& free_dim_override_map) {
+bool ParseDimensionOverrideFromArgv(int argc, std::vector<std::string>& argv, std::string& option, std::map<std::string, int64_t>& free_dim_override_map) {
   for (int i = 1; i < argc; ++i) {
     auto utf8_arg = argv[i];
     if (utf8_arg == ("-" + option) || utf8_arg == ("--" + option)) {
