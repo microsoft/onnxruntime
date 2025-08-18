@@ -38,11 +38,11 @@ class InferenceSessionHostObject::LoadModelAsyncWorker : public AsyncWorker {
  protected:
   void execute() {
     if (modelPath_.empty()) {
-      session_->session_ = std::make_unique<Ort::Session>(
+      session_->session_ = std::make_shared<Ort::Session>(
           session_->env_->getOrtEnv(), modelData_, modelDataLength_,
           sessionOptions_);
     } else {
-      session_->session_ = std::make_unique<Ort::Session>(
+      session_->session_ = std::make_shared<Ort::Session>(
           session_->env_->getOrtEnv(), modelPath_.c_str(), sessionOptions_);
     }
   }
