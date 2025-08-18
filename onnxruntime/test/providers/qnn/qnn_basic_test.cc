@@ -1425,7 +1425,7 @@ TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
 // Currently only works on Windows.
 TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
   ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
-                                                                     ORT_TSTR("onnxruntime_providers_qnn.dll")));
+                                                                     ORT_TSTR("onnxruntime_providers_qnn_abi.dll")));
 
   Ort::SessionOptions so;
   so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_NPU);

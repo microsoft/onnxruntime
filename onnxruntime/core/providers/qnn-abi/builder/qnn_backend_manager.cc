@@ -1533,7 +1533,6 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   if (ProfilingLevel::OFF == profiling_level_merge_ || ProfilingLevel::INVALID == profiling_level_merge_) {
     return Status::OK();
   }
-  std::cout << "DEBUG: ExtractBackendProfilingInfo" << std::endl;
 
   bool tracelogging_provider_ep_enabled = false;
 #ifdef _WIN32

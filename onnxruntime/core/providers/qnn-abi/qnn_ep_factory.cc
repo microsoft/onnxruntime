@@ -121,21 +121,13 @@ OrtStatus* ORT_API_CALL QnnEpFactory::GetSupportedDevicesImpl(OrtEpFactory* this
 OrtStatus* ORT_API_CALL QnnEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                    _In_reads_(num_devices) const OrtHardwareDevice* const* /*devices*/,
                                                    _In_reads_(num_devices) const OrtKeyValuePairs* const* /*ep_metadata*/,
-                                                   _In_ size_t num_devices,
+                                                   _In_ size_t /*num_devices*/, // Mark as unused
                                                    _In_ const OrtSessionOptions* session_options,
                                                    _In_ const OrtLogger* logger,
                                                    _Out_ OrtEp** ep) noexcept {
   std::cout << "DEBUG: QNN CreateEpImpl called!" << std::endl;
   auto* factory = static_cast<QnnEpFactory*>(this_ptr);
   *ep = nullptr;
-
-  if (num_devices != 1) {
-    // we only registered for CPU and only expected to be selected for one CPU
-    // if you register for multiple devices (e.g. CPU, GPU and maybe NPU) you will get an entry for each device
-    // the EP has been selected for.
-    return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
-                                         "Example EP only supports selection for one device.");
-  }
 
   // Create the execution provider
   RETURN_IF_ERROR(factory->ort_api.Logger_LogMessage(logger,
