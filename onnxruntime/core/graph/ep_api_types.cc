@@ -565,6 +565,10 @@ void EpGraph::IndexToEpNodeMap::Resize(NodeIndex min_node_index, NodeIndex max_n
 }
 
 EpNode* EpGraph::IndexToEpNodeMap::GetEpNode(NodeIndex node_index) const {
+  if (node_index < min_node_index_ || node_index >= min_node_index_ + nodes_.size()) {
+    return nullptr;
+  }
+
   size_t i = node_index - min_node_index_;
   assert(i < nodes_.size());
   return nodes_[i];
