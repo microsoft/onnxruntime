@@ -795,12 +795,16 @@ std::string GetUniqueName(const std::string& base, std::string_view suffix) {
   if (!suffix.empty()) {
     name += suffix;
   }
-  static std::unordered_map<std::string, int> counter;
-  int& count = counter[name];
-  if (count > 0) {
-    name += "_" + std::to_string(count);
+  {
+    static std::unordered_map<std::string, int> counter;
+    static std::mutex counter_mutex;
+    std::lock_guard<std::mutex> lock(counter_mutex);
+
+    int& count = counter[name];
+    if (count++ > 0) {
+      return name + "_" + std::to_string(count);
+    }
   }
-  ++count;
   return name;
 }
 
