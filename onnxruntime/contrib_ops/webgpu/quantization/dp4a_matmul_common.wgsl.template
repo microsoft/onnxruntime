@@ -1,0 +1,80 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param n_bits
+#param has_zero_points
+
+#include "quantization/matmul_nbits_zero_pt.wgsl.template"
+
+#if n_bits == 4
+    fn DequantizedFrom4BitsTo8Bits(in: vec2<u32>, zero: i32) -> vec4<u32>
+    {
+        var out = vec4<u32>(0);
+        var value_lower = vec4<i32>(unpack4xU8(in[0] & 0x0F0F0F0Fu)) - vec4<i32>(zero);
+        var value_upper = vec4<i32>(unpack4xU8((in[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(zero);
+        out[0] = pack4xI8(vec4<i32>(value_lower[0], value_upper[0], value_lower[1], value_upper[1]));
+        out[1] = pack4xI8(vec4<i32>(value_lower[2], value_upper[2], value_lower[3], value_upper[3]));
+        value_lower = vec4<i32>(unpack4xU8(in[1] & 0x0F0F0F0Fu)) - vec4<i32>(zero);
+        value_upper = vec4<i32>(unpack4xU8((in[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(zero);
+        out[2] = pack4xI8(vec4<i32>(value_lower[0], value_upper[0], value_lower[1], value_upper[1]));
+        out[3] = pack4xI8(vec4<i32>(value_lower[2], value_upper[2], value_lower[3], value_upper[3]));
+        return out;
+    }
+#endif
+
+#if n_bits == 8
+    fn AlignWithZeroPoint(in: vec4<u32>) -> vec4<u32>
+    {
+        var out = vec4<u32>(0);
+        out[0] = pack4xI8(vec4<i32>(unpack4xU8(in[0])) - vec4<i32>(128));
+        out[1] = pack4xI8(vec4<i32>(unpack4xU8(in[1])) - vec4<i32>(128));
+        out[2] = pack4xI8(vec4<i32>(unpack4xU8(in[2])) - vec4<i32>(128));
+        out[3] = pack4xI8(vec4<i32>(unpack4xU8(in[3])) - vec4<i32>(128));
+        return out;
+    }
+#endif
+
+// For 8bits, in case data overflow when converting from int32 (output of dot4I8Packed) to f16, we force it convert to f32.
+// Then do the scale. Finally, convert to output element type.
+#if has_zero_points && n_bits == 8
+    // If has_zero_points is true, vec4<i32>(unpack4xU8(b_data)) - vec4<i32>(zero) may be out of the range [-128, 127] since zero can be any value between [0, 255].
+    // To avoid the data overflow when use pack4xI8, we still use |pack4xI8(vec4<i32>(unpack4xU8(xxx)) - vec4<i32>(128))| to process the b data. In SDP8AI, we use the
+    // dp4a's result of a and b to subtract dot(vec4<i32>(unpack4xI8(a)), vec4<i32>(zero - 128)) to get the correct result.
+    // Scaled dot product of 8 packed unsigned integers.
+    fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t, zero: i32) -> output_element_t
+    {
+        let bias_zero = zero - 128;
+        var local_sum = dot4I8Packed(a1[0], b1[0]);
+        var dequantized_a_sum = vec4<i32>(unpack4xI8(a1[0]));
+        local_sum += dot4I8Packed(a1[1], b1[1]);
+        dequantized_a_sum += vec4<i32>(unpack4xI8(a1[1]));
+        local_sum += dot4I8Packed(a1[2], b1[2]);
+        dequantized_a_sum += vec4<i32>(unpack4xI8(a1[2]));
+        local_sum += dot4I8Packed(a1[3], b1[3]);
+        dequantized_a_sum += vec4<i32>(unpack4xI8(a1[3]));
+        local_sum += dot4I8Packed(a2[0], b2[0]);
+        dequantized_a_sum += vec4<i32>(unpack4xI8(a2[0]));
+        local_sum += dot4I8Packed(a2[1], b2[1]);
+        dequantized_a_sum += vec4<i32>(unpack4xI8(a2[1]));
+        local_sum += dot4I8Packed(a2[2], b2[2]);
+        dequantized_a_sum += vec4<i32>(unpack4xI8(a2[2]));
+        local_sum += dot4I8Packed(a2[3], b2[3]);
+        dequantized_a_sum += vec4<i32>(unpack4xI8(a2[3]));
+        local_sum -= dot(dequantized_a_sum, vec4<i32>(bias_zero));
+        return output_element_t(f32(local_sum) * f32(scale));
+    }
+#else
+    // Scaled dot product of 8 packed unsigned integers.
+    fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t) -> output_element_t
+    {
+        var local_sum = dot4I8Packed(a1[0], b1[0]);
+        local_sum += dot4I8Packed(a1[1], b1[1]);
+        local_sum += dot4I8Packed(a1[2], b1[2]);
+        local_sum += dot4I8Packed(a1[3], b1[3]);
+        local_sum += dot4I8Packed(a2[0], b2[0]);
+        local_sum += dot4I8Packed(a2[1], b2[1]);
+        local_sum += dot4I8Packed(a2[2], b2[2]);
+        local_sum += dot4I8Packed(a2[3], b2[3]);
+        return output_element_t(f32(local_sum) * f32(scale));
+    }
+#endif

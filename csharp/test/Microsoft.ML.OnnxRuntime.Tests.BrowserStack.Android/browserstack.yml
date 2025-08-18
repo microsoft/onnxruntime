@@ -3,11 +3,11 @@ platforms:
   - platformName: android
     deviceName: Samsung Galaxy S22 Ultra
     platformVersion: 12.0
-browserstackLocal: true
+browserstackLocal: false
 buildName: ORT android test
 buildIdentifier: ${BUILD_NUMBER}
 projectName: ORT-UITests
 debug: true
 networkLogs: false
 testContextOptions:
-    skipSessionStatus: true   
+    skipSessionStatus: true

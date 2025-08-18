@@ -1,0 +1,46 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param n_bits
+#param has_zero_points
+#param output_type_i32
+
+#if output_type_i32
+  alias output_type = i32;
+#else
+  alias output_type = output_element_t;
+#endif
+
+#if n_bits == 4
+  const default_zero_point = 8;
+  const bit_mask = 0xFu;
+#elif n_bits == 8
+  const default_zero_point = 128;
+  const bit_mask = 0xFFu;
+#endif
+
+#if has_zero_points
+  const elements_in_uint32:u32 = 32u / n_bits;
+  fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_type
+  {
+    if (row < r_dim && col < c_dim) {
+      let offset = row * c_dim + col;
+
+      // u32 holds elements_in_uint32 packed nbits.
+      let array_index = offset / elements_in_uint32;
+      let component_index = offset % elements_in_uint32;
+      let packed_value = zero_points[array_index];
+
+      // Extract the nbits component
+      let shift_amount = component_index * n_bits;
+
+      let masked_value = (packed_value >> shift_amount) & bit_mask;
+      return output_type(masked_value);
+    }
+    return output_type(0);
+  }
+#else
+  fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_type {
+    return output_type(default_zero_point);
+  }
+#endif

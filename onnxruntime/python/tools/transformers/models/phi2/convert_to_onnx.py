@@ -168,6 +168,7 @@ class ConvertPhi2ToONNX:
             assert self.precision == Precision.INT4
             quant = MatMulNBitsQuantizer(
                 model=optimizer.model,
+                bits=4,
                 block_size=self.block_size,
                 is_symmetric=True,
                 accuracy_level=self.accuracy_level,

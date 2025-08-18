@@ -7,5 +7,9 @@
 // forward declaration
 struct OrtAllocator;
 namespace onnxruntime {
-char* StrDup(const std::string& str, OrtAllocator* allocator);
+char* StrDup(std::string_view str, OrtAllocator* allocator);
+inline char* StrDup(const std::string& str, OrtAllocator* allocator) {
+  return StrDup(std::string_view{str}, allocator);
+}
+wchar_t* StrDup(std::wstring_view str, OrtAllocator* allocator);
 }  // namespace onnxruntime

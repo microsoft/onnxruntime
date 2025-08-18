@@ -111,8 +111,8 @@ Status TransposeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
 
   // If a cast to int64 is needed, add the cast node
   if (needs_int64_cast) {
-    std::string cast_node_name = output_name + "_cast_int64";
-    std::string cast_input_name = output_name + "_cast_int64_aux";
+    std::string cast_node_name = utils::GetUniqueName(node_unit, "_cast_int64");
+    std::string cast_input_name = utils::GetUniqueName(output_name, "_cast_int64");
     std::string cast_output_name = output_name;
 
     // Create the cast input tensor wrapper
@@ -123,7 +123,7 @@ Status TransposeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
                                               std::move(output_shape));
 
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
-    cast_node_info_vec.push_back({cast_node_name, cast_input_name, cast_output_name});
+    cast_node_info_vec.emplace_back(CastNodeInfo{cast_node_name, cast_input_name, cast_output_name});
   }
 
   // Transpose output uses same data type and quantization parameter with input
@@ -140,7 +140,7 @@ Status TransposeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
 
   output_names.push_back(output_name);
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     QNN_OP_TRANSPOSE,
                                                     std::move(input_names),

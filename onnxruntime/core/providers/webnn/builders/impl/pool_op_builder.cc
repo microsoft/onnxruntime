@@ -60,7 +60,6 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
   NodeAttrHelper helper(node);
-  const bool is_nhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
 
   const auto onnx_kernel_shape = helper.Get("kernel_shape", std::vector<int32_t>{0, 0});
   if (!is_global_pooling) {
@@ -70,11 +69,6 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("strides", emscripten::val::array(strides));
   const auto dilations = helper.Get("dilations", std::vector<int32_t>{1, 1});
   options.set("dilations", emscripten::val::array(dilations));
-  if (is_nhwc) {
-    options.set("layout", emscripten::val("nhwc"));
-  } else {
-    options.set("layout", emscripten::val("nchw"));
-  }
 
   // Add Padding.
   // Usually using auto padding is more efficient than using explicit padding.
@@ -92,8 +86,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                       helper.Get("strides", std::vector<int64_t>{1, 1}),
                                       helper.Get("dilations", std::vector<int64_t>{1, 1}),
                                       auto_pad_type,
-                                      pads_out,
-                                      !is_nhwc));
+                                      pads_out));
     pads = GetNarrowedIntFromInt64<uint32_t>(pads_out);
   }
   // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
@@ -111,10 +104,6 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::vector<uint32_t> ending_padding{0, 0, pads[2], pads[3]};
     // Unset padding option, because we will use pad op instead.
     options.set("padding", emscripten::val::array(std::vector<uint32_t>{0, 0, 0, 0}));
-    if (is_nhwc) {
-      beginning_padding = {0, pads[0], pads[1], 0};
-      ending_padding = {0, pads[2], pads[3], 0};
-    }
 
     emscripten::val pad_options = emscripten::val::object();
     pad_options.set("label", node.Name() + "_pad");

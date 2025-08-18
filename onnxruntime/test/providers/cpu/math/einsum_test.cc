@@ -595,9 +595,11 @@ TEST(Einsum, ImplicitEinsumAsTensorContraction) {
 // Theme: Half support
 
 TEST(Einsum, ExplicitEinsumAsIdentity_1D_input_Half) {
+#if !defined(USE_WEBGPU)
   if (!HasCudaEnvironment(600)) {
     return;
   }
+#endif
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "i->i");
   std::vector<float> input_x_f = {0.9f, 2.5f, 2.3f, 1.5f, -4.5f};
@@ -612,9 +614,11 @@ TEST(Einsum, ExplicitEinsumAsIdentity_1D_input_Half) {
 }
 
 TEST(Einsum, ExplicitEinsumAsTransposeOp_2D_input_Half) {
+#if !defined(USE_WEBGPU)
   if (!HasCudaEnvironment(600)) {
     return;
   }
+#endif
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ji->ij");
   std::vector<float> input_x_f = {1.f, 2.f, 3.f, 4.f};
@@ -629,9 +633,11 @@ TEST(Einsum, ExplicitEinsumAsTransposeOp_2D_input_Half) {
 }
 
 TEST(Einsum, ExplicitEinsumAsReduceOp_2D_input_0_Half) {
+#if !defined(USE_WEBGPU)
   if (!HasCudaEnvironment(600)) {
     return;
   }
+#endif
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ij->i");
   std::vector<float> input_x_f = {1.f, 2.f, 3.f, 4.f};
@@ -646,9 +652,11 @@ TEST(Einsum, ExplicitEinsumAsReduceOp_2D_input_0_Half) {
 }
 
 TEST(Einsum, ExplicitEinsumAsOuterProductOp_2D_input_Half) {
+#if !defined(USE_WEBGPU)
   if (!HasCudaEnvironment(600)) {
     return;
   }
+#endif
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "i,j->ij");
   std::vector<float> input_x_f = {1.f, 2.f};
@@ -667,9 +675,11 @@ TEST(Einsum, ExplicitEinsumAsOuterProductOp_2D_input_Half) {
 }
 
 TEST(Einsum, ExplicitEinsumAsMatmul_Half) {
+#if !defined(USE_WEBGPU)
   if (!HasCudaEnvironment(600)) {
     return;
   }
+#endif
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ij,jk->ik");
   std::vector<float> input_x_f = {1.f, 2.f, 3.f, 4.f};
@@ -688,9 +698,11 @@ TEST(Einsum, ExplicitEinsumAsMatmul_Half) {
 }
 
 TEST(Einsum, ExplicitEinsumAsBatchedMatmul_Half) {
+#if !defined(USE_WEBGPU)
   if (!HasCudaEnvironment(600)) {
     return;
   }
+#endif
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "bij,bjk->bik");
   std::vector<float> input_x_f = {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f};
@@ -709,9 +721,11 @@ TEST(Einsum, ExplicitEinsumAsBatchedMatmul_Half) {
 }
 
 TEST(Einsum, ExplicitEinsumAsDiagonalOp_Half) {
+#if !defined(USE_WEBGPU)
   if (!HasCudaEnvironment(600)) {
     return;
   }
+#endif
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ii->i");
   std::vector<float> input_x_f = {1.f, 2.f, 3.f, 4.f};
@@ -726,9 +740,11 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOp_Half) {
 }
 
 TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithOneScalar_Half) {
+#if !defined(USE_WEBGPU)
   if (!HasCudaEnvironment(600)) {
     return;
   }
+#endif
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",...i->...i");
   std::vector<float> input_x_f = {10.f};
@@ -747,9 +763,11 @@ TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithOneScalar_Half) {
 }
 
 TEST(Einsum, ExplicitEinsumAsTensorContraction_Half) {
+#if !defined(USE_WEBGPU)
   if (!HasCudaEnvironment(600)) {
     return;
   }
+#endif
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "abcd,ea->bcde");
   std::vector<float> input_x_f = {1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f};

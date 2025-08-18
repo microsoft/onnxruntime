@@ -72,21 +72,23 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA();
 #endif  // defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 
 namespace {
-// Ignore whether there is an arena wrapping the allocator by excluding OrtMemoryInfo.alloc_type from the comparison
+// Ignore whether there is an arena wrapping the allocator by excluding OrtMemoryInfo.alloc_type from the comparison.
 static bool AreOrtMemoryInfosEquivalent(
     const OrtMemoryInfo& left, const OrtMemoryInfo& right,
-    bool match_name = true) {
+    bool match_name = true,
+    bool ignore_alignment = false) {
   return left.mem_type == right.mem_type &&
-         left.device == right.device &&
+         (ignore_alignment ? left.device.EqualIgnoringAlignment(right.device) : left.device == right.device) &&
          (!match_name || strcmp(left.name, right.name) == 0);
 }
 
 std::vector<AllocatorPtr>::const_iterator FindExistingAllocator(const std::vector<AllocatorPtr>& allocators,
                                                                 const OrtMemoryInfo& mem_info,
-                                                                bool match_name = true) {
+                                                                bool match_name = true,
+                                                                bool ignore_alignment = false) {
   auto ite = std::find_if(std::begin(allocators),
                           std::end(allocators),
-                          [&mem_info, match_name](const AllocatorPtr& alloc_ptr) {
+                          [&mem_info, match_name, ignore_alignment](const AllocatorPtr& alloc_ptr) {
                             // We want to do the equality checking of 2 OrtMemoryInfos sans the OrtAllocatorType field.
                             // This is because we want to avoid registering two allocators for the same device that just
                             // differ on OrtAllocatorType.
@@ -96,7 +98,8 @@ std::vector<AllocatorPtr>::const_iterator FindExistingAllocator(const std::vecto
                             // OrtDeviceAllocator (which is the only accepted value while registering a custom allocator).
                             // If we allowed this, it could potentially cause a lot of confusion as to which shared allocator
                             // to use for that device and we want to avoid having any ugly logic around this.
-                            return AreOrtMemoryInfosEquivalent(alloc_ptr->Info(), mem_info, match_name);
+                            return AreOrtMemoryInfosEquivalent(alloc_ptr->Info(), mem_info,
+                                                               match_name, ignore_alignment);
                           });
 
   return ite;
@@ -177,11 +180,6 @@ Status Environment::UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool 
   // shared_ort_allocators_ are internal only so never an error if there's no match
   if (auto it2 = FindExistingAllocator(shared_ort_allocators_, mem_info); it2 != shared_ort_allocators_.end()) {
     shared_ort_allocators_.erase(it2);
-  }
-
-  // also remove an arena wrapped allocator from an EP if the user called CreateSharedAllocator to create one
-  if (auto it3 = arena_ort_allocators_.find(&mem_info); it3 != arena_ort_allocators_.end()) {
-    arena_ort_allocators_.erase(it3);
   }
 
   if (found_shared_allocator) {
@@ -428,8 +426,29 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 }
 
 Environment::~Environment() {
-  // need to make sure all the OrtAllocator instances are released prior to any plugin EPs being freed
+  // need to make sure all the OrtAllocator instances are released prior to any plugin EPs being freed.
+  // this is because any entry in shared_allocators_ wrapping an OrtAllocator from a plugin EP owns the OrtAllocator
+  // instance and will call Release on it. If the plugin EP has been freed the Release will fail.
   shared_allocators_.clear();
+
+  // and as any OrtAllocator instances in shared_ort_allocators_ were owned by values in shared_allocators_ and have
+  // now been released we need to clear that too before calling UnregisterExecutionProviderLibrary().
+  shared_ort_allocators_.clear();
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // unregister any remaining EP libraries so they're cleaned up in a determistic way.
+  while (!ep_libraries_.empty()) {
+    auto it = ep_libraries_.begin();
+    ORT_IGNORE_RETURN_VALUE(UnregisterExecutionProviderLibrary(it->first));
+  }
+#endif
+}
+
+AllocatorPtr Environment::GetRegisteredSharedAllocator(const OrtMemoryInfo& mem_info) const {
+  std::lock_guard<std::mutex> lock{mutex_};
+
+  auto it = FindExistingAllocator(shared_allocators_, mem_info, /*match_name*/ false, /*ignore_alignment*/ true);
+  return it != shared_allocators_.end() ? *it : nullptr;
 }
 
 Status Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocator*& allocator) {
@@ -651,11 +670,6 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
   if (auto it = FindExistingAllocator(shared_ort_allocators_, memory_info, /*match_name*/ true);
       it != shared_ort_allocators_.end()) {
     shared_ort_allocators_.erase(it);
-  }
-
-  // if a previous call created an arena wrapped allocator for the EP's memory_info we also need to remove that
-  if (auto it = arena_ort_allocators_.find(&memory_info); it != arena_ort_allocators_.end()) {
-    arena_ort_allocators_.erase(it);
   }
 
   // we only want one shared allocator for an OrtDevice in the shared_allocators_ so that it's deterministic which

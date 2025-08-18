@@ -205,7 +205,7 @@ void AppendLoraParametersAsInputs(const RunOptions& run_options,
 template <typename T>
 static py::object AddNonTensor(const OrtValue& val,
                                const DataTransferManager* /*data_transfer_manager*/,
-                               const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
+                               const std::unordered_map<OrtDevice, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
   return py::cast(val.Get<T>());
 }
 
@@ -265,39 +265,65 @@ pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value, cons
 // pretty much does what a DataTransferManager does - copy data from device(s) to the host
 py::object GetPyObjFromTensor(const OrtValue& ort_value,
                               const DataTransferManager* data_transfer_manager,
-                              const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                              const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
   ORT_ENFORCE(ort_value.IsTensor(), "This function only supports tensors");
 
   const auto& tensor = ort_value.Get<Tensor>();
+  const auto& device = tensor.Location().device;
+
   if (tensor.IsDataTypeString()) {
-    ORT_ENFORCE(tensor.Location().device.Type() == OrtDevice::CPU, "Strings can only be on CPU");
+    ORT_ENFORCE(device.Type() == OrtDevice::CPU, "Strings can only be on CPU");
     // Create a numpy array of strings (python objects) by copy/converting them
     py::array result = StringTensorToNumpyArray(tensor);
     return py::cast<py::object>(result);
   }
 
-  const auto device_type = tensor.Location().device.Type();
+  const auto device_type = device.Type();
   // Create an numpy array on top of the OrtValue memory, no copy
   if (device_type == OrtDevice::CPU) {
     py::array result = PrimitiveTensorToNumpyOverOrtValue(ort_value);
     return py::cast<py::object>(result);
   }
 
-  if (!data_transfer_manager && !mem_cpy_to_host_functions) {
-    throw std::runtime_error(
-        "GetPyObjFromTensor: Either data transfer manager or a "
-        "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
-  }
-
   py::array result;
   if (data_transfer_manager != nullptr) {
     result = PrimitiveTensorToNumpyFromDevice(ort_value, data_transfer_manager);
   } else {
-    auto mem_cpy_to_host = mem_cpy_to_host_functions->find(device_type);
-    ORT_ENFORCE(mem_cpy_to_host != mem_cpy_to_host_functions->end(),
-                "Unable to locate a function that can copy data to the host from the device");
-    result = PrimitiveTensorToNumpyFromDevice(ort_value, mem_cpy_to_host->second);
+    bool copied = false;
+    if (mem_cpy_to_host_functions) {
+      auto it = std::find_if(mem_cpy_to_host_functions->begin(), mem_cpy_to_host_functions->end(),
+                             [&device](const auto& entry) {
+                               const auto& copy_device = entry.first;
+                               // We're ignoring OrtDevice.Id() currently for historical reasons.
+                               // The key to mem_cpy_to_host_functions was previously the device type (CPU/GPU/NPU).
+                               // This changed to be OrtDevice to get the vendor id.
+                               // Assumably it would be better to also match on device id, but that was not possible
+                               // previously and to preserve existing behavior we keep the old logic and expect the
+                               // copy function to handle the device id correctly.
+                               return device.Type() == copy_device.Type() &&
+                                      device.MemType() == copy_device.MemType() &&
+                                      device.Vendor() == copy_device.Vendor();
+                             });
+
+      if (it != mem_cpy_to_host_functions->end()) {
+        result = PrimitiveTensorToNumpyFromDevice(ort_value, it->second);
+        copied = true;
+      }
+    }
+
+    if (!copied) {
+      // see if we have a shared data transfer function from a plugin EP
+      auto device_to_cpu_copy_func = CreateDataTransferMemCpy(device, OrtDevice{});
+      if (device_to_cpu_copy_func) {
+        result = PrimitiveTensorToNumpyFromDevice(ort_value, device_to_cpu_copy_func);
+      } else {
+        throw std::runtime_error(
+            "GetPyObjFromTensor: Either data transfer manager or a "
+            "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
+      }
+    }
   }
+
   return py::cast<py::object>(result);
 }
 
@@ -373,7 +399,7 @@ py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, co
 template <>
 py::object AddNonTensor<TensorSeq>(const OrtValue& val,
                                    const DataTransferManager* data_transfer_manager,
-                                   const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                                   const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
   for (const auto& ort_value : seq_tensors) {
@@ -389,7 +415,7 @@ py::object AddNonTensor<TensorSeq>(const OrtValue& val,
 
 py::object AddNonTensorAsPyObj(const OrtValue& val,
                                const DataTransferManager* data_transfer_manager,
-                               const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                               const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
   if (val_type->IsTensorSequenceType()) {
@@ -429,7 +455,7 @@ py::object AddNonTensorAsPyObj(const OrtValue& val,
 }
 
 py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager,
-                            const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                            const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
   return GetPyObjFromTensor(val, data_transfer_manager, mem_cpy_to_host_functions);
 }
 
@@ -953,135 +979,10 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
 #if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
-    std::string calibration_table;
-    std::string save_model_path;
-    std::string load_model_path;
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      OrtMIGraphXProviderOptions params{
-          0,
-          0,
-          0,
-          0,
-          0,
-          nullptr,
-          1,
-          "./compiled_model.mxr",
-          1,
-          "./compiled_model.mxr",
-          1,
-          SIZE_MAX,
-          0};
-      for (auto option : it->second) {
-        if (option.first == "device_id") {
-          if (!option.second.empty()) {
-            params.device_id = std::stoi(option.second);
-          } else {
-            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'device_id' should be a number i.e. '0'.\n");
-          }
-        } else if (option.first == "migraphx_fp16_enable") {
-          if (option.second == "True" || option.second == "true") {
-            params.migraphx_fp16_enable = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_fp16_enable = false;
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migraphx_fp16_enable' should be"
-                " 'True' or 'False'. Default value is 'False'.\n");
-          }
-        } else if (option.first == "migraphx_fp8_enable") {
-          if (option.second == "True" || option.second == "true") {
-            params.migraphx_fp8_enable = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_fp8_enable = false;
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migraphx_fp8_enable' should be"
-                " 'True' or 'False'. Default value is 'False'.\n");
-          }
-        } else if (option.first == "migraphx_int8_enable") {
-          if (option.second == "True" || option.second == "true") {
-            params.migraphx_int8_enable = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_int8_enable = false;
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migraphx_int8_enable' should be"
-                " 'True' or 'False'. Default value is 'False'.\n");
-          }
-        } else if (option.first == "migraphx_int8_calibration_table_name") {
-          if (!option.second.empty()) {
-            calibration_table = option.second;
-            params.migraphx_int8_calibration_table_name = calibration_table.c_str();
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migraphx_int8_calibration_table_name' should be a "
-                "file name i.e. 'cal_table'.\n");
-          }
-        } else if (option.first == "migraphx_use_native_calibration_table") {
-          if (option.second == "True" || option.second == "true") {
-            params.migraphx_use_native_calibration_table = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_use_native_calibration_table = false;
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migraphx_use_native_calibration_table' should be"
-                " 'True' or 'False'. Default value is 'False'.\n");
-          }
-        } else if (option.first == "migraphx_save_compiled_model") {
-          if (option.second == "True" || option.second == "true") {
-            params.migraphx_fp16_enable = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_fp16_enable = false;
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migraphx_save_compiled_model' should be"
-                " 'True' or 'False'. Default value is 'False'.\n");
-          }
-        } else if (option.first == "migraphx_save_model_path") {
-          if (!option.second.empty()) {
-            save_model_path = option.second;
-            params.migraphx_save_model_path = save_model_path.c_str();
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migraphx_save_model_name' should be a "
-                "file name i.e. 'compiled_model.mxr'.\n");
-          }
-        } else if (option.first == "migraphx_load_compiled_model") {
-          if (option.second == "True" || option.second == "true") {
-            params.migraphx_fp16_enable = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_fp16_enable = false;
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migraphx_load_compiled_model' should be"
-                " 'True' or 'False'. Default value is 'False'.\n");
-          }
-        } else if (option.first == "migraphx_load_model_path") {
-          if (!option.second.empty()) {
-            load_model_path = option.second;
-            params.migraphx_load_model_path = load_model_path.c_str();
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migraphx_load_model_name' should be a "
-                "file name i.e. 'compiled_model.mxr'.\n");
-          }
-        } else if (option.first == "migraphx_exhaustive_tune") {
-          if (option.second == "True" || option.second == "true") {
-            params.migraphx_exhaustive_tune = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_exhaustive_tune = false;
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migraphx_exhaustive_tune' should be"
-                " 'True' or 'False'. Default value is 'False'.\n");
-          }
-        } else {
-          ORT_THROW("Invalid MIGraphX EP option: ", option.first);
-        }
-      }
       if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
-              onnxruntime::MIGraphXProviderFactoryCreator::Create(&params)) {
+              onnxruntime::MIGraphXProviderFactoryCreator::Create(it->second)) {
         return migraphx_provider_factory;
       }
     } else {
@@ -1886,20 +1787,26 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 #elif USE_ROCM || USE_MIGRAPHX
                vendor = OrtDevice::VendorIds::AMD;
 #endif
+             } else if (type == OrtDevice::NPU) {
+#if USE_CANN
+               vendor = OrtDevice::VendorIds::HUAWEI;
+#endif
              }
-
              return OrtDevice(type, mem_type, vendor, device_id);
            }),
            R"pbdoc(Constructor with vendor_id defaulted to 0 for backward compatibility.)pbdoc")
       .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
       .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
       .def("vendor_id", &OrtDevice::Vendor, R"pbdoc(Vendor Id.)pbdoc")
+      // generic device types that are typically used with a vendor id.
       .def_static("cpu", []() { return OrtDevice::CPU; })
+      .def_static("gpu", []() { return OrtDevice::GPU; })
+      .def_static("npu", []() { return OrtDevice::NPU; })
+      // EP specific device types for backward compatibility.
       .def_static("cuda", []() { return OrtDevice::GPU; })
       .def_static("cann", []() { return OrtDevice::NPU; })
-      .def_static("fpga", []() { return OrtDevice::FPGA; })
-      .def_static("npu", []() { return OrtDevice::NPU; })
       .def_static("dml", []() { return OrtDevice::DML; })
+      .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("webgpu", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 

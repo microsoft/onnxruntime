@@ -46,7 +46,7 @@ NodeArg* AddInitializer(Graph& graph, const char* name, const int64_t (&shape)[T
     proto.add_dims(shape[i]);
   }
   utils::SetRawDataInTensorProto(proto, begin, element_count * sizeof(TDataType));
-  return &graph_utils::AddInitializerWithExternalData(graph, proto);
+  return &graph_utils::AddInitializer(graph, proto);
 }
 
 template <size_t TDims>
