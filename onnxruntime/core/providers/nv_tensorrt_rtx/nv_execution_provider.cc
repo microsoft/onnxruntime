@@ -40,7 +40,7 @@
 #include <dlfcn.h>
 #define LIBTYPE void*
 #define OPENLIB(libname) dlopen((libname), RTLD_LAZY)
-#define LIBFUNC(lib, fn) dlsym((lib), (fn)) q
+#define LIBFUNC(lib, fn) dlsym((lib), (fn))
 #endif
 
 #define CUDA_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDA_CALL(expr))
