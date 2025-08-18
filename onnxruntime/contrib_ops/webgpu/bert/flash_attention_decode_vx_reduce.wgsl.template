@@ -1,0 +1,36 @@
+#param tile_size
+
+var<workgroup> tile_input: array<array<output_value_t, tile_size>, tile_size>;
+
+$MAIN {
+  let head_size_offset = (workgroup_idx % uniforms.num_head_size_tile) * tile_size;
+  let head_idx = u32(workgroup_idx / uniforms.num_head_size_tile);
+  let in_offset = head_idx * uniforms.num_present_sequence_length_tile * uniforms.head_size_vec;
+  var value = output_value_t(0);
+  let local_row = u32(local_idx / tile_size);
+  let local_col = local_idx % tile_size;
+
+  if (head_size_offset + local_col < uniforms.head_size_vec) {
+    for (var r = 0u; r < uniforms.num_total_seq_length_tile; r += tile_size) {
+      if (r + local_row < uniforms.num_total_seq_length_tile) {
+        value += input[in_offset + (r + local_row) * uniforms.head_size_vec + head_size_offset + local_col];
+      }
+    }
+  }
+
+  tile_input[local_row][local_col] = value;
+  workgroupBarrier();
+
+  if (head_idx >= uniforms.num_heads) {
+    return;
+  }
+
+  if (local_idx < tile_size && head_size_offset + local_idx < uniforms.head_size_vec) {
+    value = output_value_t(0);
+    for (var i = 0u; i < tile_size; i++) {
+      value += tile_input[i][local_idx];
+    }
+    let output_id = head_idx * uniforms.head_size_vec + head_size_offset + local_idx;
+    output[output_id] = value;
+  }
+}
