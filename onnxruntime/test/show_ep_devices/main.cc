@@ -20,7 +20,7 @@
 
 #include "test/show_ep_devices/printer.h"
 
-// Exception macros to accomodate builds with exceptions disabled.
+// Exception macros to accommodate builds with exceptions disabled.
 
 #if !defined(ORT_NO_EXCEPTIONS)
 #define TRY try
