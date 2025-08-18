@@ -76,6 +76,7 @@ static onnxruntime::PathString GetDynamicLibraryLocationByAddress(const void* ad
 vaip_core::OrtApiForVaip* create_org_api_hook();
 struct OrtVitisAIEpAPI {
   void (*initialize_onnxruntime_vitisai_ep)(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
+  void (*refresh_vitisai_ep_domains)(std::vector<OrtCustomOpDomain*>& ret_domain);
   void (*vitisai_on_ep_factory_created)(const onnxruntime::ProviderOptions& options);
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_with_options)(
       const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
@@ -134,6 +135,7 @@ struct OrtVitisAIEpAPI {
       ORT_THROW(status2);
     }
     std::ignore = env.GetSymbolFromLibrary(handle_, "vitisai_on_ep_factory_created", (void**)&vitisai_on_ep_factory_created);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "refresh_vitisai_ep_domains", (void**)&refresh_vitisai_ep_domains);
     std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
                                            (void**)&vaip_get_version);
     std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_collect", (void**)&profiler_collect);
@@ -326,6 +328,8 @@ static void refresh_kernel_registry(const std::vector<OrtCustomOpDomain*>& domai
 }
 
 void refresh_vitisai_ep_kernels() {
+  if (s_library_vitisaiep.refresh_vitisai_ep_domains)
+    s_library_vitisaiep.refresh_vitisai_ep_domains(s_domains_vitisaiep);
   vaip::register_xir_ops(s_domains_vitisaiep);
   refresh_kernel_registry(s_domains_vitisaiep);
 }
