@@ -1227,11 +1227,6 @@ Status NvExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOpt
   if (sync_stream && sync_stream_after_enqueue_) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
-
-  if (!IsGraphCaptureEnabled() &&
-      PerThreadContextCache()->find(this) != PerThreadContextCache()->end()) {
-    ReleasePerThreadContext();
-  }
   return Status::OK();
 }
 

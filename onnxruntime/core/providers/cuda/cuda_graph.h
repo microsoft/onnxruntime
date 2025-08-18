@@ -39,6 +39,7 @@ struct CUDAGraphManager {
   void CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id);
   void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
   Status Replay(CudaGraphAnnotation_t cuda_graph_annotation_id);
+  // Function overload for sync_status_flag for NV EP Cuda Graph implementation
   Status Replay(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync_status_flag);
 
   void Reset();
