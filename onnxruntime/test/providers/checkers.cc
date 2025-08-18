@@ -435,6 +435,16 @@ void InternalNumericalCheck(const Tensor& expected,
 }
 
 template <>
+struct TensorCheck<float> {
+  void operator()(const Tensor& expected,
+                  const Tensor& actual,
+                  const ValidateOutputParams& params,
+                  const std::string& provider_type) const {
+    InternalNumericalCheck<float>(expected, actual, params, provider_type);
+  }
+};
+
+template <>
 struct TensorCheck<MLFloat16> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,

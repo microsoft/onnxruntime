@@ -5,7 +5,10 @@
 
 #if !defined(DISABLE_FLOAT4_TYPES)
 
-#if defined(__CUDACC__)
+#if defined(USE_CUDA)
+// If building with CUDA support, include the CUDA header that includes the
+// CUDA_VERSION macro that in turn will determine if we can leverage CUDA's
+// native fp4 support (it requires CUDA 12.8+)
 #include<cuda.h>
 #endif
 
@@ -28,6 +31,7 @@
 
 #include <gsl/gsl>
 #include <utility>
+#include <cmath>
 
 #include "core/common/common.h"
 
