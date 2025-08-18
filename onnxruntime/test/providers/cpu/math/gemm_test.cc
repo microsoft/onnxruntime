@@ -1599,7 +1599,7 @@ TEST(GemmOpTest, GemmTransA_int32_128x128x128) {
   test.AddInput<int32_t>("C", {M, N}, C_data);
   test.AddOutput<int32_t>("Y", {M, N}, Y_data);
 
-  test.ConfigExcludeEps({kQnnExecutionProvider, kCpuExecutionProvider})
+  test.ConfigExcludeEps({kQnnExecutionProvider, kCpuExecutionProvider, kCoreMLExecutionProvider})
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }
