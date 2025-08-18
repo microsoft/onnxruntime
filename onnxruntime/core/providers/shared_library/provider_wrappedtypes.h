@@ -275,6 +275,22 @@ struct TensorProto final {
   void clear_double_data() { return g_host->TensorProto__clear_double_data(this); }
   void clear_uint64_data() { return g_host->TensorProto__clear_uint64_data(this); }
 
+  int float_data_size() const {
+    return g_host->TensorProto__float_data_size(this);
+  }
+
+  float float_data(int index) const {
+    return g_host->TensorProto__float_data(this, index);
+  }
+
+  int int32_data_size() const {
+    return g_host->TensorProto__int32_data_size(this);
+  }
+
+  uint32_t int32_data(int index) const {
+    return g_host->TensorProto__int32_data(this, index);
+  }
+
   TensorProto() = delete;
   TensorProto(const TensorProto&) = delete;
 };

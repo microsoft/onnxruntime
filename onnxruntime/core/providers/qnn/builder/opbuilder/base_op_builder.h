@@ -186,6 +186,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"QuantizeLinear", QNN_OP_QUANTIZE},
 
         {"MatMul", QNN_OP_MAT_MUL},
+        {"MatMulNBits", "MatMulNBits"},
 
         {"Elu", QNN_OP_ELU},
         {"Relu", QNN_OP_RELU},

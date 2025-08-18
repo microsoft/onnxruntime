@@ -563,6 +563,14 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
   }
 
+  // this is to pass flags to the custom op package for debugging, should be removed in production
+  static const std::string QNN_CUSTOM_OP_PACKAGE_HINT = "op_pack_hint";
+  auto op_pack_hint_pos = provider_options_map.find(QNN_CUSTOM_OP_PACKAGE_HINT);
+  if (op_pack_hint_pos != provider_options_map.end()) {
+    model_settings_.model_hints = op_pack_hint_pos->second;
+    std::cout << "Model hints: " << model_settings_.model_hints << std::endl;
+  }
+
   // For context binary generation with weight sharing enabled, use the QnnBackendManager from the shared context if it exits
   // So that all graphs from later sessions will be compiled into the same QNN context
   if (((context_cache_enabled_ && share_ep_contexts_) || enable_vtcm_backup_buffer_sharing_) && SharedContext::GetInstance().GetSharedQnnBackendManager()) {

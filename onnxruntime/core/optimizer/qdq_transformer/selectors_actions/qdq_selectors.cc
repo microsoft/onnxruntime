@@ -642,6 +642,23 @@ void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
+bool MatMulNBitsNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
+                                   const std::vector<const Node*>& dq_nodes,
+                                   const std::vector<const Node*>& q_nodes) const {
+                                    return true;
+                                    std::cout << "MatMulNBitsNodeGroupSelector::Check is not implemented yet." << std::endl;
+  // we should check that the first and third inputs hav DQ nodes, and that the output has a Q node
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, 2)) {
+    return false;
+  }
+  // MatMulNBits has 2 DQ inputs and 1 Q output
+  if (dq_nodes.size() != 2 || q_nodes.size() != 1) {
+    return false;
+  }
+
+  return true;
+}
+
 bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                    const std::vector<const Node*>& dq_nodes,
                                    const std::vector<const Node*>& q_nodes) const {

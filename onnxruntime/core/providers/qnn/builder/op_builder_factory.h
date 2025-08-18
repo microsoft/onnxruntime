@@ -105,6 +105,8 @@ void CreateHardSigmoidOpBuilder(const std::string& op_type, OpBuilderRegistratio
 
 void CreateMatMulOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateMatMulNBitsOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreateEinsumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateLSTMOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

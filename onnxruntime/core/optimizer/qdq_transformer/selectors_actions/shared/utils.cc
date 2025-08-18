@@ -124,6 +124,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetReciprocalOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
   return {{"MatMul", {}}};
 }
+static const OpVersionsAndSelector::OpVersionsMap GetMatMulNBitsOpVersionsMap() {
+  return {{"MatMulNBits", {}}};
+}
 static const OpVersionsAndSelector::OpVersionsMap GetGemmOpVersionsMap() {
   return {{"Gemm", {}}};
 }
@@ -245,6 +248,13 @@ void RegisterGemmSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterMatMulNbitsSelector(Selectors& qdq_selectors) {
+  /* register selector for MatMulNBits op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<MatMulNBitsNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetMatMulNBitsOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void RegisterInstanceAndLayerNormalizationSelector(Selectors& qdq_selectors) {
   /* register selector for InstanceNormalization op */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<InstanceAndLayerNormalizationNodeGroupSelector>();
@@ -313,6 +323,7 @@ void SelectorManager::CreateSelectors() {
   RegisterEinsumSelector(qdq_selectors_);
   RegisterReciprocalSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
+  RegisterMatMulNbitsSelector(qdq_selectors_);
   RegisterGemmSelector(qdq_selectors_);
   RegisterInstanceAndLayerNormalizationSelector(qdq_selectors_);
   RegisterBatchNormalizationSelector(qdq_selectors_);

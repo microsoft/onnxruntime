@@ -31,6 +31,7 @@ struct TensorInfo {
 
 struct ModelSettings {
   bool offload_graph_io_quantization = false;
+  std::string model_hints = ""; // used to allow quicker changes between algorithms, remove when stable.
   bool htp_shared_memory = false;
 };
 
@@ -291,6 +292,90 @@ class QnnModelWrapper {
   Status IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def,
                                /*out*/ bool& is_per_channel,
                                /*out*/ int64_t& axis) const;
+
+  struct ParsedHints {
+    bool shuffle = false;  // true ⇒ use fast shuffle kernel
+    bool scratch = false;  // true ⇒ use scratch memory for fast shuffle kernel
+    bool split = false;
+    uint32_t split_size = 0;   // 0 ⇒ none
+    uint32_t split_count = 1;  // 1 ⇒ no split, 2 ⇒ split into two tensors, etc.
+  };
+
+  ParsedHints parse_hints( const int output_dimension, const logging::Logger& logger) {
+    ParsedHints hints;
+    const ModelSettings& model_settings = GetModelSettings();
+    const std::string& model_hints = model_settings.model_hints;
+
+    LOGS(logger, INFO) << "Model hints: " << model_hints;
+
+    if (model_hints.find("shuffle") != std::string::npos) {
+      hints.shuffle = true;
+      LOGS(logger, INFO) << "Model hint 'shuffle' found.";
+    }
+    if (model_hints.find("scratch") != std::string::npos) {
+      hints.scratch = true;
+      LOGS(logger, INFO) << "Model hint 'scratch' found.";
+    }
+    if (model_hints.find("split") != std::string::npos) {
+      hints.split = true;
+      size_t split_pos = model_hints.find("split");
+      if (split_pos != std::string::npos) {
+        size_t next_underscore = model_hints.find('_', split_pos + 5);
+        if (next_underscore != std::string::npos) {
+          std::string split_size_str = model_hints.substr(split_pos + 5, next_underscore - (split_pos + 5));
+          try {
+            hints.split_size = std::stoul(split_size_str);
+            LOGS(logger, INFO) << "Target out split size set to: " << hints.split_size;
+          } catch (const std::invalid_argument& e) {
+            LOGS(logger, ERROR) << "Invalid split size: " << split_size_str;
+            LOGS(logger, ERROR) << "Exception: " << e.what();
+          }
+        } else {
+          LOGS(logger, ERROR) << "No underscore found after 'split'";
+        }
+      }
+    }
+    else
+    {
+      // we did not not get a hint about split size, lets default to 1024 or 1280, which ever splits the output dimension exactly. 
+      if (output_dimension % 1024 == 0) {
+        hints.split_size = 1024;
+        LOGS(logger, INFO) << "Default split size set to: " << hints.split_size;
+      } else if (output_dimension % 1280 == 0) {
+        hints.split_size = 1280;
+        LOGS(logger, INFO) << "Default split size set to: " << hints.split_size;
+      } else {
+        hints.split_size = output_dimension; // no split
+        LOGS(logger, INFO) << "No valid split size found, using output dimension: " << hints.split_size;
+      }
+    }
+
+    if (hints.split_size > 0) {
+      // Calculate the split count based on the output dimension.
+      if ((uint32_t)output_dimension <= hints.split_size) {
+        hints.split_count = 1;  // No split needed
+        hints.split_size = output_dimension;  // Set split size to output dimension
+        LOGS(logger, INFO) << "Output dimension is less than or equal to split size, no split needed.";
+      }
+      else if (output_dimension % hints.split_size != 0) {
+        hints.split_count = 1;  // No split needed
+        hints.split_size = output_dimension;  // Set split size to output dimension
+        LOGS(logger, INFO) << "Output dimension is not divisible by split size, leaving unmodified.";
+      }
+      else
+      {
+        hints.split_count = output_dimension / hints.split_size;
+        LOGS(logger, INFO) << "Split count set to: " << hints.split_count;
+      }
+      
+    } else {
+      // set split size tot the N dimension.
+      hints.split_size = output_dimension;
+      LOGS(logger, INFO) << "Split size set to output dimension: " << hints.split_size;
+    }
+
+    return hints;
+  }
 
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,

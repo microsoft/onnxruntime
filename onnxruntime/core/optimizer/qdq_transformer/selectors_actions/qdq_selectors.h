@@ -245,6 +245,21 @@ class DQMatMulNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 };
 
+// MatMulNBits node group selector
+class MatMulNBitsNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit MatMulNBitsNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+
+  bool allow_16bit_;
+  bool allow_4bit_;
+};
+
 // Input: DQ nodes for A, B and optional C
 // Output: optional Q node for Y
 class GemmNodeGroupSelector : public NodeGroupSelector {

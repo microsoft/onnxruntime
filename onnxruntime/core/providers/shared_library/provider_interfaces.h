@@ -516,6 +516,11 @@ struct ProviderHost {
   virtual void TensorProto__clear_uint64_data(ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual void TensorProto__set_data_location(ONNX_NAMESPACE::TensorProto* p, ONNX_NAMESPACE::TensorProto_DataLocation data_location) = 0;
 
+  virtual int TensorProto__float_data_size(const ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual float TensorProto__float_data(const ONNX_NAMESPACE::TensorProto* p, int index) = 0;
+  virtual int TensorProto__int32_data_size(const ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual int32_t TensorProto__int32_data(const ONNX_NAMESPACE::TensorProto* p, int index) = 0;
+
   virtual bool TensorProto_DataType_IsValid(int value) = 0;
 
   // TensorProtos

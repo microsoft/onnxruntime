@@ -348,6 +348,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     // op_packages|<OpTpye>:<PackagePath>:<InterfaceSymbolName>:<OptionalTarget>,<OpTpye2>:<PackagePath2>:<InterfaceSymbolName2>:<OptionalTarget2>
     for (const auto& op_package : op_packages_) {
       ORT_RETURN_IF(nullptr == qnn_interface_.backendRegisterOpPackage, "backendRegisterOpPackageFnHandle is nullptr.");
+      std::cout << "Registering op package: " << op_package.path << std::endl;
 
       Qnn_ErrorHandle_t result = qnn_interface_.backendRegisterOpPackage(
           backend_handle_,

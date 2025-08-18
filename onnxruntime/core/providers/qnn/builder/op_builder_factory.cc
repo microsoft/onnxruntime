@@ -189,6 +189,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateMatMulNBitsOpBuilder("MatMulNBits", *this);
+  }
+
+  {
     CreateMeanOpBuilder("Mean", *this);
   }
 
