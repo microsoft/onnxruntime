@@ -179,6 +179,7 @@ bool CommandLineParser::ParseArguments(TestConfig& test_config, int argc, ORTCHA
   {
     auto const& ep = absl::GetFlag(FLAGS_e);
     if (!ep.empty()) {
+      test_config.provider_name = ep;
       if (ep == "cpu") {
         // do nothing
       } else if (ep == "cuda") {
