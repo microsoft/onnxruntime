@@ -79,8 +79,10 @@ struct Exception : std::exception {
   throw Ort::Exception(string, code)
 #endif
 
-// If macro ORT_API_MANUAL_INIT is defined, no static initialization will be
-// performed. Instead, users must call InitApi() before using ORT.
+#ifdef ORT_API_MANUAL_INIT
+// If the macro ORT_API_MANUAL_INIT is defined, no static initialization
+// will be performed. Instead, users must call InitApi() before using the
+// ORT C++ APIs..
 //
 // InitApi() sets the global API object using the default initialization
 // logic. Users call this to initialize the ORT C++ APIs at a time that
@@ -103,6 +105,7 @@ inline void InitApi() noexcept;
 // }
 //
 inline void InitApi(const OrtApi* api) noexcept;
+#endif
 
 namespace detail {
 // This is used internally by the C++ API. This class holds the global
@@ -138,14 +141,17 @@ struct Global {
   // Has different definitions based on ORT_API_MANUAL_INIT
   static const OrtApi* DefaultInit() noexcept;
 
+#ifdef ORT_API_MANUAL_INIT
   // Public APIs to set the OrtApi* to use.
   friend void ::Ort::InitApi() noexcept;
   friend void ::Ort::InitApi(const OrtApi*) noexcept;
+#endif
 };
 }  // namespace detail
 
 #ifdef ORT_API_MANUAL_INIT
 
+// See comments on declaration above for usage.
 inline void InitApi(const OrtApi* api) noexcept { detail::Global::Api(api); }
 inline void InitApi() noexcept { InitApi(OrtGetApiBase()->GetApi(ORT_API_VERSION)); }
 
