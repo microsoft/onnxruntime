@@ -177,7 +177,26 @@ const NodeUnit* GetParentOfInput(const GraphViewer& graph_viewer,
                                  const NodeUnitIODef& input,
                                  const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                                  const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map) {
-  const Node& child_node = node_unit.GetNode();
+  const Node* p_child_node = nullptr;
+
+  for (auto node : node_unit.GetAllNodesInGroup()) {
+    for (auto node_input : node->InputDefs()) {
+      if (node_input->Name() == input.node_arg.Name()) {
+        p_child_node = node;
+        break;
+      }
+
+      if (p_child_node != nullptr) {
+        break;
+      }
+    }
+  }
+
+  if (p_child_node == nullptr) {
+    return nullptr;
+  }
+
+  const Node& child_node = *p_child_node;
 
   for (auto edge = child_node.InputEdgesBegin(); edge != child_node.InputEdgesEnd(); ++edge) {
     const Node& parent_node = edge->GetNode();

@@ -27,7 +27,7 @@ jobs:
           level: info
           filter_mode: diff_context
       - name: shellcheck # Static check shell scripts
-        uses: reviewdog/action-shellcheck@v1.30.0
+        uses: reviewdog/action-shellcheck@v1.31.0
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check

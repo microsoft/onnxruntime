@@ -122,7 +122,21 @@ def add_core_build_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         help="Use parallel build. Optional value specifies max jobs (0=num CPUs).",
     )
-    parser.add_argument("--target", help="Build a specific CMake target (e.g., winml_dll).")
+    parser.add_argument(
+        "--target",
+        nargs=1,
+        action="extend",
+        metavar="TARGET",
+        dest="targets",
+        help="Build a specific CMake target (e.g., winml_dll).",
+    )
+    parser.add_argument(
+        "--targets",
+        nargs="+",
+        action="extend",
+        default=[],
+        help="Build one or more specific CMake targets.",
+    )
     parser.add_argument(
         "--compile_no_warning_as_error",
         action="store_true",
@@ -146,7 +160,8 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--cmake_extra_defines",
         nargs="+",
-        action="append",
+        action="extend",
+        default=[],
         help="Extra CMake definitions (-D<key>=<value>). Provide as <key>=<value>.",
     )
     parser.add_argument("--cmake_path", default="cmake", help="Path to the CMake executable.")
@@ -342,7 +357,7 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for WebAssembly (WASM) platform builds."""
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
-    parser.add_argument("--emsdk_version", default="4.0.8", help="Specify version of emsdk.")
+    parser.add_argument("--emsdk_version", default="4.0.11", help="Specify version of emsdk.")
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD.")
     parser.add_argument("--enable_wasm_relaxed_simd", action="store_true", help="Enable WebAssembly Relaxed SIMD.")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threading.")
@@ -366,7 +381,8 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--emscripten_settings",
         nargs="+",
-        action="append",
+        action="extend",
+        default=[],
         help="Extra emscripten settings (-s <key>=<value>). Provide as <key>=<value>.",
     )
 
@@ -562,7 +578,8 @@ def add_csharp_binding_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--msbuild_extra_options",
         nargs="+",
-        action="append",
+        action="extend",
+        default=[],
         help="Extra MSBuild properties (/p:key=value). Provide as key=value.",
     )
 
@@ -772,9 +789,6 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ms_experimental", action="store_true", help="Build Microsoft experimental operators.")
     parser.add_argument(
         "--enable_msinternal", action="store_true", help="[MS Internal] Enable Microsoft internal build features."
-    )
-    parser.add_argument(
-        "--use_triton_kernel", action="store_true", help="Use Triton compiled kernels (requires Triton)."
     )
     parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
     parser.add_argument(

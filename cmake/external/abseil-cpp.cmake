@@ -43,9 +43,6 @@ onnxruntime_fetchcontent_makeavailable(abseil_cpp)
 FetchContent_GetProperties(abseil_cpp)
 if(abseil_cpp_SOURCE_DIR)
   set(ABSEIL_SOURCE_DIR ${abseil_cpp_SOURCE_DIR})
-  if(onnxruntime_USE_WEBGPU)
-    set(DAWN_ABSEIL_DIR ${abseil_cpp_SOURCE_DIR})
-  endif()
 endif()
 
 # abseil_cpp_SOURCE_DIR is non-empty if we build it from source

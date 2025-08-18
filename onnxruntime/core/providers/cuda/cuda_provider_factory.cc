@@ -355,8 +355,9 @@ struct CudaOrtAllocator : OrtAllocator {
     Alloc = AllocImpl;
     Free = FreeImpl;
     Info = InfoImpl;
-    Reserve = AllocImpl;  // no special behavior for Reserve so use AllocImpl
-    GetStats = nullptr;   // GetStatsImpl. The CUDA allocators don't have stats currently so we can skip.
+    Reserve = AllocImpl;      // no special behavior for Reserve so use AllocImpl
+    GetStats = nullptr;       // GetStatsImpl. The CUDA allocators don't have stats currently so we can skip.
+    AllocOnStream = nullptr;  // TODO. Plugin EP arena to provide this.
 
     const OrtEpApi& ep_api = *api.GetEpApi();
     const OrtMemoryDevice* mem_device = ep_api.MemoryInfo_GetMemoryDevice(mem_info);
@@ -679,7 +680,6 @@ struct CudaEpFactory : OrtEpFactory {
 
     CreateAllocator = CreateAllocatorImpl;
     ReleaseAllocator = ReleaseAllocatorImpl;
-
     CreateDataTransfer = CreateDataTransferImpl;
 
     IsStreamAware = IsStreamAwareImpl;
@@ -733,6 +733,10 @@ struct CudaEpFactory : OrtEpFactory {
       }
     }
     */
+
+    // guard against bad device discovery. max devices we expect to add is num_cuda_devices. if we're attempting
+    // to add more than that we have duplicates in the `devices` array.
+    max_ep_devices = std::min(max_ep_devices, static_cast<size_t>(num_cuda_devices));
 
     int16_t device_id = 0;
     for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {

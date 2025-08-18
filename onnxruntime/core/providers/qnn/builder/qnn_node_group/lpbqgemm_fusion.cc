@@ -32,8 +32,9 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedGemmFusion::TryFusion(
     const logging::Logger& logger) {
   ORT_UNUSED_PARAMETER(logger);
 
+  // Only HTP supports LPBQ encoding format
   // Looking for a Gemm to start search for Gemm w/ LPBQ encodings pattern.
-  if (gemm_node_unit.OpType() != "Gemm") {
+  if (!IsNpuBackend(qnn_model_wrapper.GetQnnBackendType()) || gemm_node_unit.OpType() != "Gemm") {
     return nullptr;
   }
 
@@ -190,7 +191,7 @@ Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
          act_dql_node_unit.OpType() == "DequantizeLinear" &&
          gemm_node_unit.OpType() == "Gemm" &&
          output_ql_node_unit.OpType() == "QuantizeLinear");
-  const auto& node_name = utils::GetNodeName(gemm_node_unit);
+  const auto& node_name = utils::GetUniqueName(gemm_node_unit);
   const NodeUnitIODef& act_dql_input_1_def = act_dql_node_unit.Inputs()[0];
   const NodeUnitIODef& w_dql_input_1_def = w_dql_node_unit.Inputs()[0];
   const NodeUnitIODef& w_ql_input_1_def = w_ql_node_unit.Inputs()[0];
@@ -236,18 +237,22 @@ Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                    (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4);
   }
 
+  std::vector<uint32_t> weight_shape;
+  std::string weight_tensor_name = w_ql_input_1_def.node_arg.Name();
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(w_ql_input_1_def.node_arg, weight_shape), "Failed to get weight shape");
+
   // Get attributes like axis, block_size from QuantizeLinear
   NodeAttrHelper helper(w_ql_node_unit.GetNode());
   auto input_channel_axis = helper.Get("axis", static_cast<int64_t>(0));
+  if (input_channel_axis < 0) {
+    input_channel_axis = weight_shape.size() + input_channel_axis;
+  }
   auto block_size = helper.Get("block_size", static_cast<int64_t>(0));
 
   size_t output_channel_axis = 0;  // Current LowPowerBlockQuantize() support output_channel_axis at index=0;
   weight_qparams = QnnQuantParamsWrapper(per_channel_float_scale, per_block_int_scale, weight_offset, output_channel_axis, block_size, is_int4_type);
 
-  std::vector<uint32_t> weight_shape;
   std::vector<uint8_t> unpacked_tensor;
-  std::string weight_tensor_name = w_ql_input_1_def.node_arg.Name();
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(w_ql_input_1_def.node_arg, weight_shape), "Failed to get weight shape");
   Qnn_DataType_t weight_data_type = is_int4_type ? QNN_DATATYPE_SFIXED_POINT_4 : QNN_DATATYPE_SFIXED_POINT_8;
   const auto& weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
   ORT_RETURN_IF_ERROR(UnpackWeightTensorData(qnn_model_wrapper, weight_tensor_proto, weight_shape, input_channel_axis, unpacked_tensor));

@@ -861,6 +861,12 @@ Return Value:
 
 --*/
 {
+    // Override
+    if(GetMlasPlatform().MlasConvOverride != nullptr &&
+        GetMlasPlatform().MlasConvOverride(Parameters,Input,Filter,Bias,WorkingBuffer,Output,ThreadPool)){
+    return;
+    }
+
     const size_t FilterCount = Parameters->FilterCount;
     const size_t OutputSize = Parameters->OutputSize;
     const size_t K = Parameters->K;
@@ -1094,6 +1100,13 @@ Return Value:
 
 --*/
 {
+    // Override
+    if (GetMlasPlatform().MlasConvPrepareOverride != nullptr &&
+        GetMlasPlatform().MlasConvPrepareOverride(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
+        InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
+        Activation, WorkingBufferSize, Beta, ThreadPool)){
+        return;
+    }
     //
     // Save the convolution parameters.
     //
