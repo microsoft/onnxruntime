@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
 #include "core/common/string_utils.h"
 
@@ -18,16 +19,30 @@ namespace onnxruntime {
 
 namespace {
 
+Status ErrorCodeToStatus(const std::error_code& ec) {
+  if (!ec) {
+    return Status::OK();
+  }
+
+  return Status{common::StatusCategory::ONNXRUNTIME, common::StatusCode::FAIL,
+                MakeString("Error: std::error_code with category name: ", ec.category().name(),
+                           ", value: ", ec.value(), ", message: ", ec.message())};
+}
+
 struct GpuSysfsPathInfo {
   size_t card_idx;
   fs::path path;
 };
 
-std::vector<GpuSysfsPathInfo> DetectGpuSysfsPaths() {
+Status DetectGpuSysfsPaths(std::vector<GpuSysfsPathInfo>& gpu_sysfs_paths_out) {
+  std::error_code error_code{};
   const fs::path sysfs_class_drm_path = "/sys/class/drm";
+  const bool sysfs_class_drm_path_exists = fs::exists(sysfs_class_drm_path, error_code);
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code));
 
-  if (!fs::exists(sysfs_class_drm_path)) {
-    return {};
+  if (!sysfs_class_drm_path_exists) {
+    gpu_sysfs_paths_out = std::vector<GpuSysfsPathInfo>{};
+    return Status::OK();
   }
 
   const auto detect_card_path = [](const fs::path& sysfs_path, size_t& card_idx) -> bool {
@@ -50,7 +65,11 @@ std::vector<GpuSysfsPathInfo> DetectGpuSysfsPaths() {
   };
 
   std::vector<GpuSysfsPathInfo> gpu_sysfs_paths{};
-  for (const auto& dir_item : fs::directory_iterator{sysfs_class_drm_path}) {
+
+  auto dir_iterator = fs::directory_iterator{sysfs_class_drm_path, error_code};
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code));
+
+  for (const auto& dir_item : dir_iterator) {
     const auto& dir_item_path = dir_item.path();
 
     if (size_t card_idx{}; detect_card_path(dir_item_path, card_idx)) {
@@ -61,31 +80,34 @@ std::vector<GpuSysfsPathInfo> DetectGpuSysfsPaths() {
     }
   }
 
-  return gpu_sysfs_paths;
+  gpu_sysfs_paths_out = std::move(gpu_sysfs_paths);
+  return Status::OK();
 }
 
-std::string ReadFileContents(const fs::path& file_path) {
+Status ReadFileContents(const fs::path& file_path, std::string& contents) {
   std::ifstream file{file_path};
-  ORT_ENFORCE(file, "Failed to open file: ", file_path);
+  ORT_RETURN_IF_NOT(file, "Failed to open file: ", file_path);
   std::istreambuf_iterator<char> file_begin{file}, file_end{};
-  std::string contents(file_begin, file_end);
-  return contents;
+  contents.assign(file_begin, file_end);
+  return Status::OK();
 }
 
 template <typename ValueType>
-ValueType ReadValueFromFile(const fs::path& file_path) {
-  const auto file_text = utils::TrimString(ReadFileContents(file_path));
-  return ParseStringWithClassicLocale<ValueType>(file_text);
+Status ReadValueFromFile(const fs::path& file_path, ValueType& value) {
+  std::string file_text{};
+  ORT_RETURN_IF_ERROR(ReadFileContents(file_path, file_text));
+  file_text = utils::TrimString(file_text);
+  return ParseStringWithClassicLocale<ValueType>(file_text, value);
 }
 
-OrtHardwareDevice GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info) {
+Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevice& gpu_device_out) {
   OrtHardwareDevice gpu_device{};
   const auto& sysfs_path = path_info.path;
 
   // vendor id
   {
     const auto vendor_id_path = sysfs_path / "device" / "vendor";
-    gpu_device.vendor_id = ReadValueFromFile<uint32_t>(vendor_id_path);
+    ORT_RETURN_IF_ERROR(ReadValueFromFile(vendor_id_path, gpu_device.vendor_id));
   }
 
   // TODO vendor name
@@ -93,7 +115,7 @@ OrtHardwareDevice GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info) {
   // device id
   {
     const auto device_id_path = sysfs_path / "device" / "device";
-    gpu_device.device_id = ReadValueFromFile<uint32_t>(device_id_path);
+    ORT_RETURN_IF_ERROR(ReadValueFromFile(device_id_path, gpu_device.device_id));
   }
 
   // metadata
@@ -102,21 +124,25 @@ OrtHardwareDevice GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info) {
 
   gpu_device.type = OrtHardwareDeviceType_GPU;
 
-  return gpu_device;
+  gpu_device_out = std::move(gpu_device);
+  return Status::OK();
 }
 
-std::vector<OrtHardwareDevice> GetGpuDevices() {
-  std::vector<OrtHardwareDevice> gpu_devices{};
+Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
+  std::vector<GpuSysfsPathInfo> gpu_sysfs_path_infos{};
+  ORT_RETURN_IF_ERROR(DetectGpuSysfsPaths(gpu_sysfs_path_infos));
 
-  const auto gpu_sysfs_path_infos = DetectGpuSysfsPaths();
+  std::vector<OrtHardwareDevice> gpu_devices{};
   gpu_devices.reserve(gpu_sysfs_path_infos.size());
 
   for (const auto& gpu_sysfs_path_info : gpu_sysfs_path_infos) {
-    auto gpu_device = GetGpuDeviceFromSysfs(gpu_sysfs_path_info);
+    OrtHardwareDevice gpu_device{};
+    ORT_RETURN_IF_ERROR(GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device));
     gpu_devices.emplace_back(std::move(gpu_device));
   }
 
-  return gpu_devices;
+  gpu_devices_out = std::move(gpu_devices);
+  return Status::OK();
 }
 
 }  // namespace
@@ -129,9 +155,14 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
 
   // get GPU devices
   {
-    auto gpu_devices = GetGpuDevices();
-    devices.insert(std::make_move_iterator(gpu_devices.begin()),
-                   std::make_move_iterator(gpu_devices.end()));
+    std::vector<OrtHardwareDevice> gpu_devices{};
+    Status gpu_device_discovery_status = GetGpuDevices(gpu_devices);
+    if (gpu_device_discovery_status.IsOK()) {
+      devices.insert(std::make_move_iterator(gpu_devices.begin()),
+                     std::make_move_iterator(gpu_devices.end()));
+    } else {
+      LOGS_DEFAULT(WARNING) << "GPU device discovery failed: " << gpu_device_discovery_status.ErrorMessage();
+    }
   }
 
   // get NPU devices
