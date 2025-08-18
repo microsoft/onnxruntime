@@ -3910,8 +3910,6 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
 
   cuda_options.Update(cuda_options_map);
 
-  auto allocator = Ort::AllocatorWithDefaultOptions();
-
   std::string s = cuda_options.GetCUDAProviderOptionsAsString();
   ASSERT_TRUE(s.find("device_id=0") != std::string::npos);
   ASSERT_TRUE(s.find("gpu_mem_limit=1024") != std::string::npos);
