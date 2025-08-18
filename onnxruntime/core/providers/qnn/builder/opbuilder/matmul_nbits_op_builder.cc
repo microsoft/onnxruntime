@@ -567,6 +567,7 @@ Status MatMulNBitsOpBuilder::ProcessAttributesAndOutputs([[maybe_unused]]QnnMode
     split_zeros_tensor_names.push_back(node_unit.Name() + "Zeros_" + std::to_string(i));
   }
 
+
   if (num_tokens == 1) {
     LOGS(logger, INFO) << "Using the MatMulNBits kernel" << do_op_validation;
 
@@ -616,98 +617,98 @@ Status MatMulNBitsOpBuilder::ProcessAttributesAndOutputs([[maybe_unused]]QnnMode
     }
 
     if (hints.split_count != 1) {
-      // if (hints.split_size % 256 == 0 && hints.split_size > 256) {
-      //   const uint32_t chunk = 256;
-      //   const uint32_t num_chunks = hints.split_size / chunk;
-      //   ORT_RETURN_IF_NOT(num_chunks >= 1, "split_size/256 must be >= 1");
+      if (hints.split_size % 256 == 0 && hints.split_size > 256) {
+        const uint32_t chunk = 256;
+        const uint32_t num_chunks = hints.split_size / chunk;
+        ORT_RETURN_IF_NOT(num_chunks >= 1, "split_size/256 must be >= 1");
 
-      //   LOGS(logger, INFO) << "Splitting output tensor into " << num_chunks << " chunks of size " << chunk;
+        LOGS(logger, INFO) << "Splitting output tensor into " << num_chunks << " chunks of size " << chunk;
 
-      //   std::vector<std::string> extra_split_output_tensor_names;
+        std::vector<std::string> extra_split_output_tensor_names;
 
-      //   for (size_t i = 0; i < hints.split_count; ++i) {
-      //     std::vector<std::string> group_of_output_names;
-      //     group_of_output_names.reserve(num_chunks);
+        for (size_t i = 0; i < hints.split_count; ++i) {
+          std::vector<std::string> group_of_output_names;
+          group_of_output_names.reserve(num_chunks);
 
-      //     for (uint32_t j = 0; j < num_chunks; ++j) {
-      //       std::string split_output_name =
-      //           node_unit.Name() + "Output_" + std::to_string(i) + "_split_" + std::to_string(j);
+          for (uint32_t j = 0; j < num_chunks; ++j) {
+            std::string split_output_name =
+                node_unit.Name() + "Output_" + std::to_string(i) + "_split_" + std::to_string(j);
 
-      //       TensorInfo output_info = {};
-      //       ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_outputs[0], output_info));
+            TensorInfo output_info = {};
+            ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_outputs[0], output_info));
 
-      //       const size_t last = output_info.shape.size() - 1;
+            const size_t last = output_info.shape.size() - 1;
 
-      //       output_info.shape[last] = chunk;
+            output_info.shape[last] = chunk;
 
-      //       QnnTensorWrapper split_output_tensor(
-      //           split_output_name,
-      //           QNN_TENSOR_TYPE_NATIVE,
-      //           output_info.qnn_data_type,
-      //           output_info.quant_param.Copy(),
-      //           std::move(output_info.shape));
+            QnnTensorWrapper split_output_tensor(
+                split_output_name,
+                QNN_TENSOR_TYPE_NATIVE,
+                output_info.qnn_data_type,
+                output_info.quant_param.Copy(),
+                std::move(output_info.shape));
 
-      //       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(split_output_tensor)),
-      //                         "Failed to add split output tensor");
-      //       extra_split_output_tensor_names.push_back(split_output_name);
-      //       group_of_output_names.push_back(split_output_name);
-      //     }
+            ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(split_output_tensor)),
+                              "Failed to add split output tensor");
+            extra_split_output_tensor_names.push_back(split_output_name);
+            group_of_output_names.push_back(split_output_name);
+          }
 
-      //     // ----- Split params -----
-      //     std::vector<std::string> split_param_names;
+          // ----- Split params -----
+          std::vector<std::string> split_param_names;
 
-      //     // axis = last dim
-      //     int output_ndim = node_outputs[0].node_arg.Shape()->dim_size();
-      //     Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
-      //     axis_qnn_scalar.dataType = QNN_DATATYPE_INT_32;
-      //     axis_qnn_scalar.int32Value = output_ndim - 1;
+          // axis = last dim
+          int output_ndim = node_outputs[0].node_arg.Shape()->dim_size();
+          Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
+          axis_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
+          axis_qnn_scalar.int32Value = output_ndim - 1;
 
-      //     QnnParamWrapper axis_param(
-      //         node_unit.Index(), node_unit.Name() + "_split_axis_" + std::to_string(i),
-      //         QNN_OP_SPLIT_PARAM_AXIS, axis_qnn_scalar);
-      //     split_param_names.push_back(axis_param.GetParamTensorName());
-      //     qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
+          QnnParamWrapper axis_param(
+              node_unit.Index(), node_unit.Name() + "_split_axis_" + std::to_string(i),
+              QNN_OP_SPLIT_PARAM_AXIS, axis_qnn_scalar);
+          split_param_names.push_back(axis_param.GetParamTensorName());
+          qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
 
-      //     // split_index = cumulative boundaries excluding 0
-      //     // e.g., for 1024 -> 4x256: {256, 512, 768}
-      //     std::vector<uint32_t> split_index;
-      //     split_index.reserve(num_chunks ? (num_chunks - 1) : 0);
-      //     for (uint32_t k = 1; k < num_chunks; ++k) {
-      //       split_index.push_back(k * chunk);
-      //     }
+          // split_index = cumulative boundaries excluding 0
+          // e.g., for 1024 -> 4x256: {256, 512, 768}
+          std::vector<uint32_t> split_index;
+          split_index.reserve(num_chunks ? (num_chunks - 1) : 0);
+          for (uint32_t k = 1; k < num_chunks; ++k) {
+            split_index.push_back(k * chunk);
+          }
 
-      //     // The SPLIT_INDEX tensor is a 1-D param with length = split_index.size()
-      //     std::vector<uint32_t> split_dim{static_cast<uint32_t>(split_index.size())};
-      //     QnnParamWrapper split_param(
-      //         node_unit.Index(), node_unit.Name() + "_split_idx_" + std::to_string(i),
-      //         QNN_OP_SPLIT_PARAM_SPLIT_INDEX,
-      //         std::move(split_dim),
-      //         std::move(split_index));
-      //     split_param_names.push_back(split_param.GetParamTensorName());
-      //     qnn_model_wrapper.AddParamWrapper(std::move(split_param));
+          // The SPLIT_INDEX tensor is a 1-D param with length = split_index.size()
+          std::vector<uint32_t> split_dim{static_cast<uint32_t>(split_index.size())};
+          QnnParamWrapper split_param(
+              node_unit.Index(), node_unit.Name() + "_split_idx_" + std::to_string(i),
+              QNN_OP_SPLIT_PARAM_SPLIT_INDEX,
+              std::move(split_dim),
+              std::move(split_index));
+          split_param_names.push_back(split_param.GetParamTensorName());
+          qnn_model_wrapper.AddParamWrapper(std::move(split_param));
 
-      //     // Create Split node
-      //     std::string split_name = node_unit.Name() + "Split_" + std::to_string(i);
-      //     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
-      //                           split_name,
-      //                           QNN_OP_PACKAGE_NAME_QTI_AISW,
-      //                           QNN_OP_SPLIT,
-      //                           {split_output_tensor_names[i]},    // input
-      //                           std::move(group_of_output_names),  // outputs
-      //                           std::move(split_param_names),
-      //                           do_op_validation),
-      //                       "Failed to add Split node.");
-      //   }
+          // Create Split node
+          std::string split_name = node_unit.Name() + "Split_" + std::to_string(i);
+          ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
+                                split_name,
+                                QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                QNN_OP_SPLIT,
+                                {split_output_tensor_names[i]},    // input
+                                std::move(group_of_output_names),  // outputs
+                                std::move(split_param_names),
+                                do_op_validation),
+                            "Failed to add Split node.");
+        }
 
-      //   // replace for downstream concat
-      //   split_output_tensor_names = std::move(extra_split_output_tensor_names);
-      // }
+        // replace for downstream concat
+        split_output_tensor_names = std::move(extra_split_output_tensor_names);
+      }
       std::vector<std::string> param_tensor_names_concat;
-      // int output_ndim = node_outputs[0].node_arg.Shape()->dim_size();
-      // int32_t default_axis = output_ndim - 1;
+      int output_ndim = node_outputs[0].node_arg.Shape()->dim_size();
+      int32_t default_axis = output_ndim - 1;
       Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
-      axis_qnn_scalar.dataType = QNN_DATATYPE_INT_32;
-      axis_qnn_scalar.int32Value = 3;  // default_axis;
+      axis_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
+      axis_qnn_scalar.int32Value = default_axis;
       QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_CONCAT_PARAM_AXIS, axis_qnn_scalar);
       param_tensor_names_concat.push_back(axis_param.GetParamTensorName());
       qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
@@ -718,7 +719,7 @@ Status MatMulNBitsOpBuilder::ProcessAttributesAndOutputs([[maybe_unused]]QnnMode
                                                         QNN_OP_CONCAT,
                                                         std::move(split_output_tensor_names),
                                                         {node_outputs[0].node_arg.Name()},
-                                                        {},
+                                                        std::move(param_tensor_names_concat),
                                                         do_op_validation),
                         "Failed to add Concat node.");
     }
