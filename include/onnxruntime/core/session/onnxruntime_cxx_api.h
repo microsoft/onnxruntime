@@ -108,17 +108,33 @@ namespace detail {
 // This is used internally by the C++ API. This class holds the global
 // variable that points to the OrtApi.
 struct Global {
-  static const OrtApi* GetApi() noexcept {
-    if (!api_) {
-      api_ = DefaultInit();
+  static const OrtApi* Api(const OrtApi* newValue = nullptr) noexcept {
+    // This block-level static will be initialized once when this function is
+    // first executed, delaying the call to DefaultInit() until it is first needed.
+    //
+    // When ORT_API_MANUAL_INIT is not defined, DefaultInit() calls
+    // OrtGetApiBase()->GetApi(), which may result in a shared library being
+    // loaded.
+    //
+    // Using a block-level static instead of a class-level static helps
+    // avoid issues with static initialization order and dynamic libraries
+    // loading other dynamic libraries.
+    //
+    // This makes it safe to include the C++ API headers in a shared library
+    // that is delay loaded or delay loads its dependencies.
+    //
+    // This DOES NOT make it safe to _use_ arbitrary ORT C++ APIs when
+    // initializaing static members, however.
+    static const OrtApi* api = DefaultInit();
+
+    if (newValue) {
+      api = newValue;
     }
 
-    return api_;
+    return api;
   }
 
  private:
-  inline static const OrtApi* api_ = nullptr;
-
   // Has different definitions based on ORT_API_MANUAL_INIT
   static const OrtApi* DefaultInit() noexcept;
 
@@ -130,7 +146,7 @@ struct Global {
 
 #ifdef ORT_API_MANUAL_INIT
 
-inline void InitApi(const OrtApi* api) noexcept { detail::Global::api_ = api; }
+inline void InitApi(const OrtApi* api) noexcept { detail::Global::Api(api); }
 inline void InitApi() noexcept { InitApi(OrtGetApiBase()->GetApi(ORT_API_VERSION)); }
 
 #ifdef _MSC_VER
@@ -158,22 +174,12 @@ inline const OrtApi* detail::Global::DefaultInit() noexcept {
 #endif
 
 inline const OrtApi* detail::Global::DefaultInit() noexcept {
-  // This block-level static will be initialized once when this function is
-  // first executed, delaying the call to OrtGetApiBase()->GetApi() until it
-  // is first needed. This helps avoid issues with static initialization
-  // order and dynamic libraries loading other dynamic libraries.
-  //
-  // This makes it safe to have a Ort::Env constructed as a static member.
-  //
-  // This DOES NOT make it safe to _use_ arbitrary ORT C++ APIs when
-  // initializing static members, however.
-  static const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  return api;
+  return OrtGetApiBase()->GetApi(ORT_API_VERSION);
 }
 #endif  // ORT_API_MANUAL_INIT
 
 /// This returns a reference to the ORT C API.
-inline const OrtApi& GetApi() noexcept { return *detail::Global::GetApi(); }
+inline const OrtApi& GetApi() noexcept { return *detail::Global::Api(); }
 
 /// <summary>
 /// This function returns the onnxruntime version string
