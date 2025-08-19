@@ -772,7 +772,6 @@ const std::string& EpGraph::GetName() const { return graph_viewer_.Name(); }
 
 std::unique_ptr<ModelMetadata> EpGraph::GetModelMetadata() const {
   const auto& model = graph_viewer_.GetGraph().GetModel();
-  const auto& graph = graph_viewer_.GetGraph();
   auto model_metadata = std::make_unique<ModelMetadata>();
 
   model_metadata->producer_name = model.ProducerName();
@@ -782,7 +781,7 @@ std::unique_ptr<ModelMetadata> EpGraph::GetModelMetadata() const {
   model_metadata->domain = model.Domain();
   model_metadata->version = model.ModelVersion();
   model_metadata->custom_metadata_map = model.MetaData();
-  model_metadata->graph_name = graph.Name();
+  model_metadata->graph_name = model.MainGraph().Name();
 
   return model_metadata;
 }

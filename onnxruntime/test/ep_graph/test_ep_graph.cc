@@ -914,7 +914,25 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   const ORTCHAR_T* api_model_path = nullptr;
   ASSERT_ORTSTATUS_OK(ort_api.Graph_GetModelPath(&api_graph, &api_model_path));
   ASSERT_EQ(PathString(api_model_path), PathString(model_path.c_str()));
-
+  // Check the model metadata
+  Ort::AllocatorWithDefaultOptions default_allocator;
+  auto ort_cxx_graph = Ort::ConstGraph(&api_graph);
+  auto api_model_metadata = ort_cxx_graph.GetModelMetadata();
+  OrtModelMetadata* ort_model_metadata;
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetModelMetadata(&api_graph, &ort_model_metadata));
+  auto ort_cxx_model_metadat = Ort::ModelMetadata(ort_model_metadata);
+  auto& model = graph_viewer.GetGraph().GetModel();
+  ASSERT_EQ(std::strcmp(ort_cxx_model_metadat.GetProducerNameAllocated(default_allocator).get(), model.ProducerName().c_str()), 0);
+  ASSERT_EQ(std::strcmp(ort_cxx_model_metadat.GetGraphNameAllocated(default_allocator).get(), model.MainGraph().Name().c_str()), 0);
+  ASSERT_EQ(std::strcmp(ort_cxx_model_metadat.GetDomainAllocated(default_allocator).get(), model.Domain().c_str()), 0);
+  ASSERT_EQ(std::strcmp(ort_cxx_model_metadat.GetDescriptionAllocated(default_allocator).get(), model.DocString().c_str()), 0);
+  ASSERT_EQ(std::strcmp(ort_cxx_model_metadat.GetGraphDescriptionAllocated(default_allocator).get(), model.GraphDocString().c_str()), 0);
+  ASSERT_EQ(ort_cxx_model_metadat.GetVersion(), model.ModelVersion());
+  auto model_meta_data = model.MetaData();
+  for (auto& [k, v] : model_meta_data) {
+    ASSERT_EQ(std::strcmp(ort_cxx_model_metadat.LookupCustomMetadataMapAllocated(k.c_str(), default_allocator).get(), v.c_str()), 0)
+        << " key=" << k << "; value=" << v;
+  }
   // Check graph inputs.
   const auto& graph_input_node_args = graph_viewer.GetInputsIncludingInitializers();
 
