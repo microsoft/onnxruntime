@@ -222,12 +222,12 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
 
     if (is_cast_required) {
       std::string output_cast_name = utils::GetUniqueName(node_unit, "_output_Cast");
-      QnnTensorWrapper mod_output(org_output_name,
-                                  op_output_tensor_type,
-                                  output_info.qnn_data_type,
-                                  output_info.quant_param.Copy(),
-                                  std::vector<uint32_t>(output_shape));
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(mod_output)),
+      QnnTensorWrapper casted_mod_output(org_output_name,
+                                         op_output_tensor_type,
+                                         output_info.qnn_data_type,
+                                         output_info.quant_param.Copy(),
+                                         std::vector<uint32_t>(output_shape));
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(casted_mod_output)),
                         "Failed to add output tensor for QNN Cast node.");
       ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(output_cast_name,
                                                         QNN_OP_PACKAGE_NAME_QTI_AISW,
