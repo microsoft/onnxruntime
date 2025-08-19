@@ -19,46 +19,48 @@ env:
   python_version: 3.11
 
 jobs:
-  # cpu:
-  #   uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
-  #   with:
-  #     # Only build arm64 for CPU
-  #     matrix_include: >-
-  #       [
-  #         {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
-  #         {"machine": "arm64", "target": "arm64", "build_config": "Release"}
-  #       ]
+  cpu:
+    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+    with:
+      # Only build arm64 for CPU
+      matrix_include: >-
+        [
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
+        ]
 
-  # coreml:
-  #   uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
-  #   with:
-  #     use_coreml: true
-  #     matrix_include: >-
-  #       [
-  #         {"machine": "x86_64", "target": "x86_64", "build_config": "Release"},
-  #         {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
-  #         {"machine": "arm64", "target": "arm64", "build_config": "Release"}
-  #       ]
-  # xnnpack:
-  #   uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
-  #   with:
-  #     use_xnnpack: true
-  #     # only build arm64/Debug for XNNPack
-  #     matrix_include: >-
-  #       [
-  #         {"machine": "arm64", "target": "arm64", "build_config": "Debug"}
-  #       ]
+  coreml:
+    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+    with:
+      use_coreml: true
+      matrix_include: >-
+        [
+          {"machine": "x86_64", "target": "x86_64", "build_config": "Release"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
+        ]
 
-  # webgpu:
-  #   uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
-  #   with:
-  #     use_webgpu: true
-  #     matrix_include: >-
-  #       [
-  #         {"machine": "arm64", "target": "x86_64", "build_config": "Release"},
-  #         {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
-  #         {"machine": "arm64", "target": "arm64", "build_config": "Release"}
-  #       ]
+  xnnpack:
+    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+    with:
+      use_xnnpack: true
+      # only build arm64/Debug for XNNPack
+      matrix_include: >-
+        [
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"}
+        ]
+
+  webgpu:
+    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+    with:
+      use_webgpu: true
+      matrix_include: >-
+        [
+          {"machine": "arm64", "target": "x86_64", "build_config": "Release"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
+        ]
+
   iphone_simulator:
     runs-on: macos-15
 
@@ -68,9 +70,7 @@ jobs:
 
     strategy:
       matrix:
-        # target_arch: [x86_64, arm64]
-        target_arch: [arm64]
-        count: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        target_arch: [x86_64, arm64]
 
     timeout-minutes: 90
 
@@ -106,53 +106,53 @@ jobs:
         env:
           ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ env.simulator_runtime_version }}
 
-  # Objective-C-StaticAnalysis:
-  #   runs-on: macos-14
+  Objective-C-StaticAnalysis:
+    runs-on: macos-14
 
-  #   env:
-  #     xcode_version: 15.2
+    env:
+      xcode_version: 15.2
 
-  #   timeout-minutes: 30
+    timeout-minutes: 30
 
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  #     - name: macOS CI pipeline prepare steps
-  #       uses: ./.github/actions/macos-ci-setup
-  #       with:
-  #         platform_machine: "arm64"
-  #         python_version: ${{ env.python_version }}
-  #         xcode_version: ${{ env.xcode_version }}
-  #         use_cache: false
+      - name: macOS CI pipeline prepare steps
+        uses: ./.github/actions/macos-ci-setup
+        with:
+          platform_machine: "arm64"
+          python_version: ${{ env.python_version }}
+          xcode_version: ${{ env.xcode_version }}
+          use_cache: false
 
-  #     - name: Generate compile_commands.json and ONNX protobuf files
-  #       shell: bash
-  #       run: |
-  #         python ./tools/ci_build/build.py \
-  #           --build_dir ./build \
-  #           --cmake_generator "Unix Makefiles" \
-  #           --config Debug \
-  #           --build_shared_lib \
-  #           --use_coreml \
-  #           --build_objc \
-  #           --enable_training_apis \
-  #           --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
-  #           --use_binskim_compliant_compile_flags \
-  #           --update \
-  #           --build --parallel \
-  #           --target onnx_proto
+      - name: Generate compile_commands.json and ONNX protobuf files
+        shell: bash
+        run: |
+          python ./tools/ci_build/build.py \
+            --build_dir ./build \
+            --cmake_generator "Unix Makefiles" \
+            --config Debug \
+            --build_shared_lib \
+            --use_coreml \
+            --build_objc \
+            --enable_training_apis \
+            --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            --use_binskim_compliant_compile_flags \
+            --update \
+            --build --parallel \
+            --target onnx_proto
 
-  #     - name: Analyze Objective-C/C++ source code
-  #       shell: bash
-  #       run: |
-  #         CLANG_TIDY_CHECKS="-*,clang-analyzer-*"
+      - name: Analyze Objective-C/C++ source code
+        shell: bash
+        run: |
+          CLANG_TIDY_CHECKS="-*,clang-analyzer-*"
 
-  #         "$(brew --prefix llvm@15)/bin/clang-tidy" \
-  #           -p=./build/Debug \
-  #           --checks="${CLANG_TIDY_CHECKS}" \
-  #           --warnings-as-errors="${CLANG_TIDY_CHECKS}" \
-  #           --header-filter="objectivec/include|objectivec|onnxruntime/core" \
-  #           ./objectivec/*.mm \
-  #           ./onnxruntime/core/platform/apple/logging/apple_log_sink.mm \
-  #           ./onnxruntime/core/providers/coreml/model/*.mm
+          "$(brew --prefix llvm@15)/bin/clang-tidy" \
+            -p=./build/Debug \
+            --checks="${CLANG_TIDY_CHECKS}" \
+            --warnings-as-errors="${CLANG_TIDY_CHECKS}" \
+            --header-filter="objectivec/include|objectivec|onnxruntime/core" \
+            ./objectivec/*.mm \
+            ./onnxruntime/core/platform/apple/logging/apple_log_sink.mm \
+            ./onnxruntime/core/providers/coreml/model/*.mm
