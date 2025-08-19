@@ -29,7 +29,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
 
@@ -72,7 +72,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
       - uses: actions/setup-node@v4
@@ -138,7 +138,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
       - uses: actions/setup-node@v4
@@ -178,7 +178,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
       - uses: actions/setup-node@v4
@@ -216,7 +216,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
       - uses: actions/setup-node@v4
@@ -256,7 +256,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
       - uses: actions/setup-node@v4
@@ -329,7 +329,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
 
@@ -416,7 +416,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
 
@@ -492,7 +492,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
 
@@ -575,7 +575,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
       - uses: actions/setup-node@v4
