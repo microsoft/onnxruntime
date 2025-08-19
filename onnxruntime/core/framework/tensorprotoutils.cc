@@ -362,11 +362,13 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
     case TensorProto_DataType_INT16:
     case TensorProto_DataType_FLOAT16:
     case TensorProto_DataType_BFLOAT16:
+      bytes = tensor.mutable_int32_data()->mutable_data();
+      num_elements = tensor.int32_data_size();
+      element_size = sizeof(uint16_t);
+      break;
     case TensorProto_DataType_INT32:
       bytes = tensor.mutable_int32_data()->mutable_data();
       num_elements = tensor.int32_data_size();
-      // We are setting this to int32_t size because we need to swap all 4 bytes
-      // to represent 16 bits within 32 bits correctly on a LE/BE system.
       element_size = sizeof(int32_t);
       break;
 
