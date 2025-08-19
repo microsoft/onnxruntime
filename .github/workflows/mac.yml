@@ -64,7 +64,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup
@@ -104,7 +104,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup
