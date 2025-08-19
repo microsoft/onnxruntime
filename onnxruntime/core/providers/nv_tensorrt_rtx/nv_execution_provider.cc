@@ -1119,7 +1119,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
                         << ", nv_force_sequential_engine_build: " << force_sequential_engine_build_
                         << ", nv_sparsity_enable: " << sparsity_enable_
                         << ", nv_auxiliary_streams: " << auxiliary_streams_
-                        << ", nv_cuda_graph_enable: " << cuda_graph_enable_
+                        << ", enable_cuda_graph: " << cuda_graph_enable_
                         << ", nv_dump_ep_context_model: " << dump_ep_context_model_
                         << ", nv_ep_context_file_path: " << ep_context_file_path_
                         << ", nv_ep_context_embed_mode: " << ep_context_embed_mode_
@@ -1224,7 +1224,7 @@ Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_option
 Status NvExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) {
   (void)run_options;
 
-  if (sync_stream && sync_stream_after_enqueue_) {
+  if (sync_stream && external_stream_) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
   return Status::OK();
