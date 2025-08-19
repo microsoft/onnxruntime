@@ -13,10 +13,11 @@ add_compile_definitions(BUILD_QNN_EP_STATIC_LIB=0)
        "${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/*.h"
        "${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/*.cc"
   )
-  # Exclude the simulation EP factory files from the build
+  # Exclude the actual EP factory files from the build
   list(REMOVE_ITEM onnxruntime_providers_qnn_abi_ep_srcs 
-       "${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/qnn_ep_factory_simulation.h"
-       "${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/qnn_ep_factory_simulation.cc")
+       "${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/qnn_ep_factory.h"
+       "${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/qnn_ep_factory.cc")
+
 
   set(example_plugin_ep_utils_srcs "${ONNXRUNTIME_ROOT}/test/autoep/library/example_plugin_ep_utils.cc")
 
@@ -57,16 +58,16 @@ add_compile_definitions(BUILD_QNN_EP_STATIC_LIB=0)
   set(onnxruntime_providers_qnn_abi_all_srcs ${onnxruntime_providers_qnn_abi_srcs})
   if(WIN32)
     # Sets the DLL version info on Windows: https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
-    list(APPEND onnxruntime_providers_qnn_abi_all_srcs "${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/onnxruntime_providers_qnn_abi.rc")
+    list(APPEND onnxruntime_providers_qnn_abi_all_srcs "${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/onnxruntime_providers_qnn_abi_simulation.rc")
   endif()
 
-  onnxruntime_add_shared_library_module(onnxruntime_providers_qnn_abi ${onnxruntime_providers_qnn_abi_all_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_qnn_abi ${ONNXRUNTIME_PROVIDERS_SHARED} ${GSL_TARGET} onnx
+  onnxruntime_add_shared_library_module(onnxruntime_providers_qnn_abi_simulation ${onnxruntime_providers_qnn_abi_all_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_qnn_abi_simulation ${ONNXRUNTIME_PROVIDERS_SHARED} ${GSL_TARGET} onnx
                                                               onnx_proto ${PROTOBUF_LIB} onnxruntime_common Boost::mp11 safeint_interface
                                                               nlohmann_json::nlohmann_json)
-  target_link_libraries(onnxruntime_providers_qnn_abi PRIVATE ${ONNXRUNTIME_PROVIDERS_SHARED} ${ABSEIL_LIBS} ${CMAKE_DL_LIBS} onnxruntime_common ${PROTOBUF_LIB} onnx_proto)
-  add_dependencies(onnxruntime_providers_qnn_abi onnxruntime_providers_shared onnx onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_providers_qnn_abi PRIVATE ${ONNXRUNTIME_ROOT}
+  target_link_libraries(onnxruntime_providers_qnn_abi_simulation PRIVATE ${ONNXRUNTIME_PROVIDERS_SHARED} ${ABSEIL_LIBS} ${CMAKE_DL_LIBS} onnxruntime_common ${PROTOBUF_LIB} onnx_proto)
+  add_dependencies(onnxruntime_providers_qnn_abi_simulation onnxruntime_providers_shared onnx onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_include_directories(onnxruntime_providers_qnn_abi_simulation PRIVATE ${ONNXRUNTIME_ROOT}
                                                                 ${CMAKE_CURRENT_BINARY_DIR}
                                                                 ${onnxruntime_QNN_HOME}/include/QNN
                                                                 ${onnxruntime_QNN_HOME}/include)
@@ -76,7 +77,7 @@ add_compile_definitions(BUILD_QNN_EP_STATIC_LIB=0)
     BUILD_QNN_EP_STATIC_LIB=0
     SHARED_PROVIDER=1
   )
-  # Set preprocessor definitions used in onnxruntime_providers_qnn_abi.rc
+  # Set preprocessor definitions used in onnxruntime_providers_qnn_abi_simulation.rc
   if(WIN32)
     if(NOT QNN_SDK_VERSION)
       set(QNN_DLL_FILE_DESCRIPTION "ONNX Runtime QNN Provider")
@@ -84,42 +85,42 @@ add_compile_definitions(BUILD_QNN_EP_STATIC_LIB=0)
       set(QNN_DLL_FILE_DESCRIPTION "ONNX Runtime QNN Provider (QAIRT ${QNN_SDK_VERSION})")
     endif()
 
-    target_compile_definitions(onnxruntime_providers_qnn_abi PRIVATE FILE_DESC=\"${QNN_DLL_FILE_DESCRIPTION}\")
-    target_compile_definitions(onnxruntime_providers_qnn_abi PRIVATE FILE_NAME=\"onnxruntime_providers_qnn_abi.dll\")
+    target_compile_definitions(onnxruntime_providers_qnn_abi_simulation PRIVATE FILE_DESC=\"${QNN_DLL_FILE_DESCRIPTION}\")
+    target_compile_definitions(onnxruntime_providers_qnn_abi_simulation PRIVATE FILE_NAME=\"onnxruntime_providers_qnn_abi_simulation.dll\")
   endif()
 
   # Set linker flags for function(s) exported by EP DLL
   if(UNIX)
-    target_link_options(onnxruntime_providers_qnn_abi PRIVATE
+    target_link_options(onnxruntime_providers_qnn_abi_simulation PRIVATE
                         "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/version_script.lds"
                         "LINKER:--gc-sections"
                         "LINKER:-rpath=\$ORIGIN"
     )
   elseif(WIN32)
-    set_property(TARGET onnxruntime_providers_qnn_abi APPEND_STRING PROPERTY LINK_FLAGS
+    set_property(TARGET onnxruntime_providers_qnn_abi_simulation APPEND_STRING PROPERTY LINK_FLAGS
                   "-DEF:${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/symbols.def")
   else()
-    message(FATAL_ERROR "onnxruntime_providers_qnn_abi unknown platform, need to specify shared library exports for it")
+    message(FATAL_ERROR "onnxruntime_providers_qnn_abi_simulation unknown platform, need to specify shared library exports for it")
   endif()
 
   # Set compile options
   if(MSVC)
-    target_compile_options(onnxruntime_providers_qnn_abi PUBLIC /wd4099 /wd4005)
+    target_compile_options(onnxruntime_providers_qnn_abi_simulation PUBLIC /wd4099 /wd4005)
   else()
     # ignore the warning unknown-pragmas on "pragma region"
-    target_compile_options(onnxruntime_providers_qnn_abi PRIVATE "-Wno-unknown-pragmas")
+    target_compile_options(onnxruntime_providers_qnn_abi_simulation PRIVATE "-Wno-unknown-pragmas")
   endif()
 
-  set_target_properties(onnxruntime_providers_qnn_abi PROPERTIES LINKER_LANGUAGE CXX)
-  set_target_properties(onnxruntime_providers_qnn_abi PROPERTIES CXX_STANDARD_REQUIRED ON)
-  set_target_properties(onnxruntime_providers_qnn_abi PROPERTIES FOLDER "ONNXRuntime")
+  set_target_properties(onnxruntime_providers_qnn_abi_simulation PROPERTIES LINKER_LANGUAGE CXX)
+  set_target_properties(onnxruntime_providers_qnn_abi_simulation PROPERTIES CXX_STANDARD_REQUIRED ON)
+  set_target_properties(onnxruntime_providers_qnn_abi_simulation PROPERTIES FOLDER "ONNXRuntime")
 
-  install(TARGETS onnxruntime_providers_qnn_abi
+  install(TARGETS onnxruntime_providers_qnn_abi_simulation
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-  set(onnxruntime_providers_qnn_abi_target onnxruntime_providers_qnn_abi)
+  set(onnxruntime_providers_qnn_abi_target onnxruntime_providers_qnn_abi_simulation)
 
   if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     add_custom_command(
@@ -135,7 +136,7 @@ add_compile_definitions(BUILD_QNN_EP_STATIC_LIB=0)
   endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
-  install(TARGETS onnxruntime_providers_qnn_abi EXPORT ${PROJECT_NAME}Targets
+  install(TARGETS onnxruntime_providers_qnn_abi_simulation EXPORT ${PROJECT_NAME}Targets
           ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

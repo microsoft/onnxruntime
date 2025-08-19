@@ -455,7 +455,8 @@ using RegisteredEpDeviceUniquePtr = std::unique_ptr<const OrtEpDevice, std::func
 void RegisterQnnEpLibrary(RegisteredEpDeviceUniquePtr& registered_ep_device,
                           Ort::SessionOptions& session_options,
                           const std::string& registration_name,
-                          const std::unordered_map<std::string, std::string>& ep_options);
+                          const std::unordered_map<std::string, std::string>& ep_options,
+                          bool simulated = false);
 
 /**
  * Inferences a given serialized model. Returns output values via an out-param.
@@ -721,7 +722,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   // Run QDQ model on CPU EP and collect outputs.
   std::vector<OrtValue> cpu_qdq_outputs;
   InferenceModel(qdq_model_data, "qdq_model_logger", {}, ExpectedEPNodeAssignment::All,
-                  qdq_helper.feeds_, cpu_qdq_outputs);
+                 qdq_helper.feeds_, cpu_qdq_outputs);
 
   bool is_qnn_ep = true;
   TryEnableQNNSaver(qnn_options);
@@ -980,7 +981,7 @@ inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
   // Run QDQ model on CPU EP and collect outputs.
   std::vector<OrtValue> cpu_f16_outputs;
   InferenceModel(f16_model_data, "fp16_model_logger", {}, ExpectedEPNodeAssignment::All,
-                  f16_helper.feeds_, cpu_f16_outputs);
+                 f16_helper.feeds_, cpu_f16_outputs);
 
   bool is_qnn_ep = true;
   TryEnableQNNSaver(qnn_options);

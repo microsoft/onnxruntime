@@ -102,16 +102,27 @@ void TryEnableQNNSaver(ProviderOptions& qnn_options) {
 void RegisterQnnEpLibrary(RegisteredEpDeviceUniquePtr& registered_ep_device,
                           Ort::SessionOptions& session_options,
                           const std::string& registration_name,
-                          const std::unordered_map<std::string, std::string>& ep_options) {
+                          const std::unordered_map<std::string, std::string>& ep_options,
+                          bool simulated) {
   Ort::Env* ort_env = GetOrtEnv();
   const OrtApi& c_api = Ort::GetApi();
 
-  const std::filesystem::path& library_path =
+  std::filesystem::path library_path = "";
+  if (simulated) {
+    library_path =
 #if _WIN32
-      "onnxruntime_providers_qnn_abi.dll";
+        "onnxruntime_providers_qnn_abi_simulation.dll";
 #else
-      "libonnxruntime_providers_qnn_abi.so";
+        "libonnxruntime_providers_qnn_abi_simulation.so";
 #endif
+  } else {
+    library_path =
+#if _WIN32
+        "onnxruntime_providers_qnn_abi.dll";
+#else
+        "libonnxruntime_providers_qnn_abi.so";
+#endif
+  }
 
   ASSERT_ORTSTATUS_OK(c_api.RegisterExecutionProviderLibrary(*ort_env,
                                                              registration_name.c_str(),
@@ -125,11 +136,11 @@ void RegisterQnnEpLibrary(RegisteredEpDeviceUniquePtr& registered_ep_device,
   if ((ep_options.find("backend_type") != ep_options.end() && ep_options.at("backend_type") == "htp") ||
       (ep_options.find("backend_path") != ep_options.end() && ep_options.at("backend_path") ==
 #if _WIN32
-          "QnnHtp.dll"
+                                                                  "QnnHtp.dll"
 #else
-          "libQnnHtp.so"
+                                                                  "libQnnHtp.so"
 #endif
-    )) {
+       )) {
     target_hw_device_type = OrtHardwareDeviceType_NPU;
   }
 
