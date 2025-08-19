@@ -11,10 +11,12 @@
 #if BUILD_QNN_EP_STATIC_LIB
 #include "core/providers/qnn/qnn_allocator.h"  // Used by QnnHTPBackendTests.UseHtpSharedMemoryAllocatorForInputs
 #endif
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/session/utils.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
 #include "test/util/include/api_asserts.h"
@@ -891,40 +893,72 @@ TEST_F(QnnCPUBackendTests, MultithreadSessionRun) {
                                           TestInputDef<float>(shape, false, input_data)),
                       "add3.f32");
 
-  SessionOptions session_opts;
-  session_opts.session_logid = "logger0";
-
-  RunOptions run_opts;
-  run_opts.run_tag = session_opts.session_logid;
-
-  InferenceSession session_obj{session_opts, GetEnvironment()};
   onnxruntime::ProviderOptions options;
-
 #if defined(_WIN32)
   options["backend_path"] = "QnnCpu.dll";
 #else
   options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
-  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+  RunOptions run_opts;
+  run_opts.run_tag = "logger0";
 
-  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-  ASSERT_TRUE(status.IsOK());
-  status = session_obj.Initialize();
-  ASSERT_TRUE(status.IsOK());
+  {
+    SessionOptions session_opts;
+    session_opts.session_logid = "logger0";
 
-  std::vector<std::thread> threads;
-  constexpr int num_threads = 5;
-  constexpr int loop_count = 10;
-  for (int i = 0; i < num_threads; i++) {
-    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                  model->builder.feeds_, model->builder.output_names_,
-                                  output_shapes, output_values, loop_count));
+    InferenceSession session_obj{session_opts, GetEnvironment()};
+
+    auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+    EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+    ASSERT_TRUE(status.IsOK());
+    status = session_obj.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    std::vector<std::thread> threads;
+    constexpr int num_threads = 5;
+    constexpr int loop_count = 10;
+    for (int i = 0; i < num_threads; i++) {
+      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                    model->builder.feeds_, model->builder.output_names_,
+                                    output_shapes, output_values, loop_count));
+    }
+
+    for (auto& th : threads) {
+      th.join();
+    }
   }
 
-  for (auto& th : threads) {
-    th.join();
+  {
+    Ort::SessionOptions session_opts;
+    session_opts.SetLogId("logger0");
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, session_opts, "QnnAbiTestProvider", options);
+
+    auto* ort_session_opts = static_cast<OrtSessionOptions*>(session_opts);
+    InferenceSession session_obj{ort_session_opts->value, GetEnvironment()};
+
+    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ(InitializeSession(ort_session_opts, session_obj), nullptr);
+    status = session_obj.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    std::vector<std::thread> threads;
+    constexpr int num_threads = 5;
+    constexpr int loop_count = 10;
+    for (int i = 0; i < num_threads; i++) {
+      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                    model->builder.feeds_, model->builder.output_names_,
+                                    output_shapes, output_values, loop_count));
+    }
+
+    for (auto& th : threads) {
+      th.join();
+    }
   }
 }
 
@@ -971,15 +1005,7 @@ TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
                                                    TestInputDef<float>(shape, false, input_data)),
                       "add3.qdq");
 
-  SessionOptions session_opts;
-  session_opts.session_logid = "logger0";
-
-  RunOptions run_opts;
-  run_opts.run_tag = session_opts.session_logid;
-
-  InferenceSession session_obj{session_opts, GetEnvironment()};
   onnxruntime::ProviderOptions options;
-
 #if defined(_WIN32)
   options["backend_path"] = "QnnHtp.dll";
 #else
@@ -987,26 +1013,66 @@ TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
 #endif
   options["offload_graph_io_quantization"] = "0";
 
-  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
-  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+  RunOptions run_opts;
+  run_opts.run_tag = "logger0";
 
-  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-  ASSERT_TRUE(status.IsOK());
-  status = session_obj.Initialize();
-  ASSERT_TRUE(status.IsOK());
+  {
+    SessionOptions session_opts;
+    session_opts.session_logid = "logger0";
 
-  std::vector<std::thread> threads;
-  constexpr int num_threads = 5;
-  constexpr int loop_count = 10;
+    InferenceSession session_obj{session_opts, GetEnvironment()};
 
-  for (int i = 0; i < num_threads; i++) {
-    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                  model->builder.feeds_, model->builder.output_names_,
-                                  output_shapes, output_values, loop_count));
+    auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+    EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+    ASSERT_TRUE(status.IsOK());
+    status = session_obj.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    std::vector<std::thread> threads;
+    constexpr int num_threads = 5;
+    constexpr int loop_count = 10;
+
+    for (int i = 0; i < num_threads; i++) {
+      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                    model->builder.feeds_, model->builder.output_names_,
+                                    output_shapes, output_values, loop_count));
+    }
+
+    for (auto& th : threads) {
+      th.join();
+    }
   }
 
-  for (auto& th : threads) {
-    th.join();
+  {
+    Ort::SessionOptions session_opts;
+    session_opts.SetLogId("logger0");
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, session_opts, "QnnAbiTestProvider", options);
+
+    auto* ort_session_opts = static_cast<OrtSessionOptions*>(session_opts);
+    InferenceSession session_obj{ort_session_opts->value, GetEnvironment()};
+
+    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ(InitializeSession(ort_session_opts, session_obj), nullptr);
+    status = session_obj.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    std::vector<std::thread> threads;
+    constexpr int num_threads = 5;
+    constexpr int loop_count = 10;
+    for (int i = 0; i < num_threads; i++) {
+      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                    model->builder.feeds_, model->builder.output_names_,
+                                    output_shapes, output_values, loop_count));
+    }
+
+    for (auto& th : threads) {
+      th.join();
+    }
   }
 }
 
@@ -1024,12 +1090,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
                                                    TestInputDef<float>(shape, false, input_data)),
                       "add3.qdq");
 
-  SessionOptions session_opts;
-  session_opts.session_logid = "logger0";
-
-  InferenceSession session_obj{session_opts, GetEnvironment()};
   onnxruntime::ProviderOptions options;
-
 #if defined(_WIN32)
   options["backend_path"] = "QnnHtp.dll";
 #else
@@ -1037,39 +1098,86 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
 #endif
   options["offload_graph_io_quantization"] = "0";
 
-  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
-  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
-
-  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-  ASSERT_TRUE(status.IsOK());
-  status = session_obj.Initialize();
-  ASSERT_TRUE(status.IsOK());
-
-  std::vector<std::thread> threads;
-  constexpr int num_threads = 5;
-  constexpr int loop_count = 10;
-
   std::vector<std::string> perf_modes{
       "burst", "balanced", "default", "high_performance", "high_power_saver",
       "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver"};
 
-  size_t post_i = perf_modes.size() - 1;
-  ASSERT_TRUE(post_i > num_threads);
-  for (int i = 0; i < num_threads; ++i, --post_i) {
-    RunOptions run_opts;
-    run_opts.run_tag = session_opts.session_logid;
-    auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
-    ASSERT_TRUE(rt.IsOK());
-    rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
-    ASSERT_TRUE(rt.IsOK());
+  {
+    SessionOptions session_opts;
+    session_opts.session_logid = "logger0";
 
-    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                  model->builder.feeds_, model->builder.output_names_,
-                                  output_shapes, output_values, loop_count));
+    InferenceSession session_obj{session_opts, GetEnvironment()};
+
+    auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+    EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+    ASSERT_TRUE(status.IsOK());
+    status = session_obj.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    std::vector<std::thread> threads;
+    constexpr int num_threads = 5;
+    constexpr int loop_count = 10;
+
+    size_t post_i = perf_modes.size() - 1;
+    ASSERT_TRUE(post_i > num_threads);
+    for (int i = 0; i < num_threads; ++i, --post_i) {
+      RunOptions run_opts;
+      run_opts.run_tag = session_opts.session_logid;
+      auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
+      ASSERT_TRUE(rt.IsOK());
+      rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
+      ASSERT_TRUE(rt.IsOK());
+
+      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                    model->builder.feeds_, model->builder.output_names_,
+                                    output_shapes, output_values, loop_count));
+    }
+
+    for (auto& th : threads) {
+      th.join();
+    }
   }
 
-  for (auto& th : threads) {
-    th.join();
+  {
+    Ort::SessionOptions session_opts;
+    session_opts.SetLogId("logger0");
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, session_opts, "QnnAbiTestProvider", options);
+
+    auto* ort_session_opts = static_cast<OrtSessionOptions*>(session_opts);
+    InferenceSession session_obj{ort_session_opts->value, GetEnvironment()};
+
+    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ(InitializeSession(ort_session_opts, session_obj), nullptr);
+    status = session_obj.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    std::vector<std::thread> threads;
+    constexpr int num_threads = 5;
+    constexpr int loop_count = 10;
+
+    size_t post_i = perf_modes.size() - 1;
+    ASSERT_TRUE(post_i > num_threads);
+    for (int i = 0; i < num_threads; ++i, --post_i) {
+      RunOptions run_opts;
+      run_opts.run_tag = "logger0";
+      auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
+      ASSERT_TRUE(rt.IsOK());
+      rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
+      ASSERT_TRUE(rt.IsOK());
+
+      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                    model->builder.feeds_, model->builder.output_names_,
+                                    output_shapes, output_values, loop_count));
+    }
+
+    for (auto& th : threads) {
+      th.join();
+    }
   }
 }
 
@@ -1087,15 +1195,7 @@ TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
                                                    TestInputDef<float>(shape, false, input_data)),
                       "add3.qdq");
 
-  SessionOptions session_opts;
-  session_opts.session_logid = "logger0";
-
-  RunOptions run_opts;
-  run_opts.run_tag = session_opts.session_logid;
-
-  InferenceSession session_obj{session_opts, GetEnvironment()};
   onnxruntime::ProviderOptions options;
-
 #if defined(_WIN32)
   options["backend_path"] = "QnnHtp.dll";
 #else
@@ -1104,26 +1204,67 @@ TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
   options["offload_graph_io_quantization"] = "0";
   options["htp_performance_mode"] = "burst";
 
-  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
-  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+  RunOptions run_opts;
+  run_opts.run_tag = "logger0";
 
-  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-  ASSERT_TRUE(status.IsOK());
-  status = session_obj.Initialize();
-  ASSERT_TRUE(status.IsOK());
+  {
+    SessionOptions session_opts;
+    session_opts.session_logid = "logger0";
 
-  std::vector<std::thread> threads;
-  constexpr int num_threads = 5;
-  constexpr int loop_count = 10;
+    InferenceSession session_obj{session_opts, GetEnvironment()};
 
-  for (int i = 0; i < num_threads; i++) {
-    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                  model->builder.feeds_, model->builder.output_names_,
-                                  output_shapes, output_values, loop_count));
+    auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+    EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+    ASSERT_TRUE(status.IsOK());
+    status = session_obj.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    std::vector<std::thread> threads;
+    constexpr int num_threads = 5;
+    constexpr int loop_count = 10;
+
+    for (int i = 0; i < num_threads; i++) {
+      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                    model->builder.feeds_, model->builder.output_names_,
+                                    output_shapes, output_values, loop_count));
+    }
+
+    for (auto& th : threads) {
+      th.join();
+    }
   }
 
-  for (auto& th : threads) {
-    th.join();
+  {
+    Ort::SessionOptions session_opts;
+    session_opts.SetLogId("logger0");
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, session_opts, "QnnAbiTestProvider", options);
+
+    auto* ort_session_opts = static_cast<OrtSessionOptions*>(session_opts);
+    InferenceSession session_obj{ort_session_opts->value, GetEnvironment()};
+
+    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ(InitializeSession(ort_session_opts, session_obj), nullptr);
+    status = session_obj.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    std::vector<std::thread> threads;
+    constexpr int num_threads = 5;
+    constexpr int loop_count = 10;
+
+    for (int i = 0; i < num_threads; i++) {
+      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                    model->builder.feeds_, model->builder.output_names_,
+                                    output_shapes, output_values, loop_count));
+    }
+
+    for (auto& th : threads) {
+      th.join();
+    }
   }
 }
 
@@ -1142,12 +1283,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
                                                    TestInputDef<float>(shape, false, input_data)),
                       "add3.qdq");
 
-  SessionOptions session_opts;
-  session_opts.session_logid = "logger0";
-
-  InferenceSession session_obj{session_opts, GetEnvironment()};
   onnxruntime::ProviderOptions options;
-
 #if defined(_WIN32)
   options["backend_path"] = "QnnHtp.dll";
 #else
@@ -1156,39 +1292,86 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
   options["offload_graph_io_quantization"] = "0";
   options["htp_performance_mode"] = "burst";
 
-  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
-  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
-
-  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-  ASSERT_TRUE(status.IsOK());
-  status = session_obj.Initialize();
-  ASSERT_TRUE(status.IsOK());
-
-  std::vector<std::thread> threads;
-  constexpr int num_threads = 5;
-  constexpr int loop_count = 10;
-
   std::vector<std::string> perf_modes{
       "burst", "balanced", "default", "high_performance", "high_power_saver",
       "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver"};
 
-  size_t post_i = perf_modes.size() - 1;
-  ASSERT_TRUE(post_i > num_threads);
-  for (int i = 0; i < num_threads; ++i, --post_i) {
-    RunOptions run_opts;
-    run_opts.run_tag = session_opts.session_logid;
-    auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
-    ASSERT_TRUE(rt.IsOK());
-    rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
-    ASSERT_TRUE(rt.IsOK());
+  {
+    SessionOptions session_opts;
+    session_opts.session_logid = "logger0";
 
-    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                  model->builder.feeds_, model->builder.output_names_,
-                                  output_shapes, output_values, loop_count));
+    InferenceSession session_obj{session_opts, GetEnvironment()};
+
+    auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+    EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+    ASSERT_TRUE(status.IsOK());
+    status = session_obj.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    std::vector<std::thread> threads;
+    constexpr int num_threads = 5;
+    constexpr int loop_count = 10;
+
+    size_t post_i = perf_modes.size() - 1;
+    ASSERT_TRUE(post_i > num_threads);
+    for (int i = 0; i < num_threads; ++i, --post_i) {
+      RunOptions run_opts;
+      run_opts.run_tag = session_opts.session_logid;
+      auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
+      ASSERT_TRUE(rt.IsOK());
+      rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
+      ASSERT_TRUE(rt.IsOK());
+
+      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                    model->builder.feeds_, model->builder.output_names_,
+                                    output_shapes, output_values, loop_count));
+    }
+
+    for (auto& th : threads) {
+      th.join();
+    }
   }
 
-  for (auto& th : threads) {
-    th.join();
+  {
+    Ort::SessionOptions session_opts;
+    session_opts.SetLogId("logger0");
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, session_opts, "QnnAbiTestProvider", options);
+
+    auto* ort_session_opts = static_cast<OrtSessionOptions*>(session_opts);
+    InferenceSession session_obj{ort_session_opts->value, GetEnvironment()};
+
+    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ(InitializeSession(ort_session_opts, session_obj), nullptr);
+    status = session_obj.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    std::vector<std::thread> threads;
+    constexpr int num_threads = 5;
+    constexpr int loop_count = 10;
+
+    size_t post_i = perf_modes.size() - 1;
+    ASSERT_TRUE(post_i > num_threads);
+    for (int i = 0; i < num_threads; ++i, --post_i) {
+      RunOptions run_opts;
+      run_opts.run_tag = "logger0";
+      auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
+      ASSERT_TRUE(rt.IsOK());
+      rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
+      ASSERT_TRUE(rt.IsOK());
+
+      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                    model->builder.feeds_, model->builder.output_names_,
+                                    output_shapes, output_values, loop_count));
+    }
+
+    for (auto& th : threads) {
+      th.join();
+    }
   }
 }
 
@@ -1599,7 +1782,6 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
 
 TEST_F(QnnHTPBackendTests, DumpJsonQNNGraph) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
-  Ort::SessionOptions so;
   onnxruntime::ProviderOptions options;
 #if defined(_WIN32)
   options["backend_path"] = "QnnHtp.dll";
@@ -1612,25 +1794,53 @@ TEST_F(QnnHTPBackendTests, DumpJsonQNNGraph) {
   options["json_qnn_graph_dir"] = dump_dir.string();
   options["dump_json_qnn_graph"] = "1";
 
-  // Remove pre-existing json files. Note that fs::remove_all() can handle non-existing paths.
-  std::filesystem::remove_all(dump_dir);
-  ASSERT_TRUE(std::filesystem::create_directory(dump_dir));
+  {
+    // Remove pre-existing json files. Note that fs::remove_all() can handle non-existing paths.
+    std::filesystem::remove_all(dump_dir);
+    ASSERT_TRUE(std::filesystem::create_directory(dump_dir));
 
-  so.AppendExecutionProvider("QNN", options);
-  Ort::Session session(*ort_env, ort_model_path, so);
+    Ort::SessionOptions so;
+    so.AppendExecutionProvider("QNN", options);
+    Ort::Session session(*ort_env, ort_model_path, so);
 
-  // Check that QNN JSON file(s) exist.
-  bool has_a_json_file = false;
-  for (auto const& dir_entry : std::filesystem::directory_iterator{dump_dir}) {
-    EXPECT_TRUE(dir_entry.is_regular_file());
-    EXPECT_EQ(dir_entry.path().extension().string(), ".json");
-    has_a_json_file = true;
+    // Check that QNN JSON file(s) exist.
+    bool has_a_json_file = false;
+    for (auto const& dir_entry : std::filesystem::directory_iterator{dump_dir}) {
+      EXPECT_TRUE(dir_entry.is_regular_file());
+      EXPECT_EQ(dir_entry.path().extension().string(), ".json");
+      has_a_json_file = true;
+    }
+    EXPECT_TRUE(has_a_json_file);
+
+    // Cleaup generated files.
+    // Comment the following line to inspect generated JSON files.
+    std::filesystem::remove_all(dump_dir);
   }
-  EXPECT_TRUE(has_a_json_file);
 
-  // Cleaup generated files.
-  // Comment the following line to inspect generated JSON files.
-  std::filesystem::remove_all(dump_dir);
+  {
+    // Remove pre-existing json files. Note that fs::remove_all() can handle non-existing paths.
+    std::filesystem::remove_all(dump_dir);
+    ASSERT_TRUE(std::filesystem::create_directory(dump_dir));
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    Ort::SessionOptions so;
+    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
+
+    Ort::Session session(*ort_env, ort_model_path, so);
+
+    // Check that QNN JSON file(s) exist.
+    bool has_a_json_file = false;
+    for (auto const& dir_entry : std::filesystem::directory_iterator{dump_dir}) {
+      EXPECT_TRUE(dir_entry.is_regular_file());
+      EXPECT_EQ(dir_entry.path().extension().string(), ".json");
+      has_a_json_file = true;
+    }
+    EXPECT_TRUE(has_a_json_file);
+
+    // Cleaup generated files.
+    // Comment the following line to inspect generated JSON files.
+    std::filesystem::remove_all(dump_dir);
+  }
 }
 
 // Test option for offloading quantization of graph inputs and dequantization of graph outputs to the CPU EP.
@@ -1775,6 +1985,23 @@ TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
     // Should not get a segfault.
     Ort::SessionOptions so;
     so.AppendExecutionProvider("QNN", options);
+
+    EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
+  }
+
+  {
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    Ort::SessionOptions so;
+    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
+
+    EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
+  }
+
+  // The std::unique_ptr should be destroyed after leaving the scope.
+  {
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    Ort::SessionOptions so;
+    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
 
     EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
   }
