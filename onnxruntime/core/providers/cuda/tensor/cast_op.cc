@@ -142,15 +142,15 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
 
 #if !defined(DISABLE_FLOAT4_TYPES)
 
-#define CASE_BYTE_PACKED(TP_TYPE, SrcT, DstT)            \
-  case TP_TYPE:                                          \
-    if (count > 0) {                                     \
-      cast_helper_impl::CudaCastPairwiseStd<DstT, SrcT>( \
-          Stream(context),                               \
-          X->Data<SrcT>(),                               \
-          Y->MutableData<DstT>(),                        \
-          count);                                        \
-    }                                                    \
+#define CASE_BYTE_PACKED(TP_TYPE, SrcT, DstT)                   \
+  case TP_TYPE:                                                 \
+    if (count > 0) {                                            \
+      return cast_helper_impl::CudaCastPairwiseStd<DstT, SrcT>( \
+          Stream(context),                                      \
+          X->Data<SrcT>(),                                      \
+          Y->MutableData<DstT>(),                               \
+          count);                                               \
+    }                                                           \
     break;
 
 #endif
@@ -331,7 +331,6 @@ COMPUTE_INTERNAL_FL8(Float8E5M2)
 template <>
 Status Cast<Float4E2M1x2>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  const auto* x_data = X->Data<Float4E2M1x2>();
   const TensorShape& shape = X->Shape();
   Tensor* Y = context->Output(0, shape);
   size_t count = shape.Size();

@@ -102,13 +102,10 @@ class ToCudaType<Float8E5M2FNUZ> {
 
 #if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
 // ENABLE_FP4 is only set if CUDA SDK version is >= 12.8
-// This is a CMake level check.
-// It is safe to include cuda_fp4.h if ENABLE_FP4 is set to true.
-#include <cuda_fp4.h>
 template <>
 class ToCudaType<Float4E2M1x2> {
  public:
-  typedef __nv_fp4x2_e2m1 MappedType;
+  typedef Float4E2M1x2::PackedCudaType MappedType;
 };
 #endif
 

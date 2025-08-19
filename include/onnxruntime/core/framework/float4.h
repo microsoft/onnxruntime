@@ -1,9 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// IMPORTANT NOTE: Users of this file MUST include "cuda.h" before including this header
+// if they would like to leverage the CUDA implementation for the conversion routines 
+// in their HOST code (code compiled by MSVC/GCC).
+// This is because there is a check on CUDA_VERSION which is a macro defined in cuda.h.
+// We can't include cuda.h in this header unconditionally because this header is also 
+// included in core framework files which are CUDA-agnostic.
+// Not including "cuda.h" in GCC/MSVC will fall-back to the CPU conversion routines
+// implemented in this file.
+// For code compiled by NVCC which includes this header, this file will automatically
+// include cuda.h (based on the CUDA_CC macro).
+
 #pragma once
 
 #if !defined(DISABLE_FLOAT4_TYPES)
+
+#if defined(__CUDACC__)
+// Needed for CUDA_VERSION check below
+#include<cuda.h>
+#endif
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
 
@@ -225,56 +241,10 @@ struct Float4E2M1x2 {
 
        return static_cast<UnpackedType>(pair.second);
       }
-
-
-
-    /*
-        static bool Unpack(gsl::span<UnpackedType> dst, gsl::span<const Float4E2M1x2> src) {
-          if (CalcNumFloat4Pairs(dst.size()) != src.size()) {
-            return false;
-          }
-
-          if (src.empty()) {
-            return true;
-          }
-
-          for (size_t i = 0; i < dst.size(); i++) {
-            size_t r = i >> 1;   // i / 2;
-            size_t c = i & 0x1;  // i % 2;
-            dst[i] = src[r].GetElem(c);
-          }
-
-          return true;
-        }
-
-          static bool Pack(gsl::span<Float4E2M1x2> dst, gsl::span<const UnpackedType> src) {
-          if (CalcNumFloat4Pairs(src.size()) != dst.size()) {
-            return false;
-          }
-
-          if (src.empty()) {
-            return true;
-          }
-
-          size_t src_i = 0;
-          size_t dst_i = 0;
-
-          for (; src_i < src.size() - 1; src_i += 2) {
-            dst[dst_i++] = Float4E2M1x2(src[src_i], src[src_i + 1]);
-          }
-
-          if (src_i < src.size()) {
-            dst[dst_i] = Float4E2M1x2(src[src_i], 0);
-          }
-
-          return true;
-        }
-    */
-
     };
 
-        inline ORT_HOST_DEVICE bool operator==(const Float4E2M1x2& left, const Float4E2M1x2& right) { return left.val_ == right.val_; }
-        inline ORT_HOST_DEVICE bool operator!=(const Float4E2M1x2& left, const Float4E2M1x2& right) { return left.val_ != right.val_; }
+    inline ORT_HOST_DEVICE bool operator==(const Float4E2M1x2& left, const Float4E2M1x2& right) { return left.val_ == right.val_; }
+    inline ORT_HOST_DEVICE bool operator!=(const Float4E2M1x2& left, const Float4E2M1x2& right) { return left.val_ != right.val_; }
 
         static_assert(sizeof(Float4E2M1x2) == sizeof(uint8_t));
     }  // namespace onnxruntime
@@ -304,12 +274,6 @@ namespace std
         return onnxruntime::Float4E2M1x2(0x11, onnxruntime::Float4E2M1x2::FromBits());  // +0.5
         }
 
-        //static constexpr onnxruntime::Float4E2M1x2 epsilon() {
-        //}
-
-        //static constexpr onnxruntime::Float4E2M1x2 round_error() {
-        //}
-
         static constexpr bool is_specialized = true;
         static constexpr bool is_signed = true;
         static constexpr bool is_integer = false;
@@ -327,13 +291,10 @@ namespace std
         static constexpr int digits10 = 0;         // (digits -1) * std::log10(2) rounded down
         static constexpr int max_digits10 = 1;     // Mantissa bits
         static constexpr int radix = 2;
-
-        static constexpr int min_exponent = 1;     // 2 ^ (1-1) = 1 is the finite formal value min ceiling we can reach
-        //static constexpr int min_exponent10 = -4;  // TODO: Check
-
-        static constexpr int max_exponent = 3;     // 2 ^ (3-1) = 4 is the finite formal value max ceiling we can reach
-        //static constexpr int max_exponent10 = 4;   // TODO: Check
-      
+        static constexpr int min_exponent = 1;     // 2 ^ (1-1) = 1 is the valid normalized value min ceiling we can reach
+        static constexpr int min_exponent10 = 0;   // 10 ^ 0 is the valid normalized value min ceiling we can reach
+        static constexpr int max_exponent = 3;     // 2 ^ (3-1) = 4 is valid normalized value max ceiling we can reach
+        static constexpr int max_exponent10 = 0; // 10 ^ 0 is the valid normalized value max ceiling we can reach
         static constexpr auto traps = false;
         static constexpr auto tinyness_before = false;
     };
