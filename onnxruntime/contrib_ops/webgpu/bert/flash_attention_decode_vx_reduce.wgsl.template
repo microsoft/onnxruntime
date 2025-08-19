@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #param tile_size
 
 var<workgroup> tile_input: array<array<output_value_t, tile_size>, tile_size>;

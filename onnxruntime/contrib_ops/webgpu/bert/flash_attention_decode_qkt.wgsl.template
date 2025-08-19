@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #param has_attention_bias
 #param tile_size
 #param tile_size_k_vec
@@ -8,15 +11,15 @@ var<workgroup> inner_qk_values: array<array<q_element_t, tile_size_k_vec>, tile_
 var<workgroup> tile_qk: array<q_element_t, tile_size>;
 
 #if has_attention_bias
-fn loadAttentionBias(idx: u32) -> q_element_t
-{
-  return attention_bias[idx];
-}
+  fn loadAttentionBias(idx: u32) -> q_element_t
+  {
+    return attention_bias[idx];
+  }
 #else
-fn loadAttentionBias(idx: u32) -> q_element_t
-{
-  return q_element_t(0);
-}
+  fn loadAttentionBias(idx: u32) -> q_element_t
+  {
+    return q_element_t(0);
+  }
 #endif
 
 $MAIN {

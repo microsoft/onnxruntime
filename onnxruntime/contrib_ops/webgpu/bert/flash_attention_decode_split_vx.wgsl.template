@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #param tile_size
 #param head_size_vec
 #param tile_size_k_vec
