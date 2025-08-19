@@ -1390,7 +1390,7 @@ endif()
     endif()
 
     if (CMAKE_SYSTEM_NAME MATCHES "AIX" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-         set_target_properties(onnxruntime_shared_lib_test PROPERTIES ENABLE_EXPORTS 1)
+      set_target_properties(onnxruntime_shared_lib_test PROPERTIES ENABLE_EXPORTS 1)
     endif()
 
     if (IOS)
