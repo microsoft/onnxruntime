@@ -68,7 +68,9 @@ jobs:
 
     strategy:
       matrix:
-        target_arch: [x86_64, arm64]
+        # target_arch: [x86_64, arm64]
+        target_arch: [arm64]
+        count: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     timeout-minutes: 90
 
@@ -84,7 +86,7 @@ jobs:
           xcode_version: ${{ env.xcode_version }}
           use_cache: false
 
-      - name: Build for iphonesimulator ${{ matrix.target_arch }}
+      - name: Build for iphonesimulator ${{ matrix.target_arch }}, count ${{ matrix.count }}
         shell: bash
         run: |
           python ./tools/ci_build/build.py \
