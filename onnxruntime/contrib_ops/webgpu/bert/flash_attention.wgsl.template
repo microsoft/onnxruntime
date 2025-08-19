@@ -149,25 +149,25 @@ $MAIN {
     var qk_3 : vec4<q_element_t>;
     var qk_4 : vec4<q_element_t>;
 #if is_nvidia
-      for (var i : u32 = 0u; i < head_size_vec; i++) {
-        var q_own = q_tile[i];
-        qk_1[0] += dot(q_own, k_tile[0][i]);
-        qk_1[1] += dot(q_own, k_tile[1][i]);
-        qk_1[2] += dot(q_own, k_tile[2][i]);
-        qk_1[3] += dot(q_own, k_tile[3][i]);
-        qk_2[0] += dot(q_own, k_tile[4][i]);
-        qk_2[1] += dot(q_own, k_tile[5][i]);
-        qk_2[2] += dot(q_own, k_tile[6][i]);
-        qk_2[3] += dot(q_own, k_tile[7][i]);
-        qk_3[0] += dot(q_own, k_tile[8][i]);
-        qk_3[1] += dot(q_own, k_tile[9][i]);
-        qk_3[2] += dot(q_own, k_tile[10][i]);
-        qk_3[3] += dot(q_own, k_tile[11][i]);
-        qk_4[0] += dot(q_own, k_tile[12][i]);
-        qk_4[1] += dot(q_own, k_tile[13][i]);
-        qk_4[2] += dot(q_own, k_tile[14][i]);
-        qk_4[3] += dot(q_own, k_tile[15][i]);
-      }
+    for (var i : u32 = 0u; i < head_size_vec; i++) {
+      var q_own = q_tile[i];
+      qk_1[0] += dot(q_own, k_tile[0][i]);
+      qk_1[1] += dot(q_own, k_tile[1][i]);
+      qk_1[2] += dot(q_own, k_tile[2][i]);
+      qk_1[3] += dot(q_own, k_tile[3][i]);
+      qk_2[0] += dot(q_own, k_tile[4][i]);
+      qk_2[1] += dot(q_own, k_tile[5][i]);
+      qk_2[2] += dot(q_own, k_tile[6][i]);
+      qk_2[3] += dot(q_own, k_tile[7][i]);
+      qk_3[0] += dot(q_own, k_tile[8][i]);
+      qk_3[1] += dot(q_own, k_tile[9][i]);
+      qk_3[2] += dot(q_own, k_tile[10][i]);
+      qk_3[3] += dot(q_own, k_tile[11][i]);
+      qk_4[0] += dot(q_own, k_tile[12][i]);
+      qk_4[1] += dot(q_own, k_tile[13][i]);
+      qk_4[2] += dot(q_own, k_tile[14][i]);
+      qk_4[3] += dot(q_own, k_tile[15][i]);
+    }
 #else
     if (sg_size > 8) {
       for (var i : u32 = 0u; i < head_size_vec; i++) {
@@ -347,25 +347,25 @@ $MAIN {
   }
 #else
 #if is_nvidia
-      for (var i : u32 = 0; i < head_size_vec; i++) {
-        var sum = v_tile[0][i] * qk_1[0];
-        sum += v_tile[1][i] * qk_1[1];
-        sum += v_tile[2][i] * qk_1[2];
-        sum += v_tile[3][i] * qk_1[3];
-        sum += v_tile[4][i] * qk_2[0];
-        sum += v_tile[5][i] * qk_2[1];
-        sum += v_tile[6][i] * qk_2[2];
-        sum += v_tile[7][i] * qk_2[3];
-        sum += v_tile[8][i] * qk_3[0];
-        sum += v_tile[9][i] * qk_3[1];
-        sum += v_tile[10][i] * qk_3[2];
-        sum += v_tile[11][i] * qk_3[3];
-        sum += v_tile[12][i] * qk_4[0];
-        sum += v_tile[13][i] * qk_4[1];
-        sum += v_tile[14][i] * qk_4[2];
-        sum += v_tile[15][i] * qk_4[3];
-        o_tile[i] = o_tile[i] * o_ratio + sum;
-      }
+    for (var i : u32 = 0; i < head_size_vec; i++) {
+      var sum = v_tile[0][i] * qk_1[0];
+      sum += v_tile[1][i] * qk_1[1];
+      sum += v_tile[2][i] * qk_1[2];
+      sum += v_tile[3][i] * qk_1[3];
+      sum += v_tile[4][i] * qk_2[0];
+      sum += v_tile[5][i] * qk_2[1];
+      sum += v_tile[6][i] * qk_2[2];
+      sum += v_tile[7][i] * qk_2[3];
+      sum += v_tile[8][i] * qk_3[0];
+      sum += v_tile[9][i] * qk_3[1];
+      sum += v_tile[10][i] * qk_3[2];
+      sum += v_tile[11][i] * qk_3[3];
+      sum += v_tile[12][i] * qk_4[0];
+      sum += v_tile[13][i] * qk_4[1];
+      sum += v_tile[14][i] * qk_4[2];
+      sum += v_tile[15][i] * qk_4[3];
+      o_tile[i] = o_tile[i] * o_ratio + sum;
+    }
 #else
     if (sg_size > 8) {
       for (var i : u32 = 0; i < head_size_vec; i++) {
