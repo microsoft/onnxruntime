@@ -1,9 +1,9 @@
 
 #param has_attention_bias
 #param is_fp16
+#param is_nvidia
 #param is_qualcomm
 #param is_unidirectional
-#param is_nvidia
 #param qkv_head_size
 #param qkv_num_heads
 
