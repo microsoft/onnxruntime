@@ -10,8 +10,6 @@
 #include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/qnn_ep_data_transfer.h"
 
-// Global registry to store the QNN EP factory for auto EP selection
-static OrtEpFactory* g_qnn_plugin_factory = nullptr;
 
 namespace onnxruntime {
 
