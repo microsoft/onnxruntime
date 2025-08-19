@@ -44,6 +44,7 @@ class ITestCase {
   virtual std::string GetDatasetDebugInfoString(size_t dataset_id) const = 0;
   // The number of input/output pairs
   virtual size_t GetDataCount() const = 0;
+  virtual std::filesystem::path GetDataDir(size_t id) const = 0;
   virtual ~ITestCase() = default;
   virtual void GetPerSampleTolerance(double* value) const = 0;
   virtual void GetRelativePerSampleTolerance(double* value) const = 0;
