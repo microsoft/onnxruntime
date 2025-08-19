@@ -447,7 +447,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
 
     // Check if both options are provided
     if (!backend_type.empty() && !backend_path_option.empty()) {
-      LOGS(logger_in_, ERROR) << "Only one of 'backend_type' and 'backend_path' should be set.";
+      throw std::runtime_error("Only one of 'backend_type' and 'backend_path' should be set.");
     }
     if (!backend_type.empty()) {
       if (std::string parsed_backend_path; ParseBackendTypeName(backend_type, parsed_backend_path, logger_in_)) {
@@ -965,7 +965,7 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
     constexpr auto log_severity = logging::Severity::kINFO;
     constexpr auto log_data_type = logging::DataType::SYSTEM;
     if (logger.OutputIsEnabled(log_severity, log_data_type)) {
-      LogNodeSupport(logger, log_severity, log_data_type, *qnn_node_group, support_status);
+      LogNodeSupport(logger, log_severity, log_data_type, *qnn_node_group, qnn_status);
     }
 
     if (supported) {

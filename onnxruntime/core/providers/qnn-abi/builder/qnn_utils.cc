@@ -1384,7 +1384,7 @@ Status ReadExternalData(const OrtApi& ort_api,
   int64_t offset = ort_api.ExternalInitializerInfo_GetFileOffset(initializer);
   size_t byte_size = ort_api.ExternalInitializerInfo_GetByteSize(initializer);
 
-  PathString external_file_path = model_path / file_path;
+  std::filesystem::path external_file_path = model_path.parent_path() / file_path;
 
   unpacked_tensor.resize(byte_size);
   ORT_RETURN_IF_ERROR(ReadFileIntoBuffer(
