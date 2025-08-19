@@ -222,6 +222,7 @@ static const char* GetCompatibilityStatusString(OrtCompiledModelCompatibility st
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
   // Get model metadata
   auto [status, model_metadata] = sess.GetModelMetadata();
@@ -310,6 +311,7 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
 
   return Status::OK();
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _In_ onnxruntime::InferenceSession& sess,
@@ -358,9 +360,11 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(sess.Initialize());
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Validate compiled model compatibility for all registered execution providers
   // This must be done after Initialize() so the session state is available
   ORT_API_RETURN_IF_STATUS_NOT_OK(ValidateCompiledModelCompatibility(sess));
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   return nullptr;
 }
