@@ -2631,7 +2631,7 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetModelMetadata, _In_ const OrtGraph* graph,
   if (out == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'out' argument is NULL");
   }
-  *out = graph->GetModelMetadata();
+  *out = reinterpret_cast<OrtModelMetadata*>(graph->GetModelMetadata().release());
   //
   return nullptr;
   API_IMPL_END

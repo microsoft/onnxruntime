@@ -10,7 +10,7 @@
 #include "core/framework/tensor_external_data_info.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
-
+#include "core/session/inference_session.h"
 #define DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(external_type, internal_type, internal_api) \
   external_type* ToExternal() { return static_cast<external_type*>(this); }                        \
   const external_type* ToExternal() const { return static_cast<const external_type*>(this); }      \
@@ -305,7 +305,7 @@ struct OrtGraph {
   /// Returns the model's metadata.
   /// </summary>
   /// <returns>The model metadata.</returns>
-  virtual OrtModelMetadata* GetModelMetadata() const = 0;
+  virtual std::unique_ptr<onnxruntime::ModelMetadata> GetModelMetadata() const = 0;
   /// <summary>
   /// Returns the model's path, which is empty if unknown.
   /// </summary>

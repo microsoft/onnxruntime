@@ -184,8 +184,8 @@ struct ModelEditorGraph : public OrtGraph {
 
   const std::string& GetName() const override { return name; }
 
-  OrtModelMetadata* GetModelMetadata() const override {
-    return reinterpret_cast<OrtModelMetadata*>(std::make_unique<ModelMetadata>(model_metadata).release());
+  std::unique_ptr<ModelMetadata> GetModelMetadata() const override {
+    return std::make_unique<ModelMetadata>(model_metadata);
   }
   const ORTCHAR_T* GetModelPath() const override { return model_path.c_str(); }
 

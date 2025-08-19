@@ -21,7 +21,6 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph.h"
 #include "core/graph/model.h"
-#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 
@@ -771,7 +770,7 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
 
 const std::string& EpGraph::GetName() const { return graph_viewer_.Name(); }
 
-OrtModelMetadata* EpGraph::GetModelMetadata() const {
+std::unique_ptr<ModelMetadata> EpGraph::GetModelMetadata() const {
   const auto& model = graph_viewer_.GetGraph().GetModel();
   const auto& graph = graph_viewer_.GetGraph();
   auto model_metadata = std::make_unique<ModelMetadata>();
@@ -785,7 +784,7 @@ OrtModelMetadata* EpGraph::GetModelMetadata() const {
   model_metadata->custom_metadata_map = model.MetaData();
   model_metadata->graph_name = graph.Name();
 
-  return reinterpret_cast<OrtModelMetadata*>(model_metadata.release());
+  return model_metadata;
 }
 
 const ORTCHAR_T* EpGraph::GetModelPath() const {

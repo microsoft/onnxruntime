@@ -299,7 +299,7 @@ struct EpGraph : public OrtGraph {
   const std::string& GetName() const override;
 
   // Returns the graph's metadata
-  OrtModelMetadata* GetModelMetadata() const override;
+  std::unique_ptr<ModelMetadata> GetModelMetadata() const override;
 
   // Returns the model path.
   const ORTCHAR_T* GetModelPath() const override;
