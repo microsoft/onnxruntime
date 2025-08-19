@@ -62,7 +62,7 @@ add_compile_definitions(BUILD_QNN_EP_STATIC_LIB=0)
 
   onnxruntime_add_shared_library_module(onnxruntime_providers_qnn_abi ${onnxruntime_providers_qnn_abi_all_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_qnn_abi ${ONNXRUNTIME_PROVIDERS_SHARED} ${GSL_TARGET} onnx
-                                                              onnx_proto ${PROTOBUF_LIB} onnxruntime_common Boost::mp11 safeint_interface
+                                                              onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers onnxruntime_common Boost::mp11 safeint_interface
                                                               nlohmann_json::nlohmann_json)
   target_link_libraries(onnxruntime_providers_qnn_abi PRIVATE ${ONNXRUNTIME_PROVIDERS_SHARED} ${ABSEIL_LIBS} ${CMAKE_DL_LIBS} onnxruntime_common ${PROTOBUF_LIB} onnx_proto)
   add_dependencies(onnxruntime_providers_qnn_abi onnxruntime_providers_shared onnx onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})

@@ -577,12 +577,10 @@ bool OrtDropQDQNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort
 }
 
 // Implementation of Check() for OrtDropDQNodeGroupSelector
-bool OrtDropDQNodeGroupSelector::Check(const OrtGraph* /*graph*/, const OrtApi& ort_api, const OrtNode* node,
+bool OrtDropDQNodeGroupSelector::Check(const OrtGraph* /*graph*/, const OrtApi& ort_api, const OrtNode* /*node*/,
                                        const OrtNode* redundant_clip_node,
                                        const std::vector<const OrtNode*>& dq_nodes,
-                                       const std::vector<const OrtNode*>& q_nodes) const {
-  q_nodes;
-  node;
+                                       const std::vector<const OrtNode*>& /*q_nodes*/) const {
   // For drop DQ operations, we check if the node has exactly one DQ input
   if (redundant_clip_node) {
     return false;
@@ -1467,9 +1465,6 @@ std::optional<OrtNodeGroup> GetOrtQDQSelection(const OrtGraph* graph, const OrtA
   // For each input, get the producer node
   for (size_t i = 0; i < num_inputs; ++i) {
     const OrtValueInfo* value_info = inputs[i];
-    if (value_info == nullptr) {
-      continue;
-    }
 
     // Get the producer node
     const OrtNode* producer_node = nullptr;
@@ -1606,9 +1601,6 @@ std::optional<OrtNodeGroup> GetOrtQDQSelection(const OrtGraph* graph, const OrtA
   // For each output, get the consumer nodes
   for (size_t i = 0; i < num_outputs; ++i) {
     const OrtValueInfo* value_info = outputs[i];
-    if (value_info == nullptr) {
-      continue;
-    }
 
     // Get the number of consumers
     size_t num_consumers = 0;
@@ -1850,9 +1842,17 @@ std::vector<OrtNodeGroup> OrtSelectorManager::GetOrtQDQSelections(const OrtGraph
 
   // Get all nodes from the graph
   size_t num_nodes = 0;
-  ort_api.Graph_GetNumNodes(graph, &num_nodes);
+  auto status = ort_api.Graph_GetNumNodes(graph, &num_nodes);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return qdq_selections;
+  }
   std::vector<const OrtNode*> nodes(num_nodes);
-  ort_api.Graph_GetNodes(graph, nodes.data(), nodes.size());
+  status = ort_api.Graph_GetNodes(graph, nodes.data(), nodes.size());
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return qdq_selections;
+  }
 
   // Process each node
   for (size_t i = 0; i < num_nodes; ++i) {
@@ -1863,7 +1863,11 @@ std::vector<OrtNodeGroup> OrtSelectorManager::GetOrtQDQSelections(const OrtGraph
 
     // Get node domain
     const char* domain = nullptr;
-    ort_api.Node_GetDomain(node, &domain);
+    status = ort_api.Node_GetDomain(node, &domain);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      continue;
+    }
 
     // Check domain (similar to the GraphViewer version)
     std::string domain_str(domain);
@@ -1884,7 +1888,11 @@ std::vector<OrtNodeGroup> OrtSelectorManager::GetOrtQDQSelections(const OrtGraph
     if (!versions.empty()) {
       // Get node version
       int since_version = 0;
-      ort_api.Node_GetSinceVersion(node, &since_version);
+      status = ort_api.Node_GetSinceVersion(node, &since_version);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
 
       if (std::find(versions.cbegin(), versions.cend(), since_version) == versions.cend()) {
         LOGS(logger, VERBOSE) << "Op version is not supported for " << op_type;
@@ -1915,9 +1923,17 @@ std::vector<std::vector<const OrtNode*>> CreateSupportedPartitionNodeGroups(
   std::vector<std::vector<const OrtNode*>> supported_groups{};
 
   size_t num_nodes = 0;
-  ort_api.Graph_GetNumNodes(graph, &num_nodes);
+  auto status = ort_api.Graph_GetNumNodes(graph, &num_nodes);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return {};
+  }
   std::vector<const OrtNode*> graph_nodes(num_nodes);
-  ort_api.Graph_GetNodes(graph, graph_nodes.data(), graph_nodes.size());
+  status = ort_api.Graph_GetNodes(graph, graph_nodes.data(), graph_nodes.size());
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return {};
+  }
 
   // #inputs from unprocessed nodes (in-degree) per node.
   std::unordered_map<size_t, size_t> in_degree{};
@@ -1973,7 +1989,11 @@ std::vector<std::vector<const OrtNode*>> CreateSupportedPartitionNodeGroups(
 
     // A node that is already assigned to an EP other than current EP is unsupported.
     const char* node_ep_name;
-    ort_api.Node_GetEpName(node, &node_ep_name);
+    status = ort_api.Node_GetEpName(node, &node_ep_name);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      continue;
+    }
     const bool is_node_supported = (
         (std::string(node_ep_name).empty() || node_ep_name == ep_type) &&
         std::find(supported_nodes.cbegin(), supported_nodes.cend(), node) != supported_nodes.cend());
@@ -2051,9 +2071,17 @@ GetAllOrtNodeUnits(OrtApi ort_api, const OrtGraph* graph, const logging::Logger&
 
   // Get all nodes from the graph
   size_t num_nodes = 0;
-  ort_api.Graph_GetNumNodes(graph, &num_nodes);
+  auto status = ort_api.Graph_GetNumNodes(graph, &num_nodes);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return std::make_pair(std::move(node_unit_holder), std::move(node_unit_map));
+  }
   std::vector<const OrtNode*> nodes(num_nodes);
-  ort_api.Graph_GetNodes(graph, nodes.data(), nodes.size());
+  status = ort_api.Graph_GetNodes(graph, nodes.data(), nodes.size());
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return std::make_pair(std::move(node_unit_holder), std::move(node_unit_map));
+  }
 
   const auto add_node_unit_to_map = [&](const std::vector<const OrtNode*>& _nodes, const OrtNodeUnit* node_unit) {
     for (const OrtNode* node : _nodes) {

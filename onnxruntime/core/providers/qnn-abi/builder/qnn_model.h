@@ -94,20 +94,29 @@ class QnnModel {
   bool IsConstantInitializer(const OrtGraph& ort_graph,
                              const std::string& tensor_name) const {
     size_t num_initializers = 0;
-    api_ptrs_.ort_api.Graph_GetNumInitializers(&ort_graph, &num_initializers);
+    OrtStatusPtr status = api_ptrs_.ort_api.Graph_GetNumInitializers(&ort_graph, &num_initializers);
+    if (status != nullptr) {
+      return false; // Return false on error
+    }
     std::vector<const OrtValueInfo*> initializers(num_initializers);
-    Status status = ort_graph.GetInitializers(initializers);
-    if (!status.IsOK()) {
+    Status ort_status = ort_graph.GetInitializers(initializers);
+    if (!ort_status.IsOK()) {
       return false;
     }
 
     for (const OrtValueInfo* value_info : initializers) {
       const char* value_info_name = nullptr;
-      api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name);
+      status = api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name);
+      if (status != nullptr) {
+        continue; // Skip this initializer on error
+      }
 
       if (std::string(value_info_name) == tensor_name) {
         bool is_constant_initializer = false;
-        api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
+        status = api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
+        if (status != nullptr) {
+          return false; // Return false on error
+        }
         return is_constant_initializer;
       }
     }

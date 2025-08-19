@@ -89,7 +89,12 @@ int real_main(int argc, char* argv[]) {
   perf_runner.SerializeResult();
 
   if (test_config.machine_config.provider_type_name == "QnnAbiExecutionProvider") {
-    Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str());
+    auto unregister_status = Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str());
+    if (unregister_status != nullptr) {
+      fprintf(stderr, "Failed to unregister execution provider library: %s\n",
+              Ort::GetApi().GetErrorMessage(unregister_status));
+      Ort::GetApi().ReleaseStatus(unregister_status);
+    }
   }
 
   return 0;

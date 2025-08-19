@@ -22,26 +22,32 @@ const OrtNodeUnit* GetOnlyChildOfType(const QnnModelWrapper& qnn_model_wrapper,
 
   // Parent must have a single child (1 output edge) and must not produce a graph output.
   size_t num_outputs = 0;
-  ort_api.Node_GetNumOutputs(&parent_node, &num_outputs);
+  OrtStatus* status = ort_api.Node_GetNumOutputs(&parent_node, &num_outputs);
+  if (status != nullptr) {
+    return nullptr;
+  }
   if (num_outputs != 1) {
     return nullptr;
   }
   std::vector<const OrtValueInfo*> outputs(num_outputs);
-  ort_api.Node_GetOutputs(&parent_node, outputs.data(), outputs.size());
+  status = ort_api.Node_GetOutputs(&parent_node, outputs.data(), outputs.size());
+  if (status != nullptr) {
+    return nullptr;
+  }
 
   // Check if any of the node's outputs are graph outputs
   const OrtValueInfo* output_info = outputs[0];
 
   bool is_graph_output = false;
-  Status status = output_info->IsGraphOutput(is_graph_output);
-  if (status.IsOK() && is_graph_output) {
+  Status ort_status = output_info->IsGraphOutput(is_graph_output);
+  if (ort_status.IsOK() && is_graph_output) {
     return nullptr;
   }
 
   // Get the consumers of this output
   std::vector<OrtValueInfo::ConsumerInfo> consumer_infos;
-  status = output_info->GetConsumerInfos(consumer_infos);
-  if (!status.IsOK() || consumer_infos.empty()) {
+  ort_status = output_info->GetConsumerInfos(consumer_infos);
+  if (!ort_status.IsOK() || consumer_infos.empty()) {
     return nullptr;
   }
 

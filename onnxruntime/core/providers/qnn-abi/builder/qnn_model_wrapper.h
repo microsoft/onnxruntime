@@ -123,16 +123,25 @@ class QnnModelWrapper {
   Status FindInitializer(const std::string& tensor_name,
                          const OrtValueInfo** found_value_info = nullptr) const {
     size_t num_initializers = 0;
-    api_ptrs_.ort_api.Graph_GetNumInitializers(&ort_graph_, &num_initializers);
+    OrtStatus* status = api_ptrs_.ort_api.Graph_GetNumInitializers(&ort_graph_, &num_initializers);
+    if (status != nullptr) {
+      api_ptrs_.ort_api.ReleaseStatus(status);
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get number of initializers");
+    }
+
     std::vector<const OrtValueInfo*> initializers(num_initializers);
-    Status status = GetInitializerTensors(initializers);
-    if (!status.IsOK()) {
-      return status;
+    Status ort_status = GetInitializerTensors(initializers);
+    if (!ort_status.IsOK()) {
+      return ort_status;
     }
 
     for (const OrtValueInfo* value_info : initializers) {
       const char* value_info_name = nullptr;
-      api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name);
+      status = api_ptrs_.ort_api.GetValueInfoName(value_info, &value_info_name);
+      if (status != nullptr) {
+        api_ptrs_.ort_api.ReleaseStatus(status);
+        return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get value info name");
+      }
 
       if (std::string(value_info_name) == tensor_name) {
         *found_value_info = value_info;
@@ -151,7 +160,12 @@ class QnnModelWrapper {
     }
 
     bool is_constant_initializer = false;
-    api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
+    OrtStatus* ort_status = api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
+    if (ort_status != nullptr) {
+      api_ptrs_.ort_api.ReleaseStatus(ort_status);
+      return nullptr;
+    }
+
     if (!is_constant_initializer) {
       return nullptr;
     }
@@ -169,7 +183,11 @@ class QnnModelWrapper {
     }
 
     bool is_constant_initializer = false;
-    api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
+    OrtStatus* ort_status = api_ptrs_.ort_api.ValueInfo_IsConstantInitializer(value_info, &is_constant_initializer);
+    if (ort_status != nullptr) {
+      api_ptrs_.ort_api.ReleaseStatus(ort_status);
+      return false;
+    }
 
     return is_constant_initializer;
   }

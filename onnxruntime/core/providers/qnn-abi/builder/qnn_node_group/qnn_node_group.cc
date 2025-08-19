@@ -124,9 +124,15 @@ static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeG
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
 
   size_t num_nodes = 0;
-  ort_api.Graph_GetNumNodes(&graph, &num_nodes);
+  OrtStatus* status = ort_api.Graph_GetNumNodes(&graph, &num_nodes);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get number of nodes from graph");
+  }
   std::vector<const OrtNode*> nodes(num_nodes);
-  ort_api.Graph_GetNodes(&graph, nodes.data(), nodes.size());
+  status = ort_api.Graph_GetNodes(&graph, nodes.data(), nodes.size());
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get nodes from graph");
+  }
 
   sorted_qnn_node_group_indices.reserve(num_node_units);
   qnn_node_groups.reserve(num_node_units);

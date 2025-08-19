@@ -126,25 +126,32 @@ static bool IsDQQConversion(const QnnModelWrapper& qnn_model_wrapper, const OrtN
 
   // Get DQ inputs
   size_t dq_inputs_count = 0;
-  ort_api.Node_GetNumInputs(&dq_node, &dq_inputs_count);
+  OrtStatus* status = ort_api.Node_GetNumInputs(&dq_node, &dq_inputs_count);
+  if (status != nullptr) return false;
   std::vector<const OrtValueInfo*> dq_inputs(dq_inputs_count);
-  ort_api.Node_GetInputs(&dq_node, dq_inputs.data(), dq_inputs.size());
+  status = ort_api.Node_GetInputs(&dq_node, dq_inputs.data(), dq_inputs.size());
+  if (status != nullptr) return false;
 
   // Get Q inputs
   size_t q_inputs_count = 0;
-  ort_api.Node_GetNumInputs(&q_node, &q_inputs_count);
+  status = ort_api.Node_GetNumInputs(&q_node, &q_inputs_count);
+  if (status != nullptr) return false;
   std::vector<const OrtValueInfo*> q_inputs(q_inputs_count);
-  ort_api.Node_GetInputs(&q_node, q_inputs.data(), q_inputs.size());
+  status = ort_api.Node_GetInputs(&q_node, q_inputs.data(), q_inputs.size());
+  if (status != nullptr) return false;
 
   auto is_scalar_shape = [&ort_api](const OrtValueInfo* value_info) -> bool {
-    OrtTypeInfo* type_info = nullptr;
-    ort_api.GetValueInfoTypeInfo(value_info, &(static_cast<const OrtTypeInfo*>(type_info)));
+    const OrtTypeInfo* type_info = nullptr;
+    OrtStatus* status = ort_api.GetValueInfoTypeInfo(value_info, &type_info);
+    if (status != nullptr) return false;
 
-    OrtTensorTypeAndShapeInfo* tensor_info = nullptr;
-    ort_api.CastTypeInfoToTensorInfo(type_info, &(static_cast<const OrtTensorTypeAndShapeInfo*>(tensor_info)));
+    const OrtTensorTypeAndShapeInfo* tensor_info = nullptr;
+    status = ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_info);
+    if (status != nullptr) return false;
 
     size_t dims_count = 0;
-    ort_api.GetDimensionsCount(tensor_info, &dims_count);
+    status = ort_api.GetDimensionsCount(tensor_info, &dims_count);
+    if (status != nullptr) return false;
 
     if (dims_count == 0) {
       return true;
@@ -152,7 +159,8 @@ static bool IsDQQConversion(const QnnModelWrapper& qnn_model_wrapper, const OrtN
 
     if (dims_count == 1) {
       int64_t dim_value = 0;
-      ort_api.GetDimensions(tensor_info, &dim_value, 1);
+      status = ort_api.GetDimensions(tensor_info, &dim_value, 1);
+      if (status != nullptr) return false;
       return dim_value == 1;
     }
 
@@ -181,41 +189,47 @@ static bool IsDQQConversion(const QnnModelWrapper& qnn_model_wrapper, const OrtN
   const OrtValue* q_scale_value = nullptr;
   const OrtValue* q_zero_point_value = nullptr;
 
-  Status status = dq_scale->GetInitializerValue(dq_scale_value);
-  if (!status.IsOK() || dq_scale_value == nullptr) {
+  Status init_status = dq_scale->GetInitializerValue(dq_scale_value);
+  if (!init_status.IsOK() || dq_scale_value == nullptr) {
     return false;
   }
 
-  status = dq_zero_point->GetInitializerValue(dq_zero_point_value);
-  if (!status.IsOK() || dq_zero_point_value == nullptr) {
+  init_status = dq_zero_point->GetInitializerValue(dq_zero_point_value);
+  if (!init_status.IsOK() || dq_zero_point_value == nullptr) {
     return false;
   }
 
-  status = q_scale->GetInitializerValue(q_scale_value);
-  if (!status.IsOK() || q_scale_value == nullptr) {
+  init_status = q_scale->GetInitializerValue(q_scale_value);
+  if (!init_status.IsOK() || q_scale_value == nullptr) {
     return false;
   }
 
-  status = q_zero_point->GetInitializerValue(q_zero_point_value);
-  if (!status.IsOK() || q_zero_point_value == nullptr) {
+  init_status = q_zero_point->GetInitializerValue(q_zero_point_value);
+  if (!init_status.IsOK() || q_zero_point_value == nullptr) {
     return false;
   }
 
   // Get the data types
-  OrtTypeInfo* dq_scale_type_info = nullptr;
-  OrtTypeInfo* q_scale_type_info = nullptr;
-  ort_api.GetValueInfoTypeInfo(dq_scale, &(static_cast<const OrtTypeInfo*>(dq_scale_type_info)));
-  ort_api.GetValueInfoTypeInfo(q_scale, &(static_cast<const OrtTypeInfo*>(q_scale_type_info)));
+  const OrtTypeInfo* dq_scale_type_info = nullptr;
+  const OrtTypeInfo* q_scale_type_info = nullptr;
+  status = ort_api.GetValueInfoTypeInfo(dq_scale, &dq_scale_type_info);
+  if (status != nullptr) return false;
+  status = ort_api.GetValueInfoTypeInfo(q_scale, &q_scale_type_info);
+  if (status != nullptr) return false;
 
-  OrtTensorTypeAndShapeInfo* dq_scale_tensor_info = nullptr;
-  OrtTensorTypeAndShapeInfo* q_scale_tensor_info = nullptr;
-  ort_api.CastTypeInfoToTensorInfo(dq_scale_type_info, &(static_cast<const OrtTensorTypeAndShapeInfo*>(dq_scale_tensor_info)));
-  ort_api.CastTypeInfoToTensorInfo(q_scale_type_info, &(static_cast<const OrtTensorTypeAndShapeInfo*>(q_scale_tensor_info)));
+  const OrtTensorTypeAndShapeInfo* dq_scale_tensor_info = nullptr;
+  const OrtTensorTypeAndShapeInfo* q_scale_tensor_info = nullptr;
+  status = ort_api.CastTypeInfoToTensorInfo(dq_scale_type_info, &dq_scale_tensor_info);
+  if (status != nullptr) return false;
+  status = ort_api.CastTypeInfoToTensorInfo(q_scale_type_info, &q_scale_tensor_info);
+  if (status != nullptr) return false;
 
   ONNXTensorElementDataType dq_scale_data_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   ONNXTensorElementDataType q_scale_data_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  ort_api.GetTensorElementType(dq_scale_tensor_info, &dq_scale_data_type);
-  ort_api.GetTensorElementType(q_scale_tensor_info, &q_scale_data_type);
+  status = ort_api.GetTensorElementType(dq_scale_tensor_info, &dq_scale_data_type);
+  if (status != nullptr) return false;
+  status = ort_api.GetTensorElementType(q_scale_tensor_info, &q_scale_data_type);
+  if (status != nullptr) return false;
 
   // For scale, ensure that the Q/DQ have same scale type.
   return (dq_scale_data_type == q_scale_data_type);

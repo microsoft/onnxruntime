@@ -10,8 +10,6 @@
 #include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/qnn_ep_data_transfer.h"
 
-// Global registry to store the QNN EP factory for auto EP selection
-static OrtEpFactory* g_qnn_plugin_factory = nullptr;
 
 namespace onnxruntime {
 
@@ -134,14 +132,9 @@ OrtStatus* ORT_API_CALL QnnEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                      OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
                                                      "Creating QNN EP", ORT_FILE, __LINE__, __FUNCTION__));
 
-  std::unique_ptr<QnnEp> qnn_ep;
-  try {
-    qnn_ep = std::make_unique<QnnEp>(*factory, factory->ep_name_, *session_options, *logger);
-  } catch (const std::runtime_error& e) {
-    return factory->ort_api.CreateStatus(ORT_FAIL, e.what());
-  }
+  auto dummy_ep = std::make_unique<QnnEp>(*factory, factory->ep_name_, *session_options, *logger);
 
-  *ep = qnn_ep.release();
+  *ep = dummy_ep.release();
   return nullptr;
 }
 

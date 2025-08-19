@@ -259,6 +259,7 @@ static bool ParseBoolOption(const OrtApi& ort_api,
   return result;
 }
 
+#ifdef _WIN32
 static qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level, const logging::Logger& logger) {
   if (level == 5) {
     LOGS(logger, INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
@@ -272,6 +273,7 @@ static qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level, co
     return qnn::ProfilingLevel::DETAILED;
   }
 }
+#endif  // defined(_WIN32)
 
 std::unique_ptr<qnn::QnnSerializerConfig> QnnEp::InitQnnSerializerConfig() const {
   // Enable use of QNN Saver if the user provides a path the QNN Saver backend library.
@@ -441,10 +443,11 @@ QnnEp::QnnEp(QnnEpFactory& factory,
                                    FormatEPConfigKey("backend_path"),
                                    "",
                                    backend_path_option);
+    std::cout << "DEBUG: BackendType " << backend_type << std::endl;
 
     // Check if both options are provided
     if (!backend_type.empty() && !backend_path_option.empty()) {
-      throw std::runtime_error("Only one of 'backend_type' and 'backend_path' should be set.");
+      LOGS(logger_in_, ERROR) << "Only one of 'backend_type' and 'backend_path' should be set.";
     }
     if (!backend_type.empty()) {
       if (std::string parsed_backend_path; ParseBackendTypeName(backend_type, parsed_backend_path, logger_in_)) {
@@ -881,13 +884,37 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
 
   size_t num_graph_inputs = 0;
   size_t num_graph_outputs = 0;
-  ep->ort_api.Graph_GetNumInputs(graph, &num_graph_inputs);
-  ep->ort_api.Graph_GetNumOutputs(graph, &num_graph_outputs);
+  auto status = ep->ort_api.Graph_GetNumInputs(graph, &num_graph_inputs);
+  if (status != nullptr) {
+    const char* error_msg = ep->ort_api.GetErrorMessage(status);
+    LOGS(logger, ERROR) << "Failed to get number of graph inputs: " << error_msg;
+    ep->ort_api.ReleaseStatus(status);
+    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get number of graph inputs");
+  }
+  status = ep->ort_api.Graph_GetNumOutputs(graph, &num_graph_outputs);
+  if (status != nullptr) {
+    const char* error_msg = ep->ort_api.GetErrorMessage(status);
+    LOGS(logger, ERROR) << "Failed to get number of graph outputs: " << error_msg;
+    ep->ort_api.ReleaseStatus(status);
+    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get number of graph outputs");
+  }
 
   std::vector<const OrtValueInfo*> graph_inputs(num_graph_inputs);
   std::vector<const OrtValueInfo*> graph_outputs(num_graph_outputs);
-  ep->ort_api.Graph_GetInputs(graph, graph_inputs.data(), graph_inputs.size());
-  ep->ort_api.Graph_GetOutputs(graph, graph_outputs.data(), graph_outputs.size());
+  status = ep->ort_api.Graph_GetInputs(graph, graph_inputs.data(), graph_inputs.size());
+  if (status != nullptr) {
+    const char* error_msg = ep->ort_api.GetErrorMessage(status);
+    LOGS(logger, ERROR) << "Failed to get graph inputs: " << error_msg;
+    ep->ort_api.ReleaseStatus(status);
+    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get graph inputs");
+  }
+  status = ep->ort_api.Graph_GetOutputs(graph, graph_outputs.data(), graph_outputs.size());
+  if (status != nullptr) {
+    const char* error_msg = ep->ort_api.GetErrorMessage(status);
+    LOGS(logger, ERROR) << "Failed to get graph outputs: " << error_msg;
+    ep->ort_api.ReleaseStatus(status);
+    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get graph outputs");
+  }
 
   // Util function that initializes a table that maps a graph input or output name to its index.
   auto init_input_output_index_map = [&](std::unordered_map<std::string, size_t>& index_map,
@@ -896,7 +923,11 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
     for (size_t idx = 0; idx < num_elements; ++idx) {
       const OrtValueInfo* inout = inouts[idx];
       const char* name = nullptr;
-      ep->ort_api.GetValueInfoName(inout, &name);
+      auto lambda_status = ep->ort_api.GetValueInfoName(inout, &name);
+      if (lambda_status != nullptr) {
+        ep->ort_api.ReleaseStatus(lambda_status);
+        return;  // Skip this input/output on error
+      }
 
       index_map.emplace(name, idx);
     }
@@ -922,18 +953,19 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
   std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
   qnn_node_groups.reserve(node_unit_size);
 
-  Status status = qnn::GetQnnNodeGroups(qnn_node_groups, qnn_model_wrapper, node_unit_map, node_unit_size, logger);
-  if (!status.IsOK()) {
-    return this->ort_api.CreateStatus(ORT_EP_FAIL, status.ErrorMessage().c_str());
+  Status qnn_status = qnn::GetQnnNodeGroups(qnn_node_groups, qnn_model_wrapper, node_unit_map, node_unit_size, logger);
+  if (!qnn_status.IsOK()) {
+    return this->ort_api.CreateStatus(ORT_EP_FAIL, qnn_status.ErrorMessage().c_str());
   }
 
   for (const std::unique_ptr<qnn::IQnnNodeGroup>& qnn_node_group : qnn_node_groups) {
-    const bool supported = qnn_node_group->IsSupported(qnn_model_wrapper, logger).IsOK();
+    Status support_status = qnn_node_group->IsSupported(qnn_model_wrapper, logger);
+    const bool supported = support_status.IsOK();
 
     constexpr auto log_severity = logging::Severity::kINFO;
     constexpr auto log_data_type = logging::DataType::SYSTEM;
     if (logger.OutputIsEnabled(log_severity, log_data_type)) {
-      LogNodeSupport(logger, log_severity, log_data_type, *qnn_node_group, status);
+      LogNodeSupport(logger, log_severity, log_data_type, *qnn_node_group, support_status);
     }
 
     if (supported) {
@@ -1049,7 +1081,13 @@ static void GetMainEPCtxNodes(const OrtGraph* graph,
         op_type == qnn::EPCONTEXT_OP &&
         (cache_source == "qnnexecutionprovider" || cache_source == "qnn" || cache_source == "qnnabitestprovider")) {
       const char* node_name = nullptr;
-      ort_api.Node_GetName(node, &node_name);
+      auto node_status = ort_api.Node_GetName(node, &node_name);
+      if (node_status != nullptr) {
+        const char* error_msg = ort_api.GetErrorMessage(node_status);
+        LOGS(logger, ERROR) << "Failed to get node name: " << error_msg;
+        ort_api.ReleaseStatus(node_status);
+        continue;
+      }
       LOGS(logger, VERBOSE) << "EPContext Node found: [1] index: [" << node_idx << "] name: [" << node_name << "]";
 
       ep_context_nodes.insert(node);
@@ -1085,7 +1123,11 @@ void QnnEp::PartitionCtxModel(const OrtGraph* graph, OrtEpGraphSupportInfo* grap
 
     if (op_type == qnn::EPCONTEXT_OP && (cache_source == "qnnexecutionprovider" || cache_source == "qnn" || cache_source == "qnnabitestprovider")) {
       const char* node_name = nullptr;
-      ort_api.Node_GetName(node, &node_name);
+      auto partition_status = ort_api.Node_GetName(node, &node_name);
+      if (partition_status != nullptr) {
+        ort_api.ReleaseStatus(partition_status);
+        continue;
+      }
 
       std::string log_message = "Node supported: [1] index: [" + std::to_string(node_idx) +
                                 "] name: [" + (node_name ? node_name : "unknown") +
@@ -1096,10 +1138,16 @@ void QnnEp::PartitionCtxModel(const OrtGraph* graph, OrtEpGraphSupportInfo* grap
       OrtNodeFusionOptions node_fusion_options = {};
       node_fusion_options.ort_version_supported = ORT_API_VERSION;
 
-      ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+      auto add_status = ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
                                                supported_group.data(),
                                                supported_group.size(),
                                                &node_fusion_options);
+      if (add_status != nullptr) {
+        const char* error_msg = ort_api.GetErrorMessage(add_status);
+        LOGS(logger_in_, ERROR) << "Failed to add nodes to fuse: " << error_msg;
+        ort_api.ReleaseStatus(add_status);
+        continue;
+      }
 
       ++num_supported_groups;
     }
@@ -1270,7 +1318,11 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
     size_t nodes_in_partition = partition.size();
     if (nodes_in_partition == 1 && !is_qnn_ctx_model) {
       const char* op_type = nullptr;
-      ep->ort_api.Node_GetOperatorType(partition[0], &op_type);
+      auto partition_op_status = ep->ort_api.Node_GetOperatorType(partition[0], &op_type);
+      if (partition_op_status != nullptr) {
+        ep->ort_api.ReleaseStatus(partition_op_status);
+        continue;
+      }
       if (std::string(op_type) == "QuantizeLinear" || std::string(op_type) == "DequantizeLinear") {
         LOGS(ep->logger_in_, WARNING) << "QNN EP does not support a single Quantize/Dequantize node in a partition.";
         continue;
@@ -1308,17 +1360,41 @@ OrtStatus* QnnEp::CompileContextModel(const OrtGraph** graphs,
 
   for (size_t graph_idx = 0; graph_idx < count; ++graph_idx) {
     const char* graph_name = nullptr;
-    ort_api.Node_GetName(fused_nodes[graph_idx], &graph_name);
+    auto compile_status = ort_api.Node_GetName(fused_nodes[graph_idx], &graph_name);
+    if (compile_status != nullptr) {
+      const char* error_msg = ort_api.GetErrorMessage(compile_status);
+      LOGS(logger_in_, ERROR) << "Failed to get fused node name: " << error_msg;
+      ort_api.ReleaseStatus(compile_status);
+      return ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get fused node name");
+    }
 
     size_t num_nodes = 0;
-    ort_api.Graph_GetNumNodes(graphs[graph_idx], &num_nodes);
+    compile_status = ort_api.Graph_GetNumNodes(graphs[graph_idx], &num_nodes);
+    if (compile_status != nullptr) {
+      const char* error_msg = ort_api.GetErrorMessage(compile_status);
+      LOGS(logger_in_, ERROR) << "Failed to get number of nodes in graph: " << error_msg;
+      ort_api.ReleaseStatus(compile_status);
+      return ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get number of nodes in graph");
+    }
 
     std::vector<const OrtNode*> graph_nodes(num_nodes);
-    ort_api.Graph_GetNodes(graphs[graph_idx], graph_nodes.data(), graph_nodes.size());
+    compile_status = ort_api.Graph_GetNodes(graphs[graph_idx], graph_nodes.data(), graph_nodes.size());
+    if (compile_status != nullptr) {
+      const char* error_msg = ort_api.GetErrorMessage(compile_status);
+      LOGS(logger_in_, ERROR) << "Failed to get graph nodes: " << error_msg;
+      ort_api.ReleaseStatus(compile_status);
+      return ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get graph nodes");
+    }
 
     const OrtNode* ep_context_node = graph_nodes[0];
     const char* ep_context_node_name = nullptr;
-    ort_api.Node_GetName(ep_context_node, &ep_context_node_name);
+    compile_status = ort_api.Node_GetName(ep_context_node, &ep_context_node_name);
+    if (compile_status != nullptr) {
+      const char* error_msg = ort_api.GetErrorMessage(compile_status);
+      LOGS(logger_in_, ERROR) << "Failed to get EP context node name: " << error_msg;
+      ort_api.ReleaseStatus(compile_status);
+      return ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get EP context node name");
+    }
 
     names.push_back(std::pair<std::string, std::string>(graph_name, ep_context_node_name));
   }
@@ -1514,7 +1590,11 @@ OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
     const OrtNode* fused_node = fused_nodes[graph_idx];
 
     const char* name = nullptr;
-    ep->ort_api.Node_GetName(fused_node, &name);
+    auto fused_node_status = ep->ort_api.Node_GetName(fused_node, &name);
+    if (fused_node_status != nullptr) {
+      ep->ort_api.ReleaseStatus(fused_node_status);
+      return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get fused node name");
+    }
     const std::string fused_node_name{name};
 
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(

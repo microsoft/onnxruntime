@@ -487,11 +487,25 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       unpacked_tensor.resize(original_tensor_bytes.size());
 
       const OrtTypeInfo* type_info = nullptr;
-      ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(input_info.initializer_tensor), &type_info);
+      OrtStatus* status = ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(input_info.initializer_tensor), &type_info);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get value info type info");
+      }
+
       const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-      ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
+      status = ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to cast type info to tensor info");
+      }
+
       ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-      ort_api.GetTensorElementType(type_shape, &elem_type);
+      status = ort_api.GetTensorElementType(type_shape, &elem_type);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get tensor element type");
+      }
       const size_t elem_byte_size = qnn::utils::GetElementSizeByType(elem_type);
       ORT_RETURN_IF(elem_byte_size == 0, "Can't get element byte size from given ONNX type for initializer ",
                     input1_name.c_str());

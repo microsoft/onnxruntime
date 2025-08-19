@@ -60,18 +60,30 @@ Status UDOBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrappe
   }
 
   size_t num_attributes = 0;
-  ort_api.Node_GetNumAttributes(&(node_unit.GetNode()), &num_attributes);
+  OrtStatusPtr status = ort_api.Node_GetNumAttributes(&(node_unit.GetNode()), &num_attributes);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get number of attributes: ", ort_api.GetErrorMessage(status));
+  }
   std::vector<const OrtOpAttr*> attributes(num_attributes);
-  ort_api.Node_GetAttributes(&(node_unit.GetNode()), attributes.data(), attributes.size());
+  status = ort_api.Node_GetAttributes(&(node_unit.GetNode()), attributes.data(), attributes.size());
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get attributes: ", ort_api.GetErrorMessage(status));
+  }
 
   std::vector<std::string> param_names;
   OrtNodeAttrHelper node_helper(ort_api, node_unit);
   for (size_t i = 0; i < num_attributes; ++i) {
     const OrtOpAttr* attr = attributes[i];
     OrtOpAttrType attr_type = ORT_OP_ATTR_UNDEFINED;
-    ort_api.OpAttr_GetType(attr, &attr_type);
+    status = ort_api.OpAttr_GetType(attr, &attr_type);
+    if (status != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get attribute type: ", ort_api.GetErrorMessage(status));
+    }
     const char* attribute_name;
-    ort_api.OpAttr_GetName(attr, &attribute_name);
+    status = ort_api.OpAttr_GetName(attr, &attribute_name);
+    if (status != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get attribute name: ", ort_api.GetErrorMessage(status));
+    }
     std::string attr_name = std::string(attribute_name);
 
     LOGS(logger, VERBOSE) << "Parse attr name: " << attr_name << " for op " << node_name;

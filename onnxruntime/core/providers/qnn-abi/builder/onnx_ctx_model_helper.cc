@@ -67,16 +67,28 @@ Status GetMainContextNode(const OrtGraph** graphs,
                           std::vector<int>& main_context_pos) {
   for (size_t graph_idx = 0; graph_idx < count; ++graph_idx) {
     size_t num_nodes = 0;
-    ort_api.Graph_GetNumNodes(graphs[graph_idx], &num_nodes);
+    OrtStatus* status = ort_api.Graph_GetNumNodes(graphs[graph_idx], &num_nodes);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get number of nodes");
+    }
     ORT_RETURN_IF(num_nodes != 1, "OrtGraph should has only one EPContext node.");
 
     std::vector<const OrtNode*> nodes(num_nodes);
-    ort_api.Graph_GetNodes(graphs[graph_idx], nodes.data(), nodes.size());
+    status = ort_api.Graph_GetNodes(graphs[graph_idx], nodes.data(), nodes.size());
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get nodes");
+    }
 
     const OrtNode* ep_context_node = nodes[0];
 
     const char* op_type = nullptr;
-    ort_api.Node_GetOperatorType(ep_context_node, &op_type);
+    status = ort_api.Node_GetOperatorType(ep_context_node, &op_type);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get operator type");
+    }
     ORT_RETURN_IF(op_type != EPCONTEXT_OP, "EPContext node should be EPContext type.");
 
     OrtNodeAttrHelper node_helper(ort_api, *ep_context_node);
@@ -97,11 +109,19 @@ Status GetEpContextFromMainNode(const OrtNode* main_context_node,
                                 QnnModelLookupTable& qnn_models,
                                 int64_t max_spill_fill_size) {
   const char* op_type = nullptr;
-  ort_api.Node_GetOperatorType(main_context_node, &op_type);
+  OrtStatus* status = ort_api.Node_GetOperatorType(main_context_node, &op_type);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get operator type");
+  }
   ORT_RETURN_IF(op_type != EPCONTEXT_OP, "EPContext node should be EPContext type.");
 
   const char* main_context_node_name = nullptr;
-  ort_api.Node_GetName(main_context_node, &main_context_node_name);
+  status = ort_api.Node_GetName(main_context_node, &main_context_node_name);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get node name");
+  }
 
   OrtNodeAttrHelper node_helper(ort_api, *main_context_node);
   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
@@ -182,11 +202,19 @@ Status TryGetMaxSpillFillSize(const OrtGraph** graphs,
   int max_size_index = 0;
   for (uint32_t idx = 0; idx < total_context_size; ++idx) {
     size_t num_nodes = 0;
-    ort_api.Graph_GetNumNodes(graphs[idx], &num_nodes);
+    OrtStatus* status = ort_api.Graph_GetNumNodes(graphs[idx], &num_nodes);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get number of nodes");
+    }
     ORT_RETURN_IF(num_nodes != 1, "OrtGraph should has only one EPContext node.");
 
     std::vector<const OrtNode*> nodes(num_nodes);
-    ort_api.Graph_GetNodes(graphs[idx], nodes.data(), nodes.size());
+    status = ort_api.Graph_GetNodes(graphs[idx], nodes.data(), nodes.size());
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get nodes");
+    }
 
     const OrtNode* ep_context_node = nodes[0];
 
@@ -215,24 +243,32 @@ Status LoadQnnCtxFromOnnxGraph(const OrtGraph* graph,
                                const logging::Logger& logger,
                                int64_t max_spill_fill_size) {
   size_t num_nodes = 0;
-  ort_api.Graph_GetNumNodes(graph, &num_nodes);
+  OrtStatus* status = ort_api.Graph_GetNumNodes(graph, &num_nodes);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get number of nodes");
+  }
   ORT_RETURN_IF(num_nodes != 1, "OrtGraph should has only one EPContext node.");
 
   std::vector<const OrtNode*> nodes(num_nodes);
-  ort_api.Graph_GetNodes(graph, nodes.data(), nodes.size());
+  status = ort_api.Graph_GetNodes(graph, nodes.data(), nodes.size());
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get nodes");
+  }
 
   const OrtNode* ep_context_node = nodes[0];
-  Status status = GetEpContextFromMainNode(ep_context_node,
-                                           ort_api,
-                                           ctx_onnx_model_path,
-                                           qnn_backend_manager,
-                                           qnn_models,
-                                           max_spill_fill_size);
+  Status load_status = GetEpContextFromMainNode(ep_context_node,
+                                                ort_api,
+                                                ctx_onnx_model_path,
+                                                qnn_backend_manager,
+                                                qnn_models,
+                                                max_spill_fill_size);
 
   // This is the protocol with customer that status with INVALID_GRAPH will be generated if failed to load context model
-  if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Failed to load from EpContext model. " << status.ErrorMessage();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to load from EpContext model. ", status.ErrorMessage());
+  if (!load_status.IsOK()) {
+    LOGS(logger, ERROR) << "Failed to load from EpContext model. " << load_status.ErrorMessage();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to load from EpContext model. ", load_status.ErrorMessage());
   }
 
   return Status::OK();

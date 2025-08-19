@@ -377,10 +377,19 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
                 initializer_name.c_str());
 
   const OrtTypeInfo* type_info = nullptr;
-  api_ptrs_.ort_api.GetValueInfoTypeInfo(zp_tensor, &type_info);
+  OrtStatusPtr ort_status = api_ptrs_.ort_api.GetValueInfoTypeInfo(zp_tensor, &type_info);
+  if (ort_status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get value info type info: ", api_ptrs_.ort_api.GetErrorMessage(ort_status));
+  }
   const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
-  api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
-  api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
+  ort_status = api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
+  if (ort_status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to cast type info to tensor info: ", api_ptrs_.ort_api.GetErrorMessage(ort_status));
+  }
+  ort_status = api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
+  if (ort_status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get tensor element type: ", api_ptrs_.ort_api.GetErrorMessage(ort_status));
+  }
 
   std::vector<uint8_t> initializer_bytes;
 
@@ -444,11 +453,20 @@ Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::v
                 initializer_name.c_str());
 
   const OrtTypeInfo* type_info = nullptr;
-  api_ptrs_.ort_api.GetValueInfoTypeInfo(scale_tensor, &type_info);
+  OrtStatusPtr ort_status = api_ptrs_.ort_api.GetValueInfoTypeInfo(scale_tensor, &type_info);
+  if (ort_status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get value info type info: ", api_ptrs_.ort_api.GetErrorMessage(ort_status));
+  }
   const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
-  api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
+  ort_status = api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
+  if (ort_status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to cast type info to tensor info: ", api_ptrs_.ort_api.GetErrorMessage(ort_status));
+  }
   ONNXTensorElementDataType onnx_data_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
+  ort_status = api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
+  if (ort_status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get tensor element type: ", api_ptrs_.ort_api.GetErrorMessage(ort_status));
+  }
   ORT_RETURN_IF_NOT(onnx_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                     "Expected scale initializer to be of type FLOAT");
 
@@ -475,12 +493,15 @@ Status QnnModelWrapper::IsPerChannelQuantized(const OrtNodeUnitIODef& io_def,
   // According to the type definition, it may need to be revised.
   const OrtValueInfo* qparam_scale = static_cast<const OrtValueInfo*>(io_def.quant_param->scale);
   const char* qparam_scale_name = nullptr;
-  api_ptrs_.ort_api.GetValueInfoName(qparam_scale, &qparam_scale_name);
+  OrtStatusPtr status = api_ptrs_.ort_api.GetValueInfoName(qparam_scale, &qparam_scale_name);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get value info name: ", api_ptrs_.ort_api.GetErrorMessage(status));
+  }
   const std::string& scale_name = std::string(qparam_scale_name);
 
   const OrtValueInfo* scale_tensor = nullptr;
-  Status status = FindInitializer(scale_name, &scale_tensor);
-  ORT_RETURN_IF_ERROR(status);
+  Status find_status = FindInitializer(scale_name, &scale_tensor);
+  ORT_RETURN_IF_ERROR(find_status);
   ORT_RETURN_IF(scale_tensor == nullptr, "Unable to find initializer for scale(s): ",
                 scale_name.c_str());
   std::vector<int64_t> scale_shape = utils::GetInitializerShape(*scale_tensor, api_ptrs_.ort_api);
@@ -661,11 +682,20 @@ Status QnnModelWrapper::UnpackInitializerData(OrtValueInfo& initializer,
                                                    unpacked_tensor));
 
   const OrtTypeInfo* type_info = nullptr;
-  api_ptrs_.ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  OrtStatusPtr status = api_ptrs_.ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get value info type info: ", api_ptrs_.ort_api.GetErrorMessage(status));
+  }
   const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
-  api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
+  status = api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to cast type info to tensor info: ", api_ptrs_.ort_api.GetErrorMessage(status));
+  }
   ONNXTensorElementDataType onnx_data_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
+  status = api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get tensor element type: ", api_ptrs_.ort_api.GetErrorMessage(status));
+  }
 
   // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
   if (onnx_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4) {

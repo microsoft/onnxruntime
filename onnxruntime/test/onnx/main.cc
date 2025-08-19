@@ -1031,7 +1031,12 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     result = -1;
   }
   if (enable_qnn_abi) {
-    Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str());
+    auto status = Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str());
+    if (status != nullptr) {
+      fprintf(stderr, "Failed to unregister execution provider library: %s\n",
+              Ort::GetApi().GetErrorMessage(status));
+      Ort::GetApi().ReleaseStatus(status);
+    }
   }
   return result;
 }

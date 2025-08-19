@@ -39,17 +39,6 @@ bool ORT_API_CALL QnnDataTransfer::CanCopyImpl(const OrtDataTransferImpl* this_p
   return false;
 }
 
-namespace {
-void CopyImpl(const void* src_data, void* dst_data, size_t bytes, OrtSyncStream* stream) {
-  // in our example setup this is really CPU to CPU
-
-  if (stream) {
-    // EP can do an async copy using the stream. e.g. an NVIDIA EP would provide the stream to cudaMemcpyAsync
-  }
-
-  memcpy(dst_data, src_data, bytes);
-}
-}  // namespace
 
 // function to copy one or more tensors.
 // implementation can optionally use async copy if a stream is available for the input.

@@ -30,21 +30,27 @@ const OrtNodeUnit* GetReshapeNodeUnit(
   // Get gemm node inputs
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
   size_t num_inputs = 0;
-  ort_api.Node_GetNumInputs(&gemm_node, &num_inputs);
+  OrtStatus* status = ort_api.Node_GetNumInputs(&gemm_node, &num_inputs);
+  if (status != nullptr) {
+    return nullptr;
+  }
   if (num_inputs < 1) {
     return nullptr;
   }
   std::vector<const OrtValueInfo*> inputs(num_inputs);
-  ort_api.Node_GetInputs(&gemm_node, inputs.data(), inputs.size());
+  status = ort_api.Node_GetInputs(&gemm_node, inputs.data(), inputs.size());
+  if (status != nullptr) {
+    return nullptr;
+  }
 
   // Get the first input (index 0)
   const OrtValueInfo* input_value_info = inputs[0];
 
   // Get the producer of this input
   OrtValueInfo::ProducerInfo producer_info;
-  Status status = input_value_info->GetProducerInfo(producer_info);
+  Status ort_status = input_value_info->GetProducerInfo(producer_info);
 
-  if (!status.IsOK() || producer_info.node == nullptr) {
+  if (!ort_status.IsOK() || producer_info.node == nullptr) {
     return nullptr;
   }
 
@@ -57,21 +63,27 @@ const OrtNodeUnit* GetReshapeNodeUnit(
     if (num_outputs != 1) {
       return nullptr;
     }
-    ort_api.Node_GetNumOutputs(reshape_node, &num_outputs);
+    status = ort_api.Node_GetNumOutputs(reshape_node, &num_outputs);
+    if (status != nullptr) {
+      return nullptr;
+    }
     std::vector<const OrtValueInfo*> reshape_outputs(num_outputs);
-    ort_api.Node_GetOutputs(reshape_node, reshape_outputs.data(), reshape_outputs.size());
+    status = ort_api.Node_GetOutputs(reshape_node, reshape_outputs.data(), reshape_outputs.size());
+    if (status != nullptr) {
+      return nullptr;
+    }
 
     const OrtValueInfo* output_info = reshape_outputs[0];
 
     bool is_graph_output = false;
-    status = output_info->IsGraphOutput(is_graph_output);
+    ort_status = output_info->IsGraphOutput(is_graph_output);
 
-    if (status.IsOK() && !is_graph_output) {
+    if (ort_status.IsOK() && !is_graph_output) {
       // Check if this reshape node has only one consumer (the gemm node)
       std::vector<OrtValueInfo::ConsumerInfo> consumer_infos;
-      status = output_info->GetConsumerInfos(consumer_infos);
+      ort_status = output_info->GetConsumerInfos(consumer_infos);
 
-      if (status.IsOK() && consumer_infos.size() == 1) {
+      if (ort_status.IsOK() && consumer_infos.size() == 1) {
         // Find the NodeUnit for this reshape node
         const auto it = node_to_node_unit.find(reshape_node);
         if (it != node_to_node_unit.end()) {
@@ -94,13 +106,17 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
 
   size_t num_inputs = 0;
   size_t num_outputs = 0;
-  ort_api.Node_GetNumInputs(&reshape_node, &num_inputs);
-  ort_api.Node_GetNumOutputs(&reshape_node, &num_outputs);
+  OrtStatus* status = ort_api.Node_GetNumInputs(&reshape_node, &num_inputs);
+  if (status != nullptr) return false;
+  status = ort_api.Node_GetNumOutputs(&reshape_node, &num_outputs);
+  if (status != nullptr) return false;
 
   std::vector<const OrtValueInfo*> inputs(num_inputs);
   std::vector<const OrtValueInfo*> outputs(num_outputs);
-  ort_api.Node_GetInputs(&reshape_node, inputs.data(), inputs.size());
-  ort_api.Node_GetOutputs(&reshape_node, outputs.data(), outputs.size());
+  status = ort_api.Node_GetInputs(&reshape_node, inputs.data(), inputs.size());
+  if (status != nullptr) return false;
+  status = ort_api.Node_GetOutputs(&reshape_node, outputs.data(), outputs.size());
+  if (status != nullptr) return false;
 
   const OrtValueInfo* input_info = inputs[0];
   const OrtValueInfo* output_info = outputs[0];
@@ -116,8 +132,10 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
   // Cast to tensor info
   const OrtTensorTypeAndShapeInfo* input_tensor_info = nullptr;
   const OrtTensorTypeAndShapeInfo* output_tensor_info = nullptr;
-  ort_api.CastTypeInfoToTensorInfo(input_type_info, &input_tensor_info);
-  ort_api.CastTypeInfoToTensorInfo(output_type_info, &output_tensor_info);
+  status = ort_api.CastTypeInfoToTensorInfo(input_type_info, &input_tensor_info);
+  if (status != nullptr) return false;
+  status = ort_api.CastTypeInfoToTensorInfo(output_type_info, &output_tensor_info);
+  if (status != nullptr) return false;
 
   if (!input_tensor_info || !output_tensor_info) {
     return false;
@@ -126,8 +144,10 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
   // Get dimensions
   size_t input_dims_count = 0;
   size_t output_dims_count = 0;
-  ort_api.GetDimensionsCount(input_tensor_info, &input_dims_count);
-  ort_api.GetDimensionsCount(output_tensor_info, &output_dims_count);
+  status = ort_api.GetDimensionsCount(input_tensor_info, &input_dims_count);
+  if (status != nullptr) return false;
+  status = ort_api.GetDimensionsCount(output_tensor_info, &output_dims_count);
+  if (status != nullptr) return false;
 
   if (output_dims_count != 2) {
     return false;
@@ -136,8 +156,10 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
   std::vector<int64_t> input_dims(input_dims_count);
   std::vector<int64_t> output_dims(output_dims_count);
 
-  ort_api.GetDimensions(input_tensor_info, input_dims.data(), input_dims_count);
-  ort_api.GetDimensions(output_tensor_info, output_dims.data(), output_dims_count);
+  status = ort_api.GetDimensions(input_tensor_info, input_dims.data(), input_dims_count);
+  if (status != nullptr) return false;
+  status = ort_api.GetDimensions(output_tensor_info, output_dims.data(), output_dims_count);
+  if (status != nullptr) return false;
 
   // Check if the reshape is from [x0, x1, ..., xn, k] to [x0 * x1 * ... * xn, k]
   int64_t input_product = 1;

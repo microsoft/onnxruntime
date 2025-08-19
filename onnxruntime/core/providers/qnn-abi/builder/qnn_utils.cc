@@ -1168,11 +1168,20 @@ Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_ERROR((qnn::utils::PermuteShape<uint32_t, size_t>(data_shape, perm, output_shape)));
 
   const OrtTypeInfo* type_info = nullptr;
-  ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  auto status = ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get value info type info");
+  }
   const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-  ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
+  status = ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to cast type info to tensor info");
+  }
   ONNXTensorElementDataType onnx_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  ort_api.GetTensorElementType(type_shape, &onnx_type);
+  status = ort_api.GetTensorElementType(type_shape, &onnx_type);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get tensor element type");
+  }
 
   const size_t elem_byte_size = qnn::utils::GetElementSizeByType(onnx_type);
   ORT_RETURN_IF_NOT(elem_byte_size != 0, "Can't get element byte size from given ONNX type");
@@ -1204,11 +1213,20 @@ Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
                                bool is_3d) {
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
   const OrtTypeInfo* type_info = nullptr;
-  ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  auto status = ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get value info type info");
+  }
   const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-  ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
+  status = ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to cast type info to tensor info");
+  }
   ONNXTensorElementDataType onnx_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  ort_api.GetTensorElementType(type_shape, &onnx_type);
+  status = ort_api.GetTensorElementType(type_shape, &onnx_type);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get tensor element type");
+  }
 
   const size_t elem_byte_size = qnn::utils::GetElementSizeByType(onnx_type);
   std::vector<int64_t> input_shape = qnn::utils::GetInitializerShape(initializer, ort_api);
@@ -1249,11 +1267,20 @@ Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
                                bool is_3d) {
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
   const OrtTypeInfo* type_info = nullptr;
-  ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  auto status = ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get value info type info");
+  }
   const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-  ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
+  status = ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to cast type info to tensor info");
+  }
   ONNXTensorElementDataType onnx_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  ort_api.GetTensorElementType(type_shape, &onnx_type);
+  status = ort_api.GetTensorElementType(type_shape, &onnx_type);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get tensor element type");
+  }
 
   const size_t elem_byte_size = qnn::utils::GetElementSizeByType(onnx_type);
   std::vector<int64_t> input_shape = qnn::utils::GetInitializerShape(initializer, ort_api);
@@ -1357,7 +1384,7 @@ Status ReadExternalData(const OrtApi& ort_api,
   int64_t offset = ort_api.ExternalInitializerInfo_GetFileOffset(initializer);
   size_t byte_size = ort_api.ExternalInitializerInfo_GetByteSize(initializer);
 
-  std::filesystem::path external_file_path = model_path.parent_path() / file_path;
+  PathString external_file_path = model_path / file_path;
 
   unpacked_tensor.resize(byte_size);
   ORT_RETURN_IF_ERROR(ReadFileIntoBuffer(
@@ -1382,11 +1409,11 @@ Status UnpackInitializerData(const OrtApi& ort_api,
   }
 
   const OrtTypeInfo* type_info = nullptr;
-  ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info);
+  RETURN_STATUS_IF_ERROR(ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info), ort_api);
   const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
-  ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info);
+  RETURN_STATUS_IF_ERROR(ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info), ort_api);
   ONNXTensorElementDataType onnx_data_type;
-  ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type);
+  RETURN_STATUS_IF_ERROR(ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type), ort_api);
 
   switch (onnx_data_type) {
     CASE_UNPACK(FLOAT, float, float_data_size);

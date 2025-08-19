@@ -41,9 +41,11 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper, const Or
 std::optional<size_t> GetMulScalarInputIndex(const OrtNodeUnit& mul, const OrtApi& ort_api) {
   // Get inputs of mul node
   size_t num_inputs = 0;
-  ort_api.Node_GetNumInputs(&mul.GetNode(), &num_inputs);
+  OrtStatus* status = ort_api.Node_GetNumInputs(&mul.GetNode(), &num_inputs);
+  if (status != nullptr) return std::nullopt;
   std::vector<const OrtValueInfo*> inputs(num_inputs);
-  ort_api.Node_GetInputs(&mul.GetNode(), inputs.data(), inputs.size());
+  status = ort_api.Node_GetInputs(&mul.GetNode(), inputs.data(), inputs.size());
+  if (status != nullptr) return std::nullopt;
 
   const OrtValueInfo* mul_x = inputs[0];
   const OrtValueInfo* mul_y = inputs[1];
@@ -55,14 +57,18 @@ std::optional<size_t> GetMulScalarInputIndex(const OrtNodeUnit& mul, const OrtAp
   // Cast to tensor info
   const OrtTensorTypeAndShapeInfo* x_tensor_info = nullptr;
   const OrtTensorTypeAndShapeInfo* y_tensor_info = nullptr;
-  ort_api.CastTypeInfoToTensorInfo(x_type_info, &x_tensor_info);
-  ort_api.CastTypeInfoToTensorInfo(y_type_info, &y_tensor_info);
+  status = ort_api.CastTypeInfoToTensorInfo(x_type_info, &x_tensor_info);
+  if (status != nullptr) return std::nullopt;
+  status = ort_api.CastTypeInfoToTensorInfo(y_type_info, &y_tensor_info);
+  if (status != nullptr) return std::nullopt;
 
   // Get dimensions count
   size_t x_dims_count = 0;
   size_t y_dims_count = 0;
-  ort_api.GetDimensionsCount(x_tensor_info, &x_dims_count);
-  ort_api.GetDimensionsCount(y_tensor_info, &y_dims_count);
+  status = ort_api.GetDimensionsCount(x_tensor_info, &x_dims_count);
+  if (status != nullptr) return std::nullopt;
+  status = ort_api.GetDimensionsCount(y_tensor_info, &y_dims_count);
+  if (status != nullptr) return std::nullopt;
 
   bool is_x_scalar = (x_dims_count == 0);
   bool is_y_scalar = (y_dims_count == 0);
@@ -95,17 +101,21 @@ std::optional<uint32_t> GetPositiveSoftmaxAxis(const OrtNodeUnit& mul, const Ort
 
     // Get the other input's shape
     size_t num_inputs = 0;
-    ort_api.Node_GetNumInputs(&mul.GetNode(), &num_inputs);
+    OrtStatus* status = ort_api.Node_GetNumInputs(&mul.GetNode(), &num_inputs);
+    if (status != nullptr) return std::nullopt;
     std::vector<const OrtValueInfo*> inputs(num_inputs);
-    ort_api.Node_GetInputs(&mul.GetNode(), inputs.data(), inputs.size());
+    status = ort_api.Node_GetInputs(&mul.GetNode(), inputs.data(), inputs.size());
+    if (status != nullptr) return std::nullopt;
 
     const OrtValueInfo* other_input = inputs[input_other_index];
     const OrtTypeInfo* type_info = other_input->GetTypeInfo();
     const OrtTensorTypeAndShapeInfo* tensor_info = nullptr;
-    ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_info);
+    status = ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_info);
+    if (status != nullptr) return std::nullopt;
 
     size_t dims_count = 0;
-    ort_api.GetDimensionsCount(tensor_info, &dims_count);
+    status = ort_api.GetDimensionsCount(tensor_info, &dims_count);
+    if (status != nullptr) return std::nullopt;
 
     axis_value += static_cast<int64_t>(dims_count);
   }
@@ -126,15 +136,18 @@ std::optional<float> ExtractScalarValueFromMul(const QnnModelWrapper& qnn_model_
 
   // Get inputs of mul node
   size_t num_inputs = 0;
-  ort_api.Node_GetNumInputs(&mul.GetNode(), &num_inputs);
+  OrtStatus* status = ort_api.Node_GetNumInputs(&mul.GetNode(), &num_inputs);
+  if (status != nullptr) return std::nullopt;
   std::vector<const OrtValueInfo*> inputs(num_inputs);
-  ort_api.Node_GetInputs(&mul.GetNode(), inputs.data(), inputs.size());
+  status = ort_api.Node_GetInputs(&mul.GetNode(), inputs.data(), inputs.size());
+  if (status != nullptr) return std::nullopt;
 
   const OrtValueInfo* scalar_input = inputs[input_scale_index.value()];
 
   // Get the name of the scalar input
   const char* scalar_name = nullptr;
-  ort_api.GetValueInfoName(scalar_input, &scalar_name);
+  status = ort_api.GetValueInfoName(scalar_input, &scalar_name);
+  if (status != nullptr) return std::nullopt;
 
   // Check if it's a constant initializer
   if (!qnn_model_wrapper.IsConstantInput(scalar_name)) {
@@ -149,16 +162,21 @@ std::optional<float> ExtractScalarValueFromMul(const QnnModelWrapper& qnn_model_
 
   // Get the value
   const OrtValue* value = nullptr;
-  Status status = scalar_tensor->GetInitializerValue(value);
-  if (!status.IsOK() || value == nullptr) {
+  Status ort_status = scalar_tensor->GetInitializerValue(value);
+  if (!ort_status.IsOK() || value == nullptr) {
     return std::nullopt;
   }
 
   // Check if it's a float tensor
   ONNXTensorElementDataType element_type;
   OrtTensorTypeAndShapeInfo* tensor_info = nullptr;
-  ort_api.GetTensorTypeAndShape(value, &tensor_info);
-  ort_api.GetTensorElementType(tensor_info, &element_type);
+  status = ort_api.GetTensorTypeAndShape(value, &tensor_info);
+  if (status != nullptr) return std::nullopt;
+  status = ort_api.GetTensorElementType(tensor_info, &element_type);
+  if (status != nullptr) {
+    ort_api.ReleaseTensorTypeAndShapeInfo(tensor_info);
+    return std::nullopt;
+  }
   ort_api.ReleaseTensorTypeAndShapeInfo(tensor_info);
   if (element_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
     return std::nullopt;
@@ -166,7 +184,8 @@ std::optional<float> ExtractScalarValueFromMul(const QnnModelWrapper& qnn_model_
 
   // Get the raw data
   const void* raw_data = nullptr;
-  ort_api.GetTensorData(value, &raw_data);
+  status = ort_api.GetTensorData(value, &raw_data);
+  if (status != nullptr) return std::nullopt;
 
   // Return the float value
   return *static_cast<const float*>(raw_data);

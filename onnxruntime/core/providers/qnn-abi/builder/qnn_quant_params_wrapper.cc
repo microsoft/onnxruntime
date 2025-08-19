@@ -248,7 +248,10 @@ Status QnnQuantParamsWrapper::Init(const OrtApi& ort_api,
   // According to the type definition, it may need to be revised.
   const OrtValueInfo* qparam_scale = static_cast<const OrtValueInfo*>(ort_quant_params->scale);
   const char* qparam_scale_name = nullptr;
-  ort_api.GetValueInfoName(qparam_scale, &qparam_scale_name);
+  OrtStatus* status = ort_api.GetValueInfoName(qparam_scale, &qparam_scale_name);
+  if (status != nullptr) {
+    return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get value info name for scale");
+  }
   const std::string& scale_name = std::string(qparam_scale_name);
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackScales(scale_name, scales));
 
@@ -259,7 +262,10 @@ Status QnnQuantParamsWrapper::Init(const OrtApi& ort_api,
     // According to the type definition, it may need to be revised.
     const OrtValueInfo* qparam_zero_point = static_cast<const OrtValueInfo*>(ort_quant_params->zero_point);
     const char* qparam_zero_point_name = nullptr;
-    ort_api.GetValueInfoName(qparam_zero_point, &qparam_zero_point_name);
+    OrtStatus* zp_status = ort_api.GetValueInfoName(qparam_zero_point, &qparam_zero_point_name);
+    if (zp_status != nullptr) {
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get value info name for zero point");
+    }
     const std::string& zero_point_name = std::string(qparam_zero_point_name);
 
     ONNXTensorElementDataType onnx_tp_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
