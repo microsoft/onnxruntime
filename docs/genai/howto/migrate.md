@@ -4,7 +4,7 @@ description: Learn how to migrate from one version of ONNX Runtime generate() AP
 has_children: false
 parent: How to
 grand_parent: Generate API (Preview)
-nav_order: 5
+nav_order: 4
 ---
 
 # Migrate ONNX Runtime generate() API from 0.5.2 to 0.6.0
