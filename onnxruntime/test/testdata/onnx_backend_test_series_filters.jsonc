@@ -31,9 +31,9 @@
     "current_failing_tests": [
         "^test_adagrad",
         "^test_adagrad_multiple",
-        "^attention_4d_diff_heads_mask4d_padded_kv",
-        "^attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal",
-        "^attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal",
+        "^test_attention_4d_diff_heads_mask4d_padded_kv",
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal",
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal",
         "^test_batchnorm_epsilon_training_mode",
         "^test_batchnorm_example_training_mode",
         "^test_col2im_pads",  // still one wrong value coming from the backtest example
