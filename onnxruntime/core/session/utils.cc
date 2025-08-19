@@ -207,6 +207,7 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   return CreateSessionAndLoadModelImpl(options, env->GetEnvironment(), model_path, model_data, model_data_length, sess);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 static const char* GetCompatibilityStatusString(OrtCompiledModelCompatibility status) {
   switch (status) {
     case OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL:
@@ -222,7 +223,6 @@ static const char* GetCompatibilityStatusString(OrtCompiledModelCompatibility st
   }
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
   // Get model metadata
   auto [status, model_metadata] = sess.GetModelMetadata();
