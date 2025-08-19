@@ -86,7 +86,7 @@ jobs:
           xcode_version: ${{ env.xcode_version }}
           use_cache: false
 
-      - name: Build for iphonesimulator ${{ matrix.target_arch }}, count ${{ matrix.count }}
+      - name: Build for iphonesimulator ${{ matrix.target_arch }}
         shell: bash
         run: |
           python ./tools/ci_build/build.py \
