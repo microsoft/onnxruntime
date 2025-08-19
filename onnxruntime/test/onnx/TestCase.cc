@@ -1112,12 +1112,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"qlinearmatmul_3D_int8_float32", "result diff", {}},
       {"qlinearmatmul_3D_uint8_float16", "fp16 type ont supported by CPU EP", {}}});
 
-  // TODO: Enable the following tests when nonpad_kv_seqlen is supported in Attention
-  broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal", "nonpad_kv_seqlen"});
-  broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal", "nonpad_kv_seqlen"});
-  // TODO: Fix the model in ONNX
-  broken_tests->insert({"attention_4d_diff_heads_mask4d_padded_kv", "op.Range inputs should be scalar"});
-
   // Some EPs may fail to pass some specific testcases.
   // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
   // Instead of list all these testcases, we can use following keyword set to filter out testcases wchich contain
@@ -1437,9 +1431,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"averagepool_2d_ceil", "result differs. expected 13.5 (41580000), got 0 (0)"});
     broken_tests->insert({"scatter_elements_with_negative_indices", "unknown version"});
     // Fails since ONNX==1.19.0
-    broken_tests->insert({"attention_4d_diff_heads_mask4d_padded_kv", "unknown version"});
-    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal", "unknown version"});
-    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal", "unknown version"});
     broken_tests->insert({"l2normalization_axis_0", "unknown version"});
   }
 
