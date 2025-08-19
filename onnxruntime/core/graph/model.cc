@@ -399,6 +399,15 @@ ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::pa
                                                        const std::filesystem::path& file_path,
                                                        const ModelSavingOptions& model_saving_options) const {
   ModelProto result(model_proto_);
+
+  // Sync current model_metadata_ back to protobuf metadata_props
+  result.clear_metadata_props();
+  for (const auto& metadata : model_metadata_) {
+    const gsl::not_null<StringStringEntryProto*> prop{result.add_metadata_props()};
+    prop->set_key(metadata.first);
+    prop->set_value(metadata.second);
+  }
+
   const auto& graph = *graph_;
   *(result.mutable_graph()) = graph.ToGraphProtoWithExternalInitializers(external_file_name,
                                                                          file_path,
