@@ -45,6 +45,13 @@ TEST_F(FlattenOpTest, Flatten_invalid_axis) {
   test_.Run(OpTester::ExpectResult::kExpectFailure, "Invalid value(5) for attribute 'axis'");
 }
 
+TEST_F(FlattenOpTest, Flatten_axis2_bool) {
+  test_.AddAttribute<int64_t>("axis", 2L);
+  test_.AddInput<bool>("data", {2L, 2L, 2L, 3L}, {false, true, false, true, true, false, true, false, false, false, false, true, true, false, true, true, true, false, false, true, true, true, false, true});
+  test_.AddOutput<bool>("output", {4L, 6L}, {false, true, false, true, true, false, true, false, false, false, false, true, true, false, true, true, true, false, false, true, true, true, false, true});
+  test_.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST_F(FlattenOpTest, Flatten_axis3) {
   test_.AddAttribute<int64_t>("axis", 3L);
   test_.AddInput<float>("data", {2L, 3L, 4L, 5L}, data0_);
