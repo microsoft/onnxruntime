@@ -3,6 +3,7 @@
 #param is_fp16
 #param is_qualcomm
 #param is_unidirectional
+#param is_nvidia
 #param qkv_head_size
 #param qkv_num_heads
 
@@ -147,7 +148,7 @@ $MAIN {
     var qk_2 : vec4<q_element_t>;
     var qk_3 : vec4<q_element_t>;
     var qk_4 : vec4<q_element_t>;
-    if (sg_size == 32) {
+#if is_nvidia
       for (var i : u32 = 0u; i < head_size_vec; i++) {
         var q_own = q_tile[i];
         qk_1[0] += dot(q_own, k_tile[0][i]);
@@ -167,8 +168,8 @@ $MAIN {
         qk_4[2] += dot(q_own, k_tile[14][i]);
         qk_4[3] += dot(q_own, k_tile[15][i]);
       }
-    }
-    else if (sg_size > 8) {
+#else
+    if (sg_size > 8) {
       for (var i : u32 = 0u; i < head_size_vec; i++) {
 #if is_qualcomm
         var k_local = q_value_t(0);
@@ -210,7 +211,7 @@ $MAIN {
         qk_2[3] += dot(q_own, subgroupShuffle(k_local, 7));
       }
     }
-
+#endif
     qk_1 = qk_1 + loadAttentionBias(q_idx_global, k_start, head_idx);
     qk_2 = qk_2 + loadAttentionBias(q_idx_global, k_start + 4, head_idx);
     if (sg_size > 8) {
@@ -345,7 +346,7 @@ $MAIN {
     writeo(q_idx_global, head_idx, local_idx);
   }
 #else
-    if (sg_size == 32) {
+#if is_nvidia
       for (var i : u32 = 0; i < head_size_vec; i++) {
         var sum = v_tile[0][i] * qk_1[0];
         sum += v_tile[1][i] * qk_1[1];
@@ -365,8 +366,8 @@ $MAIN {
         sum += v_tile[15][i] * qk_4[3];
         o_tile[i] = o_tile[i] * o_ratio + sum;
       }
-    }
-    else if (sg_size > 8) {
+#else
+    if (sg_size > 8) {
       for (var i : u32 = 0; i < head_size_vec; i++) {
         var val = v_tile[capped_sg_id][i];
         var sum = subgroupShuffle(val, 0) * qk_1[0];
@@ -401,6 +402,7 @@ $MAIN {
         o_tile[i] = o_tile[i] * o_ratio + sum;
       }
     }
+#endif
   }
 
   if (valid_q) {
