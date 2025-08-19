@@ -162,6 +162,12 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
                                                buffer_cache_config.uniform.mode,
                                                buffer_cache_config.query_resolve.mode);
 
+    // create initializer buffer manager. cache is always disabled for initializer buffer manager
+    initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
+                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::Disabled);
+
     // create program manager
     program_mgr_ = std::make_unique<ProgramManager>(Device(), DeviceLimits());
 

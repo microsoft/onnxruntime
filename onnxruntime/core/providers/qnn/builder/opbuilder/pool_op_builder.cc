@@ -195,7 +195,7 @@ Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
       }
     }
   }
-  ReArranagePads(pad_amount);
+  ReArrangePads(pad_amount);
 
   // Param: rounding_mode.
   rounding_mode = node_helper.Get("ceil_mode", rounding_mode);
@@ -235,7 +235,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(reshape_input, reshape_input_info));
 
   bool needs_reshape = false;
-  const std::string reshape_prior_out = input_names[0] + "_prior_reshape";
+  const std::string reshape_prior_out = utils::GetUniqueName(input_names[0], "_reshape");
   if (input_shape.size() == 3) {
     needs_reshape = true;
     // build new_shape = {N, 1, C, L}
@@ -254,7 +254,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(reshape_prior_tensor)),
                       "Failed to add reshape prior tensor.");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
-                          utils::GetNodeName(node_unit) + "_reshape_prior",
+                          utils::GetUniqueName(node_unit, QNN_OP_RESHAPE),
                           QNN_OP_PACKAGE_NAME_QTI_AISW,
                           QNN_OP_RESHAPE,
                           {input_names[0]},
@@ -445,8 +445,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   }
   const auto& outputs = node_unit.Outputs();
   const std::string real_out = outputs[0].node_arg.Name();
-  const std::string pool_out = real_out + "_reshape_after";
-  const std::string qnn_op = GetQnnOpType(op_type);
+  const std::string pool_out = utils::GetUniqueName(real_out, "_reshape_after");
   TensorInfo output_info{};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
   bool is_graph_output = qnn_model_wrapper.IsGraphOutput(real_out);
@@ -463,9 +462,9 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
       "Failed to add tensor for pool_out");
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
-                        utils::GetNodeName(node_unit) + "_pool2d",
+                        utils::GetUniqueName(node_unit, op_type),
                         QNN_OP_PACKAGE_NAME_QTI_AISW,
-                        qnn_op,
+                        GetQnnOpType(op_type),
                         {reshape_prior_out},
                         {pool_out},
                         std::move(param_tensor_names),
@@ -483,7 +482,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(reshape_after_tensor)),
                     "Failed to add reshape after tensor.");
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
-                        utils::GetNodeName(node_unit) + "_reshape_after",
+                        utils::GetUniqueName(node_unit, QNN_OP_RESHAPE),
                         QNN_OP_PACKAGE_NAME_QTI_AISW,
                         QNN_OP_RESHAPE,
                         {pool_out},
