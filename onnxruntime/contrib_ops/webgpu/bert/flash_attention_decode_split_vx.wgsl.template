@@ -40,9 +40,10 @@ var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, 
 $MAIN {
   let local_row = u32(local_idx / tile_size_k_vec);
   let local_col = local_idx % tile_size_k_vec;
-  let total_seq_offset = (workgroup_idx % uniforms.num_total_seq_length_tile) * tile_size;
-  let head_idx = u32(workgroup_idx / uniforms.num_total_seq_length_tile);
-  var total_sequence_length = uniforms.total_sequence_length;
+  let total_sequence_length = u32(seqlens_k[0]) + 1u;
+  let num_total_seq_length_tile = (total_sequence_length + tile_size - 1) / tile_size;
+  let total_seq_offset = (workgroup_idx % num_total_seq_length_tile) * tile_size;
+  let head_idx = u32(workgroup_idx / num_total_seq_length_tile);
   let present_offset = u32(head_idx / uniforms.n_reps) * head_size_vec * uniforms.present_sequence_length;
 
   // Calculate the global max and sum in qk.
@@ -50,12 +51,12 @@ $MAIN {
   {
     var g_max = f32(-3.402823e+38f);
     var g_sum = f32(0);
-    for (var i = 0u; i < uniforms.num_total_seq_length_tile; i++)
+    for (var i = 0u; i < num_total_seq_length_tile; i++)
     {
       let meta_offset = head_idx * uniforms.num_present_sequence_length_tile + i;
       g_max = max(g_max, metadata[meta_offset].x);
     }
-    for (var i = 0u; i < uniforms.num_total_seq_length_tile; i++)
+    for (var i = 0u; i < num_total_seq_length_tile; i++)
     {
       let meta_offset = head_idx * uniforms.num_present_sequence_length_tile + i;
       let m_value = metadata[meta_offset];
@@ -95,7 +96,7 @@ $MAIN {
   }
 
   for (var i = local_idx; i < head_size_vec; i += workgroup_size_x) {
-    let out_offset = head_idx * uniforms.num_present_sequence_length_tile * head_size_vec + (workgroup_idx % uniforms.num_total_seq_length_tile) * head_size_vec + i;
+    let out_offset = head_idx * uniforms.num_present_sequence_length_tile * head_size_vec + (workgroup_idx % num_total_seq_length_tile) * head_size_vec + i;
     out_split_vx[out_offset] = tile_output[i];
   }
 }
