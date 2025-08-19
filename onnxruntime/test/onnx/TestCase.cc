@@ -1112,29 +1112,11 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"qlinearmatmul_3D_int8_float32", "result diff", {}},
       {"qlinearmatmul_3D_uint8_float16", "fp16 type ont supported by CPU EP", {}}});
 
-  // Attention3D examples are wrong with onnx==1.18.0
-  broken_tests->insert({"attention_3d", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_attn_mask", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_causal", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_diff_heads_sizes", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_diff_heads_sizes_attn_mask", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_diff_heads_sizes_causal", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_diff_heads_sizes_scaled", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_diff_heads_sizes_softcap", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_diff_heads_with_past_and_present", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_gqa", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_gqa_attn_mask", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_gqa_causal", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_gqa_scaled", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_gqa_softcap", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_gqa_with_past_and_present", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_scaled", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_softcap", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_with_past_and_present", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_with_past_and_present_qk_matmul", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_with_past_and_present_qk_matmul_bias", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_with_past_and_present_qk_matmul_softcap", "wrong expected values (fixed in onnx==1.19.0)"});
-  broken_tests->insert({"attention_3d_with_past_and_present_qk_matmul_softmax", "wrong expected values (fixed in onnx==1.19.0)"});
+  // TODO: Enable the following tests when nonpad_kv_seqlen is supported in Attention
+  broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal", "nonpad_kv_seqlen"});
+  broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal", "nonpad_kv_seqlen"});
+  // TODO: Fix the model in ONNX
+  broken_tests->insert({"attention_4d_diff_heads_mask4d_padded_kv", "op.Range inputs should be scalar"});
 
   // Some EPs may fail to pass some specific testcases.
   // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
