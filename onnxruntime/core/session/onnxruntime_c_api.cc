@@ -4044,7 +4044,6 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ValueInfo_IsConstantInitializer,
     &OrtApis::ValueInfo_IsFromOuterScope,
     &OrtApis::Graph_GetName,
-    &OrtApis::Graph_GetModelMetadata,
     &OrtApis::Graph_GetModelPath,
     &OrtApis::Graph_GetOnnxIRVersion,
     &OrtApis::Graph_GetNumOperatorSets,
@@ -4106,6 +4105,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ReleaseSyncStream,
 
     &OrtApis::CopyTensors,
+
+    &OrtApis::Graph_GetModelMetadata,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
