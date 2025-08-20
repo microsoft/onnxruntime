@@ -71,144 +71,27 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
   }
   shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+
   const uint32_t components_a = a.NumComponents();
   const uint32_t components_b = b.NumComponents() / 4;  // b is stored as uint32 which includs 4 uint8.
   constexpr uint32_t tile_size_k_vec = 16;
-  uint32_t elements_in_value_b = components_b * (32 / nbits_);
-  uint32_t tile_k_size = tile_size_k_vec * elements_in_value_b;
-  const uint32_t a_length_per_tile = tile_k_size / components_a;
+  const uint32_t elements_in_value_b = components_b * (32 / nbits_);
+  const uint32_t tile_size_k = tile_size_k_vec * elements_in_value_b;
+  const uint32_t a_length_per_tile = tile_size_k / components_a;
+  uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec;
 
-  shader.AdditionalImplementation() << "const a_length_per_tile = " << a_length_per_tile << "u;\n"
-                                    << "const tile_size_k_vec = " << tile_size_k_vec << ";\n"
-                                    << "const tile_size_k = " << tile_k_size << "u;\n"
-                                    << "const tile_size = " << tile_size_ << "u;\n"
-                                    << "const elements_in_value_b = " << elements_in_value_b << "u;\n"
-                                    << "const sub_tile_count = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n"
-                                    << "const component_a = " << components_a << "u;\n"
-                                    << "const component_b = " << components_b << "u;\n";
-  shader.AdditionalImplementation() << R"ADDNL_FN(
-  // Shared memory
-  var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
-  var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
-  fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
-  {
-    let k_offset = kidx / component_a + col;
-    if (batch < uniforms.batch_count && k_offset < uniforms.K_of_a) {
-      tile_A[col] = input_a[batch * uniforms.M * uniforms.K_of_a + a_global * uniforms.K_of_a + k_offset];
-    } else {
-      tile_A[col] = input_a_value_t(0);
-    }
-  }
-)ADDNL_FN"
-                                    << GenerateZeroPointReadingCode(nbits_, has_zero_points_);
-
-  shader.MainFunctionBody() << R"MAIN_FN(
-  let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
-  let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.M;
-  let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
-
-  let idx = local_idx % tile_size_k_vec;
-  let idy = local_idx / tile_size_k_vec;
-
-  for (var kidx = 0u; kidx < uniforms.K; kidx += tile_size_k)
-  {
-    for (var id = local_idx; id < a_length_per_tile; id += workgroup_size_x)
-    {
-      loadSHMA(batch, a_global, kidx, id);
-    }
-    workgroupBarrier();
-
-    for (var local_row_offset = 0u; local_row_offset < tile_size; local_row_offset += sub_tile_count)
-    {
-      var b_global = b_global_base + local_row_offset + idy;
-      var k_offset = kidx / elements_in_value_b + idx;
-      if (b_global < uniforms.N && k_offset < uniforms.K_of_b)
-      {
-        let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
-        let scale_b = scales_b[b_global * uniforms.blocks_per_col + block_idx];
-        let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
-        var b_value = input_b[b_global * uniforms.K_of_b + k_offset];
-)MAIN_FN";
-
-  if (nbits_ == 4) {
-    shader.MainFunctionBody() << R"MAIN_FN(
-        var sum = output_element_t(0);
-        var a_offset = idx * (8 / component_a) * component_b;
-        for (var i = 0u; i < component_b; i++) {
-          let b_value_lower = vec4<output_element_t>(unpack4xU8(b_value[i] & 0x0F0F0F0Fu)) - vec4<output_element_t>(zero);
-          let b_value_upper = vec4<output_element_t>(unpack4xU8((b_value[i] >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(zero);
-          let b0 = vec4<output_element_t>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]) * scale_b;
-          let b1 = vec4<output_element_t>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]) * scale_b;
-)MAIN_FN";
-    switch (components_a) {
-      case 1:
-        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1], tile_A[a_offset + 2], tile_A[a_offset + 3]), b0) +"
-                                     " dot(vec4<output_element_t>(tile_A[a_offset + 4], tile_A[a_offset + 5], tile_A[a_offset + 6], tile_A[a_offset + 7]), b1);\n"
-                                     "          a_offset += 8;\n";
-        break;
-      case 2:
-        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]), b0) +"
-                                     "dot(vec4<output_element_t>(tile_A[a_offset + 2], tile_A[a_offset + 3]), b1);\n"
-                                     "          a_offset += 4;\n";
-        break;
-      case 4:
-        shader.MainFunctionBody() << "          sum += dot(tile_A[a_offset], b0) + dot(tile_A[a_offset + 1], b1);\n"
-                                     "          a_offset += 2;\n";
-        break;
-      default:
-        break;
-    }
-    shader.MainFunctionBody() << "        }\n";
-  } else {
-    shader.MainFunctionBody() << R"MAIN_FN(
-        var sum = output_element_t(0);
-        var a_offset = idx * (4 / component_a) * component_b;
-        for (var i = 0u; i < component_b; i++) {
-          let b_value = (vec4<output_element_t>(unpack4xU8(b_value[i])) - vec4<output_element_t>(zero)) * scale_b;
-)MAIN_FN";
-    switch (components_a) {
-      case 1:
-        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1], tile_A[a_offset + 2], tile_A[a_offset + 3]), b_value);\n"
-                                     "          a_offset += 4;\n";
-        break;
-      case 2:
-        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]), b_value);\n"
-                                     "          a_offset += 2;\n";
-        break;
-      case 4:
-        shader.MainFunctionBody() << "          sum += dot(tile_A[a_offset], b_value);\n"
-                                     "          a_offset += 1;\n";
-        break;
-      default:
-        break;
-    }
-    shader.MainFunctionBody() << "        }\n";
-  }
-
-  shader.MainFunctionBody() << R"MAIN_FN(
-        inter_results[local_row_offset + idy][idx] += sum;
-      }
-    }
-    workgroupBarrier();
-  }
-
-  if (batch >= uniforms.batch_count) {
-    return;
-  }
-
-  if (local_idx < tile_size) {
-    var output_value = output_element_t(0);
-    for (var b = 0u; b < tile_size_k_vec; b++) {
-      output_value += inter_results[local_idx][b];
-    }
-    let b_global =  b_global_base + local_idx;
-    let output_idx = batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global;
-    if (b_global < uniforms.N) {
-      output[output_idx] = output_value;
-    }
-  }
-)MAIN_FN";
-
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+                             WGSL_TEMPLATE_PARAMETER(component_a, components_a),
+                             WGSL_TEMPLATE_PARAMETER(component_b, components_b),
+                             WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
+                             WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
+                             WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
+                             WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
+                             WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
+                             WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
+                             WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
+                             WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec));
   return Status::OK();
 }
 
