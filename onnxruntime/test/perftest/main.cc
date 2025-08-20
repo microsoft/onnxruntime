@@ -55,7 +55,7 @@ int real_main(int argc, char* argv[]) {
   // See "ep_device.ep_factory->ReleaseAllocator" in Environment::CreateSharedAllocatorImpl.
   auto unregister_plugin_eps_at_scope_exit = gsl::finally([&]() {
     if (!test_config.registered_plugin_eps.empty()) {
-      test::utils::UnregisterExecutionProviderLibrary(env, test_config.registered_plugin_eps);  // this won't throw
+      test::utils::UnregisterExecutionProviderLibrary(env, test_config.registered_plugin_eps);
     }
   });
 

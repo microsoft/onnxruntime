@@ -56,10 +56,7 @@ void RegisterExecutionProviderLibrary(Ort::Env& env,
 
 void UnregisterExecutionProviderLibrary(Ort::Env& env, std::vector<std::string>& registered_plugin_eps) {
   for (auto& registration_name : registered_plugin_eps) {
-    Ort::Status status(Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str()));
-    if (!status.IsOK()) {
-      fprintf(stderr, "%s", status.GetErrorMessage().c_str());
-    }
+    env.UnregisterExecutionProviderLibrary(registration_name.c_str());
   }
 }
 
