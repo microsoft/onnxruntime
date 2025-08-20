@@ -771,6 +771,7 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
 const std::string& EpGraph::GetName() const { return graph_viewer_.Name(); }
 
 std::unique_ptr<ModelMetadata> EpGraph::GetModelMetadata() const {
+#if !defined(ORT_MINIMAL_BUILD)
   const auto& model = graph_viewer_.GetGraph().GetModel();
   auto model_metadata = std::make_unique<ModelMetadata>();
 
@@ -782,8 +783,11 @@ std::unique_ptr<ModelMetadata> EpGraph::GetModelMetadata() const {
   model_metadata->version = model.ModelVersion();
   model_metadata->custom_metadata_map = model.MetaData();
   model_metadata->graph_name = model.MainGraph().Name();
-
   return model_metadata;
+#else
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                         "Getting the model metadata is not supported in this build");
+#endif
 }
 
 const ORTCHAR_T* EpGraph::GetModelPath() const {
