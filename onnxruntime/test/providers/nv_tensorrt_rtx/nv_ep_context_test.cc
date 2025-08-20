@@ -53,8 +53,10 @@ std::vector<char> readBinaryFile(const PathString& filename) {
 struct CompileParam {
   bool embed_mode;
   bool bytestream_io;
+  bool external_initialzier_for_parser = false;
   const std::string to_string() const {
-    return "embed_mode_" + std::to_string(embed_mode) + "_bytestream_io_" + std::to_string(bytestream_io);
+    return "embed_mode_" + std::to_string(embed_mode) + "_bytestream_io_" + std::to_string(bytestream_io) + "_ext_init_" + std::to_string(external_initialzier_for_parser);
+    ;
   }
 };
 class CompileApiTest
@@ -78,7 +80,8 @@ void SmallModelTest(CompileParam test_param, bool fully_supported_model) {
   CreateBaseModel(model_name, graph_name, dims, !fully_supported_model);
 
   Ort::SessionOptions session_options;
-  std::unordered_map<std::string, std::string> option_map{};
+  std::unordered_map<std::string, std::string> option_map{
+      {onnxruntime::nv::provider_option_names::kUseExternalDataInitializer, std::to_string(test_param.external_initialzier_for_parser)}};
   auto ep = AppendTrtEtxEP(session_options, option_map);
 
   Ort::ModelCompilationOptions model_compile_options(*ort_env, session_options);
@@ -139,7 +142,9 @@ TEST_P(CompileApiTest, LargeModel) {
   }
 
   Ort::SessionOptions session_options;
-  std::unordered_map<std::string, std::string> option_map{{onnxruntime::nv::provider_option_names::kUseExternalDataInitializer, std::to_string(test_param.bytestream_io)}};
+  std::unordered_map<std::string, std::string> option_map{
+      {onnxruntime::nv::provider_option_names::kUseExternalDataInitializer,
+       std::to_string(test_param.bytestream_io || test_param.external_initialzier_for_parser)}};
   auto ep = AppendTrtEtxEP(session_options, option_map);
 
   Ort::ModelCompilationOptions model_compile_options(*ort_env, session_options);
@@ -189,7 +194,10 @@ INSTANTIATE_TEST_SUITE_P(
         CompileParam{true, false},
         CompileParam{false, false},
         CompileParam{true, true},
-        CompileParam{false, true}),
+        CompileParam{false, true},
+        // test with external initializers for parser
+        CompileParam{true, true, true},
+        CompileParam{true, false, true}),
     [](const testing::TestParamInfo<CompileApiTest::ParamType>& info) {
       return info.param.to_string();
     });

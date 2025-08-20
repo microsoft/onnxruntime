@@ -11,6 +11,7 @@
 #include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
+#include "core/framework/ort_value.h"
 #include "nv_execution_provider.h"
 #include "nv_execution_provider_utils.h"
 #include "nv_execution_provider_custom_ops.h"
@@ -1529,14 +1530,23 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         // needed for models > 2GB
         std::vector<TensorrtUserWeights> userWeights;
         if (use_external_data_initializer_) {
+          auto c_api = Ort::GetApi();
           const InitializedTensorSet& allInitializers = graph_viewer->GetAllInitializedTensors();
           userWeights.reserve(allInitializers.size());
           for (auto& entry : allInitializers) {
+            OrtValue initializer_value;
             auto* tp = entry.second;
             if (utils::HasRawData(*tp)) {
               userWeights.emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size()));
+            } else if (graph_viewer->GetOrtValueInitializer(tp->name(), initializer_value)) {
+              // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
+              size_t size = 0;
+              const void* ptr = nullptr;
+              c_api.GetTensorSizeInBytes(&initializer_value, &size);
+              c_api.GetTensorData(&initializer_value, &ptr);
+              userWeights.emplace_back(tp->name(), ptr, size);
             } else if (utils::HasExternalDataInMemory(*tp)) {
-              // TODO(maximilianm) remove this memory copy inside `GetTensorProtoWithDataIfInMemory` by using https://github.com/microsoft/onnxruntime/pull/25761
+              // only copy and take ownership of the data if none of the above conditions are met
               std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
               ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
               userWeights.emplace_back(std::move(full_init->name()), std::move(full_init->raw_data()));
@@ -2340,14 +2350,23 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   // exclude weights if external
   std::vector<TensorrtUserWeights> userWeights;
   if (use_external_data_initializer_) {
+    auto c_api = Ort::GetApi();
     const InitializedTensorSet& allInitializers = graph_body_viewer.GetAllInitializedTensors();
     userWeights.reserve(allInitializers.size());
     for (auto& entry : allInitializers) {
+      OrtValue initializer_value;
       auto* tp = entry.second;
       if (utils::HasRawData(*tp)) {
         userWeights.emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size()));
+      } else if (graph_body_viewer.GetOrtValueInitializer(tp->name(), initializer_value)) {
+        // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
+        size_t size = 0;
+        const void* ptr = nullptr;
+        c_api.GetTensorSizeInBytes(&initializer_value, &size);
+        c_api.GetTensorData(&initializer_value, &ptr);
+        userWeights.emplace_back(tp->name(), ptr, size);
       } else if (utils::HasExternalDataInMemory(*tp)) {
-        // TODO(maximilianm) remove this memory copy inside `GetTensorProtoWithDataIfInMemory` by using https://github.com/microsoft/onnxruntime/pull/25761
+        // only copy and take ownership of the data if none of the above conditions are met
         std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
         ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
         userWeights.emplace_back(TensorrtUserWeights(std::move(full_init->name()), std::move(full_init->raw_data())));
