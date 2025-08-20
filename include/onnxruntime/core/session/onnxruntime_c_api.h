@@ -5644,10 +5644,14 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetName, _In_ const OrtGraph* graph, _Outptr_ const char** graph_name);
 
-  /** \brief Returns the ONNX IR version.
+  /** \brief Get the filepath to the model from which an OrtGraph is constructed.
+   *
+   * \note The model's filepath is empty if the filepath is unknown, such as when the model is loaded from bytes
+   * via CreateSessionFromArray.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] onnx_ir_version Output parameter set to the ONNX IR version.
+   * \param[out] model_path Output parameter set to the model's null-terminated filepath.
+   *                        Set to an empty path string if unknown.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -6468,8 +6472,8 @@ struct OrtApi {
 
   /** \brief Get ::OrtModelMetadata from an ::OrtGraph
    *
-   * \param[in] graph
-   * \param[out] out Newly created ::OrtModelMetadata. Must be freed using OrtApi::ReleaseModelMetadata
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] out Newly created ::OrtModelMetadata. Must be freed using OrtApi::ReleaseModelMetadata.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
