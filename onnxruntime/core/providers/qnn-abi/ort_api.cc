@@ -133,9 +133,9 @@ std::vector<OrtNodeUnitIODef> GetQDQIODefs(const OrtNode* target_node,
       std::vector<const OrtNode*> consumers(num_consumers);
       std::vector<int64_t> input_indices(num_consumers);
       status = ort_api.ValueInfo_GetValueConsumers(target_node_ios[io_idx],
-                                          consumers.data(),
-                                          input_indices.data(),
-                                          num_consumers);
+                                                   consumers.data(),
+                                                   input_indices.data(),
+                                                   num_consumers);
       if (status != nullptr) {
         const char* error_msg = ort_api.GetErrorMessage(status);
         LOGS_DEFAULT(ERROR) << "Failed to get value consumers: " << error_msg;
@@ -519,31 +519,31 @@ OrtNodeAttrHelper::OrtNodeAttrHelper(const OrtApi& ort_api, const OrtNodeUnit& n
 float OrtNodeAttrHelper::Get(const std::string& key, float def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  return rt ? def_val : api_node_attr->attr_proto.f();
+  return rt || !api_node_attr ? def_val : api_node_attr->attr_proto.f();
 }
 
 int32_t OrtNodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  return rt ? def_val : gsl::narrow<int32_t>(api_node_attr->attr_proto.i());
+  return rt || !api_node_attr ? def_val : gsl::narrow<int32_t>(api_node_attr->attr_proto.i());
 }
 
 uint32_t OrtNodeAttrHelper::Get(const std::string& key, uint32_t def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  return rt ? def_val : gsl::narrow<uint32_t>(api_node_attr->attr_proto.i());
+  return rt || !api_node_attr ? def_val : gsl::narrow<uint32_t>(api_node_attr->attr_proto.i());
 }
 
 int64_t OrtNodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  return rt ? def_val : api_node_attr->attr_proto.i();
+  return rt || !api_node_attr ? def_val : api_node_attr->attr_proto.i();
 }
 
 const std::string& OrtNodeAttrHelper::Get(const std::string& key, const std::string& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  if (rt || !api_node_attr) {
     return def_val;
   }
   return api_node_attr->attr_proto.s();
@@ -552,7 +552,7 @@ const std::string& OrtNodeAttrHelper::Get(const std::string& key, const std::str
 std::vector<std::string> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<std::string>& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  if (rt || !api_node_attr) {
     return def_val;
   }
 
@@ -568,7 +568,7 @@ std::vector<std::string> OrtNodeAttrHelper::Get(const std::string& key, const st
 std::vector<int32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int32_t>& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  if (rt || !api_node_attr) {
     return def_val;
   }
 
@@ -584,7 +584,7 @@ std::vector<int32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::v
 std::vector<uint32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<uint32_t>& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  if (rt || !api_node_attr) {
     return def_val;
   }
 
@@ -600,7 +600,7 @@ std::vector<uint32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::
 std::vector<int64_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int64_t>& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  if (rt || !api_node_attr) {
     return def_val;
   }
 
@@ -616,7 +616,7 @@ std::vector<int64_t> OrtNodeAttrHelper::Get(const std::string& key, const std::v
 std::vector<float> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<float>& def_val) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  if (rt || !api_node_attr) {
     return def_val;
   }
 
@@ -632,7 +632,7 @@ std::vector<float> OrtNodeAttrHelper::Get(const std::string& key, const std::vec
 std::optional<float> OrtNodeAttrHelper::GetFloat(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  if (rt || !api_node_attr) {
     return std::nullopt;
   }
   return api_node_attr->attr_proto.f();
@@ -641,7 +641,7 @@ std::optional<float> OrtNodeAttrHelper::GetFloat(const std::string& key) const {
 std::optional<int64_t> OrtNodeAttrHelper::GetInt64(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  if (rt || !api_node_attr) {
     return std::nullopt;
   }
   return api_node_attr->attr_proto.i();
@@ -650,7 +650,7 @@ std::optional<int64_t> OrtNodeAttrHelper::GetInt64(const std::string& key) const
 std::optional<std::vector<float>> OrtNodeAttrHelper::GetFloats(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  if (rt || !api_node_attr) {
     return std::nullopt;
   }
 
@@ -666,7 +666,7 @@ std::optional<std::vector<float>> OrtNodeAttrHelper::GetFloats(const std::string
 std::optional<std::vector<int64_t>> OrtNodeAttrHelper::GetInt64s(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  if (rt || !api_node_attr) {
     return std::nullopt;
   }
 
@@ -682,7 +682,7 @@ std::optional<std::vector<int64_t>> OrtNodeAttrHelper::GetInt64s(const std::stri
 std::optional<std::string> OrtNodeAttrHelper::GetString(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  if (rt) {
+  if (rt || !api_node_attr) {
     return std::nullopt;
   }
   return api_node_attr->attr_proto.s();
@@ -691,7 +691,8 @@ std::optional<std::string> OrtNodeAttrHelper::GetString(const std::string& key) 
 bool OrtNodeAttrHelper::HasAttr(const std::string& key) const {
   const OrtOpAttr* api_node_attr = nullptr;
   auto rt = ort_api_.Node_GetAttributeByName(&node_, key.c_str(), &api_node_attr);
-  return !rt;  // Return true if attribute exists (rt == 0), false if not found (rt != 0)
+  // Return true if attribute exists (rt == 0 && api_node_attr != 0), false if not found (rt != 0 || api_node_attr == 0)
+  return !rt && api_node_attr;
 }
 
 OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,
