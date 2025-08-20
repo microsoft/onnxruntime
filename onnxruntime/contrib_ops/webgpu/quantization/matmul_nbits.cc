@@ -133,7 +133,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t block_size_per_col = single_scale_weights ? K : block_size;
   const uint32_t n_blocks_per_col = (K + block_size_per_col - 1) / block_size_per_col;
   const uint32_t blob_size = (block_size_per_col / 8) * nbits;
-  const uint32_t blob_size_in_words = block_size_per_col / 4;
+  const uint32_t blob_size_in_words = blob_size / 4;
   const uint32_t components_a = GetMaxComponents(K);
   const uint32_t components_b = GetMaxComponents(blob_size_in_words);
   uint32_t components = GetMaxComponents(N);
