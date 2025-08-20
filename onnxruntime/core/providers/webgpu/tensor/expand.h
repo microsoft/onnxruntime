@@ -11,11 +11,17 @@ namespace webgpu {
 
 class ExpandProgram final : public Program<ExpandProgram> {
  public:
-  ExpandProgram() : Program{"Expand"} {}
+  ExpandProgram(const bool input_last_dim_divisible_by_4, const bool output_last_dim_divisible_by_4) : Program{"Expand"},
+                                                                                                       input_last_dim_divisible_by_4_{input_last_dim_divisible_by_4},
+                                                                                                       output_last_dim_divisible_by_4_{output_last_dim_divisible_by_4} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"data_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool input_last_dim_divisible_by_4_;
+  bool output_last_dim_divisible_by_4_;
 };
 
 class Expand final : public WebGpuKernel {
