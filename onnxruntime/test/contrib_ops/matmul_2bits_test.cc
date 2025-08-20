@@ -244,22 +244,55 @@ void TestMatMul2BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
 
 }  // namespace
 
-TEST(MatMulNBits, Float32_2Bits_Accuracy0) {
-  // Currently, only fallback option enabled for 2bit datatypes
-  // where the 2bits are dequantized to fp32
-  TestMatMul2BitsTyped<float, 1, 1, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 1, 2, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 1, 32, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 1, 32, 32, 16, 0>();
-  TestMatMul2BitsTyped<float, 1, 32, 16, 128, 0>();
-  TestMatMul2BitsTyped<float, 1, 288, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 1, 1, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 4, 2, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 4, 32, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 4, 32, 32, 16, 0>();
-  TestMatMul2BitsTyped<float, 4, 32, 16, 128, 0>();
-  TestMatMul2BitsTyped<float, 4, 288, 16, 16, 0>();
+template <int batch_size, int M, int N, int K>
+struct TypedTestParams {
+  static constexpr int batch_size = batch_size;
+  static constexpr int M = M;
+  static constexpr int N = N;
+  static constexpr int K = K;
+};
+
+using TestTypes = ::testing::Types<
+    TypedTestParams<1, 1, 16, 16>,
+    TypedTestParams<1, 2, 16, 16>,
+    TypedTestParams<1, 32, 16, 16>,
+    TypedTestParams<1, 32, 32, 16>,
+    TypedTestParams<1, 32, 16, 128>,
+    TypedTestParams<1, 288, 16, 16>,
+    TypedTestParams<4, 1, 16, 16>,
+    TypedTestParams<4, 2, 16, 16>,
+    TypedTestParams<4, 32, 16, 16>,
+    TypedTestParams<4, 32, 32, 16>,
+    TypedTestParams<4, 32, 16, 128>,
+    TypedTestParams<4, 288, 16, 16>>;
+
+template <typename T>
+class MatMulNBits : public ::testing::Test {
+ public:
+  static constexpr int batch_size = T::batch_size;
+  static constexpr int M = T::M;
+  static constexpr int N = T::N;
+  static constexpr int K = T::K;
+};
+
+TYPED_TEST_SUITE(MatMulNBits, TestTypes);
+
+TYPED_TEST(MatMulNBits, Float32_2Bits_Accuracy0) {
+  TestMatMul2BitsTyped<float, batch_size, M, N, K, 0>();
 }
+
+TYPED_TEST(MatMulNBits, Float32_2Bits_Accuracy4) {
+  TestMatMul2BitsTyped<float, batch_size, M, N, K, 4>();
+}
+
+TYPED_TEST(MatMulNBits, Float16_2Bits_Accuracy0) {
+  TestMatMul2BitsTyped<MLFloat16, batch_size, M, N, K, 0>();
+}
+
+TYPED_TEST(MatMulNBits, Float16_2Bits_Accuracy4) {
+  TestMatMul2BitsTyped<MLFloat16, batch_size, M, N, K, 4>();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 
