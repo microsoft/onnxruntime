@@ -917,10 +917,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   // Check the model metadata
   Ort::AllocatorWithDefaultOptions default_allocator;
   auto ort_cxx_graph = Ort::ConstGraph(&api_graph);
-  auto api_model_metadata = ort_cxx_graph.GetModelMetadata();
-  OrtModelMetadata* ort_model_metadata;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetModelMetadata(&api_graph, &ort_model_metadata));
-  auto ort_cxx_model_metadat = Ort::ModelMetadata(ort_model_metadata);
+  auto ort_cxx_model_metadat = ort_cxx_graph.GetModelMetadata();
   auto& model = graph_viewer.GetGraph().GetModel();
   ASSERT_EQ(std::strcmp(ort_cxx_model_metadat.GetProducerNameAllocated(default_allocator).get(), model.ProducerName().c_str()), 0);
   ASSERT_EQ(std::strcmp(ort_cxx_model_metadat.GetGraphNameAllocated(default_allocator).get(), model.MainGraph().Name().c_str()), 0);
