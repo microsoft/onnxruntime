@@ -11,6 +11,7 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
+
 #define DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(external_type, internal_type, internal_api) \
   external_type* ToExternal() { return static_cast<external_type*>(this); }                        \
   const external_type* ToExternal() const { return static_cast<const external_type*>(this); }      \
