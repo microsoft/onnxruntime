@@ -205,6 +205,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateModOpBuilder("Mod", *this);
+  }
+
+  {
     CreateThresholdedReluOpBuilder("ThresholdedRelu", *this);
   }
 }
