@@ -572,6 +572,24 @@ inline PrepackedWeightsContainer::PrepackedWeightsContainer() {
 }
 
 namespace detail {
+
+template <typename T>
+inline const std::basic_string<ORTCHAR_T> ExternalInitializerInfoImpl<T>::GetFilePath() const {
+  return GetApi().ExternalInitializerInfo_GetFilePath(this->p_);
+}
+
+template <typename T>
+inline int64_t ExternalInitializerInfoImpl<T>::GetFileOffset() const {
+  return GetApi().ExternalInitializerInfo_GetFileOffset(this->p_);
+}
+
+template <typename T>
+inline size_t ExternalInitializerInfoImpl<T>::GetByteSize() const {
+  return GetApi().ExternalInitializerInfo_GetByteSize(this->p_);
+}
+}  // namespace detail
+
+namespace detail {
 template <typename T>
 inline const char* KeyValuePairsImpl<T>::GetValue(const char* key) const {
   return GetApi().GetKeyValue(this->p_, key);
@@ -2453,6 +2471,115 @@ inline Logger KernelContext::GetLogger() const {
 inline void KernelContext::ParallelFor(void (*fn)(void*, size_t), size_t total, size_t num_batch, void* usr_data) const {
   ThrowOnError(GetApi().KernelContext_ParallelFor(ctx_, fn, total, num_batch, usr_data));
 }
+
+namespace detail {
+
+template <typename T>
+constexpr OrtOpAttrType TypeToAttrType();
+
+template <>
+constexpr OrtOpAttrType TypeToAttrType<int>() {
+  return OrtOpAttrType::ORT_OP_ATTR_INT;
+}
+
+template <>
+constexpr OrtOpAttrType TypeToAttrType<float>() {
+  return OrtOpAttrType::ORT_OP_ATTR_FLOAT;
+}
+
+template <>
+constexpr OrtOpAttrType TypeToAttrType<char>() {
+  return OrtOpAttrType::ORT_OP_ATTR_STRING;
+}
+
+template <typename T>
+constexpr OrtOpAttrType TypeToAttrsType();
+
+template <>
+constexpr OrtOpAttrType TypeToAttrsType<int>() {
+  return OrtOpAttrType::ORT_OP_ATTR_INTS;
+}
+
+template <>
+constexpr OrtOpAttrType TypeToAttrsType<float>() {
+  return OrtOpAttrType::ORT_OP_ATTR_FLOATS;
+}
+
+template <>
+constexpr OrtOpAttrType TypeToAttrsType<char>() {
+  return OrtOpAttrType::ORT_OP_ATTR_STRINGS;
+}
+
+template <typename T>
+inline size_t GetDataSize(const OrtOpAttr* attr) {
+  constexpr auto attr_type = TypeToAttrType<T>();
+  size_t result{};
+  ThrowOnError(GetApi().ReadOpAttr(attr, attr_type, nullptr, sizeof(T), &result));
+  return result;
+}
+
+template <typename T>
+T GetNumericValue(const OrtOpAttr* attr) {
+  static_assert(std::is_arithmetic<T>::value, "T must be an arithmetic type");
+  T out{};
+  size_t size{};
+  ThrowOnError(GetApi().ReadOpAttr(attr, TypeToAttrType<T>(), &out, sizeof(out), &size));
+  return out;
+}
+
+template <typename T>
+template <typename T1>
+inline void ConstOpAttrImpl<T>::CheckAttrType() const {
+  auto this_type = this->GetType();
+  if (TypeToAttrType<T1>() != this_type)
+    ORT_CXX_API_THROW(
+        "Attribute type mismatch: expected " + std::to_string(TypeToAttrType<T1>()) +
+            ", but got " + std::to_string(this_type),
+        OrtErrorCode::ORT_INVALID_ARGUMENT);
+}
+
+template <typename T>
+struct GetValueImpl {
+  static T Get(const OrtOpAttr* attr) {
+    return GetNumericValue<T>(attr);
+  }
+};
+
+// Create GetValueImpl specializations for std::string
+template <>
+struct GetValueImpl<std::string> {
+  static std::string Get(const OrtOpAttr* attr) {
+    auto size = GetDataSize<char>(attr);
+    std::string out;
+    out.resize(size);
+    ThrowOnError(GetApi().ReadOpAttr(
+        attr, OrtOpAttrType::ORT_OP_ATTR_STRING, out.data(), size, &size));
+    out.resize(size);
+    return out;
+  }
+};
+
+template <typename T>
+template <typename R>
+inline R ConstOpAttrImpl<T>::GetValue() const {
+  this->CheckAttrType<R>();
+  return GetValueImpl<R>::Get(this->p_);
+}
+
+template <typename T>
+inline std::string ConstOpAttrImpl<T>::GetName() const {
+  const char* name = nullptr;
+  Ort::ThrowOnError(GetApi().OpAttr_GetName(this->p_, &name));
+  return (name != nullptr) ? std::string{name} : std::string{};
+}
+
+template <typename T>
+inline OrtOpAttrType ConstOpAttrImpl<T>::GetType() const {
+  OrtOpAttrType type;
+  Ort::ThrowOnError(GetApi().OpAttr_GetType(this->p_, &type));
+  return type;
+}
+}  // namespace detail
 
 inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType type) {
   Ort::ThrowOnError(GetApi().CreateOpAttr(name, data, len, type, &p_));

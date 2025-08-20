@@ -549,33 +549,35 @@ namespace detail {
   inline void OrtRelease(Ort##NAME* ptr) { API_GETTER().Release##NAME(ptr); }
 
 ORT_DEFINE_RELEASE(Allocator);
-ORT_DEFINE_RELEASE(MemoryInfo);
+ORT_DEFINE_RELEASE(ArenaCfg);
 ORT_DEFINE_RELEASE(CustomOpDomain);
-ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(Env);
-ORT_DEFINE_RELEASE(RunOptions);
+ORT_DEFINE_RELEASE(ExternalInitializerInfo);
+ORT_DEFINE_RELEASE(Graph);
+ORT_DEFINE_RELEASE(IoBinding);
+ORT_DEFINE_RELEASE(KernelInfo);
+ORT_DEFINE_RELEASE(KeyValuePairs);
 ORT_DEFINE_RELEASE(LoraAdapter);
+ORT_DEFINE_RELEASE(MemoryInfo);
+ORT_DEFINE_RELEASE(MapTypeInfo);
+ORT_DEFINE_RELEASE(Model);
+ORT_DEFINE_RELEASE(ModelMetadata);
+ORT_DEFINE_RELEASE(Node);
+ORT_DEFINE_RELEASE(Op);
+ORT_DEFINE_RELEASE(OpAttr);
+ORT_DEFINE_RELEASE(PrepackedWeightsContainer);
+ORT_DEFINE_RELEASE(RunOptions);
 ORT_DEFINE_RELEASE(Session);
 ORT_DEFINE_RELEASE(SessionOptions);
-ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
 ORT_DEFINE_RELEASE(SequenceTypeInfo);
-ORT_DEFINE_RELEASE(MapTypeInfo);
-ORT_DEFINE_RELEASE(TypeInfo);
-ORT_DEFINE_RELEASE(Value);
-ORT_DEFINE_RELEASE(ModelMetadata);
-ORT_DEFINE_RELEASE(IoBinding);
-ORT_DEFINE_RELEASE(ArenaCfg);
 ORT_DEFINE_RELEASE(Status);
 ORT_DEFINE_RELEASE(SyncStream);
-ORT_DEFINE_RELEASE(OpAttr);
-ORT_DEFINE_RELEASE(Op);
-ORT_DEFINE_RELEASE(KernelInfo);
+ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
+ORT_DEFINE_RELEASE(ThreadingOptions);
+ORT_DEFINE_RELEASE(TypeInfo);
+ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ValueInfo);
-ORT_DEFINE_RELEASE(Node);
-ORT_DEFINE_RELEASE(Graph);
-ORT_DEFINE_RELEASE(Model);
-ORT_DEFINE_RELEASE(KeyValuePairs);
-ORT_DEFINE_RELEASE(PrepackedWeightsContainer);
+
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 
@@ -701,6 +703,7 @@ struct AllocatedFree {
 struct AllocatorWithDefaultOptions;
 struct Env;
 struct EpDevice;
+struct ExternalInitializerInfo;
 struct Graph;
 struct Model;
 struct Node;
@@ -818,6 +821,39 @@ struct PrepackedWeightsContainer : detail::Base<OrtPrepackedWeightsContainer> {
   explicit PrepackedWeightsContainer(OrtPrepackedWeightsContainer* p) : Base{p} {}
   /// \brief Wraps OrtApi::CreatePrepackedWeightsContainer
   PrepackedWeightsContainer();
+};
+
+// 3) Add this implementation block (namespace Ort::detail), e.g. after other *Impl classes:
+
+namespace detail {
+template <typename T>
+struct ExternalInitializerInfoImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  // Wraps OrtApi::ExternalInitializerInfo_GetFilePath
+  const std::basic_string<ORTCHAR_T> GetFilePath() const;
+  // Wraps OrtApi::ExternalInitializerInfo_GetFileOffset
+  int64_t GetFileOffset() const;
+  // Wraps OrtApi::ExternalInitializerInfo_GetByteSize
+  size_t GetByteSize() const;
+};
+}  // namespace detail
+
+// Const object holder that does not own the underlying object
+using ConstExternalInitializerInfo =
+    detail::ExternalInitializerInfoImpl<detail::Unowned<const OrtExternalInitializerInfo>>;
+
+// 4) Public owning wrapper around ::OrtExternalInitializerInfo
+struct ExternalInitializerInfo : detail::ExternalInitializerInfoImpl<OrtExternalInitializerInfo> {
+  using Base = detail::ExternalInitializerInfoImpl<OrtExternalInitializerInfo>;
+  using Base::Base;
+
+  explicit ExternalInitializerInfo(std::nullptr_t) {}
+  explicit ExternalInitializerInfo(OrtExternalInitializerInfo* p)
+      : detail::ExternalInitializerInfoImpl<OrtExternalInitializerInfo>{p} {}
+
+  ConstExternalInitializerInfo GetConst() const { return ConstExternalInitializerInfo{this->p_}; }
 };
 
 namespace detail {
@@ -2358,15 +2394,41 @@ struct ArenaCfg : detail::Base<OrtArenaCfg> {
 // Custom OPs (only needed to implement custom OPs)
 //
 
+namespace detail {
+// Need to define a templated ConstOpAttr with const members
+template <typename T>
+struct ConstOpAttrImpl : Base<T> {
+  using B = detail::Base<T>;
+  using B::B;
+
+  // Wraps OrtApi::OpAttr_GetName
+  std::string GetName() const;
+  // Wraps OrtApi::OpAttr_GetType
+  OrtOpAttrType GetType() const;
+
+  template <typename R>
+  R GetValue() const;
+
+ private:
+  template <typename T1>
+  void CheckAttrType() const;
+};
+}  // namespace detail
+
+using ConstOpAttr = detail::ConstOpAttrImpl<detail::Unowned<const OrtOpAttr>>;
+
 /// <summary>
 /// This struct provides life time management for custom op attribute
 /// </summary>
-struct OpAttr : detail::Base<OrtOpAttr> {
-  using Base = detail::Base<OrtOpAttr>;
+struct OpAttr : detail::ConstOpAttrImpl<OrtOpAttr> {
+  using Base = detail::ConstOpAttrImpl<OrtOpAttr>;
   using Base::Base;
 
+  OpAttr() = default;  // Enable storing it in the container for resize()
   explicit OpAttr(std::nullptr_t) {}
   OpAttr(const char* name, const void* data, int len, OrtOpAttrType type);
+
+  ConstOpAttr GetConst() const { return ConstOpAttr{this->p_}; }
 };
 
 /**
