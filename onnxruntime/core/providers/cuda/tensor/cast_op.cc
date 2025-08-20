@@ -32,9 +32,9 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
       DataTypeImpl::GetTensorType<Float8E4M3FN>(), DataTypeImpl::GetTensorType<Float8E5M2>()
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
-                                                       ,
+          ,
       DataTypeImpl::GetTensorType<Float4E2M1x2>()
-#endif,
+#endif
   };
   return types;
 }
