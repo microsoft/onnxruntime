@@ -35,7 +35,7 @@ int real_main(int argc, char* argv[]) {
     }
     ORT_CATCH(const Ort::Exception& e) {
       ORT_HANDLE_EXCEPTION([&]() {
-        fprintf(stderr, "Error creating environment: %s \n", e.what());
+        std::cerr << "Error creating environment: " << e.what() << std::endl;
         failed = true;
       });
     }
@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      fprintf(stderr, "%s\n", ex.what());
+      std::cerr << ex.what() << std::endl;
       retval = -1;
     });
   }

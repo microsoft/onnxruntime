@@ -5,6 +5,7 @@
 #pragma once
 #include "core/session/onnxruntime_cxx_api.h"
 #include <string_view>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -12,6 +13,10 @@
 namespace onnxruntime {
 namespace test {
 namespace utils {
+
+bool ParseDimensionOverride(const std::string& input, std::map<std::string, int64_t>& free_dim_override_map);
+
+bool ParseDimensionOverrideFromArgv(int argc, std::vector<std::string>& argv, std::string& option, std::map<std::string, int64_t>& free_dim_override_map);
 
 void ParseSessionConfigs(const std::string& configs_string,
                          std::unordered_map<std::string, std::string>& session_configs,
