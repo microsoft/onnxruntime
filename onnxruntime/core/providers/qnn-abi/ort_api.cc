@@ -219,7 +219,7 @@ std::vector<OrtNodeUnitIODef> GetQDQIODefs(const OrtNode* target_node,
   for (size_t io_idx = 0; io_idx < num_ios; ++io_idx) {
     if (target_node_ios[io_idx] == nullptr) {
       // Optional IO.
-      io_defs.push_back(OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}});
+      io_defs.push_back(OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}, std::nullopt});
       continue;
     }
 
