@@ -41,10 +41,6 @@ void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_
       float gate_val = data[2 * i];        // Gate value at even index
       float linear_val = data[2 * i + 1];  // Linear value at odd index
 
-      // Store original for debug
-      float orig_gate = gate_val;
-      float orig_linear = linear_val;
-
       // Apply clamping as in CUDA version
       gate_val = std::min(gate_val, clamp_limit);
       linear_val = std::clamp(linear_val, -clamp_limit, clamp_limit);
