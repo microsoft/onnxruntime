@@ -14,6 +14,7 @@
 #include "core/graph/abi_graph_types.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
+
 namespace onnxruntime {
 
 /// <summary>
