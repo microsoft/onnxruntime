@@ -664,7 +664,6 @@ std::string PluginExecutionProvider::GetCompiledModelCompatibilityInfo(const onn
 
 Status PluginExecutionProvider::ValidateCompiledModelCompatibilityInfo(const std::string& compatibility_info,
                                                                        OrtCompiledModelCompatibility& model_compatibility) const {
-  
   if (ep_factory_.ValidateCompiledModelCompatibilityInfo == nullptr) {
     // Plugin EP did not provide an implementation of this function, so we call a default implementation.
     return Base::ValidateCompiledModelCompatibilityInfo(compatibility_info, model_compatibility);
