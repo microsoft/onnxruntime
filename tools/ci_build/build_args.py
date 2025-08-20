@@ -173,6 +173,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
             "NMake Makefiles",
             "NMake Makefiles JOM",
             "Unix Makefiles",
+            "Visual Studio 16 2019", # Reserved for CUDA 11.8 build.
             "Visual Studio 17 2022",
             "Xcode",
         ],
