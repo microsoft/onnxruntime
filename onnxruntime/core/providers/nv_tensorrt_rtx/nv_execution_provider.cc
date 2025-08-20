@@ -790,7 +790,7 @@ CudaGraphAnnotation_t NvExecutionProvider::PerThreadContext::GetCudaGraphAnnotat
   auto graph_annotation_str = run_options.GetConfigOptions().GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
   CudaGraphAnnotation_t cuda_graph_annotation_id = kCudaGraphAnnotationDefault;
 
-  // Kind of debugging head implemenatation, can be cleaned and made robust like CUDA EP
+  // Kind of debugging head implementation, can be cleaned and made robust like CUDA EP
   if (graph_annotation_str.has_value() && !graph_annotation_str->empty()) {
     if (!TryParseStringWithClassicLocale<CudaGraphAnnotation_t>(*graph_annotation_str, cuda_graph_annotation_id)) {
       LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to parse cuda graph annotation id: "
@@ -924,8 +924,8 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
   compute_capability_ = GetComputeCapacity(prop);
 
-  // The external stream is always true as per this implemenatation
-  // This works okay and we can remove this complete check, ititially we would either use the user provided stream or create one in compute_func but now we can create both ways here and thus no need to create new in compute_func at all.
+  // The external stream is always true as per this implementation
+  // This works okay and we can remove this complete check, initially we would either use the user provided stream or create one in compute_func but now we can create both ways here and thus no need to create new in compute_func at all.
 
   if (info.has_user_compute_stream) {
     external_stream_ = true;
@@ -1164,7 +1164,7 @@ void NvExecutionProvider::HandleCudaGraphStart(cudaStream_t stream, bool require
     GetPerThreadContext().ResetWarmupRuns(cuda_graph_annotation_id);
 
     if (GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
-      LOGS_DEFAULT(WARNING)<< "[NvTensorRTRTX EP] Graph already captured and required_io_binding is true, resetting warmup runs and deleting graph";
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Graph already captured and required_io_binding is true, resetting warmup runs and deleting graph";
       GetPerThreadContext().DeleteCapturedGraph(cuda_graph_annotation_id);
     }
   // Case 2: CUDA Graph capture is enabled AND IO binding is NOT required
@@ -1208,7 +1208,7 @@ Status NvExecutionProvider::ReplayGraph(int graph_annotation_id) {
 }
 
 Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
-  if(cuda_graph_enable_) {
+  if (cuda_graph_enable_) {
     CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
     GetPerThreadContext().SetCurrentGraphAnnotationId(cuda_graph_annotation_id);
   }
