@@ -244,12 +244,12 @@ void TestMatMul2BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
 
 }  // namespace
 
-template <int batch_size, int M, int N, int K>
+template <int BatchSize, int MVal, int NVal, int KVal>
 struct TypedTestParams {
-  static constexpr int batch_size = batch_size;
-  static constexpr int M = M;
-  static constexpr int N = N;
-  static constexpr int K = K;
+  static constexpr int batch_size = BatchSize;
+  static constexpr int M = MVal;
+  static constexpr int N = NVal;
+  static constexpr int K = KVal;
 };
 
 using TestTypes = ::testing::Types<
@@ -278,19 +278,19 @@ class MatMulNBits : public ::testing::Test {
 TYPED_TEST_SUITE(MatMulNBits, TestTypes);
 
 TYPED_TEST(MatMulNBits, Float32_2Bits_Accuracy0) {
-  TestMatMul2BitsTyped<float, batch_size, M, N, K, 0>();
+  TestMatMul2BitsTyped<float, TestFixture::batch_size, TestFixture::M, TestFixture::N, TestFixture::K, 0>();
 }
 
 TYPED_TEST(MatMulNBits, Float32_2Bits_Accuracy4) {
-  TestMatMul2BitsTyped<float, batch_size, M, N, K, 4>();
+  TestMatMul2BitsTyped<float, TestFixture::batch_size, TestFixture::M, TestFixture::N, TestFixture::K, 4>();
 }
 
 TYPED_TEST(MatMulNBits, Float16_2Bits_Accuracy0) {
-  TestMatMul2BitsTyped<MLFloat16, batch_size, M, N, K, 0>();
+  TestMatMul2BitsTyped<MLFloat16, TestFixture::batch_size, TestFixture::M, TestFixture::N, TestFixture::K, 0>();
 }
 
 TYPED_TEST(MatMulNBits, Float16_2Bits_Accuracy4) {
-  TestMatMul2BitsTyped<MLFloat16, batch_size, M, N, K, 4>();
+  TestMatMul2BitsTyped<MLFloat16, TestFixture::batch_size, TestFixture::M, TestFixture::N, TestFixture::K, 4>();
 }
 
 }  // namespace test
