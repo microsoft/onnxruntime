@@ -191,27 +191,28 @@ struct Float4E2M1x2 {
         return (num_float4_elems + 1) / 2;
       }
 
-      static void UnpackFloat4E2M1ToFloat(const Float4E2M1x2* fp4x2_arr, UnpackedType* flt_arr, size_t size) {
+      static void UnpackFloat4E2M1ToFloat(const Float4E2M1x2* fp4x2_arr, 
+                                          UnpackedType* flt_arr, size_t size) {
         auto src = fp4x2_arr;
         auto dst = flt_arr;
 
         size_t dst_i = 0;
 
         for (; dst_i < size - 1; dst_i += 2) {
-          auto src_i = dst_i >> 2;
+          auto src_i = dst_i >> 1;
           auto flt_pair = src[src_i].ToFloat2();
           dst[dst_i] = flt_pair.first;
           dst[dst_i + 1] = flt_pair.second;
-
         }
 
         if (dst_i < size) {
-          auto src_i = dst_i >> 2;
+          auto src_i = dst_i >> 1;
           dst[dst_i] = fp4x2_arr[src_i].ToFloat2().first;
         }
       }
 
-      static void PackFloatToFloat4E2M1(const UnpackedType* flt_arr, Float4E2M1x2* fp4x2_arr, size_t size) {
+      static void PackFloatToFloat4E2M1(const UnpackedType* flt_arr, 
+                                        Float4E2M1x2* fp4x2_arr, size_t size) {
         auto src = flt_arr;
         auto dst = fp4x2_arr;
 
