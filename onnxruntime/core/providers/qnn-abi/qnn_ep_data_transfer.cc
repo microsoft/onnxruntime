@@ -48,28 +48,55 @@ OrtStatus* ORT_API_CALL QnnDataTransfer::CopyTensorsImpl(OrtDataTransferImpl* th
                                                          OrtValue** dst_tensors_ptr,
                                                          OrtSyncStream** streams_ptr,
                                                          size_t num_tensors) noexcept {
+  // Validate input parameters
+  if (this_ptr == nullptr) {
+    return nullptr;  // Cannot create status without valid this_ptr
+  }
+
   auto& impl = *static_cast<QnnDataTransfer*>(this_ptr);
+
+  if (src_tensors_ptr == nullptr || dst_tensors_ptr == nullptr) {
+    return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Source or destination tensor arrays are null");
+  }
+
+  if (num_tensors == 0) {
+    return nullptr;  // Nothing to copy
+  }
 
   auto src_tensors = gsl::make_span<const OrtValue*>(src_tensors_ptr, num_tensors);
   auto dst_tensors = gsl::make_span<OrtValue*>(dst_tensors_ptr, num_tensors);
   auto streams = gsl::make_span<OrtSyncStream*>(streams_ptr, num_tensors);
 
   for (size_t i = 0; i < num_tensors; ++i) {
+    // Validate input tensors
+    if (src_tensors[i] == nullptr || dst_tensors[i] == nullptr) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Source or destination tensor is null");
+    }
+
     // the implementation for a 'real' EP would be something along these lines.
     // See CudaDataTransferImpl in onnxruntime\core\providers\cuda\cuda_provider_factory.cc
     const OrtMemoryDevice* src_device = impl.ep_api.Value_GetMemoryDevice(src_tensors[i]);
     const OrtMemoryDevice* dst_device = impl.ep_api.Value_GetMemoryDevice(dst_tensors[i]);
+
+    if (src_device == nullptr || dst_device == nullptr) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Failed to get memory device information");
+    }
 
     OrtMemoryInfoDeviceType src_device_type = impl.ep_api.MemoryDevice_GetDeviceType(src_device);
     OrtMemoryInfoDeviceType dst_device_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_device);
 
     const void* src_data = nullptr;
     void* dst_data = nullptr;
-    size_t bytes;
+    size_t bytes = 0;
 
     RETURN_IF_ERROR(impl.ort_api.GetTensorData(src_tensors[i], &src_data));
     RETURN_IF_ERROR(impl.ort_api.GetTensorMutableData(dst_tensors[i], &dst_data));
     RETURN_IF_ERROR(impl.ort_api.GetTensorSizeInBytes(src_tensors[i], &bytes));
+
+    // Validate that we got valid data pointers
+    if (src_data == nullptr || dst_data == nullptr) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Failed to get tensor data pointers");
+    }
 
     if (dst_device_type == OrtMemoryInfoDeviceType_NPU) {
       if (src_device_type == OrtMemoryInfoDeviceType_NPU) {

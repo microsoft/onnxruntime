@@ -884,37 +884,13 @@ OrtStatus* QnnEp::GetSupportedNodes(OrtEp* this_ptr,
 
   size_t num_graph_inputs = 0;
   size_t num_graph_outputs = 0;
-  auto status = ep->ort_api.Graph_GetNumInputs(graph, &num_graph_inputs);
-  if (status != nullptr) {
-    const char* error_msg = ep->ort_api.GetErrorMessage(status);
-    LOGS(logger, ERROR) << "Failed to get number of graph inputs: " << error_msg;
-    ep->ort_api.ReleaseStatus(status);
-    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get number of graph inputs");
-  }
-  status = ep->ort_api.Graph_GetNumOutputs(graph, &num_graph_outputs);
-  if (status != nullptr) {
-    const char* error_msg = ep->ort_api.GetErrorMessage(status);
-    LOGS(logger, ERROR) << "Failed to get number of graph outputs: " << error_msg;
-    ep->ort_api.ReleaseStatus(status);
-    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get number of graph outputs");
-  }
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetNumInputs(graph, &num_graph_inputs));
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetNumOutputs(graph, &num_graph_outputs));
 
   std::vector<const OrtValueInfo*> graph_inputs(num_graph_inputs);
   std::vector<const OrtValueInfo*> graph_outputs(num_graph_outputs);
-  status = ep->ort_api.Graph_GetInputs(graph, graph_inputs.data(), graph_inputs.size());
-  if (status != nullptr) {
-    const char* error_msg = ep->ort_api.GetErrorMessage(status);
-    LOGS(logger, ERROR) << "Failed to get graph inputs: " << error_msg;
-    ep->ort_api.ReleaseStatus(status);
-    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get graph inputs");
-  }
-  status = ep->ort_api.Graph_GetOutputs(graph, graph_outputs.data(), graph_outputs.size());
-  if (status != nullptr) {
-    const char* error_msg = ep->ort_api.GetErrorMessage(status);
-    LOGS(logger, ERROR) << "Failed to get graph outputs: " << error_msg;
-    ep->ort_api.ReleaseStatus(status);
-    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Failed to get graph outputs");
-  }
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetInputs(graph, graph_inputs.data(), graph_inputs.size()));
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetOutputs(graph, graph_outputs.data(), graph_outputs.size()));
 
   // Util function that initializes a table that maps a graph input or output name to its index.
   auto init_input_output_index_map = [&](std::unordered_map<std::string, size_t>& index_map,

@@ -19,9 +19,8 @@ void OrtSelectors::RegisterSelector(const OrtOpVersionsAndSelector::OpVersionsMa
 
 // Helper function to get the number of actual values (inputs or outputs) for a node
 int NumActualValues(const OrtNode* node, const OrtApi& ort_api, bool input) {
-  OrtStatus* status = nullptr;
-
   size_t num_defs = 0;
+  OrtStatus* status = nullptr;
 
   if (input) {
     status = ort_api.Node_GetNumInputs(node, &num_defs);
@@ -151,8 +150,11 @@ bool IsQOrDQScalePositiveConstantScalar(const OrtGraph* graph, const OrtApi& ort
   // Get the scale input (index 1) of the Q/DQ node
   size_t num_inputs = 0;
   OrtStatus* status = ort_api.Node_GetNumInputs(q_node, &num_inputs);
-  if (status != nullptr || num_inputs < 2) {
-    if (status != nullptr) ort_api.ReleaseStatus(status);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return false;
+  }
+  if (num_inputs < 2) {
     return false;
   }
 
@@ -190,9 +192,11 @@ bool IsQOrDQScalePositiveConstantScalar(const OrtGraph* graph, const OrtApi& ort
 
   size_t num_dims = 0;
   status = ort_api.GetDimensionsCount(tensor_info, &num_dims);
-  if (status != nullptr || num_dims != 0) {  // Scalar has 0 dimensions
-    if (status != nullptr) ort_api.ReleaseStatus(status);
-    ort_api.ReleaseTensorTypeAndShapeInfo(tensor_info);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    return false;
+  }
+  if (num_dims != 0) {  // Scalar has 0 dimensions
     return false;
   }
 
@@ -209,21 +213,21 @@ bool IsQOrDQScalePositiveConstantScalar(const OrtGraph* graph, const OrtApi& ort
 
   // Check the value based on the data type
   if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-    float scale_value = 0.0f;
-    status = ort_api.GetTensorMutableData(const_cast<OrtValue*>(scale_initializer), (void**)&scale_value);
+    float* scale_data = nullptr;
+    status = ort_api.GetTensorMutableData(const_cast<OrtValue*>(scale_initializer), (void**)&scale_data);
     if (status != nullptr) {
       ort_api.ReleaseStatus(status);
       return false;
     }
-    return scale_value > 0.0f;
+    return *scale_data > 0.0f;
   } else if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
-    double scale_value = 0.0;
-    status = ort_api.GetTensorMutableData(const_cast<OrtValue*>(scale_initializer), (void**)&scale_value);
+    double* scale_data = nullptr;
+    status = ort_api.GetTensorMutableData(const_cast<OrtValue*>(scale_initializer), (void**)&scale_data);
     if (status != nullptr) {
       ort_api.ReleaseStatus(status);
       return false;
     }
-    return scale_value > 0.0;
+    return *scale_data > 0.0;
   }
 
   return false;

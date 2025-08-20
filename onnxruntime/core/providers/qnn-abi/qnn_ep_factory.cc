@@ -105,11 +105,11 @@ OrtStatus* ORT_API_CALL QnnEpFactory::GetSupportedDevicesImpl(OrtEpFactory* this
 
     if (vendor_id == factory->vendor_id_ || device_type == OrtHardwareDeviceType_CPU) {
       std::cout << "DEBUG: Device " << idx << " matches! Creating EpDevice..." << std::endl;
-      ORT_API_RETURN_IF_ERROR(factory->ep_api.CreateEpDevice(factory,
-                                                             &device,
-                                                             nullptr,
-                                                             nullptr,
-                                                             &ep_devices[num_ep_devices++]));
+      RETURN_IF_ERROR(factory->ep_api.CreateEpDevice(factory,
+                                                     &device,
+                                                     nullptr,
+                                                     nullptr,
+                                                     &ep_devices[num_ep_devices++]));
     }
   }
 
@@ -177,19 +177,47 @@ OrtStatus* CreateEpFactories(const char* /*registration_name*/,
                              size_t max_factories,
                              size_t* num_factories) {
   std::cout << "DEBUG: QNN-ABI CreateEpFactories called!" << std::endl;
-  const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
-  const OrtEpApi* ep_api = ort_api->GetEpApi();
-  const OrtModelEditorApi* model_editor_api = ort_api->GetModelEditorApi();
 
-  // Factory could use registration_name or define its own EP name.
-  auto factory = std::make_unique<onnxruntime::QnnEpFactory>("QnnAbiTestProvider",
-                                                             onnxruntime::ApiPtrs{*ort_api,
-                                                                                  *ep_api,
-                                                                                  *model_editor_api});
+  if (ort_api_base == nullptr) {
+    return nullptr;  // Cannot create status without API base
+  }
+
+  const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
+  if (ort_api == nullptr) {
+    return nullptr;  // Cannot create status without ORT API
+  }
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
                                  "Not enough space to return EP factory. Need at least one.");
+  }
+
+  if (factories == nullptr || num_factories == nullptr) {
+    return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid arguments: factories and num_factories cannot be null.");
+  }
+
+  const OrtEpApi* ep_api = ort_api->GetEpApi();
+  if (ep_api == nullptr) {
+    return ort_api->CreateStatus(ORT_FAIL, "Failed to get EP API.");
+  }
+
+  const OrtModelEditorApi* model_editor_api = ort_api->GetModelEditorApi();
+  if (model_editor_api == nullptr) {
+    return ort_api->CreateStatus(ORT_FAIL, "Failed to get Model Editor API.");
+  }
+
+  // Factory could use registration_name or define its own EP name.
+  std::unique_ptr<onnxruntime::QnnEpFactory> factory;
+  try {
+    factory = std::make_unique<onnxruntime::QnnEpFactory>("QnnAbiTestProvider",
+                                                          onnxruntime::ApiPtrs{*ort_api,
+                                                                               *ep_api,
+                                                                               *model_editor_api});
+  } catch (const std::exception& e) {
+    return ort_api->CreateStatus(ORT_FAIL, e.what());
+  } catch (...) {
+    return ort_api->CreateStatus(ORT_FAIL, "Unknown exception occurred while creating QNN EP factory.");
   }
 
   factories[0] = factory.release();
@@ -199,6 +227,10 @@ OrtStatus* CreateEpFactories(const char* /*registration_name*/,
 }
 
 OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
+  if (factory == nullptr) {
+    return nullptr;
+  }
+
   delete static_cast<onnxruntime::QnnEpFactory*>(factory);
   return nullptr;
 }

@@ -30,18 +30,12 @@ const OrtNodeUnit* GetReshapeNodeUnit(
   // Get gemm node inputs
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
   size_t num_inputs = 0;
-  OrtStatus* status = ort_api.Node_GetNumInputs(&gemm_node, &num_inputs);
-  if (status != nullptr) {
-    return nullptr;
-  }
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.Node_GetNumInputs(&gemm_node, &num_inputs), ort_api, nullptr);
   if (num_inputs < 1) {
     return nullptr;
   }
   std::vector<const OrtValueInfo*> inputs(num_inputs);
-  status = ort_api.Node_GetInputs(&gemm_node, inputs.data(), inputs.size());
-  if (status != nullptr) {
-    return nullptr;
-  }
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.Node_GetInputs(&gemm_node, inputs.data(), inputs.size()), ort_api, nullptr);
 
   // Get the first input (index 0)
   const OrtValueInfo* input_value_info = inputs[0];
@@ -63,15 +57,10 @@ const OrtNodeUnit* GetReshapeNodeUnit(
     if (num_outputs != 1) {
       return nullptr;
     }
-    status = ort_api.Node_GetNumOutputs(reshape_node, &num_outputs);
-    if (status != nullptr) {
-      return nullptr;
-    }
+    QNN_RETURN_IF_STATUS_NOT_OK(ort_api.Node_GetNumOutputs(reshape_node, &num_outputs), ort_api, nullptr);
     std::vector<const OrtValueInfo*> reshape_outputs(num_outputs);
-    status = ort_api.Node_GetOutputs(reshape_node, reshape_outputs.data(), reshape_outputs.size());
-    if (status != nullptr) {
-      return nullptr;
-    }
+    QNN_RETURN_IF_STATUS_NOT_OK(ort_api.Node_GetOutputs(reshape_node, reshape_outputs.data(), reshape_outputs.size()),
+                                ort_api, nullptr);
 
     const OrtValueInfo* output_info = reshape_outputs[0];
 
@@ -106,17 +95,13 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
 
   size_t num_inputs = 0;
   size_t num_outputs = 0;
-  OrtStatus* status = ort_api.Node_GetNumInputs(&reshape_node, &num_inputs);
-  if (status != nullptr) return false;
-  status = ort_api.Node_GetNumOutputs(&reshape_node, &num_outputs);
-  if (status != nullptr) return false;
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.Node_GetNumInputs(&reshape_node, &num_inputs), ort_api, false);
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.Node_GetNumOutputs(&reshape_node, &num_outputs), ort_api, false);
 
   std::vector<const OrtValueInfo*> inputs(num_inputs);
   std::vector<const OrtValueInfo*> outputs(num_outputs);
-  status = ort_api.Node_GetInputs(&reshape_node, inputs.data(), inputs.size());
-  if (status != nullptr) return false;
-  status = ort_api.Node_GetOutputs(&reshape_node, outputs.data(), outputs.size());
-  if (status != nullptr) return false;
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.Node_GetInputs(&reshape_node, inputs.data(), inputs.size()), ort_api, false);
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.Node_GetOutputs(&reshape_node, outputs.data(), outputs.size()), ort_api, false);
 
   const OrtValueInfo* input_info = inputs[0];
   const OrtValueInfo* output_info = outputs[0];
@@ -132,10 +117,8 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
   // Cast to tensor info
   const OrtTensorTypeAndShapeInfo* input_tensor_info = nullptr;
   const OrtTensorTypeAndShapeInfo* output_tensor_info = nullptr;
-  status = ort_api.CastTypeInfoToTensorInfo(input_type_info, &input_tensor_info);
-  if (status != nullptr) return false;
-  status = ort_api.CastTypeInfoToTensorInfo(output_type_info, &output_tensor_info);
-  if (status != nullptr) return false;
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.CastTypeInfoToTensorInfo(input_type_info, &input_tensor_info), ort_api, false);
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.CastTypeInfoToTensorInfo(output_type_info, &output_tensor_info), ort_api, false);
 
   if (!input_tensor_info || !output_tensor_info) {
     return false;
@@ -144,10 +127,8 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
   // Get dimensions
   size_t input_dims_count = 0;
   size_t output_dims_count = 0;
-  status = ort_api.GetDimensionsCount(input_tensor_info, &input_dims_count);
-  if (status != nullptr) return false;
-  status = ort_api.GetDimensionsCount(output_tensor_info, &output_dims_count);
-  if (status != nullptr) return false;
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.GetDimensionsCount(input_tensor_info, &input_dims_count), ort_api, false);
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.GetDimensionsCount(output_tensor_info, &output_dims_count), ort_api, false);
 
   if (output_dims_count != 2) {
     return false;
@@ -156,10 +137,10 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
   std::vector<int64_t> input_dims(input_dims_count);
   std::vector<int64_t> output_dims(output_dims_count);
 
-  status = ort_api.GetDimensions(input_tensor_info, input_dims.data(), input_dims_count);
-  if (status != nullptr) return false;
-  status = ort_api.GetDimensions(output_tensor_info, output_dims.data(), output_dims_count);
-  if (status != nullptr) return false;
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.GetDimensions(input_tensor_info, input_dims.data(), input_dims_count), ort_api,
+                              false);
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.GetDimensions(output_tensor_info, output_dims.data(), output_dims_count),
+                              ort_api, false);
 
   // Check if the reshape is from [x0, x1, ..., xn, k] to [x0 * x1 * ... * xn, k]
   int64_t input_product = 1;

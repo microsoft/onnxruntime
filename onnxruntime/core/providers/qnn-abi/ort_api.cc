@@ -246,7 +246,13 @@ std::vector<OrtNodeUnitIODef> GetQDQIODefs(const OrtNode* target_node,
 }  // namespace
 
 OrtNodeUnit::OrtNodeUnit(const OrtNode* node, const OrtApi& ort_api) : target_node_(node), type_(Type::SingleNode) {
-  InitForSingleNode(ort_api);
+  auto status = InitForSingleNode(ort_api);
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(ERROR) << "Failed to initialize single node: " << status.ErrorMessage();
+    // Initialize with empty inputs/outputs on error
+    inputs_.clear();
+    outputs_.clear();
+  }
 }
 
 OrtNodeUnit::OrtNodeUnit(const OrtGraph* /* graph */, const QDQ::OrtNodeGroup& node_group, const OrtApi& ort_api)
@@ -259,49 +265,19 @@ OrtNodeUnit::OrtNodeUnit(const OrtGraph* /* graph */, const QDQ::OrtNodeGroup& n
       outputs_(GetQDQIODefs((redundant_clip_node_ ? redundant_clip_node_ : target_node_), node_group, false, ort_api)) {
 }
 
-void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
+Status OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
   size_t num_inputs = 0;
   size_t num_outputs = 0;
-  auto status = ort_api.Node_GetNumInputs(target_node_, &num_inputs);
-  if (status != nullptr) {
-    const char* error_msg = ort_api.GetErrorMessage(status);
-    LOGS_DEFAULT(ERROR) << "Failed to get number of inputs: " << error_msg;
-    ort_api.ReleaseStatus(status);
-    return;
-  }
-  status = ort_api.Node_GetNumOutputs(target_node_, &num_outputs);
-  if (status != nullptr) {
-    const char* error_msg = ort_api.GetErrorMessage(status);
-    LOGS_DEFAULT(ERROR) << "Failed to get number of outputs: " << error_msg;
-    ort_api.ReleaseStatus(status);
-    return;
-  }
+  RETURN_STATUS_IF_ERROR(ort_api.Node_GetNumInputs(target_node_, &num_inputs), ort_api);
+  RETURN_STATUS_IF_ERROR(ort_api.Node_GetNumOutputs(target_node_, &num_outputs), ort_api);
 
   std::vector<const OrtValueInfo*> inputs_data(num_inputs);
   std::vector<const OrtValueInfo*> outputs_data(num_outputs);
-  status = ort_api.Node_GetInputs(target_node_, inputs_data.data(), inputs_data.size());
-  if (status != nullptr) {
-    const char* error_msg = ort_api.GetErrorMessage(status);
-    LOGS_DEFAULT(ERROR) << "Failed to get node inputs: " << error_msg;
-    ort_api.ReleaseStatus(status);
-    return;
-  }
-  status = ort_api.Node_GetOutputs(target_node_, outputs_data.data(), outputs_data.size());
-  if (status != nullptr) {
-    const char* error_msg = ort_api.GetErrorMessage(status);
-    LOGS_DEFAULT(ERROR) << "Failed to get node outputs: " << error_msg;
-    ort_api.ReleaseStatus(status);
-    return;
-  }
+  RETURN_STATUS_IF_ERROR(ort_api.Node_GetInputs(target_node_, inputs_data.data(), inputs_data.size()), ort_api);
+  RETURN_STATUS_IF_ERROR(ort_api.Node_GetOutputs(target_node_, outputs_data.data(), outputs_data.size()), ort_api);
 
   const char* op_type = nullptr;
-  status = ort_api.Node_GetOperatorType(target_node_, &op_type);
-  if (status != nullptr) {
-    const char* error_msg = ort_api.GetErrorMessage(status);
-    LOGS_DEFAULT(ERROR) << "Failed to get operator type: " << error_msg;
-    ort_api.ReleaseStatus(status);
-    return;
-  }
+  RETURN_STATUS_IF_ERROR(ort_api.Node_GetOperatorType(target_node_, &op_type), ort_api);
 
   if (std::string(op_type) == "DequantizeLinear") {
     std::optional<int64_t> axis = OrtNodeAttrHelper(ort_api, *target_node_).GetInt64("axis");
@@ -388,6 +364,8 @@ void OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
       outputs_.push_back(io_def);
     }
   }
+
+  return Status::OK();
 }
 
 size_t OrtNodeUnit::GetInputEdgesCount(const OrtApi& ort_api) const {

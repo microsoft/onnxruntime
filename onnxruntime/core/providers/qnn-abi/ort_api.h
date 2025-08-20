@@ -55,6 +55,7 @@
 
 // #include "core/session/onnxruntime_cxx_api.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -105,10 +106,42 @@ namespace onnxruntime {
     }                                                    \
   } while (0)
 
+#define QNN_RETURN_IF_STATUS_NOT_OK(ort_api_fn_call, ort_api, ret_val) \
+  do {                                                               \
+    if (OrtStatus* _status = (ort_api_fn_call)) {                    \
+      (ort_api).ReleaseStatus(_status);                              \
+      return (ret_val);                                              \
+    }                                                                \
+  } while (0)
+
 struct ApiPtrs {
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
   const OrtModelEditorApi& model_editor_api;
+};
+
+// Helper to release Ort one or more objects obtained from the public C API at the end of their scope.
+template <typename T>
+struct DeferOrtRelease {
+  DeferOrtRelease(T** object_ptr, std::function<void(T*)> release_func)
+      : objects_(object_ptr), count_(1), release_func_(release_func) {}
+
+  DeferOrtRelease(T** objects, size_t count, std::function<void(T*)> release_func)
+      : objects_(objects), count_(count), release_func_(release_func) {}
+
+  ~DeferOrtRelease() {
+    if (objects_ != nullptr && count_ > 0) {
+      for (size_t i = 0; i < count_; ++i) {
+        if (objects_[i] != nullptr) {
+          release_func_(objects_[i]);
+          objects_[i] = nullptr;
+        }
+      }
+    }
+  }
+  T** objects_ = nullptr;
+  size_t count_ = 0;
+  std::function<void(T*)> release_func_ = nullptr;
 };
 
 // inline void InitOrtCppApi() {
@@ -235,7 +268,7 @@ class OrtNodeUnit {
 
  private:
   // // Initialization for a NodeUnit that contains a single node
-  void InitForSingleNode(const OrtApi& ort_api);
+  Status InitForSingleNode(const OrtApi& ort_api);
 
   const std::vector<const OrtNode*> dq_nodes_;  // dq nodes for this NodeUnit, not necessarily all inputs
   const OrtNode* target_node_;

@@ -22,18 +22,13 @@ const OrtNodeUnit* GetOnlyChildOfType(const QnnModelWrapper& qnn_model_wrapper,
 
   // Parent must have a single child (1 output edge) and must not produce a graph output.
   size_t num_outputs = 0;
-  OrtStatus* status = ort_api.Node_GetNumOutputs(&parent_node, &num_outputs);
-  if (status != nullptr) {
-    return nullptr;
-  }
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.Node_GetNumOutputs(&parent_node, &num_outputs), ort_api, nullptr);
   if (num_outputs != 1) {
     return nullptr;
   }
   std::vector<const OrtValueInfo*> outputs(num_outputs);
-  status = ort_api.Node_GetOutputs(&parent_node, outputs.data(), outputs.size());
-  if (status != nullptr) {
-    return nullptr;
-  }
+  QNN_RETURN_IF_STATUS_NOT_OK(ort_api.Node_GetOutputs(&parent_node, outputs.data(), outputs.size()), ort_api,
+                              nullptr);
 
   // Check if any of the node's outputs are graph outputs
   const OrtValueInfo* output_info = outputs[0];
