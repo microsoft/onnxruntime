@@ -674,7 +674,17 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("gather_elements_negative_indices"),
         ORT_TSTR("rotary_embedding_3d_input_expanded"),
         ORT_TSTR("rotary_embedding_expanded"),
-        ORT_TSTR("rotary_embedding_interleaved_expanded")};
+        ORT_TSTR("rotary_embedding_interleaved_expanded"),
+        // QNN don't support fmod = 1
+        ORT_TSTR("mod_mixed_sign_float64"),
+        ORT_TSTR("mod_mixed_sign_float32"),
+        ORT_TSTR("mod_mixed_sign_float16"),
+        ORT_TSTR("mod_int64_fmod"),
+        // QNN lowers mod to cast -> a - b * floor(a/b) -> cast. Cast doesnt support these types
+        ORT_TSTR("mod_mixed_sign_int16"),
+        ORT_TSTR("mod_mixed_sign_int8"),
+        ORT_TSTR("mod_uint16"),
+        ORT_TSTR("mod_uint64")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
 

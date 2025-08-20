@@ -98,6 +98,7 @@ void ResizeAntiAliasImpl(
     int rank,
     const UpsampleMode upsample_mode,
     ResizeCoordinateTransformationMode coordinate_transform_mode,
+    float cubic_coeff_a,
     gsl::span<const int64_t> input_shape,
     gsl::span<const int64_t> output_shape,
     int64_t batch_size, int64_t num_channels,

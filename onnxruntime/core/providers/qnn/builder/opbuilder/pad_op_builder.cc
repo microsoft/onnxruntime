@@ -193,7 +193,7 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                  [](int64_t item) { return SafeInt<uint32_t>(item); });
   // Onnx format is begin_0, begin_1, ..., end_0, end_1, ...
   // Qnn format is begin_0, end_0, begin_1, end_1, ...
-  ReArranagePads(pad_amount);
+  ReArrangePads(pad_amount);
 
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0.");
