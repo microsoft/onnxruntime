@@ -200,6 +200,20 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
       can_use_dynamic_quant_mlas_ = (!b_quantization_might_be_asymmetric && b_scale_available);
 
+      // Kleidi dynamic path requires strictly positive, finite scales.
+      // Disable if any invalid scale is detected.
+      if (can_use_dynamic_quant_mlas_) {
+        const float* bs_data = b_scale_tensor->Data<float>();
+        const size_t bs_size = static_cast<size_t>(b_scale_tensor->Shape().Size());
+        for (size_t i = 0; i < bs_size; ++i) {
+            const float s = bs_data[i];
+            if (!std::isfinite(s) || s <= 0.0f) {
+                can_use_dynamic_quant_mlas_ = false;
+                break;
+          }
+        }
+      }
+
       // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
       // We check that here too before attempting to use them.
       if (!CPUIDInfo::GetCPUIDInfo().HasArm_SME()) {
