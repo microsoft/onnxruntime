@@ -397,7 +397,6 @@ class NvExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
   std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_maps_;
-  std::unordered_map<std::string, std::unique_ptr<std::vector<TensorrtUserWeights>>> weights_;  // User provided weights
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
   cudnnHandle_t external_cudnn_handle_ = nullptr;
