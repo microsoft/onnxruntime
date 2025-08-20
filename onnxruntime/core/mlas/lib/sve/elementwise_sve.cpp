@@ -1,6 +1,20 @@
+/*++
+
+Copyright 2025 FUJITSU LIMITED
+
+Module Name:
+
+    elementwise_sve.cpp
+
+Abstract:
+
+    This module contains the implementation of SVE-based elementwise operations
+--*/
+
 #ifdef __ARM_FEATURE_SVE
 #include "mlasi_sve.h"
 #include <limits>
+
 //
 // Bundles the constants for use by kernels written in assembly.
 //
