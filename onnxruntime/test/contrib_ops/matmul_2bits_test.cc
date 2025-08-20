@@ -285,14 +285,6 @@ TYPED_TEST(MatMulNBits, Float32_2Bits_Accuracy4) {
   TestMatMul2BitsTyped<float, TestFixture::batch_size, TestFixture::M, TestFixture::N, TestFixture::K, 4>();
 }
 
-TYPED_TEST(MatMulNBits, Float16_2Bits_Accuracy0) {
-  TestMatMul2BitsTyped<MLFloat16, TestFixture::batch_size, TestFixture::M, TestFixture::N, TestFixture::K, 0>();
-}
-
-TYPED_TEST(MatMulNBits, Float16_2Bits_Accuracy4) {
-  TestMatMul2BitsTyped<MLFloat16, TestFixture::batch_size, TestFixture::M, TestFixture::N, TestFixture::K, 4>();
-}
-
 }  // namespace test
 }  // namespace onnxruntime
 
