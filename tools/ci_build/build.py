@@ -217,7 +217,7 @@ def number_of_nvcc_threads(args):
 
     nvcc_threads = 1
     try:
-        import psutil # noqa: PLC0415
+        import psutil  # noqa: PLC0415
 
         available_memory = psutil.virtual_memory().available
         if isinstance(available_memory, int) and available_memory > 0:
@@ -1862,8 +1862,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if not args.skip_keras_test:
                 try:
-                    import keras  # noqa: F401
-                    import onnxmltools  # noqa: F401
+                    import keras  # noqa: F401, PLC0415
+                    import onnxmltools  # noqa: F401, PLC0415
 
                     onnxml_test = True
                 except ImportError:
