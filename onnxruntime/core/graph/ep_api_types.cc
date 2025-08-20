@@ -785,7 +785,6 @@ std::unique_ptr<ModelMetadata> EpGraph::GetModelMetadata() const {
   model_metadata->graph_name = model.MainGraph().Name();
   return model_metadata;
 #else
-  ORT_NOT_IMPLEMENTED("Getting the model metadata is not supported in this build");
   return nullptr;
 #endif
 }
