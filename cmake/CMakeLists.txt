@@ -87,6 +87,24 @@ option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
+option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
+# disable explicitly on unsupported Apple x86_64 targets
+if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+    message(WARNING "Disabling SVE: not supported on Apple x86_64 platforms")
+    set(onnxruntime_USE_SVE OFF CACHE BOOL "" FORCE)
+endif()
+
+# Detect SVE support in AArch64 (ARM 64-bit)
+if(onnxruntime_USE_SVE)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+      message(STATUS "Compiler supports SVE!")
+      # Include module to check compiler flags
+      include(CheckCXXCompilerFlag)
+      # Test if the compiler supports SVE
+      check_cxx_compiler_flag("-march=armv8.2-a+sve+fp16" USE_SVE)
+  endif()
+endif()
+
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 # iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so
 if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
@@ -1029,7 +1047,7 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
 
     if (onnxruntime_DISABLE_OPTIONAL_TYPE)
-      target_compile_definitions(${target_name} PRIVATE DISABLE_OPTIONAL_TYPE)
+      target_compile_definitions(${target_name} PRIVATE DISABLSE_OPTIONAL_TYPE)
     endif()
 
     if (onnxruntime_DISABLE_FLOAT8_TYPES)
@@ -1046,6 +1064,10 @@ function(onnxruntime_set_compile_flags target_name)
     # TODO: Narrow scope for Kleidiai compile
     if (onnxruntime_USE_KLEIDIAI)
       target_compile_definitions(${target_name} PRIVATE USE_KLEIDIAI)
+    endif()
+
+    if (onnxruntime_USE_SVE)
+      target_compile_definitions(${target_name} PRIVATE USE_SVE)
     endif()
 
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)

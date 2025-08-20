@@ -22,6 +22,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include <iostream>
 #ifdef USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
@@ -266,7 +267,7 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
     GetMlasPlatform().ErfKernelRoutine(Input, Output, N);
 #else 
-    #ifdef __ARM_FEATURE_SVE
+    #ifdef USE_SVE
         MlasSveErfKernel(Input, Output, N);
     #else
         MlasErfKernel(Input, Output, N);

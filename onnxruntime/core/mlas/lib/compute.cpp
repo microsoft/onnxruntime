@@ -284,7 +284,7 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
     GetMlasPlatform().ComputeExpF32Kernel(Input, Output, N);
 #else
-    #ifdef __ARM_FEATURE_SVE
+    #ifdef USE_SVE
         MlasSveComputeExpF32Kernel(Input, Output, N);
     #else
         MlasComputeExpF32Kernel(Input, Output, N);
@@ -887,7 +887,7 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
         Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
 #else 
-        #ifdef __ARM_FEATURE_SVE
+        #ifdef USE_SVE
             Maximum = MlasSveReduceMaximumF32Kernel(Input, D);
         #else
             Maximum = MlasReduceMaximumF32Kernel(Input, D);
@@ -909,7 +909,7 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
         Accumulation = GetMlasPlatform().ComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
 #else
-        #ifdef __ARM_FEATURE_SVE
+        #ifdef USE_SVE
             Accumulation = MlasSveComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
         #else
             Accumulation = MlasComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
@@ -929,7 +929,7 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
             GetMlasPlatform().ComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
 #else 
-            #ifdef __ARM_FEATURE_SVE
+            #ifdef USE_SVE
                 MlasSveComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
             #else
                 MlasComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
@@ -944,7 +944,7 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
             GetMlasPlatform().ComputeSoftmaxOutputF32Kernel(Output, D, Parameters);
 #else
-            #ifdef __ARM_FEATURE_SVE
+            #ifdef USE_SVE
                 MlasSveComputeSoftmaxOutputF32Kernel(Output, D, Parameters);
             #else
                 MlasComputeSoftmaxOutputF32Kernel(Output, D, Parameters);

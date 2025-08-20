@@ -731,6 +731,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     acl_group.add_argument(
         "--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL/ArmNN)."
     )
+    acl_group.add_argument(
+    "--no_sve",
+    action="store_true",
+    help="Disable building with SVE support."
+    )
 
     # --- RKNPU ---
     rknpu_group = parser.add_argument_group("RKNPU Execution Provider")
