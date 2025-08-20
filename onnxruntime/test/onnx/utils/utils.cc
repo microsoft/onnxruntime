@@ -47,12 +47,8 @@ void RegisterExecutionProviderLibrary(Ort::Env& env,
       for (auto& pair : ep_names_to_libs) {
         const std::filesystem::path library_path = pair.second;
         const std::string registration_name = pair.first;
-        Ort::Status status(Ort::GetApi().RegisterExecutionProviderLibrary(env, registration_name.c_str(), ToPathString(library_path.string()).c_str()));
-        if (status.IsOK()) {
-          registered_plugin_eps.push_back(registration_name);
-        } else {
-          fprintf(stderr, "Can't register %s plugin library: %s\n", registration_name.c_str(), status.GetErrorMessage().c_str());
-        }
+        env.RegisterExecutionProviderLibrary(registration_name.c_str(), ToPathString(library_path.string()).c_str());
+        registered_plugin_eps.push_back(registration_name);
       }
     }
   }

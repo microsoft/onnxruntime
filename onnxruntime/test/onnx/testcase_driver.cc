@@ -39,11 +39,7 @@ std::vector<std::shared_ptr<TestCaseResult>> TestCaseDriver::RunParallel(const T
                                                                          size_t concurrent_runs, bool inference_mode) {
   assert(parallel_models > 1);
   parallel_models = std::min(parallel_models, test_env.GetTests().size());
-  std::ostringstream oss;
-  oss << "Running tests in parallel: at most "
-      << static_cast<unsigned>(parallel_models)
-      << " models at any time";
-  TEST_LOG_VERBOSE(oss.str());
+  TEST_LOG_VERBOSE("Running tests in parallel: at most " << static_cast<unsigned>(parallel_models) << " models at any time");
   TestCaseDriver driver(test_env, concurrent_runs, inference_mode);
   driver.RunModelsAsync(parallel_models);
   auto results = driver.TakeResults();
