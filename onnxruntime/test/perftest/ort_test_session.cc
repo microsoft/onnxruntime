@@ -1015,26 +1015,26 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
 // Create tensor on CPU, initialize and copy to CUDA tensor
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
       else {
-        //Ort::Value default_tensor = Ort::Value::CreateTensor(default_allocator, (const int64_t*)input_node_dim.data(),
-                                                             //input_node_dim.size(), tensor_info.GetElementType());
-        //InitializeTensorWithSeed(seed, default_tensor);
+        Ort::Value default_tensor = Ort::Value::CreateTensor(default_allocator, (const int64_t*)input_node_dim.data(),
+                                                             input_node_dim.size(), tensor_info.GetElementType());
+        InitializeTensorWithSeed(seed, default_tensor);
 
         // Get pointer to CPU tensor data
-        //const void* default_ptr = default_tensor.GetTensorRawData();
+        const void* default_ptr = default_tensor.GetTensorRawData();
 
-        //size_t total_bytes = default_tensor.GetTensorSizeInBytes();
+        size_t total_bytes = default_tensor.GetTensorSizeInBytes();
 
-        //Ort::Value cuda_tensor = Ort::Value::CreateTensor(allocator_, input_node_dim.data(),
-        //                                                  input_node_dim.size(), tensor_info.GetElementType());
+        Ort::Value cuda_tensor = Ort::Value::CreateTensor(allocator_, input_node_dim.data(),
+                                                          input_node_dim.size(), tensor_info.GetElementType());
 
-        //void* cuda_ptr = cuda_tensor.GetTensorMutableData<void>();
+        void* cuda_ptr = cuda_tensor.GetTensorMutableData<void>();
 
         // Copy the initialized data from CPU to GPU
-        //cudaError_t cuda_err = cudaMemcpy(cuda_ptr, default_ptr, total_bytes, cudaMemcpyHostToDevice);
-        //if (cuda_err != cudaSuccess) {
-        //  ORT_THROW("Failed to copy tensor data from CPU to CUDA device. CUDA Error: ", cudaGetErrorString(cuda_err));
-        //}
-        //PreLoadTestData(0, i, std::move(cuda_tensor));
+        cudaError_t cuda_err = cudaMemcpy(cuda_ptr, default_ptr, total_bytes, cudaMemcpyHostToDevice);
+        if (cuda_err != cudaSuccess) {
+          ORT_THROW("Failed to copy tensor data from CPU to CUDA device. CUDA Error: ", cudaGetErrorString(cuda_err));
+        }
+        PreLoadTestData(0, i, std::move(cuda_tensor));
       }
 #endif
     }

@@ -93,7 +93,7 @@ using AllIRv10 =
 #if !defined(DISABLE_FLOAT4_TYPES)
 using AllIRv11 =
     boost::mp11::mp_push_back<
-        AllIRv10, 
+        AllIRv10,
         Float4E2M1x2>;
 #else
 using AllIRv11 = AllIRv10;

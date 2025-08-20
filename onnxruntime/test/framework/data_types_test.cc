@@ -9,7 +9,6 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/float16.h"
 #include "core/framework/float8.h"
-#include "core/framework/float4.h"
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
@@ -806,16 +805,6 @@ TEST_F(DataTypeTest, Float8TestLimits) {
   EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::max().ToFloat(), 57344.0f, abs_tolerance);
   EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::lowest().ToFloat(), -57344.0f, abs_tolerance);
   EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::denorm_min().ToFloat(), 0.00000762939f, abs_tolerance);
-}
-
-#endif
-
-#if !defined(DISABLE_FLOAT4_TYPES)
-
-TEST_F(DataTypeTest, Float4Basic) {
-}
-
-TEST_F(DataTypeTest, Float4TestLimits) {
 }
 
 #endif

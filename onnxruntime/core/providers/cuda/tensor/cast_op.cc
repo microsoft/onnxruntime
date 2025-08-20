@@ -13,28 +13,28 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
   // Must be done as a local static for a shared provider, to avoid the prefast warning:
   // Global initializer calls a non-constexpr function 'onnxruntime::DataTypeImpl::GetTensorType<onnxruntime::MLFloat16>'
   // In a shared provider, GetTensorType is a function call into Onnxruntime and isn't constexpr
-  static std::vector<MLDataType> types {
-    DataTypeImpl::GetTensorType<MLFloat16>(),
-        DataTypeImpl::GetTensorType<BFloat16>(),
-        DataTypeImpl::GetTensorType<float>(),
-        DataTypeImpl::GetTensorType<double>(),
-        DataTypeImpl::GetTensorType<int8_t>(),
-        DataTypeImpl::GetTensorType<int16_t>(),
-        DataTypeImpl::GetTensorType<int32_t>(),
-        DataTypeImpl::GetTensorType<int64_t>(),
-        DataTypeImpl::GetTensorType<uint8_t>(),
-        DataTypeImpl::GetTensorType<uint16_t>(),
-        DataTypeImpl::GetTensorType<uint32_t>(),
-        DataTypeImpl::GetTensorType<uint64_t>(),
-        DataTypeImpl::GetTensorType<bool>()
+  static std::vector<MLDataType> types{
+      DataTypeImpl::GetTensorType<MLFloat16>(),
+      DataTypeImpl::GetTensorType<BFloat16>(),
+      DataTypeImpl::GetTensorType<float>(),
+      DataTypeImpl::GetTensorType<double>(),
+      DataTypeImpl::GetTensorType<int8_t>(),
+      DataTypeImpl::GetTensorType<int16_t>(),
+      DataTypeImpl::GetTensorType<int32_t>(),
+      DataTypeImpl::GetTensorType<int64_t>(),
+      DataTypeImpl::GetTensorType<uint8_t>(),
+      DataTypeImpl::GetTensorType<uint16_t>(),
+      DataTypeImpl::GetTensorType<uint32_t>(),
+      DataTypeImpl::GetTensorType<uint64_t>(),
+      DataTypeImpl::GetTensorType<bool>()
 #if !defined(DISABLE_FLOAT8_TYPES)
-            ,
-        DataTypeImpl::GetTensorType<Float8E4M3FN>(), DataTypeImpl::GetTensorType<Float8E5M2>()
+          ,
+      DataTypeImpl::GetTensorType<Float8E4M3FN>(), DataTypeImpl::GetTensorType<Float8E5M2>()
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
-        ,
-        DataTypeImpl::GetTensorType<Float4E2M1x2>()
-#endif                                                         ,
+                                                       ,
+      DataTypeImpl::GetTensorType<Float4E2M1x2>()
+#endif,
   };
   return types;
 }

@@ -184,7 +184,7 @@ template <>
 struct CastStd<float2, Float4E2M1x2> {
   __host__ __device__ __forceinline__ float2 operator()(Float4E2M1x2 v) const {
     auto float_pair = v.ToFloat2();
-    
+
     float2 res;
     res.x = float_pair.first;
     res.y = float_pair.second;
@@ -217,7 +217,7 @@ struct CastStd<Float4E2M1x2, float> {
 
 #endif
 
-#endif // DISABLE_FLOAT4_TYPES
+#endif  // DISABLE_FLOAT4_TYPES
 
 template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
 __global__ void CastKernelStd(const InT* input, OutT* output, CUDA_LONG N, CastStd<OutT, InT> cast) {
@@ -246,13 +246,11 @@ Status CudaCastStd(cudaStream_t stream, const InT* input, OutT* output, size_t n
   return Status::OK();
 }
 
-
 template <class OutT, class InT>
 Status CudaCastPairwiseStd(cudaStream_t stream, const InT* input, OutT* output, size_t num_of_elements) {
   // There is no generic implementation - specialized implementation for the packed type(s) follow
   return Status::OK();
 }
-
 
 #if !defined(DISABLE_FLOAT4_TYPES)
 template <>
@@ -279,7 +277,6 @@ Status CudaCastPairwiseStd(cudaStream_t stream, const Float4E2M1x2* input, float
 
   return Status::OK();
 }
-
 
 template <>
 Status CudaCastPairwiseStd(cudaStream_t stream, const float* input, Float4E2M1x2* output, size_t num_of_elements) {

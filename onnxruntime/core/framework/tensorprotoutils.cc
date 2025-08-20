@@ -144,24 +144,24 @@ Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_len, size_t
                                      reinterpret_cast<unsigned char*>(p_data));
 }
 
-#define DEFINE_4BIT_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(FOUR_BIT_TYPE, CalcPairFun)                                          \
-  template <>                                                                                                             \
-  Status UnpackTensorWithRawData<FOUR_BIT_TYPE>(const void* raw_data, size_t raw_data_len, size_t expected_num_elements,  \
-                                            /*out*/ FOUR_BIT_TYPE * p_data) {                                             \
-    static_assert(std::is_trivially_copyable<FOUR_BIT_TYPE>::value, "T must be trivially copyable");                      \
-                                                                                                                          \
-    ORT_RETURN_IF(nullptr == p_data, "nullptr == p_data");                                                                \
-                                                                                                                          \
-    size_t num_packed_pairs = FOUR_BIT_TYPE::CalcPairFun(expected_num_elements);                                          \
-    ORT_RETURN_IF_NOT(num_packed_pairs == raw_data_len, "Unexpected number of packed int4 pairs");                        \
-                                                                                                                          \
-    gsl::span<const FOUR_BIT_TYPE> src_span =                                                                             \
-        gsl::make_span(reinterpret_cast<const FOUR_BIT_TYPE *>(raw_data), num_packed_pairs);                              \
-    gsl::span<FOUR_BIT_TYPE> dst_span = gsl::make_span(p_data, num_packed_pairs);                                         \
-                                                                                                                          \
-    std::memcpy(dst_span.data(), src_span.data(), num_packed_pairs);                                                      \
-                                                                                                                          \
-    return Status::OK();                                                                                                  \
+#define DEFINE_4BIT_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(FOUR_BIT_TYPE, CalcPairFun)                                         \
+  template <>                                                                                                            \
+  Status UnpackTensorWithRawData<FOUR_BIT_TYPE>(const void* raw_data, size_t raw_data_len, size_t expected_num_elements, \
+                                                /*out*/ FOUR_BIT_TYPE* p_data) {                                         \
+    static_assert(std::is_trivially_copyable<FOUR_BIT_TYPE>::value, "T must be trivially copyable");                     \
+                                                                                                                         \
+    ORT_RETURN_IF(nullptr == p_data, "nullptr == p_data");                                                               \
+                                                                                                                         \
+    size_t num_packed_pairs = FOUR_BIT_TYPE::CalcPairFun(expected_num_elements);                                         \
+    ORT_RETURN_IF_NOT(num_packed_pairs == raw_data_len, "Unexpected number of packed int4 pairs");                       \
+                                                                                                                         \
+    gsl::span<const FOUR_BIT_TYPE> src_span =                                                                            \
+        gsl::make_span(reinterpret_cast<const FOUR_BIT_TYPE*>(raw_data), num_packed_pairs);                              \
+    gsl::span<FOUR_BIT_TYPE> dst_span = gsl::make_span(p_data, num_packed_pairs);                                        \
+                                                                                                                         \
+    std::memcpy(dst_span.data(), src_span.data(), num_packed_pairs);                                                     \
+                                                                                                                         \
+    return Status::OK();                                                                                                 \
   }
 
 DEFINE_4BIT_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(Int4x2, CalcNumInt4Pairs)
@@ -444,27 +444,27 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
                                           reinterpret_cast<unsigned char*>(p_data));
 }
 
-#define DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(FOUR_BIT_TYPE, CalcPairFun)                                 \
-  template <>                                                                                                    \
-  Status UnpackTensorWithExternalData<FOUR_BIT_TYPE>(const ONNX_NAMESPACE::TensorProto& tensor,                  \
-                                                 const std::filesystem::path& tensor_proto_dir,                  \
-                                                 size_t expected_num_elements, /*out*/ FOUR_BIT_TYPE* p_data) {  \
-    static_assert(std::is_trivially_copyable<FOUR_BIT_TYPE>::value, "T must be trivially copyable");             \
-                                                                                                                 \
-    ORT_RETURN_IF(nullptr == p_data, "nullptr == p_data");                                                       \
-    std::vector<uint8_t> unpacked_tensor;                                                                        \
-    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, unpacked_tensor));                   \
-                                                                                                                 \
-    size_t num_packed_pairs = FOUR_BIT_TYPE::CalcPairFun(expected_num_elements);                                 \
-    ORT_RETURN_IF_NOT(num_packed_pairs == unpacked_tensor.size(), "Unexpected number of packed int4 pairs");     \
-                                                                                                                 \
-    gsl::span<const FOUR_BIT_TYPE> src_span =                                                                    \
-        gsl::make_span(reinterpret_cast<const FOUR_BIT_TYPE*>(unpacked_tensor.data()), num_packed_pairs);        \
-    gsl::span<FOUR_BIT_TYPE> dst_span = gsl::make_span(p_data, expected_num_elements);                           \
-                                                                                                                 \
-    std::memcpy(dst_span.data(), src_span.data(), num_packed_pairs);                                             \
-                                                                                                                 \
-    return Status::OK();                                                                                         \
+#define DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(FOUR_BIT_TYPE, CalcPairFun)                                    \
+  template <>                                                                                                       \
+  Status UnpackTensorWithExternalData<FOUR_BIT_TYPE>(const ONNX_NAMESPACE::TensorProto& tensor,                     \
+                                                     const std::filesystem::path& tensor_proto_dir,                 \
+                                                     size_t expected_num_elements, /*out*/ FOUR_BIT_TYPE* p_data) { \
+    static_assert(std::is_trivially_copyable<FOUR_BIT_TYPE>::value, "T must be trivially copyable");                \
+                                                                                                                    \
+    ORT_RETURN_IF(nullptr == p_data, "nullptr == p_data");                                                          \
+    std::vector<uint8_t> unpacked_tensor;                                                                           \
+    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, unpacked_tensor));                      \
+                                                                                                                    \
+    size_t num_packed_pairs = FOUR_BIT_TYPE::CalcPairFun(expected_num_elements);                                    \
+    ORT_RETURN_IF_NOT(num_packed_pairs == unpacked_tensor.size(), "Unexpected number of packed int4 pairs");        \
+                                                                                                                    \
+    gsl::span<const FOUR_BIT_TYPE> src_span =                                                                       \
+        gsl::make_span(reinterpret_cast<const FOUR_BIT_TYPE*>(unpacked_tensor.data()), num_packed_pairs);           \
+    gsl::span<FOUR_BIT_TYPE> dst_span = gsl::make_span(p_data, expected_num_elements);                              \
+                                                                                                                    \
+    std::memcpy(dst_span.data(), src_span.data(), num_packed_pairs);                                                \
+                                                                                                                    \
+    return Status::OK();                                                                                            \
   }
 
 DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(Int4x2, CalcNumInt4Pairs)
@@ -854,40 +854,39 @@ DEFINE_INT4_UNPACK_TENSOR_IMPL(Int4x2, TensorProto_DataType_INT4)
 // UnpackTensor<UInt4x2>
 DEFINE_INT4_UNPACK_TENSOR_IMPL(UInt4x2, TensorProto_DataType_UINT4)
 
-
 #if !defined(DISABLE_FLOAT4_TYPES)
 
-template <>                                                                                               
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, 
-                    /*out*/ Float4E2M1x2* p_data, size_t expected_num_elems) {                             
-    if (nullptr == p_data) {                                                                                
-        const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();                    
-        return size == 0 ? Status::OK() : Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);              
-    }                                                                                                       
-    if (ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1 != tensor.data_type()) {                                           
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);                                         
-    }                                                                                                       
-                                                                                                            
-    size_t expected_float4_pairs = Float4E2M1x2::CalcNumFloat4Pairs(expected_num_elems);                     
-                                                                                                            
-    if (raw_data != nullptr) {                                                                              
-        return UnpackTensorWithRawData(raw_data, raw_data_len, expected_num_elems, p_data);                   
-    }                                                                                                       
-                                                                                                            
-    ORT_RETURN_IF_NOT(static_cast<size_t>(tensor.int32_data_size()) == expected_float4_pairs,               
-                        "UnpackTensor: the pre-allocated size does not match the size in proto");             
-                                                                                                               
-    constexpr int max_value = std::numeric_limits<uint8_t>::max();                                          
-                                                                                                            
-    for (int i = 0; i < static_cast<int>(tensor.int32_data_size()); i++) {                                  
-        int v = tensor.int32_data()[i];                                                                      
-        if (v < 0 || v > max_value) {                                                                       
-            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");                     
-        }                                                                                                   
-        p_data[i] = Float4E2M1x2(static_cast<uint8_t>(v), Float4E2M1x2::FromBits());                        
-    }                                                                                                       
-                                                                                                            
-    return Status::OK();                                                                                    
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ Float4E2M1x2* p_data, size_t expected_num_elems) {
+  if (nullptr == p_data) {
+    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
+    return size == 0 ? Status::OK() : Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+  if (ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1 != tensor.data_type()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  size_t expected_float4_pairs = Float4E2M1x2::CalcNumFloat4Pairs(expected_num_elems);
+
+  if (raw_data != nullptr) {
+    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_num_elems, p_data);
+  }
+
+  ORT_RETURN_IF_NOT(static_cast<size_t>(tensor.int32_data_size()) == expected_float4_pairs,
+                    "UnpackTensor: the pre-allocated size does not match the size in proto");
+
+  constexpr int max_value = std::numeric_limits<uint8_t>::max();
+
+  for (int i = 0; i < static_cast<int>(tensor.int32_data_size()); i++) {
+    int v = tensor.int32_data()[i];
+    if (v < 0 || v > max_value) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
+    }
+    p_data[i] = Float4E2M1x2(static_cast<uint8_t>(v), Float4E2M1x2::FromBits());
+  }
+
+  return Status::OK();
 }
 
 #endif
@@ -956,12 +955,12 @@ INSTANTIATE_UNPACK_TENSOR(UInt4x2)
     break;
 
 #if !defined(DISABLE_FLOAT4_TYPES)
-    #define CASE_PROTO_TRACE_FLOAT4(X, Y)                                                                            \
-      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                           \
-        if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(Y::CalcNumFloat4Pairs(size), sizeof(Y), out)) { \
-          return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid TensorProto");               \
-        }                                                                                                            \
-        break;
+#define CASE_PROTO_TRACE_FLOAT4(X, Y)                                                                            \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                           \
+    if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(Y::CalcNumFloat4Pairs(size), sizeof(Y), out)) { \
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid TensorProto");               \
+    }                                                                                                            \
+    break;
 #endif
 
 template <size_t alignment>
@@ -2083,7 +2082,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
     CASE_UNPACK_4BIT_TYPE(FLOAT4E2M1, Float4E2M1x2, int32_data_size, CalcNumFloat4Pairs);
 #endif
 
-  default:
+    default:
       break;
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type: ", initializer.data_type());

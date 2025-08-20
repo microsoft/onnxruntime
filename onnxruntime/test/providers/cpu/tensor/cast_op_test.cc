@@ -76,7 +76,7 @@ void TestCastOp(gsl::span<const SrcType> input,
   }
 
   if (cuda_only && (excluded_provider_types.count(kCudaExecutionProvider) > 0)) {
-      return;
+    return;
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -87,7 +87,7 @@ void TestCastOp(gsl::span<const SrcType> input,
   }
 
   test.Run(expect_result, expected_failure_string, excluded_provider_types);
-  }
+}
 
 template <typename T>
 using RequiresCastThroughFloat =
@@ -1474,10 +1474,9 @@ TEST(CastOpTest, Float8E4M3FNToUInt4x2) {
 #if !defined(DISABLE_FLOAT4_TYPES) && defined(USE_CUDA)
 
 template <typename F4>
-void CastOpTestFloatFloat4(std::vector<int64_t> shape, 
+void CastOpTestFloatFloat4(std::vector<int64_t> shape,
                            std::vector<float> float_data,
                            bool is_fp4_input = false) {
-
   int num_pairs = static_cast<int>(float_data.size()) / 2;
   int num_fp4_elements = static_cast<int>((float_data.size() + 1) / 2);
   bool is_odd_count = (float_data.size() % 2 != 0);
@@ -1489,39 +1488,36 @@ void CastOpTestFloatFloat4(std::vector<int64_t> shape,
     fp4_data.emplace_back(F4(float_data[i * 2], float_data[i * 2 + 1]));
   }
 
-  if (is_odd_count)
-  {
+  if (is_odd_count) {
     fp4_data.emplace_back(F4(float_data[num_pairs] + 1, 0));  // Padding zero
   }
 
-  if (!is_fp4_input)
-  {
+  if (!is_fp4_input) {
     TestCastOp<float, F4>(gsl::make_span(float_data), gsl::make_span(fp4_data), shape,
                           OpTester::ExpectResult::kExpectSuccess, "", 23, Saturate::None, true);
 
   } else {
     TestCastOp<F4, float>(gsl::make_span(fp4_data), gsl::make_span(float_data), shape,
-                          OpTester::ExpectResult::kExpectSuccess, "", 23, Saturate::None, true);  
+                          OpTester::ExpectResult::kExpectSuccess, "", 23, Saturate::None, true);
   }
 }
 
 TEST(CastOpTest, FloatToFloat4E2M1x2) {
-   // Even count tests
+  // Even count tests
   CastOpTestFloatFloat4<Float4E2M1x2>({2, 2, 2},
-                                 {std::numeric_limits<float>::infinity(), 
-                                  -std::numeric_limits<float>::infinity(),
-                                  7.f, -7.f,
-                                  0.5f, -0.5f,
-                                  std::numeric_limits<float>::quiet_NaN(), 
-                                  -std::numeric_limits<float>::quiet_NaN()});
+                                      {std::numeric_limits<float>::infinity(),
+                                       -std::numeric_limits<float>::infinity(),
+                                       7.f, -7.f,
+                                       0.5f, -0.5f,
+                                       std::numeric_limits<float>::quiet_NaN(),
+                                       -std::numeric_limits<float>::quiet_NaN()});
 
   // Odd count tests
-  //CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
+  // CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
   //                                     {0.256f,
   //                                      0.987f,
   //                                      43.8f});
 }
-
 
 TEST(CastOpTest, Float4E2M1x2ToFloat) {
   // Even count tests
@@ -1530,17 +1526,15 @@ TEST(CastOpTest, Float4E2M1x2ToFloat) {
                                        1.f, 1.5f,
                                        2.f, 3.f,
                                        4.f, 6.f},
-                                       true);
+                                      true);
 
   // Odd count tests
-  //CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
+  // CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
   //                                    {0.256f,
   //                                     0.987f,
   //                                     43.8f},
   //                                     true);
 }
-
-
 
 #endif
 

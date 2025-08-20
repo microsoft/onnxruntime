@@ -836,7 +836,6 @@ struct ProviderHost {
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv10() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv11() = 0;
 
-
   virtual const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() = 0;
 
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypes() = 0;

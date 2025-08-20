@@ -122,27 +122,26 @@ void UnpackTensorWithRawData<UInt4x2>(const void* raw_data, size_t raw_data_len,
   std::memcpy(dst_span.data(), src_span.data(), num_packed_pairs);
 }
 
-
 #if !defined(DISABLE_FLOAT4_TYPES)
 template <>
 void UnpackTensorWithRawData<Float4E2M1x2>(const void* raw_data, size_t raw_data_len, size_t expected_num_elements,
-                                            /*out*/ Float4E2M1x2* p_data) {
-    static_assert(std::is_trivially_copyable<Float4E2M1x2>::value, "T must be trivially copyable");
+                                           /*out*/ Float4E2M1x2* p_data) {
+  static_assert(std::is_trivially_copyable<Float4E2M1x2>::value, "T must be trivially copyable");
 
-    if (p_data == nullptr) {
+  if (p_data == nullptr) {
     ORT_CXX_API_THROW("nullptr == p_data", OrtErrorCode::ORT_FAIL);
-    }
+  }
 
-    size_t num_packed_pairs = (expected_num_elements + 1) / 2;
+  size_t num_packed_pairs = (expected_num_elements + 1) / 2;
 
-    if (num_packed_pairs != raw_data_len) {
+  if (num_packed_pairs != raw_data_len) {
     ORT_CXX_API_THROW("Unexpected number of packed int4 pairs", OrtErrorCode::ORT_FAIL);
-    }
+  }
 
-    gsl::span<const Float4E2M1x2> src_span = gsl::make_span(reinterpret_cast<const Float4E2M1x2*>(raw_data), num_packed_pairs);
-    gsl::span<Float4E2M1x2> dst_span = gsl::make_span(p_data, num_packed_pairs);
+  gsl::span<const Float4E2M1x2> src_span = gsl::make_span(reinterpret_cast<const Float4E2M1x2*>(raw_data), num_packed_pairs);
+  gsl::span<Float4E2M1x2> dst_span = gsl::make_span(p_data, num_packed_pairs);
 
-    std::memcpy(dst_span.data(), src_span.data(), num_packed_pairs);
+  std::memcpy(dst_span.data(), src_span.data(), num_packed_pairs);
 }
 #endif
 
@@ -375,41 +374,41 @@ DEFINE_UNPACK_TENSOR_INT4(Int4x2, TensorProto_DataType_INT4)
 DEFINE_UNPACK_TENSOR_INT4(UInt4x2, TensorProto_DataType_UINT4)
 
 #if !defined(DISABLE_FLOAT4_TYPES)
-template <>                                                                                             
-void UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, 
-                /*out*/ Float4E2M1x2* p_data, size_t expected_num_elems) {                              
-    if (nullptr == p_data) {                                                                              
-        const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();                  
-        if (size == 0) {                                                                                    
-        return;                                                                                           
-        }                                                                                                   
-        ORT_CXX_API_THROW("p_data == nullptr, but size != 0", OrtErrorCode::ORT_INVALID_ARGUMENT);          
-    }                                                                                                     
-    if (ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1 != tensor.data_type()) {                                                
-        ORT_CXX_API_THROW("TensorProto data type is not FLOAT4", OrtErrorCode::ORT_INVALID_ARGUMENT);       
-    }                                                                                                     
-                                                                                                          
-    size_t expected_float4_pairs = (expected_num_elems + 1) / 2;                                          
-                                                                                                          
-    if (raw_data != nullptr) {                                                                            
-        UnpackTensorWithRawData(raw_data, raw_data_len, expected_num_elems, p_data);                        
-        return;                                                                                             
-    }                                                                                                     
-                                                                                                          
-    if (static_cast<size_t>(tensor.int32_data_size()) != expected_float4_pairs) {                         
-        ORT_CXX_API_THROW("UnpackTensor: the pre-allocated size does not match the size in proto",          
-                        OrtErrorCode::ORT_FAIL);                                                          
-    }                                                                                                     
+template <>
+void UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                  /*out*/ Float4E2M1x2* p_data, size_t expected_num_elems) {
+  if (nullptr == p_data) {
+    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
+    if (size == 0) {
+      return;
+    }
+    ORT_CXX_API_THROW("p_data == nullptr, but size != 0", OrtErrorCode::ORT_INVALID_ARGUMENT);
+  }
+  if (ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1 != tensor.data_type()) {
+    ORT_CXX_API_THROW("TensorProto data type is not FLOAT4", OrtErrorCode::ORT_INVALID_ARGUMENT);
+  }
 
-    constexpr int max_value = std::numeric_limits<uint8_t>::max();
-    for (int i = 0; i < static_cast<int>(tensor.int32_data_size()); i++) {
-        int v = tensor.int32_data()[i]; 
-        if (v < 0 || v > max_value) {
-            ORT_CXX_API_THROW(
-                "data overflow", OrtErrorCode::ORT_FAIL);
-        }                                                                                                    \
-        p_data[i] = Float4E2M1x2(static_cast<uint8_t>(v), Float4E2M1x2::FromBits());  
-    }                                                                                                     
+  size_t expected_float4_pairs = (expected_num_elems + 1) / 2;
+
+  if (raw_data != nullptr) {
+    UnpackTensorWithRawData(raw_data, raw_data_len, expected_num_elems, p_data);
+    return;
+  }
+
+  if (static_cast<size_t>(tensor.int32_data_size()) != expected_float4_pairs) {
+    ORT_CXX_API_THROW("UnpackTensor: the pre-allocated size does not match the size in proto",
+                      OrtErrorCode::ORT_FAIL);
+  }
+
+  constexpr int max_value = std::numeric_limits<uint8_t>::max();
+  for (int i = 0; i < static_cast<int>(tensor.int32_data_size()); i++) {
+    int v = tensor.int32_data()[i];
+    if (v < 0 || v > max_value) {
+      ORT_CXX_API_THROW(
+          "data overflow", OrtErrorCode::ORT_FAIL);
+    }
+    p_data[i] = Float4E2M1x2(static_cast<uint8_t>(v), Float4E2M1x2::FromBits());
+  }
 }
 #endif
 
@@ -428,7 +427,7 @@ void UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_dat
     break;
 
 #if !defined(DISABLE_FLOAT4_TYPES)
-#define CASE_PROTO_TRACE_FLOAT4(X)                                                \
+#define CASE_PROTO_TRACE_FLOAT4(X)                                              \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:          \
     if (!CalcMemSizeForArrayWithAlignment((size + 1) / 2, 1, alignment, out)) { \
       ORT_CXX_API_THROW("Invalid TensorProto", OrtErrorCode::ORT_FAIL);         \
