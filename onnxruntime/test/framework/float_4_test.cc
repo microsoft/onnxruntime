@@ -135,13 +135,13 @@ TEST(Float4_Tests, TestLimits) {
   EXPECT_FALSE(std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::has_quiet_NaN);
   EXPECT_FALSE(std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::has_signaling_NaN);
 
-  EXPECT_EQ(std::numeric_limits<onnxruntime::Float8E4M3FN>::min(),
+  EXPECT_EQ(std::numeric_limits<onnxruntime::Float4E2M1x2>::min(),
             Float4E2M1x2(0xFF, onnxruntime::Float4E2M1x2::FromBits()));
-  EXPECT_EQ(std::numeric_limits<onnxruntime::Float8E4M3FN>::max(),
+  EXPECT_EQ(std::numeric_limits<onnxruntime::Float4E2M1x2>::max(),
             Float4E2M1x2(0x77, onnxruntime::Float4E2M1x2::FromBits()));
-  EXPECT_EQ(std::numeric_limits<onnxruntime::Float8E4M3FN>::lowest(),
+  EXPECT_EQ(std::numeric_limits<onnxruntime::Float4E2M1x2>::lowest(),
             Float4E2M1x2(0x22, onnxruntime::Float4E2M1x2::FromBits()));
-  EXPECT_EQ(std::numeric_limits<onnxruntime::Float8E4M3FN>::denorm_min(),
+  EXPECT_EQ(std::numeric_limits<onnxruntime::Float4E2M1x2>::denorm_min(),
             Float4E2M1x2(0x11, onnxruntime::Float4E2M1x2::FromBits()));
 }
 
