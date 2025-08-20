@@ -82,6 +82,26 @@ jobs:
           path: |
             ${{ github.workspace }}/build/onnxruntime-tests-windows-arm64.zip
 
+  # ARM64EC tests are horribly broken so this is a build-only config in CI.
+  build-windows-arm64ec:
+    if: ${{ inputs.do_all }}
+    runs-on: ["self-hosted", "Windows", "X64", "Build"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Build Windows ARM64EC
+        shell: cmd
+        run: |
+          python .\qcom\build_and_test.py archive_ort_windows_arm64ec
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ORT Windows ARM64EC Tests
+          path: |
+            ${{ github.workspace }}/build/onnxruntime-tests-windows-arm64ec.zip
+
   build-windows-x86_64:
     if: ${{ inputs.do_all }}
     runs-on: ["self-hosted", "Windows", "X64", "Build"]

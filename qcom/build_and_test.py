@@ -210,6 +210,21 @@ class TaskLibrary:
         )
 
     @task
+    @depends(["build_ort_windows_arm64ec"])
+    def archive_ort_windows_arm64ec(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpWindowsTask(
+                "Archiving ONNX Runtime for Windows on ARM64EC",
+                self.__venv_path,
+                "windows",
+                "arm64ec",
+                "Release",
+                self.__qairt_sdk_root,
+                "archive",
+            )
+        )
+
+    @task
     @depends(["build_ort_windows_x86_64"])
     def archive_ort_windows_x86_64(self, plan: Plan) -> str:
         return plan.add_step(
@@ -284,6 +299,21 @@ class TaskLibrary:
                 self.__venv_path,
                 "windows",
                 "arm64",
+                "Release",
+                self.__qairt_sdk_root,
+                "build",
+            )
+        )
+
+    @task
+    @depends(["create_venv"])
+    def build_ort_windows_arm64ec(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpWindowsTask(
+                "Building ONNX Runtime for Windows on ARM64EC",
+                self.__venv_path,
+                "windows",
+                "arm64ec",
                 "Release",
                 self.__qairt_sdk_root,
                 "build",
@@ -482,6 +512,21 @@ class TaskLibrary:
                 self.__venv_path,
                 "windows",
                 "arm64",
+                "Release",
+                self.__qairt_sdk_root,
+                "test",
+            )
+        )
+
+    @task
+    @depends(["build_ort_windows_arm64ec"])
+    def test_ort_windows_arm64ec(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpWindowsTask(
+                "Testing ONNX Runtime for Windows on ARM64EC",
+                self.__venv_path,
+                "windows",
+                "arm64ec",
                 "Release",
                 self.__qairt_sdk_root,
                 "test",
