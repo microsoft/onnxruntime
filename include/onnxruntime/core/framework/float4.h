@@ -37,9 +37,10 @@
 
 #endif
 
+#include <cassert>
+#include <cmath>
 #include <gsl/gsl>
 #include <utility>
-#include <cmath>
 
 #include "core/common/common.h"
 

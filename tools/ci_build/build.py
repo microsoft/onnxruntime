@@ -217,7 +217,7 @@ def number_of_nvcc_threads(args):
 
     nvcc_threads = 1
     try:
-        import psutil  # noqa: PLC0415
+        import psutil
 
         available_memory = psutil.virtual_memory().available
         if isinstance(available_memory, int) and available_memory > 0:
@@ -378,10 +378,8 @@ def generate_build_tree(
     types_to_disable = args.disable_types
     # enable/disable float 8 types
     disable_float8_types = args.android or ("float8" in types_to_disable)
-
     # enable/disable float 4 type
     disable_float4_types = args.android or args.use_rocm or ("float4" in types_to_disable)
-    
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     if is_windows():
@@ -1050,7 +1048,7 @@ def generate_build_tree(
         ]
 
     if args.enable_lazy_tensor:
-        import torch  # noqa: PLC0415
+        import torch
 
         cmake_args += [f"-Donnxruntime_PREBUILT_PYTORCH_PATH={os.path.dirname(torch.__file__)}"]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
@@ -1789,7 +1787,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 )
 
             try:
-                import onnx  # noqa: F401, PLC0415
+                import onnx  # noqa: F401
 
                 onnx_test = True
             except ImportError as error:
@@ -1815,8 +1813,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         [sys.executable, "-m", "unittest", "discover", "-s", "quantization"], cwd=cwd, dll_path=dll_path
                     )
                     if args.enable_transformers_tool_test:
-                        import google.protobuf  # noqa: PLC0415
-                        import numpy  # noqa: PLC0415
+                        import google.protobuf
+                        import numpy
 
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
@@ -1864,8 +1862,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if not args.skip_keras_test:
                 try:
-                    import keras  # noqa: F401, PLC0415
-                    import onnxmltools  # noqa: F401, PLC0415
+                    import keras  # noqa: F401
+                    import onnxmltools  # noqa: F401
 
                     onnxml_test = True
                 except ImportError:
@@ -2413,7 +2411,7 @@ def main():
 
     if args.update:
         if is_reduced_ops_build(args):
-            from reduce_op_kernels import reduce_ops  # noqa: PLC0415
+            from reduce_op_kernels import reduce_ops
 
             is_extended_minimal_build_or_higher = args.minimal_build is None or "extended" in args.minimal_build
             for config in configs:

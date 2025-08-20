@@ -699,11 +699,15 @@ class BaseTester {
           const int64_t expected_values_count = T::CalcNumInt4Pairs(shape.Size());
           ORT_ENFORCE(expected_values_count == values_count, values_count,
                       " input values doesn't match tensor size of ", expected_values_count);
-        } else if constexpr (std::is_same_v<T, Float4E2M1x2>) {
+        }
+#if !defined(DISABLE_FLOAT4_TYPES)
+        else if constexpr (std::is_same_v<T, Float4E2M1x2>) {
           const int64_t expected_values_count = T::CalcNumFloat4Pairs(shape.Size());
           ORT_ENFORCE(expected_values_count == values_count, values_count,
                       " input values doesn't match tensor size of ", expected_values_count);
-        } else {
+        }
+#endif
+        else {
           ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
                       shape.Size());
         }
