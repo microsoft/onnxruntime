@@ -287,8 +287,15 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     auto set_target_properties = [&](const std::string& device, const ov::AnyMap& config_options,
                                      const std::vector<ov::PropertyName>& supported_properties) {
       for (const auto& [key, value] : config_options) {
+        // Update the device_config map from the target_config to avoid load_config being overridden
+        // by the device_config set by the OpenVINO EP.
+        auto it = device_config.find(key);
+        if (it != device_config.end()) {
+          it->second = value;
+        }
         if ((key.find("NPUW") != std::string::npos) ||
             ((device_config.find(key) != device_config.end()) && session_context_.enable_causallm)) {
+            ((it != device_config.end()) && session_context_.enable_causallm)) {
           continue;
         }
         if (is_supported_and_mutable(key, supported_properties)) {
