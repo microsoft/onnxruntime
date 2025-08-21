@@ -56,15 +56,15 @@ inline void ThrowOnError(const Status& st) {
 inline Status::Status(OrtStatus* status) noexcept : detail::Base<OrtStatus>{status} {
 }
 
-inline Status::Status(const std::exception& e) noexcept {
+inline Status::Status(const std::exception& e) {
   p_ = GetApi().CreateStatus(ORT_FAIL, e.what());
 }
 
-inline Status::Status(const Exception& e) noexcept {
+inline Status::Status(const Exception& e) {
   p_ = GetApi().CreateStatus(e.GetOrtErrorCode(), e.what());
 }
 
-inline Status::Status(const char* message, OrtErrorCode code) noexcept {
+inline Status::Status(const char* message, OrtErrorCode code) {
   p_ = GetApi().CreateStatus(code, message);
 }
 
@@ -1506,7 +1506,7 @@ inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForInputs(
   mem_infos.resize(num_inputs);
 
   ThrowOnError(GetApi().SessionGetMemoryInfoForInputs(this->p_,
-                                                      reinterpret_cast<const OrtMemoryInfo**>(&mem_infos[0]),
+                                                      reinterpret_cast<const OrtMemoryInfo**>(mem_infos.data()),
                                                       num_inputs));
 
   return mem_infos;
@@ -1521,7 +1521,8 @@ inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForOutputs
   std::vector<ConstMemoryInfo> mem_infos;
   mem_infos.resize(num_outputs);
 
-  ThrowOnError(GetApi().SessionGetMemoryInfoForOutputs(this->p_, reinterpret_cast<const OrtMemoryInfo**>(&mem_infos[0]),
+  ThrowOnError(GetApi().SessionGetMemoryInfoForOutputs(this->p_,
+                                                       reinterpret_cast<const OrtMemoryInfo**>(mem_infos.data()),
                                                        num_outputs));
   return mem_infos;
 }
@@ -1554,7 +1555,7 @@ inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() co
   input_devices.resize(num_inputs);
 
   ThrowOnError(GetApi().SessionGetEpDeviceForInputs(this->p_,
-                                                    reinterpret_cast<const OrtEpDevice**>(&input_devices[0]),
+                                                    reinterpret_cast<const OrtEpDevice**>(input_devices.data()),
                                                     num_inputs));
 
   return input_devices;
