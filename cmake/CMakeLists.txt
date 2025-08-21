@@ -1047,7 +1047,7 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
 
     if (onnxruntime_DISABLE_OPTIONAL_TYPE)
-      target_compile_definitions(${target_name} PRIVATE DISABLSE_OPTIONAL_TYPE)
+      target_compile_definitions(${target_name} PRIVATE DISABLE_OPTIONAL_TYPE)
     endif()
 
     if (onnxruntime_DISABLE_FLOAT8_TYPES)
