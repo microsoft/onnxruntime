@@ -297,7 +297,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
-            // 释放内存
                 for (int i = 0; i < count; ++i)
                 {
                     Marshal.FreeHGlobal(keyPtrs[i]);
