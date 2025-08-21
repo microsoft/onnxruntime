@@ -1324,7 +1324,7 @@ __global__ void expandInputRowsKernel(InputActivationsType const* unpermuted_inp
 
       assert(!fc1_act_global_scale || is_nvfp4 && "Global scale is only supported for NVFP4");
       size_t act_scale_idx = use_per_expert_act_scale ? expert : 0;
-      float global_scale_val = fc1_act_global_scale ? fc1_act_global_scale[act_scale_idx] : 1.0f;
+      [[maybe_unused]] float global_scale_val = fc1_act_global_scale ? fc1_act_global_scale[act_scale_idx] : 1.0f;
       int64_t num_tokens_before_expert = expert_first_token_offset[expert];
 
       for (int elem_index = start_offset; elem_index < num_elems_in_col; elem_index += stride) {
@@ -1818,7 +1818,7 @@ __global__ void doActivationKernel(T* output, GemmOutputType const* gemm_result,
   asm volatile("griddepcontrol.wait;");
 #endif
 
-  constexpr int64_t VecSize = IsNVFP4 ? TmaWarpSpecializedGroupedGemmInput::NVFP4BlockScaleVectorSize
+  [[maybe_unused]] constexpr int64_t VecSize = IsNVFP4 ? TmaWarpSpecializedGroupedGemmInput::NVFP4BlockScaleVectorSize
                                       : TmaWarpSpecializedGroupedGemmInput::MXFPXBlockScaleVectorSize;
   // Load 128-bits per thread, according to the smallest data type we read/write
   constexpr int64_t ACTIVATION_ELEM_PER_THREAD = (IsNVFP4 || IsMXFP8)
@@ -1847,8 +1847,8 @@ __global__ void doActivationKernel(T* output, GemmOutputType const* gemm_result,
     float const quant_scale = fp8_quant ? fp8_quant[act_scale_idx] : 1.f;
 
     // Some globals for FP4
-    float global_scale_val = fc2_act_global_scale ? fc2_act_global_scale[act_scale_idx] : 1.0f;
-    int64_t num_tokens_before_expert = (IsNVFP4 || IsMXFP8) ? expert_first_token_offset[expert] : 0;
+    [[maybe_unused]] float global_scale_val = fc2_act_global_scale ? fc2_act_global_scale[act_scale_idx] : 1.0f;
+    [[maybe_unused]] int64_t num_tokens_before_expert = (IsNVFP4 || IsMXFP8) ? expert_first_token_offset[expert] : 0;
 
     size_t bias_offset = 0;
     if (bias_ptr) {
@@ -1997,11 +1997,11 @@ void doActivation(T* output, GemmOutputType const* gemm_result, float const* fp8
       };
       return fn_list[static_cast<int>(activation_type)];
     };
-    auto NVFP4 = onnxruntime::llm::common::ConstExprWrapper<TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType,
+    [[maybe_unused]] auto NVFP4 = onnxruntime::llm::common::ConstExprWrapper<TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType,
                                                             TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::NVFP4>{};
-    auto MXFPX = onnxruntime::llm::common::ConstExprWrapper<TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType,
+    [[maybe_unused]] auto MXFPX = onnxruntime::llm::common::ConstExprWrapper<TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType,
                                                             TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::MXFPX>{};
-    auto NONE = onnxruntime::llm::common::ConstExprWrapper<TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType,
+    [[maybe_unused]] auto NONE = onnxruntime::llm::common::ConstExprWrapper<TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType,
                                                            TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::NONE>{};
 #ifdef ENABLE_FP4
     if constexpr (std::is_same_v<T, __nv_fp4_e2m1>) {
@@ -2040,7 +2040,7 @@ __global__ void loraAddBiasKernel(ScaleBiasType* output, LoraType const* lora_re
                                   int64_t const* num_valid_tokens_ptr, int* permuted_token_selected_experts, int64_t inter_size) {
   int64_t const tid = threadIdx.x;
   int64_t const token = blockIdx.x;
-  int64_t const num_tokens = gridDim.x;
+  [[maybe_unused]] int64_t const num_tokens = gridDim.x;
   if (num_valid_tokens_ptr && token >= *num_valid_tokens_ptr) {
     return;
   }

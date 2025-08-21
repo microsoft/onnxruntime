@@ -77,7 +77,7 @@ struct ToByteType<16> {
 
 template <>
 struct ToByteType<32> {
-  using T = double4;
+  using T = LongLong4;
 };
 
 template <int NumBytes>
