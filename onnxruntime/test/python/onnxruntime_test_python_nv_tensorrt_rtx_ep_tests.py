@@ -101,8 +101,6 @@ class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-        del sess  # Delete session before unregistering library
-
     def test_nv_tensorrt_rtx_ep_prefer_gpu_and_inference(self):
         """
         Test selecting NvTensorRTRTX EP via the PREFER_GPU policy and running inference.
@@ -120,8 +118,6 @@ class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-
-        del sess  # Delete session before unregistering library
 
     def test_nv_tensorrt_rtx_ep_selection_delegate_and_inference(self):
         """
@@ -158,8 +154,6 @@ class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-        del sess  # Delete session before unregistering library
-
     def test_bind_input_only(self):
         """
         Test I/O binding with input data only.
@@ -195,8 +189,6 @@ class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
 
         # Validate results
         self.assertTrue(np.array_equal(self._create_expected_output(), ort_output))
-
-        del session
 
     def test_bind_input_and_bind_output_with_ortvalues(self):
         """
