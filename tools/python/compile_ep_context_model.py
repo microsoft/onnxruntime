@@ -56,11 +56,15 @@ def load_session(model_path, provider):
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Compile ONNX model with ONNX Runtime")
-    parser.add_argument("-i", "--model_path", type=str, help="Path to the ONNX model file")
+    parser.add_argument("-i", "--model_path", type=str, required=True, help="Path to the ONNX model file")
     parser.add_argument("-o", "--output_path", type=str, help="Path to save the compiled EP context model")
     parser.add_argument("-p", "--provider", default=TRT_RTX_EP, type=str, help="Execution Provider")
     parser.add_argument("-e", "--embed", default=False, type=bool, help="Binary data embedded within EP context node")
     args = parser.parse_args()
+
+    if not args.output_path:
+        parent_dir = os.path.dirname(args.model_path)
+        args.output_path = os.path.join(parent_dir, "model_ctx.onnx")
 
     print("Available execution provider(s):", ort.get_available_providers())
     print()
