@@ -129,6 +129,11 @@ $MAIN {
     var a_idx = u32(local_idx % subtile_size);
 
 #if is_qualcomm
+    // subtile_idx is always 0
+    // subtile_idy is one of {0,1,2,3}
+    // The subtile is now rectangular 64x16 for qualcomm case and we have 4 subtiles, this way we don't need to
+    // increase the number of lane_output each thread needs to track. That is if we want to use a subtile that is 64x64
+    // we would need var lane_outputs: array<output_element_t, 64>;
     if (sg_size == 64) {
         subtile_id = u32(local_idx / sg_size);
         subtile_idx = u32(subtile_id / 4);
@@ -167,7 +172,7 @@ $MAIN {
         var own_scale_a: output_element_t = scale_A[base_A + a_idx];
 
 #if has_zero_points && n_bits == 8
-#if is_qualcomm
+ #if is_qualcomm
         if (sg_size == 64)
         {
             var own_b0: vec4<u32>;
@@ -194,7 +199,7 @@ $MAIN {
                 lane_outputs[i] += SDP8AI(own_a0, tile_B[0][base_B + i], own_a1, tile_B[1][base_B + i],  own_scale_a * scale_B[base_B + i], zeroes[base_B + i]);
             }
         }
-#else
+ #else
         if (sg_size == 16)
         {
             var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
@@ -247,9 +252,9 @@ $MAIN {
             lane_output4[2] += SDP8AI(own_a0, tile_B[0][base_B + 14], own_a1, tile_B[1][base_B + 14],  own_scale_a * scale_B[base_B + 14], zeroes[base_B + 14]);
             lane_output4[3] += SDP8AI(own_a0, tile_B[0][base_B + 15], own_a1, tile_B[1][base_B + 15],  own_scale_a * scale_B[base_B + 15], zeroes[base_B + 15]);
         }
-#endif
+ #endif
 #else
-#if is_qualcomm
+ #if is_qualcomm
         if (sg_size == 64)
         {
             var own_b0: vec4<u32>;
@@ -274,7 +279,7 @@ $MAIN {
                 lane_outputs[i] += SDP8AI(own_a0, tile_B[0][base_B + i], own_a1, tile_B[1][base_B + i],  own_scale_a * scale_B[base_B + i]);
             }
         }
-#else
+ #else
         if (sg_size == 16)
         {
             var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
@@ -326,7 +331,7 @@ $MAIN {
             lane_output4[2] += SDP8AI(own_a0, tile_B[0][base_B + 14], own_a1, tile_B[1][base_B + 14],  own_scale_a * scale_B[base_B + 14]);
             lane_output4[3] += SDP8AI(own_a0, tile_B[0][base_B + 15], own_a1, tile_B[1][base_B + 15],  own_scale_a * scale_B[base_B + 15]);
         }
-#endif
+ #endif
 #endif
         workgroupBarrier();
     }
