@@ -73,12 +73,12 @@ namespace onnxruntime {
     }                           \
   } while (0)
 
-#define RETURN_IF_NOT_OK(fn, ort_api)                                            \
-  do {                                                                           \
-    Status status = (fn);                                                        \
-    if (!status.IsOK()) {                                                        \
-      return (ort_api).CreateStatus(ORT_EP_FAIL, status.ErrorMessage().c_str()); \
-    }                                                                            \
+#define RETURN_IF_NOT_OK(fn, ort_api)                                                                         \
+  do {                                                                                                        \
+    Status status = (fn);                                                                                     \
+    if (!status.IsOK()) {                                                                                     \
+      return (ort_api).CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str()); \
+    }                                                                                                         \
   } while (0)
 
 #define RETURN_IF_ERROR(fn)    \
@@ -105,6 +105,9 @@ namespace onnxruntime {
       return (ort_api).CreateStatus(ORT_EP_FAIL, (msg)); \
     }                                                    \
   } while (0)
+
+#define RETURN_IF_NOT(cond, ort_api, msg) \
+  RETURN_IF(!(cond), ort_api, msg)
 
 #define QNN_RETURN_IF_STATUS_NOT_OK(ort_api_fn_call, ort_api, ret_val) \
   do {                                                               \
@@ -339,6 +342,8 @@ OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,
                                           const std::string& config_key,
                                           const std::string& default_val,
                                           /*out*/ std::string& config_val);
+
+PathString GetModelPathString(const OrtGraph* graph, const OrtApi& ort_api);
 
 // Refer to OrtSessionOptions::GetProviderOptionPrefix.
 std::string GetProviderOptionPrefix(const std::string& provider_name);

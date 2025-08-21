@@ -838,6 +838,23 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
   return Status::OK();
 }
 
+Status QnnBackendManager::SetContextPriority(ContextPriority context_priority) {
+  QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority, context_priority_config));
+
+  QnnContext_Config_t* configs[] = {&context_priority_config, nullptr};
+  for (const auto& context_handle : contexts_) {
+    auto result = qnn_interface_.contextSetConfig(context_handle, (const QnnContext_Config_t**)configs);
+    ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to set context priority for context handle: ", context_handle);
+  }
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::ResetContextPriority() {
+  return SetContextPriority(context_priority_);
+}
+
 Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
   if (true == context_created_) {
     LOGS(logger_, INFO) << "Context created already.";

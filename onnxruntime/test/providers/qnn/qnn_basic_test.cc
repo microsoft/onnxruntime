@@ -945,8 +945,6 @@ TEST_F(QnnCPUBackendTests, MultithreadSessionRun) {
     auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(InitializeSession(ort_session_opts, session_obj), nullptr);
-    status = session_obj.Initialize();
-    ASSERT_TRUE(status.IsOK());
 
     std::vector<std::thread> threads;
     constexpr int num_threads = 5;
@@ -2013,17 +2011,17 @@ TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
 // Tests autoEP feature to automatically select an EP that supports the NPU.
 // Currently only works on Windows.
 TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
-  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
-                                                                     ORT_TSTR("onnxruntime_providers_qnn_abi.dll")));
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, "QnnAbiTestProvider",
+                                                                    ORT_TSTR("onnxruntime_providers_qnn_abi.dll")));
 
   Ort::SessionOptions so;
   so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_NPU);
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
   Ort::Session session(*ort_env, ort_model_path, so);
-  EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
+  EXPECT_TRUE(SessionHasEp(session, "QnnAbiTestProvider"));
 
-  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider));
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, "QnnAbiTestProvider"));
 }
 #endif  // defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
 

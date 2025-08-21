@@ -698,6 +698,16 @@ OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,
   return nullptr;
 }
 
+PathString GetModelPathString(const OrtGraph* graph, const OrtApi& ort_api) {
+  const ORTCHAR_T* model_path = nullptr;
+  OrtStatus* ort_status = ort_api.Graph_GetModelPath(graph, &model_path);
+  if (ort_status != nullptr) {
+    ort_api.ReleaseStatus(ort_status);
+    return ToPathString("");
+  }
+  return PathString(model_path);
+}
+
 std::string GetProviderOptionPrefix(const std::string& provider_name) {
   std::string key_prefix = "ep.";
   key_prefix += utils::GetLowercaseString(provider_name);

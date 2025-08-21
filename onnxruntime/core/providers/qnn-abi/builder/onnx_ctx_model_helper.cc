@@ -264,18 +264,21 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
       output_names.push_back(output_name.c_str());
     }
 
-    std::array<OrtOpAttr*, 7> attributes = {};
+    std::vector<OrtOpAttr*> attributes;
+    OrtOpAttr* attr;
 
     // Only dump the context buffer once since all QNN graphs are in one single context
     if (0 == idx) {
       if (qnn_context_embed_mode) {
+        attr = nullptr;
         std::string cache_payload(buffer, buffer + buffer_size);
         RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EP_CACHE_CONTEXT.c_str(),
                                                     cache_payload.c_str(),
                                                     static_cast<int>(cache_payload.length()),
                                                     ORT_OP_ATTR_STRING,
-                                                    &attributes[0]),
+                                                    &attr),
                                ort_api);
+        attributes.push_back(attr);
       } else {
         onnxruntime::PathString context_bin_path;
         std::string context_cache_name;
@@ -318,57 +321,72 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
           of_stream.write(reinterpret_cast<char*>(buffer), buffer_size);
         }
 
+        attr = nullptr;
         RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EP_CACHE_CONTEXT.c_str(),
                                                     context_cache_name.c_str(),
                                                     static_cast<int>(context_cache_name.length()),
                                                     ORT_OP_ATTR_STRING,
-                                                    &attributes[0]),
+                                                    &attr),
                                ort_api);
+        attributes.push_back(attr);
+
         if (share_ep_contexts && stop_share_ep_contexts) {
           SharedContext::GetInstance().ResetSharedCtxBinFileName();
         }
+
+        attr = nullptr;
+        RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(MAX_SIZE.c_str(),
+                                                    &static_cast<int64_t>(max_spill_fill_buffer_size),
+                                                    1,
+                                                    ORT_OP_ATTR_INT,
+                                                    &attr),
+                              ort_api);
+        attributes.push_back(attr);
       }
+    } else {
+      attr = nullptr;
+      int64_t is_main_context = static_cast<int64_t>(0);
+      RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(MAIN_CONTEXT.c_str(),
+                                                  &is_main_context,
+                                                  1,
+                                                  ORT_OP_ATTR_INT,
+                                                  &attr),
+                            ort_api);
+      attributes.push_back(attr);
     }
 
-    int64_t is_main_context = idx == 0 ? static_cast<int64_t>(1) : static_cast<int64_t>(0);
-    RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(MAIN_CONTEXT.c_str(),
-                                                &is_main_context,
-                                                1,
-                                                ORT_OP_ATTR_INT,
-                                                &attributes[1]),
-                           ort_api);
-
+    attr = nullptr;
     int64_t embed_mode = qnn_context_embed_mode ? static_cast<int64_t>(1) : static_cast<int64_t>(0);
-    RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EMBED_MODE.c_str(), &embed_mode, 1, ORT_OP_ATTR_INT, &attributes[2]),
+    RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EMBED_MODE.c_str(), &embed_mode, 1, ORT_OP_ATTR_INT, &attr),
                            ort_api);
+    attributes.push_back(attr);
 
+    attr = nullptr;
     RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EP_SDK_VER.c_str(),
                                                 sdk_build_version.c_str(),
                                                 static_cast<int>(sdk_build_version.length()),
                                                 ORT_OP_ATTR_STRING,
-                                                &attributes[3]),
+                                                &attr),
                            ort_api);
+    attributes.push_back(attr);
 
+    attr = nullptr;
     RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(PARTITION_NAME.c_str(),
                                                 graph_name.c_str(),
                                                 static_cast<int>(graph_name.length()),
                                                 ORT_OP_ATTR_STRING,
-                                                &attributes[4]),
+                                                &attr),
                            ort_api);
+    attributes.push_back(attr);
 
+    attr = nullptr;
     RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(SOURCE.c_str(),
                                                 ep_name.c_str(),
                                                 static_cast<int>(ep_name.length()),
                                                 ORT_OP_ATTR_STRING,
-                                                &attributes[5]),
+                                                &attr),
                            ort_api);
-
-    RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(MAX_SIZE.c_str(),
-                                                &max_spill_fill_buffer_size,
-                                                1,
-                                                ORT_OP_ATTR_INT,
-                                                &attributes[6]),
-                           ort_api);
+    attributes.push_back(attr);
 
     RETURN_STATUS_IF_ERROR(model_editor_api.CreateNode(EPCONTEXT_OP.c_str(),
                                                        kMSDomain,

@@ -63,6 +63,10 @@ class QnnEp : public OrtEp, public ApiPtrs {
   static OrtStatus* ORT_API_CALL OnRunEndImpl(_In_ OrtEp* this_ptr,
                                               _In_ const OrtRunOptions* run_options,
                                               _In_ bool sync_stream) noexcept;
+  static OrtStatus* ORT_API_CALL SetDynamicOptionsImpl(_In_ OrtEp* this_ptr,
+                                                       _In_reads_(num_options) const char* const* option_keys,
+                                                       _In_reads_(num_options) const char* const* option_values,
+                                                       _In_ size_t num_options) noexcept;
 
   OrtStatus* GetSupportedNodes(OrtEp* this_ptr,
                                const OrtGraph* graph,
@@ -78,7 +82,10 @@ class QnnEp : public OrtEp, public ApiPtrs {
                                  size_t count,
                                  OrtNodeComputeInfo** node_compute_infos);
 
-  OrtStatus* CreateEPContextNodes(const OrtNode** fused_nodes, size_t count, OrtNode** ep_context_nodes);
+  OrtStatus* CreateEPContextNodes(const OrtGraph* graph,
+                                  const OrtNode** fused_nodes,
+                                  size_t count,
+                                  OrtNode** ep_context_nodes);
 
   // // Helper functions
   // int GenerateMetadefId(const OrtGraph* graph, uint64_t& model_hash);

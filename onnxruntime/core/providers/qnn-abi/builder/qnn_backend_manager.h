@@ -228,6 +228,11 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // For each node name, a mapping to the context handle will be created
   void ProcessContextFromBinListAsync(Qnn_ContextHandle_t handle, void* notifyParam);
 
+  // Sets the context priority to the given value, if valid
+  Status SetContextPriority(ContextPriority context_priority);
+  // Resets the context priority to the session default as defined by context_priority_
+  Status ResetContextPriority();
+
  private:
   Status LoadBackend();
 

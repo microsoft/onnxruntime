@@ -354,6 +354,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   ShouldConvertDataLayoutForOp = ShouldConvertDataLayoutForOpImpl;
   OnRunStart = OnRunStartImpl;
   OnRunEnd = OnRunEndImpl;
+  SetDynamicOptions = SetDynamicOptionsImpl;
 
   // Initialize from session options
   {
@@ -1144,6 +1145,16 @@ static void GetContextOnnxModelFilePath(const std::string& user_context_cache_pa
   } else if (!model_path_string.empty()) {  // model loaded from file
     context_model_path = model_path_string;
   }
+
+  // For InferenceModelABI (QnnAbiTestProvider), modify the context model path to use _abi.onnx suffix
+  if (!context_model_path.empty()) {
+    auto pos = context_model_path.find_last_of(ORT_TSTR("."));
+    if (pos != std::string::npos) {
+      context_model_path = context_model_path.substr(0, pos) + ToPathString("_abi.onnx");
+    } else {
+      context_model_path = context_model_path + ToPathString("_abi.onnx");
+    }
+  }
 }
 
 OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
@@ -1178,8 +1189,9 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
     std::unordered_set<const OrtNode*> ep_ctx_nodes;
     GetMainEPCtxNodes(graph, ep->ort_api, ep_ctx_nodes, ep->logger_in_);
 
+    PathString model_path = GetModelPathString(graph, ep->ort_api);
     PathString context_model_path;
-    GetContextOnnxModelFilePath(ep->context_cache_path_cfg_, ToPathString(""), context_model_path);
+    GetContextOnnxModelFilePath(ep->context_cache_path_cfg_, model_path, context_model_path);
 
     std::filesystem::path parent_path = std::filesystem::path(context_model_path).parent_path();
 
@@ -1432,8 +1444,9 @@ OrtStatus* QnnEp::CompileContextModel(const OrtGraph** graphs,
   }
 
   // Figure out the EP context model path from session option
+  PathString model_path = GetModelPathString(graphs[0], ort_api);
   PathString context_model_path;
-  GetContextOnnxModelFilePath(context_cache_path_cfg_, ToPathString(""), context_model_path);
+  GetContextOnnxModelFilePath(context_cache_path_cfg_, model_path, context_model_path);
 
   for (auto main_context_pos : main_context_pos_list) {
     // Create QNN context from the cached binary, deserialize the QNN graph from the binary
@@ -1492,7 +1505,10 @@ OrtStatus* QnnEp::CompileContextModel(const OrtGraph** graphs,
   return nullptr;
 }
 
-OrtStatus* QnnEp::CreateEPContextNodes(const OrtNode** fused_nodes, size_t count, OrtNode** ep_context_nodes) {
+OrtStatus* QnnEp::CreateEPContextNodes(const OrtGraph* graph,
+                                       const OrtNode** fused_nodes,
+                                       size_t count,
+                                       OrtNode** ep_context_nodes) {
   // All partitioned graph share single QNN context, included in the same context binary
   uint64_t buffer_size(0);
   auto context_buffer = qnn_backend_manager_->GetContextBinaryBuffer(buffer_size);
@@ -1506,18 +1522,9 @@ OrtStatus* QnnEp::CreateEPContextNodes(const OrtNode** fused_nodes, size_t count
   }
 
   // Figure out the EP context model path from session option
+  PathString model_path = GetModelPathString(graph, ort_api);
   PathString context_model_path;
-  GetContextOnnxModelFilePath(context_cache_path_cfg_, ToPathString(""), context_model_path);
-
-  // For InferenceModelABI (QnnAbiTestProvider), modify the context model path to use _abi.onnx suffix
-  if (name_ == "QnnAbiTestProvider" && !context_model_path.empty()) {
-    auto pos = context_model_path.find_last_of(ORT_TSTR("."));
-    if (pos != std::string::npos) {
-      context_model_path = context_model_path.substr(0, pos) + ToPathString("_abi.onnx");
-    } else {
-      context_model_path = context_model_path + ToPathString("_abi.onnx");
-    }
-  }
+  GetContextOnnxModelFilePath(context_cache_path_cfg_, model_path, context_model_path);
 
   RETURN_IF_NOT_OK(qnn::CreateEPContextNodes(fused_nodes,
                                              count,
@@ -1540,9 +1547,9 @@ OrtStatus* QnnEp::CreateEPContextNodes(const OrtNode** fused_nodes, size_t count
   if (share_ep_contexts_ &&
       !stop_share_ep_contexts_ &&
       nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {
-    RETURN_IF(SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_),
-              ort_api,
-              "Failed to set shared QnnBackendManager.");
+    RETURN_IF_NOT(SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_),
+                  ort_api,
+                  "Failed to set shared QnnBackendManager.");
   }
 
   return nullptr;
@@ -1634,7 +1641,7 @@ OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
   }
 
   if (ep->context_cache_enabled_) {
-    RETURN_IF_ERROR(ep->CreateEPContextNodes(fused_nodes, count, ep_context_nodes));
+    RETURN_IF_ERROR(ep->CreateEPContextNodes(graphs[0], fused_nodes, count, ep_context_nodes));
   }
 
   std::cout << "DEBUG: QnnEp::CompileImpl complete" << std::endl;
@@ -1746,6 +1753,34 @@ OrtStatus* ORT_API_CALL QnnEp::OnRunEndImpl(_In_ OrtEp* this_ptr,
       RETURN_IF_NOT_OK(ep->qnn_backend_manager_->SetHtpPowerConfig(ep->GetPerThreadContext().GetHtpPowerConfigId(),
                                                                    htp_performance_mode),
                        ep->ort_api);
+    }
+  }
+
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL QnnEp::SetDynamicOptionsImpl(_In_ OrtEp* this_ptr,
+                                                     _In_reads_(num_options) const char* const* option_keys,
+                                                     _In_reads_(num_options) const char* const* option_values,
+                                                     _In_ size_t num_options) noexcept {
+  QnnEp* ep = static_cast<QnnEp*>(this_ptr);
+
+  for (size_t opt_idx = 0; opt_idx < num_options; ++opt_idx) {
+    std::string key(option_keys[opt_idx]);
+    std::string value(option_values[opt_idx]);
+
+    if (key == kOrtEpDynamicOptionsWorkloadType) {
+      if (value == "Default") {
+        RETURN_IF_NOT_OK(ep->qnn_backend_manager_->ResetContextPriority(), ep->ort_api);
+      } else if (value == "Efficient") {
+        RETURN_IF_NOT_OK(ep->qnn_backend_manager_->SetContextPriority(qnn::ContextPriority::LOW), ep->ort_api);
+      } else {
+        LOGS(ep->logger_in_, ERROR) << "Invalid EP Workload Type: " << value;
+        return ep->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Invalid EP Workload Type.");
+      }
+    } else {
+      LOGS(ep->logger_in_, ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";
+        return ep->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Unsupported EP Dynamic Option");
     }
   }
 
