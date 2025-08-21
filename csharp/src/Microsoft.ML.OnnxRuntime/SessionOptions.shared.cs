@@ -478,18 +478,18 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Select execution providers from the list of available execution providers and devices returned by
-        /// GetEpDevices. 
-        ///
-        /// One or more OrtEpDevice instances may be provided in epDevices, but must all be for the same
+        /// Select execution providers from the list of available execution providers and devices returned by 
+        /// GetEpDevices.
+        /// 
+        /// One or more OrtEpDevice instances may be provided in epDevices, but must all be for the same 
         /// execution provider.
-        ///
+        /// 
         /// Make multiple calls to AppendExecutionProvider if you wish to use multiple execution providers.
         /// 
         /// e.g. 
         ///   - if execution provider 'A' has an OrtEpDevice for NPU and one for GPU and you wish to use it for
         ///     both devices, pass the two OrtEpDevice instances in the epDevices list in one call.
-        ///   - if you wish to use execution provider 'B' for GPU and execution provider 'C' for CPU,
+        ///   - if you wish to use execution provider 'B' for GPU and execution provider 'C' for CPU, 
         ///     make two calls to AppendExecutionProvider, with one OrtEpDevice in the epDevices list in each call.
         ///     
         /// The priority of the execution providers is set by the order in which they are appended.
