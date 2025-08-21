@@ -12,25 +12,25 @@
 // asserts for the public API
 #define ASSERT_ORTSTATUS_OK(function)                                 \
   do {                                                                \
-    Ort::Status _tmp_status = (function);                             \
+    Ort::Status _tmp_status{(function)};                              \
     ASSERT_TRUE(_tmp_status.IsOK()) << _tmp_status.GetErrorMessage(); \
   } while (false)
 
 #define EXPECT_ORTSTATUS_OK(api, function)                            \
   do {                                                                \
-    Ort::Status _tmp_status = (api->function);                        \
+    Ort::Status _tmp_status{(api->function)};                         \
     EXPECT_TRUE(_tmp_status.IsOK()) << _tmp_status.GetErrorMessage(); \
   } while (false)
 
 #define ASSERT_ORTSTATUS_NOT_OK(api, function) \
   do {                                         \
-    Ort::Status _tmp_status = (api->function); \
+    Ort::Status _tmp_status{(api->function)};  \
     ASSERT_TRUE(_tmp_status.IsOK());           \
   } while (false)
 
 #define EXPECT_ORTSTATUS_NOT_OK(api, function) \
   do {                                         \
-    Ort::Status _tmp_status = (api->function); \
+    Ort::Status _tmp_status{(api->function)};  \
     EXPECT_FALSE(_tmp_status.IsOK());          \
   } while (false)
 

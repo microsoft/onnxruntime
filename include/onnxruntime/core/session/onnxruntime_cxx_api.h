@@ -729,7 +729,7 @@ struct Status : detail::Base<OrtStatus> {
   using Base::Base;
 
   explicit Status(std::nullptr_t) noexcept {}      ///< Create an empty object, must be assigned a valid one to be used
-  explicit Status(OrtStatus* status) noexcept;              ///< Takes ownership of OrtStatus instance returned from the C API.
+  explicit Status(OrtStatus* status) noexcept;     ///< Takes ownership of OrtStatus instance returned from the C API.
   explicit Status(const Exception&);               ///< Creates status instance out of exception
   explicit Status(const std::exception&);          ///< Creates status instance out of exception
   Status(const char* message, OrtErrorCode code);  ///< Creates status instance out of null-terminated string message.
