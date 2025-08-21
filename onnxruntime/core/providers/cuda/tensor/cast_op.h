@@ -38,7 +38,7 @@ class Cast final : public CudaKernel {
 
 namespace cast_helper_impl {
 template <class OutT, class InT>
-Status CudaCastPairwiseStd(cudaStream_t stream, const InT* input, OutT* output, size_t num_of_elements);
+Status CudaCastPairwise(cudaStream_t stream, const InT* input, OutT* output, size_t num_of_elements);
 }  // namespace cast_helper_impl
 
 }  // namespace cuda

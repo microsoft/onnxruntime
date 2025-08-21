@@ -32,7 +32,7 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
       DataTypeImpl::GetTensorType<Float8E4M3FN>(), DataTypeImpl::GetTensorType<Float8E5M2>()
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
-          ,
+                                                       ,
       DataTypeImpl::GetTensorType<Float4E2M1x2>()
 #endif
   };
@@ -142,15 +142,15 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
 
 #if !defined(DISABLE_FLOAT4_TYPES)
 
-#define CASE_BYTE_PACKED(TP_TYPE, SrcT, DstT)                   \
-  case TP_TYPE:                                                 \
-    if (count > 0) {                                            \
-      return cast_helper_impl::CudaCastPairwiseStd<DstT, SrcT>( \
-          Stream(context),                                      \
-          X->Data<SrcT>(),                                      \
-          Y->MutableData<DstT>(),                               \
-          count);                                               \
-    }                                                           \
+#define CASE_BYTE_PACKED(TP_TYPE, SrcT, DstT)                \
+  case TP_TYPE:                                              \
+    if (count > 0) {                                         \
+      return cast_helper_impl::CudaCastPairwise<DstT, SrcT>( \
+          Stream(context),                                   \
+          X->Data<SrcT>(),                                   \
+          Y->MutableData<DstT>(),                            \
+          count);                                            \
+    }                                                        \
     break;
 
 #endif

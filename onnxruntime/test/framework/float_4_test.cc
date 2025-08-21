@@ -42,9 +42,15 @@ TEST(Float4_Tests, BasicFloatConversion) {
 
   for (auto& c : cases) {
     auto f4e4m2_instance = Float4E2M1x2(c.first.first, c.first.second);
+
+    // Using ToFloat2() interface
     auto f_cvt_returned = f4e4m2_instance.ToFloat2();
     EXPECT_EQ(f_cvt_returned.first, c.second.first);
     EXPECT_EQ(f_cvt_returned.second, c.second.second);
+
+    // Using GetElem() interface
+    EXPECT_EQ(f4e4m2_instance.GetElem(0), c.second.first);
+    EXPECT_EQ(f4e4m2_instance.GetElem(1), c.second.second);
   }
 
   // NaNs

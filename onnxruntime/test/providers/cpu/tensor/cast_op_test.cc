@@ -1489,7 +1489,7 @@ void CastOpTestFloatFloat4(std::vector<int64_t> shape,
   }
 
   if (is_odd_count) {
-    fp4_data.emplace_back(F4(float_data[num_pairs] + 1, 0));  // Padding zero
+    fp4_data.emplace_back(F4(float_data[num_pairs * 2], 0));  // Padding zero
   }
 
   if (!is_fp4_input) {
@@ -1497,7 +1497,18 @@ void CastOpTestFloatFloat4(std::vector<int64_t> shape,
                           OpTester::ExpectResult::kExpectSuccess, "", 23, Saturate::None, true);
 
   } else {
-    TestCastOp<F4, float>(gsl::make_span(fp4_data), gsl::make_span(float_data), shape,
+    std::vector<float> casted_back_float;
+    for (size_t i = 0; i < num_pairs; ++i) {
+      auto pair = fp4_data[i].ToFloat2();
+      casted_back_float.push_back(pair.first);
+      casted_back_float.push_back(pair.second);
+    }
+
+    if (is_odd_count) {
+      casted_back_float.push_back(fp4_data[num_pairs].ToFloat2().first);
+    }
+
+    TestCastOp<F4, float>(gsl::make_span(fp4_data), gsl::make_span(casted_back_float), shape,
                           OpTester::ExpectResult::kExpectSuccess, "", 23, Saturate::None, true);
   }
 }
@@ -1513,27 +1524,27 @@ TEST(CastOpTest, FloatToFloat4E2M1x2) {
                                        -std::numeric_limits<float>::quiet_NaN()});
 
   // Odd count tests
-  // CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
-  //                                     {0.256f,
-  //                                      0.987f,
-  //                                      43.8f});
+  CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
+                                      {0.256f,
+                                       0.987f,
+                                       43.8f});
 }
 
 TEST(CastOpTest, Float4E2M1x2ToFloat) {
   // Even count tests
   CastOpTestFloatFloat4<Float4E2M1x2>({2, 2, 2},
-                                      {0.5f, 2.f,
+                                      {0.5f, 7.34f,
                                        1.f, 1.5f,
                                        2.f, 3.f,
                                        4.f, 6.f},
                                       true);
 
   // Odd count tests
-  // CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
-  //                                    {0.256f,
-  //                                     0.987f,
-  //                                     43.8f},
-  //                                     true);
+  CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
+                                      {0.256f,
+                                       0.987f,
+                                       43.8f},
+                                      true);
 }
 
 #endif
