@@ -204,7 +204,7 @@ template <>
 struct CastStd<float, Float4E2M1x2> {
   __device__ __forceinline__ float operator()(Float4E2M1x2 v) const {
     auto float_pair = v.ToFloat2();
-    return float_pair.x;
+    return float_pair.first;
   }
 };
 
@@ -248,7 +248,7 @@ Status CudaCastStd(cudaStream_t stream, const InT* input, OutT* output, size_t n
 
 #if !defined(DISABLE_FLOAT4_TYPES)
 
-template <int NumElementsPerThread, int NumThreadsPerBlock, bool is_odd, typename OutPairType, typename InPairType,
+template <int NumThreadsPerBlock, int NumElementsPerThread, bool is_odd, typename OutPairType, typename InPairType,
           typename OutSingleType, typename InSingleType>
 __global__ void CudaCastPairwiseKernel(const InPairType* input, OutPairType* output,
                                        CUDA_LONG pair_count,
@@ -263,6 +263,7 @@ __global__ void CudaCastPairwiseKernel(const InPairType* input, OutPairType* out
       id += NumThreadsPerBlock;
     }
     if constexpr (is_odd) {
+      // If odd, one thread picks up the singleton element
       if (id == pair_count) {
         *reinterpret_cast<OutSingleType*>(&output[id]) = singleton_caster(*reinterpret_cast<const InSingleType*>(&input[id]));
       }
@@ -287,10 +288,8 @@ Status CudaCastPairwise(cudaStream_t stream, const Float4E2M1x2* input, float* o
 
   int blocksPerGrid = static_cast<int>(CeilDiv(pair_count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
 
-  // Have enough threads/blocks to process the last singleton element
-  if (is_odd && (pair_count == blocksPerGrid * GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread)) {
-    // This block will process last singleton element
-    blocksPerGrid += 1;
+  if (pair_count == 0) {
+    blocksPerGrid = 1;
   }
 
   if (is_odd) {
@@ -323,10 +322,8 @@ Status CudaCastPairwise(cudaStream_t stream, const float* input, Float4E2M1x2* o
 
   int blocksPerGrid = static_cast<int>(CeilDiv(pair_count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
 
-  // Have enough threads/blocks to process the last singleton element
-  if (is_odd && (pair_count == blocksPerGrid * GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread)) {
-    // This block will process last singleton element
-    blocksPerGrid += 1;
+  if (pair_count == 0) {
+    blocksPerGrid = 1;
   }
 
   if (is_odd) {

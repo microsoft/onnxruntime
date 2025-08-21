@@ -1513,8 +1513,20 @@ void CastOpTestFloatFloat4(std::vector<int64_t> shape,
   }
 }
 
+static std::vector<float> GenerateRandomFloatVector(size_t count) {
+  std::vector<float> ret;
+  ret.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    int sign = (((rand() % 2) == 0) ? 1 : -1);
+    float random = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 7.f;  // let some values be outside the range of FP4
+    ret.push_back(sign * random);
+  }
+
+  return ret;
+}
+
 TEST(CastOpTest, FloatToFloat4E2M1x2) {
-  // Even count tests
+  // Even count test (with some special values)
   CastOpTestFloatFloat4<Float4E2M1x2>({2, 2, 2},
                                       {std::numeric_limits<float>::infinity(),
                                        -std::numeric_limits<float>::infinity(),
@@ -1523,15 +1535,22 @@ TEST(CastOpTest, FloatToFloat4E2M1x2) {
                                        std::numeric_limits<float>::quiet_NaN(),
                                        -std::numeric_limits<float>::quiet_NaN()});
 
-  // Odd count tests
+  // Odd count test
   CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
                                       {0.256f,
                                        0.987f,
                                        43.8f});
+
+  // Arbitrary sized tests
+  std::vector<int64_t> counts = {1, 5, 256, 512, 1024, 1025, 2048, 2049, 127, 89, 53, 42};
+
+  for (auto s : counts) {
+    CastOpTestFloatFloat4<Float4E2M1x2>({s, 1, 1}, GenerateRandomFloatVector(s));
+  }
 }
 
 TEST(CastOpTest, Float4E2M1x2ToFloat) {
-  // Even count tests
+  // Even count test (with some special values)
   CastOpTestFloatFloat4<Float4E2M1x2>({2, 2, 2},
                                       {0.5f, 7.34f,
                                        1.f, 1.5f,
@@ -1539,12 +1558,19 @@ TEST(CastOpTest, Float4E2M1x2ToFloat) {
                                        4.f, 6.f},
                                       true);
 
-  // Odd count tests
+  // Odd count test
   CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
                                       {0.256f,
                                        0.987f,
                                        43.8f},
                                       true);
+
+  // Arbitrary sized tests
+  std::vector<int64_t> counts = {1, 5, 256, 512, 1024, 1025, 2048, 2049, 127, 89, 53, 42};
+
+  for (auto s : counts) {
+    CastOpTestFloatFloat4<Float4E2M1x2>({s, 1, 1}, GenerateRandomFloatVector(s), true);
+  }
 }
 
 #endif

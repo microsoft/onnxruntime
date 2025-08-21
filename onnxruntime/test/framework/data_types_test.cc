@@ -806,7 +806,6 @@ TEST_F(DataTypeTest, Float8TestLimits) {
   EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::lowest().ToFloat(), -57344.0f, abs_tolerance);
   EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::denorm_min().ToFloat(), 0.00000762939f, abs_tolerance);
 }
-
 #endif
 
 TEST_F(DataTypeTest, DataUtilsTest) {
