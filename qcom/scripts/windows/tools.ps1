@@ -9,10 +9,11 @@ function Get-ToolsDir() {
     } else {
         $ToolsDir = (Join-Path $RepoRoot "build\Tools")
     }
-    New-Item -ItemType Directory $ToolsDir -Force
+    New-Item -ItemType Directory $ToolsDir -Force | Out-Null
     if (-not $?) {
         throw "Failed to create $ToolsDir"
     }
+    return $ToolsDir
 }
 
 function Get-AndroidNdkRoot() {
@@ -26,6 +27,26 @@ function Get-AndroidNdkRoot() {
 
 function Get-AndroidSdkRoot() {
     (Resolve-Path "$(Get-PackageContentDir android_commandlinetools_windows_x86_64)\..").Path
+}
+
+function Get-CCacheBinDir () {
+    Get-PackageBinDir ccache_windows_x86_64
+}
+
+function Get-CMakeBinDir() {
+    Get-PackageBinDir cmake_windows_$(Get-HostArch)
+}
+
+function Get-JavaBinDir() {
+    Get-PackageBinDir java_windows_x86_64
+}
+
+function Get-NinjaBinDir() {
+    Get-PackageBinDir ninja_windows_x86_64
+}
+
+function Get-OnnxModelsRoot() {
+    Get-PackageContentDir onnx_models
 }
 
 function Get-PackageBinDir() {
@@ -58,6 +79,10 @@ function Get-PackageContentDir() {
 
 function Get-PackageManager() {
     Join-Path $RepoRoot "qcom\scripts\all\package_manager.py"
+}
+
+function Get-QairtRoot() {
+    Get-PackageContentDir qairt
 }
 
 function Install-Package() {

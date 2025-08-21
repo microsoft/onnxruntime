@@ -61,7 +61,7 @@ if ($PyVEnv -ne "") {
 }
 
 if ($QairtSdkRoot -eq "") {
-    $QairtSdkRoot = (Get-PackageContentDir qairt)
+    $QairtSdkRoot = (Get-QairtRoot)
 }
 else {
     $QairtSdkRoot = Resolve-Path -Path $QairtSdkRoot
@@ -121,7 +121,7 @@ $TestRunner = $null
 
 if ($CMakeGenerator -eq "Ninja") {
     $CommonArgs += "--use_cache"
-    $env:Path = "$(Get-PackageBinDir ccache_windows_x86_64);" + $env:Path
+    $env:Path = "$(Get-CCacheBinDir);" + $env:Path
 }
 
 switch ($TargetPlatform) {
@@ -170,7 +170,7 @@ switch ($TargetPlatform) {
             }
         }
 
-        $env:Path = "$(Get-PackageBinDir java_windows_x86_64);" + $env:Path
+        $env:Path = "$(Get-JavaBinDir);" + $env:Path
 
         if ($null -ne $env:ANDROID_HOME -and $null -ne $env:ANDROID_NDK_HOME) {
             $AndroidSdkPath = $env:ANDROID_HOME
@@ -208,7 +208,7 @@ switch ($TargetPlatform) {
     }
 }
 
-$CmakeBinDir = (Get-PackageBinDir cmake_windows_$(Get-HostArch))
+$CmakeBinDir = (Get-CMakeBinDir)
 $env:Path = "$CmakeBinDir;" + $env:Path
 
 Optimize-ToolsDir
@@ -227,7 +227,7 @@ if ($MakeTestArchive) {
 }
 else {
     if ($CMakeGenerator -eq "Ninja") {
-        $env:Path = "$(Get-PackageBinDir ninja_windows_x86_64);" + $env:Path
+        $env:Path = "$(Get-NinjaBinDir);" + $env:Path
     }
 
     # This platform supports running tests on the host. Prep the build directory
@@ -263,8 +263,10 @@ else {
     }
 
     if ($RunTests) {
+
         Push-Location "$BuildDir\$Config"
-        & .\run_tests.ps1
+        $OnnxModelsRoot = (Get-OnnxModelsRoot)
+        & .\run_tests.ps1 -OnnxModelsRoot $OnnxModelsRoot
 
         if (-not $?) {
             $failed = $true

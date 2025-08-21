@@ -1,6 +1,12 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
 
+param(
+    [Parameter(Mandatory = $true,
+               HelpMessage = "Path to onnx/models models")]
+    $OnnxModelsRoot
+)
+
 $RootDir = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)").Path
 
 $Config = "Release"
@@ -36,10 +42,19 @@ $NewBuildDirectoryBackslashes = ($NewBuildDirectory -replace "/", "\\")
     -replace $OldBuildDirectoryBackslashesRegex, $NewBuildDirectoryBackslashes |
     Out-File -Encoding ascii $CTestTestFile
 
+
+# Figure out if HTP is available
+if ((Get-CimInstance Win32_operatingsystem).OSArchitecture -eq "ARM 64-bit Processor") {
+    $QdqBackend = "htp"
+} else {
+    $QdqBackend = "cpu"
+}
+
 $Failed = $false
 
 # Run CTest
 Push-Location $RootDir
+Write-Host "--=-=-=- Running unit tests -=--=-=-"
 & $CTestExe --build-config $Config --verbose --timeout $TimeoutSec
 
 if (-not $?) {
@@ -47,7 +62,7 @@ if (-not $?) {
     $Failed = $true
 }
 
-# Run ONNX model tests
+Write-Host "--=-=-=- Running ONNX model tests -=--=-=-"
 & $OnnxTestRunnerExe `
     -j 1 `
     -e qnn `
@@ -55,6 +70,47 @@ if (-not $?) {
     "_deps\onnx-src\onnx\backend\test\data\node"
 if (-not $?) {
     $Failed = $true
+}
+
+Write-Host "-=-=-=- Running onnx/models float32 tests -=-=-=-"
+Push-Location $OnnxModelsRoot
+if (-not $?) {
+    throw "Could not cd to $OnnxModelsRoot"
+}
+
+& $OnnxTestRunnerExe `
+    -j 1 `
+    -e qnn `
+    -i "backend_type|cpu" `
+    "testdata\float32"
+if (-not $?) {
+    $Failed = $true
+}
+
+Write-Host "-=-=-=- Running onnx/models qdq tests -=-=-=-"
+& $OnnxTestRunnerExe `
+    -j 1 `
+    -e qnn `
+    -i "backend_type|$QdqBackend" `
+    "testdata\qdq"
+if (-not $?) {
+    $Failed = $true
+}
+
+if ($QdqBackend -ne "cpu") {
+    Write-Host "-=-=-=- Running onnx/models qdq tests with context cache enabled -=-=-=-"
+    # Scrub old context caches
+    Get-ChildItem -Path "testdata\qdq-with-context-cache" -Recurse -Filter "*_ctx.onnx" | Remove-Item -Force
+    & $OnnxTestRunnerExe `
+        -j 1 `
+        -e qnn `
+        -f -i "backend_type|$QdqBackend" `
+        "testdata\qdq-with-context-cache"
+    if (-not $?) {
+        $Failed = $true
+    }
+} else {
+    Write-Host "Not running onnx/models qdq tests with context cache enabled on CPU backend."
 }
 
 # If it looks like we're running in QDC, copy logs to the directory they'll scan to find them.

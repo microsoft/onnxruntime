@@ -76,6 +76,10 @@ function get_ninja_bindir() {
     get_package_bindir ninja_$(get_host_platform)
 }
 
+function get_onnx_models_dir() {
+    get_package_contentdir "onnx_models"
+}
+
 function get_package_bindir() {
     local pkg_name="${1}"
 
@@ -91,7 +95,7 @@ function get_package_contentdir() {
 }
 
 #
-# Get the root of the managed QAIRT installtion.
+# Get the root of the managed QAIRT installation.
 #
 function get_qairt_contentdir() {
     get_package_contentdir qairt

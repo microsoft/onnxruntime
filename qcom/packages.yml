@@ -83,6 +83,11 @@ ninja_windows_x86_64:
   version: 1.12.1
   url: https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-win.zip
   sha256: f550fec705b6d6ff58f2db3c374c2277a37691678d6aba463adcbb129108467a
+onnx_models:
+  version: 2025-08-18
+  url: http://ort-ep-win-01:8000/onnx-models/onnx-models-{version}.tar.gz
+  sha256: 9f14b64abc156ae8f6607ce20dc3886c7b40baaf0b19da0a07ef37bef4c0bfb4
+  content_root: onnx-models-{version}
 qairt:
   version: 2.37.1.250807
   url: https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/{version}/v{version}.zip

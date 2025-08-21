@@ -191,15 +191,43 @@ else
   fi
 
   if [ -n "${run_tests}" ]; then
-    # Run tests using our ctest wrapper.
+    onnx_models_root="$(get_onnx_models_dir)"
+
     cd "${build_dir}/${config}/"
+
+    # Run tests using our ctest wrapper.
+    log_info "-=-=-=- Running unit tests -=-=-=-=-"
     "./$(basename ${test_runner})"
 
-    # Run node module tests
+    log_info "-=-=-=- Running ONNX model tests -=-=-=-=-"
     "${build_dir}/${config}/onnx_test_runner" \
         -j 1 \
         -e qnn \
         -i "backend_type|cpu" \
         "${REPO_ROOT}/cmake/external/onnx/onnx/backend/test/data/node"
+
+    log_info "-=-=-=- Running onnx/models float32 tests -=-=-=-=-"
+    cd "${onnx_models_root}"
+    "${build_dir}/${config}/onnx_test_runner" \
+        -j 1 \
+        -e qnn \
+        -i "backend_type|cpu" \
+        "testdata/float32"
+
+    log_info "-=-=-=- Running onnx/models qdq tests -=-=-=-=-"
+    "${build_dir}/${config}/onnx_test_runner" \
+        -j 1 \
+        -e qnn \
+        -i "backend_type|htp" \
+        "testdata/qdq"
+
+    log_info "-=-=-=- Running onnx/models qdq tests with context cache enabled -=-=-=-=-"
+    log_debug "Scrubbing old context caches"
+    find "testdata/qdq-with-context-cache" -name "*_ctx.onnx" -print -delete
+    "${build_dir}/${config}/onnx_test_runner" \
+        -j 1 \
+        -e qnn \
+        -f -i "backend_type|htp" \
+        "testdata/qdq-with-context-cache"
   fi
 fi
