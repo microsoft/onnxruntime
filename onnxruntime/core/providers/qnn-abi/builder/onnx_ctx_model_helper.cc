@@ -335,12 +335,8 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
         }
 
         attr = nullptr;
-        RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(MAX_SIZE.c_str(),
-                                                    &static_cast<int64_t>(max_spill_fill_buffer_size),
-                                                    1,
-                                                    ORT_OP_ATTR_INT,
-                                                    &attr),
-                               ort_api);
+        size_t max_size = static_cast<int64_t>(max_spill_fill_buffer_size);
+        RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(MAX_SIZE.c_str(), &max_size, 1, ORT_OP_ATTR_INT, &attr), ort_api);
         attributes.push_back(attr);
       }
     } else {
@@ -357,8 +353,7 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
 
     attr = nullptr;
     int64_t embed_mode = qnn_context_embed_mode ? static_cast<int64_t>(1) : static_cast<int64_t>(0);
-    RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EMBED_MODE.c_str(), &embed_mode, 1, ORT_OP_ATTR_INT, &attr),
-                           ort_api);
+    RETURN_STATUS_IF_ERROR(ort_api.CreateOpAttr(EMBED_MODE.c_str(), &embed_mode, 1, ORT_OP_ATTR_INT, &attr), ort_api);
     attributes.push_back(attr);
 
     attr = nullptr;
