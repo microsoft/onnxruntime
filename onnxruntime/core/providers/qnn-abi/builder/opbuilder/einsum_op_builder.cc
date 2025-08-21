@@ -572,9 +572,9 @@ Status EinsumOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                  /*do_op_validation=*/do_op_validation));
   } else if (IsEquationReduceSumMulBroadcastX(parsed_equation.value())) {
     ORT_RETURN_IF_ERROR(CreateReduceSumMulBroadcastX(/*qnn_model_wrapper=*/&qnn_model_wrapper,
-                                                 /*node_unit=*/node_unit,
-                                                 /*input_names=*/std::move(input_names),
-                                                 /*do_op_validation=*/do_op_validation));
+                                                     /*node_unit=*/node_unit,
+                                                     /*input_names=*/std::move(input_names),
+                                                     /*do_op_validation=*/do_op_validation));
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_unit.OpType() + " unsupported equation: " + equation);
   }
