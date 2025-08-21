@@ -2,5 +2,5 @@
 # When any package below is changed, you shall run "lintrunner init" again.
 lintrunner==0.12.7
 lintrunner-adapters==0.12.5
-ruff==0.12.8
+ruff==0.12.9
 clang-format==20.1.8

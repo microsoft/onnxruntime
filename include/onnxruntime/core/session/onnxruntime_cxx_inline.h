@@ -2996,6 +2996,13 @@ inline void GraphImpl<OrtGraph>::AddNode(Node& node) {
   ThrowOnError(GetModelEditorApi().AddNodeToGraph(p_, node.release()));
 }
 
+template <typename T>
+inline ModelMetadata GraphImpl<T>::GetModelMetadata() const {
+  OrtModelMetadata* out;
+  ThrowOnError(GetApi().Graph_GetModelMetadata(this->p_, &out));
+  return ModelMetadata{out};
+}
+
 template <>
 inline void ModelImpl<OrtModel>::AddGraph(Graph& graph) {
   // Model takes ownership of `graph`
