@@ -756,13 +756,13 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
   int migraphx_fp8_enable;                           // MIGraphX FP8 precision. Default 0 = false, nonzero = true
   int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
-  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
+  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, nonzero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
-  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, noznero = true
+  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, nonzero = true
   const char* migraphx_save_model_path;              // migraphx model path name
-  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
+  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, nonzero = true
   const char* migraphx_load_model_path;              // migraphx model path name
-  bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
+  bool migraphx_exhaustive_tune;                     // MIGraphX tuned compile. Default = false, nonzero = true
 
   /** \brief MIGraphX memory limit (To use all possible memory pass in maximum size_t)
    *   Defaults to SIZE_MAX.
@@ -778,6 +778,7 @@ typedef struct OrtMIGraphXProviderOptions {
    */
   int migraphx_arena_extend_strategy;
 
+  // This is the legacy struct and don't add new fields here.
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -6470,6 +6471,17 @@ struct OrtApi {
                   _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                   _In_opt_ OrtSyncStream* stream,
                   _In_ size_t num_tensors);
+
+  /** \brief Get ::OrtModelMetadata from an ::OrtGraph
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] out Newly created ::OrtModelMetadata. Must be freed using OrtApi::ReleaseModelMetadata.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetModelMetadata, _In_ const OrtGraph* graph, _Outptr_ OrtModelMetadata** out);
 };
 
 /*

@@ -53,7 +53,7 @@ static void ApplyNewInputValue(Graph& graph, Node& node, QDQ::InputIndex index, 
   auto new_name = graph.GenerateNodeArgName("DoubleQDQRemoved_" + node.InputDefs()[index]->Name());
   new_input_tensor.set_name(new_name);
   new_input_tensor.add_dims(1);
-  NodeArg& new_input = graph_utils::AddInitializerWithExternalData(graph, new_input_tensor);
+  NodeArg& new_input = graph_utils::AddInitializer(graph, new_input_tensor);
   graph_utils::ReplaceNodeInput(node, index, new_input);
 }
 

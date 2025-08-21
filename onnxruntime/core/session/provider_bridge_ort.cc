@@ -1272,6 +1272,10 @@ struct ProviderHostImpl : ProviderHost {
   void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) override { p->AddInitializedTensor(tensor); }
   Status Graph__AddInitializedOrtValue(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor,
                                        const OrtValue& value) override { return p->AddInitializedOrtValue(tensor, value); }
+  bool Graph__GetOrtValueInitializer(const Graph* p, const std::string& tensor_name, OrtValue& value,
+                                     bool check_outer_scope) override {
+    return p->GetOrtValueInitializer(tensor_name, value, check_outer_scope);
+  }
   Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
     return p->AddNode(name, op_type, description, input_args, output_args, attributes, domain);
   }
@@ -1369,6 +1373,10 @@ struct ProviderHostImpl : ProviderHost {
                                                                          const std::string& name,
                                                                          bool check_outer_scope) const override {
     return p->GetConstantInitializer(name, check_outer_scope);
+  }
+  bool GraphViewer__GetOrtValueInitializer(const GraphViewer* p, const std::string& tensor_name,
+                                           OrtValue& value) override {
+    return p->GetOrtValueInitializer(tensor_name, value);
   }
   const Node* GraphViewer__ParentNode(const GraphViewer* p) override { return p->ParentNode(); }
   int GraphViewer__NumberOfNodes(const GraphViewer* p) noexcept override { return p->NumberOfNodes(); }
@@ -2137,8 +2145,13 @@ std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(
   return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
-  return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
+std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
+  return s_library_migraphx.Get().CreateExecutionProviderFactory(&provider_options);
+}
+
+std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* options) {
+  const auto provider_options{s_library_migraphx.Get().GetProviderOptions(options)};
+  return s_library_migraphx.Get().CreateExecutionProviderFactory(&provider_options);
 }
 
 // Adapter to convert the legacy OrtOpenVINOProviderOptions to ProviderOptions

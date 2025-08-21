@@ -13,6 +13,39 @@
 
 namespace onnxruntime {
 
+/**
+ * Checks whether or not the output path from a given node leads to a QuantizeLinear op, optionally, with no
+ * branching ReLU or Clip op in between. See also: NodeGroupSelector::GetQDQSelection() in qdq_selectors.cc.
+ *
+ * @param node The starting node to check the output path from.
+ * @param graph The graph containing the nodes.
+ *
+ * @return true if the path exist, false otherwise.
+ */
+static bool IsNoBranchPathToQuantizeLinear(const Node& node, const Graph& graph) {
+  const Node* current = &node;
+  while (true) {
+    // Conv / ConvTranspose / Gemm produces single output
+    if (current->OutputDefs().size() != 1) {
+      return false;
+    }
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes(current->OutputDefs()[0]->Name());
+    // Branching or no consumer: not eligible
+    if (consumers.size() != 1) {
+      return false;
+    }
+    const Node* consumer = consumers[0];
+    if (consumer->OpType() == QDQ::QOpName) {
+      return true;
+    }
+    // Allow ReLU or Clip, see also: NodeGroupSelector::GetQDQSelection() in qdq_selectors.cc.
+    if (consumer->OpType() != "Relu" && consumer->OpType() != "Clip") {
+      return false;
+    }
+    current = consumer;
+  }
+}
+
 Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                          const logging::Logger& logger) const {
   const GraphViewer graph_viewer{graph};
@@ -43,11 +76,8 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       continue;
     }
 
-    // Require that the node's output is consumed by a single QuantizeLinear node.
-    // Otherwise, if only the inputs are quantized, but not the output, then this node group would not
-    // be considered a QDQ node unit anyway.
-    std::vector<const Node*> children_nodes = graph.GetConsumerNodes(node.OutputDefs()[0]->Name());
-    if (children_nodes.size() != 1 || children_nodes[0]->OpType() != QDQ::QOpName) {
+    // Check if the output path leads to QuantizeLinear with optionally ReLU or Clip op in between.
+    if (!IsNoBranchPathToQuantizeLinear(node, graph)) {
       continue;
     }
 
@@ -131,14 +161,14 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       weight_scale_proto.set_name(graph.GenerateNodeArgName(node.Name() + "_weight_scale"));
       weight_scale_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
       weight_scale_proto.mutable_float_data()->Add(scale);
-      weight_scale_arg = &graph_utils::AddInitializerWithExternalData(graph, weight_scale_proto);
+      weight_scale_arg = &graph_utils::AddInitializer(graph, weight_scale_proto);
 
       // Weight zero point initializer.
       ONNX_NAMESPACE::TensorProto weight_zp_proto;
       weight_zp_proto.set_name(graph.GenerateNodeArgName(node.Name() + "_weight_zp"));
       weight_zp_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
       weight_zp_proto.mutable_int32_data()->Add(static_cast<int32_t>(zp));
-      NodeArg& weight_zp_arg = graph_utils::AddInitializerWithExternalData(graph, weight_zp_proto);
+      NodeArg& weight_zp_arg = graph_utils::AddInitializer(graph, weight_zp_proto);
 
       // Q from float32 to int8.
       ONNX_NAMESPACE::TypeProto weight_q_type_proto;
