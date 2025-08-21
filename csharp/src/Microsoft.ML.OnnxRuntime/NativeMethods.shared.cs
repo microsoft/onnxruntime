@@ -761,12 +761,12 @@ namespace Microsoft.ML.OnnxRuntime
             OrtEpDevice_Device = (DOrtEpDevice_Device)Marshal.GetDelegateForFunctionPointer(
                 api_.EpDevice_Device, typeof(DOrtEpDevice_Device));
 
-            OrtRegisterExecutionProviderLibrary =
+            OrtRegisterExecutionProviderLibrary = 
                 (DOrtRegisterExecutionProviderLibrary)Marshal.GetDelegateForFunctionPointer(
                     api_.RegisterExecutionProviderLibrary,
                     typeof(DOrtRegisterExecutionProviderLibrary));
 
-            OrtUnregisterExecutionProviderLibrary =
+            OrtUnregisterExecutionProviderLibrary = 
                 (DOrtUnregisterExecutionProviderLibrary)Marshal.GetDelegateForFunctionPointer(
                     api_.UnregisterExecutionProviderLibrary,
                     typeof(DOrtUnregisterExecutionProviderLibrary));
@@ -775,17 +775,17 @@ namespace Microsoft.ML.OnnxRuntime
                 api_.GetEpDevices,
                 typeof(DOrtGetEpDevices));
 
-            OrtSessionOptionsAppendExecutionProvider_V2 =
+            OrtSessionOptionsAppendExecutionProvider_V2 = 
                 (DOrtSessionOptionsAppendExecutionProvider_V2)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsAppendExecutionProvider_V2,
                     typeof(DOrtSessionOptionsAppendExecutionProvider_V2));
 
-            OrtSessionOptionsSetEpSelectionPolicy =
+            OrtSessionOptionsSetEpSelectionPolicy = 
                 (DSessionOptionsSetEpSelectionPolicy)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsSetEpSelectionPolicy,
                     typeof(DSessionOptionsSetEpSelectionPolicy));
 
-            OrtSessionOptionsSetEpSelectionPolicyDelegate =
+            OrtSessionOptionsSetEpSelectionPolicyDelegate = 
                 (DSessionOptionsSetEpSelectionPolicyDelegate)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsSetEpSelectionPolicyDelegate,
                     typeof(DSessionOptionsSetEpSelectionPolicyDelegate));
@@ -2510,7 +2510,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                  byte[] /* const char* */ value);
 
         /// <summary>
-        /// Get the value for the provided key.
+        /// Get the value for the provided key. 
         /// </summary>
         /// <returns>Value. Returns IntPtr.Zero if key was not found.</returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
