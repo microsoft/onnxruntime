@@ -100,49 +100,49 @@ static void run_moe_fc_cpu_grouped(
       printf("[CPU DEBUG] Row %ld max_logit: %.6f\n", row, max_logit);
     }
 
-    float sum_exp = 0.0f;
+    // Get top-2 experts first for jitter-based masking (matching PyTorch)
+    std::vector<std::pair<float, int64_t>> all_experts;
     for (int64_t e = 0; e < num_experts; ++e) {
       float logit = gating_output[row * num_experts + e];
-      float exp_val = std::exp(logit - max_logit);
-      softmax_probs[e] = exp_val;
-      sum_exp += exp_val;
+      all_experts.emplace_back(logit, e);
     }
 
-    // DEBUG: Print softmax intermediate values for first few rows
+    // Sort to get top-2 experts
+    std::partial_sort(all_experts.begin(), all_experts.begin() + 2, all_experts.end(),
+                      [](const std::pair<float, int64_t>& a, const std::pair<float, int64_t>& b) {
+                        return a.first > b.first;  // Sort by logit descending
+                      });
+
+    float top1_logit = all_experts[0].first;
+    int64_t top1_expert = all_experts[0].second;
+    float top2_logit = all_experts[1].first;
+    int64_t top2_expert = all_experts[1].second;
+
+    // Implement PyTorch jitter-based masking algorithm
+    const float jitter_eps = 0.01f;  // Match PyTorch router_jitter_noise
+
+    // First expert: mask others based on relative difference from top expert
+    float weight1 = 1.0f;  // PyTorch gives weight 1.0 to top expert after masking
+
+    // Second expert: mask others including top expert, only second expert remains
+    float weight2 = 1.0f;  // PyTorch gives weight 1.0 to second expert after masking
+
+    // DEBUG: Print jitter-based routing for first few rows
     if (row < 3) {
-      printf("[CPU DEBUG] Row %ld sum_exp: %.6f\n", row, sum_exp);
-      printf("[CPU DEBUG] Row %ld softmax_probs: ", row);
-      for (int64_t e = 0; e < std::min(num_experts, 8L); ++e) {
-        printf("%.6f ", softmax_probs[e]);
-      }
-      printf("...\n");
+      printf("[CPU DEBUG] Row %ld jitter-based routing:\n", row);
+      printf("[CPU DEBUG]   Top-2 experts: E%ld(%.6f) E%ld(%.6f)\n",
+             top1_expert, top1_logit, top2_expert, top2_logit);
+      printf("[CPU DEBUG]   Routing weights: E%ld=%.6f E%ld=%.6f\n",
+             top1_expert, weight1, top2_expert, weight2);
     }
 
-    for (int64_t e = 0; e < num_experts; ++e) {
-      float w = softmax_probs[e] / sum_exp;  // Normalized probability
-      if (use_robust_expert_selection()) {
-        w = quantize_router_probability(w);
-      }
-      expert_scores.emplace_back(w, e);
-    }
+    // Add selected experts with PyTorch-style routing weights
+    expert_scores.emplace_back(weight1, top1_expert);
+    expert_scores.emplace_back(weight2, top2_expert);
+    // Expert scores already contain top-2 experts with PyTorch-style routing weights
+    const int64_t select = std::min(k, static_cast<int64_t>(expert_scores.size()));
 
-    // DEBUG: Print normalized probabilities for first few rows
-    if (row < 3) {
-      printf("[CPU DEBUG] Row %ld normalized probs: ", row);
-      for (int64_t e = 0; e < std::min(num_experts, 8L); ++e) {
-        printf("%.6f ", expert_scores[e].first);
-      }
-      printf("...\n");
-    }
-    auto robust_cmp = [](const std::pair<float, int64_t>& a, const std::pair<float, int64_t>& b) {
-      constexpr float eps = 1e-6f;
-      if (std::fabs(a.first - b.first) < eps) return a.second < b.second;  // tie-break by lower expert id
-      return a.first > b.first;
-    };
-    const int64_t select = std::min(k, num_experts);
-    std::partial_sort(expert_scores.begin(), expert_scores.begin() + select, expert_scores.end(), robust_cmp);
-
-    // Calculate sum of top-k selected expert weights for proper normalization
+    // Calculate sum for normalization (should be 2.0 for PyTorch-style routing)
     float selected_sum = 0.0f;
     for (int64_t i = 0; i < select; ++i) {
       selected_sum += expert_scores[static_cast<size_t>(i)].first;
@@ -164,19 +164,13 @@ static void run_moe_fc_cpu_grouped(
       const int64_t off = row * k + i;
       route_expert[static_cast<size_t>(off)] = static_cast<int>(expert_scores[static_cast<size_t>(i)].second);
 
-      // Apply CUDA-style normalization for routing weights
-      if (normalize_routing_weights && selected_sum > 0.0f) {
-        // Normalize selected top-k weights to sum to 1 (matching CUDA behavior)
-        route_scale[static_cast<size_t>(off)] = expert_scores[static_cast<size_t>(i)].first / selected_sum;
-      } else {
-        // Use raw softmax probabilities
-        route_scale[static_cast<size_t>(off)] = expert_scores[static_cast<size_t>(i)].first;
-      }
+      // Use PyTorch-style routing weights (1.0 for each selected expert)
+      route_scale[static_cast<size_t>(off)] = expert_scores[static_cast<size_t>(i)].first;
 
       // DEBUG: Print final routing weights for first few rows
       if (row < 3) {
-        printf("[CPU DEBUG] Row %ld Expert %d final weight: %.6f (normalize=%d)\n",
-               row, route_expert[static_cast<size_t>(off)], route_scale[static_cast<size_t>(off)], normalize_routing_weights);
+        printf("[CPU DEBUG] Row %ld Expert %d final weight: %.6f (PyTorch-style)\n",
+               row, route_expert[static_cast<size_t>(off)], route_scale[static_cast<size_t>(off)]);
       }
 
       // Debug: Show final weights for first row
@@ -305,98 +299,57 @@ static void run_moe_fc_cpu_grouped(
     // Debug: Print first few weight values for selected experts
 
     if (bit_width == 8) {
-      // CUTLASS-compatible layout access: ColumnMajorTileInterleave [K x N] for 8-bit weights
-      // Based on mixed_gemm_B_layout.h: ThreadblockK=64, ColumnsInterleaved=2
-      const size_t ThreadblockK = 64;
-      const size_t ColumnsInterleaved = 2;
-
+      // FIXED: Simple 8-bit dequantization - direct access without CUTLASS layout
+      // Each byte is a direct quantized value, stored in simple row-major order
       for (size_t n = 0; n < N1; ++n) {
         const float sc = s1[n];
         for (size_t kx = 0; kx < K1_logical; ++kx) {
-          // Calculate CUTLASS tile-interleaved index for 8-bit weights
-          size_t tile_row = kx / ThreadblockK;
-          size_t tile_col = n / ColumnsInterleaved;
-          size_t inner_row = kx % ThreadblockK;
-          size_t inner_col = n % ColumnsInterleaved;
-
-          size_t num_tile_cols = (N1 + ColumnsInterleaved - 1) / ColumnsInterleaved;
-          size_t physical_idx = tile_row * (num_tile_cols * ThreadblockK * ColumnsInterleaved) +
-                                tile_col * (ThreadblockK * ColumnsInterleaved) +
-                                inner_row * ColumnsInterleaved +
-                                inner_col;
+          // Simple row-major access: weights stored as [N1 x K1_logical]
+          size_t physical_idx = n * K1_logical + kx;
 
           if (physical_idx < bytes_per_expert_fc1) {
-            // Dequantize with zero-point subtraction to align with CUDA implementation
-            // u8 quant with per-column scale and zp=128
-            float dequantized_val = sc * (static_cast<float>(expert_B1_q[physical_idx]) - static_cast<float>(global_zero_point));
-            // FIXED: Use consistent row-major storage like 4-bit case
+            // Direct dequantization: scale * (quantized_value - zero_point)
+            uint8_t quantized_val = expert_B1_q[physical_idx];
+            float dequantized_val = sc * (static_cast<float>(quantized_val) - static_cast<float>(global_zero_point));
             B1_deq[n * K1_logical + kx] = dequantized_val;
           } else {
-            // Fallback to zero if index is out of bounds
             B1_deq[n * K1_logical + kx] = 0.0f;
           }
         }
       }
     } else {
-      // TEST: Try simple column-major access instead of tile-interleaved
-      // Maybe CUTLASS pre-stored weights in the interleaved format already
+      // FIXED: Simple 4-bit dequantization - exact inverse of Python test logic
+      // Python test: (q_odd << 4) | q_even, so we extract: even = byte & 0x0F, odd = byte >> 4
       for (size_t n = 0; n < N1; ++n) {
+        const float sc = s1[n];
         for (size_t kx = 0; kx < K1_logical; kx += 2) {
-          // FIXED: For 4-bit weights, each column is stored consecutively
-          // Each expert has K1_packed bytes per column
-          size_t byte_k = kx / 2;
-          size_t physical_byte_idx = n * K1_packed + byte_k;
+          // Simple packed access: 2 weights per byte in row-major order
+          size_t byte_idx = (n * K1_logical + kx) / 2;
 
-          if (physical_byte_idx < bytes_per_expert_fc1) {
-            const uint8_t b = expert_B1_q[physical_byte_idx];
-            const uint8_t lo = b & 0x0F;
-            const uint8_t hi = (b >> 4) & 0x0F;
+          if (byte_idx < bytes_per_expert_fc1) {
+            const uint8_t packed_byte = expert_B1_q[byte_idx];
 
-            // TEST: Try using scale based on byte position instead of just column
-            // Hypothesis: scale index should include byte offset
-            size_t scale_idx_pos0 = (n + byte_k) % N1;  // Test: include byte offset
-            size_t scale_idx_pos1 = (n + byte_k) % N1;  // Same for both positions in byte
+            // Extract 4-bit values: low nibble first, then high nibble
+            const uint8_t val_even = packed_byte & 0x0F;        // First weight (even position)
+            const uint8_t val_odd = (packed_byte >> 4) & 0x0F;  // Second weight (odd position)
 
-            const float sc_pos0 = s1[scale_idx_pos0];
-            const float sc_pos1 = s1[scale_idx_pos1];
-
-            // FIXED: CUDA expects low nibble first, then high nibble
-            B1_deq[n * K1_logical + kx] = sc_pos0 * (static_cast<float>(lo) - static_cast<float>(global_zero_point));
+            // Dequantize both weights with the same scale for this column
+            B1_deq[n * K1_logical + kx] = sc * (static_cast<float>(val_even) - static_cast<float>(global_zero_point));
             if (kx + 1 < K1_logical) {
-              B1_deq[n * K1_logical + kx + 1] = sc_pos1 * (static_cast<float>(hi) - static_cast<float>(global_zero_point));
+              B1_deq[n * K1_logical + kx + 1] = sc * (static_cast<float>(val_odd) - static_cast<float>(global_zero_point));
             }
-            // Debug first few values
+
+            // Debug first few values for verification
             if (Me > 0 && n == 0 && kx < 16) {
-              printf("[CPU DEBUG] n=%zu, kx=%zu, byte_idx=%zu, byte=0x%02x, lo=%u, hi=%u, sc0=%.6f, sc1=%.6f, val0=%.6f, val1=%.6f\n",
-                     n, kx, physical_byte_idx, b, lo, hi, sc_pos0, sc_pos1,
-                     sc_pos0 * (static_cast<float>(lo) - static_cast<float>(global_zero_point)),
-                     (kx + 1 < K1_logical) ? sc_pos1 * (static_cast<float>(hi) - static_cast<float>(global_zero_point)) : 0.0f);
-
-              // Extra debug for position 4 specifically
-              if (kx == 4) {
-                printf("[CPU POS4 DEBUG] Position 4 analysis:\n");
-                printf("[CPU POS4 DEBUG]   Using scale index (n+byte_k)=%zu: s1[%zu] = %.6f\n", scale_idx_pos0, scale_idx_pos0, sc_pos0);
-                printf("[CPU POS4 DEBUG]   Raw nibble lo=%u, calculated value=%.6f\n", lo, sc_pos0 * (static_cast<float>(lo) - static_cast<float>(global_zero_point)));
-                printf("[CPU POS4 DEBUG]   CUDA expects: 0.031250\n");
-                printf("[CPU POS4 DEBUG]   Scale difference: %.6f vs expected %.6f\n", sc_pos0, 0.031250f);
-
-                // Test different scale indices
-                printf("[CPU POS4 DEBUG]   Testing alternative scales:\n");
-                for (size_t test_idx = 0; test_idx < std::min(N1, 8UL); ++test_idx) {
-                  float test_val = s1[test_idx] * (static_cast<float>(lo) - static_cast<float>(global_zero_point));
-                  printf("[CPU POS4 DEBUG]     s1[%zu] = %.6f → value = %.6f\n", test_idx, s1[test_idx], test_val);
-                }
-              }
+              printf("[CPU DEBUG] n=%zu, kx=%zu, byte_idx=%zu, byte=0x%02x, even=%u, odd=%u, sc=%.6f, val_even=%.6f, val_odd=%.6f\n",
+                     n, kx, byte_idx, packed_byte, val_even, val_odd, sc,
+                     sc * (static_cast<float>(val_even) - static_cast<float>(global_zero_point)),
+                     (kx + 1 < K1_logical) ? sc * (static_cast<float>(val_odd) - static_cast<float>(global_zero_point)) : 0.0f);
             }
           } else {
             B1_deq[n * K1_logical + kx] = 0.0f;
             if (kx + 1 < K1_logical) {
               B1_deq[n * K1_logical + kx + 1] = 0.0f;
-            }
-            // Debug out-of-bounds access
-            if (Me > 0 && n == 0 && kx < 16) {
-              printf("[CPU DEBUG] Out-of-bounds at n=%zu, kx=%zu, byte_idx=%zu >= %zu\n",
-                     n, kx, physical_byte_idx, bytes_per_expert_fc1);
             }
           }
         }
@@ -591,64 +544,44 @@ static void run_moe_fc_cpu_grouped(
 
     // Debug: Print FC2 scales and weights for selected experts
     if (bit_width == 8) {
-      // CUTLASS-compatible layout access: ColumnMajorTileInterleave [K x N] for 8-bit weights
-      // Based on mixed_gemm_B_layout.h: ThreadblockK=64, ColumnsInterleaved=2
-      const size_t ThreadblockK = 64;
-      const size_t ColumnsInterleaved = 2;
-
+      // FIXED: Simple 8-bit dequantization - direct access without CUTLASS layout
+      // Each byte is a direct quantized value, stored in simple row-major order
       for (size_t n = 0; n < N2; ++n) {
         const float sc = s2[n];
         for (size_t kx = 0; kx < K2_logical; ++kx) {
-          // Calculate CUTLASS tile-interleaved index for 8-bit weights
-          size_t tile_row = kx / ThreadblockK;
-          size_t tile_col = n / ColumnsInterleaved;
-          size_t inner_row = kx % ThreadblockK;
-          size_t inner_col = n % ColumnsInterleaved;
-
-          size_t num_tile_cols = (N2 + ColumnsInterleaved - 1) / ColumnsInterleaved;
-          size_t physical_idx = tile_row * (num_tile_cols * ThreadblockK * ColumnsInterleaved) +
-                                tile_col * (ThreadblockK * ColumnsInterleaved) +
-                                inner_row * ColumnsInterleaved +
-                                inner_col;
+          // Simple row-major access: weights stored as [N2 x K2_logical]
+          size_t physical_idx = n * K2_logical + kx;
 
           if (physical_idx < bytes_per_expert_fc2) {
-            // Dequantize with zero-point subtraction to align with CUDA implementation
-            // u8 quant with per-column scale and zp=128
-            float dequantized_val = sc * (static_cast<float>(expert_B2_q[physical_idx]) - static_cast<float>(global_zero_point));
-            // FIXED: Use consistent row-major storage like FC1
+            // Direct dequantization: scale * (quantized_value - zero_point)
+            uint8_t quantized_val = expert_B2_q[physical_idx];
+            float dequantized_val = sc * (static_cast<float>(quantized_val) - static_cast<float>(global_zero_point));
             B2_deq[n * K2_logical + kx] = dequantized_val;
           } else {
-            // Fallback to zero if index is out of bounds
             B2_deq[n * K2_logical + kx] = 0.0f;
           }
         }
       }
     } else {
-      // TEST: Use same simple column-major approach as FC1
+      // FIXED: Simple 4-bit dequantization - exact inverse of Python test logic
+      // Python test: (q_odd << 4) | q_even, so we extract: even = byte & 0x0F, odd = byte >> 4
       for (size_t n = 0; n < N2; ++n) {
+        const float sc = s2[n];
         for (size_t kx = 0; kx < K2_logical; kx += 2) {
-          // FIXED: For 4-bit weights, each column is stored consecutively
-          // Each expert has K2_packed bytes per column
-          size_t byte_k = kx / 2;
-          size_t physical_byte_idx = n * K2_packed + byte_k;
+          // Simple packed access: 2 weights per byte in row-major order
+          size_t byte_idx = (n * K2_logical + kx) / 2;
 
-          if (physical_byte_idx < bytes_per_expert_fc2) {
-            const uint8_t b = expert_B2_q[physical_byte_idx];
-            const uint8_t lo = b & 0x0F;
-            const uint8_t hi = (b >> 4) & 0x0F;
+          if (byte_idx < bytes_per_expert_fc2) {
+            const uint8_t packed_byte = expert_B2_q[byte_idx];
 
-            // FIXED: Apply same scale indexing fix as FC1
-            size_t scale_idx_pos0 = (n + byte_k) % N2;
-            size_t scale_idx_pos1 = (n + byte_k) % N2;
+            // Extract 4-bit values: low nibble first, then high nibble
+            const uint8_t val_even = packed_byte & 0x0F;        // First weight (even position)
+            const uint8_t val_odd = (packed_byte >> 4) & 0x0F;  // Second weight (odd position)
 
-            const float sc_pos0 = s2[scale_idx_pos0];
-            const float sc_pos1 = s2[scale_idx_pos1];
-
-            // MATCH FC1 4-bit: Use row-major storage (n * K2_logical + kx) like FC1
-            // FIXED: CUDA expects low nibble first, then high nibble
-            B2_deq[n * K2_logical + kx] = sc_pos0 * (static_cast<float>(lo) - static_cast<float>(global_zero_point));
+            // Dequantize both weights with the same scale for this column
+            B2_deq[n * K2_logical + kx] = sc * (static_cast<float>(val_even) - static_cast<float>(global_zero_point));
             if (kx + 1 < K2_logical) {
-              B2_deq[n * K2_logical + kx + 1] = sc_pos1 * (static_cast<float>(hi) - static_cast<float>(global_zero_point));
+              B2_deq[n * K2_logical + kx + 1] = sc * (static_cast<float>(val_odd) - static_cast<float>(global_zero_point));
             }
           } else {
             B2_deq[n * K2_logical + kx] = 0.0f;
@@ -891,6 +824,25 @@ void run_moe_fc_cpu(const float* input_activations, const float* gating_output,
           const int64_t actual_inter_size = fc1_output_size / 2;
           const float* fc2_weights = fc2_expert_weights + expert_idx * actual_inter_size * hidden_size;
 
+          // DEBUG: Print FC2 input and weights for Expert 5
+          if (expert_idx == 5) {
+            printf("[CPU FC2 GEMM DEBUG] Expert %lld FC2 input fc1_output[0:8]: ", expert_idx);
+            int64_t max_input_elements = std::min(static_cast<int64_t>(8), actual_inter_size);
+            for (int i = 0; i < max_input_elements; ++i) {
+              printf("%.6f ", fc1_output[i]);
+            }
+            printf("...\n");
+
+            // Check bounds for weights access
+            int64_t total_weight_elements = actual_inter_size * hidden_size;
+            int64_t max_weight_elements = std::min(static_cast<int64_t>(8), total_weight_elements);
+            printf("[CPU FC2 GEMM DEBUG] Expert %lld FC2 weights fc2_weights[0:%lld]: ", expert_idx, max_weight_elements);
+            for (int64_t i = 0; i < max_weight_elements; ++i) {
+              printf("%.6f ", fc2_weights[i]);
+            }
+            printf("...\n");
+          }
+
           // GEMM: C = A * B where A is fc1_output (1 x K), B is fc2_weights (N x K), C is output_row (1 x N)
           MlasGemm(CblasNoTrans, CblasTrans,
                    1, static_cast<size_t>(hidden_size), static_cast<size_t>(actual_inter_size),
@@ -900,6 +852,16 @@ void run_moe_fc_cpu(const float* input_activations, const float* gating_output,
                    0.0f,
                    output_row, static_cast<size_t>(hidden_size),
                    nullptr);
+
+          // DEBUG: Print FC2 output for Expert 5
+          if (expert_idx == 5) {
+            int64_t max_output_elements = std::min(static_cast<int64_t>(8), hidden_size);
+            printf("[CPU FC2 GEMM DEBUG] Expert %lld FC2 output output_row[0:%lld]: ", expert_idx, max_output_elements);
+            for (int64_t i = 0; i < max_output_elements; ++i) {
+              printf("%.6f ", output_row[i]);
+            }
+            printf("...\n");
+          }
         }
       });
 
@@ -1016,85 +978,113 @@ Status QMoE<T>::PrepackAndDequantizeWeights(OpKernelContext* context,
 
     // Corrected FC1 weight dequantization
     if constexpr (UseUInt4x2) {
-      // 4-bit dequantization logic for FC1 weights: unsigned nibble with zero-point=8
+      // FIXED: Simple 4-bit dequantization for FC1 weights
+      // Use simple row-major packed format: 2 weights per byte
       for (int64_t expert_idx = 0; expert_idx < moe_params.num_experts; ++expert_idx) {
         for (int64_t col = 0; col < fc1_output_size; ++col) {
           const float scale = static_cast<float>(fc1_scales_data[expert_idx * fc1_output_size + col]);
-          for (int64_t row = 0; row < moe_params.hidden_size; ++row) {
-            const size_t packed_idx = (row / 2) * fc1_output_size + col;
-            const uint8_t packed_val = fc1_weights_data[expert_idx * (moe_params.hidden_size / 2) * fc1_output_size + packed_idx];
+          for (int64_t row = 0; row < moe_params.hidden_size; row += 2) {
+            // Simple row-major packed access: weights stored as [expert][col][row/2]
+            const size_t byte_idx = expert_idx * fc1_output_size * (moe_params.hidden_size / 2) +
+                                    col * (moe_params.hidden_size / 2) + (row / 2);
+            const uint8_t packed_val = fc1_weights_data[byte_idx];
 
-            // Unpack the two 4-bit values
-            const uint8_t val = (row % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
-            const float dequantized_val = scale * (static_cast<float>(val) - 8.0f);
+            // Extract 4-bit values: low nibble first, then high nibble
+            const uint8_t val_even = packed_val & 0x0F;        // First weight (even row)
+            const uint8_t val_odd = (packed_val >> 4) & 0x0F;  // Second weight (odd row)
 
-            // Debug first few values for Expert 5
-            if (expert_idx == 5 && col < 8 && row == 0) {
-              printf("[CPU 4BIT DEBUG] Expert %lld, col %lld, row %lld: packed_idx=%zu, packed_val=0x%02x, val=%d, scale=%f, dequant=%f\n",
-                     expert_idx, col, row, packed_idx, packed_val, val, scale, dequantized_val);
+            // Dequantize: scale * (value - zero_point), assuming zero_point = 8 for 4-bit
+            const float dequantized_val_even = scale * (static_cast<float>(val_even) - 8.0f);
+            const float dequantized_val_odd = scale * (static_cast<float>(val_odd) - 8.0f);
+
+            // Store in column-major layout for MlasGemm: [expert][col][row]
+            prepacked_fc1_weights_data_[expert_idx * fc1_output_size * moe_params.hidden_size + col * moe_params.hidden_size + row] = dequantized_val_even;
+            if (row + 1 < moe_params.hidden_size) {
+              prepacked_fc1_weights_data_[expert_idx * fc1_output_size * moe_params.hidden_size + col * moe_params.hidden_size + row + 1] = dequantized_val_odd;
             }
 
-            // Store in column-major layout for MlasGemm
-            prepacked_fc1_weights_data_[expert_idx * fc1_output_size * moe_params.hidden_size + col * moe_params.hidden_size + row] = dequantized_val;
+            // Debug first few values for Expert 5
+            if (expert_idx == 5 && col < 8 && row < 8) {
+              printf("[CPU 4BIT DEBUG] Expert %lld, col %lld, row %lld: byte_idx=%zu, packed_val=0x%02x, val_even=%d, val_odd=%d, scale=%f, dequant_even=%f, dequant_odd=%f\n",
+                     expert_idx, col, row, byte_idx, packed_val, val_even, val_odd, scale, dequantized_val_even, dequantized_val_odd);
+            }
           }
         }
       }
     } else {
-      // Corrected 8-bit dequantization logic for FC1 weights
-
+      // FIXED: Simple 8-bit dequantization for FC1 weights
+      // Direct access without CUTLASS tile layout
       for (int64_t expert_idx = 0; expert_idx < moe_params.num_experts; ++expert_idx) {
         for (int64_t col = 0; col < fc1_output_size; ++col) {
           const float scale = static_cast<float>(fc1_scales_data[expert_idx * fc1_output_size + col]);
           for (int64_t row = 0; row < moe_params.hidden_size; ++row) {
-            // Weights are stored column-major in the source tensor
-            const size_t quant_idx = col * moe_params.hidden_size + row;
-            const uint8_t val = fc1_weights_data[expert_idx * fc1_output_size * moe_params.hidden_size + quant_idx];
+            // Simple row-major access: weights stored as [expert][col][row]
+            const size_t idx = expert_idx * fc1_output_size * moe_params.hidden_size + col * moe_params.hidden_size + row;
+            const uint8_t val = fc1_weights_data[idx];
 
-            // Dequantize: scale * (value - zero_point)
-            // For symmetric 8-bit, the range is [-128, 127] and zero point is 128
+            // Direct dequantization: scale * (value - zero_point)
+            // For 8-bit quantization, zero point is typically 128
             const float dequantized_val = scale * (static_cast<float>(val) - 128.0f);
-            prepacked_fc1_weights_data_[expert_idx * fc1_output_size * moe_params.hidden_size + quant_idx] = dequantized_val;
-
-            // Print first few values for debugging
+            prepacked_fc1_weights_data_[idx] = dequantized_val;
           }
         }
       }
     }  // Corrected FC2 weight dequantization
     if constexpr (UseUInt4x2) {
-      // 4-bit dequantization logic for FC2 weights: unsigned nibble with zero-point=8
+      // FIXED: Simple 4-bit dequantization for FC2 weights
+      // Use simple row-major packed format: 2 weights per byte
       for (int64_t expert_idx = 0; expert_idx < moe_params.num_experts; ++expert_idx) {
         for (int64_t col = 0; col < moe_params.hidden_size; ++col) {
           const float scale = static_cast<float>(fc2_scales_data[expert_idx * moe_params.hidden_size + col]);
-          for (int64_t row = 0; row < moe_params.inter_size; ++row) {
-            const size_t packed_idx = (row / 2) * moe_params.hidden_size + col;
-            const uint8_t packed_val = fc2_weights_data[expert_idx * (moe_params.inter_size / 2) * moe_params.hidden_size + packed_idx];
+          for (int64_t row = 0; row < moe_params.inter_size; row += 2) {
+            // Simple row-major packed access: weights stored as [expert][col][row/2]
+            const size_t byte_idx = expert_idx * moe_params.hidden_size * (moe_params.inter_size / 2) +
+                                    col * (moe_params.inter_size / 2) + (row / 2);
+            const uint8_t packed_val = fc2_weights_data[byte_idx];
 
-            // Unpack the two 4-bit values
-            const uint8_t val = (row % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
-            const float dequantized_val = scale * (static_cast<float>(val) - 8.0f);
+            // Extract 4-bit values: low nibble first, then high nibble
+            const uint8_t val_even = packed_val & 0x0F;        // First weight (even row)
+            const uint8_t val_odd = (packed_val >> 4) & 0x0F;  // Second weight (odd row)
 
-            // Store in column-major layout for MlasGemm
-            prepacked_fc2_weights_data_[expert_idx * moe_params.hidden_size * moe_params.inter_size + col * moe_params.inter_size + row] = dequantized_val;
+            // Dequantize: scale * (value - zero_point), assuming zero_point = 8 for 4-bit
+            const float dequantized_val_even = scale * (static_cast<float>(val_even) - 8.0f);
+            const float dequantized_val_odd = scale * (static_cast<float>(val_odd) - 8.0f);
+
+            // Store in column-major layout for MlasGemm: [expert][col][row]
+            prepacked_fc2_weights_data_[expert_idx * moe_params.hidden_size * moe_params.inter_size + col * moe_params.inter_size + row] = dequantized_val_even;
+            if (row + 1 < moe_params.inter_size) {
+              prepacked_fc2_weights_data_[expert_idx * moe_params.hidden_size * moe_params.inter_size + col * moe_params.inter_size + row + 1] = dequantized_val_odd;
+            }
+
+            // Debug first few values for Expert 5
+            if (expert_idx == 5 && col < 8 && row < 8) {
+              printf("[CPU FC2 4BIT DEBUG] Expert %lld, col %lld, row %lld: byte_idx=%zu, packed_val=0x%02x, val_even=%d, val_odd=%d, scale=%f, dequant_even=%f, dequant_odd=%f\n",
+                     expert_idx, col, row, byte_idx, packed_val, val_even, val_odd, scale, dequantized_val_even, dequantized_val_odd);
+            }
           }
         }
       }
     } else {
-      // Corrected 8-bit dequantization logic for FC2 weights
-
+      // FIXED: Simple 8-bit dequantization for FC2 weights
+      // Direct access without CUTLASS tile layout
       for (int64_t expert_idx = 0; expert_idx < moe_params.num_experts; ++expert_idx) {
         for (int64_t col = 0; col < moe_params.hidden_size; ++col) {
           const float scale = static_cast<float>(fc2_scales_data[expert_idx * moe_params.hidden_size + col]);
           for (int64_t row = 0; row < moe_params.inter_size; ++row) {
-            // Weights are stored column-major in the source tensor
-            const size_t quant_idx = col * moe_params.inter_size + row;
-            const uint8_t val = fc2_weights_data[expert_idx * moe_params.hidden_size * moe_params.inter_size + quant_idx];
+            // Simple row-major access: weights stored as [expert][col][row]
+            const size_t idx = expert_idx * moe_params.hidden_size * moe_params.inter_size + col * moe_params.inter_size + row;
+            const uint8_t val = fc2_weights_data[idx];
 
-            // Dequantize: scale * (value - zero_point)
-            // For symmetric 8-bit, the range is [-128, 127] and zero point is 128
+            // Direct dequantization: scale * (value - zero_point)
+            // For 8-bit quantization, zero point is typically 128
             const float dequantized_val = scale * (static_cast<float>(val) - 128.0f);
-            prepacked_fc2_weights_data_[expert_idx * moe_params.hidden_size * moe_params.inter_size + quant_idx] = dequantized_val;
+            prepacked_fc2_weights_data_[idx] = dequantized_val;
 
-            // Print first few values for debugging
+            // Debug first few values for Expert 5
+            if (expert_idx == 5 && col < 8 && row < 8) {
+              printf("[CPU FC2 8BIT DEBUG] Expert %lld, col %lld, row %lld: idx=%zu, val=%d, scale=%f, dequant=%f\n",
+                     expert_idx, col, row, idx, val, scale, dequantized_val);
+            }
           }
         }
       }

@@ -129,6 +129,94 @@ void generic_moe_gemm_kernelLauncher(const T* A, const WeightType* B, const T* w
       reinterpret_cast<ElementType const*>(biases), reinterpret_cast<ElementType*>(C), total_rows_before_expert, gemm_n,
       gemm_k);
 
+  // DEBUG: Print ALL GEMM calls to understand the pattern
+  printf("[CUDA GEMM DEBUG] ALL CALLS: gemm_n=%ld, gemm_k=%ld, num_experts=%d\n", gemm_n, gemm_k, num_experts);
+
+  // DEBUG: Print FC1 and FC2 GEMM input values
+  bool is_fc1_gemm = (gemm_n >= 11000);                   // FC1: hidden_size -> inter_size (large gemm_n, e.g., 2880->11520)
+  bool is_fc2_gemm = (gemm_k >= 5000 && gemm_n <= 8192);  // FC2: inter_size -> hidden_size (large gemm_k, small gemm_n, e.g., 5760->2880)
+
+  if (is_fc1_gemm || is_fc2_gemm) {
+    const char* gemm_type = is_fc1_gemm ? "FC1" : "FC2";
+    printf("[CUDA %s GEMM DEBUG] Before GEMM: gemm_n=%ld, gemm_k=%ld, num_experts=%d\n", gemm_type, gemm_n, gemm_k, num_experts);
+
+    // Print first few input values for Expert 5 (if exists) with bounds checking
+    if (num_experts > 5 && total_rows_before_expert != nullptr) {
+      // Safely check if Expert 5 has any rows assigned
+      int64_t expert5_start = total_rows_before_expert[5];
+      int64_t expert6_start = (num_experts > 6) ? total_rows_before_expert[6] : expert5_start;
+      int64_t expert5_rows = expert6_start - expert5_start;
+
+      printf("[CUDA %s GEMM DEBUG] total_rows_before_expert[5]=%ld, next=%ld\n",
+             gemm_type, expert5_start, expert6_start);
+
+      if (expert5_rows > 0 && expert5_start >= 0) {
+        printf("[CUDA %s GEMM DEBUG] Expert 5 has %ld rows starting at %ld\n", gemm_type, expert5_rows, expert5_start);
+
+        // Calculate input index with overflow checking
+        int64_t input_start_idx = expert5_start * gemm_k;
+        int64_t max_input_elements = 8;
+
+        if (input_start_idx >= 0 && gemm_k > 0 && A != nullptr) {
+          printf("[CUDA %s GEMM DEBUG] Expert 5 input A[%ld::%ld]: ", gemm_type, input_start_idx, input_start_idx + max_input_elements);
+          for (int i = 0; i < max_input_elements && i < gemm_k; ++i) {
+            printf("%.6f ", static_cast<float>(A[input_start_idx + i]));
+          }
+          printf("...\n");
+        }
+
+        // Print quantized weights B for Expert 5 (first few values) with bounds checking
+        if (B != nullptr && gemm_k > 0 && gemm_n > 0) {
+          // Calculate weight index with overflow protection
+          int64_t weight_base_idx = 0;
+          int64_t max_weight_elements = 8;
+
+          if (is_fc1_gemm) {
+            // For FC1: Expert 5 weights start at offset
+            if (gemm_k <= INT32_MAX / gemm_n && gemm_n <= INT32_MAX / 2) {
+              weight_base_idx = 5LL * (gemm_k * gemm_n / 2);
+            }
+          } else {
+            // For FC2: Same calculation but different semantics
+            if (gemm_k <= INT32_MAX / gemm_n && gemm_n <= INT32_MAX / 2) {
+              weight_base_idx = 5LL * (gemm_k * gemm_n / 2);
+            }
+          }
+
+          if (weight_base_idx >= 0) {
+            printf("[CUDA %s GEMM DEBUG] Expert 5 weights B[%ld::%ld]: ", gemm_type, weight_base_idx, weight_base_idx + max_weight_elements);
+            for (int i = 0; i < max_weight_elements; ++i) {
+              if constexpr (std::is_same<CutlassWeightType, cutlass::uint4b_t>::value) {
+                printf("0x%02x ", reinterpret_cast<const uint8_t*>(B)[weight_base_idx + i]);
+              } else {
+                // For non-4bit weights, adjust index calculation
+                int64_t full_weight_idx = 5LL * gemm_k * gemm_n + i;
+                if (full_weight_idx >= 0 && gemm_k <= INT32_MAX / gemm_n) {
+                  printf("%.6f ", static_cast<float>(B[full_weight_idx]));
+                }
+              }
+            }
+            printf("...\n");
+          }
+        }
+
+        // Print scales for Expert 5 with bounds checking
+        if (weight_scales != nullptr && gemm_n > 0) {
+          int64_t scales_base_idx = 5LL * gemm_n;
+          int64_t max_scale_elements = (gemm_n < 8) ? gemm_n : 8;
+
+          if (scales_base_idx >= 0) {
+            printf("[CUDA %s GEMM DEBUG] Expert 5 scales[%ld::%ld]: ", gemm_type, scales_base_idx, scales_base_idx + max_scale_elements);
+            for (int64_t i = 0; i < max_scale_elements; ++i) {
+              printf("%.6f ", static_cast<float>(weight_scales[scales_base_idx + i]));
+            }
+            printf("...\n");
+          }
+        }
+      }
+    }
+  }
+
   GemmGrouped gemm;
 
   auto can_implement = gemm.can_implement(args);
@@ -150,6 +238,34 @@ void generic_moe_gemm_kernelLauncher(const T* A, const WeightType* B, const T* w
     std::string err_msg =
         "Failed to run cutlass variable batched gemm. Error: " + std::string(cutlassGetStatusString(run_status));
     ORT_THROW("[MoE Runner] " + err_msg);
+  }
+
+  // DEBUG: Print FC1 and FC2 GEMM output values
+  if (is_fc1_gemm || is_fc2_gemm) {
+    cudaStreamSynchronize(stream);  // Ensure GEMM is complete before reading output
+
+    const char* gemm_type = is_fc1_gemm ? "FC1" : "FC2";
+
+    if (num_experts > 5 && total_rows_before_expert != nullptr && C != nullptr) {
+      int64_t expert5_start = total_rows_before_expert[5];
+      int64_t expert6_start = (num_experts > 6) ? total_rows_before_expert[6] : expert5_start;
+      int64_t expert5_rows = expert6_start - expert5_start;
+
+      if (expert5_rows > 0 && expert5_start >= 0 && gemm_n > 0) {
+        // Calculate output index with overflow checking
+        int64_t output_start_idx = expert5_start * gemm_n;
+        int64_t max_output_elements = (gemm_n < 8) ? gemm_n : 8;
+
+        if (output_start_idx >= 0) {
+          // Print output values for Expert 5 first row
+          printf("[CUDA %s GEMM DEBUG] Expert 5 output C[%ld::%ld]: ", gemm_type, output_start_idx, output_start_idx + max_output_elements);
+          for (int64_t i = 0; i < max_output_elements; ++i) {
+            printf("%.6f ", static_cast<float>(C[output_start_idx + i]));
+          }
+          printf("...\n");
+        }
+      }
+    }
   }
 }
 
