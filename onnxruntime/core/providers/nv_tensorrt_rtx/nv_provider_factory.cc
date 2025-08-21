@@ -5,6 +5,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "nv_provider_factory.h"
 #include <atomic>
+#include <string>
 #include "nv_execution_provider.h"
 #include "nv_provider_factory_creator.h"
 #include "nv_data_transfer.h"
@@ -575,6 +576,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
    * @return True if the device is a supported NVIDIA GPU, false otherwise.
    */
   bool IsOrtHardwareDeviceSupported(const OrtHardwareDevice& device) {
+#if _WIN32
     const auto& metadata_entries = device.metadata.Entries();
     const auto it = metadata_entries.find("LUID");
     if (it == metadata_entries.end()) {
@@ -616,6 +618,25 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     }
 
     return false;
+#else
+    const auto& metadata_entries = device.metadata.Entries();
+    const auto it = metadata_entries.find("pci_bus_id");
+    if (it == metadata_entries.end()) {
+      return false;
+    }
+    auto& target_id = it->second;
+    int cuda_device_idx = 0;
+    if (cudaDeviceGetByPCIBusId(&cuda_device_idx, target_id.c_str()) != cudaSuccess) {
+      return false;
+    }
+
+    cudaDeviceProp prop;
+    if (cudaGetDeviceProperties(&prop, cuda_device_idx) != cudaSuccess) {
+      return false;
+    }
+    // Ampere architecture or newer is required.
+    return prop.major >= 8;
+#endif
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
