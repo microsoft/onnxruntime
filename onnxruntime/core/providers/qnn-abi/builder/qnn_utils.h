@@ -414,110 +414,110 @@ Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
  */
 Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm);
 
-#define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                                                             \
-  case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_##TYPE: {                                      \
-    const OrtTypeInfo* type_info_##TYPE = nullptr;                                                             \
-    auto status = ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info_##TYPE); \
-    if (status != nullptr) {                                                                                   \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get value info type info");                        \
-    }                                                                                                          \
-    const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info_##TYPE = nullptr;                              \
-    status = ort_api.CastTypeInfoToTensorInfo(type_info_##TYPE, &tensor_type_and_shape_info_##TYPE);           \
-    if (status != nullptr) {                                                                                   \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to cast type info to tensor info");                   \
-    }                                                                                                          \
-    size_t num_dims_##TYPE = 0;                                                                                \
-    status = ort_api.GetDimensionsCount(tensor_type_and_shape_info_##TYPE, &num_dims_##TYPE);                  \
-    if (status != nullptr) {                                                                                   \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get dimensions count");                             \
-    }                                                                                                          \
-    std::vector<int64_t> dims_##TYPE(num_dims_##TYPE);                                                         \
-    status = ort_api.GetDimensions(tensor_type_and_shape_info_##TYPE, dims_##TYPE.data(), dims_##TYPE.size()); \
-    if (status != nullptr) {                                                                                   \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get dimensions");                                   \
-    }                                                                                                          \
-                                                                                                               \
-    /* Calculate element count from shape */                                                                   \
-    size_t element_count = 1;                                                                                  \
-    for (size_t i = 0; i < num_dims_##TYPE; ++i) {                                                             \
-      element_count *= static_cast<size_t>(dims_##TYPE[i]);                                                    \
-    }                                                                                                          \
-                                                                                                               \
-    /* Calculate tensor byte size */                                                                           \
-    size_t tensor_byte_size = element_count * sizeof(ELEMENT_TYPE);                                            \
-                                                                                                               \
-    /* Get tensor data */                                                                                      \
-    const OrtValue* initializer_value = nullptr;                                                               \
+#define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                                                                      \
+  case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_##TYPE: {                                               \
+    const OrtTypeInfo* type_info_##TYPE = nullptr;                                                                      \
+    auto status = ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info_##TYPE);      \
+    if (status != nullptr) {                                                                                            \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get value info type info");                                  \
+    }                                                                                                                   \
+    const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info_##TYPE = nullptr;                                       \
+    status = ort_api.CastTypeInfoToTensorInfo(type_info_##TYPE, &tensor_type_and_shape_info_##TYPE);                    \
+    if (status != nullptr) {                                                                                            \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to cast type info to tensor info");                             \
+    }                                                                                                                   \
+    size_t num_dims_##TYPE = 0;                                                                                         \
+    status = ort_api.GetDimensionsCount(tensor_type_and_shape_info_##TYPE, &num_dims_##TYPE);                           \
+    if (status != nullptr) {                                                                                            \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get dimensions count");                                      \
+    }                                                                                                                   \
+    std::vector<int64_t> dims_##TYPE(num_dims_##TYPE);                                                                  \
+    status = ort_api.GetDimensions(tensor_type_and_shape_info_##TYPE, dims_##TYPE.data(), dims_##TYPE.size());          \
+    if (status != nullptr) {                                                                                            \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get dimensions");                                            \
+    }                                                                                                                   \
+                                                                                                                        \
+    /* Calculate element count from shape */                                                                            \
+    size_t element_count = 1;                                                                                           \
+    for (size_t i = 0; i < num_dims_##TYPE; ++i) {                                                                      \
+      element_count *= static_cast<size_t>(dims_##TYPE[i]);                                                             \
+    }                                                                                                                   \
+                                                                                                                        \
+    /* Calculate tensor byte size */                                                                                    \
+    size_t tensor_byte_size = element_count * sizeof(ELEMENT_TYPE);                                                     \
+                                                                                                                        \
+    /* Get tensor data */                                                                                               \
+    const OrtValue* initializer_value = nullptr;                                                                        \
     status = ort_api.ValueInfo_GetInitializerValue(static_cast<const OrtValueInfo*>(&initializer), &initializer_value); \
-    if (status != nullptr) {                                                                                   \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get initializer value");                           \
-    }                                                                                                          \
-    const void* data = nullptr;                                                                                \
-    status = ort_api.GetTensorData(initializer_value, &data);                                                  \
-    if (status != nullptr) {                                                                                   \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get tensor data");                                  \
-    }                                                                                                          \
-                                                                                                               \
-    /* Resize output buffer and copy data */                                                                   \
-    unpacked_tensor.resize(tensor_byte_size);                                                                  \
-    if (data != nullptr && tensor_byte_size > 0) {                                                             \
-      std::memcpy(unpacked_tensor.data(), data, tensor_byte_size);                                             \
-    }                                                                                                          \
-    return Status::OK();                                                                                       \
+    if (status != nullptr) {                                                                                            \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get initializer value");                                     \
+    }                                                                                                                   \
+    const void* data = nullptr;                                                                                         \
+    status = ort_api.GetTensorData(initializer_value, &data);                                                           \
+    if (status != nullptr) {                                                                                            \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get tensor data");                                           \
+    }                                                                                                                   \
+                                                                                                                        \
+    /* Resize output buffer and copy data */                                                                            \
+    unpacked_tensor.resize(tensor_byte_size);                                                                           \
+    if (data != nullptr && tensor_byte_size > 0) {                                                                      \
+      std::memcpy(unpacked_tensor.data(), data, tensor_byte_size);                                                      \
+    }                                                                                                                   \
+    return Status::OK();                                                                                                \
   }
 
-#define CASE_UNPACK_INT4(TYPE, ELEMENT_TYPE, DATA_SIZE)                                                        \
-  case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_##TYPE: {                                      \
-    /* Get tensor shape to calculate element count */                                                          \
-    const OrtTypeInfo* type_info_##TYPE = nullptr;                                                             \
-    auto status = ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info_##TYPE); \
-    if (status != nullptr) {                                                                                   \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get value info type info");                        \
-    }                                                                                                          \
-    const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info_##TYPE = nullptr;                              \
-    status = ort_api.CastTypeInfoToTensorInfo(type_info_##TYPE, &tensor_type_and_shape_info_##TYPE);           \
-    if (status != nullptr) {                                                                                   \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to cast type info to tensor info");                   \
-    }                                                                                                          \
-    size_t num_dims_##TYPE = 0;                                                                                \
-    status = ort_api.GetDimensionsCount(tensor_type_and_shape_info_##TYPE, &num_dims_##TYPE);                  \
-    if (status != nullptr) {                                                                                   \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get dimensions count");                             \
-    }                                                                                                          \
-    std::vector<int64_t> dims_##TYPE(num_dims_##TYPE);                                                         \
-    status = ort_api.GetDimensions(tensor_type_and_shape_info_##TYPE, dims_##TYPE.data(), dims_##TYPE.size()); \
-    if (status != nullptr) {                                                                                   \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get dimensions");                                   \
-    }                                                                                                          \
-                                                                                                               \
-    /* Calculate element count from shape */                                                                   \
-    size_t element_count = 1;                                                                                  \
-    for (size_t i = 0; i < num_dims_##TYPE; ++i) {                                                             \
-      element_count *= static_cast<size_t>(dims_##TYPE[i]);                                                    \
-    }                                                                                                          \
-                                                                                                               \
-    /* Calculate packed element count and tensor byte size for INT4/UINT4 */                                   \
-    size_t packed_element_count = ELEMENT_TYPE::CalcNumInt4Pairs(element_count);                               \
-    size_t tensor_byte_size = packed_element_count * sizeof(ELEMENT_TYPE);                                     \
-                                                                                                               \
-    /* Get tensor data */                                                                                      \
-    const OrtValue* initializer_value = nullptr;                                                               \
+#define CASE_UNPACK_INT4(TYPE, ELEMENT_TYPE, DATA_SIZE)                                                                 \
+  case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_##TYPE: {                                               \
+    /* Get tensor shape to calculate element count */                                                                   \
+    const OrtTypeInfo* type_info_##TYPE = nullptr;                                                                      \
+    auto status = ort_api.GetValueInfoTypeInfo(static_cast<const OrtValueInfo*>(&initializer), &type_info_##TYPE);      \
+    if (status != nullptr) {                                                                                            \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get value info type info");                                  \
+    }                                                                                                                   \
+    const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info_##TYPE = nullptr;                                       \
+    status = ort_api.CastTypeInfoToTensorInfo(type_info_##TYPE, &tensor_type_and_shape_info_##TYPE);                    \
+    if (status != nullptr) {                                                                                            \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to cast type info to tensor info");                             \
+    }                                                                                                                   \
+    size_t num_dims_##TYPE = 0;                                                                                         \
+    status = ort_api.GetDimensionsCount(tensor_type_and_shape_info_##TYPE, &num_dims_##TYPE);                           \
+    if (status != nullptr) {                                                                                            \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get dimensions count");                                      \
+    }                                                                                                                   \
+    std::vector<int64_t> dims_##TYPE(num_dims_##TYPE);                                                                  \
+    status = ort_api.GetDimensions(tensor_type_and_shape_info_##TYPE, dims_##TYPE.data(), dims_##TYPE.size());          \
+    if (status != nullptr) {                                                                                            \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get dimensions");                                            \
+    }                                                                                                                   \
+                                                                                                                        \
+    /* Calculate element count from shape */                                                                            \
+    size_t element_count = 1;                                                                                           \
+    for (size_t i = 0; i < num_dims_##TYPE; ++i) {                                                                      \
+      element_count *= static_cast<size_t>(dims_##TYPE[i]);                                                             \
+    }                                                                                                                   \
+                                                                                                                        \
+    /* Calculate packed element count and tensor byte size for INT4/UINT4 */                                            \
+    size_t packed_element_count = ELEMENT_TYPE::CalcNumInt4Pairs(element_count);                                        \
+    size_t tensor_byte_size = packed_element_count * sizeof(ELEMENT_TYPE);                                              \
+                                                                                                                        \
+    /* Get tensor data */                                                                                               \
+    const OrtValue* initializer_value = nullptr;                                                                        \
     status = ort_api.ValueInfo_GetInitializerValue(static_cast<const OrtValueInfo*>(&initializer), &initializer_value); \
-    if (status != nullptr) {                                                                                   \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get initializer value");                           \
-    }                                                                                                          \
-    const void* data = nullptr;                                                                                \
-    status = ort_api.GetTensorData(initializer_value, &data);                                                  \
-    if (status != nullptr) {                                                                                   \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get tensor data");                                  \
-    }                                                                                                          \
-                                                                                                               \
-    /* Resize output buffer and copy data */                                                                   \
-    unpacked_tensor.resize(tensor_byte_size);                                                                  \
-    if (data != nullptr && tensor_byte_size > 0) {                                                             \
-      std::memcpy(unpacked_tensor.data(), data, tensor_byte_size);                                             \
-    }                                                                                                          \
-    return Status::OK();                                                                                       \
+    if (status != nullptr) {                                                                                            \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get initializer value");                                     \
+    }                                                                                                                   \
+    const void* data = nullptr;                                                                                         \
+    status = ort_api.GetTensorData(initializer_value, &data);                                                           \
+    if (status != nullptr) {                                                                                            \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get tensor data");                                           \
+    }                                                                                                                   \
+                                                                                                                        \
+    /* Resize output buffer and copy data */                                                                            \
+    unpacked_tensor.resize(tensor_byte_size);                                                                           \
+    if (data != nullptr && tensor_byte_size > 0) {                                                                      \
+      std::memcpy(unpacked_tensor.data(), data, tensor_byte_size);                                                      \
+    }                                                                                                                   \
+    return Status::OK();                                                                                                \
   }
 
 Status ReadExternalData(const OrtApi& ort_api,

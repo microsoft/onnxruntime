@@ -261,17 +261,17 @@ Status QnnModel::ExecuteGraph(OrtKernelContext* context,
     OrtTensorTypeAndShapeInfo* tensor_type_and_shape = nullptr;
     OrtStatusPtr tensor_status = ort_api.GetTensorTypeAndShape(ort_tensor, &tensor_type_and_shape);
     if (tensor_status != nullptr) {
-      return 0; // Return 0 on error, will be handled by caller
+      return 0;  // Return 0 on error, will be handled by caller
     }
     size_t length;
     tensor_status = ort_api.GetTensorShapeElementCount(tensor_type_and_shape, &length);
     if (tensor_status != nullptr) {
-      return 0; // Return 0 on error, will be handled by caller
+      return 0;  // Return 0 on error, will be handled by caller
     }
     ONNXTensorElementDataType element_type;
     tensor_status = ort_api.GetTensorElementType(tensor_type_and_shape, &element_type);
     if (tensor_status != nullptr) {
-      return 0; // Return 0 on error, will be handled by caller
+      return 0;  // Return 0 on error, will be handled by caller
     }
     size_t element_size = GetElementSizeByType(element_type);
     return element_size * length;
@@ -318,10 +318,11 @@ Status QnnModel::ExecuteGraph(OrtKernelContext* context,
     const std::vector<int64_t>& output_shape = ort_output_info->shape_;
     OrtValue* ort_output_tensor = nullptr;
     RETURN_STATUS_IF_ERROR(api_ptrs_.ort_api.KernelContext_GetOutput(context,
-                                              qnn_output_info.ort_index,
-                                              output_shape.data(),
-                                              output_shape.size(),
-                                              &ort_output_tensor), api_ptrs_.ort_api);
+                                                                     qnn_output_info.ort_index,
+                                                                     output_shape.data(),
+                                                                     output_shape.size(),
+                                                                     &ort_output_tensor),
+                           api_ptrs_.ort_api);
 
     auto ort_tensor_size = TensorDataSize(ort_output_tensor);
     LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_output_info.tensor_byte_size

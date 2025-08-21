@@ -39,7 +39,6 @@ bool ORT_API_CALL QnnDataTransfer::CanCopyImpl(const OrtDataTransferImpl* this_p
   return false;
 }
 
-
 // function to copy one or more tensors.
 // implementation can optionally use async copy if a stream is available for the input.
 /*static*/

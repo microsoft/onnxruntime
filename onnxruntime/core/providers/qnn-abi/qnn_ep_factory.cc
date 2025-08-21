@@ -10,7 +10,6 @@
 #include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/qnn_ep_data_transfer.h"
 
-
 namespace onnxruntime {
 
 // OrtEpApi infrastructure to be able to use the QNN EP as an OrtEpFactory for auto EP selection.
@@ -119,7 +118,7 @@ OrtStatus* ORT_API_CALL QnnEpFactory::GetSupportedDevicesImpl(OrtEpFactory* this
 OrtStatus* ORT_API_CALL QnnEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                    _In_reads_(num_devices) const OrtHardwareDevice* const* /*devices*/,
                                                    _In_reads_(num_devices) const OrtKeyValuePairs* const* /*ep_metadata*/,
-                                                   _In_ size_t /*num_devices*/, // Mark as unused
+                                                   _In_ size_t /*num_devices*/,  // Mark as unused
                                                    _In_ const OrtSessionOptions* session_options,
                                                    _In_ const OrtLogger* logger,
                                                    _Out_ OrtEp** ep) noexcept {

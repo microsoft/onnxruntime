@@ -340,7 +340,7 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
                                                     1,
                                                     ORT_OP_ATTR_INT,
                                                     &attr),
-                              ort_api);
+                               ort_api);
         attributes.push_back(attr);
       }
     } else {
@@ -351,7 +351,7 @@ Status CreateEPContextNodes(const OrtNode** fused_nodes,
                                                   1,
                                                   ORT_OP_ATTR_INT,
                                                   &attr),
-                            ort_api);
+                             ort_api);
       attributes.push_back(attr);
     }
 

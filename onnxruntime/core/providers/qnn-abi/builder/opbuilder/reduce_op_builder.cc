@@ -295,7 +295,7 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       QNN_OP_ELEMENT_WISE_SQUARE_ROOT,
                                                       {reduce_output_name},
-                                                      {output.name}, 
+                                                      {output.name},
                                                       {},
                                                       do_op_validation),
                       "CreateQnnNode failed");

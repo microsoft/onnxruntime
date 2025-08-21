@@ -89,7 +89,7 @@ namespace onnxruntime {
     }                          \
   } while (0)
 
-#define RETURN_STATUS_IF_ERROR(fn, ort_api)            \
+#define RETURN_STATUS_IF_ERROR(fn, ort_api)                 \
   do {                                                      \
     OrtStatus* _status = (fn);                              \
     if (_status != nullptr) {                               \
@@ -110,11 +110,11 @@ namespace onnxruntime {
   RETURN_IF(!(cond), ort_api, msg)
 
 #define QNN_RETURN_IF_STATUS_NOT_OK(ort_api_fn_call, ort_api, ret_val) \
-  do {                                                               \
-    if (OrtStatus* _status = (ort_api_fn_call)) {                    \
-      (ort_api).ReleaseStatus(_status);                              \
-      return (ret_val);                                              \
-    }                                                                \
+  do {                                                                 \
+    if (OrtStatus* _status = (ort_api_fn_call)) {                      \
+      (ort_api).ReleaseStatus(_status);                                \
+      return (ret_val);                                                \
+    }                                                                  \
   } while (0)
 
 struct ApiPtrs {

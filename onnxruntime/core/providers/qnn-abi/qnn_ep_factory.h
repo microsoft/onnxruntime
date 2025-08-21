@@ -38,9 +38,9 @@ struct QnnEpFactory : public OrtEpFactory, public ApiPtrs {
   static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* this_ptr) noexcept;
 
   // const OrtApi& ort_api;
-  const std::string ep_name_;             // EP name
-  const std::string vendor_{"Qualcomm"};  // EP vendor name
-  const std::string ep_version_{"0.1.0"}; // EP version
+  const std::string ep_name_;              // EP name
+  const std::string vendor_{"Qualcomm"};   // EP vendor name
+  const std::string ep_version_{"0.1.0"};  // EP version
 
   // Qualcomm vendor ID. Refer to the ACPI ID registry (search Qualcomm): https://uefi.org/ACPI_ID_List
   const uint32_t vendor_id_{'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24)};
