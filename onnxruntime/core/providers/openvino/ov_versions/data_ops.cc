@@ -469,15 +469,7 @@ void DataOps::populate_op_mode_supported() {
                                  }
                                }
 
-                               // check for input dimensions
                                const auto& x_arg = node->InputDefs()[0];
-                               auto shape = x_arg->Shape();
-                               if (shape != nullptr) {
-                                 // input tensor rank cannot be of one dimension
-                                 if (shape->dim_size() == 1 || shape->dim_size() == 4) {
-                                   return true;
-                                 }
-                               }
                                // x_arg supports only float, int8 and float16 type
                                if ((x_arg->TypeAsProto()->tensor_type().elem_type() ==
                                     ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
@@ -563,8 +555,11 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
     return false;
   }
 
+  auto dtype = type_proto->tensor_type().elem_type();
+  // Enable bfloat16 -> float16 on-the-fly conversion
+  if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)
+    return true;
   if (is_initializer) {
-    auto dtype = type_proto->tensor_type().elem_type();
     for (auto const& var : supported_types_initializer_) {
       if ((var.first <= version_id_) &&
           (var.second == dtype)) {
@@ -579,8 +574,6 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
 #endif
     return false;
   } else {
-    auto dtype = type_proto->tensor_type().elem_type();
-
     if (device_id_.find("HETERO") != std::string::npos ||
         device_id_.find("MULTI") != std::string::npos || device_id_.find("AUTO") != std::string::npos) {
       for (auto const& var : supported_types_npu_) {
