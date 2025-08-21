@@ -417,7 +417,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreateEnvWithGlobalThreadPools = (DOrtCreateEnvWithGlobalThreadPools)Marshal.GetDelegateForFunctionPointer(api_.CreateEnvWithGlobalThreadPools, typeof(DOrtCreateEnvWithGlobalThreadPools));
             OrtCreateEnvWithCustomLoggerAndGlobalThreadPools = (DOrtCreateEnvWithCustomLoggerAndGlobalThreadPools)Marshal.GetDelegateForFunctionPointer(api_.CreateEnvWithCustomLoggerAndGlobalThreadPools, typeof(DOrtCreateEnvWithCustomLoggerAndGlobalThreadPools));
             OrtReleaseEnv = (DOrtReleaseEnv)Marshal.GetDelegateForFunctionPointer(api_.ReleaseEnv, typeof(DOrtReleaseEnv));
-
+            
             OrtEnableTelemetryEvents = (DOrtEnableTelemetryEvents)Marshal.GetDelegateForFunctionPointer(api_.EnableTelemetryEvents, typeof(DOrtEnableTelemetryEvents));
             OrtDisableTelemetryEvents = (DOrtDisableTelemetryEvents)Marshal.GetDelegateForFunctionPointer(api_.DisableTelemetryEvents, typeof(DOrtDisableTelemetryEvents));
 
@@ -702,7 +702,7 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.SessionOptionsSetEpSelectionPolicy,
                     typeof(DSessionOptionsSetEpSelectionPolicy));
 
-            OrtSessionOptionsSetEpSelectionPolicyDelegate = 
+            OrtSessionOptionsSetEpSelectionPolicyDelegate =
                 (DSessionOptionsSetEpSelectionPolicyDelegate)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsSetEpSelectionPolicyDelegate,
                     typeof(DSessionOptionsSetEpSelectionPolicyDelegate));
@@ -943,7 +943,7 @@ namespace Microsoft.ML.OnnxRuntime
 #region InferenceSession API
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtCreateStatus(
-            uint /* OrtErrorCode */ code,
+            uint /* OrtErrorCode */ code, 
             byte[] /* const char* */ msg);
         public static DOrtCreateStatus OrtCreateStatus;
 
@@ -2432,7 +2432,7 @@ namespace Microsoft.ML.OnnxRuntime
         // Auto Selection EP registration and selection customization
 
         /// <summary>
-        /// Register an execution provider library.
+        /// Register an execution provider library. 
         /// The library must implement CreateEpFactories and ReleaseEpFactory.
         /// </summary>
         /// <param name="env">Environment to add the EP library to.</param>
