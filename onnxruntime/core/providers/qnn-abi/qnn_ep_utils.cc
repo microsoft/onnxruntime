@@ -1445,6 +1445,27 @@ bool OrtCumSumNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_
   return true;
 }
 
+bool OrtScatterElementsNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
+                                                const OrtNode* redundant_clip_node,
+                                                const std::vector<const OrtNode*>& dq_nodes,
+                                                const std::vector<const OrtNode*>& q_nodes) const {
+  // ScatterElements has 1 INT32 input and 2 dq inputs
+  if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, 2)) {
+    return false;
+  }
+
+  const int32_t dt_input_1 = GetNodeIODataType(dq_nodes[0], ort_api, true, 0);
+  const int32_t dt_input_2 = GetNodeIODataType(dq_nodes[1], ort_api, true, 0);
+  const int32_t dt_output = GetNodeIODataType(q_nodes[0], ort_api, false, 0);
+
+  // All input and output types must match.
+  if (dt_input_1 != dt_input_2 || dt_input_1 != dt_output) {
+    return false;
+  }
+
+  return true;
+}
+
 // Helper function to get QDQ selection for a node
 std::optional<OrtNodeGroup> GetOrtQDQSelection(const OrtGraph* graph, const OrtApi& ort_api,
                                                const OrtNode* node, const OrtNodeGroupSelector* selector) {
@@ -1836,6 +1857,11 @@ void OrtSelectorManager::CreateSelectors() {
   OrtOpVersionsAndSelector::OpVersionsMap cumsum_ops = {
       {"CumSum", {}}};
   ort_selectors_.RegisterSelector(cumsum_ops, std::make_unique<OrtCumSumNodeGroupSelector>());
+
+  // Register scatter_elements ops
+  OrtOpVersionsAndSelector::OpVersionsMap scatter_elements_ops = {
+      {"ScatterElements", {}}};
+  ort_selectors_.RegisterSelector(scatter_elements_ops, std::make_unique<OrtScatterElementsNodeGroupSelector>());
 }
 
 void OrtSelectorManager::InitializeSelectorsMap() {

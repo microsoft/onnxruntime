@@ -355,6 +355,15 @@ class OrtCumSumNodeGroupSelector : public OrtNodeGroupSelector {
              const std::vector<const OrtNode*>& q_nodes) const override;
 };
 
+// Input: DQ nodes for Data, and Update
+// Output: Q node for output
+class OrtScatterElementsNodeGroupSelector : public OrtNodeGroupSelector {
+  bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
+};
+
 // SelectorManager for OrtGraph
 class OrtSelectorManager {
  public:

@@ -245,6 +245,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Reshape", QNN_OP_RESHAPE},
         {"Resize", QNN_OP_RESIZE},
         {"Round", QNN_OP_ELEMENT_WISE_ROUND},
+        {"ScatterElements", QNN_OP_SCATTER_ELEMENTS},
         {"ScatterND", QNN_OP_SCATTER_ND},
         {"Sigmoid", QNN_OP_SIGMOID},
         {"Sign", QNN_OP_ELEMENT_WISE_SIGN},
