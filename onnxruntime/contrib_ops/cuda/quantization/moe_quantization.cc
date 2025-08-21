@@ -114,6 +114,187 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
       reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
       reinterpret_cast<int*>(expert_for_source_row.get()), Stream(context));
 
+  // DEBUG: Print raw router logits for first few rows (matching CPU)
+  if (moe_params.num_rows > 0 && router_probs != nullptr) {
+    cudaStreamSynchronize(Stream(context));
+
+    const int debug_rows = std::min(static_cast<int>(moe_params.num_rows), 3);
+    const int debug_experts = std::min(static_cast<int>(moe_params.num_experts), 8);
+
+    // Safety check: Ensure router_probs tensor is large enough
+    size_t router_probs_total_size = router_probs->Shape().Size();
+    size_t required_size = static_cast<size_t>(debug_rows) * debug_experts;
+
+    if (required_size <= router_probs_total_size) {
+      std::vector<T> router_debug(required_size);
+
+      cudaError_t err_router = cudaMemcpy(router_debug.data(),
+                                          router_probs->template Data<T>(),
+                                          required_size * sizeof(T),
+                                          cudaMemcpyDeviceToHost);
+
+      if (err_router == cudaSuccess) {
+        for (int row = 0; row < debug_rows; ++row) {
+          printf("[CUDA DEBUG] Row %d raw router logits: ", row);
+          for (int e = 0; e < debug_experts; ++e) {
+            printf("%.6f ", static_cast<float>(router_debug[row * debug_experts + e]));
+          }
+          printf("...\n");
+        }
+      } else {
+        printf("[CUDA DEBUG] Router logits: cudaMemcpy failed (error %d)\n", err_router);
+      }
+    } else {
+      printf("[CUDA DEBUG] Router logits: skipped (tensor too small: %zu vs required %zu)\n",
+             router_probs_total_size, required_size);
+    }
+  }
+
+  // DEBUG: Print expert selection results (matching CPU debug output)
+  if (moe_params.num_rows > 0 && k_ > 0) {
+    const int debug_rows = std::min(static_cast<int>(moe_params.num_rows), 3);
+    const int debug_k = std::min(static_cast<int>(k_), 8);
+    const size_t required_elements = static_cast<size_t>(debug_rows) * debug_k;
+
+    // Safety check: Ensure we don't exceed allocated workspace sizes
+    if (required_elements > 0) {
+      std::vector<int> cuda_experts(required_elements);
+      std::vector<T> cuda_scores(required_elements);
+
+      cudaError_t err_experts = cudaMemcpy(cuda_experts.data(), expert_for_source_row.get(),
+                                           required_elements * sizeof(int), cudaMemcpyDeviceToHost);
+      cudaError_t err_scores = cudaMemcpy(cuda_scores.data(), expert_scales.get(),
+                                          required_elements * sizeof(T), cudaMemcpyDeviceToHost);
+
+      if (err_experts == cudaSuccess && err_scores == cudaSuccess) {
+        for (int row = 0; row < debug_rows; ++row) {
+          printf("[CUDA DEBUG] Row %d top-%d experts: ", row, debug_k);
+          for (int i = 0; i < debug_k; ++i) {
+            size_t idx = static_cast<size_t>(row) * debug_k + i;
+            if (idx < required_elements) {
+              int expert_idx = cuda_experts[idx];
+              float score = static_cast<float>(cuda_scores[idx]);
+              printf("(E%d:%.6f) ", expert_idx, score);
+            }
+          }
+          printf("\n");
+
+          printf("[CUDA DEBUG] Row %d Expert final weights: ", row);
+          for (int i = 0; i < debug_k; ++i) {
+            size_t idx = static_cast<size_t>(row) * debug_k + i;
+            if (idx < required_elements) {
+              int expert_idx = cuda_experts[idx];
+              float score = static_cast<float>(cuda_scores[idx]);
+              printf("Expert %d final weight: %.6f ", expert_idx, score);
+            }
+          }
+          printf("\n");
+        }
+      } else {
+        printf("[CUDA DEBUG] Expert selection: cudaMemcpy failed (experts: %d, scores: %d)\n",
+               err_experts, err_scores);
+      }
+    }
+  }
+
+  // DEBUG: Print input activations (matching CPU debug)
+  if (moe_params.num_rows > 0 && moe_params.hidden_size > 0 && input != nullptr) {
+    const int debug_elements = std::min(static_cast<int>(moe_params.hidden_size), 8);
+
+    // Safety check: Ensure input tensor is large enough
+    size_t input_total_size = input->Shape().Size();
+
+    if (static_cast<size_t>(debug_elements) <= input_total_size) {
+      std::vector<T> input_debug(debug_elements);
+
+      cudaError_t err_input = cudaMemcpy(input_debug.data(), input->template Data<T>(),
+                                         debug_elements * sizeof(T), cudaMemcpyDeviceToHost);
+      if (err_input == cudaSuccess) {
+        printf("[CUDA DEBUG] Input activations (first token, first 8): ");
+        for (int i = 0; i < debug_elements; ++i) {
+          printf("%.6f ", static_cast<float>(input_debug[i]));
+        }
+        printf("...\n");
+      } else {
+        printf("[CUDA DEBUG] Input activations: cudaMemcpy failed (error %d)\n", err_input);
+      }
+    } else {
+      printf("[CUDA DEBUG] Input activations: skipped (tensor too small: %zu vs required %d)\n",
+             input_total_size, debug_elements);
+    }
+  }
+
+  // DEBUG: Print FC1 and FC2 scales for SELECTED experts (matching CPU debug)
+  if (fc1_scales && fc2_scales && moe_params.num_experts > 0) {
+    cudaStreamSynchronize(Stream(context));
+
+    std::vector<int> cuda_experts(4);
+    std::vector<T> cuda_scores(4);
+
+    // Safe copy with error checking
+    cudaError_t err1 = cudaMemcpy(cuda_experts.data(), expert_for_source_row.get(), 4 * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaError_t err2 = cudaMemcpy(cuda_scores.data(), expert_scales.get(), 4 * sizeof(T), cudaMemcpyDeviceToHost);
+
+    if (err1 == cudaSuccess && err2 == cudaSuccess) {
+      printf(
+          "CUDA expert order: [%d, %d, %d, %d]",
+          cuda_experts[0],
+          cuda_experts[1], cuda_experts[2], cuda_experts[3]);
+      printf(
+          "CUDA expert scores: [%.6f, %.6f, %.6f, %.6f]",
+          static_cast<float>(cuda_scores[0]),
+          static_cast<float>(cuda_scores[1]),
+          static_cast<float>(cuda_scores[2]), static_cast<float>(cuda_scores[3]));
+
+      // Print scales for the selected experts
+      const int debug_elements = std::min(static_cast<int>(moe_params.inter_size * 2), 8);
+      size_t fc1_scales_total_size = fc1_scales->Shape().Size();
+      size_t fc2_scales_total_size = fc2_scales->Shape().Size();
+
+      for (int i = 0; i < 4; ++i) {
+        int expert_id = cuda_experts[i];
+
+        // FC1 scales for selected expert
+        size_t fc1_expert_offset = static_cast<size_t>(expert_id) * moe_params.inter_size * 2;
+        size_t fc1_required_size = fc1_expert_offset + debug_elements;
+
+        if (fc1_required_size <= fc1_scales_total_size) {
+          std::vector<T> fc1_scales_debug(debug_elements);
+          cudaError_t err_fc1 = cudaMemcpy(fc1_scales_debug.data(),
+                                           fc1_scales->template Data<T>() + fc1_expert_offset,
+                                           debug_elements * sizeof(T), cudaMemcpyDeviceToHost);
+          if (err_fc1 == cudaSuccess) {
+            printf("[CUDA DEBUG] Expert %d FC1 scales (first 8): ", expert_id);
+            for (int j = 0; j < debug_elements; ++j) {
+              printf("%.6f ", static_cast<float>(fc1_scales_debug[j]));
+            }
+            printf("...");
+          }
+        }
+
+        // FC2 scales for selected expert
+        size_t fc2_expert_offset = static_cast<size_t>(expert_id) * moe_params.hidden_size;
+        size_t fc2_required_size = fc2_expert_offset + std::min(static_cast<size_t>(moe_params.hidden_size), 8UL);
+
+        if (fc2_required_size <= fc2_scales_total_size) {
+          std::vector<T> fc2_scales_debug(std::min(static_cast<size_t>(moe_params.hidden_size), 8UL));
+          cudaError_t err_fc2 = cudaMemcpy(fc2_scales_debug.data(),
+                                           fc2_scales->template Data<T>() + fc2_expert_offset,
+                                           fc2_scales_debug.size() * sizeof(T), cudaMemcpyDeviceToHost);
+          if (err_fc2 == cudaSuccess) {
+            printf("[CUDA DEBUG] Expert %d FC2 scales (first 8): ", expert_id);
+            for (size_t j = 0; j < fc2_scales_debug.size(); ++j) {
+              printf("%.6f ", static_cast<float>(fc2_scales_debug[j]));
+            }
+            printf("...");
+          }
+        }
+      }
+    } else {
+      printf("CUDA debug: Memory copy failed (err1=%d, err2=%d)", err1, err2);
+    }
+  }
+
   // Debug: Print CUDA expert selection for first row (with safety checks)
   if (moe_params.num_rows > 0 && k_ >= 4) {
     // Synchronize stream to ensure kernel completion
@@ -137,6 +318,122 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
     }
   }
 
+  // ===== COMPREHENSIVE WEIGHT LAYOUT DEBUGGING =====
+  // Debug quantized weight memory layout and compare with CPU expectations
+  if (fc1_experts_weights && fc2_experts_weights && fc1_scales && fc2_scales) {
+    cudaStreamSynchronize(Stream(context));
+
+    // Get selected experts
+    std::vector<int> cuda_experts(4);
+    cudaError_t err_experts = cudaMemcpy(cuda_experts.data(), expert_for_source_row.get(), 4 * sizeof(int), cudaMemcpyDeviceToHost);
+
+    if (err_experts == cudaSuccess) {
+      printf("\n[CUDA WEIGHT DEBUG] ===== WEIGHT LAYOUT ANALYSIS =====\n");
+      printf("[CUDA WEIGHT DEBUG] Selected experts: [%d, %d, %d, %d]\n",
+             cuda_experts[0], cuda_experts[1], cuda_experts[2], cuda_experts[3]);
+
+      // Print tensor shapes and layout info
+      printf("[CUDA WEIGHT DEBUG] FC1 weights shape: [%s]\n", fc1_experts_weights->Shape().ToString().c_str());
+      printf("[CUDA WEIGHT DEBUG] FC1 scales shape: [%s]\n", fc1_scales->Shape().ToString().c_str());
+      printf("[CUDA WEIGHT DEBUG] FC2 weights shape: [%s]\n", fc2_experts_weights->Shape().ToString().c_str());
+      printf("[CUDA WEIGHT DEBUG] FC2 scales shape: [%s]\n", fc2_scales->Shape().ToString().c_str());
+
+      // Calculate memory layout parameters
+      size_t fc1_weights_per_expert = moe_params.inter_size * 2 * moe_params.hidden_size / 2;  // 4-bit packed
+      size_t fc1_scales_per_expert = moe_params.inter_size * 2;
+      size_t fc2_weights_per_expert = moe_params.hidden_size * moe_params.inter_size / 2;  // 4-bit packed
+      size_t fc2_scales_per_expert = moe_params.hidden_size;
+
+      printf("[CUDA WEIGHT DEBUG] Expected FC1 weights per expert: %zu bytes\n", fc1_weights_per_expert);
+      printf("[CUDA WEIGHT DEBUG] Expected FC1 scales per expert: %zu elements\n", fc1_scales_per_expert);
+      printf("[CUDA WEIGHT DEBUG] Expected FC2 weights per expert: %zu bytes\n", fc2_weights_per_expert);
+      printf("[CUDA WEIGHT DEBUG] Expected FC2 scales per expert: %zu elements\n", fc2_scales_per_expert);
+
+      // Debug first selected expert (Expert 5) in detail
+      int expert_5 = cuda_experts[0];  // Should be 5
+      printf("\n[CUDA WEIGHT DEBUG] === EXPERT %d DETAILED ANALYSIS ===\n", expert_5);
+
+      // FC1 quantized weights raw bytes for Expert 5
+      size_t fc1_weights_offset = static_cast<size_t>(expert_5) * fc1_weights_per_expert;
+      const size_t debug_weight_bytes = std::min(fc1_weights_per_expert, 16UL);
+
+      if (fc1_weights_offset + debug_weight_bytes <= fc1_experts_weights->Shape().Size()) {
+        std::vector<uint8_t> fc1_weights_raw(debug_weight_bytes);
+        cudaError_t err_weights = cudaMemcpy(fc1_weights_raw.data(),
+                                             reinterpret_cast<const uint8_t*>(fc1_experts_weights->template Data<uint8_t>()) + fc1_weights_offset,
+                                             debug_weight_bytes, cudaMemcpyDeviceToHost);
+        if (err_weights == cudaSuccess) {
+          printf("[CUDA WEIGHT DEBUG] Expert %d FC1 raw weight bytes (first 16): ", expert_5);
+          for (size_t i = 0; i < debug_weight_bytes; ++i) {
+            printf("%02x ", fc1_weights_raw[i]);
+          }
+          printf("\n");
+
+          // Manually dequantize first few weights using CUDA logic
+          printf("[CUDA WEIGHT DEBUG] Expert %d FC1 manual dequantization:\n", expert_5);
+
+          // Get scales for this expert
+          size_t fc1_scales_offset = static_cast<size_t>(expert_5) * fc1_scales_per_expert;
+          std::vector<T> fc1_scales_expert(std::min(fc1_scales_per_expert, 8UL));
+          cudaError_t err_scales = cudaMemcpy(fc1_scales_expert.data(),
+                                              fc1_scales->template Data<T>() + fc1_scales_offset,
+                                              fc1_scales_expert.size() * sizeof(T), cudaMemcpyDeviceToHost);
+
+          if (err_scales == cudaSuccess) {
+            printf("[CUDA WEIGHT DEBUG] Expert %d FC1 scales (first 8): ", expert_5);
+            for (size_t i = 0; i < fc1_scales_expert.size(); ++i) {
+              printf("%.6f ", static_cast<float>(fc1_scales_expert[i]));
+            }
+            printf("\n");
+
+            // Manually dequantize first 8 weights (4-bit, so 4 bytes = 8 weights)
+            printf("[CUDA WEIGHT DEBUG] Expert %d FC1 dequantized weights (first 8): ", expert_5);
+            for (int i = 0; i < std::min(8, static_cast<int>(debug_weight_bytes * 2)); i += 2) {
+              int byte_idx = i / 2;
+              if (byte_idx < static_cast<int>(debug_weight_bytes)) {
+                uint8_t packed_byte = fc1_weights_raw[byte_idx];
+
+                // Extract 4-bit values (CUDA typically uses lower 4 bits first)
+                int w0 = packed_byte & 0x0F;         // Lower 4 bits
+                int w1 = (packed_byte >> 4) & 0x0F;  // Upper 4 bits
+
+                // Dequantize with scale (assuming zero-point = 8 for 4-bit unsigned)
+                if ((i / 2) < static_cast<int>(fc1_scales_expert.size())) {
+                  float scale = static_cast<float>(fc1_scales_expert[i / 2]);
+                  float dq0 = scale * (static_cast<float>(w0) - 8.0f);
+                  float dq1 = scale * (static_cast<float>(w1) - 8.0f);
+                  printf("%.6f %.6f ", dq0, dq1);
+                }
+              }
+            }
+            printf("\n");
+          }
+        }
+      }
+
+      // Compare with CPU layout expectations
+      printf("\n[CUDA WEIGHT DEBUG] === CPU vs CUDA LAYOUT COMPARISON ===\n");
+      printf("[CUDA WEIGHT DEBUG] CUDA uses CUTLASS column-major interleaved layout\n");
+      printf("[CUDA WEIGHT DEBUG] CPU expects row-major packed layout\n");
+      printf("[CUDA WEIGHT DEBUG] This difference may explain the computation discrepancies\n");
+
+      // Print GEMM operation parameters
+      printf("\n[CUDA WEIGHT DEBUG] === GEMM PARAMETERS ===\n");
+      printf("[CUDA WEIGHT DEBUG] FC1 GEMM: A[%zu,%zu] * B[%zu,%zu] -> C[%zu,%zu]\n",
+             static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),
+             static_cast<size_t>(moe_params.hidden_size), moe_params.inter_size * 2,
+             static_cast<size_t>(moe_params.num_rows), moe_params.inter_size * 2);
+      printf("[CUDA WEIGHT DEBUG] FC2 GEMM: A[%zu,%zu] * B[%zu,%zu] -> C[%zu,%zu]\n",
+             static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.inter_size),
+             static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(moe_params.hidden_size),
+             static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size));
+
+      printf("[CUDA WEIGHT DEBUG] CUDA GEMM uses: CUTLASS mixed-precision kernels\n");
+      printf("[CUDA WEIGHT DEBUG] CPU GEMM uses: MLAS standard GEMM with manual dequantization\n");
+      printf("[CUDA WEIGHT DEBUG] ================================================\n\n");
+    }
+  }
+
   Tensor* output = context->Output(0, input->Shape());
 
   ort_fastertransformer::finalize_moe_routing_kernelLauncher(
@@ -149,392 +446,63 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
       reinterpret_cast<int*>(expert_for_source_row.get()), static_cast<int>(moe_params.num_rows),
       static_cast<int>(moe_params.hidden_size), static_cast<int>(k_), Stream(context));
 
-  // Debug: Detailed CUDA intermediate values analysis
-  std::vector<int> cuda_experts_detailed(debug_k);
+  // DEBUG: Print FC2 GEMM outputs and final outputs (matching CPU debug)
+  cudaStreamSynchronize(Stream(context));
 
-  // Copy expert scales and indices (safe sizes)
-  cudaError_t err_scales = cudaMemcpy(cuda_expert_scales_detailed.data(), expert_scales.get(),
-                                      debug_k * sizeof(T), cudaMemcpyDeviceToHost);
-  cudaError_t err_experts = cudaMemcpy(cuda_experts_detailed.data(), expert_for_source_row.get(),
-                                       debug_k * sizeof(int), cudaMemcpyDeviceToHost);
+  // Print FC2 output before final accumulation (for first few experts)
+  if (moe_params.num_rows > 0 && k_ > 0) {
+    const int debug_elements = std::min(static_cast<int>(moe_params.hidden_size), 8);
+    const int debug_tokens = std::min(static_cast<int>(k_ * moe_params.num_rows), 4);
 
-  // Debug: Print input activations
-  std::vector<T> input_debug(debug_elements);
-  cudaError_t err_input = cudaMemcpy(input_debug.data(), input->template Data<T>(),
-                                     debug_elements * sizeof(T), cudaMemcpyDeviceToHost);
-  if (err_input == cudaSuccess) {
-    printf("CUDA DEBUG: Input activations first %d values: ", debug_elements);
-    for (int i = 0; i < debug_elements; i++) {
-      printf("%.6f ", static_cast<float>(input_debug[i]));
-    }
-    printf("\n");
-  }
-
-  // Debug: Print router probabilities
-  // Debug: Print FC1 and FC2 scales
-  // CUDA Matrix Layout Investigation: Check FC1 dimensions and CUTLASS layout requirements
-
-                 static_cast<int>(moe_params.hidden_size), ThreadblockK);
-                 printf("CUDA LAYOUT DEBUG: FC1 quantized weights memory layout analysis:\n");
-                 for (size_t i = 0; i < fc1_shape.NumDimensions(); i++) {
-          cudaError_t err_fc1_weights = cudaMemcpy(fc1_weights_sample.data(),
-            if (err_fc1_weights_64 == cudaSuccess) {
-      printf("  FC1 weights at ThreadblockK boundary (%d): ", ThreadblockK);
-      for (int i = 0; i < sample_size; i++) {
-        printf("%d ", fc1_weights_sample[i]);
-      }
-      printf("\n");
-            }
-                 }
-}
-}
-}
-
-if (fc2_scales) {
-  std::vector<T> fc2_scales_debug(debug_elements);
-  cudaError_t err_fc2_scales = cudaMemcpy(fc2_scales_debug.data(), fc2_scales->template Data<T>(),
-                                          debug_elements * sizeof(T), cudaMemcpyDeviceToHost);
-  if (err_fc2_scales == cudaSuccess) {
-    printf("CUDA DEBUG: FC2 scales first %d values: ", debug_elements);
-    for (int i = 0; i < debug_elements; i++) {
-      printf("%.6f ", static_cast<float>(fc2_scales_debug[i]));
-    }
-    printf("\n");
-  }
-}
-
-if (err_scales == cudaSuccess && err_experts == cudaSuccess) {
-  printf("CUDA DEBUG: Detailed intermediate values analysis (safe version):\n");
-
-  // Debug: Print quantized weights for selected experts
-  for (int k_idx = 0; k_idx < debug_k; k_idx++) {
-    int expert_idx = cuda_experts_detailed[k_idx];
-
-    // Debug FC1 quantized weights for this expert
-    const size_t fc1_expert_size = static_cast<size_t>(moe_params.hidden_size) * moe_params.inter_size * 2;
-    const size_t fc1_offset = expert_idx * fc1_expert_size;
-    std::vector<uint8_t> fc1_weights_debug(debug_elements);
-
-    cudaError_t err_fc1_weights = cudaMemcpy(fc1_weights_debug.data(),
-                                             static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()) + fc1_offset,
-                                             debug_elements * sizeof(uint8_t), cudaMemcpyDeviceToHost);
-    if (err_fc1_weights == cudaSuccess) {
-      printf("CUDA DEBUG: Expert %d FC1 quantized weights first %d: ", expert_idx, debug_elements);
-      for (int i = 0; i < debug_elements; i++) {
-        printf("%d ", fc1_weights_debug[i]);
-      }
-      printf("\n");
-    }
-
-    // Debug FC2 quantized weights for this expert
-    const size_t fc2_expert_size = static_cast<size_t>(moe_params.inter_size) * moe_params.hidden_size;
-    const size_t fc2_offset = expert_idx * fc2_expert_size;
-    std::vector<uint8_t> fc2_weights_debug(debug_elements);
-    cudaError_t err_fc2_weights = cudaMemcpy(fc2_weights_debug.data(),
-                                             static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()) + fc2_offset,
-                                             debug_elements * sizeof(uint8_t), cudaMemcpyDeviceToHost);
-    if (err_fc2_weights == cudaSuccess) {
-      printf("CUDA DEBUG: Expert %d FC2 quantized weights first %d: ", expert_idx, debug_elements);
-      for (int i = 0; i < debug_elements; i++) {
-        printf("%d ", fc2_weights_debug[i]);
-      }
-      printf("\n");
-    }
-
-    // --- ADDED: Print FC2 dequantized weights for Expert 5 (first 5 values) ---
-    if (expert_idx == 5 && fc2_scales) {
-      std::vector<T> fc2_dequantized_debug(5, T{});
-      size_t fc2_scales_size = fc2_scales->Shape().Size();
-      size_t fc2_weights_size = fc2_weights_debug.size();
-      for (int i = 0; i < 5; i++) {
-        size_t scale_idx = fc2_offset + i;
-        if (scale_idx < fc2_scales_size && i < fc2_weights_size) {
-          float scale = static_cast<float>(fc2_scales->template Data<T>()[scale_idx]);
-          int8_t qval = static_cast<int8_t>(fc2_weights_debug[i]);
-          fc2_dequantized_debug[i] = static_cast<T>(scale * (static_cast<float>(qval)));
-        } else {
-          printf("[OOB] ");
+    std::vector<T> fc2_output_debug(debug_tokens * debug_elements);
+    cudaError_t err_fc2 = cudaMemcpy(fc2_output_debug.data(), fc2_output.get(),
+                                     debug_tokens * debug_elements * sizeof(T), cudaMemcpyDeviceToHost);
+    if (err_fc2 == cudaSuccess) {
+      printf("[CUDA DEBUG] FC2 GEMM output (first %d expert outputs, first 8 elements):\n", debug_tokens);
+      for (int i = 0; i < debug_tokens; ++i) {
+        printf("[CUDA DEBUG] FC2 output[%d]: ", i);
+        for (int j = 0; j < debug_elements; ++j) {
+          printf("%.6f ", static_cast<float>(fc2_output_debug[i * debug_elements + j]));
         }
-      }
-      printf("CUDA DEBUG: Expert 5 FC2 dequantized weights first 5: ");
-      for (int i = 0; i < 5; i++) {
-        printf("%.6f ", static_cast<float>(fc2_dequantized_debug[i]));
-      }
-      printf("\n");
-    }
-
-    // Debug expert-specific scales
-    if (fc1_scales) {
-      const size_t fc1_scales_offset = expert_idx * (moe_params.inter_size * 2);
-      std::vector<T> expert_fc1_scales(5);
-      cudaError_t err_expert_fc1_scales = cudaMemcpy(expert_fc1_scales.data(),
-                                                     fc1_scales->template Data<T>() + fc1_scales_offset,
-                                                     5 * sizeof(T), cudaMemcpyDeviceToHost);
-      if (err_expert_fc1_scales == cudaSuccess) {
-        printf("CUDA DEBUG: Expert %d FC1 scales first 5: ", expert_idx);
-        for (int i = 0; i < 5; i++) {
-          printf("%.6f ", static_cast<float>(expert_fc1_scales[i]));
-        }
-        printf("\n");
-      }
-    }
-
-    if (fc2_scales) {
-      const size_t fc2_scales_offset = expert_idx * moe_params.hidden_size;
-      std::vector<T> expert_fc2_scales(5);
-      cudaError_t err_expert_fc2_scales = cudaMemcpy(expert_fc2_scales.data(),
-                                                     fc2_scales->template Data<T>() + fc2_scales_offset,
-                                                     5 * sizeof(T), cudaMemcpyDeviceToHost);
-      if (err_expert_fc2_scales == cudaSuccess) {
-        printf("CUDA DEBUG: Expert %d FC2 scales first 5: ", expert_idx);
-        for (int i = 0; i < 5; i++) {
-          printf("%.6f ", static_cast<float>(expert_fc2_scales[i]));
-        }
-        printf("\n");
+        printf("...\n");
       }
     }
   }
 
-  // Validate expert indices before using them
-  bool valid_experts = true;
-  for (int i = 0; i < debug_k; i++) {
-    if (cuda_experts_detailed[i] < 0 || cuda_experts_detailed[i] >= moe_params.num_experts) {
-      printf("CUDA DEBUG: Invalid expert index %d at position %d (num_experts=%d)\n",
-             cuda_experts_detailed[i], i, static_cast<int>(moe_params.num_experts));
-      valid_experts = false;
-      break;
-    }
-  }
+  // Print final accumulated output
+  if (moe_params.num_rows > 0 && output != nullptr) {
+    const int debug_elements = std::min(static_cast<int>(moe_params.hidden_size), 8);
+    const int debug_rows = std::min(static_cast<int>(moe_params.num_rows), 3);
+    const size_t required_size = static_cast<size_t>(debug_rows) * debug_elements;
 
-  if (valid_experts) {
-    // Manual calculation like CPU version (using only expert scales)
-    printf("CUDA DEBUG: Expert selection and weights (safe access):\n");
+    // Safety check: Ensure output tensor is large enough
+    size_t output_total_size = output->Shape().Size();
 
-    for (int k_idx = 0; k_idx < debug_k; k_idx++) {
-      int expert_idx = cuda_experts_detailed[k_idx];
-      float expert_scale = static_cast<float>(cuda_expert_scales_detailed[k_idx]);
-
-      printf("CUDA DEBUG: Expert %d, Row 0 - scale=%.6f\n", expert_idx, expert_scale);
-
-      // CUDA Matrix Layout Investigation: Compare specific weight values with CPU
-      if (fc1_experts_weights && (expert_idx == 5 || expert_idx == 8 || expert_idx == 9 || expert_idx == 24)) {
-        printf("CUDA LAYOUT DEBUG: Expert %d FC1 - Quantized weight values at specific coordinates:\n", expert_idx);
-
-        // Calculate expert's weight matrix base offset
-        int64_t hidden_size = moe_params.hidden_size;
-        int64_t inter_size = moe_params.inter_size;
-        int64_t expert_weight_offset = expert_idx * (hidden_size * inter_size);
-
-        // Sample quantized weights at specific logical coordinates for comparison with CPU
-        const int coord_samples = 15;  // 3 rows x 5 cols
-        std::vector<uint8_t> coord_weights(coord_samples);
-
-        for (int row = 0; row < 3 && row * hidden_size < inter_size; row++) {
-          for (int col = 0; col < 5 && col < hidden_size; col++) {
-            // Calculate linear index in CUTLASS layout
-            // This might need adjustment based on actual CUTLASS tile interleaving
-            int64_t linear_idx = expert_weight_offset + row * hidden_size + col;
-
-            if (linear_idx < fc1_experts_weights->Shape().Size()) {
-              uint8_t weight_val;
-              cudaError_t err = cudaMemcpy(&weight_val,
-                                           fc1_experts_weights->template Data<uint8_t>() + linear_idx,
-                                           sizeof(uint8_t), cudaMemcpyDeviceToHost);
-              if (err == cudaSuccess) {
-                printf("  [%d,%d] = %d", row, col, weight_val);
-              } else {
-                printf("  [%d,%d] = ERR", row, col);
-              }
-            } else {
-              printf("  [%d,%d] = OOB", row, col);
+    if (required_size <= output_total_size) {
+      std::vector<T> output_debug(required_size);
+      cudaError_t err_output = cudaMemcpy(output_debug.data(), output->template MutableData<T>(),
+                                          required_size * sizeof(T), cudaMemcpyDeviceToHost);
+      if (err_output == cudaSuccess) {
+        for (int row = 0; row < debug_rows; ++row) {
+          printf("[CUDA DEBUG] Final output Row %d (first 8): ", row);
+          for (int i = 0; i < debug_elements; ++i) {
+            size_t idx = static_cast<size_t>(row) * debug_elements + i;
+            if (idx < required_size) {
+              printf("%.6f ", static_cast<float>(output_debug[idx]));
             }
           }
-          printf("\n");
-        }
-      }
-
-      // Try to safely copy FC2 expert outputs for this expert
-      // The fc2_output buffer contains outputs for all k*num_rows expert outputs
-      // Layout: [expert_0_output, expert_1_output, ..., expert_k-1_output] for each row
-      std::vector<T> expert_output_debug(debug_elements);
-      const CudaT* expert_output_start = reinterpret_cast<const CudaT*>(fc2_output.get()) +
-                                         k_idx * moe_params.hidden_size;  // k_idx position for row 0
-
-      cudaError_t err_expert_output = cudaMemcpy(expert_output_debug.data(), expert_output_start,
-                                                 debug_elements * sizeof(T), cudaMemcpyDeviceToHost);
-
-      if (err_expert_output == cudaSuccess) {
-        printf("CUDA DEBUG: Expert %d, Row 0 - first %d expert outputs: ", expert_idx, debug_elements);
-        for (int i = 0; i < debug_elements; i++) {
-          printf("%.6f ", static_cast<float>(expert_output_debug[i]));
-        }
-        printf("\n");
-
-        // --- ADDED: Print FC2 GEMM output (before bias) for Expert 5 (first 5 values) ---
-        if (expert_idx == 5) {
-          printf("CUDA DEBUG: Expert 5 FC2 GEMM output (before bias) first 5: ");
-          for (int i = 0; i < 5 && i < debug_elements; i++) {
-            printf("%.6f ", static_cast<float>(expert_output_debug[i]));
-          }
-          printf("\n");
+          printf("...\n");
         }
       } else {
-        printf("CUDA DEBUG: Expert %d - Failed to copy expert outputs (err=%d)\n", expert_idx, err_expert_output);
+        printf("[CUDA DEBUG] Final output: cudaMemcpy failed (error %d)\n", err_output);
       }
-
-      // CUDA FC2 Weights Layout Investigation for comparison with CPU
-      if (fc2_experts_weights && (expert_idx == 5 || expert_idx == 8 || expert_idx == 9 || expert_idx == 24)) {
-        printf("CUDA LAYOUT DEBUG: Expert %d FC2 - Quantized weight layout analysis:\n", expert_idx);
-
-        // Get FC2 weights tensor shape
-        const auto& fc2_shape = fc2_experts_weights->Shape();
-        printf("  FC2 weights tensor shape: [");
-        for (size_t i = 0; i < fc2_shape.NumDimensions(); i++) {
-          printf("%lld", fc2_shape[i]);
-          if (i < fc2_shape.NumDimensions() - 1) printf(", ");
-        }
-        printf("]\n");
-
-        // Calculate FC2 expert weight matrix offset
-        int64_t hidden_size = moe_params.hidden_size;
-        int64_t inter_size = moe_params.inter_size;
-        int64_t fc2_expert_offset = expert_idx * (inter_size * hidden_size);
-
-        printf("  FC2 Expert %d offset: %lld, total elements: %lld\n",
-               expert_idx, fc2_expert_offset, fc2_shape.Size());
-
-        // Sample FC2 quantized weights at specific coordinates
-        printf("  FC2 quantized weights at specific coordinates:\n");
-        for (int row = 0; row < 3 && row < hidden_size; row++) {
-          printf("  Row %d: ", row);
-          for (int col = 0; col < 5 && col < inter_size; col++) {
-            int64_t linear_idx = fc2_expert_offset + row * inter_size + col;
-
-            if (linear_idx < fc2_shape.Size()) {
-              uint8_t weight_val;
-              cudaError_t err = cudaMemcpy(&weight_val,
-                                           fc2_experts_weights->template Data<uint8_t>() + linear_idx,
-                                           sizeof(uint8_t), cudaMemcpyDeviceToHost);
-              if (err == cudaSuccess) {
-                printf("[%d,%d]=%d ", row, col, weight_val);
-              }
-            }
-          }
-          printf("\n");
-        }
-      }
-
-      // Try to safely copy bias values for this expert
-      if (fc2_experts_bias_optional) {
-        std::vector<T> expert_bias_debug(debug_elements);
-        const CudaT* expert_bias_start = reinterpret_cast<const CudaT*>(fc2_experts_bias_optional->template Data<T>()) +
-                                         expert_idx * moe_params.hidden_size;
-
-        cudaError_t err_bias = cudaMemcpy(expert_bias_debug.data(), expert_bias_start,
-                                          debug_elements * sizeof(T), cudaMemcpyDeviceToHost);
-
-        if (err_bias == cudaSuccess) {
-          printf("CUDA DEBUG: Expert %d, Row 0 - first %d FC2 biases: ", expert_idx, debug_elements);
-          for (int i = 0; i < debug_elements; i++) {
-            printf("%.6f ", static_cast<float>(expert_bias_debug[i]));
-          }
-          printf("\n");
-
-          // Calculate outputs+bias and scaled contributions for manual verification
-          if (err_expert_output == cudaSuccess) {
-            printf("CUDA DEBUG: Expert %d, Row 0 - first %d outputs+bias: ", expert_idx, debug_elements);
-            for (int i = 0; i < debug_elements; i++) {
-              printf("%.6f ", static_cast<float>(expert_output_debug[i]) + static_cast<float>(expert_bias_debug[i]));
-            }
-            printf("\n");
-
-            printf("CUDA DEBUG: Expert %d, Row 0 - first %d scaled outputs: ", expert_idx, debug_elements);
-            for (int i = 0; i < debug_elements; i++) {
-              printf("%.6f ", expert_scale * (static_cast<float>(expert_output_debug[i]) + static_cast<float>(expert_bias_debug[i])));
-            }
-            printf("\n");
-          }
-        } else {
-          printf("CUDA DEBUG: Expert %d - Failed to copy bias values (err=%d)\n", expert_idx, err_bias);
-        }
-      }
+    } else {
+      printf("[CUDA DEBUG] Final output: skipped (tensor too small: %zu vs required %zu)\n",
+             output_total_size, required_size);
     }
-
-    // Manual calculation like CPU version with actual expert outputs
-    if (fc2_experts_bias_optional) {
-      printf("CUDA DEBUG: Manual calculation verification:\n");
-      float cuda_manual_output[10] = {0.0f};  // Initialize to debug_elements size
-
-      for (int k_idx = 0; k_idx < debug_k; k_idx++) {
-        int expert_idx = cuda_experts_detailed[k_idx];
-        float expert_scale = static_cast<float>(cuda_expert_scales_detailed[k_idx]);
-
-        // Copy expert output and bias again for manual calculation
-        std::vector<T> expert_output_debug(debug_elements);
-        std::vector<T> expert_bias_debug(debug_elements);
-
-        const CudaT* expert_output_start = reinterpret_cast<const CudaT*>(fc2_output.get()) +
-                                           k_idx * moe_params.hidden_size;
-        const CudaT* expert_bias_start = reinterpret_cast<const CudaT*>(fc2_experts_bias_optional->template Data<T>()) +
-                                         expert_idx * moe_params.hidden_size;
-
-        cudaError_t err_out = cudaMemcpy(expert_output_debug.data(), expert_output_start,
-                                         debug_elements * sizeof(T), cudaMemcpyDeviceToHost);
-        cudaError_t err_bias = cudaMemcpy(expert_bias_debug.data(), expert_bias_start,
-                                          debug_elements * sizeof(T), cudaMemcpyDeviceToHost);
-
-        if (err_out == cudaSuccess && err_bias == cudaSuccess) {
-          for (int j = 0; j < debug_elements; j++) {
-            float expert_output = static_cast<float>(expert_output_debug[j]);
-            float bias_value = static_cast<float>(expert_bias_debug[j]);
-            float scaled_contribution = expert_scale * (expert_output + bias_value);
-            cuda_manual_output[j] += scaled_contribution;
-
-            // Debug each step of accumulation
-            if (j < 5) {  // Only print first 5 for readability
-              printf("CUDA DEBUG: Expert %d pos[%d] - output=%.6f, bias=%.6f, output+bias=%.6f, scale=%.6f, contribution=%.6f, total=%.6f\n",
-                     expert_idx, j, expert_output, bias_value, expert_output + bias_value, expert_scale, scaled_contribution, cuda_manual_output[j]);
-            }
-          }
-
-          printf("CUDA DEBUG: Expert %d accumulation - output[0:%d] after: ", expert_idx, std::min(debug_elements, 5));
-          for (int j = 0; j < std::min(debug_elements, 5); j++) {
-            printf("%.6f ", cuda_manual_output[j]);
-          }
-          printf("\n");
-        }
-      }
-
-      printf("CUDA DEBUG: Manual calculation output first %d values: ", std::min(debug_elements, 5));
-      for (int j = 0; j < std::min(debug_elements, 5); j++) {
-        printf("%.6f ", cuda_manual_output[j]);
-      }
-      printf("\n");
-    }
-
-  } else {
-    printf("CUDA DEBUG: Skipping detailed analysis due to invalid expert indices\n");
   }
 
-} else {
-  printf("CUDA DEBUG: Failed to copy expert data (scales=%d, experts=%d)\n", err_scales, err_experts);
-}
-
-// Debug: Print final CUDA output after finalize_moe_routing_kernel
-printf("CUDA DEBUG: Final output comparison:\n");
-std::vector<T> final_output_debug(debug_elements);
-cudaError_t err_final = cudaMemcpy(final_output_debug.data(), output->template MutableData<T>(),
-                                   debug_elements * sizeof(T), cudaMemcpyDeviceToHost);
-if (err_final == cudaSuccess) {
-  printf("CUDA DEBUG: Final kernel output first %d values: ", debug_elements);
-  for (int i = 0; i < debug_elements; i++) {
-    printf("%.6f ", static_cast<float>(final_output_debug[i]));
-  }
-  printf("\n");
-}
-}
-
-return Status::OK();
+  return Status::OK();
 }
 
 template <typename T>

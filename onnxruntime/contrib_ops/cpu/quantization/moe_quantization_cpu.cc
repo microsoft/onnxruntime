@@ -8,7 +8,6 @@
 #include "core/framework/buffer_deleter.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_q4.h"
-#include "core/mlas/inc/mlas_qnbit.h"    // Add MlasQNbit support
 #include "core/mlas/inc/mlas_float16.h"  // For MLAS_Half2Float function
 #include <atomic>
 #include "core/platform/threadpool.h"
@@ -43,85 +42,6 @@ inline bool use_robust_expert_selection() {
   }
 
   return enabled;
-}
-
-// New MlasQNbit-based implementation for MoE FC computation
-static void run_moe_fc_qnbit(
-    const float* input_activations,  // [num_rows, hidden_size]
-    const void* fc_weights_q,        // quantized weights for all experts
-    const float* fc_scales,          // [num_experts, output_size]
-    const float* fc_bias,            // [num_experts, output_size] or nullptr
-    const int* selected_experts,     // [selected_count] expert indices
-    const float* expert_weights,     // [selected_count] expert routing weights
-    int selected_count,              // number of selected experts
-    int bit_width,                   // 4 or 8
-    size_t M,                        // num_rows with this expert
-    size_t N,                        // output_size (fc1_out or hidden_size)
-    size_t K,                        // input_size (hidden_size or inter_size)
-    size_t expert_weight_stride,     // stride between experts in weight matrix
-    float* output,                   // [num_rows, output_size]
-    onnxruntime::concurrency::ThreadPool* thread_pool) {
-  if (selected_count == 0) return;
-
-  // Check if MlasQNbit is available for this configuration
-  const size_t BlkBitWidth = static_cast<size_t>(bit_width);
-  const size_t BlkLen = 1;  // Per-channel quantization
-  const MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType = SQNBIT_CompFp32;
-  const uint8_t zero_point = static_cast<uint8_t>(bit_width == 8 ? 128 : 8);
-
-  if (!MlasIsQNBitGemmAvailable(BlkBitWidth, BlkLen, ComputeType)) {
-    // Fallback to manual implementation if MlasQNbit not available
-    return;
-  }
-
-  // Process each expert with MlasQNbit
-  for (int i = 0; i < selected_count; ++i) {
-    const int expert_idx = selected_experts[i];
-    const float expert_weight = expert_weights[i];
-
-    // Calculate pointers for this expert
-    const uint8_t* expert_weights_q = static_cast<const uint8_t*>(fc_weights_q) + expert_idx * expert_weight_stride;
-    const float* expert_scales = fc_scales + expert_idx * N;
-    const float* expert_bias = fc_bias ? fc_bias + expert_idx * N : nullptr;
-
-    // Check if we need to pack the quantized data
-    const size_t packed_size = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, false, ComputeType);
-
-    if (packed_size > 0) {
-      // TODO: Implement packing if needed
-      continue;
-    }
-
-    // Allocate workspace if needed
-    const size_t workspace_size = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, false, ComputeType);
-    std::unique_ptr<std::byte[]> workspace;
-    if (workspace_size > 0) {
-      workspace = std::make_unique<std::byte[]>(workspace_size);
-    }
-
-    // Setup GEMM parameters
-    MLAS_QNBIT_GEMM_DATA_PARAMS<float> gemm_params{};
-    gemm_params.A = input_activations;
-    gemm_params.lda = K;
-    gemm_params.QuantBDataWorkspace = expert_weights_q;
-    gemm_params.PackedQuantBData = nullptr;  // No packing needed
-    gemm_params.QuantBScale = expert_scales;
-    gemm_params.QuantBZeroPoint = &zero_point;
-    gemm_params.Bias = expert_bias;
-    gemm_params.C = output;
-    gemm_params.ldc = N;
-
-    // Execute the quantized GEMM
-    MlasQNBitGemmBatch<float>(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType,
-                              &gemm_params, workspace.get(), thread_pool);
-
-    // Apply expert routing weight scaling if not using bias (bias handles it)
-    if (expert_weight != 1.0f) {
-      for (size_t j = 0; j < M * N; ++j) {
-        output[j] *= expert_weight;
-      }
-    }
-  }
 }
 
 // Expert-grouped CPU path using accuracy-first dequantize-to-float + MLAS SGEMM per expert.
@@ -170,6 +90,16 @@ static void run_moe_fc_cpu_grouped(
       max_logit = std::max(max_logit, logit);
     }
 
+    // DEBUG: Print raw router logits for first few rows
+    if (row < 3) {
+      printf("[CPU DEBUG] Row %ld raw router logits: ", row);
+      for (int64_t e = 0; e < std::min(num_experts, 8L); ++e) {
+        printf("%.6f ", gating_output[row * num_experts + e]);
+      }
+      printf("...\n");
+      printf("[CPU DEBUG] Row %ld max_logit: %.6f\n", row, max_logit);
+    }
+
     float sum_exp = 0.0f;
     for (int64_t e = 0; e < num_experts; ++e) {
       float logit = gating_output[row * num_experts + e];
@@ -178,12 +108,31 @@ static void run_moe_fc_cpu_grouped(
       sum_exp += exp_val;
     }
 
+    // DEBUG: Print softmax intermediate values for first few rows
+    if (row < 3) {
+      printf("[CPU DEBUG] Row %ld sum_exp: %.6f\n", row, sum_exp);
+      printf("[CPU DEBUG] Row %ld softmax_probs: ", row);
+      for (int64_t e = 0; e < std::min(num_experts, 8L); ++e) {
+        printf("%.6f ", softmax_probs[e]);
+      }
+      printf("...\n");
+    }
+
     for (int64_t e = 0; e < num_experts; ++e) {
       float w = softmax_probs[e] / sum_exp;  // Normalized probability
       if (use_robust_expert_selection()) {
         w = quantize_router_probability(w);
       }
       expert_scores.emplace_back(w, e);
+    }
+
+    // DEBUG: Print normalized probabilities for first few rows
+    if (row < 3) {
+      printf("[CPU DEBUG] Row %ld normalized probs: ", row);
+      for (int64_t e = 0; e < std::min(num_experts, 8L); ++e) {
+        printf("%.6f ", expert_scores[e].first);
+      }
+      printf("...\n");
     }
     auto robust_cmp = [](const std::pair<float, int64_t>& a, const std::pair<float, int64_t>& b) {
       constexpr float eps = 1e-6f;
@@ -199,6 +148,16 @@ static void run_moe_fc_cpu_grouped(
       selected_sum += expert_scores[static_cast<size_t>(i)].first;
     }
 
+    // DEBUG: Print top-k selection results for first few rows
+    if (row < 3) {
+      printf("[CPU DEBUG] Row %ld top-%ld experts: ", row, select);
+      for (int64_t i = 0; i < select; ++i) {
+        printf("(E%ld:%.6f) ", expert_scores[static_cast<size_t>(i)].second, expert_scores[static_cast<size_t>(i)].first);
+      }
+      printf("\n");
+      printf("[CPU DEBUG] Row %ld selected_sum: %.6f\n", row, selected_sum);
+    }
+
     // Debug routing for first row
 
     for (int64_t i = 0; i < select; ++i) {
@@ -212,6 +171,12 @@ static void run_moe_fc_cpu_grouped(
       } else {
         // Use raw softmax probabilities
         route_scale[static_cast<size_t>(off)] = expert_scores[static_cast<size_t>(i)].first;
+      }
+
+      // DEBUG: Print final routing weights for first few rows
+      if (row < 3) {
+        printf("[CPU DEBUG] Row %ld Expert %d final weight: %.6f (normalize=%d)\n",
+               row, route_expert[static_cast<size_t>(off)], route_scale[static_cast<size_t>(off)], normalize_routing_weights);
       }
 
       // Debug: Show final weights for first row
@@ -235,6 +200,13 @@ static void run_moe_fc_cpu_grouped(
     }
   }
 
+  // DEBUG: Print expert bucket sizes
+  printf("[CPU DEBUG] Expert bucket sizes: ");
+  for (int64_t e = 0; e < std::min(num_experts, 8L); ++e) {
+    printf("E%ld:%zu ", e, buckets[static_cast<size_t>(e)].size());
+  }
+  printf("...\n");
+
   // 3) Per-expert processing
   const size_t K1_logical = static_cast<size_t>(hidden_size);
   const size_t N1 = static_cast<size_t>(fc1_out);
@@ -252,6 +224,19 @@ static void run_moe_fc_cpu_grouped(
     const size_t Me = routes.size();
     if (Me == 0) continue;
 
+    // DEBUG: Print expert processing info (only for experts with tokens)
+    if (Me > 0) {
+      printf("[CPU DEBUG] Processing Expert %ld: %zu tokens\n", e, Me);
+      printf("[CPU DEBUG] Expert %ld routes: ", e);
+      for (size_t r = 0; r < std::min(Me, 8UL); ++r) {
+        int64_t off = routes[r];
+        int64_t row = off / k;
+        float scale = route_scale[static_cast<size_t>(off)];
+        printf("(R%ld:%.4f) ", row, scale);
+      }
+      printf("...\n");
+    }
+
     // Gather inputs for this expert
     std::vector<float> A1(Me * K1_logical);
     for (size_t r = 0; r < Me; ++r) {
@@ -261,241 +246,503 @@ static void run_moe_fc_cpu_grouped(
       std::copy(src_row, src_row + K1_logical, A1.data() + r * K1_logical);
     }
 
+    // DEBUG: Print first few input activations for selected experts
+    if (Me > 0) {
+      printf("[CPU DEBUG] Expert %ld input activations (first token): ", e);
+      for (size_t i = 0; i < std::min(K1_logical, 8UL); ++i) {
+        printf("%.6f ", A1[i]);
+      }
+      printf("...\n");
+    }
+
     // Dequantize FC1 weights for this expert to [N1, K1_logical]
     std::vector<float> B1_deq(N1 * K1_logical);
     const float* s1 = fc1_scales + static_cast<size_t>(e) * N1;
-    const size_t expert_base_fc1 = static_cast<size_t>(e) * (N1 * K1_packed);
+
+    // FIXED: Correct weight offset calculation based on actual bit width
+    const size_t bytes_per_expert_fc1 = (N1 * K1_logical * bit_width) / 8;
+    const size_t expert_base_fc1 = static_cast<size_t>(e) * bytes_per_expert_fc1;
     const uint8_t* expert_B1_q = fc1_wq + expert_base_fc1;
 
-    // Debug: Print tensor layout info for selected experts
+    // ===== CPU WEIGHT LAYOUT DEBUGGING =====
+    if (Me > 0) {
+      printf("\n[CPU WEIGHT DEBUG] ===== EXPERT %ld WEIGHT LAYOUT ANALYSIS =====\n", e);
+      printf("[CPU WEIGHT DEBUG] bit_width: %d, N1: %zu, K1_logical: %zu, K1_packed: %zu\n",
+             bit_width, N1, K1_logical, K1_packed);
+      printf("[CPU WEIGHT DEBUG] FIXED: bytes_per_expert_fc1: %zu (was: %zu)\n",
+             bytes_per_expert_fc1, N1 * K1_packed);
+      printf("[CPU WEIGHT DEBUG] expert_base_fc1: %zu, total FC1 weights: %zu\n",
+             expert_base_fc1, bytes_per_expert_fc1);
+
+      // Print raw quantized bytes
+      const size_t debug_bytes = std::min(bytes_per_expert_fc1, 16UL);
+      printf("[CPU WEIGHT DEBUG] Expert %ld FC1 raw weight bytes (first 16): ", e);
+      for (size_t i = 0; i < debug_bytes; ++i) {
+        printf("%02x ", expert_B1_q[i]);
+      }
+      printf("\n");
+
+      // Print scales
+      printf("[CPU WEIGHT DEBUG] Expert %ld FC1 scales (first 16): ", e);
+      for (size_t i = 0; i < std::min(N1, 16UL); ++i) {
+        printf("%.6f ", s1[i]);
+      }
+      printf("\n");
+
+      // Check if scales are per-element or per-column
+      printf("[CPU WEIGHT DEBUG] Scale analysis: N1=%zu, total scales available=%zu\n", N1, N1);
+      printf("[CPU WEIGHT DEBUG] Scale indexing: using s1[n] where n is column index\n");
+
+      if (bit_width == 8) {
+        printf("[CPU WEIGHT DEBUG] Using 8-bit ColumnMajorTileInterleave layout\n");
+        printf("[CPU WEIGHT DEBUG] ThreadblockK=64, ColumnsInterleaved=2\n");
+      } else {
+        printf("[CPU WEIGHT DEBUG] Using 4-bit simple column-major layout (testing)\n");
+        printf("[CPU WEIGHT DEBUG] physical_idx = byte_k * N1 + n\n");
+      }
+    }
 
     // Debug: Print first few weight values for selected experts
 
     if (bit_width == 8) {
-      // CUTLASS-compatible layout access: Column-major [K x N], match CUDA quant GEMM path
+      // CUTLASS-compatible layout access: ColumnMajorTileInterleave [K x N] for 8-bit weights
       // Based on mixed_gemm_B_layout.h: ThreadblockK=64, ColumnsInterleaved=2
       const size_t ThreadblockK = 64;
       const size_t ColumnsInterleaved = 2;
 
-      // CUTLASS layout calculation for uint8 weights
-
       for (size_t n = 0; n < N1; ++n) {
         const float sc = s1[n];
         for (size_t kx = 0; kx < K1_logical; ++kx) {
-          size_t physical_idx;
+          // Calculate CUTLASS tile-interleaved index for 8-bit weights
+          size_t tile_row = kx / ThreadblockK;
+          size_t tile_col = n / ColumnsInterleaved;
+          size_t inner_row = kx % ThreadblockK;
+          size_t inner_col = n % ColumnsInterleaved;
 
-          // Column-major access to match CUDA layout
-          physical_idx = kx * N1 + n;
+          size_t num_tile_cols = (N1 + ColumnsInterleaved - 1) / ColumnsInterleaved;
+          size_t physical_idx = tile_row * (num_tile_cols * ThreadblockK * ColumnsInterleaved) +
+                                tile_col * (ThreadblockK * ColumnsInterleaved) +
+                                inner_row * ColumnsInterleaved +
+                                inner_col;
 
-          // Debug output for Expert 5 first few elements
-
-          if (physical_idx < N1 * K1_packed) {
+          if (physical_idx < bytes_per_expert_fc1) {
             // Dequantize with zero-point subtraction to align with CUDA implementation
             // u8 quant with per-column scale and zp=128
             float dequantized_val = sc * (static_cast<float>(expert_B1_q[physical_idx]) - static_cast<float>(global_zero_point));
-            // Store as [K1_logical, N1] since we're reading column-major from storage
-            B1_deq[kx * N1 + n] = dequantized_val;
+            // FIXED: Use consistent row-major storage like 4-bit case
+            B1_deq[n * K1_logical + kx] = dequantized_val;
           } else {
             // Fallback to zero if index is out of bounds
-            B1_deq[kx * N1 + n] = 0.0f;
+            B1_deq[n * K1_logical + kx] = 0.0f;
           }
         }
       }
     } else {
-      // CORRECTED: Use CUTLASS ColumnMajorTileInterleave layout for 4-bit weights to match CUDA
-      const size_t ThreadblockK = 64;
-      const size_t ColumnsInterleaved = 2;
-
+      // TEST: Try simple column-major access instead of tile-interleaved
+      // Maybe CUTLASS pre-stored weights in the interleaved format already
       for (size_t n = 0; n < N1; ++n) {
-        const float sc = s1[n];
         for (size_t kx = 0; kx < K1_logical; kx += 2) {
-          // Calculate CUTLASS tile-interleaved index for the byte containing this pair
+          // FIXED: For 4-bit weights, each column is stored consecutively
+          // Each expert has K1_packed bytes per column
           size_t byte_k = kx / 2;
-          size_t tile_row = byte_k / (ThreadblockK / 2);  // Each byte holds 2 elements
-          size_t tile_col = n / ColumnsInterleaved;
-          size_t inner_row = byte_k % (ThreadblockK / 2);
-          size_t inner_col = n % ColumnsInterleaved;
+          size_t physical_byte_idx = n * K1_packed + byte_k;
 
-          size_t physical_byte_idx = (tile_row * (N1 / ColumnsInterleaved + (N1 % ColumnsInterleaved ? 1 : 0)) * (ThreadblockK / 2) * ColumnsInterleaved) +
-                                     (tile_col * (ThreadblockK / 2) * ColumnsInterleaved) +
-                                     (inner_row * ColumnsInterleaved) +
-                                     inner_col;
-
-          if (physical_byte_idx < N1 * K1_packed / 2) {
+          if (physical_byte_idx < bytes_per_expert_fc1) {
             const uint8_t b = expert_B1_q[physical_byte_idx];
             const uint8_t lo = b & 0x0F;
             const uint8_t hi = (b >> 4) & 0x0F;
-            B1_deq[n * K1_logical + kx] = sc * (static_cast<float>(lo) - static_cast<float>(global_zero_point));
+
+            // TEST: Try using scale based on byte position instead of just column
+            // Hypothesis: scale index should include byte offset
+            size_t scale_idx_pos0 = (n + byte_k) % N1;  // Test: include byte offset
+            size_t scale_idx_pos1 = (n + byte_k) % N1;  // Same for both positions in byte
+
+            const float sc_pos0 = s1[scale_idx_pos0];
+            const float sc_pos1 = s1[scale_idx_pos1];
+
+            // FIXED: CUDA expects low nibble first, then high nibble
+            B1_deq[n * K1_logical + kx] = sc_pos0 * (static_cast<float>(lo) - static_cast<float>(global_zero_point));
             if (kx + 1 < K1_logical) {
-              B1_deq[n * K1_logical + kx + 1] = sc * (static_cast<float>(hi) - static_cast<float>(global_zero_point));
+              B1_deq[n * K1_logical + kx + 1] = sc_pos1 * (static_cast<float>(hi) - static_cast<float>(global_zero_point));
+            }
+            // Debug first few values
+            if (Me > 0 && n == 0 && kx < 16) {
+              printf("[CPU DEBUG] n=%zu, kx=%zu, byte_idx=%zu, byte=0x%02x, lo=%u, hi=%u, sc0=%.6f, sc1=%.6f, val0=%.6f, val1=%.6f\n",
+                     n, kx, physical_byte_idx, b, lo, hi, sc_pos0, sc_pos1,
+                     sc_pos0 * (static_cast<float>(lo) - static_cast<float>(global_zero_point)),
+                     (kx + 1 < K1_logical) ? sc_pos1 * (static_cast<float>(hi) - static_cast<float>(global_zero_point)) : 0.0f);
+
+              // Extra debug for position 4 specifically
+              if (kx == 4) {
+                printf("[CPU POS4 DEBUG] Position 4 analysis:\n");
+                printf("[CPU POS4 DEBUG]   Using scale index (n+byte_k)=%zu: s1[%zu] = %.6f\n", scale_idx_pos0, scale_idx_pos0, sc_pos0);
+                printf("[CPU POS4 DEBUG]   Raw nibble lo=%u, calculated value=%.6f\n", lo, sc_pos0 * (static_cast<float>(lo) - static_cast<float>(global_zero_point)));
+                printf("[CPU POS4 DEBUG]   CUDA expects: 0.031250\n");
+                printf("[CPU POS4 DEBUG]   Scale difference: %.6f vs expected %.6f\n", sc_pos0, 0.031250f);
+
+                // Test different scale indices
+                printf("[CPU POS4 DEBUG]   Testing alternative scales:\n");
+                for (size_t test_idx = 0; test_idx < std::min(N1, 8UL); ++test_idx) {
+                  float test_val = s1[test_idx] * (static_cast<float>(lo) - static_cast<float>(global_zero_point));
+                  printf("[CPU POS4 DEBUG]     s1[%zu] = %.6f → value = %.6f\n", test_idx, s1[test_idx], test_val);
+                }
+              }
             }
           } else {
             B1_deq[n * K1_logical + kx] = 0.0f;
             if (kx + 1 < K1_logical) {
               B1_deq[n * K1_logical + kx + 1] = 0.0f;
             }
+            // Debug out-of-bounds access
+            if (Me > 0 && n == 0 && kx < 16) {
+              printf("[CPU DEBUG] Out-of-bounds at n=%zu, kx=%zu, byte_idx=%zu >= %zu\n",
+                     n, kx, physical_byte_idx, bytes_per_expert_fc1);
+            }
           }
         }
       }
     }
 
-    // Debug: Print first few dequantized weights for selected experts
+    // ===== POST-DEQUANTIZATION ANALYSIS =====
+    if (Me > 0) {
+      printf("\n[CPU WEIGHT DEBUG] === POST-DEQUANTIZATION ANALYSIS ===\n");
+      printf("[CPU WEIGHT DEBUG] Expert %ld dequantized FC1 matrix layout [N1=%zu, K1_logical=%zu]\n", e, N1, K1_logical);
+
+      // Print first few dequantized weights in matrix form to see layout
+      printf("[CPU WEIGHT DEBUG] Expert %ld FC1 dequantized weights (first 4x4 submatrix):\n", e);
+      for (size_t n = 0; n < std::min(N1, 4UL); ++n) {
+        printf("[CPU WEIGHT DEBUG]   Row %zu: ", n);
+        for (size_t k = 0; k < std::min(K1_logical, 4UL); ++k) {
+          printf("%8.4f ", B1_deq[n * K1_logical + k]);
+        }
+        printf("\n");
+      }
+
+      // Compare storage layouts
+      printf("[CPU WEIGHT DEBUG] Storage layout: B1_deq[n * K1_logical + k] (row-major)\n");
+      printf("[CPU WEIGHT DEBUG] CUDA expects: Column-major interleaved for quantized data\n");
+
+      // Manual verification of first few elements
+      printf("[CPU WEIGHT DEBUG] Manual dequantization verification:\n");
+      if (bit_width == 8) {
+        printf("[CPU WEIGHT DEBUG] First 4 raw bytes: %02x %02x %02x %02x\n",
+               expert_B1_q[0], expert_B1_q[1], expert_B1_q[2], expert_B1_q[3]);
+        printf("[CPU WEIGHT DEBUG] With scale %.6f and zp=%d:\n", s1[0], global_zero_point);
+        for (int i = 0; i < 4; ++i) {
+          float manual_dq = s1[0] * (static_cast<float>(expert_B1_q[i]) - static_cast<float>(global_zero_point));
+          printf("[CPU WEIGHT DEBUG]   byte[%d]: %02x -> %.6f\n", i, expert_B1_q[i], manual_dq);
+        }
+      } else {
+        printf("[CPU WEIGHT DEBUG] First 4 raw bytes (4-bit packed): %02x %02x %02x %02x\n",
+               expert_B1_q[0], expert_B1_q[1], expert_B1_q[2], expert_B1_q[3]);
+        printf("[CPU WEIGHT DEBUG] Unpacked 4-bit values:\n");
+        for (int i = 0; i < 2; ++i) {  // First 2 bytes = 4 values
+          uint8_t b = expert_B1_q[i];
+          uint8_t lo = b & 0x0F;
+          uint8_t hi = (b >> 4) & 0x0F;
+          printf("[CPU WEIGHT DEBUG]   byte[%d]: %02x -> lo=%d hi=%d\n", i, b, lo, hi);
+        }
+      }
+      printf("[CPU WEIGHT DEBUG] =======================================\n\n");
+    }
+
+    // DEBUG: Print first few dequantized FC1 weights for selected experts
+    if (Me > 0) {
+      printf("[CPU DEBUG] Expert %ld FC1 dequantized weights (first 8): ", e);
+      for (size_t i = 0; i < std::min(N1 * K1_logical, 8UL); ++i) {
+        printf("%.6f ", B1_deq[i]);
+      }
+      printf("...\n");
+      printf("[CPU DEBUG] Expert %ld FC1 scales (first 8): ", e);
+      for (size_t i = 0; i < std::min(N1, 8UL); ++i) {
+        printf("%.6f ", s1[i]);
+      }
+      printf("...\n");
+    }
 
     // Debug: Print input activations for this expert for selected experts
 
     // FC1 GEMM: Since weights are stored column-major, treat as [K1, N1] without transpose
     // C1 = A1 [Me,K1] * B1 [K1,N1] -> C1 [Me,N1]
     std::vector<float> C1(Me * N1);
+
+    // ===== CPU FC1 GEMM DEBUGGING =====
+    if (Me > 0) {
+      printf("\n[CPU GEMM DEBUG] ===== FC1 GEMM OPERATION =====\n");
+      printf("[CPU GEMM DEBUG] Expert %ld FC1 GEMM: A[%zu,%zu] * B[%zu,%zu] -> C[%zu,%zu]\n",
+             e, Me, K1_logical, K1_logical, N1, Me, N1);
+      printf("[CPU GEMM DEBUG] MLAS Parameters:\n");
+      printf("[CPU GEMM DEBUG]   A (input): ptr=%p, lda=%zu (row-major)\n", A1.data(), K1_logical);
+      printf("[CPU GEMM DEBUG]   B (weights): ptr=%p, ldb=%zu\n", B1_deq.data(), N1);
+      printf("[CPU GEMM DEBUG]   C (output): ptr=%p, ldc=%zu\n", C1.data(), N1);
+      printf("[CPU GEMM DEBUG]   alpha=%.1f, beta=%.1f\n", 1.0f, 0.0f);
+      printf("[CPU GEMM DEBUG] GEMM Type: CblasNoTrans, CblasNoTrans (A and B not transposed)\n");
+
+      // Print input matrix A (activations)
+      printf("[CPU GEMM DEBUG] Input A (first token, first 8): ");
+      for (size_t k = 0; k < std::min(K1_logical, 8UL); ++k) {
+        printf("%.6f ", A1[k]);
+      }
+      printf("\n");
+
+      // Print weight matrix B (first row)
+      printf("[CPU GEMM DEBUG] Weights B (first row, first 8): ");
+      for (size_t n = 0; n < std::min(N1, 8UL); ++n) {
+        printf("%.6f ", B1_deq[n * K1_logical]);  // First row of column-major storage
+      }
+      printf("\n");
+    }
+
     MLAS_SGEMM_DATA_PARAMS d1{};
     d1.A = A1.data();
     d1.lda = K1_logical;
     d1.B = B1_deq.data();
-    d1.ldb = N1;  // Column-major stride: N1 (since we access as K1 x N1)
+    d1.ldb = K1_logical;  // FIXED: Row-major stride for B1_deq[n * K1_logical + k]
     d1.C = C1.data();
     d1.ldc = N1;
     d1.alpha = 1.0f;
     d1.beta = 0.0f;
-    MlasGemm(CblasNoTrans, CblasNoTrans, Me, N1, K1_logical, d1, thread_pool);
+    // FIXED: Need transpose for B since it's stored row-major [N1, K1] but GEMM expects [K1, N1]
+    MlasGemm(CblasNoTrans, CblasTrans, Me, N1, K1_logical, d1, thread_pool);
+    // ===== POST-GEMM ANALYSIS =====
+    if (Me > 0) {
+      printf("[CPU GEMM DEBUG] === FC1 GEMM COMPLETED ===\n");
+      printf("[CPU GEMM DEBUG] Expert %ld FC1 GEMM output (first token, first 8): ", e);
+      for (size_t i = 0; i < std::min(N1, 8UL); ++i) {
+        printf("%.6f ", C1[i]);
+      }
+      printf("\n");
+      printf("[CPU GEMM DEBUG] Implementation: MLAS standard floating-point GEMM\n");
+      printf("[CPU GEMM DEBUG] vs CUDA: CUTLASS mixed-precision quantized GEMM\n");
+      printf("[CPU GEMM DEBUG] =====================================\n\n");
+    }
 
-    // Debug: Print FC1 GEMM output before bias for selected experts
+    // DEBUG: Print FC1 GEMM output before bias for selected experts
+    if (Me > 0) {
+      printf("[CPU DEBUG] Expert %ld FC1 GEMM output before bias (first token, first 8): ", e);
+      for (size_t i = 0; i < std::min(N1, 8UL); ++i) {
+        printf("%.6f ", C1[i]);
+      }
+      printf("...\n");
+    }
 
     // Add FC1 bias
+    if (fc1_bias_f32) {
+      const float* b = fc1_bias_f32 + static_cast<size_t>(e) * N1;
+      for (size_t r = 0; r < Me; ++r) {
+        float* rowp = C1.data() + r * N1;
+        for (size_t c = 0; c < N1; ++c) rowp[c] += b[c];
+      }
 
+      // DEBUG: Print FC1 output after bias for selected experts
+      if (Me > 0) {
+        printf("[CPU DEBUG] Expert %ld FC1 output after bias (first token, first 8): ", e);
+        for (size_t i = 0; i < std::min(N1, 8UL); ++i) {
+          printf("%.6f ", C1[i]);
+        }
+        printf("...\n");
+        printf("[CPU DEBUG] Expert %ld FC1 bias (first 8): ", e);
+        for (size_t i = 0; i < std::min(N1, 8UL); ++i) {
+          printf("%.6f ", b[i]);
+        }
+        printf("...\n");
+      }
+    }
+
+    // Apply SwiGLU activation in-place per row (interleaved layout)
     for (size_t r = 0; r < Me; ++r) {
-      float* rowp = C1.data() + r * N1;
-      for (size_t c = 0; c < N1; ++c) rowp[c] += b[c];
+      contrib::ApplySwiGLUActivation(C1.data() + r * N1, inter_size, true, activation_alpha, activation_beta);
     }
-  }
 
-  // Apply SwiGLU activation in-place per row (interleaved layout)
-  for (size_t r = 0; r < Me; ++r) {
-    contrib::ApplySwiGLUActivation(C1.data() + r * N1, inter_size, true, activation_alpha, activation_beta);
-  }
-
-  // Debug: Print output after SwiGLU activation for selected experts
-
-  // Create contiguous buffer for FC2 input after SwiGLU activation
-  std::vector<float> A2(Me * K2_logical);
-  for (size_t r = 0; r < Me; ++r) {
-    const float* src = C1.data() + r * N1;    // Source row in C1
-    float* dst = A2.data() + r * K2_logical;  // Destination row in A2
-    std::copy(src, src + K2_logical, dst);    // Copy only the first K2_logical values
-  }
-
-  // Debug: Print FC2 input for selected experts
-
-  // Dequantize FC2 weights for this expert to [N2, K2_logical]
-  std::vector<float> B2_deq(N2 * K2_logical);
-  const float* s2 = fc2_scales + static_cast<size_t>(e) * N2;
-  const size_t expert_base_fc2 = static_cast<size_t>(e) * (N2 * K2_packed);
-  const uint8_t* expert_B2_q = fc2_wq + expert_base_fc2;
-
-  // Debug: Print FC2 scales and weights for selected experts
-  if (bit_width == 8) {
-    // CUTLASS-compatible layout access: Column-major [K x N], match CUDA quant GEMM path
-    const size_t ThreadblockK = 64;
-    const size_t ColumnsInterleaved = 2;
-
-    for (size_t n = 0; n < N2; ++n) {
-      const float sc = s2[n];
-      for (size_t kx = 0; kx < K2_logical; ++kx) {
-        size_t physical_idx;
-
-        // MATCH FC1: Use column-major coordinate access exactly like FC1
-        physical_idx = kx * N2 + n;
-
-        // Debug output for Expert 5 first few elements to match FC1 pattern
-
-        if (physical_idx < N2 * K2_packed) {
-          // Dequantize with zero-point subtraction to align with CUDA implementation
-          // u8 quant with per-column scale and zp=128
-          float dequantized_val = sc * (static_cast<float>(expert_B2_q[physical_idx]) - static_cast<float>(global_zero_point));
-          // MATCH FC1: Store as column-major [K2, N2] exactly like FC1's [K1, N1]
-          B2_deq[kx * N2 + n] = dequantized_val;
-        } else {
-          // Fallback to zero if index is out of bounds
-          B2_deq[kx * N2 + n] = 0.0f;
-        }
+    // DEBUG: Print output after SwiGLU activation for selected experts
+    if (Me > 0) {
+      printf("[CPU DEBUG] Expert %ld after SwiGLU activation (first token, first 8): ", e);
+      for (size_t i = 0; i < std::min(static_cast<size_t>(inter_size), 8UL); ++i) {
+        printf("%.6f ", C1[i]);
       }
+      printf("...\n");
     }
-  } else {
-    // CORRECTED: Use CUTLASS ColumnMajorTileInterleave layout for FC2 4-bit weights to match CUDA
-    const size_t ThreadblockK = 64;
-    const size_t ColumnsInterleaved = 2;
 
-    for (size_t n = 0; n < N2; ++n) {
-      const float sc = s2[n];
-      for (size_t kx = 0; kx < K2_logical; kx += 2) {
-        // Calculate CUTLASS tile-interleaved index for the byte containing this pair
-        size_t byte_k = kx / 2;
-        size_t tile_row = byte_k / (ThreadblockK / 2);  // Each byte holds 2 elements
-        size_t tile_col = n / ColumnsInterleaved;
-        size_t inner_row = byte_k % (ThreadblockK / 2);
-        size_t inner_col = n % ColumnsInterleaved;
+    // Create contiguous buffer for FC2 input after SwiGLU activation
+    std::vector<float> A2(Me * K2_logical);
+    for (size_t r = 0; r < Me; ++r) {
+      const float* src = C1.data() + r * N1;    // Source row in C1
+      float* dst = A2.data() + r * K2_logical;  // Destination row in A2
+      std::copy(src, src + K2_logical, dst);    // Copy only the first K2_logical values
+    }
 
-        size_t physical_byte_idx = (tile_row * (N2 / ColumnsInterleaved + (N2 % ColumnsInterleaved ? 1 : 0)) * (ThreadblockK / 2) * ColumnsInterleaved) +
-                                   (tile_col * (ThreadblockK / 2) * ColumnsInterleaved) +
-                                   (inner_row * ColumnsInterleaved) +
-                                   inner_col;
+    // DEBUG: Print FC2 input for selected experts
+    if (Me > 0) {
+      printf("[CPU DEBUG] Expert %ld FC2 input (first token, first 8): ", e);
+      for (size_t i = 0; i < std::min(K2_logical, 8UL); ++i) {
+        printf("%.6f ", A2[i]);
+      }
+      printf("...\n");
+    }
 
-        if (physical_byte_idx < N2 * K2_packed / 2) {
-          const uint8_t b = expert_B2_q[physical_byte_idx];
-          const uint8_t lo = b & 0x0F;
-          const uint8_t hi = (b >> 4) & 0x0F;
-          B2_deq[kx * N2 + n] = sc * (static_cast<float>(lo) - static_cast<float>(global_zero_point));
-          if (kx + 1 < K2_logical) {
-            B2_deq[(kx + 1) * N2 + n] = sc * (static_cast<float>(hi) - static_cast<float>(global_zero_point));
-          }
-        } else {
-          B2_deq[kx * N2 + n] = 0.0f;
-          if (kx + 1 < K2_logical) {
-            B2_deq[(kx + 1) * N2 + n] = 0.0f;
+    // Dequantize FC2 weights for this expert to [N2, K2_logical]
+    std::vector<float> B2_deq(N2 * K2_logical);
+    const float* s2 = fc2_scales + static_cast<size_t>(e) * N2;
+
+    // FIXED: Correct FC2 weight offset calculation based on actual bit width
+    const size_t bytes_per_expert_fc2 = (N2 * K2_logical * bit_width) / 8;
+    const size_t expert_base_fc2 = static_cast<size_t>(e) * bytes_per_expert_fc2;
+    const uint8_t* expert_B2_q = fc2_wq + expert_base_fc2;
+
+    // Debug: Print FC2 scales and weights for selected experts
+    if (bit_width == 8) {
+      // CUTLASS-compatible layout access: ColumnMajorTileInterleave [K x N] for 8-bit weights
+      // Based on mixed_gemm_B_layout.h: ThreadblockK=64, ColumnsInterleaved=2
+      const size_t ThreadblockK = 64;
+      const size_t ColumnsInterleaved = 2;
+
+      for (size_t n = 0; n < N2; ++n) {
+        const float sc = s2[n];
+        for (size_t kx = 0; kx < K2_logical; ++kx) {
+          // Calculate CUTLASS tile-interleaved index for 8-bit weights
+          size_t tile_row = kx / ThreadblockK;
+          size_t tile_col = n / ColumnsInterleaved;
+          size_t inner_row = kx % ThreadblockK;
+          size_t inner_col = n % ColumnsInterleaved;
+
+          size_t num_tile_cols = (N2 + ColumnsInterleaved - 1) / ColumnsInterleaved;
+          size_t physical_idx = tile_row * (num_tile_cols * ThreadblockK * ColumnsInterleaved) +
+                                tile_col * (ThreadblockK * ColumnsInterleaved) +
+                                inner_row * ColumnsInterleaved +
+                                inner_col;
+
+          if (physical_idx < bytes_per_expert_fc2) {
+            // Dequantize with zero-point subtraction to align with CUDA implementation
+            // u8 quant with per-column scale and zp=128
+            float dequantized_val = sc * (static_cast<float>(expert_B2_q[physical_idx]) - static_cast<float>(global_zero_point));
+            // FIXED: Use consistent row-major storage like FC1
+            B2_deq[n * K2_logical + kx] = dequantized_val;
+          } else {
+            // Fallback to zero if index is out of bounds
+            B2_deq[n * K2_logical + kx] = 0.0f;
           }
         }
-      }
-    }
-  }
-
-  // Debug: Print FC2 dequantized weights for selected experts
-
-  // FC2 GEMM: Match FC1 approach exactly - column-major [K2, N2] storage
-  std::vector<float> C2(Me * N2);
-  MLAS_SGEMM_DATA_PARAMS d2{};
-  d2.A = A2.data();      // A2[Me, K2_logical] - FC2 input
-  d2.lda = K2_logical;   // Stride for A2
-  d2.B = B2_deq.data();  // B2[K2, N2] stored as column-major like FC1
-  d2.ldb = N2;           // Column-major stride: N2 (exactly like FC1's ldb = N1)
-  d2.C = C2.data();
-  d2.ldc = N2;
-  d2.alpha = 1.0f;
-  d2.beta = 0.0f;
-  // A[Me,K2] * B[K2,N2] -> C[Me,N2] (same pattern as FC1)
-  MlasGemm(CblasNoTrans, CblasNoTrans, Me, N2, K2_logical, d2, thread_pool);
-
-  // Debug: Print FC2 GEMM output (expert outputs) for selected experts
-
-  // Accumulate to final output with routing scale and optional FC2 bias
-  for (size_t r = 0; r < Me; ++r) {
-    const int64_t off = routes[r];
-    const int64_t row = off / k;
-    const float scale = route_scale[static_cast<size_t>(off)];
-    float* out_row = output + row * hidden_size;
-    const float* c2_row = C2.data() + r * N2;
-
-    // Debug for first row, first expert
-
-    if (fc2_bias_f32) {
-      const float* b2 = fc2_bias_f32 + static_cast<size_t>(e) * N2;
-      for (size_t c = 0; c < N2; ++c) {
-        out_row[c] += scale * (c2_row[c] + b2[c]);
       }
     } else {
-      for (size_t c = 0; c < N2; ++c) {
-        out_row[c] += scale * c2_row[c];
+      // TEST: Use same simple column-major approach as FC1
+      for (size_t n = 0; n < N2; ++n) {
+        for (size_t kx = 0; kx < K2_logical; kx += 2) {
+          // FIXED: For 4-bit weights, each column is stored consecutively
+          // Each expert has K2_packed bytes per column
+          size_t byte_k = kx / 2;
+          size_t physical_byte_idx = n * K2_packed + byte_k;
+
+          if (physical_byte_idx < bytes_per_expert_fc2) {
+            const uint8_t b = expert_B2_q[physical_byte_idx];
+            const uint8_t lo = b & 0x0F;
+            const uint8_t hi = (b >> 4) & 0x0F;
+
+            // FIXED: Apply same scale indexing fix as FC1
+            size_t scale_idx_pos0 = (n + byte_k) % N2;
+            size_t scale_idx_pos1 = (n + byte_k) % N2;
+
+            const float sc_pos0 = s2[scale_idx_pos0];
+            const float sc_pos1 = s2[scale_idx_pos1];
+
+            // MATCH FC1 4-bit: Use row-major storage (n * K2_logical + kx) like FC1
+            // FIXED: CUDA expects low nibble first, then high nibble
+            B2_deq[n * K2_logical + kx] = sc_pos0 * (static_cast<float>(lo) - static_cast<float>(global_zero_point));
+            if (kx + 1 < K2_logical) {
+              B2_deq[n * K2_logical + kx + 1] = sc_pos1 * (static_cast<float>(hi) - static_cast<float>(global_zero_point));
+            }
+          } else {
+            B2_deq[n * K2_logical + kx] = 0.0f;
+            if (kx + 1 < K2_logical) {
+              B2_deq[n * K2_logical + kx + 1] = 0.0f;
+            }
+          }
+        }
+      }
+    }
+
+    // DEBUG: Print FC2 dequantized weights for selected experts
+    if (Me > 0) {
+      printf("[CPU DEBUG] Expert %ld FC2 dequantized weights (first 8): ", e);
+      for (size_t i = 0; i < std::min(N2 * K2_logical, 8UL); ++i) {
+        printf("%.6f ", B2_deq[i]);
+      }
+      printf("...\n");
+      printf("[CPU DEBUG] Expert %ld FC2 scales (first 8): ", e);
+      for (size_t i = 0; i < std::min(N2, 8UL); ++i) {
+        printf("%.6f ", s2[i]);
+      }
+      printf("...\n");
+    }
+
+    // FC2 GEMM: Now using same consistent row-major storage and GEMM pattern as FC1
+    std::vector<float> C2(Me * N2);
+    MLAS_SGEMM_DATA_PARAMS d2{};
+    d2.A = A2.data();      // A2[Me, K2_logical] - FC2 input
+    d2.lda = K2_logical;   // Stride for A2 (same as FC1)
+    d2.B = B2_deq.data();  // B2[N2, K2_logical] stored row-major (same as FC1)
+    d2.ldb = K2_logical;   // FIXED: Row-major stride for B2_deq[n * K2_logical + k]
+    d2.C = C2.data();      // C2[Me, N2] output
+    d2.ldc = N2;           // Stride for C2 (same as FC1)
+    d2.alpha = 1.0f;
+    d2.beta = 0.0f;
+    // FIXED: Use same GEMM call as FC1: CblasTrans for row-major B matrix
+    MlasGemm(CblasNoTrans, CblasTrans, Me, N2, K2_logical, d2, thread_pool);
+
+    // DEBUG: Print FC2 GEMM output (expert outputs) for selected experts
+    if (Me > 0) {
+      printf("[CPU DEBUG] Expert %ld FC2 GEMM output (first token, first 8): ", e);
+      for (size_t i = 0; i < std::min(N2, 8UL); ++i) {
+        printf("%.6f ", C2[i]);
+      }
+      printf("...\n");
+    }
+
+    // Accumulate to final output with routing scale and optional FC2 bias
+    for (size_t r = 0; r < Me; ++r) {
+      const int64_t off = routes[r];
+      const int64_t row = off / k;
+      const float scale = route_scale[static_cast<size_t>(off)];
+      float* out_row = output + row * hidden_size;
+      const float* c2_row = C2.data() + r * N2;
+
+      // DEBUG: Print output accumulation details for first few tokens and experts
+      if (Me > 0 && r < 2) {
+        printf("[CPU DEBUG] Expert %ld Token %zu Row %ld: scale=%.6f\n", e, r, row, scale);
+        if (fc2_bias_f32) {
+          const float* b2 = fc2_bias_f32 + static_cast<size_t>(e) * N2;
+          printf("[CPU DEBUG] Expert %ld FC2 bias (first 4): %.6f %.6f %.6f %.6f\n",
+                 e, b2[0], b2[1], b2[2], b2[3]);
+        }
+      }
+
+      if (fc2_bias_f32) {
+        const float* b2 = fc2_bias_f32 + static_cast<size_t>(e) * N2;
+        for (size_t c = 0; c < N2; ++c) {
+          out_row[c] += scale * (c2_row[c] + b2[c]);
+        }
+      } else {
+        for (size_t c = 0; c < N2; ++c) {
+          out_row[c] += scale * c2_row[c];
+        }
+      }
+
+      // DEBUG: Print partial output after this expert's contribution
+      if (Me > 0 && r < 2) {
+        printf("[CPU DEBUG] Expert %ld Token %zu partial output (first 4): %.6f %.6f %.6f %.6f\n",
+               e, r, out_row[0], out_row[1], out_row[2], out_row[3]);
       }
     }
   }
-}
+
+  // DEBUG: Print final output summary
+  printf("[CPU DEBUG] Final output summary (first 3 rows, first 8 elements):\n");
+  for (int64_t row = 0; row < std::min(num_rows, 3L); ++row) {
+    printf("[CPU DEBUG] Row %ld: ", row);
+    for (int64_t col = 0; col < std::min(hidden_size, 8L); ++col) {
+      printf("%.6f ", output[row * hidden_size + col]);
+    }
+    printf("...\n");
+  }
 }
 
 // CUDA-style finalize routing function: accumulates expert outputs with bias and scaling
@@ -781,6 +1028,12 @@ Status QMoE<T>::PrepackAndDequantizeWeights(OpKernelContext* context,
             const uint8_t val = (row % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
             const float dequantized_val = scale * (static_cast<float>(val) - 8.0f);
 
+            // Debug first few values for Expert 5
+            if (expert_idx == 5 && col < 8 && row == 0) {
+              printf("[CPU 4BIT DEBUG] Expert %lld, col %lld, row %lld: packed_idx=%zu, packed_val=0x%02x, val=%d, scale=%f, dequant=%f\n",
+                     expert_idx, col, row, packed_idx, packed_val, val, scale, dequantized_val);
+            }
+
             // Store in column-major layout for MlasGemm
             prepacked_fc1_weights_data_[expert_idx * fc1_output_size * moe_params.hidden_size + col * moe_params.hidden_size + row] = dequantized_val;
           }
@@ -947,9 +1200,6 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
     }
     MlasConvertHalfToFloatBuffer(fc2_bias_fp16.get(), fc2_bias_float.get(), fc2_bias_size);
   }
-
-  // Debug: Add logging for first few values (match CUDA format)
-  const int debug_elements = 10;
 
   // Expert-grouped CPU path: compute and accumulate directly into output_float using dequant + SGEMM
   const void* fc1_wq = fc1_experts_weights->DataRaw();
