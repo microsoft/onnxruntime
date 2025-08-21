@@ -40,7 +40,6 @@
 # - Updated tolerance values to reflect improved accuracy
 # --------------------------------------------------------------------------
 import itertools
-import os
 import time
 import unittest
 from collections import OrderedDict
@@ -70,7 +69,6 @@ except ImportError:
     TensorProto = TensorProtoPlaceholder
 
 # Reduces number of tests to run for faster pipeline checks
-pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
 
 onnxruntime.preload_dlls()
 
@@ -414,16 +412,6 @@ def create_cpu_moe_onnx_graph(
 
     if use_quant:
         nodes[0].attribute.extend([helper.make_attribute("expert_weight_bits", quant_bits)])
-
-    # For 4-bit quantization, we need to pack 2 values into each byte
-    pack_factor = 2 if quant_bits == 4 else 1
-
-    # For SwiGLU, we need to double the FC1 dimension to accommodate both gate and value paths
-    # However, if weights are already interleaved, they already have the correct size
-    if use_swiglu and not swiglu_interleaved:
-        act_factor = 2  # Need to double the size for separate gate and value weights
-    else:
-        act_factor = 1  # Weights are already the correct size (either non-SwiGLU or interleaved)
 
     # Weights are store in column major order. Need pack 2 int4 values into uint8.
     # Use the actual tensor shapes instead of calculating them to avoid size mismatches
@@ -1412,10 +1400,6 @@ class TestPhiQMoECPU(unittest.TestCase):
     def test_phi3_qmoe_parity_cpu(
         self, batch_size, sequence_length, quant_bits, use_swiglu=True, swiglu_interleaved=True
     ):
-        import time
-
-        test_start = time.time()
-
         # Print test configuration
         test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, use_swiglu={use_swiglu}, swiglu_interleaved={swiglu_interleaved}"
         print(f"Running test: {test_config}")
@@ -1424,7 +1408,6 @@ class TestPhiQMoECPU(unittest.TestCase):
             hidden_size=128, intermediate_size=256, hidden_act="silu"
         )  # Even smaller sizes for better accuracy
 
-        model_start = time.time()
         phi3_moe = PhiMoESparseMoeBlock(
             config,
             batch_size,
@@ -1434,7 +1417,6 @@ class TestPhiQMoECPU(unittest.TestCase):
             swiglu_interleaved=swiglu_interleaved,
         )
         phi3_moe.to(device)
-        model_end = time.time()
 
         # Skip tests if ONNX is not available
         if not has_onnx:
@@ -1445,16 +1427,12 @@ class TestPhiQMoECPU(unittest.TestCase):
             self.skipTest("Failed to create ONNX Runtime session")
 
         try:
-            parity_start = time.time()
             phi3_moe.parity_check()
-            parity_end = time.time()
         except RuntimeError as e:
             if "FC3 gating is not yet implemented on CPU" in str(e):
                 self.skipTest("FC3 gating is not yet implemented on CPU")
             else:
                 raise
-
-        test_end = time.time()
 
     run_performance_test = False
 
@@ -1513,6 +1491,8 @@ class TestPhiQMoECPU(unittest.TestCase):
 
                     elapsed_time = end_time - start_time
                     tokens_per_second = total_tokens / elapsed_time
+
+                    print(f"QMoE CPU Benchmark: {tokens_per_second:.2f} tokens/sec")
 
 
 if __name__ == "__main__":

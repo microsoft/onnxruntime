@@ -90,16 +90,6 @@ static void run_moe_fc_cpu_grouped(
       max_logit = std::max(max_logit, logit);
     }
 
-    // DEBUG: Print raw router logits for first few rows
-    if (row < 3) {
-      printf("[CPU DEBUG] Row %ld raw router logits: ", row);
-      for (int64_t e = 0; e < std::min(num_experts, 8L); ++e) {
-        printf("%.6f ", gating_output[row * num_experts + e]);
-      }
-      printf("...\n");
-      printf("[CPU DEBUG] Row %ld max_logit: %.6f\n", row, max_logit);
-    }
-
     // Get top-2 experts first for jitter-based masking (matching PyTorch)
     std::vector<std::pair<float, int64_t>> all_experts;
     for (int64_t e = 0; e < num_experts; ++e) {
@@ -127,15 +117,6 @@ static void run_moe_fc_cpu_grouped(
     // Second expert: mask others including top expert, only second expert remains
     float weight2 = 1.0f;  // PyTorch gives weight 1.0 to second expert after masking
 
-    // DEBUG: Print jitter-based routing for first few rows
-    if (row < 3) {
-      printf("[CPU DEBUG] Row %ld jitter-based routing:\n", row);
-      printf("[CPU DEBUG]   Top-2 experts: E%ld(%.6f) E%ld(%.6f)\n",
-             top1_expert, top1_logit, top2_expert, top2_logit);
-      printf("[CPU DEBUG]   Routing weights: E%ld=%.6f E%ld=%.6f\n",
-             top1_expert, weight1, top2_expert, weight2);
-    }
-
     // Add selected experts with PyTorch-style routing weights
     expert_scores.emplace_back(weight1, top1_expert);
     expert_scores.emplace_back(weight2, top2_expert);
@@ -148,32 +129,12 @@ static void run_moe_fc_cpu_grouped(
       selected_sum += expert_scores[static_cast<size_t>(i)].first;
     }
 
-    // DEBUG: Print top-k selection results for first few rows
-    if (row < 3) {
-      printf("[CPU DEBUG] Row %ld top-%ld experts: ", row, select);
-      for (int64_t i = 0; i < select; ++i) {
-        printf("(E%ld:%.6f) ", expert_scores[static_cast<size_t>(i)].second, expert_scores[static_cast<size_t>(i)].first);
-      }
-      printf("\n");
-      printf("[CPU DEBUG] Row %ld selected_sum: %.6f\n", row, selected_sum);
-    }
-
-    // Debug routing for first row
-
     for (int64_t i = 0; i < select; ++i) {
       const int64_t off = row * k + i;
       route_expert[static_cast<size_t>(off)] = static_cast<int>(expert_scores[static_cast<size_t>(i)].second);
 
       // Use PyTorch-style routing weights (1.0 for each selected expert)
       route_scale[static_cast<size_t>(off)] = expert_scores[static_cast<size_t>(i)].first;
-
-      // DEBUG: Print final routing weights for first few rows
-      if (row < 3) {
-        printf("[CPU DEBUG] Row %ld Expert %d final weight: %.6f (PyTorch-style)\n",
-               row, route_expert[static_cast<size_t>(off)], route_scale[static_cast<size_t>(off)]);
-      }
-
-      // Debug: Show final weights for first row
     }
     for (int64_t i = select; i < k; ++i) {  // pad if k>num_experts
       const int64_t off = row * k + i;
@@ -194,13 +155,6 @@ static void run_moe_fc_cpu_grouped(
     }
   }
 
-  // DEBUG: Print expert bucket sizes
-  printf("[CPU DEBUG] Expert bucket sizes: ");
-  for (int64_t e = 0; e < std::min(num_experts, 8L); ++e) {
-    printf("E%ld:%zu ", e, buckets[static_cast<size_t>(e)].size());
-  }
-  printf("...\n");
-
   // 3) Per-expert processing
   const size_t K1_logical = static_cast<size_t>(hidden_size);
   const size_t N1 = static_cast<size_t>(fc1_out);
@@ -218,17 +172,12 @@ static void run_moe_fc_cpu_grouped(
     const size_t Me = routes.size();
     if (Me == 0) continue;
 
-    // DEBUG: Print expert processing info (only for experts with tokens)
     if (Me > 0) {
-      printf("[CPU DEBUG] Processing Expert %ld: %zu tokens\n", e, Me);
-      printf("[CPU DEBUG] Expert %ld routes: ", e);
       for (size_t r = 0; r < std::min(Me, 8UL); ++r) {
         int64_t off = routes[r];
         int64_t row = off / k;
         float scale = route_scale[static_cast<size_t>(off)];
-        printf("(R%ld:%.4f) ", row, scale);
       }
-      printf("...\n");
     }
 
     // Gather inputs for this expert
@@ -240,15 +189,6 @@ static void run_moe_fc_cpu_grouped(
       std::copy(src_row, src_row + K1_logical, A1.data() + r * K1_logical);
     }
 
-    // DEBUG: Print first few input activations for selected experts
-    if (Me > 0) {
-      printf("[CPU DEBUG] Expert %ld input activations (first token): ", e);
-      for (size_t i = 0; i < std::min(K1_logical, 8UL); ++i) {
-        printf("%.6f ", A1[i]);
-      }
-      printf("...\n");
-    }
-
     // Dequantize FC1 weights for this expert to [N1, K1_logical]
     std::vector<float> B1_deq(N1 * K1_logical);
     const float* s1 = fc1_scales + static_cast<size_t>(e) * N1;
@@ -257,46 +197,6 @@ static void run_moe_fc_cpu_grouped(
     const size_t bytes_per_expert_fc1 = (N1 * K1_logical * bit_width) / 8;
     const size_t expert_base_fc1 = static_cast<size_t>(e) * bytes_per_expert_fc1;
     const uint8_t* expert_B1_q = fc1_wq + expert_base_fc1;
-
-    // ===== CPU WEIGHT LAYOUT DEBUGGING =====
-    if (Me > 0) {
-      printf("\n[CPU WEIGHT DEBUG] ===== EXPERT %ld WEIGHT LAYOUT ANALYSIS =====\n", e);
-      printf("[CPU WEIGHT DEBUG] bit_width: %d, N1: %zu, K1_logical: %zu, K1_packed: %zu\n",
-             bit_width, N1, K1_logical, K1_packed);
-      printf("[CPU WEIGHT DEBUG] FIXED: bytes_per_expert_fc1: %zu (was: %zu)\n",
-             bytes_per_expert_fc1, N1 * K1_packed);
-      printf("[CPU WEIGHT DEBUG] expert_base_fc1: %zu, total FC1 weights: %zu\n",
-             expert_base_fc1, bytes_per_expert_fc1);
-
-      // Print raw quantized bytes
-      const size_t debug_bytes = std::min(bytes_per_expert_fc1, 16UL);
-      printf("[CPU WEIGHT DEBUG] Expert %ld FC1 raw weight bytes (first 16): ", e);
-      for (size_t i = 0; i < debug_bytes; ++i) {
-        printf("%02x ", expert_B1_q[i]);
-      }
-      printf("\n");
-
-      // Print scales
-      printf("[CPU WEIGHT DEBUG] Expert %ld FC1 scales (first 16): ", e);
-      for (size_t i = 0; i < std::min(N1, 16UL); ++i) {
-        printf("%.6f ", s1[i]);
-      }
-      printf("\n");
-
-      // Check if scales are per-element or per-column
-      printf("[CPU WEIGHT DEBUG] Scale analysis: N1=%zu, total scales available=%zu\n", N1, N1);
-      printf("[CPU WEIGHT DEBUG] Scale indexing: using s1[n] where n is column index\n");
-
-      if (bit_width == 8) {
-        printf("[CPU WEIGHT DEBUG] Using 8-bit ColumnMajorTileInterleave layout\n");
-        printf("[CPU WEIGHT DEBUG] ThreadblockK=64, ColumnsInterleaved=2\n");
-      } else {
-        printf("[CPU WEIGHT DEBUG] Using 4-bit simple column-major layout (testing)\n");
-        printf("[CPU WEIGHT DEBUG] physical_idx = byte_k * N1 + n\n");
-      }
-    }
-
-    // Debug: Print first few weight values for selected experts
 
     if (bit_width == 8) {
       // FIXED: Simple 8-bit dequantization - direct access without CUTLASS layout
@@ -339,13 +239,6 @@ static void run_moe_fc_cpu_grouped(
               B1_deq[n * K1_logical + kx + 1] = sc * (static_cast<float>(val_odd) - static_cast<float>(global_zero_point));
             }
 
-            // Debug first few values for verification
-            if (Me > 0 && n == 0 && kx < 16) {
-              printf("[CPU DEBUG] n=%zu, kx=%zu, byte_idx=%zu, byte=0x%02x, even=%u, odd=%u, sc=%.6f, val_even=%.6f, val_odd=%.6f\n",
-                     n, kx, byte_idx, packed_byte, val_even, val_odd, sc,
-                     sc * (static_cast<float>(val_even) - static_cast<float>(global_zero_point)),
-                     (kx + 1 < K1_logical) ? sc * (static_cast<float>(val_odd) - static_cast<float>(global_zero_point)) : 0.0f);
-            }
           } else {
             B1_deq[n * K1_logical + kx] = 0.0f;
             if (kx + 1 < K1_logical) {
@@ -356,95 +249,9 @@ static void run_moe_fc_cpu_grouped(
       }
     }
 
-    // ===== POST-DEQUANTIZATION ANALYSIS =====
-    if (Me > 0) {
-      printf("\n[CPU WEIGHT DEBUG] === POST-DEQUANTIZATION ANALYSIS ===\n");
-      printf("[CPU WEIGHT DEBUG] Expert %ld dequantized FC1 matrix layout [N1=%zu, K1_logical=%zu]\n", e, N1, K1_logical);
-
-      // Print first few dequantized weights in matrix form to see layout
-      printf("[CPU WEIGHT DEBUG] Expert %ld FC1 dequantized weights (first 4x4 submatrix):\n", e);
-      for (size_t n = 0; n < std::min(N1, 4UL); ++n) {
-        printf("[CPU WEIGHT DEBUG]   Row %zu: ", n);
-        for (size_t k = 0; k < std::min(K1_logical, 4UL); ++k) {
-          printf("%8.4f ", B1_deq[n * K1_logical + k]);
-        }
-        printf("\n");
-      }
-
-      // Compare storage layouts
-      printf("[CPU WEIGHT DEBUG] Storage layout: B1_deq[n * K1_logical + k] (row-major)\n");
-      printf("[CPU WEIGHT DEBUG] CUDA expects: Column-major interleaved for quantized data\n");
-
-      // Manual verification of first few elements
-      printf("[CPU WEIGHT DEBUG] Manual dequantization verification:\n");
-      if (bit_width == 8) {
-        printf("[CPU WEIGHT DEBUG] First 4 raw bytes: %02x %02x %02x %02x\n",
-               expert_B1_q[0], expert_B1_q[1], expert_B1_q[2], expert_B1_q[3]);
-        printf("[CPU WEIGHT DEBUG] With scale %.6f and zp=%d:\n", s1[0], global_zero_point);
-        for (int i = 0; i < 4; ++i) {
-          float manual_dq = s1[0] * (static_cast<float>(expert_B1_q[i]) - static_cast<float>(global_zero_point));
-          printf("[CPU WEIGHT DEBUG]   byte[%d]: %02x -> %.6f\n", i, expert_B1_q[i], manual_dq);
-        }
-      } else {
-        printf("[CPU WEIGHT DEBUG] First 4 raw bytes (4-bit packed): %02x %02x %02x %02x\n",
-               expert_B1_q[0], expert_B1_q[1], expert_B1_q[2], expert_B1_q[3]);
-        printf("[CPU WEIGHT DEBUG] Unpacked 4-bit values:\n");
-        for (int i = 0; i < 2; ++i) {  // First 2 bytes = 4 values
-          uint8_t b = expert_B1_q[i];
-          uint8_t lo = b & 0x0F;
-          uint8_t hi = (b >> 4) & 0x0F;
-          printf("[CPU WEIGHT DEBUG]   byte[%d]: %02x -> lo=%d hi=%d\n", i, b, lo, hi);
-        }
-      }
-      printf("[CPU WEIGHT DEBUG] =======================================\n\n");
-    }
-
-    // DEBUG: Print first few dequantized FC1 weights for selected experts
-    if (Me > 0) {
-      printf("[CPU DEBUG] Expert %ld FC1 dequantized weights (first 8): ", e);
-      for (size_t i = 0; i < std::min(N1 * K1_logical, 8UL); ++i) {
-        printf("%.6f ", B1_deq[i]);
-      }
-      printf("...\n");
-      printf("[CPU DEBUG] Expert %ld FC1 scales (first 8): ", e);
-      for (size_t i = 0; i < std::min(N1, 8UL); ++i) {
-        printf("%.6f ", s1[i]);
-      }
-      printf("...\n");
-    }
-
-    // Debug: Print input activations for this expert for selected experts
-
     // FC1 GEMM: Since weights are stored column-major, treat as [K1, N1] without transpose
     // C1 = A1 [Me,K1] * B1 [K1,N1] -> C1 [Me,N1]
     std::vector<float> C1(Me * N1);
-
-    // ===== CPU FC1 GEMM DEBUGGING =====
-    if (Me > 0) {
-      printf("\n[CPU GEMM DEBUG] ===== FC1 GEMM OPERATION =====\n");
-      printf("[CPU GEMM DEBUG] Expert %ld FC1 GEMM: A[%zu,%zu] * B[%zu,%zu] -> C[%zu,%zu]\n",
-             e, Me, K1_logical, K1_logical, N1, Me, N1);
-      printf("[CPU GEMM DEBUG] MLAS Parameters:\n");
-      printf("[CPU GEMM DEBUG]   A (input): ptr=%p, lda=%zu (row-major)\n", A1.data(), K1_logical);
-      printf("[CPU GEMM DEBUG]   B (weights): ptr=%p, ldb=%zu\n", B1_deq.data(), N1);
-      printf("[CPU GEMM DEBUG]   C (output): ptr=%p, ldc=%zu\n", C1.data(), N1);
-      printf("[CPU GEMM DEBUG]   alpha=%.1f, beta=%.1f\n", 1.0f, 0.0f);
-      printf("[CPU GEMM DEBUG] GEMM Type: CblasNoTrans, CblasNoTrans (A and B not transposed)\n");
-
-      // Print input matrix A (activations)
-      printf("[CPU GEMM DEBUG] Input A (first token, first 8): ");
-      for (size_t k = 0; k < std::min(K1_logical, 8UL); ++k) {
-        printf("%.6f ", A1[k]);
-      }
-      printf("\n");
-
-      // Print weight matrix B (first row)
-      printf("[CPU GEMM DEBUG] Weights B (first row, first 8): ");
-      for (size_t n = 0; n < std::min(N1, 8UL); ++n) {
-        printf("%.6f ", B1_deq[n * K1_logical]);  // First row of column-major storage
-      }
-      printf("\n");
-    }
 
     MLAS_SGEMM_DATA_PARAMS d1{};
     d1.A = A1.data();
@@ -457,27 +264,6 @@ static void run_moe_fc_cpu_grouped(
     d1.beta = 0.0f;
     // FIXED: Need transpose for B since it's stored row-major [N1, K1] but GEMM expects [K1, N1]
     MlasGemm(CblasNoTrans, CblasTrans, Me, N1, K1_logical, d1, thread_pool);
-    // ===== POST-GEMM ANALYSIS =====
-    if (Me > 0) {
-      printf("[CPU GEMM DEBUG] === FC1 GEMM COMPLETED ===\n");
-      printf("[CPU GEMM DEBUG] Expert %ld FC1 GEMM output (first token, first 8): ", e);
-      for (size_t i = 0; i < std::min(N1, 8UL); ++i) {
-        printf("%.6f ", C1[i]);
-      }
-      printf("\n");
-      printf("[CPU GEMM DEBUG] Implementation: MLAS standard floating-point GEMM\n");
-      printf("[CPU GEMM DEBUG] vs CUDA: CUTLASS mixed-precision quantized GEMM\n");
-      printf("[CPU GEMM DEBUG] =====================================\n\n");
-    }
-
-    // DEBUG: Print FC1 GEMM output before bias for selected experts
-    if (Me > 0) {
-      printf("[CPU DEBUG] Expert %ld FC1 GEMM output before bias (first token, first 8): ", e);
-      for (size_t i = 0; i < std::min(N1, 8UL); ++i) {
-        printf("%.6f ", C1[i]);
-      }
-      printf("...\n");
-    }
 
     // Add FC1 bias
     if (fc1_bias_f32) {
@@ -486,34 +272,11 @@ static void run_moe_fc_cpu_grouped(
         float* rowp = C1.data() + r * N1;
         for (size_t c = 0; c < N1; ++c) rowp[c] += b[c];
       }
-
-      // DEBUG: Print FC1 output after bias for selected experts
-      if (Me > 0) {
-        printf("[CPU DEBUG] Expert %ld FC1 output after bias (first token, first 8): ", e);
-        for (size_t i = 0; i < std::min(N1, 8UL); ++i) {
-          printf("%.6f ", C1[i]);
-        }
-        printf("...\n");
-        printf("[CPU DEBUG] Expert %ld FC1 bias (first 8): ", e);
-        for (size_t i = 0; i < std::min(N1, 8UL); ++i) {
-          printf("%.6f ", b[i]);
-        }
-        printf("...\n");
-      }
     }
 
     // Apply SwiGLU activation in-place per row (interleaved layout)
     for (size_t r = 0; r < Me; ++r) {
       contrib::ApplySwiGLUActivation(C1.data() + r * N1, inter_size, true, activation_alpha, activation_beta);
-    }
-
-    // DEBUG: Print output after SwiGLU activation for selected experts
-    if (Me > 0) {
-      printf("[CPU DEBUG] Expert %ld after SwiGLU activation (first token, first 8): ", e);
-      for (size_t i = 0; i < std::min(static_cast<size_t>(inter_size), 8UL); ++i) {
-        printf("%.6f ", C1[i]);
-      }
-      printf("...\n");
     }
 
     // Create contiguous buffer for FC2 input after SwiGLU activation
@@ -522,15 +285,6 @@ static void run_moe_fc_cpu_grouped(
       const float* src = C1.data() + r * N1;    // Source row in C1
       float* dst = A2.data() + r * K2_logical;  // Destination row in A2
       std::copy(src, src + K2_logical, dst);    // Copy only the first K2_logical values
-    }
-
-    // DEBUG: Print FC2 input for selected experts
-    if (Me > 0) {
-      printf("[CPU DEBUG] Expert %ld FC2 input (first token, first 8): ", e);
-      for (size_t i = 0; i < std::min(K2_logical, 8UL); ++i) {
-        printf("%.6f ", A2[i]);
-      }
-      printf("...\n");
     }
 
     // Dequantize FC2 weights for this expert to [N2, K2_logical]
@@ -542,7 +296,6 @@ static void run_moe_fc_cpu_grouped(
     const size_t expert_base_fc2 = static_cast<size_t>(e) * bytes_per_expert_fc2;
     const uint8_t* expert_B2_q = fc2_wq + expert_base_fc2;
 
-    // Debug: Print FC2 scales and weights for selected experts
     if (bit_width == 8) {
       // FIXED: Simple 8-bit dequantization - direct access without CUTLASS layout
       // Each byte is a direct quantized value, stored in simple row-major order
@@ -593,20 +346,6 @@ static void run_moe_fc_cpu_grouped(
       }
     }
 
-    // DEBUG: Print FC2 dequantized weights for selected experts
-    if (Me > 0) {
-      printf("[CPU DEBUG] Expert %ld FC2 dequantized weights (first 8): ", e);
-      for (size_t i = 0; i < std::min(N2 * K2_logical, 8UL); ++i) {
-        printf("%.6f ", B2_deq[i]);
-      }
-      printf("...\n");
-      printf("[CPU DEBUG] Expert %ld FC2 scales (first 8): ", e);
-      for (size_t i = 0; i < std::min(N2, 8UL); ++i) {
-        printf("%.6f ", s2[i]);
-      }
-      printf("...\n");
-    }
-
     // FC2 GEMM: Now using same consistent row-major storage and GEMM pattern as FC1
     std::vector<float> C2(Me * N2);
     MLAS_SGEMM_DATA_PARAMS d2{};
@@ -621,15 +360,6 @@ static void run_moe_fc_cpu_grouped(
     // FIXED: Use same GEMM call as FC1: CblasTrans for row-major B matrix
     MlasGemm(CblasNoTrans, CblasTrans, Me, N2, K2_logical, d2, thread_pool);
 
-    // DEBUG: Print FC2 GEMM output (expert outputs) for selected experts
-    if (Me > 0) {
-      printf("[CPU DEBUG] Expert %ld FC2 GEMM output (first token, first 8): ", e);
-      for (size_t i = 0; i < std::min(N2, 8UL); ++i) {
-        printf("%.6f ", C2[i]);
-      }
-      printf("...\n");
-    }
-
     // Accumulate to final output with routing scale and optional FC2 bias
     for (size_t r = 0; r < Me; ++r) {
       const int64_t off = routes[r];
@@ -637,16 +367,6 @@ static void run_moe_fc_cpu_grouped(
       const float scale = route_scale[static_cast<size_t>(off)];
       float* out_row = output + row * hidden_size;
       const float* c2_row = C2.data() + r * N2;
-
-      // DEBUG: Print output accumulation details for first few tokens and experts
-      if (Me > 0 && r < 2) {
-        printf("[CPU DEBUG] Expert %ld Token %zu Row %ld: scale=%.6f\n", e, r, row, scale);
-        if (fc2_bias_f32) {
-          const float* b2 = fc2_bias_f32 + static_cast<size_t>(e) * N2;
-          printf("[CPU DEBUG] Expert %ld FC2 bias (first 4): %.6f %.6f %.6f %.6f\n",
-                 e, b2[0], b2[1], b2[2], b2[3]);
-        }
-      }
 
       if (fc2_bias_f32) {
         const float* b2 = fc2_bias_f32 + static_cast<size_t>(e) * N2;
@@ -658,23 +378,7 @@ static void run_moe_fc_cpu_grouped(
           out_row[c] += scale * c2_row[c];
         }
       }
-
-      // DEBUG: Print partial output after this expert's contribution
-      if (Me > 0 && r < 2) {
-        printf("[CPU DEBUG] Expert %ld Token %zu partial output (first 4): %.6f %.6f %.6f %.6f\n",
-               e, r, out_row[0], out_row[1], out_row[2], out_row[3]);
-      }
     }
-  }
-
-  // DEBUG: Print final output summary
-  printf("[CPU DEBUG] Final output summary (first 3 rows, first 8 elements):\n");
-  for (int64_t row = 0; row < std::min(num_rows, 3L); ++row) {
-    printf("[CPU DEBUG] Row %ld: ", row);
-    for (int64_t col = 0; col < std::min(hidden_size, 8L); ++col) {
-      printf("%.6f ", output[row * hidden_size + col]);
-    }
-    printf("...\n");
   }
 }
 
@@ -824,25 +528,6 @@ void run_moe_fc_cpu(const float* input_activations, const float* gating_output,
           const int64_t actual_inter_size = fc1_output_size / 2;
           const float* fc2_weights = fc2_expert_weights + expert_idx * actual_inter_size * hidden_size;
 
-          // DEBUG: Print FC2 input and weights for Expert 5
-          if (expert_idx == 5) {
-            printf("[CPU FC2 GEMM DEBUG] Expert %lld FC2 input fc1_output[0:8]: ", expert_idx);
-            int64_t max_input_elements = std::min(static_cast<int64_t>(8), actual_inter_size);
-            for (int i = 0; i < max_input_elements; ++i) {
-              printf("%.6f ", fc1_output[i]);
-            }
-            printf("...\n");
-
-            // Check bounds for weights access
-            int64_t total_weight_elements = actual_inter_size * hidden_size;
-            int64_t max_weight_elements = std::min(static_cast<int64_t>(8), total_weight_elements);
-            printf("[CPU FC2 GEMM DEBUG] Expert %lld FC2 weights fc2_weights[0:%lld]: ", expert_idx, max_weight_elements);
-            for (int64_t i = 0; i < max_weight_elements; ++i) {
-              printf("%.6f ", fc2_weights[i]);
-            }
-            printf("...\n");
-          }
-
           // GEMM: C = A * B where A is fc1_output (1 x K), B is fc2_weights (N x K), C is output_row (1 x N)
           MlasGemm(CblasNoTrans, CblasTrans,
                    1, static_cast<size_t>(hidden_size), static_cast<size_t>(actual_inter_size),
@@ -852,16 +537,6 @@ void run_moe_fc_cpu(const float* input_activations, const float* gating_output,
                    0.0f,
                    output_row, static_cast<size_t>(hidden_size),
                    nullptr);
-
-          // DEBUG: Print FC2 output for Expert 5
-          if (expert_idx == 5) {
-            int64_t max_output_elements = std::min(static_cast<int64_t>(8), hidden_size);
-            printf("[CPU FC2 GEMM DEBUG] Expert %lld FC2 output output_row[0:%lld]: ", expert_idx, max_output_elements);
-            for (int64_t i = 0; i < max_output_elements; ++i) {
-              printf("%.6f ", output_row[i]);
-            }
-            printf("...\n");
-          }
         }
       });
 
@@ -1002,12 +677,6 @@ Status QMoE<T>::PrepackAndDequantizeWeights(OpKernelContext* context,
             if (row + 1 < moe_params.hidden_size) {
               prepacked_fc1_weights_data_[expert_idx * fc1_output_size * moe_params.hidden_size + col * moe_params.hidden_size + row + 1] = dequantized_val_odd;
             }
-
-            // Debug first few values for Expert 5
-            if (expert_idx == 5 && col < 8 && row < 8) {
-              printf("[CPU 4BIT DEBUG] Expert %lld, col %lld, row %lld: byte_idx=%zu, packed_val=0x%02x, val_even=%d, val_odd=%d, scale=%f, dequant_even=%f, dequant_odd=%f\n",
-                     expert_idx, col, row, byte_idx, packed_val, val_even, val_odd, scale, dequantized_val_even, dequantized_val_odd);
-            }
           }
         }
       }
@@ -1055,12 +724,6 @@ Status QMoE<T>::PrepackAndDequantizeWeights(OpKernelContext* context,
             if (row + 1 < moe_params.inter_size) {
               prepacked_fc2_weights_data_[expert_idx * moe_params.hidden_size * moe_params.inter_size + col * moe_params.inter_size + row + 1] = dequantized_val_odd;
             }
-
-            // Debug first few values for Expert 5
-            if (expert_idx == 5 && col < 8 && row < 8) {
-              printf("[CPU FC2 4BIT DEBUG] Expert %lld, col %lld, row %lld: byte_idx=%zu, packed_val=0x%02x, val_even=%d, val_odd=%d, scale=%f, dequant_even=%f, dequant_odd=%f\n",
-                     expert_idx, col, row, byte_idx, packed_val, val_even, val_odd, scale, dequantized_val_even, dequantized_val_odd);
-            }
           }
         }
       }
@@ -1079,12 +742,6 @@ Status QMoE<T>::PrepackAndDequantizeWeights(OpKernelContext* context,
             // For 8-bit quantization, zero point is typically 128
             const float dequantized_val = scale * (static_cast<float>(val) - 128.0f);
             prepacked_fc2_weights_data_[idx] = dequantized_val;
-
-            // Debug first few values for Expert 5
-            if (expert_idx == 5 && col < 8 && row < 8) {
-              printf("[CPU FC2 8BIT DEBUG] Expert %lld, col %lld, row %lld: idx=%zu, val=%d, scale=%f, dequant=%f\n",
-                     expert_idx, col, row, idx, val, scale, dequantized_val);
-            }
           }
         }
       }
@@ -1131,8 +788,6 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
   const size_t router_size = static_cast<size_t>(moe_params.num_rows * moe_params.num_experts);
   const size_t output_size = static_cast<size_t>(moe_params.num_rows * moe_params.hidden_size);
 
-  // DEBUG: Print tensor information for comparison with CUDA
-
   const T* fc1_bias_data = fc1_experts_bias_optional ? fc1_experts_bias_optional->Data<T>() : nullptr;
   const T* fc2_bias_data = fc2_experts_bias_optional ? fc2_experts_bias_optional->Data<T>() : nullptr;
 
@@ -1155,8 +810,6 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
     std::copy(input_data, input_data + input_size, input_float.get());
     std::copy(router_probs_data, router_probs_data + router_size, router_float.get());
   }
-
-  // Debug: Check input and router data after conversion
 
   // Root cause: Router input differences indicate upstream LayerNorm or other preprocessing
   // differences between CPU and CUDA implementations, not QMoE-specific precision issues
@@ -1221,8 +874,6 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
   const float* fc1_scales_data = fc1_scales_float.get();
   const float* fc2_scales_data = fc2_scales_float.get();
 
-  // Debug: Print scale values
-
   run_moe_fc_cpu_grouped(
       input_float.get(), router_float.get(),
       fc1_wq, fc1_scales_data, fc1_bias_float.get(),
@@ -1230,8 +881,6 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
       UseUInt4x2 ? 4 : 8,
       moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, correct_k,
       normalize_routing_weights_, activation_alpha_, activation_beta_, output_float.get(), thread_pool);
-
-  // Debug: Print output values
 
   // Convert output back to original type
   // Note: For FP32 inputs, we expect very high precision (<0.01 difference) since:
