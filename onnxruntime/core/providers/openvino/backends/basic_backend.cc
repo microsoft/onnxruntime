@@ -294,7 +294,6 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
           it->second = value;
         }
         if ((key.find("NPUW") != std::string::npos) ||
-            ((device_config.find(key) != device_config.end()) && session_context_.enable_causallm)) {
             ((it != device_config.end()) && session_context_.enable_causallm)) {
           continue;
         }
