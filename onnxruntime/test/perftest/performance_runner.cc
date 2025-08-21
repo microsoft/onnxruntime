@@ -270,12 +270,11 @@ static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfi
   ORT_NOT_IMPLEMENTED(ToUTF8String(file_path), " is not supported");
 }
 
-PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd,
-                                     const std::string& registration_name)
+PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd)
     : performance_test_config_(test_config),
       test_model_info_(CreateModelInfo(test_config)) {
   session_create_start_ = std::chrono::high_resolution_clock::now();
-  session_ = std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, *test_model_info_, registration_name);
+  session_ = std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, *test_model_info_);
   session_create_end_ = std::chrono::high_resolution_clock::now();
 }
 

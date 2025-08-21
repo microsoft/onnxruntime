@@ -58,7 +58,7 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
 
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
                                                const PerformanceTestConfig& performance_test_config,
-                                               const TestModelInfo& m, const std::string& registration_name)
+                                               const TestModelInfo& m)
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
 
@@ -288,7 +288,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("NV TensorRT RTX is not supported in this build\n");
 #endif
-  } else if (provider_name_ == onnxruntime::kQnnExecutionProvider || provider_name_ == "QnnAbiExecutionProvider") {
+  } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -377,53 +377,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         }
       }
     }
-    if (provider_name_ == "QnnAbiExecutionProvider") {
-      const OrtApi& c_api = Ort::GetApi();
-      const std::filesystem::path& library_path = "onnxruntime_providers_qnn_abi.dll";
-      OrtStatusPtr status = c_api.RegisterExecutionProviderLibrary(env,
-                                                                   registration_name.c_str(),
-                                                                   library_path.c_str());
-      if (status != nullptr) {
-        ORT_THROW("Failed to register execution provider library: %s\n",
-                  Ort::GetApi().GetErrorMessage(status));
-        Ort::GetApi().ReleaseStatus(status);
-      }
-
-      const OrtEpDevice* const* ep_devices = nullptr;
-      size_t num_devices;
-      status = c_api.GetEpDevices(env, &ep_devices, &num_devices);
-      if (status != nullptr) {
-        ORT_THROW("Failed to get EP devices: %s\n",
-                  Ort::GetApi().GetErrorMessage(status));
-        Ort::GetApi().ReleaseStatus(status);
-      }
-
-      auto target_hw_device_type = OrtHardwareDeviceType_CPU;
-      if ((provider_options.find("backend_type") != provider_options.end() && provider_options.at("backend_type") == "htp") ||
-          (provider_options.find("backend_path") != provider_options.end() && provider_options.at("backend_path") ==
-#if _WIN32
-                                                                                  "QnnHtp.dll"
-#else
-                                                                                  "libQnnHtp.so"
-#endif
-           )) {
-        target_hw_device_type = OrtHardwareDeviceType_NPU;
-      }
-
-      auto it = std::find_if(ep_devices, ep_devices + num_devices,
-                             [&c_api, &registration_name, &target_hw_device_type](const OrtEpDevice* ep_device) {
-                               return (c_api.EpDevice_EpName(ep_device) == registration_name &&
-                                       c_api.HardwareDevice_Type(c_api.EpDevice_Device(ep_device)) == target_hw_device_type);
-                             });
-
-      if (it == ep_devices + num_devices) {
-        ORT_THROW("Failed to find QNN ABI test provider device\n");
-      }
-
-      session_options.AppendExecutionProvider_V2(env, {Ort::ConstEpDevice(*it)}, provider_options);
-    } else {
-      session_options.AppendExecutionProvider("QNN", provider_options);
-    }
+    session_options.AppendExecutionProvider("QNN", provider_options);
 #else
     ORT_THROW("QNN is not supported in this build\n");
 #endif
