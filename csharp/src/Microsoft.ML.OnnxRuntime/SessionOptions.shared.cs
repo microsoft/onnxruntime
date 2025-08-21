@@ -533,7 +533,7 @@ namespace Microsoft.ML.OnnxRuntime
                         env.Handle,
                         epDevicePtrs,
                         (UIntPtr)epDevices.Count,
-                        epOptionsKeys, 
+                        epOptionsKeys,  
                         epOptionsValues,
                         epOptionsCount));
             }
