@@ -158,7 +158,7 @@ bool QnnModelWrapper::CreateQnnInputOutputTensors(const std::string& qnn_node_na
       return false;
     }
 
-    // During graph patitioning, we only need to do op validation, it's not required to create Qnn graph tensor
+    // During graph partitioning, we only need to do op validation, it's not required to create Qnn graph tensor
     // We only need to create the Qnn graph tensor during Compile to create Qnn graph
     if (!do_op_validation) {
       std::string error_string;
@@ -430,29 +430,6 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
   return Status::OK();
 }
 
-Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const {
-  const auto& graph_initializers = GetInitializerTensors();
-  auto iter = graph_initializers.find(initializer_name);
-  ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for scale(s): ",
-                initializer_name.c_str());
-  gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
-
-  ORT_RETURN_IF_NOT(scale_tensor_proto->has_data_type(), "Expected scale initializer ", initializer_name.c_str(),
-                    " to have a proto data type.");
-  ORT_RETURN_IF_NOT(scale_tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                    "Expected scale initializer to be of type FLOAT");
-
-  std::vector<uint8_t> initializer_bytes;
-
-  ORT_RETURN_IF_ERROR(UnpackInitializerData(*scale_tensor_proto, initializer_bytes));
-
-  gsl::span<const float> src = gsl::make_span(reinterpret_cast<const float*>(initializer_bytes.data()),
-                                              initializer_bytes.size() / sizeof(float));
-
-  scales.insert(scales.end(), src.begin(), src.end());
-  return Status::OK();
-}
-
 // Checks if a tensor in the ONNX graph is per-channel quantized.
 Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def,
                                               /*out*/ bool& is_per_channel,
@@ -537,7 +514,7 @@ Status QnnModelWrapper::AddReshapeNode(const std::string& input_name, const std:
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)),
                     "QNN EP: Failed to add output tensor for inserted Reshape.");
 
-  ORT_RETURN_IF_NOT(CreateQnnNode(output_name, QNN_OP_PACKAGE_NAME_QTI_AISW, QNN_OP_RESHAPE, {input_name},
+  ORT_RETURN_IF_NOT(CreateQnnNode(utils::GetUniqueName(output_name, QNN_OP_RESHAPE), QNN_OP_PACKAGE_NAME_QTI_AISW, QNN_OP_RESHAPE, {input_name},
                                   {output_name}, {}, do_op_validation),
                     "QNN EP: Failed to create manually inserted Qnn Reshape node.");
 
@@ -587,8 +564,7 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
   uint32_t perm_size = static_cast<uint32_t>(transpose_perm.size());
   std::vector<uint32_t> perm_dim{perm_size};
   std::vector<uint32_t> transpose_perm_copy = transpose_perm;
-  const std::string& node_name = output_name;
-  QnnParamWrapper transpose_param(node_index, node_name, QNN_OP_TRANSPOSE_PARAM_PERM, std::move(perm_dim), std::move(transpose_perm_copy));
+  QnnParamWrapper transpose_param(node_index, output_name, QNN_OP_TRANSPOSE_PARAM_PERM, std::move(perm_dim), std::move(transpose_perm_copy));
   std::string param_tensor_name(transpose_param.GetParamTensorName());
   ORT_RETURN_IF_NOT(AddParamWrapper(std::move(transpose_param)), "Failed to add tensor.");
   Qnn_TensorType_t tensor_type = (false == is_for_output) ? QNN_TENSOR_TYPE_NATIVE : QNN_TENSOR_TYPE_APP_READ;
@@ -599,11 +575,9 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                         quantize_param.Copy(),
                                         std::move(output_shape_copy));
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-  const static std::string qnn_node_type = "Transpose";
-
-  ORT_RETURN_IF_NOT(CreateQnnNode(output_name,
+  ORT_RETURN_IF_NOT(CreateQnnNode(utils::GetUniqueName(output_name, QNN_OP_TRANSPOSE),
                                   QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                  qnn_node_type,
+                                  QNN_OP_TRANSPOSE,
                                   {input_name},
                                   {output_name},
                                   {param_tensor_name},

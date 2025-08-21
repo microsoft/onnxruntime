@@ -34,7 +34,7 @@ jobs:
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: none
@@ -125,10 +125,10 @@ jobs:
             --build_java `
             --use_webgpu `
             --wgsl_template ${{ matrix.wgsl_template }} `
-            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg' || '' }} `
+            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} `
             --cmake_extra_defines `
             onnxruntime_BUILD_UNIT_TESTS=ON `
-            onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=ON
+            onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -162,7 +162,7 @@ jobs:
     timeout-minutes: 300
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: none
@@ -222,7 +222,7 @@ jobs:
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: none

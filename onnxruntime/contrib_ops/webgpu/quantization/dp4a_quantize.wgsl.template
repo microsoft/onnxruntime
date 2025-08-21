@@ -1,0 +1,88 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Template for DP4A Matrix Multiply Quantization
+// Quantizes input matrix A for DP4A computation
+// This shader quantizes float values to 8-bit signed integers using pack4x8snorm
+
+var<workgroup> a_values : array<array<input_a_value_t, 32>, 2>;
+var<workgroup> max_values : array<input_a_value_t, 4>;
+
+fn readInput(offset: u32) -> input_a_value_t
+{
+  if (offset >= uniforms.output_size) {
+    return input_a_value_t(0);
+  }
+  return input_a[offset];
+}
+
+$MAIN {
+  if (sg_size == 32) {
+    let local_a = readInput(global_idx);
+    let max_val = subgroupMax(abs(local_a));
+    if (global_idx >= uniforms.output_size) {
+      return;
+    }
+    let max_temp = max(max_val.xy, max_val.zw);
+    let scale = max(max_temp[0], max_temp[1]);
+    let norm_a = local_a/scale;
+    output[global_idx] = pack4x8snorm(vec4<f32>(norm_a));
+    if (local_idx % 32 == 0)
+    {
+      // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
+      scales[workgroup_idx * 2 + local_idx / 32] = scale/127;
+    }
+  } else if (sg_size == 16) {
+    let local_a = readInput(global_idx);
+    let sub_max_value = subgroupMax(abs(local_a));
+    if (local_idx % 16 == 0) {
+      max_values[local_idx / 16] = sub_max_value;
+    }
+    workgroupBarrier();
+
+    if (global_idx >= uniforms.output_size) {
+      return;
+    }
+
+    var max_val = input_a_value_t(0);
+    if (local_idx < 32) {
+      max_val = max(max_values[0], max_values[1]);
+    } else {
+      max_val = max(max_values[2], max_values[3]);
+    }
+    let max_temp = max(max_val.xy, max_val.zw);
+    let scale = max(max_temp[0], max_temp[1]);
+    let norm_a = local_a/scale;
+    output[global_idx] = pack4x8snorm(vec4<f32>(norm_a));
+    if (local_idx % 32 == 0)
+    {
+      // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
+      scales[workgroup_idx * 2 + local_idx / 32] = scale/127;
+    }
+  } else {
+    let local_row = local_idx / 32u;
+    let local_col = local_idx % 32u;
+    a_values[local_row][local_col] = readInput(global_idx);
+    workgroupBarrier();
+
+    if (global_idx >= uniforms.output_size) {
+      return;
+    }
+
+    var max_val = input_a_value_t(0);
+    // TODO: Optimize this part so that all the threads are not computing the same value.
+    for (var i = 0u; i < 32u; i++)
+    {
+      max_val = max(max_val, abs(a_values[local_row][i]));
+    }
+    let max_temp = max(max_val.xy, max_val.zw);
+    let scale = max(max_temp[0], max_temp[1]);
+    let norm_a = a_values[local_row][local_col]/scale;
+    output[global_idx] = pack4x8snorm(vec4<f32>(norm_a));
+    if (local_col == 0u)
+    {
+      // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
+      scales[workgroup_idx * 2 + local_row] = scale/127;
+    }
+  }
+}

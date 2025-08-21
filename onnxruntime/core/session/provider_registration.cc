@@ -101,6 +101,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     VitisAI,
     CoreML,
     NvTensorRtRtx,  // TensorRt EP for RTX GPUs.
+    MIGraphX
   };
 
   struct EpToAppend {
@@ -109,7 +110,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     const char* canonical_name = nullptr;
   };
 
-  static std::array<EpToAppend, 12> supported_eps = {
+  static std::array<EpToAppend, 13> supported_eps = {
       EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
       EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
       EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
@@ -121,7 +122,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       EpToAppend{EpID::JS, "JS", kJsExecutionProvider},
       EpToAppend{EpID::VitisAI, "VitisAI", kVitisAIExecutionProvider},
       EpToAppend{EpID::CoreML, "CoreML", kCoreMLExecutionProvider},
-      EpToAppend{EpID::NvTensorRtRtx, "NvTensorRtRtx", kNvTensorRTRTXExecutionProvider}};
+      EpToAppend{EpID::NvTensorRtRtx, "NvTensorRtRtx", kNvTensorRTRTXExecutionProvider},
+      EpToAppend{EpID::MIGraphX, "MIGraphX", kMIGraphXExecutionProvider}};
 
   ProviderOptions provider_options;
   OrtStatus* status = ParseProviderOptions(provider_options_keys,
@@ -277,6 +279,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
         provider_options["preferred_layout"] = preferred_layout;
       }
       options->provider_factories.push_back(JsProviderFactoryCreator::Create(provider_options, &(options->value)));
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::MIGraphX: {
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
+      options->provider_factories.push_back(MIGraphXProviderFactoryCreator::Create(provider_options));
 #else
       status = create_not_supported_status();
 #endif

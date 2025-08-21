@@ -768,9 +768,7 @@ inline RunOptions& RunOptions::AddConfigEntry(const char* config_key, const char
 }
 
 inline const char* RunOptions::GetConfigEntry(const char* config_key) {
-  const char* out{};
-  ThrowOnError(GetApi().GetRunConfigEntry(p_, config_key, &out));
-  return out;
+  return GetApi().GetRunConfigEntry(p_, config_key);
 }
 
 inline RunOptions& RunOptions::SetTerminate() {
@@ -2798,6 +2796,13 @@ template <>
 inline void GraphImpl<OrtGraph>::AddNode(Node& node) {
   // Graph takes ownership of `node`
   ThrowOnError(GetModelEditorApi().AddNodeToGraph(p_, node.release()));
+}
+
+template <typename T>
+inline ModelMetadata GraphImpl<T>::GetModelMetadata() const {
+  OrtModelMetadata* out;
+  ThrowOnError(GetApi().Graph_GetModelMetadata(this->p_, &out));
+  return ModelMetadata{out};
 }
 
 template <>

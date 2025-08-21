@@ -13,6 +13,7 @@
 #include "core/framework/ort_value.h"
 #include "core/graph/abi_graph_types.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 
@@ -47,6 +48,12 @@ struct ModelEditorValueInfo : public OrtValueInfo {
   Status GetInitializerValue(const OrtValue*& /*value*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the initializer value for a OrtValueInfo");
+  }
+
+  Status GetExternalInitializerInfo(std::unique_ptr<onnxruntime::ExternalDataInfo>& /*ext_info*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the external initializer information ",
+                           "for a OrtValueInfo");
   }
 
   Status IsRequiredGraphInput(bool& /*is_required_graph_input*/) const override {
@@ -131,6 +138,11 @@ struct ModelEditorNode : public OrtNode {
                            "OrtModelEditorApi does not support getting attribute OrtOpAttr for OrtNode");
   }
 
+  Status GetTensorAttributeAsOrtValue(const OrtOpAttr* /*attribute*/, OrtValue*& /*attr_tensor*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting 'TENSOR' attribute for OrtNode");
+  }
+
   Status GetNumSubgraphs(size_t& /*num_subgraphs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the subgraphs for OrtNode");
@@ -172,6 +184,11 @@ struct ModelEditorGraph : public OrtGraph {
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, ModelEditorGraph, OrtGraphIrApi::kModelEditorApi)
 
   const std::string& GetName() const override { return name; }
+
+  std::unique_ptr<ModelMetadata> GetModelMetadata() const override {
+    return std::make_unique<ModelMetadata>(model_metadata);
+  }
+  const ORTCHAR_T* GetModelPath() const override { return model_path.c_str(); }
 
   int64_t GetOnnxIRVersion() const override {
     return ONNX_NAMESPACE::Version::IR_VERSION;
@@ -227,6 +244,8 @@ struct ModelEditorGraph : public OrtGraph {
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
   std::vector<std::unique_ptr<onnxruntime::ModelEditorNode>> nodes;
   std::string name = "ModelEditorGraph";
+  std::filesystem::path model_path;
+  ModelMetadata model_metadata;
 };
 
 }  // namespace onnxruntime

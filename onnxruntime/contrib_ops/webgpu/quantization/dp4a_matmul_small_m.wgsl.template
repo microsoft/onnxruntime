@@ -1,0 +1,117 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param tile_size
+#param tile_size_k_vec
+#param sub_tile_count
+#param n_bits
+#param has_zero_points
+
+#include "quantization/dp4a_matmul_common.wgsl.template"
+
+// This algorithm works to compute dot product of k in parallel, by processing k at each step amongst tile_size_k_vec threads,
+// and utilizing the remaining threads in the workgroup to process additional rows of b in parallel (such that the values in shared memory for A can be reused).
+// For each load of k, the tile_size_k_vec threads also reload B tile_size/num_concurrent_b_rows times to compute partial dot products of other B rows
+// in order to complete all tile_size b rows in this workgroup and also reusing the loaded in register values of a.
+
+// 1. Each workgroup handles tile_size_k_vec * k_vectorization_in_b (32) columns and num_concurrent_b_rows of matrix B at a time,
+// iterating over the columns to compute a partial dot product.
+// 2. Uses vec4 vectorization where each K represents 32 elements of matrix B
+
+// 1. Workgroup Responsibility:
+//    - Processes one row of matrix A
+//    - Handles tile_size rows of matrix B
+//
+// 2. Computation Process:
+//    - Reads [tile_size][tile_size_k_vec] block of B data at a time
+//    - Each thread within workgroup computes dot products of 32 A*B elements since each K represents 32 elements of matrix B
+//    - Stores intermediate results in shared memory (inter_results)
+//    - Iterates through columns accumulating results in inter_results
+//    - Performs final reduction sum in inter_results for output
+// sub_tile_count is the number of concurrent b rows processed by the workgroup.
+
+const double_tile_size_k_vec = 2 * tile_size_k_vec;
+
+var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
+// Need 2 * tile_size_k_vec to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
+var<workgroup> tile_A : array<vec4<u32>, double_tile_size_k_vec>;
+// double_tile_size_k_vec * 16 / 128
+const scale_a_size_in_tile_a = double_tile_size_k_vec / 8;
+var<workgroup> scale_A : array<output_element_t, scale_a_size_in_tile_a>;
+
+fn loadSHMA(a_global: u32, kidx_v: u32, col: u32)
+{
+    let k_offset = kidx_v + col;
+    if (k_offset >= uniforms.K16) {
+    return;
+    }
+
+    tile_A[col] = input_a[a_global*uniforms.K16+k_offset];
+    if (col < scale_a_size_in_tile_a)
+    {
+    // kidx_v - covers 16 values of k in input_a
+    scale_A[col] = scales_a[a_global*(uniforms.K/128) + kidx_v/8 + col];
+    }
+}
+
+$MAIN {
+    let a_global = u32(workgroup_idx / uniforms.num_N_tile);
+    let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
+    // Handle each workgroup threads as a block of [sub_tile_count][tile_size_k_vec]
+    let local_col = local_idx % tile_size_k_vec;
+    let local_row = local_idx / tile_size_k_vec;
+    for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v += tile_size_k_vec)
+    {
+        // Load Phase: Populate shared memory for the workgroup.
+        if (local_idx < double_tile_size_k_vec)
+        {
+        loadSHMA(a_global, kidx_v * 2, local_idx);
+        }
+        workgroupBarrier();
+        var own_a: vec4<u32> = tile_A[local_col * 2];
+        var own_a1: vec4<u32> = tile_A[local_col * 2 + 1];
+        var own_scale_a = scale_A[local_col / 4];
+        let k_offset = kidx_v + local_col;
+        // k_offset - covers 32 values of k in input_b
+        let block_idx = k_offset * 32 / uniforms.block_size;
+        // calculate intermediate results into inter_results.
+        for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
+            let b_global = b_global_base + row_offset + local_row;
+            if (b_global < uniforms.N && k_offset < uniforms.K32)
+            {
+                let b_offset = b_global * uniforms.K32 + k_offset;
+                let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+                let own_scale_b = scales_b[b_global * uniforms.K / uniforms.block_size + block_idx];
+#if n_bits == 4
+                let b_value = input_b[b_offset];
+                let own_b = DequantizedFrom4BitsTo8Bits(b_value.xy, zero);
+                let own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw, zero);
+                inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
+#else
+                let own_b = AlignWithZeroPoint(input_b[b_offset * 2]);
+                let own_b1 = AlignWithZeroPoint(input_b[b_offset * 2 + 1]);
+#if has_zero_points
+                inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b, zero);
+#else
+                inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
+#endif
+
+#endif
+            }
+        }
+        workgroupBarrier();
+    }
+
+    if (local_idx < tile_size) {
+      // Do reduce sum to get final output.
+      var output_value = output_element_t(0);
+      for (var b = 0u; b < tile_size_k_vec; b++) {
+        output_value += inter_results[local_idx][b];
+      }
+      let b_global =  b_global_base + local_idx;
+      let output_idx = a_global * uniforms.N + b_global;
+      if (b_global < uniforms.N) {
+        output[output_idx] = output_value;
+      }
+    }
+} // MAIN
