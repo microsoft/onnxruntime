@@ -130,8 +130,6 @@ jobs:
           # Remove intermediate object files as in the original script
           Remove-Item -Path $outputDir -Include "*.obj" -Recurse
         shell: pwsh
-        env:
-          VERBOSE: 1
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -223,12 +221,12 @@ jobs:
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-
+          
           python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py   "${{ runner.temp }}\build\RelWithDebInfo\CTestTestfile.cmake" "${{ runner.temp }}\build\RelWithDebInfo"
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-
+          
           python.exe ${{ github.workspace }}\tools\ci_build\build.py --test --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.2" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86  --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
