@@ -5,6 +5,11 @@
 
 #include <vector>
 
+#ifdef USE_CUDA
+// Needed for CUDA_VERSION check in float8.h
+#include <cuda.h>
+#endif
+
 #include "core/framework/float8.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
