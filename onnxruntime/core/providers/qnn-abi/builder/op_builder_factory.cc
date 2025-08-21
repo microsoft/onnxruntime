@@ -48,6 +48,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateGatherNDOpBuilder("GatherND", *this);
+  }
+
+  {
     CreateGatherOpBuilder("Gather", *this);
     CreateGatherOpBuilder("GatherElements", *this);
   }

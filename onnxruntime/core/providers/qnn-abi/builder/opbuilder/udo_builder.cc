@@ -39,7 +39,7 @@ Status UDOBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrappe
                                                bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(logger);
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
-  std::string node_name = utils::GetNodeName(node_unit);
+  std::string node_name = utils::GetUniqueName(node_unit);
   const auto& outputs = node_unit.Outputs();
   std::vector<std::string> output_names;
   for (size_t i = 0; i < outputs.size(); ++i) {

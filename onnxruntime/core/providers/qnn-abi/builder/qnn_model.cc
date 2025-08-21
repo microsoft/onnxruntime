@@ -88,9 +88,11 @@ Status QnnModel::ParseGraphInputOrOutput(const OrtGraph& ort_graph,
 
     std::vector<int64_t> shape;
     shape.resize(num_dims, 0);
-    // TODO: Check what OrtApi.GetDimensions returns for dynamic shape.
     RETURN_STATUS_IF_ERROR(api_ptrs_.ort_api.GetDimensions(type_shape, shape.data(), shape.size()), api_ptrs_.ort_api);
-
+    // TODO: Check whether -1 really represents dynamic shape.
+    for (const auto& s : shape) {
+      ORT_RETURN_IF(s < 0, "Dynamic shape is not supported yet, for output: ", name);
+    }
     // use index i so that for graph input, it has initializers included
     input_output_info_table.emplace(std::piecewise_construct,
                                     std::forward_as_tuple(name),

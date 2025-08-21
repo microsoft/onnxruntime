@@ -88,7 +88,7 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                                     const OrtNodeUnit& q_node_unit,
                                     bool validate) {
   assert(dq_node_unit.OpType() == DEQUANTIZE_LINEAR && q_node_unit.OpType() == QUANTIZE_LINEAR);
-  const std::string& node_name = dq_node_unit.Name();
+  const auto& node_name = utils::GetUniqueName(dq_node_unit);
   const OrtNodeUnitIODef& input_def = dq_node_unit.Inputs()[0];
   const OrtNodeUnitIODef& output_def = q_node_unit.Outputs()[0];
 
@@ -108,7 +108,7 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   } else {
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor)), "Failed to add input");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)), "Failed to add output");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(q_node_unit.Name(),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(node_name,
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       QNN_OP_CONVERT,
                                                       {input_def.name},

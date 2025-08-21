@@ -50,13 +50,12 @@ Status MeanOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output.shape, output_shape), "Failed to get output shape.");
     std::vector<uint8_t> unpackage_data(sizeof(float));
 
-    const std::string add_output = sum_output + "_ort_qnn_ep_add_" + std::to_string(i);
+    const std::string add_output = utils::GetUniqueName(sum_output, "_add" + std::to_string(i));
     QnnTensorWrapper add_tensor(add_output, QNN_TENSOR_TYPE_NATIVE, input_info.qnn_data_type,
                                 QnnQuantParamsWrapper(), std::move(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(add_tensor)),
                       "Failed to add Add tensor wrapper.");
-    const std::string add_op_name = "Mean_Add_" + std::to_string(i);
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(add_op_name,
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit, QNN_OP_ELEMENT_WISE_ADD),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       QNN_OP_ELEMENT_WISE_ADD,
                                                       {sum_output, input_names[i]},
@@ -74,7 +73,7 @@ Status MeanOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   std::vector<uint8_t> divisor_data(sizeof(float));
   memcpy(divisor_data.data(), &divisor, sizeof(float));
 
-  const std::string divisor_name = sum_output + "_ort_qnn_ep_divisor";
+  const std::string divisor_name = utils::GetUniqueName(sum_output, "_divisor");
 
   QnnTensorWrapper divisor_tensor(divisor_name, QNN_TENSOR_TYPE_STATIC, input_info.qnn_data_type,
                                   QnnQuantParamsWrapper(), std::move(scalar_shape), std::move(divisor_data));
@@ -94,8 +93,7 @@ Status MeanOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)),
                     "Failed to add output tensor wrapper.");
   std::vector<std::string> div_inputs = {sum_output, divisor_name};
-  const std::string div_node_name = output_name + "_div";
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(div_node_name,
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit, QNN_OP_ELEMENT_WISE_DIVIDE),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     QNN_OP_ELEMENT_WISE_DIVIDE,
                                                     {sum_output, divisor_name},

@@ -227,7 +227,7 @@ Status CreateOrValidateOnQnn(
   } else {
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(channel_shuffle_input)), "Failed to add input");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(channel_shuffle_output)), "Failed to add output");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(transpose_tail->Name(),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(onnxruntime::qnn::utils::GetUniqueName(*transpose_tail),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       QNN_OP_CHANNEL_SHUFFLE,
                                                       {cs_input_def.name},

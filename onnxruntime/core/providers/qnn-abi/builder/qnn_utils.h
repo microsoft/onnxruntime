@@ -93,7 +93,11 @@ Status GetQnnDataType(const bool is_quantized_tensor,
                       const ONNXTensorElementDataType onnx_data_type,
                       Qnn_DataType_t& tensor_data_type);
 
-const std::string& GetNodeName(const OrtNodeUnit& node_unit);
+// Returns an unique name string based on a base string and an optional suffix.
+std::string GetUniqueName(const std::string& base, std::string_view suffix = {});
+
+// Returns an unique name string from its name or op type and index, plus an optional suffix.
+std::string GetUniqueName(const OrtNodeUnit& node_unit, std::string_view suffix = {});
 
 bool OnnxDataTypeToQnnDataType(const ONNXTensorElementDataType onnx_data_type,
                                Qnn_DataType_t& qnn_data_type,

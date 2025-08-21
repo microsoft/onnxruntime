@@ -26,7 +26,6 @@ class BaseOpBuilder : public IOpBuilder {
                        const OrtNodeUnit& node_unit,
                        const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
- protected:
   Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
                            const OrtNodeUnit& node_unit,
                            const logging::Logger& logger,
@@ -273,7 +272,7 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   // Onnx Pads is [x1_begin, x2_begin, x1_end, x2_end], QNN requires [x1_begin, x1_end, x2_begin, x2_end]
-  void ReArranagePads(std::vector<uint32_t>& pads) const {
+  void ReArrangePads(std::vector<uint32_t>& pads) const {
     auto pads_size = pads.size();
     auto middle_pos = pads_size / 2;
     std::vector<uint32_t> first_half(pads.begin(), pads.begin() + middle_pos);
