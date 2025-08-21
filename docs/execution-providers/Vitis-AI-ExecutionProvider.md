@@ -2,7 +2,7 @@
 title: AMD - Vitis AI
 description: Instructions to execute ONNX Runtime on AMD devices with the Vitis AI execution provider
 parent: Execution Providers
-nav_order: 12
+nav_order: 13
 redirect_from: /docs/execution-providers/community-maintained/Vitis-AI-ExecutionProvider
 ---
 
