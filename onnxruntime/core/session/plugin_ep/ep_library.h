@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <filesystem>
 #include "core/common/status.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/session_options.h"
@@ -22,6 +23,14 @@ class EpLibrary {
   virtual const char* RegistrationName() const = 0;
   virtual Status Load() { return Status::OK(); }
   virtual const std::vector<OrtEpFactory*>& GetFactories() = 0;  // valid after Load()
+
+  // Return the filesystem path for the underlying library if available. Default implementation returns an
+  // empty path so derived classes that represent a plugin should override this.
+  virtual const std::filesystem::path& GetLibraryPath() const {
+    static const std::filesystem::path empty{};
+    return empty;
+  }
+
   virtual Status Unload() { return Status::OK(); }
   virtual ~EpLibrary() = default;
 

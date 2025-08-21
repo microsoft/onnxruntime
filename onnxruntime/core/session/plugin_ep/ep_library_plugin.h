@@ -31,6 +31,9 @@ class EpLibraryPlugin : public EpLibrary {
     return factories_;
   }
 
+  // Return the actual library path for plugin-based EpLibrary instances.
+  const std::filesystem::path& GetLibraryPath() const override { return library_path_; }
+
   Status Unload() override;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryPlugin);

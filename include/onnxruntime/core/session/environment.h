@@ -154,6 +154,11 @@ class Environment {
   const DataTransferManager& GetDataTransferManager() const {
     return data_transfer_mgr_;
   }
+
+  // Get the filesystem path of the library registered for the given EP registration name.
+  // Returns NOT_FOUND/FAIL if the EP is not registered or does not expose a library path.
+  Status GetExecutionProviderLibraryPath(const std::string& registration_name,
+                                         std::filesystem::path& out) const;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // return a shared allocator from a plugin EP or custom allocator added with RegisterAllocator

@@ -797,6 +797,31 @@ Environment::EpInfo::~EpInfo() {
   }
 }
 
+Status Environment::GetExecutionProviderLibraryPath(const std::string& registration_name,
+                                                   std::filesystem::path& out) const {
+  std::lock_guard<std::mutex> lock{mutex_};
+
+  auto it = ep_libraries_.find(registration_name);
+  if (it == ep_libraries_.end()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", registration_name, " was not registered.");
+  }
+
+  auto& ep_info = it->second;
+  if (!ep_info || !ep_info->library) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library registered under '", registration_name,
+                           "' has no EpLibrary instance.");
+  }
+
+  const auto& lib_path = ep_info->library->GetLibraryPath();
+  if (lib_path.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library registered under '", registration_name,
+                           "' doesn't expose a library path.");
+  }
+
+  out = lib_path;
+  return Status::OK();
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace onnxruntime
