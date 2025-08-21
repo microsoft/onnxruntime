@@ -1834,11 +1834,11 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
 
     Ort::SessionOptions so;  // No need to set the context file path in so since it's load from file
     so.AppendExecutionProvider("QNN", provider_options);
-  #ifdef _WIN32
+#ifdef _WIN32
     std::wstring ctx_model_file(context_binary_file.begin(), context_binary_file.end());
-  #else
+#else
     std::string ctx_model_file(context_binary_file.begin(), context_binary_file.end());
-  #endif
+#endif
     Ort::Session session(*ort_env.get(), ctx_model_file.c_str(), so);
 
     // Clean up
@@ -1848,7 +1848,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
 
   {
     const std::string context_binary_file_abi = "./testdata/qnn_context_cache_non_embed_abi.onnx";  // TODO
-    const std::string qnn_ctx_bin_abi = "./testdata/qnn_context_cache_non_embed_abi_abi_qnn.bin";  // TODO
+    const std::string qnn_ctx_bin_abi = "./testdata/qnn_context_cache_non_embed_abi_abi_qnn.bin";   // TODO
 
     // load the model from file
     std::vector<char> buffer;
@@ -1865,11 +1865,11 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
     Ort::SessionOptions so;  // No need to set the context file path in so since it's load from file
     RegisteredEpDeviceUniquePtr registered_ep_device;
     RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", provider_options);
-  #ifdef _WIN32
+#ifdef _WIN32
     std::wstring ctx_model_file(context_binary_file_abi.begin(), context_binary_file_abi.end());
-  #else
+#else
     std::string ctx_model_file(context_binary_file_abi.begin(), context_binary_file_abi.end());
-  #endif
+#endif
     Ort::Session session(*ort_env.get(), ctx_model_file.c_str(), so);
 
     // Clean up
@@ -1944,7 +1944,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_InvalidGraph) {
 
   {
     const std::string context_binary_file_abi = "./qnn_context_cache_non_embed_abi.onnx";  // TODO
-    const std::string context_bin_abi = "qnn_context_cache_non_embed_abi_abi_qnn.bin";  // TODO
+    const std::string context_bin_abi = "qnn_context_cache_non_embed_abi_abi_qnn.bin";     // TODO
     ASSERT_EQ(std::remove(context_bin_abi.c_str()), 0);
 
     // loads and run from Onnx skeleton file + Qnn context cache binary file
@@ -2253,8 +2253,8 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphName
     const std::unordered_map<std::string, int> domain_to_version = {{"", 11}, {kMSDomain, 1}};
     auto& logging_manager = DefaultLoggingManager();
     onnxruntime::Model model("QNN_ctx_model", false, ModelMetaData(), PathString(),
-                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
-                            logging_manager.DefaultLogger());
+                             IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                             logging_manager.DefaultLogger());
     Graph& graph = model.MainGraph();
     ModelTestBuilder helper(graph);
     std::vector<int64_t> shape = {1, 2, 3};
@@ -2292,8 +2292,8 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphName
     const std::unordered_map<std::string, int> domain_to_version = {{"", 11}, {kMSDomain, 1}};
     auto& logging_manager = DefaultLoggingManager();
     onnxruntime::Model model("QNN_ctx_model", false, ModelMetaData(), PathString(),
-                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
-                            logging_manager.DefaultLogger());
+                             IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                             logging_manager.DefaultLogger());
     Graph& graph = model.MainGraph();
     ModelTestBuilder helper(graph);
     std::vector<int64_t> shape = {1, 2, 3};
@@ -2477,12 +2477,12 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
 
     std::string qnn_ctx_binary_file_name1;
     GetContextBinaryFileName(ctx_model_paths[0], qnn_ctx_binary_file_name1,
-                            DefaultLoggingManager().DefaultLogger());
+                             DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(!qnn_ctx_binary_file_name1.empty());
 
     std::string qnn_ctx_binary_file_name2;
     GetContextBinaryFileName(ctx_model_paths[1], qnn_ctx_binary_file_name2,
-                            DefaultLoggingManager().DefaultLogger());
+                             DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(!qnn_ctx_binary_file_name2.empty());
     // 2 *_ctx.onn point to same .bin file
     EXPECT_TRUE(qnn_ctx_binary_file_name1 == qnn_ctx_binary_file_name2);
@@ -2514,7 +2514,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
     std::vector<std::string> input_names;
     std::vector<std::string> output_names;
     GetModelInputNames(ctx_model_paths[1], input_names, output_names,
-                      DefaultLoggingManager().DefaultLogger());
+                       DefaultLoggingManager().DefaultLogger());
 
     // Run sessions
     // prepare input
@@ -2525,7 +2525,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
     std::vector<const char*> input_names_c;
     for (size_t i = 0; i < input_names.size(); ++i) {
       auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
-                                                  input_dim.data(), input_dim.size());
+                                                   input_dim.data(), input_dim.size());
       ort_inputs.push_back(std::move(input_tensor));
       input_names_c.push_back(input_names[i].c_str());
     }
@@ -2535,7 +2535,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
     }
 
     auto ort_outputs1 = session1.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
-                                    output_names_c.data(), 1);
+                                     output_names_c.data(), 1);
 #endif
 
     for (auto model_path : onnx_model_paths) {
@@ -2568,12 +2568,12 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
 
     std::string qnn_ctx_binary_file_name1;
     GetContextBinaryFileName(ctx_model_paths[0], qnn_ctx_binary_file_name1,
-                            DefaultLoggingManager().DefaultLogger());
+                             DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(!qnn_ctx_binary_file_name1.empty());
 
     std::string qnn_ctx_binary_file_name2;
     GetContextBinaryFileName(ctx_model_paths[1], qnn_ctx_binary_file_name2,
-                            DefaultLoggingManager().DefaultLogger());
+                             DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(!qnn_ctx_binary_file_name2.empty());
     // 2 *_ctx.onn point to same .bin file
     EXPECT_TRUE(qnn_ctx_binary_file_name1 == qnn_ctx_binary_file_name2);
@@ -2608,7 +2608,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
     std::vector<std::string> input_names;
     std::vector<std::string> output_names;
     GetModelInputNames(ctx_model_paths[1], input_names, output_names,
-                      DefaultLoggingManager().DefaultLogger());
+                       DefaultLoggingManager().DefaultLogger());
 
     // Run sessions
     // prepare input
@@ -2619,7 +2619,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
     std::vector<const char*> input_names_c;
     for (size_t i = 0; i < input_names.size(); ++i) {
       auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
-                                                  input_dim.data(), input_dim.size());
+                                                   input_dim.data(), input_dim.size());
       ort_inputs.push_back(std::move(input_tensor));
       input_names_c.push_back(input_names[i].c_str());
     }
@@ -2629,7 +2629,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
     }
 
     auto ort_outputs1 = session1.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
-                                    output_names_c.data(), 1);
+                                     output_names_c.data(), 1);
 #endif
 
     for (auto model_path : onnx_model_paths) {
@@ -2677,12 +2677,12 @@ TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
 
     std::string qnn_ctx_binary_file_name1;
     GetContextBinaryFileName(ctx_model_paths[0], qnn_ctx_binary_file_name1,
-                            DefaultLoggingManager().DefaultLogger());
+                             DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(!qnn_ctx_binary_file_name1.empty());
 
     std::string qnn_ctx_binary_file_name2;
     GetContextBinaryFileName(ctx_model_paths[1], qnn_ctx_binary_file_name2,
-                            DefaultLoggingManager().DefaultLogger());
+                             DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(!qnn_ctx_binary_file_name2.empty());
     // 2 *_ctx.onn point to same .bin file
     EXPECT_TRUE(qnn_ctx_binary_file_name1 == qnn_ctx_binary_file_name2);
@@ -2713,7 +2713,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
     std::vector<std::string> input_names;
     std::vector<std::string> output_names;
     GetModelInputNames(ctx_model_paths[1], input_names, output_names,
-                      DefaultLoggingManager().DefaultLogger());
+                       DefaultLoggingManager().DefaultLogger());
 
     // Run sessions
     // prepare input
@@ -2724,7 +2724,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
     std::vector<const char*> input_names_c;
     for (size_t i = 0; i < input_names.size(); ++i) {
       auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
-                                                  input_dim.data(), input_dim.size());
+                                                   input_dim.data(), input_dim.size());
       ort_inputs.push_back(std::move(input_tensor));
       input_names_c.push_back(input_names[i].c_str());
     }
@@ -2734,7 +2734,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
     }
 
     auto ort_outputs1 = session1.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
-                                    output_names_c.data(), 1);
+                                     output_names_c.data(), 1);
 #endif
 
     for (auto model_path : onnx_model_paths) {
@@ -2767,12 +2767,12 @@ TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
 
     std::string qnn_ctx_binary_file_name1;
     GetContextBinaryFileName(ctx_model_paths[0], qnn_ctx_binary_file_name1,
-                            DefaultLoggingManager().DefaultLogger());
+                             DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(!qnn_ctx_binary_file_name1.empty());
 
     std::string qnn_ctx_binary_file_name2;
     GetContextBinaryFileName(ctx_model_paths[1], qnn_ctx_binary_file_name2,
-                            DefaultLoggingManager().DefaultLogger());
+                             DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(!qnn_ctx_binary_file_name2.empty());
     // 2 *_ctx.onn point to same .bin file
     EXPECT_TRUE(qnn_ctx_binary_file_name1 == qnn_ctx_binary_file_name2);
@@ -2806,7 +2806,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
     std::vector<std::string> input_names;
     std::vector<std::string> output_names;
     GetModelInputNames(ctx_model_paths[1], input_names, output_names,
-                      DefaultLoggingManager().DefaultLogger());
+                       DefaultLoggingManager().DefaultLogger());
 
     // Run sessions
     // prepare input
@@ -2817,7 +2817,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
     std::vector<const char*> input_names_c;
     for (size_t i = 0; i < input_names.size(); ++i) {
       auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
-                                                  input_dim.data(), input_dim.size());
+                                                   input_dim.data(), input_dim.size());
       ort_inputs.push_back(std::move(input_tensor));
       input_names_c.push_back(input_names[i].c_str());
     }
@@ -2827,7 +2827,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
     }
 
     auto ort_outputs1 = session1.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
-                                    output_names_c.data(), 1);
+                                     output_names_c.data(), 1);
 #endif
 
     for (auto model_path : onnx_model_paths) {
@@ -2875,12 +2875,12 @@ TEST_F(QnnHTPBackendTests, QnnContextGenWeightSharingSessionAPI) {
 
     std::string qnn_ctx_binary_file_name1;
     GetContextBinaryFileName(ctx_model_paths[0], qnn_ctx_binary_file_name1,
-                            DefaultLoggingManager().DefaultLogger());
+                             DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(!qnn_ctx_binary_file_name1.empty());
 
     std::string qnn_ctx_binary_file_name2;
     GetContextBinaryFileName(ctx_model_paths[1], qnn_ctx_binary_file_name2,
-                            DefaultLoggingManager().DefaultLogger());
+                             DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(!qnn_ctx_binary_file_name2.empty());
 
     // 2 *_ctx.onn point to same .bin file
@@ -2919,12 +2919,12 @@ TEST_F(QnnHTPBackendTests, QnnContextGenWeightSharingSessionAPI) {
 
     std::string qnn_ctx_binary_file_name1;
     GetContextBinaryFileName(ctx_model_paths[0], qnn_ctx_binary_file_name1,
-                            DefaultLoggingManager().DefaultLogger());
+                             DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(!qnn_ctx_binary_file_name1.empty());
 
     std::string qnn_ctx_binary_file_name2;
     GetContextBinaryFileName(ctx_model_paths[1], qnn_ctx_binary_file_name2,
-                            DefaultLoggingManager().DefaultLogger());
+                             DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(!qnn_ctx_binary_file_name2.empty());
 
     // 2 *_ctx.onn point to same .bin file
@@ -3047,7 +3047,7 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
     std::vector<std::string> input_names;
     std::vector<std::string> output_names;
     GetModelInputNames("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx", input_names, output_names,
-                      DefaultLoggingManager().DefaultLogger());
+                       DefaultLoggingManager().DefaultLogger());
 
     // Run sessions
     // prepare input
@@ -3058,7 +3058,7 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
     std::vector<const char*> input_names_c;
     for (size_t i = 0; i < input_names.size(); ++i) {
       auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
-                                                  input_dim.data(), input_dim.size());
+                                                   input_dim.data(), input_dim.size());
       ort_inputs.push_back(std::move(input_tensor));
       input_names_c.push_back(input_names[i].c_str());
     }
@@ -3077,11 +3077,11 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
     // Test Efficient & Default options
     session.SetEpDynamicOptions(workload_type, efficient_type, 1);
     ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
-                            output_names_c.data(), 1);
+                             output_names_c.data(), 1);
 
     session.SetEpDynamicOptions(workload_type, default_type, 1);
     ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
-                            output_names_c.data(), 1);
+                             output_names_c.data(), 1);
 
     // Test invalid EP dynamic option and invalid workload type
     const char* const dne[] = {"DNE"};
@@ -3112,7 +3112,7 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
     std::vector<std::string> input_names;
     std::vector<std::string> output_names;
     GetModelInputNames("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx", input_names, output_names,
-                      DefaultLoggingManager().DefaultLogger());
+                       DefaultLoggingManager().DefaultLogger());
 
     // Run sessions
     // prepare input
@@ -3123,7 +3123,7 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
     std::vector<const char*> input_names_c;
     for (size_t i = 0; i < input_names.size(); ++i) {
       auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
-                                                  input_dim.data(), input_dim.size());
+                                                   input_dim.data(), input_dim.size());
       ort_inputs.push_back(std::move(input_tensor));
       input_names_c.push_back(input_names[i].c_str());
     }
@@ -3142,11 +3142,11 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
     // Test Efficient & Default options
     session.SetEpDynamicOptions(workload_type, efficient_type, 1);
     ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
-                            output_names_c.data(), 1);
+                             output_names_c.data(), 1);
 
     session.SetEpDynamicOptions(workload_type, default_type, 1);
     ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
-                            output_names_c.data(), 1);
+                             output_names_c.data(), 1);
 
     // Test invalid EP dynamic option and invalid workload type
     const char* const dne[] = {"DNE"};

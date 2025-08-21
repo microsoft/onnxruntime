@@ -10,7 +10,6 @@
 #include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/qnn_ep_data_transfer.h"
 
-
 namespace onnxruntime {
 
 // OrtEpApi infrastructure to be able to use the QNN EP as an OrtEpFactory for auto EP selection.

@@ -1116,9 +1116,9 @@ void QnnEp::PartitionCtxModel(const OrtGraph* graph, OrtEpGraphSupportInfo* grap
       node_fusion_options.ort_version_supported = ORT_API_VERSION;
 
       auto add_status = ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
-                                               supported_group.data(),
-                                               supported_group.size(),
-                                               &node_fusion_options);
+                                                                 supported_group.data(),
+                                                                 supported_group.size(),
+                                                                 &node_fusion_options);
       if (add_status != nullptr) {
         const char* error_msg = ort_api.GetErrorMessage(add_status);
         LOGS(logger_in_, ERROR) << "Failed to add nodes to fuse: " << error_msg;
@@ -1332,7 +1332,6 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   if (!is_qnn_ctx_model && ep->disable_cpu_ep_fallback_ && num_nodes_in_graph != num_of_supported_nodes) {
     LOGS(ep->logger_in_, ERROR) << "Unsupported nodes in QNN EP: " << get_unsupported_node_names();
   }
-
 
   std::cout << "DEBUG: #supported nodes " << num_of_supported_nodes << std::endl;
   return nullptr;
@@ -1780,7 +1779,7 @@ OrtStatus* ORT_API_CALL QnnEp::SetDynamicOptionsImpl(_In_ OrtEp* this_ptr,
       }
     } else {
       LOGS(ep->logger_in_, ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";
-        return ep->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Unsupported EP Dynamic Option");
+      return ep->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Unsupported EP Dynamic Option");
     }
   }
 

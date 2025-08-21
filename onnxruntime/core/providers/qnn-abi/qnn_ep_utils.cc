@@ -2030,9 +2030,8 @@ std::vector<std::vector<const OrtNode*>> CreateSupportedPartitionNodeGroups(
       ort_api.ReleaseStatus(status);
       continue;
     }
-    const bool is_node_supported = (
-        (std::string(node_ep_name).empty() || node_ep_name == ep_type) &&
-        std::find(supported_nodes.cbegin(), supported_nodes.cend(), node) != supported_nodes.cend());
+    const bool is_node_supported = ((std::string(node_ep_name).empty() || node_ep_name == ep_type) &&
+                                    std::find(supported_nodes.cbegin(), supported_nodes.cend(), node) != supported_nodes.cend());
 
     if (!is_node_supported && Contains(supported_group_border, node)) {
       // An unsupported node on the border will be processed after the current partition node group.
