@@ -33,11 +33,6 @@ class EpLibraryPlugin : public EpLibrary {
 
   Status Unload() override;
 
-  // Get the library path for this plugin EP
-  std::filesystem::path GetLibraryPath() const override {
-    return library_path_;
-  }
-
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryPlugin);
 
  private:

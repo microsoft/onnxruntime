@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <filesystem>
 #include <string>
 #include "core/common/status.h"
 #include "core/framework/provider_options.h"
@@ -24,9 +23,6 @@ class EpLibrary {
   virtual Status Load() { return Status::OK(); }
   virtual const std::vector<OrtEpFactory*>& GetFactories() = 0;  // valid after Load()
   virtual Status Unload() { return Status::OK(); }
-
-  // Get the library path for this EP library (empty for internal EPs)
-  virtual std::filesystem::path GetLibraryPath() const { return std::filesystem::path{}; }
 
   virtual ~EpLibrary() = default;
 
