@@ -112,31 +112,7 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
     ORT_RETURN_IF_ERROR(ReadValueFromFile(vendor_id_path, gpu_device.vendor_id));
   }
 
-  switch (gpu_device.vendor_id) {
-    case OrtDevice::VendorIds::AMD:
-      gpu_device.vendor = "AMD";
-      break;
-    case OrtDevice::VendorIds::NVIDIA:
-      gpu_device.vendor = "NVIDIA";
-      break;
-    case OrtDevice::VendorIds::ARM:
-      gpu_device.vendor = "ARM";
-      break;
-    case OrtDevice::VendorIds::MICROSOFT:
-      gpu_device.vendor = "MICROSOFT";
-      break;
-    case OrtDevice::VendorIds::HUAWEI:
-      gpu_device.vendor = "HUAWEI";
-      break;
-    case OrtDevice::VendorIds::QUALCOMM:
-      gpu_device.vendor = "QUALCOMM";
-      break;
-    case OrtDevice::VendorIds::INTEL:
-      gpu_device.vendor = "INTEL";
-      break;
-    default:
-      gpu_device.vendor = "";
-  }
+  gpu_device.vendor = OrtDevice::VendorIdToString(gpu_device.vendor_id);
 
   // device id
   {

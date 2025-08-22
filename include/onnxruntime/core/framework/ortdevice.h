@@ -65,6 +65,27 @@ struct OrtDevice {
     INTEL = 0x8086,      // OpenVINO
   };
 
+  constexpr static const char* VendorIdToString(OrtDevice::VendorId vendorId) {
+    switch (vendorId) {
+      case OrtDevice::VendorIds::AMD:
+        return "AMD";
+      case OrtDevice::VendorIds::NVIDIA:
+        return "NVIDIA";
+      case OrtDevice::VendorIds::ARM:
+        return "ARM";
+      case OrtDevice::VendorIds::MICROSOFT:
+        return "MICROSOFT";
+      case OrtDevice::VendorIds::HUAWEI:
+        return "HUAWEI";
+      case OrtDevice::VendorIds::QUALCOMM:
+        return "QUALCOMM";
+      case OrtDevice::VendorIds::INTEL:
+        return "INTEL";
+      default:
+        return "";
+    }
+  }
+
   constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, VendorId vendor_id_, DeviceId device_id_,
                       Alignment alignment) /*noexcept*/
       : device_type(device_type_),
