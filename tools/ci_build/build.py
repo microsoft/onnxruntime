@@ -1708,8 +1708,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_ios_tests(args, source_dir, config, cwd)
             continue
         dll_path_list = []
-        if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+        if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
+        if args.use_nv_tensorrt_rtx:
+            dll_path_list.append(os.path.join(args.tensorrt_rtx_home, "lib"))
 
         dll_path = None
         if len(dll_path_list) > 0:
