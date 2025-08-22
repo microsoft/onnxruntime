@@ -171,11 +171,11 @@ class QnnEp : public OrtEp, public ApiPtrs {
   std::string name_;
   const OrtLogger& logger_;
   const logging::Logger& logger_in_;
-  bool context_cache_enabled_;
-  bool share_ep_contexts_;
-  bool enable_vtcm_backup_buffer_sharing_;
-  std::string context_node_name_prefix_;
-  std::string context_cache_path_cfg_;
+  bool context_cache_enabled_ = false;
+  bool share_ep_contexts_ = false;
+  bool enable_vtcm_backup_buffer_sharing_ = false;
+  std::string context_node_name_prefix_ = "";
+  std::string context_cache_path_cfg_ = "";
   const OrtSessionOptions& session_options_;
 
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.

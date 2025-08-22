@@ -141,7 +141,11 @@ void RegisterQnnEpLibrary(RegisteredEpDeviceUniquePtr& registered_ep_device,
                                                                   "libQnnHtp.so"
 #endif
        )) {
+#if defined(__linux__)
+    target_hw_device_type = OrtHardwareDeviceType_CPU;
+#else
     target_hw_device_type = OrtHardwareDeviceType_NPU;
+#endif
   }
 
   auto it = std::find_if(ep_devices, ep_devices + num_devices,
