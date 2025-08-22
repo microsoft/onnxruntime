@@ -232,7 +232,7 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
     so.AppendExecutionProvider("QNN", options);
 
     // Invalid! Adds CPU EP to session, but also disables CPU fallback.
-    Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
+    so.AppendExecutionProvider_CPU(1);
 
     const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
 
@@ -285,7 +285,7 @@ TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
 
   so.AppendExecutionProvider("QNN", options);
 
-  Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
+  so.AppendExecutionProvider_CPU(1);
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_external_ini.onnx";
 

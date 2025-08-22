@@ -45,12 +45,10 @@ TEST(CApiTest, DefaultAllocator) {
 TEST(CApiTest, CustomAllocator) {
   constexpr PATH_TYPE model_path = TSTR("testdata/mul_1.onnx");
 
-  const auto& api = Ort::GetApi();
-
   // Case 1: Register a custom allocator.
   {
     MockedOrtAllocator mocked_allocator;
-    ASSERT_TRUE(api.RegisterAllocator(*ort_env, &mocked_allocator) == nullptr);
+    ort_env->RegisterAllocator(&mocked_allocator);
 
     Ort::SessionOptions session_options;
     session_options.AddConfigEntry("session.use_env_allocators", "1");
@@ -62,14 +60,14 @@ TEST(CApiTest, CustomAllocator) {
     ASSERT_EQ(mocked_allocator.NumAllocations(), std::stoll(stats.GetValue("NumAllocs")));
     ASSERT_EQ(mocked_allocator.NumReserveAllocations(), std::stoll(stats.GetValue("NumReserves")));
 
-    ASSERT_TRUE(api.UnregisterAllocator(*ort_env, mocked_allocator.Info()) == nullptr);
+    ort_env->UnregisterAllocator(mocked_allocator.Info());
   }
 
   // Case 2: Register a custom allocator with an older API version which does not support GetStats.
   {
     MockedOrtAllocator mocked_allocator;
     mocked_allocator.version = 22;
-    ASSERT_TRUE(api.RegisterAllocator(*ort_env, &mocked_allocator) == nullptr);
+    ort_env->RegisterAllocator(&mocked_allocator);
 
     Ort::SessionOptions session_options;
     session_options.AddConfigEntry("session.use_env_allocators", "1");
@@ -81,7 +79,7 @@ TEST(CApiTest, CustomAllocator) {
     auto stats = allocator.GetStats();
     ASSERT_EQ(0, stats.GetKeyValuePairs().size());
 
-    ASSERT_TRUE(api.UnregisterAllocator(*ort_env, mocked_allocator.Info()) == nullptr);
+    ort_env->UnregisterAllocator(mocked_allocator.Info());
   }
 }
 #endif

@@ -382,8 +382,8 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "sessio
 // THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
 // Meant to be used with SetEpDynamicOptions
 // Specify the type of workload for this session.
-// “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
-// “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
+// "Default": OS determines the scheduling priority and processor performance to service this workload. [Default]
+// "Efficient": OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
 static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";
 
 // Disables model compilation during session initialization.
@@ -401,3 +401,10 @@ static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload
 // - "0": EP compile is not disabled. [DEFAULT]
 // - "1": EP compile is disabled.
 static const char* const kOrtSessionOptionsDisableModelCompile = "session.disable_model_compile";
+
+// Controls behavior when compiled model compatibility is SUPPORTED_PREFER_RECOMPILATION.
+// "0": Allow execution with suboptimal performance. [DEFAULT]
+// "1": Fail session creation to require recompilation for optimal performance.
+// Note: UNSUPPORTED models always fail regardless of this setting.
+static const char* const kOrtSessionOptionsFailOnSuboptimalCompiledModel =
+    "session.fail_on_suboptimal_compiled_model";

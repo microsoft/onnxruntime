@@ -179,53 +179,29 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name_ == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    const auto& api = Ort::GetApi();
-    OrtCUDAProviderOptionsV2* cuda_options;
-    Ort::ThrowOnError(api.CreateCUDAProviderOptions(&cuda_options));
-    std::vector<const char*> option_keys, option_values;
-    // used to keep all option keys and value strings alive
-    std::list<std::string> buffer;
-    buffer.emplace_back("cudnn_conv_algo_search");
-    option_keys.push_back(buffer.back().c_str());
+    Ort::CUDAProviderOptions cuda_options;
+
+    const char* config_val = nullptr;
     switch (performance_test_config.run_config.cudnn_conv_algo) {
       case 0:
-        buffer.emplace_back("EXHAUSTIVE");
+        config_val = "EXHAUSTIVE";
         break;
       case 1:
-        buffer.emplace_back("HEURISTIC");
+        config_val = "HEURISTIC";
         break;
       default:
-        buffer.emplace_back("DEFAULT");
+        config_val = "DEFAULT";
         break;
     }
-    option_values.push_back(buffer.back().c_str());
+    provider_options.emplace("cudnn_conv_algo_search", config_val);
+    provider_options.emplace("do_copy_in_default_stream",
+                             (!performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0"));
 
-    buffer.emplace_back("do_copy_in_default_stream");
-    option_keys.push_back(buffer.back().c_str());
-    buffer.emplace_back(!performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0");
-    option_values.push_back(buffer.back().c_str());
-
-#ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif
-    ParseSessionConfigs(ov_string, provider_options);
-    for (const auto& provider_option : provider_options) {
-      option_keys.push_back(provider_option.first.c_str());
-      option_values.push_back(provider_option.second.c_str());
-    }
 
-    Ort::Status status(api.UpdateCUDAProviderOptions(cuda_options,
-                                                     option_keys.data(), option_values.data(), option_keys.size()));
-    if (!status.IsOK()) {
-      OrtAllocator* allocator;
-      char* options;
-      Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
-      Ort::ThrowOnError(api.GetCUDAProviderOptionsAsString(cuda_options, allocator, &options));
-      ORT_THROW("[ERROR] [CUDA] Configuring the CUDA options failed with message: ", status.GetErrorMessage(),
-                "\nSupported options are:\n", options);
-    }
+    ParseSessionConfigs(ov_string, provider_options);
+    cuda_options.Update(provider_options);
+
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
     if (performance_test_config.run_config.enable_cuda_io_binding) {
       device_memory_name_ = CUDA;
@@ -235,12 +211,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name_ == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-    const auto& api = Ort::GetApi();
-    OrtTensorRTProviderOptionsV2* tensorrt_options;
-    Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
-    std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(
-        tensorrt_options, api.ReleaseTensorRTProviderOptions);
-    std::vector<const char*> option_keys, option_values;
+    Ort::TensorRTProviderOptions tensorrt_options;
     // used to keep all option keys and value strings alive
     std::list<std::string> buffer;
 
@@ -250,25 +221,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
     ParseSessionConfigs(ov_string, provider_options);
-    for (const auto& provider_option : provider_options) {
-      option_keys.push_back(provider_option.first.c_str());
-      option_values.push_back(provider_option.second.c_str());
-    }
-    Ort::Status status(api.UpdateTensorRTProviderOptions(tensorrt_options,
-                                                         option_keys.data(), option_values.data(), option_keys.size()));
-    if (!status.IsOK()) {
-      OrtAllocator* allocator;
-      char* options;
-      Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
-      Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options, allocator, &options));
-      ORT_THROW("[ERROR] [TensorRT] Configuring the CUDA options failed with message: ", status.GetErrorMessage(),
-                "\nSupported options are:\n", options);
-    }
-
+    tensorrt_options.Update(provider_options);
     session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;
-    cuda_options.device_id = tensorrt_options->device_id;
+    cuda_options.device_id = static_cast<OrtTensorRTProviderOptionsV2*>(tensorrt_options)->device_id;
     cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
     cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
     // TODO: Support arena configuration for users of perf test
