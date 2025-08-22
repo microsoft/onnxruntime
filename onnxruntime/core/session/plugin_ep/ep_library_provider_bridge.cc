@@ -4,6 +4,7 @@
 #include "core/session/plugin_ep/ep_library_provider_bridge.h"
 
 #include "core/session/plugin_ep/ep_factory_provider_bridge.h"
+#include "core/session/plugin_ep/ep_library_plugin.h"
 
 namespace onnxruntime {
 Status EpLibraryProviderBridge::Load() {
@@ -26,8 +27,16 @@ Status EpLibraryProviderBridge::Load() {
   // to do this we need to capture `factory` and plug it in to is_supported_fn and create_fn.
   // we also need to update any returned OrtEpDevice instances to swap the wrapper EpFactoryInternal in so that we can
   // call Provider::CreateIExecutionProvider in EpFactoryInternal::CreateIExecutionProvider.
+
+  // Get library path from the EpLibrary using the virtual method
+  auto library_path = ep_library_plugin_->GetLibraryPath();
+  std::optional<std::filesystem::path> library_path_opt;
+  if (!library_path.empty()) {
+    library_path_opt = library_path;
+  }
+
   for (const auto& factory : ep_library_plugin_->GetFactories()) {
-    auto factory_impl = std::make_unique<ProviderBridgeEpFactory>(*factory, *provider_library_);
+    auto factory_impl = std::make_unique<ProviderBridgeEpFactory>(*factory, *provider_library_, library_path_opt);
     auto internal_factory = std::make_unique<EpFactoryInternal>(std::move(factory_impl));
 
     factory_ptrs_.push_back(internal_factory.get());
