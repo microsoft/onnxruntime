@@ -103,7 +103,6 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
 
     std::vector<int64_t> input_dims = {num_rows, hidden_size};
     std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-    // Adjust weight dimensions based on quantization type for CUDA as well
     std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, expert_weight_bits == 4 ? inter_size / 2 : inter_size};
     std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, expert_weight_bits == 4 ? hidden_size / 2 : hidden_size};
     std::vector<int64_t> fc3_experts_weights_dims = fc1_experts_weights_dims;
@@ -150,7 +149,6 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
 
     std::vector<int64_t> input_dims = {num_rows, hidden_size};
     std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-    // Adjust weight dimensions based on quantization type
     std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, expert_weight_bits == 4 ? inter_size / 2 : inter_size};
     std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, expert_weight_bits == 4 ? hidden_size / 2 : hidden_size};
     std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
@@ -1322,7 +1320,6 @@ TEST(MoETest, QMoETest_Mixtral_Int4) {
 
 // CPU-specific QMoE tests
 TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
-  // Test CPU implementation with 4-bit quantization (MLAS optimized path) - CPU only
   int num_rows = 2;
   int num_experts = 2;
   int hidden_size = 32;

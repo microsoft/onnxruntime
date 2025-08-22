@@ -10,34 +10,14 @@
 # license information.
 # --------------------------------------------------------------------------
 #
-# Note on QMoE quantization approaches:
+# QMoE quantization implementation notes:
 #
-# Both CPU and CUDA implementations of QMoE use symmetric quantization:
+# Both CPU and CUDA implementations use symmetric quantization:
+# - 4-bit: range [-8, 7]
+# - 8-bit: range [-128, 127]
 #
-# 1. CPU (this file): Symmetric quantization
-#    - 4-bit: range = [-8, 7]
-#    - 8-bit: range = [-128, 127]
-#
-# 2. CUDA: Symmetric quantization
-#    - 4-bit: range = [-8, 7]
-#    - 8-bit: range = [-128, 127]
-#
-# This aligned approach ensures better compatibility with TensorRT.
-# The tolerance values used in testing account for minor numerical differences.
-#
-# Update: Recent fixes to the CPU implementation have improved the numerical
-# accuracy, particularly for 4-bit quantization. These fixes include:
-# - Improved handling of the mapping between 4-bit unsigned storage and signed values
-# - Fixed GEMM leading dimension parameters for better matrix multiplication accuracy
-# - Clearer documentation of bit packing/unpacking for 4-bit values
-# - Optimized expert processing order based on routing weights for better cache utilization
-# - Added expert filtering to skip low-impact experts and reduce computational overhead
-# - Improved memory allocation patterns and buffer management for better performance
-# - Fixed SwiGLU activation constants to exactly match CUDA (alpha=1.702, clamp_limit=7.0)
-# - Corrected SwiGLU clamping behavior (gate: max only, linear: min/max)
-# - Fixed symmetric quantization mapping for both 4-bit and 8-bit
-# - Simplified expert processing logic to align with CUDA implementation
-# - Updated tolerance values to reflect improved accuracy
+# This ensures TensorRT compatibility.
+# Tolerance values account for numerical differences between implementations.
 # --------------------------------------------------------------------------
 import itertools
 import time
@@ -128,7 +108,7 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
                 torch.zeros_like(weights),
             )
 
-    # Calculate scale exactly like C++ implementation
+    # Calculate scale like C++ implementation
     abs_max = weights.abs().max(dim=-1, keepdim=True)[0]
     abs_max = torch.clamp(abs_max, min=1e-12)  # Avoid division by zero
 
@@ -252,7 +232,7 @@ def create_cpu_moe_onnx_graph(
     # Force use_quant to True - we only want to test QMoE
     use_quant = True
 
-    # Note: In QMoE, biases are not used at all, only scales
+    # In QMoE, biases are not used
     # The following parameters are only relevant when use_quant=False (which is never the case here)
     # fc1_bias and fc2_bias are completely ignored for QMoE
 
@@ -291,7 +271,7 @@ def create_cpu_moe_onnx_graph(
         "",
     ]
 
-    # Note: In QMoE mode, biases are not used at all
+    # In QMoE mode, biases are not used
     # This code path is never executed since use_quant is always True
 
     # Use SwiGLU activation if specified, otherwise use SiLU
@@ -306,6 +286,10 @@ def create_cpu_moe_onnx_graph(
             k=topk,
             normalize_routing_weights=0,
             activation_type=activation,
+            # Add new attributes with backwards-compatible default values
+            swiglu_fusion=1 if (use_swiglu and swiglu_interleaved) else 0,  # 1 = fused and interleaved
+            activation_alpha=1.702,  # SwiGLU default alpha
+            activation_beta=1.0,  # SwiGLU default beta
             domain="com.microsoft",
         ),
     ]
@@ -506,7 +490,7 @@ def masked_sampling_omp_inference(scores, top_k, jitter_eps, training):
     # Get top-k experts (same as C++ top-k selection)
     mask_logits_threshold, selected_experts = torch.topk(scores, top_k)
 
-    # Use equal weights for selected experts (matching C++ implementation)
+    # Use equal weights for selected experts
     # C++ gives weight 1.0 to each selected expert
     multiplier = torch.ones_like(mask_logits_threshold)  # [batch, top_k] with values 1.0
 

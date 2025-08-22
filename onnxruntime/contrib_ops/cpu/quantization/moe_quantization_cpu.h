@@ -54,6 +54,11 @@ class QMoE final : public OpKernel, public MoEBaseCPU {
 
   int64_t expert_weight_bits_;
 
+  // New attributes from updated operator specification
+  int64_t swiglu_fusion_;
+  float swiglu_limit_;
+  int64_t block_size_;
+
   // Prepacked dequantized weights stored for reuse
   IAllocatorUniquePtr<float> prepacked_fc1_weights_;
   IAllocatorUniquePtr<float> prepacked_fc2_weights_;
