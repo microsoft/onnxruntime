@@ -1458,11 +1458,14 @@ TEST(MoETest, QMoETest_CPU_FC3_Error) {
   const std::vector<float> input = {0.1f, -0.2f, 0.3f, -0.4f, 0.5f, -0.6f, 0.7f, -0.8f};
   const std::vector<float> router_probs = {0.5f, 0.5f};
 
-  std::vector<uint8_t> fc1_experts_weights(num_experts * hidden_size * inter_size / 2, 0x01);  // 0,1 in symmetric quantization
-  std::vector<uint8_t> fc2_experts_weights(num_experts * inter_size * hidden_size / 2, 0x10);  // 1,0 in symmetric quantization
-  std::vector<uint8_t> fc3_experts_weights(num_experts * hidden_size * inter_size / 2, 0x21);  // 2,1 in symmetric quantization, FC3 provided
+  // Using new layout: fc1 has fused swiglu doubling (2*inter_size) and 4-bit pack_size=2 so hidden_size packed dimension is hidden_size/2
+  const int pack_size = 2;                    // for 4-bit
+  const int fc1_inter_size = 2 * inter_size;  // swiglu fused
+  std::vector<uint8_t> fc1_experts_weights(num_experts * fc1_inter_size * (hidden_size / pack_size), 0x01);
+  std::vector<uint8_t> fc2_experts_weights(num_experts * hidden_size * (inter_size / pack_size), 0x10);
+  std::vector<uint8_t> fc3_experts_weights(num_experts * inter_size * (hidden_size / pack_size), 0x21);  // FC3 provided
 
-  std::vector<float> fc1_scales(num_experts * inter_size, 0.1f);
+  std::vector<float> fc1_scales(num_experts * fc1_inter_size, 0.1f);
   std::vector<float> fc2_scales(num_experts * hidden_size, 0.05f);
   std::vector<float> fc3_scales(num_experts * inter_size, 0.08f);  // FC3 scales provided
 
@@ -1475,10 +1478,10 @@ TEST(MoETest, QMoETest_CPU_FC3_Error) {
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};  // legacy shape
-  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size / 2};
-  std::vector<int64_t> fc3_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};
-  std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, fc1_inter_size, hidden_size / pack_size};
+  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, hidden_size, inter_size / pack_size};
+  std::vector<int64_t> fc3_experts_weights_dims = {num_experts, inter_size, hidden_size / pack_size};
+  std::vector<int64_t> fc1_scales_dims = {num_experts, fc1_inter_size};
   std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
   std::vector<int64_t> fc3_scales_dims = {num_experts, inter_size};
   std::vector<int64_t> output_dims = {num_rows, hidden_size};
@@ -1586,10 +1589,11 @@ TEST(MoETest, QMoETest_CPU_SwiGLU_Int8) {
   const int fc1_weight_size_per_expert = hidden_size * inter_size * 2;  // For 8-bit SwiGLU
   const int fc2_weight_size_per_expert = inter_size * hidden_size;      // For 8-bit FC2
 
-  // Generate test weights at zero (for symmetric quantization) to produce zero output
-  std::vector<uint8_t> fc1_experts_weights(num_experts * fc1_weight_size_per_expert, 0);  // Zero in symmetric quantization
-  std::vector<uint8_t> fc2_experts_weights(num_experts * fc2_weight_size_per_expert, 0);  // Zero in symmetric quantization
-  std::vector<uint8_t> fc3_experts_weights;                                               // Empty for SwiGLU
+  // Generate test weights at zero (for symmetric quantization storage format: uint8 with zero point 128)
+  // Fill with 128 so dequantized value (val - 128) == 0 => zero output
+  std::vector<uint8_t> fc1_experts_weights(num_experts * fc1_weight_size_per_expert, 128);
+  std::vector<uint8_t> fc2_experts_weights(num_experts * fc2_weight_size_per_expert, 128);
+  std::vector<uint8_t> fc3_experts_weights;  // Empty for SwiGLU
 
   // Scales: for SwiGLU, FC1 has 2*inter_size outputs
   std::vector<float> fc1_scales(num_experts * inter_size * 2, 0.1f);

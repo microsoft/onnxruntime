@@ -86,7 +86,7 @@ static void run_moe_fc_cpu_grouped(
     }
 
     // Sort experts by logit value (descending)
-    std::partial_sort(all_experts.begin(), all_experts.begin() + std::min(k, num_experts), all_experts.end(),
+    std::partial_sort(all_experts.begin(), all_experts.begin() + static_cast<ptrdiff_t>(std::min(k, num_experts)), all_experts.end(),
                       [](const std::pair<float, int64_t>& a, const std::pair<float, int64_t>& b) {
                         return a.first > b.first;
                       });
@@ -95,7 +95,7 @@ static void run_moe_fc_cpu_grouped(
     const int64_t actual_k = std::min(k, num_experts);
     std::vector<float> top_logits(static_cast<size_t>(actual_k));
     for (int64_t i = 0; i < actual_k; ++i) {
-      top_logits[static_cast<size_t>(i)] = all_experts[i].first;
+      top_logits[static_cast<size_t>(i)] = all_experts[static_cast<size_t>(i)].first;
     }
 
     // Apply softmax to top-k logits for proper normalization (always, as per PyTorch)
@@ -109,7 +109,7 @@ static void run_moe_fc_cpu_grouped(
     // Normalize weights (always apply softmax like PyTorch)
     for (int64_t i = 0; i < actual_k; ++i) {
       float normalized_weight = top_logits[static_cast<size_t>(i)] / sum_exp;
-      expert_scores.emplace_back(normalized_weight, all_experts[i].second);
+      expert_scores.emplace_back(normalized_weight, all_experts[static_cast<size_t>(i)].second);
     }
     const int64_t select = std::min(k, static_cast<int64_t>(expert_scores.size()));
 
@@ -382,7 +382,7 @@ void run_moe_fc_cpu(const float* input_activations, const float* gating_output,
 
   for (int64_t row = 0; row < num_rows; ++row) {
     expert_scores.clear();
-    expert_scores.reserve(num_experts);
+    expert_scores.reserve(static_cast<size_t>(num_experts));
 
     for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
       const int64_t router_idx = row * num_experts + expert_idx;
@@ -405,21 +405,21 @@ void run_moe_fc_cpu(const float* input_activations, const float* gating_output,
       return a.first > b.first;
     };
 
-    std::partial_sort(expert_scores.begin(), expert_scores.begin() + k,
+    std::partial_sort(expert_scores.begin(), expert_scores.begin() + static_cast<ptrdiff_t>(k),
                       expert_scores.end(), robust_comparator);
     float selected_sum = 0.0f;
     for (int64_t k_idx = 0; k_idx < k; ++k_idx) {
-      selected_sum += expert_scores[k_idx].first;
+      selected_sum += expert_scores[static_cast<size_t>(k_idx)].first;
     }
 
     for (int64_t k_idx = 0; k_idx < k; ++k_idx) {
       const int64_t offset = row * k + k_idx;
-      expert_indices[static_cast<size_t>(offset)] = static_cast<int>(expert_scores[k_idx].second);
+      expert_indices[static_cast<size_t>(offset)] = static_cast<int>(expert_scores[static_cast<size_t>(k_idx)].second);
 
       if (normalize_routing_weights) {
-        routing_weights[static_cast<size_t>(offset)] = (selected_sum > 0.0f) ? (expert_scores[k_idx].first / selected_sum) : 0.0f;
+        routing_weights[static_cast<size_t>(offset)] = (selected_sum > 0.0f) ? (expert_scores[static_cast<size_t>(k_idx)].first / selected_sum) : 0.0f;
       } else {
-        routing_weights[static_cast<size_t>(offset)] = expert_scores[k_idx].first;
+        routing_weights[static_cast<size_t>(offset)] = expert_scores[static_cast<size_t>(k_idx)].first;
       }
     }
   }
@@ -740,8 +740,8 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
   const void* fc1_wq = fc1_experts_weights->DataRaw();
   const void* fc2_wq = fc2_experts_weights->DataRaw();
 
-  const size_t fc1_scales_size = moe_params.num_experts * (2 * moe_params.inter_size);
-  const size_t fc2_scales_size = moe_params.num_experts * moe_params.hidden_size;
+  const size_t fc1_scales_size = static_cast<size_t>(moe_params.num_experts) * (2 * static_cast<size_t>(moe_params.inter_size));
+  const size_t fc2_scales_size = static_cast<size_t>(moe_params.num_experts) * static_cast<size_t>(moe_params.hidden_size);
   std::unique_ptr<float[]> fc1_scales_float = std::make_unique<float[]>(fc1_scales_size);
   std::unique_ptr<float[]> fc2_scales_float = std::make_unique<float[]>(fc2_scales_size);
   {
@@ -845,8 +845,8 @@ Status QMoE<T>::DirectFP32MoEImpl(OpKernelContext* context,
     float weight_sum = 0.0f;
 
     for (int64_t k_idx = 0; k_idx < std::min(static_cast<int64_t>(k_), moe_params.num_experts); ++k_idx) {
-      float weight = expert_scores[k_idx].first;
-      int64_t expert_idx = expert_scores[k_idx].second;
+      float weight = expert_scores[static_cast<size_t>(k_idx)].first;
+      int64_t expert_idx = expert_scores[static_cast<size_t>(k_idx)].second;
 
       if (weight <= 0.0f) break;
 
