@@ -27,7 +27,7 @@ jobs:
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # Fetch all history for all tags and branches
           submodules: 'none'

@@ -22,6 +22,7 @@
 #include <core/platform/path_lib.h>
 #include "default_providers.h"
 #include "test/onnx/TestCase.h"
+#include "test/util/include/api_asserts.h"
 
 #ifdef USE_DNNL
 #include "core/providers/dnnl/dnnl_provider_factory.h"
@@ -58,17 +59,6 @@
 #include "test/onnx/testcase_request.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
-
-// asserts that the OrtStatus* result of `status_expr` does not indicate an error
-// note: this takes ownership of the OrtStatus* result
-#define ASSERT_CXX_ORTSTATUS_OK(status_expr)                                        \
-  do {                                                                              \
-    if (OrtStatus* _status = (status_expr); _status != nullptr) {                   \
-      std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)> _rel_status{    \
-          _status, &OrtApis::ReleaseStatus};                                        \
-      FAIL() << "OrtStatus error: " << OrtApis::GetErrorMessage(_rel_status.get()); \
-    }                                                                               \
-  } while (false)
 
 using namespace onnxruntime::common;
 
@@ -290,11 +280,11 @@ TEST_P(ModelTest, Run) {
         std::unordered_map<std::string, Ort::Value> feeds;
         l->LoadTestData(task_id, holder, feeds, true);
         size_t output_count;
-        ASSERT_CXX_ORTSTATUS_OK(OrtApis::SessionGetOutputCount(ort_session, &output_count));
+        ASSERT_ORTSTATUS_OK(OrtApis::SessionGetOutputCount(ort_session, &output_count));
         // Create output feed
         std::vector<char*> output_names(output_count);
         for (size_t i = 0; i != output_count; ++i) {
-          ASSERT_CXX_ORTSTATUS_OK(
+          ASSERT_ORTSTATUS_OK(
               OrtApis::SessionGetOutputName(ort_session, i, default_allocator.get(), &output_names[i]));
         }
 

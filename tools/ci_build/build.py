@@ -1515,8 +1515,8 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
     def adb_shell(*args, **kwargs):
         return run_subprocess([sdk_tool_paths.adb, "shell", *args], **kwargs)
 
-    def adb_install(*args, **kwargs):
-        return run_subprocess([sdk_tool_paths.adb, "install", *args], **kwargs)
+    def adb_logcat(*args, **kwargs):
+        return run_subprocess([sdk_tool_paths.adb, "logcat", *args], **kwargs)
 
     def run_adb_shell(cmd):
         # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to strip and
@@ -1541,6 +1541,17 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 )
             )
             context_stack.callback(android.stop_emulator, emulator_proc)
+
+        all_android_tests_passed = False
+
+        def dump_logs_on_failure():
+            if not all_android_tests_passed:
+                log.warning("Android test failed. Dumping logs.")
+                adb_logcat("-d")  # dump logs
+
+        context_stack.callback(dump_logs_on_failure)
+
+        adb_logcat("-c")  # clear logs
 
         adb_push("testdata", device_dir, cwd=cwd)
         if is_linux() and os.path.exists("/data/onnx"):
@@ -1592,6 +1603,8 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             run_adb_shell(
                 f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_customopregistration_test"
             )
+
+        all_android_tests_passed = True
 
 
 def run_ios_tests(args, source_dir, config, cwd):
@@ -1695,8 +1708,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_ios_tests(args, source_dir, config, cwd)
             continue
         dll_path_list = []
-        if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+        if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
+        if args.use_nv_tensorrt_rtx:
+            dll_path_list.append(os.path.join(args.tensorrt_rtx_home, "lib"))
 
         dll_path = None
         if len(dll_path_list) > 0:

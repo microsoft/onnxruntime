@@ -2626,6 +2626,16 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetName, _In_ const OrtGraph* graph, _Outptr_
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetModelMetadata, _In_ const OrtGraph* graph, _Outptr_ OrtModelMetadata** out) {
+  API_IMPL_BEGIN
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'out' argument is NULL");
+  }
+  *out = reinterpret_cast<OrtModelMetadata*>(graph->GetModelMetadata().release());
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetModelPath, _In_ const OrtGraph* graph, _Outptr_ const ORTCHAR_T** model_path) {
   API_IMPL_BEGIN
   if (model_path == nullptr) {
@@ -4096,6 +4106,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ReleaseSyncStream,
 
     &OrtApis::CopyTensors,
+
+    &OrtApis::Graph_GetModelMetadata,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

@@ -576,6 +576,7 @@ ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
 ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
+ORT_DEFINE_RELEASE(SyncStream);
 ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
@@ -731,11 +732,11 @@ struct Status : detail::Base<OrtStatus> {
   using Base = detail::Base<OrtStatus>;
   using Base::Base;
 
-  explicit Status(std::nullptr_t) noexcept {}               ///< Create an empty object, must be assigned a valid one to be used
-  Status(OrtStatus* status) noexcept;                       ///< Takes ownership of OrtStatus instance returned from the C API.
-  explicit Status(const Exception&) noexcept;               ///< Creates status instance out of exception
-  explicit Status(const std::exception&) noexcept;          ///< Creates status instance out of exception
-  Status(const char* message, OrtErrorCode code) noexcept;  ///< Creates status instance out of null-terminated string message.
+  explicit Status(std::nullptr_t) noexcept {}      ///< Create an empty object, must be assigned a valid one to be used
+  explicit Status(OrtStatus* status) noexcept;     ///< Takes ownership of OrtStatus instance returned from the C API.
+  explicit Status(const Exception&);               ///< Creates status instance out of exception
+  explicit Status(const std::exception&);          ///< Creates status instance out of exception
+  Status(const char* message, OrtErrorCode code);  ///< Creates status instance out of null-terminated string message.
   std::string GetErrorMessage() const;
   OrtErrorCode GetErrorCode() const;
   bool IsOK() const noexcept;  ///< Returns true if instance represents an OK (non-error) status.
@@ -3004,6 +3005,7 @@ struct GraphImpl : Ort::detail::Base<T> {
   void SetOutputs(std::vector<ValueInfo>& outputs);
   void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
   void AddNode(Node& node);                                                                 // Graph takes ownership of Node
+  ModelMetadata GetModelMetadata() const;                                                   ///< Wraps OrtApi::Graph_GetModelMetadata
 #endif                                                                                      // !defined(ORT_MINIMAL_BUILD)
 };
 }  // namespace detail
@@ -3018,6 +3020,7 @@ struct Graph : detail::GraphImpl<OrtGraph> {
   Graph();
 #endif
 };
+using ConstGraph = detail::GraphImpl<Ort::detail::Unowned<const OrtGraph>>;
 
 namespace detail {
 template <typename T>

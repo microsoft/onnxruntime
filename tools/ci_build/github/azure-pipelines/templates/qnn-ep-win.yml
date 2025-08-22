@@ -1,5 +1,5 @@
 parameters:
-  QnnSdk: '2.37.0.250724'
+  QnnSdk: '2.37.1.250807'
   build_config: 'RelWithDebInfo'
   IsReleaseBuild: false
   DoEsrp: false
