@@ -31,6 +31,9 @@ struct NvExecutionProviderInfo {
   std::string onnx_model_folder_path{""};
   const void* onnx_bytestream{nullptr};
   size_t onnx_bytestream_size{0};
+  bool use_external_data_initializer{false};
+  const void* external_data_bytestream{nullptr};
+  size_t external_data_bytestream_size{0};
   bool engine_decryption_enable{false};
   std::string engine_decryption_lib_path{""};
   bool force_sequential_engine_build{false};
