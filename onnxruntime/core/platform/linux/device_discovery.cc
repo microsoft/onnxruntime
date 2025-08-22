@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/platform/device_discovery.h"
+#include "core/framework/ortdevice.h"
 
 #include <filesystem>
 #include <fstream>
@@ -125,7 +126,6 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
   ORT_RETURN_IF_ERROR(ReadValueFromFile(vendor_id_path, vendor_id));
   gpu_device.vendor_id = vendor_id;
 
-  // TODO vendor name
   gpu_device.vendor = OrtDevice::VendorIdToString(gpu_device.vendor_id);
 
   // device id
