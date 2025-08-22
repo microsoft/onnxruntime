@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <utility>
 
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_devices.h"
