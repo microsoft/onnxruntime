@@ -65,7 +65,7 @@ static void run_moe_fc_cpu_grouped(
   ORT_UNUSED_PARAMETER(normalize_routing_weights);
 
   const int64_t fc1_out = 2 * inter_size;
-  const uint8_t global_zero_point = static_cast<uint8_t>(bit_width == 8 ? 128 : 8);
+  const uint8_t global_zero_point = static_cast<uint8_t>(bit_width == 8 ? 128 : 8);  // 8 for 4-bit symmetric, 128 for 8-bit
 
   std::fill_n(output, static_cast<size_t>(num_rows * hidden_size), 0.0f);
 
@@ -78,25 +78,39 @@ static void run_moe_fc_cpu_grouped(
   for (int64_t row = 0; row < num_rows; ++row) {
     expert_scores.clear();
 
+    // Get all expert logits for this row
     std::vector<std::pair<float, int64_t>> all_experts;
     for (int64_t e = 0; e < num_experts; ++e) {
       float logit = gating_output[row * num_experts + e];
       all_experts.emplace_back(logit, e);
     }
 
-    std::partial_sort(all_experts.begin(), all_experts.begin() + 2, all_experts.end(),
+    // Sort experts by logit value (descending)
+    std::partial_sort(all_experts.begin(), all_experts.begin() + std::min(k, num_experts), all_experts.end(),
                       [](const std::pair<float, int64_t>& a, const std::pair<float, int64_t>& b) {
                         return a.first > b.first;
                       });
 
-    int64_t top1_expert = all_experts[0].second;
-    int64_t top2_expert = all_experts[1].second;
+    // Get top-k experts
+    const int64_t actual_k = std::min(k, num_experts);
+    std::vector<float> top_logits(actual_k);
+    for (int64_t i = 0; i < actual_k; ++i) {
+      top_logits[i] = all_experts[i].first;
+    }
 
-    float weight1 = 1.0f;
-    float weight2 = 1.0f;
+    // Apply softmax to top-k logits for proper normalization (always, as per PyTorch)
+    float max_logit = *std::max_element(top_logits.begin(), top_logits.end());
+    float sum_exp = 0.0f;
+    for (int64_t i = 0; i < actual_k; ++i) {
+      top_logits[i] = std::exp(top_logits[i] - max_logit);
+      sum_exp += top_logits[i];
+    }
 
-    expert_scores.emplace_back(weight1, top1_expert);
-    expert_scores.emplace_back(weight2, top2_expert);
+    // Normalize weights (always apply softmax like PyTorch)
+    for (int64_t i = 0; i < actual_k; ++i) {
+      float normalized_weight = top_logits[i] / sum_exp;
+      expert_scores.emplace_back(normalized_weight, all_experts[i].second);
+    }
     const int64_t select = std::min(k, static_cast<int64_t>(expert_scores.size()));
 
     for (int64_t i = 0; i < select; ++i) {
@@ -131,6 +145,7 @@ static void run_moe_fc_cpu_grouped(
   const uint8_t* fc1_wq = reinterpret_cast<const uint8_t*>(fc1_weights_q);
   const uint8_t* fc2_wq = reinterpret_cast<const uint8_t*>(fc2_weights_q);
 
+  // Process experts sequentially to avoid memory issues and thread safety problems
   for (int64_t e = 0; e < num_experts; ++e) {
     const auto& routes = buckets[static_cast<size_t>(e)];
     const size_t Me = routes.size();
@@ -160,6 +175,8 @@ static void run_moe_fc_cpu_grouped(
           if (physical_idx < bytes_per_expert_fc1) {
             uint8_t quantized_val = expert_B1_q[physical_idx];
             float dequantized_val = sc * (static_cast<float>(quantized_val) - static_cast<float>(global_zero_point));
+            // Clamp to prevent numerical overflow with very large scales
+            dequantized_val = std::clamp(dequantized_val, -1e6f, 1e6f);
             B1_deq[n * K1_logical + kx] = dequantized_val;
           } else {
             B1_deq[n * K1_logical + kx] = 0.0f;
@@ -178,9 +195,16 @@ static void run_moe_fc_cpu_grouped(
             const uint8_t val_even = packed_byte & 0x0F;
             const uint8_t val_odd = (packed_byte >> 4) & 0x0F;
 
-            B1_deq[n * K1_logical + kx] = sc * (static_cast<float>(val_even) - static_cast<float>(global_zero_point));
+            float dequant_even = sc * (static_cast<float>(val_even) - static_cast<float>(global_zero_point));
+            float dequant_odd = sc * (static_cast<float>(val_odd) - static_cast<float>(global_zero_point));
+
+            // Clamp to prevent numerical overflow with very large scales
+            dequant_even = std::clamp(dequant_even, -1e6f, 1e6f);
+            dequant_odd = std::clamp(dequant_odd, -1e6f, 1e6f);
+
+            B1_deq[n * K1_logical + kx] = dequant_even;
             if (kx + 1 < K1_logical) {
-              B1_deq[n * K1_logical + kx + 1] = sc * (static_cast<float>(val_odd) - static_cast<float>(global_zero_point));
+              B1_deq[n * K1_logical + kx + 1] = dequant_odd;
             }
 
           } else {
@@ -241,6 +265,8 @@ static void run_moe_fc_cpu_grouped(
           if (physical_idx < bytes_per_expert_fc2) {
             uint8_t quantized_val = expert_B2_q[physical_idx];
             float dequantized_val = sc * (static_cast<float>(quantized_val) - static_cast<float>(global_zero_point));
+            // Clamp to prevent numerical overflow with very large scales
+            dequantized_val = std::clamp(dequantized_val, -1e6f, 1e6f);
             B2_deq[n * K2_logical + kx] = dequantized_val;
           } else {
             B2_deq[n * K2_logical + kx] = 0.0f;
@@ -259,9 +285,16 @@ static void run_moe_fc_cpu_grouped(
             const uint8_t val_even = packed_byte & 0x0F;
             const uint8_t val_odd = (packed_byte >> 4) & 0x0F;
 
-            B2_deq[n * K2_logical + kx] = sc * (static_cast<float>(val_even) - static_cast<float>(global_zero_point));
+            float dequant_even = sc * (static_cast<float>(val_even) - static_cast<float>(global_zero_point));
+            float dequant_odd = sc * (static_cast<float>(val_odd) - static_cast<float>(global_zero_point));
+
+            // Clamp to prevent numerical overflow with very large scales
+            dequant_even = std::clamp(dequant_even, -1e6f, 1e6f);
+            dequant_odd = std::clamp(dequant_odd, -1e6f, 1e6f);
+
+            B2_deq[n * K2_logical + kx] = dequant_even;
             if (kx + 1 < K2_logical) {
-              B2_deq[n * K2_logical + kx + 1] = sc * (static_cast<float>(val_odd) - static_cast<float>(global_zero_point));
+              B2_deq[n * K2_logical + kx + 1] = dequant_odd;
             }
           } else {
             B2_deq[n * K2_logical + kx] = 0.0f;

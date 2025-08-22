@@ -13,11 +13,15 @@
 # QMoE quantization implementation notes:
 #
 # Both CPU and CUDA implementations use symmetric quantization:
-# - 4-bit: range [-8, 7]
-# - 8-bit: range [-128, 127]
+# - 4-bit: range [-8, 7] with zero_point = 8
+# - 8-bit: range [-128, 127] with zero_point = 128
 #
 # This ensures TensorRT compatibility.
 # Tolerance values account for numerical differences between implementations.
+#
+# Routing Logic: CPU implementation uses top-k selection first, then softmax
+# normalization on the selected experts. This provides proper weight distribution
+# while maintaining computational efficiency.
 # --------------------------------------------------------------------------
 import itertools
 import time
@@ -284,7 +288,7 @@ def create_cpu_moe_onnx_graph(
             ["output"],
             "MoE_0",
             k=topk,
-            normalize_routing_weights=0,
+            normalize_routing_weights=1,  # Use proper routing normalization to match PyTorch behavior
             activation_type=activation,
             # Add new attributes with backwards-compatible default values
             swiglu_fusion=1 if (use_swiglu and swiglu_interleaved) else 0,  # 1 = fused and interleaved
@@ -479,29 +483,21 @@ class PhiMoEConfig:
 
 def masked_sampling_omp_inference(scores, top_k, jitter_eps, training):
     """
-    Modified to match C++ QMoE implementation's routing logic:
-    - Select top-k experts
-    - Give equal weight (1.0) to each selected expert
-    - No softmax normalization (matches C++ behavior)
+    Updated to match the C++ QMoE CPU implementation's routing logic:
+    - Select top-k experts from raw logits first
+    - Apply softmax ONLY to the selected top-k logits (like our C++ implementation)
+    - This matches our CPU implementation which does top-k then softmax normalization
     """
     assert top_k == 2
     assert not training
 
-    # Get top-k experts (same as C++ top-k selection)
+    # Get top-k experts from raw logits (same as C++ top-k selection)
     mask_logits_threshold, selected_experts = torch.topk(scores, top_k)
 
-    # Use equal weights for selected experts
-    # C++ gives weight 1.0 to each selected expert
-    multiplier = torch.ones_like(mask_logits_threshold)  # [batch, top_k] with values 1.0
+    # Apply softmax to ONLY the selected top-k logits (matches C++ behavior)
+    multiplier = torch.softmax(mask_logits_threshold, dim=-1)
 
     return multiplier, selected_experts
-
-    # DEBUG: Check what multipliers we're computing
-
-    return (
-        multiplier,
-        selected_experts,
-    )
 
 
 class MoEBlockSparseTop2MLP(nn.Module):
