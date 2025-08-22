@@ -276,7 +276,7 @@ class OrtNodeUnit {
   const std::vector<const OrtNode*> dq_nodes_;  // dq nodes for this NodeUnit, not necessarily all inputs
   const OrtNode* target_node_;
   const OrtNode* redundant_clip_node_ = nullptr;  // Optional redundant clip node for the QDQ group, nullptr if not present.
-  const std::vector<const OrtNode*> q_nodes_;  // q-nodes for this NodeUnit. not necessarily all outputs
+  const std::vector<const OrtNode*> q_nodes_;     // q-nodes for this NodeUnit. not necessarily all outputs
   const Type type_;
 
   std::vector<OrtNodeUnitIODef> inputs_;
