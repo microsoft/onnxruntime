@@ -39,6 +39,10 @@ class EpLibraryProviderBridge : public EpLibrary {
     return internal_factory_ptrs_;
   }
 
+  std::filesystem::path GetLibraryPath() const override {
+    return ep_library_plugin_->GetLibraryPath();
+  }
+
   Status Load() override;
   Status Unload() override;
 
