@@ -9,6 +9,8 @@ vcpkg_from_github(
     REF 8a1772a0c5c447df2d18edf33ec4603a8c9c04a6
     SHA512 b94ccbfa886221d6bb16513d074675af0a72928a9dd9485dcacdc1124a8a60aacbbe91913a1579e766dfb024f0be1d52eeead40342004ff0238a8b94a095ed08
     HEAD_REF master
+    PATCHES
+        patch_cpuinfo_h_for_arm64ec.patch
 )
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
