@@ -115,6 +115,27 @@ std::optional<bool> IsGpuDiscrete(uint16_t vendor_id, uint16_t device_id) {
   return std::nullopt;
 }
 
+constexpr static const char* VendorIdToString(OrtDevice::VendorId vendorId) {
+  switch (vendorId) {
+    case OrtDevice::VendorIds::AMD:
+      return "AMD";
+    case OrtDevice::VendorIds::NVIDIA:
+      return "NVIDIA";
+    case OrtDevice::VendorIds::ARM:
+      return "ARM";
+    case OrtDevice::VendorIds::MICROSOFT:
+      return "MICROSOFT";
+    case OrtDevice::VendorIds::HUAWEI:
+      return "HUAWEI";
+    case OrtDevice::VendorIds::QUALCOMM:
+      return "QUALCOMM";
+    case OrtDevice::VendorIds::INTEL:
+      return "INTEL";
+    default:
+      return "";
+  }
+}
+
 Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevice& gpu_device_out) {
   OrtHardwareDevice gpu_device{};
   const auto& sysfs_path = path_info.path;
@@ -125,8 +146,7 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
   ORT_RETURN_IF_ERROR(ReadValueFromFile(vendor_id_path, vendor_id));
   gpu_device.vendor_id = vendor_id;
 
-  // TODO vendor name
-  gpu_device.vendor = OrtDevice::VendorIdToString(gpu_device.vendor_id);
+  gpu_device.vendor = VendorIdToString(gpu_device.vendor_id);
 
   // device id
   uint16_t device_id{};
