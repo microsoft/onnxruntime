@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iterator>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "core/common/common.h"
@@ -125,6 +126,7 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
   gpu_device.vendor_id = vendor_id;
 
   // TODO vendor name
+  gpu_device.vendor = OrtDevice::VendorIdToString(gpu_device.vendor_id);
 
   // device id
   uint16_t device_id{};
@@ -139,6 +141,7 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
       is_gpu_discrete.has_value()) {
     gpu_device.metadata.Add("Discrete", (*is_gpu_discrete ? "1" : "0"));
   }
+  gpu_device.metadata.Add("bus_id", std::filesystem::read_symlink(sysfs_path / "device").filename().string());  // e.g. 0000:65:00.0
 
   gpu_device.type = OrtHardwareDeviceType_GPU;
 
