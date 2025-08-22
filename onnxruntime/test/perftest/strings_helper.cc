@@ -56,6 +56,53 @@ void ParseSessionConfigs(const std::string& configs_string,
   }
 }
 
+bool ParseDimensionOverride(const std::string& input, std::map<std::string, int64_t>& free_dim_override_map) {
+  std::stringstream ss(input);
+  std::string free_dim_str;
+
+  while (std::getline(ss, free_dim_str, ' ')) {
+    if (!free_dim_str.empty()) {
+      size_t delimiter_location = free_dim_str.find(":");
+      if (delimiter_location >= free_dim_str.size() - 1) {
+        return false;
+      }
+      std::string dim_identifier = free_dim_str.substr(0, delimiter_location);
+      std::string override_val_str = free_dim_str.substr(delimiter_location + 1, std::string::npos);
+      ORT_TRY {
+        int64_t override_val = std::stoll(override_val_str.c_str());
+        if (override_val <= 0) {
+          return false;
+        }
+        free_dim_override_map[dim_identifier] = override_val;
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          std::cerr << "Error parsing free dimension override value: " << override_val_str.c_str() << ", " << ex.what() << std::endl;
+        });
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool ParseDimensionOverrideFromArgv(int argc, std::vector<std::string>& argv, std::string& option, std::map<std::string, int64_t>& free_dim_override_map) {
+  for (int i = 1; i < argc; ++i) {
+    auto utf8_arg = argv[i];
+    if (utf8_arg == ("-" + option) || utf8_arg == ("--" + option)) {
+      auto value_idx = i + 1;
+      if (value_idx >= argc || argv[value_idx][0] == '-') {
+        std::cerr << utf8_arg << " should be followed by a key-value pair." << std::endl;
+        return false;
+      }
+
+      if (!ParseDimensionOverride(argv[value_idx], free_dim_override_map)) return false;
+    }
+  }
+  return true;
+}
+
 void ParseEpOptions(const std::string& input, std::vector<std::unordered_map<std::string, std::string>>& result) {
   auto tokens = utils::SplitString(input, ";", true);
 

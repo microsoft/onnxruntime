@@ -20,6 +20,7 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph.h"
+#include "core/graph/model.h"
 
 namespace onnxruntime {
 
@@ -768,6 +769,25 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
 }
 
 const std::string& EpGraph::GetName() const { return graph_viewer_.Name(); }
+
+std::unique_ptr<ModelMetadata> EpGraph::GetModelMetadata() const {
+#if !defined(ORT_MINIMAL_BUILD)
+  const auto& model = graph_viewer_.GetGraph().GetModel();
+  auto model_metadata = std::make_unique<ModelMetadata>();
+
+  model_metadata->producer_name = model.ProducerName();
+  model_metadata->producer_version = model.ProducerVersion();
+  model_metadata->description = model.DocString();
+  model_metadata->graph_description = model.GraphDocString();
+  model_metadata->domain = model.Domain();
+  model_metadata->version = model.ModelVersion();
+  model_metadata->custom_metadata_map = model.MetaData();
+  model_metadata->graph_name = model.MainGraph().Name();
+  return model_metadata;
+#else
+  return nullptr;
+#endif
+}
 
 const ORTCHAR_T* EpGraph::GetModelPath() const {
   return graph_viewer_.ModelPath().c_str();

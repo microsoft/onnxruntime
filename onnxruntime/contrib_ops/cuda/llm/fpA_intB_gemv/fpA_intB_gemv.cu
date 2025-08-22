@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#if USE_FPA_INTB_GEMM
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -102,3 +102,4 @@ bool is_supported(int arch, KernelType kernel_type) {
 }  // namespace fpA_intB_gemv
 }  // namespace kernels
 }  // namespace onnxruntime::llm
+#endif

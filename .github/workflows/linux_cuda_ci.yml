@@ -48,7 +48,7 @@ jobs:
       packages: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
         id: build_docker_image_step

@@ -2834,6 +2834,7 @@ struct GraphImpl : Ort::detail::Base<T> {
   void SetOutputs(std::vector<ValueInfo>& outputs);
   void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
   void AddNode(Node& node);                                                                 // Graph takes ownership of Node
+  ModelMetadata GetModelMetadata() const;                                                   ///< Wraps OrtApi::Graph_GetModelMetadata
 #endif                                                                                      // !defined(ORT_MINIMAL_BUILD)
 };
 }  // namespace detail
@@ -2848,6 +2849,7 @@ struct Graph : detail::GraphImpl<OrtGraph> {
   Graph();
 #endif
 };
+using ConstGraph = detail::GraphImpl<Ort::detail::Unowned<const OrtGraph>>;
 
 namespace detail {
 template <typename T>

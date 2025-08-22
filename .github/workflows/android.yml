@@ -27,7 +27,7 @@ jobs:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         submodules: false
 
@@ -121,7 +121,7 @@ jobs:
   android_nnapi_ep:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Use jdk 17
         uses: actions/setup-java@v4
@@ -203,7 +203,7 @@ jobs:
     name: Android CI Pipeline
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Use jdk 17
         uses: actions/setup-java@v4

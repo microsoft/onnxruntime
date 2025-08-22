@@ -22,7 +22,7 @@ jobs:
       commit_sha: ${{ steps.extract_commit.outputs.commit_sha }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: true
 

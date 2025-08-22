@@ -48,7 +48,7 @@ jobs:
       packages: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # --- Build the Docker image needed for testing ---
       - name: Build Docker Image for Testing

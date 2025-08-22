@@ -35,6 +35,7 @@ constexpr const char* kCudaGraphEnable = "enable_cuda_graph";
 constexpr const char* kONNXBytestream = "nv_onnx_bytestream";
 constexpr const char* kONNXBytestreamSize = "nv_onnx_bytestream_size";
 constexpr const char* kMultiProfileEnable = "nv_multi_profile_enable";
+constexpr const char* kUseExternalDataInitializer = "nv_use_external_data_initializer";
 
 }  // namespace provider_option_names
 namespace run_option_names {

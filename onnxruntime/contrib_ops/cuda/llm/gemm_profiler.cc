@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
@@ -311,3 +311,4 @@ template class GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassG
                                   GemmIdCoreHash>;
 
 }  // namespace onnxruntime::llm::kernels::weight_only
+#endif

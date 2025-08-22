@@ -224,6 +224,7 @@ def get_file_content(launcher_inl_files, operations):
     instantiations = "\n".join(insts_list)
 
     file_content = f"""
+#if USE_FPA_INTB_GEMM
 #ifndef EXCLUDE_SM_90
 {includes}
 
@@ -237,6 +238,7 @@ namespace cutlass_kernels {{
 }}  // namespace kernels
 }}  // namespace onnxruntime::llm
 #endif  // EXCLUDE_SM_90
+#endif  // USE_FPA_INTB_GEMM
 """
     return file_content
 
