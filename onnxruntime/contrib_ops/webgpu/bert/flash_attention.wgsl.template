@@ -350,11 +350,11 @@ $MAIN {
 #else
     if (sg_size > 8) {
       for (var i : u32 = 0; i < head_size_vec; i++) {
-#if prefer_subgroupshuffle
+ #if prefer_subgroupshuffle
         var val = v_tile[capped_sg_id][i];
-#else
+ #else
         var val = q_value_t(0);
-#endif
+ #endif
         var sum = fetchVTile(0, i, val) * qk_1[0];
         sum += fetchVTile(1, i, val) * qk_1[1];
         sum += fetchVTile(2, i, val) * qk_1[2];
@@ -375,11 +375,11 @@ $MAIN {
       }
     } else {
       for (var i : u32 = 0; i < head_size_vec; i++) {
-#if prefer_subgroupshuffle
+ #if prefer_subgroupshuffle
         var val = v_tile[capped_sg_id][i];
-#else
+ #else
         var val = q_value_t(0);
-#endif
+ #endif
         var sum = fetchVTile(0, i, val) * qk_1[0];
         sum += fetchVTile(1, i, val) * qk_1[1];
         sum += fetchVTile(2, i, val) * qk_1[2];
