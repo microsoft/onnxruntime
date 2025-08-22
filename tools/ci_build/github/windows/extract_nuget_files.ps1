@@ -13,7 +13,7 @@ New-Item -Path $nuget_artifacts_dir -ItemType directory
 # exclude the iOS xcframework as we need to leave that zipped up to preserve symlinks
 Get-ChildItem -Path $Env:BUILD_BINARIESDIRECTORY\nuget-artifact\* -Include *.zip -Exclude onnxruntime_ios_xcframework.*.zip |
 Foreach-Object {
- $cmd = "7z.exe x $($_.FullName) -y -o$nuget_artifacts_dir"
+ $cmd = "7z.exe x $($_.FullName) -snld20 -y -o$nuget_artifacts_dir"
  Write-Output $cmd
  Invoke-Expression -Command $cmd
 }
@@ -22,7 +22,7 @@ Foreach-Object {
 # first extract the tar file from the tgz
 Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.tgz |
 Foreach-Object {
- $cmd = "7z.exe x $($_.FullName) -y -o$Env:BUILD_BINARIESDIRECTORY\nuget-artifact"
+ $cmd = "7z.exe x $($_.FullName) -snld20 -y -o$Env:BUILD_BINARIESDIRECTORY\nuget-artifact"
  Write-Output $cmd
  Invoke-Expression -Command $cmd
 }
@@ -30,7 +30,7 @@ Foreach-Object {
 # now extract the actual folder structure from the tar file to the build dir
 Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.tar |
 Foreach-Object {
- $cmd = "7z.exe x $($_.FullName) -y -o$nuget_artifacts_dir"
+ $cmd = "7z.exe x $($_.FullName) -snld20 -y -o$nuget_artifacts_dir"
  Write-Output $cmd
  Invoke-Expression -Command $cmd
 }

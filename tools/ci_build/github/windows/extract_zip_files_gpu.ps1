@@ -4,7 +4,7 @@
 # extract *-cuda-*.zip and *-tensorrt-*.zip
 Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\zip-artifacts -Filter *.zip | 
 Foreach-Object {
- $cmd = "7z.exe x $($_.FullName) -y -o$Env:BUILD_BINARIESDIRECTORY\zip-artifacts"
+ $cmd = "7z.exe x $($_.FullName) -snld20 -y -o$Env:BUILD_BINARIESDIRECTORY\zip-artifacts"
  Write-Output $cmd
  Invoke-Expression -Command $cmd
 }

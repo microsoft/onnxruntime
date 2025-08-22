@@ -41,13 +41,13 @@ stages:
           
           $nupkg_unzipped_directory = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'nuget_unzip_merged', [System.IO.Path]::GetFileNameWithoutExtension($nuget_package_name))
           
-          $x64_unzip_cmd = "7z.exe x $x64_nuget_package -y -o$nupkg_unzipped_directory"
+          $x64_unzip_cmd = "7z.exe x $x64_nuget_package -snld20 -y -o$nupkg_unzipped_directory"
           Invoke-Expression -Command $x64_unzip_cmd
           
           $arm64_nupkgs = (Get-ChildItem $(Build.BinariesDirectory)/nuget-artifact-arm64 -Filter Microsoft.ML.OnnxRuntime.QNN*.nupkg -Recurse)
           $arm64_nuget_package = $arm64_nupkgs[0].FullName
           
-          $arm64_unzip_cmd = "7z.exe x $arm64_nuget_package -y -o$nupkg_unzipped_directory"
+          $arm64_unzip_cmd = "7z.exe x $arm64_nuget_package -snld20 -y -o$nupkg_unzipped_directory"
           Invoke-Expression -Command $arm64_unzip_cmd
           
           $merged_nuget_path = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'nuget-artifact-merged')
