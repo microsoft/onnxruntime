@@ -145,7 +145,7 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
   /**
    * Sets the file path for the output compiled ONNX model.
    *
-   * <p>If this is unset it will append `_ctx` to the file name, e.g., my_model.onnx ->
+   * <p>If this is unset it will append `_ctx` to the file name, e.g., my_model.onnx becomes
    * my_model_ctx.onnx.
    *
    * @param outputModelPath The output model path.
