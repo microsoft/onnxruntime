@@ -130,3 +130,11 @@ Status DequantizeBlockwise8b(
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+// Macro to reduce repetitive fallback code
+#define DECLARE_DEQUANTIZE_FALLBACK(FuncName, T, ZeroT, MIN_ARCH, TYPENAME)                                      \
+  template <>                                                                                                    \
+  Status FuncName<T, ZeroT>(                                                                                     \
+      T*, const uint8_t*, const T*, const ZeroT*, const int32_t*, int, int, int, cudaStream_t) {                 \
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, TYPENAME " requires compute capability >= " #MIN_ARCH); \
+  }

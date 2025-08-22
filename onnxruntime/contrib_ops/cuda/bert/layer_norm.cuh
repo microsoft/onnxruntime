@@ -19,6 +19,7 @@ limitations under the License.
 
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #pragma once
 
 #include "core/providers/cuda/cuda_common.h"
@@ -63,11 +64,15 @@ __device__ inline half2 AddHalf2(const half2 a, const half2 b) {
 
 template <>
 __device__ inline nv_bfloat16 Rsqrt(const nv_bfloat16& x) {
+#if defined(__CUDACC__) && defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800 && (CUDA_VERSION < 12020)
+  return nv_bfloat16(rsqrtf(float(x)));
+#else
   return hrsqrt(x);
+#endif
 }
 
 __device__ inline nv_bfloat162 AddHalf2(const nv_bfloat162 a, const nv_bfloat162 b) {
-  return __hadd2(a, b);
+  return a + b;
 }
 
 struct KeyValuePairSum {
@@ -91,10 +96,14 @@ struct KeyValuePairSum {
 
   __device__ inline cub::KeyValuePair<nv_bfloat16, nv_bfloat16> operator()(const cub::KeyValuePair<nv_bfloat16, nv_bfloat16>& a,
                                                                            const cub::KeyValuePair<nv_bfloat16, nv_bfloat16>& b) {
+#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800)
     const nv_bfloat162 a2 = __halves2bfloat162(a.key, a.value);
     const nv_bfloat162 b2 = __halves2bfloat162(b.key, b.value);
     const nv_bfloat162 res = AddHalf2(a2, b2);
     return cub::KeyValuePair<nv_bfloat16, nv_bfloat16>(__low2bfloat16(res), __high2bfloat16(res));
+#else
+    return cub::KeyValuePair<nv_bfloat16, nv_bfloat16>(a.key + b.key, a.value + b.value);
+#endif
   }
 };
 
@@ -122,7 +131,7 @@ __device__ inline void LayerNorm(
     const int idx = offset + i;
     const T val = output[idx];
     const T g(gamma[i]);
-    const T b = (nullptr == beta) ? (T)0 : beta[i];
+    const T b = (nullptr == beta) ? static_cast<T>(0.0f) : beta[i];
     output[idx] = g * (val - mu) * rsigma + b;
   }
 }

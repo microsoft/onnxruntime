@@ -19,7 +19,7 @@ namespace cuda {
 
 // float16 arithmetic is supported after sm5.3 with intrinsics, and cuda does not provide fallback for lower versions
 // CUDA 12.2 does not limit the definition based on sm53 anymore and defines for all arches
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 530) && ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 530) && (CUDART_VERSION < 12020)
 __device__ __forceinline__ half operator+(const half& lh, const half& rh) { return half((float)lh + (float)rh); }
 __device__ __forceinline__ half operator-(const half& lh, const half& rh) { return half((float)lh - (float)rh); }
 __device__ __forceinline__ half operator*(const half& lh, const half& rh) { return half((float)lh * (float)rh); }
@@ -104,6 +104,81 @@ __device__ __forceinline__ half2 operator/(const half2& lh, const half2& rh) {
 }
 #endif
 
+// CUDA toolkits < 12.2 do not define bfloat16 operators for __CUDA_ARCH__ < 800.
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && (CUDART_VERSION < 12020)
+__device__ __forceinline__ __nv_bfloat16 operator+(const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
+  return __float2bfloat16_rn(float(lh) + float(rh));
+}
+
+__device__ __forceinline__ __nv_bfloat16& operator+=(__nv_bfloat16& lh, const __nv_bfloat16& rh) {
+  lh = __float2bfloat16_rn(float(lh) + float(rh));
+  return lh;
+}
+
+__device__ __forceinline__ __nv_bfloat16 operator+(const __nv_bfloat16& lh, const float& rh) {
+  return __float2bfloat16_rn(float(lh) + rh);
+}
+
+__device__ __forceinline__ __nv_bfloat16& operator+=(__nv_bfloat16& lh, const float& rh) {
+  lh = __float2bfloat16_rn(float(lh) + rh);
+  return lh;
+}
+
+__device__ __forceinline__ __nv_bfloat16 operator-(const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
+  return __float2bfloat16_rn(float(lh) - float(rh));
+}
+
+__device__ __forceinline__ __nv_bfloat16& operator-=(__nv_bfloat16& lh, const __nv_bfloat16& rh) {
+  lh = __float2bfloat16_rn(float(lh) - float(rh));
+  return lh;
+}
+
+__device__ __forceinline__ __nv_bfloat16 operator*(const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
+  return __float2bfloat16_rn(float(lh) * float(rh));
+}
+
+__device__ __forceinline__ __nv_bfloat16& operator*=(__nv_bfloat16& lh, const __nv_bfloat16& rh) {
+  lh = __float2bfloat16_rn(float(lh) * float(rh));
+  return lh;
+}
+
+__device__ __forceinline__ __nv_bfloat16 operator/(const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
+  return __float2bfloat16_rn(float(lh) / float(rh));
+}
+
+__device__ __forceinline__ __nv_bfloat16& operator/=(__nv_bfloat16& lh, const __nv_bfloat16& rh) {
+  lh = __float2bfloat16_rn(float(lh) / float(rh));
+  return lh;
+}
+
+__device__ __forceinline__ __nv_bfloat16 operator-(const __nv_bfloat16& h) {
+  return __float2bfloat16_rn(-float(h));
+}
+
+__device__ __forceinline__ __nv_bfloat162 make_bfloat162(const __nv_bfloat16 x, const __nv_bfloat16 y) {
+  __nv_bfloat162 r;
+  r.x = __nv_bfloat16_raw(x);
+  r.y = __nv_bfloat16_raw(y);
+  return r;
+}
+
+__device__ __forceinline__ __nv_bfloat162 operator+(const __nv_bfloat162& lh, const __nv_bfloat162& rh) {
+  return make_bfloat162(lh.x + rh.x, lh.y + rh.y);
+}
+
+__device__ __forceinline__ __nv_bfloat162 operator-(const __nv_bfloat162& lh, const __nv_bfloat162& rh) {
+  return make_bfloat162(lh.x - rh.x, lh.y - rh.y);
+}
+
+__device__ __forceinline__ __nv_bfloat162 operator*(const __nv_bfloat162& lh, const __nv_bfloat162& rh) {
+  return make_bfloat162(lh.x * rh.x, lh.y * rh.y);
+}
+
+__device__ __forceinline__ __nv_bfloat162 operator/(const __nv_bfloat162& lh, const __nv_bfloat162& rh) {
+  return make_bfloat162(lh.x / rh.x, lh.y / rh.y);
+}
+#endif  // __CUDA_ARCH__ < 800 && CUDART_VERSION < 12020
+
 /// Arithmetic for BFloat16
 
 __device__ __forceinline__ BFloat16 operator+(const BFloat16& a, const BFloat16& b) {
@@ -179,6 +254,37 @@ __device__ __forceinline__ bool operator==(BFloat16& lhs, BFloat16& rhs) { retur
 __device__ __forceinline__ bool operator!=(BFloat16& lhs, BFloat16& rhs) { return float(lhs) != float(rhs); }
 __device__ __forceinline__ bool operator>(BFloat16& lhs, BFloat16& rhs) { return float(lhs) > float(rhs); }
 __device__ __forceinline__ bool operator<(BFloat16& lhs, BFloat16& rhs) { return float(lhs) < float(rhs); }
+
+#define CHECK_GPU_SUPPORT_DATA_TYPE(T, sm)                                                              \
+  if constexpr (std::is_same_v<T, BFloat16>) {                                                          \
+    if (sm < 80) {                                                                                      \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,                                              \
+                             "BFloat16 is not supported on cuda device with compute capability < 8.0"); \
+    }                                                                                                   \
+  }                                                                                                     \
+  if constexpr (std::is_same_v<T, MLFloat16>) {                                                         \
+    if (sm < 53) {                                                                                      \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,                                              \
+                             "float16 is not supported on cuda device with compute capability < 5.3");  \
+    }                                                                                                   \
+  }
+
+template <typename T>
+__device__ __forceinline__ T Cast(uint8_t value) {
+  static_assert(std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16> || std::is_same_v<T, float>);
+
+  if constexpr (std::is_same_v<T, half>) {
+    return __short2half_rn(value);
+  } else if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800 && CUDA_VERSION < 12020
+    return __float2bfloat16_rn(static_cast<float>(value));
+#else
+    return __ushort2bfloat16_rn(value);
+#endif
+  } else {
+    return static_cast<T>(value);
+  }
+}
 
 template <typename T>
 __device__ __inline__ T _Ceil(T a);
@@ -372,7 +478,7 @@ __device__ __inline__ double _Min(double a, double b) {
 
 template <>
 __device__ __inline__ half _Min(half a, half b) {
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && CUDART_VERSION < 12020
   return (ISNAN_HALF(a) || ISNAN_HALF(b)) ? NAN_HALF : (a < b ? a : b);
 #else
   return __hmin_nan(a, b);
@@ -381,7 +487,7 @@ __device__ __inline__ half _Min(half a, half b) {
 
 template <>
 __device__ __inline__ BFloat16 _Min(BFloat16 a, BFloat16 b) {
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && CUDART_VERSION < 12020
   return (ISNAN_BFLOAT16(a) || ISNAN_BFLOAT16(b)) ? NAN_BFLOAT16 : (a < b ? a : b);
 #else
   return BFloat16(__hmin_nan((__nv_bfloat16)a, (__nv_bfloat16)b));
@@ -403,7 +509,7 @@ __device__ __inline__ double _Max(double a, double b) {
 
 template <>
 __device__ __inline__ half _Max(half a, half b) {
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && CUDART_VERSION < 12020
   return (ISNAN_HALF(a) || ISNAN_HALF(b)) ? NAN_HALF : (a > b ? a : b);
 #else
   return __hmax_nan(a, b);
@@ -412,7 +518,7 @@ __device__ __inline__ half _Max(half a, half b) {
 
 template <>
 __device__ __inline__ BFloat16 _Max(BFloat16 a, BFloat16 b) {
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && CUDART_VERSION < 12020
   return (ISNAN_BFLOAT16(a) || ISNAN_BFLOAT16(b)) ? NAN_BFLOAT16 : (a > b ? a : b);
 #else
   return BFloat16(__hmax_nan((__nv_bfloat16)a, (__nv_bfloat16)b));
@@ -711,7 +817,7 @@ constexpr int GPU_WARP_SIZE_HOST = GPU_WARP_SIZE;
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
-#if CUDA_VERSION >= 9000
+#if CUDART_VERSION >= 9000
   return __shfl_sync(mask, value, srcLane, width);
 #else
   return __shfl(value, srcLane, width);
@@ -720,7 +826,7 @@ __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WAR
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
-#if CUDA_VERSION >= 9000
+#if CUDART_VERSION >= 9000
   return __shfl_xor_sync(mask, value, laneMask, width);
 #else
   return __shfl_xor(value, laneMask, width);
@@ -729,7 +835,7 @@ __device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GP
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
-#if CUDA_VERSION >= 9000
+#if CUDART_VERSION >= 9000
   return __shfl_up_sync(mask, value, delta, width);
 #else
   return __shfl_up(value, delta, width);
@@ -738,7 +844,7 @@ __device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
-#if CUDA_VERSION >= 9000
+#if CUDART_VERSION >= 9000
   return __shfl_down_sync(mask, value, delta, width);
 #else
   return __shfl_down(value, delta, width);
