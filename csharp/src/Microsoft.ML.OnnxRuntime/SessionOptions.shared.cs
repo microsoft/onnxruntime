@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -254,6 +255,56 @@ namespace Microsoft.ML.OnnxRuntime
             throw new NotSupportedException("The CUDA Execution Provider is not supported in this build");
 #else
             NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA_V2(handle, cudaProviderOptions.Handle));
+#endif
+        }
+
+        /// <summary>
+        /// Append a VitisAI EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="keys">Native keys instance</param>
+        /// <param name="values">Native values instance</param>
+        /// <param name="numEntries">Native numEntries instance</param>
+        public void AppendExecutionProvider_VitisAI(Dictionary<string, string> config)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The VitisAI Execution Provider is not supported in this build");
+#else
+            int count = config.Count;
+            IntPtr[] keyPtrs = new IntPtr[count];
+            IntPtr[] valuePtrs = new IntPtr[count];
+
+            string[] keys = config.Keys.ToArray();
+            string[] values = config.Values.ToArray();
+
+            for (int i = 0; i < count; ++i) {
+                keyPtrs[i] = Marshal.StringToHGlobalAnsi(keys[i]);
+                valuePtrs[i] = Marshal.StringToHGlobalAnsi(values[i]);
+            }
+
+            IntPtr keysNative = Marshal.AllocHGlobal(IntPtr.Size * count);
+            IntPtr valuesNative = Marshal.AllocHGlobal(IntPtr.Size * count);
+
+            Marshal.Copy(keyPtrs, 0, keysNative, count);
+            Marshal.Copy(valuePtrs, 0, valuesNative, count);
+
+            try
+            {
+                UIntPtr numKeys = new UIntPtr((uint)count);
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.SessionOptionsAppendExecutionProvider_VitisAI(
+                        handle, keysNative, valuesNative, numKeys));
+            }
+            finally
+            {
+                for (int i = 0; i < count; ++i)
+                {
+                    Marshal.FreeHGlobal(keyPtrs[i]);
+                    Marshal.FreeHGlobal(valuePtrs[i]);
+                }
+                Marshal.FreeHGlobal(keysNative);
+                Marshal.FreeHGlobal(valuesNative);
+            }
 #endif
         }
 

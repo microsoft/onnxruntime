@@ -597,6 +597,8 @@ namespace Microsoft.ML.OnnxRuntime
                 api_.SessionOptionsAppendExecutionProvider_CUDA, typeof(DSessionOptionsAppendExecutionProvider_CUDA));
             SessionOptionsAppendExecutionProvider_CUDA_V2 = (DSessionOptionsAppendExecutionProvider_CUDA_V2)Marshal.GetDelegateForFunctionPointer(
                 api_.SessionOptionsAppendExecutionProvider_CUDA_V2, typeof(DSessionOptionsAppendExecutionProvider_CUDA_V2));
+            SessionOptionsAppendExecutionProvider_VitisAI = (DSessionOptionsAppendExecutionProvider_VitisAI)Marshal.GetDelegateForFunctionPointer(
+                api_.SessionOptionsAppendExecutionProvider_VitisAI, typeof(DSessionOptionsAppendExecutionProvider_VitisAI));
             OrtCreateCUDAProviderOptions = (DOrtCreateCUDAProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateCUDAProviderOptions, typeof(DOrtCreateCUDAProviderOptions));
             OrtUpdateCUDAProviderOptions = (DOrtUpdateCUDAProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateCUDAProviderOptions, typeof(DOrtUpdateCUDAProviderOptions));
             OrtGetCUDAProviderOptionsAsString = (DOrtGetCUDAProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetCUDAProviderOptionsAsString, typeof(DOrtGetCUDAProviderOptionsAsString));
@@ -1311,6 +1313,20 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr /*(const OrtTensorRTProviderOptionsV2*)*/ trtProviderOptions);
 
         public static DSessionOptionsAppendExecutionProvider_TensorRT_V2 SessionOptionsAppendExecutionProvider_TensorRT_V2;
+
+        /// <summary>
+        /// Append a VitisAI EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="keys">Native keys instance</param>
+        /// <param name="values">Native values instance</param>
+        /// <param name="numEntries">Native numEntries instance</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DSessionOptionsAppendExecutionProvider_VitisAI(
+            IntPtr /*(OrtSessionOptions*)*/ options,
+            IntPtr keys, IntPtr values, UIntPtr numEntries);
+
+        public static DSessionOptionsAppendExecutionProvider_VitisAI SessionOptionsAppendExecutionProvider_VitisAI;
 
         /// <summary>
         /// Append a CUDA EP instance (configured based on given provider options) to the native OrtSessionOptions instance
