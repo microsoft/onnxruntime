@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <string>
 #include <string_view>
 
 #include "core/common/common.h"
@@ -120,6 +121,7 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
 
   // metadata
   gpu_device.metadata.Add("card_idx", MakeString(path_info.card_idx));
+  gpu_device.metadata.Add("bus_id", std::filesystem::read_symlink(sysfs_path / "device").filename().string());  // e.g. 0000:65:00.0
   // TODO is card discrete?
 
   gpu_device.type = OrtHardwareDeviceType_GPU;
