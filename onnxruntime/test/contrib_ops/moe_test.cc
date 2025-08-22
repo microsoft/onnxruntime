@@ -9,13 +9,16 @@
 namespace onnxruntime {
 namespace test {
 
+// Note: QMoE CPU implementation now always applies softmax normalization to top-k selected experts
+// regardless of the normalize_routing_weights parameter value for mathematical correctness.
+
 #ifndef ENABLE_TRAINING
 static void RunMoETest(const std::vector<float>& input, const std::vector<float>& router_probs,
                        const std::vector<float>& fc1_experts_weights, const std::vector<float>& fc2_experts_weights,
                        const std::vector<float>& fc3_experts_weights, const std::vector<float>& fc1_experts_bias,
                        const std::vector<float>& fc2_experts_bias, const std::vector<float>& output_data, int num_rows,
                        int num_experts, int hidden_size, int inter_size, std::string activation_type,
-                       int normalize_routing_weights = 0, int top_k = 1, bool use_float16 = false) {
+                       int normalize_routing_weights = 1, int top_k = 1, bool use_float16 = false) {
   constexpr int min_cuda_arch = 700;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_arch);
@@ -90,7 +93,7 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
                         const std::vector<uint8_t>& fc3_experts_weights, const std::vector<float>& fc1_scales,
                         const std::vector<float>& fc2_scales, const std::vector<float>& fc3_scales,
                         const std::vector<float>& output_data, int num_rows, int num_experts, int hidden_size,
-                        int inter_size, std::string activation_type, int normalize_routing_weights = 0, int top_k = 1, int expert_weight_bits = 4) {
+                        int inter_size, std::string activation_type, int normalize_routing_weights = 1, int top_k = 1, int expert_weight_bits = 4) {
   constexpr int min_cuda_arch = 700;
 
   // Test CUDA execution provider
@@ -1333,14 +1336,15 @@ TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
 
   const std::vector<float> router_probs = {0.3f, 0.7f, 0.6f, 0.4f};
 
-  // Generate simple test weights for 4-bit symmetric quantization
+  // Generate simple test weights for 4-bit symmetric quantization with SwiGLU
   // Use 0x88 which unpacks to 8,8 -> 0,0 in signed form (8-8=0) for zero weights
-  std::vector<uint8_t> fc1_experts_weights(num_experts * hidden_size * inter_size / 2, 0x88);
+  // For SwiGLU: FC1 outputs 2*inter_size (gate + linear), FC2 takes inter_size input
+  std::vector<uint8_t> fc1_experts_weights(num_experts * hidden_size * inter_size, 0x88);      // 2*inter_size for SwiGLU, packed into /2
   std::vector<uint8_t> fc2_experts_weights(num_experts * inter_size * hidden_size / 2, 0x88);  // 8,8 values to produce zero output
   std::vector<uint8_t> fc3_experts_weights;                                                    // Empty for CPU (FC3 not supported)
 
-  std::vector<float> fc1_scales(num_experts * inter_size, 0.01f);   // Smaller scale factor
-  std::vector<float> fc2_scales(num_experts * hidden_size, 0.01f);  // Smaller scale factor
+  std::vector<float> fc1_scales(num_experts * inter_size * 2, 0.01f);  // 2x for SwiGLU (gate + linear)
+  std::vector<float> fc2_scales(num_experts * hidden_size, 0.01f);     // Smaller scale factor
   std::vector<float> fc3_scales;
 
   // With zero weights (0x88 -> 8,8 -> 0,0 signed), the implementation will produce all zero outputs
@@ -1349,15 +1353,15 @@ TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
   // Test CPU execution provider ONLY (don't use RunQMoETest which tests both CUDA and CPU)
   OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
   cpu_tester.AddAttribute<int64_t>("k", 2);
-  cpu_tester.AddAttribute<std::string>("activation_type", "gelu");
-  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
-  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);  // Test 4-bit quantization
+  cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");  // CPU only supports swiglu
+  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);   // Always use 1 - softmax normalization always applied
+  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);          // Test 4-bit quantization
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};  // legacy shape
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, 2 * inter_size, hidden_size / 2};  // SwiGLU: 2*inter_size output, 4-bit packed
   std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size / 2};
-  std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
+  std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size * 2};  // 2x for SwiGLU
   std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
   std::vector<int64_t> output_dims = {num_rows, hidden_size};
 
@@ -1397,13 +1401,13 @@ TEST(MoETest, QMoETest_CPU_Int8_MLAS) {
 
   const std::vector<float> router_probs = {0.4f, 0.6f};
 
-  // For 8-bit symmetric quantization, dimensions don't need /2
+  // For 8-bit symmetric quantization with SwiGLU
   // Use quantized weights at zero point for zero outputs (128 = 0 in signed)
-  std::vector<uint8_t> fc1_experts_weights(num_experts * hidden_size * inter_size, 128);  // 128 = 0 in signed (128-128=0)
-  std::vector<uint8_t> fc2_experts_weights(num_experts * inter_size * hidden_size, 128);  // 128 = 0 in signed
-  std::vector<uint8_t> fc3_experts_weights;                                               // Empty for CPU
+  std::vector<uint8_t> fc1_experts_weights(num_experts * 2 * inter_size * hidden_size, 128);  // 2*inter_size for SwiGLU, no packing for 8-bit
+  std::vector<uint8_t> fc2_experts_weights(num_experts * inter_size * hidden_size, 128);      // 128 = 0 in signed
+  std::vector<uint8_t> fc3_experts_weights;                                                   // Empty for CPU
 
-  std::vector<float> fc1_scales(num_experts * inter_size, 0.1f);
+  std::vector<float> fc1_scales(num_experts * inter_size * 2, 0.1f);  // 2x for SwiGLU
   std::vector<float> fc2_scales(num_experts * hidden_size, 0.1f);
   std::vector<float> fc3_scales;
 
@@ -1413,15 +1417,15 @@ TEST(MoETest, QMoETest_CPU_Int8_MLAS) {
   // Test with different attributes for 8-bit
   OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
   cpu_tester.AddAttribute<int64_t>("k", 1);
-  cpu_tester.AddAttribute<std::string>("activation_type", "relu");
-  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 0);
-  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 8);  // Test 8-bit quantization
+  cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");  // CPU only supports swiglu
+  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);   // Always use 1 - softmax normalization always applied
+  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 8);          // Test 8-bit quantization
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size};  // legacy shape
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, inter_size * 2, hidden_size};  // SwiGLU: 2*inter_size output, 8-bit no packing
   std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size};
-  std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
+  std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size * 2};  // 2x for SwiGLU
   std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
   std::vector<int64_t> output_dims = {num_rows, hidden_size};
 
@@ -1465,8 +1469,8 @@ TEST(MoETest, QMoETest_CPU_FC3_Error) {
   // Test CPU execution provider ONLY (designed to test CPU-specific error handling)
   OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
   cpu_tester.AddAttribute<int64_t>("k", 1);
-  cpu_tester.AddAttribute<std::string>("activation_type", "relu");
-  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 0);
+  cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");  // CPU only supports swiglu
+  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);   // Use 1 for consistency, though this test focuses on FC3 error
   cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
@@ -1638,8 +1642,8 @@ TEST(MoETest, QMoETest_CPU_Float32) {
   const std::vector<float> input = {0.2f, -0.3f, 0.4f, -0.5f, 0.6f, -0.7f, 0.8f, -0.9f};
   const std::vector<float> router_probs = {0.0f, 0.0f};
 
-  // For 8-bit quantization weights
-  const int fc1_weight_size_per_expert = hidden_size * inter_size;
+  // For 8-bit quantization weights with SwiGLU
+  const int fc1_weight_size_per_expert = hidden_size * inter_size * 2;  // 2x for SwiGLU
   const int fc2_weight_size_per_expert = inter_size * hidden_size;
 
   // Generate test weights at zero point (128 for 8-bit) to produce zero output
@@ -1647,22 +1651,22 @@ TEST(MoETest, QMoETest_CPU_Float32) {
   std::vector<uint8_t> fc2_experts_weights(num_experts * fc2_weight_size_per_expert, 128);
 
   // Scales
-  std::vector<float> fc1_scales(num_experts * inter_size, 0.1f);
+  std::vector<float> fc1_scales(num_experts * inter_size * 2, 0.1f);  // 2x for SwiGLU
   std::vector<float> fc2_scales(num_experts * hidden_size, 0.1f);
 
   std::vector<float> output(num_rows * hidden_size, 0.0f);
 
   OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
   cpu_tester.AddAttribute<int64_t>("k", 2);
-  cpu_tester.AddAttribute<std::string>("activation_type", "gelu");
+  cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");  // CPU only supports swiglu
   cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
   cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 8);
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size};  // legacy shape
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, inter_size * 2, hidden_size};  // SwiGLU: 2*inter_size output
   std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size};
-  std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
+  std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size * 2};  // 2x for SwiGLU
   std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
   std::vector<int64_t> output_dims = {num_rows, hidden_size};
 

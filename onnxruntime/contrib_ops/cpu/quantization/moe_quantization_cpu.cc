@@ -69,8 +69,8 @@ static void run_moe_fc_cpu_grouped(
 
   std::fill_n(output, static_cast<size_t>(num_rows * hidden_size), 0.0f);
 
-  std::vector<int> route_expert(num_rows * k);
-  std::vector<float> route_scale(num_rows * k);
+  std::vector<int> route_expert(static_cast<size_t>(num_rows * k));
+  std::vector<float> route_scale(static_cast<size_t>(num_rows * k));
 
   std::vector<std::pair<float, int64_t>> expert_scores;
   expert_scores.reserve(static_cast<size_t>(num_experts));
@@ -93,22 +93,22 @@ static void run_moe_fc_cpu_grouped(
 
     // Get top-k experts
     const int64_t actual_k = std::min(k, num_experts);
-    std::vector<float> top_logits(actual_k);
+    std::vector<float> top_logits(static_cast<size_t>(actual_k));
     for (int64_t i = 0; i < actual_k; ++i) {
-      top_logits[i] = all_experts[i].first;
+      top_logits[static_cast<size_t>(i)] = all_experts[i].first;
     }
 
     // Apply softmax to top-k logits for proper normalization (always, as per PyTorch)
     float max_logit = *std::max_element(top_logits.begin(), top_logits.end());
     float sum_exp = 0.0f;
     for (int64_t i = 0; i < actual_k; ++i) {
-      top_logits[i] = std::exp(top_logits[i] - max_logit);
-      sum_exp += top_logits[i];
+      top_logits[static_cast<size_t>(i)] = std::exp(top_logits[static_cast<size_t>(i)] - max_logit);
+      sum_exp += top_logits[static_cast<size_t>(i)];
     }
 
     // Normalize weights (always apply softmax like PyTorch)
     for (int64_t i = 0; i < actual_k; ++i) {
-      float normalized_weight = top_logits[i] / sum_exp;
+      float normalized_weight = top_logits[static_cast<size_t>(i)] / sum_exp;
       expert_scores.emplace_back(normalized_weight, all_experts[i].second);
     }
     const int64_t select = std::min(k, static_cast<int64_t>(expert_scores.size()));
@@ -125,7 +125,7 @@ static void run_moe_fc_cpu_grouped(
     }
   }
 
-  std::vector<std::vector<int64_t>> buckets(num_experts);
+  std::vector<std::vector<int64_t>> buckets(static_cast<size_t>(num_experts));
   buckets.shrink_to_fit();
   for (int64_t row = 0; row < num_rows; ++row) {
     for (int64_t i = 0; i < k; ++i) {
@@ -349,8 +349,8 @@ void finalize_moe_routing_cpu(const float* expert_outputs, float* final_output,
 
     for (int64_t k_idx = 0; k_idx < k; ++k_idx) {
       const int64_t expert_offset = row * k + k_idx;
-      const int64_t expert_idx = expert_indices[expert_offset];
-      const float expert_scale = expert_scales[expert_offset];
+      const int64_t expert_idx = expert_indices[static_cast<size_t>(expert_offset)];
+      const float expert_scale = expert_scales[static_cast<size_t>(expert_offset)];
 
       const float* expert_output_row = expert_outputs + expert_offset * hidden_size;
       const float* bias_ptr = fc2_bias_float ? fc2_bias_float + expert_idx * hidden_size : nullptr;
@@ -377,8 +377,8 @@ void run_moe_fc_cpu(const float* input_activations, const float* gating_output,
   const int64_t fc1_output_size = 2 * inter_size;
 
   std::vector<std::pair<float, int64_t>> expert_scores;
-  std::vector<float> routing_weights(num_rows * k);
-  std::vector<int> expert_indices(num_rows * k);
+  std::vector<float> routing_weights(static_cast<size_t>(num_rows * k));
+  std::vector<int> expert_indices(static_cast<size_t>(num_rows * k));
 
   for (int64_t row = 0; row < num_rows; ++row) {
     expert_scores.clear();
@@ -414,12 +414,12 @@ void run_moe_fc_cpu(const float* input_activations, const float* gating_output,
 
     for (int64_t k_idx = 0; k_idx < k; ++k_idx) {
       const int64_t offset = row * k + k_idx;
-      expert_indices[offset] = static_cast<int>(expert_scores[k_idx].second);
+      expert_indices[static_cast<size_t>(offset)] = static_cast<int>(expert_scores[k_idx].second);
 
       if (normalize_routing_weights) {
-        routing_weights[offset] = (selected_sum > 0.0f) ? (expert_scores[k_idx].first / selected_sum) : 0.0f;
+        routing_weights[static_cast<size_t>(offset)] = (selected_sum > 0.0f) ? (expert_scores[k_idx].first / selected_sum) : 0.0f;
       } else {
-        routing_weights[offset] = expert_scores[k_idx].first;
+        routing_weights[static_cast<size_t>(offset)] = expert_scores[k_idx].first;
       }
     }
   }
@@ -428,11 +428,11 @@ void run_moe_fc_cpu(const float* input_activations, const float* gating_output,
       thread_pool, static_cast<std::ptrdiff_t>(num_rows * k),
       static_cast<double>(hidden_size * inter_size * 0.1),
       [&](std::ptrdiff_t start, std::ptrdiff_t end) {
-        std::vector<float> fc1_output(fc1_output_size);
+        std::vector<float> fc1_output(static_cast<size_t>(fc1_output_size));
 
         for (std::ptrdiff_t idx = start; idx < end; ++idx) {
           const int64_t row = idx / k;
-          const int64_t expert_idx = expert_indices[idx];
+          const int64_t expert_idx = expert_indices[static_cast<size_t>(idx)];
 
           const float* input_row = input_activations + row * hidden_size;
           float* output_row = expert_outputs + idx * hidden_size;
@@ -451,7 +451,7 @@ void run_moe_fc_cpu(const float* input_activations, const float* gating_output,
           if (fc1_expert_biases) {
             const float* fc1_bias = fc1_expert_biases + expert_idx * fc1_output_size;
             for (int64_t i = 0; i < fc1_output_size; ++i) {
-              fc1_output[i] += fc1_bias[i];
+              fc1_output[static_cast<size_t>(i)] += fc1_bias[i];
             }
           }
 
@@ -546,8 +546,8 @@ Status QMoE<T>::PrepackAndDequantizeWeights(OpKernelContext* context,
   }
 
   const int64_t fc1_output_size = is_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
-  const size_t fc1_weights_size = moe_params.num_experts * moe_params.hidden_size * fc1_output_size;
-  const size_t fc2_weights_size = moe_params.num_experts * moe_params.inter_size * moe_params.hidden_size;
+  const size_t fc1_weights_size = static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size * fc1_output_size);
+  const size_t fc2_weights_size = static_cast<size_t>(moe_params.num_experts * moe_params.inter_size * moe_params.hidden_size);
 
   prepacked_fc1_weights_ = IAllocator::MakeUniquePtr<float>(weights_allocator_, fc1_weights_size);
   prepacked_fc2_weights_ = IAllocator::MakeUniquePtr<float>(weights_allocator_, fc2_weights_size);
@@ -579,8 +579,8 @@ Status QMoE<T>::PrepackAndDequantizeWeights(OpKernelContext* context,
         for (int64_t col = 0; col < fc1_output_size; ++col) {
           const float scale = static_cast<float>(fc1_scales_data[expert_idx * fc1_output_size + col]);
           for (int64_t row = 0; row < moe_params.hidden_size; row += 2) {
-            const size_t byte_idx = expert_idx * fc1_output_size * (moe_params.hidden_size / 2) +
-                                    col * (moe_params.hidden_size / 2) + (row / 2);
+            const size_t byte_idx = static_cast<size_t>(expert_idx * fc1_output_size * (moe_params.hidden_size / 2) +
+                                                        col * (moe_params.hidden_size / 2) + (row / 2));
             const uint8_t packed_val = fc1_weights_data[byte_idx];
 
             const uint8_t val_even = packed_val & 0x0F;
@@ -589,9 +589,9 @@ Status QMoE<T>::PrepackAndDequantizeWeights(OpKernelContext* context,
             const float dequantized_val_even = scale * (static_cast<float>(val_even) - 8.0f);
             const float dequantized_val_odd = scale * (static_cast<float>(val_odd) - 8.0f);
 
-            prepacked_fc1_weights_data_[expert_idx * fc1_output_size * moe_params.hidden_size + col * moe_params.hidden_size + row] = dequantized_val_even;
+            prepacked_fc1_weights_data_[static_cast<size_t>(expert_idx * fc1_output_size * moe_params.hidden_size + col * moe_params.hidden_size + row)] = dequantized_val_even;
             if (row + 1 < moe_params.hidden_size) {
-              prepacked_fc1_weights_data_[expert_idx * fc1_output_size * moe_params.hidden_size + col * moe_params.hidden_size + row + 1] = dequantized_val_odd;
+              prepacked_fc1_weights_data_[static_cast<size_t>(expert_idx * fc1_output_size * moe_params.hidden_size + col * moe_params.hidden_size + row + 1)] = dequantized_val_odd;
             }
           }
         }
@@ -601,7 +601,7 @@ Status QMoE<T>::PrepackAndDequantizeWeights(OpKernelContext* context,
         for (int64_t col = 0; col < fc1_output_size; ++col) {
           const float scale = static_cast<float>(fc1_scales_data[expert_idx * fc1_output_size + col]);
           for (int64_t row = 0; row < moe_params.hidden_size; ++row) {
-            const size_t idx = expert_idx * fc1_output_size * moe_params.hidden_size + col * moe_params.hidden_size + row;
+            const size_t idx = static_cast<size_t>(expert_idx * fc1_output_size * moe_params.hidden_size + col * moe_params.hidden_size + row);
             const uint8_t val = fc1_weights_data[idx];
 
             const float dequantized_val = scale * (static_cast<float>(val) - 128.0f);
@@ -615,8 +615,8 @@ Status QMoE<T>::PrepackAndDequantizeWeights(OpKernelContext* context,
         for (int64_t col = 0; col < moe_params.hidden_size; ++col) {
           const float scale = static_cast<float>(fc2_scales_data[expert_idx * moe_params.hidden_size + col]);
           for (int64_t row = 0; row < moe_params.inter_size; row += 2) {
-            const size_t byte_idx = expert_idx * moe_params.hidden_size * (moe_params.inter_size / 2) +
-                                    col * (moe_params.inter_size / 2) + (row / 2);
+            const size_t byte_idx = static_cast<size_t>(expert_idx * moe_params.hidden_size * (moe_params.inter_size / 2) +
+                                                        col * (moe_params.inter_size / 2) + (row / 2));
             const uint8_t packed_val = fc2_weights_data[byte_idx];
 
             const uint8_t val_even = packed_val & 0x0F;
@@ -625,9 +625,9 @@ Status QMoE<T>::PrepackAndDequantizeWeights(OpKernelContext* context,
             const float dequantized_val_even = scale * (static_cast<float>(val_even) - 8.0f);
             const float dequantized_val_odd = scale * (static_cast<float>(val_odd) - 8.0f);
 
-            prepacked_fc2_weights_data_[expert_idx * moe_params.hidden_size * moe_params.inter_size + col * moe_params.inter_size + row] = dequantized_val_even;
+            prepacked_fc2_weights_data_[static_cast<size_t>(expert_idx * moe_params.hidden_size * moe_params.inter_size + col * moe_params.inter_size + row)] = dequantized_val_even;
             if (row + 1 < moe_params.inter_size) {
-              prepacked_fc2_weights_data_[expert_idx * moe_params.hidden_size * moe_params.inter_size + col * moe_params.inter_size + row + 1] = dequantized_val_odd;
+              prepacked_fc2_weights_data_[static_cast<size_t>(expert_idx * moe_params.hidden_size * moe_params.inter_size + col * moe_params.inter_size + row + 1)] = dequantized_val_odd;
             }
           }
         }
@@ -637,7 +637,7 @@ Status QMoE<T>::PrepackAndDequantizeWeights(OpKernelContext* context,
         for (int64_t col = 0; col < moe_params.hidden_size; ++col) {
           const float scale = static_cast<float>(fc2_scales_data[expert_idx * moe_params.hidden_size + col]);
           for (int64_t row = 0; row < moe_params.inter_size; ++row) {
-            const size_t idx = expert_idx * moe_params.hidden_size * moe_params.inter_size + col * moe_params.inter_size + row;
+            const size_t idx = static_cast<size_t>(expert_idx * moe_params.hidden_size * moe_params.inter_size + col * moe_params.inter_size + row);
             const uint8_t val = fc2_weights_data[idx];
 
             const float dequantized_val = scale * (static_cast<float>(val) - 128.0f);
@@ -672,6 +672,10 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
                                  const Tensor* fc1_scales,
                                  const Tensor* fc2_scales,
                                  const Tensor* fc3_scales_optional) const {
+  // If any FC3 input is present, return not implemented error for CPU
+  if (fc3_experts_weights_optional || fc3_experts_bias_optional || fc3_scales_optional) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented");
+  }
   ORT_UNUSED_PARAMETER(fc3_experts_weights_optional);
   ORT_UNUSED_PARAMETER(fc3_experts_bias_optional);
   ORT_UNUSED_PARAMETER(fc3_scales_optional);
@@ -711,7 +715,7 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
 
   std::unique_ptr<float[]> fc1_bias_float, fc2_bias_float;
   if (fc1_bias_data) {
-    const size_t fc1_bias_size = moe_params.num_experts * (2 * moe_params.inter_size);
+    const size_t fc1_bias_size = static_cast<size_t>(moe_params.num_experts * (2 * moe_params.inter_size));
     fc1_bias_float = std::make_unique<float[]>(fc1_bias_size);
     std::unique_ptr<MLAS_FP16[]> fc1_bias_fp16 = std::make_unique<MLAS_FP16[]>(fc1_bias_size);
     if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -722,7 +726,7 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
     MlasConvertHalfToFloatBuffer(fc1_bias_fp16.get(), fc1_bias_float.get(), fc1_bias_size);
   }
   if (fc2_bias_data) {
-    const size_t fc2_bias_size = moe_params.num_experts * moe_params.hidden_size;
+    const size_t fc2_bias_size = static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size);
     fc2_bias_float = std::make_unique<float[]>(fc2_bias_size);
     std::unique_ptr<MLAS_FP16[]> fc2_bias_fp16 = std::make_unique<MLAS_FP16[]>(fc2_bias_size);
     if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -866,7 +870,7 @@ Status QMoE<T>::DirectFP32MoEImpl(OpKernelContext* context,
 
       const int64_t fc1_output_size = 2 * moe_params.inter_size;
 
-      auto intermediate = IAllocator::MakeUniquePtr<float>(allocator, fc1_output_size);
+      auto intermediate = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(fc1_output_size));
 
       const float* expert_fc1_weights = fc1_weights_data + expert_idx * moe_params.hidden_size * fc1_output_size;
 
