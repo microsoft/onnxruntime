@@ -6,8 +6,8 @@
 #include <random>
 #include "command_args_parser.h"
 #include "performance_runner.h"
-#include "utils.h"
-#include "strings_helper.h"
+#include "test/onnx/utils/utils.h"
+#include "test/onnx/utils/strings_helper.h"
 #include <google/protobuf/stubs/common.h>
 
 using namespace onnxruntime;
@@ -45,7 +45,7 @@ int real_main(int argc, char* argv[]) {
   }
 
   if (!test_config.plugin_ep_names_and_libs.empty()) {
-    perftest::utils::RegisterExecutionProviderLibrary(env, test_config);
+    test::utils::RegisterExecutionProviderLibrary(env, test_config.plugin_ep_names_and_libs, test_config.registered_plugin_eps);
   }
 
   // Unregister all registered plugin EP libraries before program exits.
@@ -55,12 +55,12 @@ int real_main(int argc, char* argv[]) {
   // See "ep_device.ep_factory->ReleaseAllocator" in Environment::CreateSharedAllocatorImpl.
   auto unregister_plugin_eps_at_scope_exit = gsl::finally([&]() {
     if (!test_config.registered_plugin_eps.empty()) {
-      perftest::utils::UnregisterExecutionProviderLibrary(env, test_config);  // this won't throw
+      test::utils::UnregisterExecutionProviderLibrary(env, test_config.registered_plugin_eps);
     }
   });
 
   if (test_config.list_available_ep_devices) {
-    perftest::utils::ListEpDevices(env);
+    test::utils::ListEpDevices(env);
     if (test_config.registered_plugin_eps.empty()) {
       fprintf(stdout, "No plugin execution provider libraries are registered. Please specify them using \"--plugin_ep_libs\"; otherwise, only CPU may be available.\n");
     }
