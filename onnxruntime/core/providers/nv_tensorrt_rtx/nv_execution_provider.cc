@@ -1152,8 +1152,7 @@ NvExecutionProvider::~NvExecutionProvider() {
 }
 
 void NvExecutionProvider::HandleCudaGraphStart(cudaStream_t stream, bool require_io_binding,
-                CudaGraphAnnotation_t cuda_graph_annotation_id, bool& graph_replay_on_this_run, bool& should_start_capture) {
-
+                                               CudaGraphAnnotation_t cuda_graph_annotation_id, bool& graph_replay_on_this_run, bool& should_start_capture) {
   graph_replay_on_this_run = false;
   should_start_capture = false;
 
@@ -1167,7 +1166,7 @@ void NvExecutionProvider::HandleCudaGraphStart(cudaStream_t stream, bool require
       LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Graph already captured and required_io_binding is true, resetting warmup runs and deleting graph";
       GetPerThreadContext().DeleteCapturedGraph(cuda_graph_annotation_id);
     }
-  // Case 2: CUDA Graph capture is enabled AND IO binding is NOT required
+    // Case 2: CUDA Graph capture is enabled AND IO binding is NOT required
   } else if (cuda_graph_enable_ && !require_io_binding) {
     // If the graph is not yet captured, increment the regular run counter
     if (cuda_graph_annotation_id != kCudaGraphAnnotationSkip &&
@@ -2801,7 +2800,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     bool should_start_capture = false;
 
     HandleCudaGraphStart(stream, require_io_binding, cuda_graph_annotation_id,
-      graph_replay_on_this_run, should_start_capture);
+                         graph_replay_on_this_run, should_start_capture);
 
     if (!graph_replay_on_this_run) {
       if (!trt_context->enqueueV3(stream)) {
@@ -3117,7 +3116,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     bool should_start_capture = false;
 
     HandleCudaGraphStart(stream, require_io_binding, cuda_graph_annotation_id,
-      graph_replay_on_this_run, should_start_capture);
+                         graph_replay_on_this_run, should_start_capture);
 
     if (!graph_replay_on_this_run) {
       if (!trt_context->enqueueV3(stream)) {

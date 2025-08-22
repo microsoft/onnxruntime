@@ -94,7 +94,7 @@ Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id, 
   cudaGraphExec_t graph_exec = cuda_graph_set_.Get(cuda_graph_annotation_id);
   CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec, stream_));
 
-  if(sync_status_flag){
+  if (sync_status_flag) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
   return Status::OK();
