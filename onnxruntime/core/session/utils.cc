@@ -231,11 +231,16 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
     return Status::OK();
   }
 
+  const auto& custom_metadata = model_metadata->custom_metadata_map;
+  if (custom_metadata.empty()) {
+    // No custom metadata available, skip validation
+    return Status::OK();
+  }
+
   // Check if user wants to fail on suboptimal models
   bool fail_on_suboptimal = sess.GetSessionOptions().config_options.GetConfigEntry(
                                 kOrtSessionOptionsFailOnSuboptimalCompiledModel) == "1";
 
-  const auto& custom_metadata = model_metadata->custom_metadata_map;
   const auto& registered_provider_types = sess.GetRegisteredProviderTypes();
 
   // Access the execution providers through the session state (available after Initialize)
