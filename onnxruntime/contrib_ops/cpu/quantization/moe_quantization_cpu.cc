@@ -65,6 +65,8 @@ static void run_moe_fc_cpu_grouped(
     float activation_beta,
     float* output,  // [num_rows, hidden_size], accumulated result
     onnxruntime::concurrency::ThreadPool* thread_pool) {
+  ORT_UNUSED_PARAMETER(normalize_routing_weights);
+
   // Only SwiGLU interleaved activation is supported.
   const int64_t fc1_out = 2 * inter_size;
   const uint8_t global_zero_point = static_cast<uint8_t>(bit_width == 8 ? 128 : 8);
@@ -82,14 +84,6 @@ static void run_moe_fc_cpu_grouped(
   for (int64_t row = 0; row < num_rows; ++row) {
     expert_scores.clear();
 
-    // Apply softmax to router logits (matching CUDA behavior)
-    std::vector<float> softmax_probs(num_experts);
-    float max_logit = -FLT_MAX;
-    for (int64_t e = 0; e < num_experts; ++e) {
-      float logit = gating_output[row * num_experts + e];
-      max_logit = std::max(max_logit, logit);
-    }
-
     // Get top-2 experts first for jitter-based masking (matching PyTorch)
     std::vector<std::pair<float, int64_t>> all_experts;
     for (int64_t e = 0; e < num_experts; ++e) {
@@ -103,14 +97,10 @@ static void run_moe_fc_cpu_grouped(
                         return a.first > b.first;  // Sort by logit descending
                       });
 
-    float top1_logit = all_experts[0].first;
     int64_t top1_expert = all_experts[0].second;
-    float top2_logit = all_experts[1].first;
     int64_t top2_expert = all_experts[1].second;
 
     // Implement PyTorch jitter-based masking algorithm
-    const float jitter_eps = 0.01f;  // Match PyTorch router_jitter_noise
-
     // First expert: mask others based on relative difference from top expert
     float weight1 = 1.0f;  // PyTorch gives weight 1.0 to top expert after masking
 
@@ -122,12 +112,6 @@ static void run_moe_fc_cpu_grouped(
     expert_scores.emplace_back(weight2, top2_expert);
     // Expert scores already contain top-2 experts with PyTorch-style routing weights
     const int64_t select = std::min(k, static_cast<int64_t>(expert_scores.size()));
-
-    // Calculate sum for normalization (should be 2.0 for PyTorch-style routing)
-    float selected_sum = 0.0f;
-    for (int64_t i = 0; i < select; ++i) {
-      selected_sum += expert_scores[static_cast<size_t>(i)].first;
-    }
 
     for (int64_t i = 0; i < select; ++i) {
       const int64_t off = row * k + i;
@@ -158,11 +142,9 @@ static void run_moe_fc_cpu_grouped(
   // 3) Per-expert processing
   const size_t K1_logical = static_cast<size_t>(hidden_size);
   const size_t N1 = static_cast<size_t>(fc1_out);
-  const size_t K1_packed = K1_logical / (bit_width == 4 ? 2 : 1);
 
   const size_t K2_logical = static_cast<size_t>(inter_size);
   const size_t N2 = static_cast<size_t>(hidden_size);
-  const size_t K2_packed = K2_logical / (bit_width == 4 ? 2 : 1);
 
   const uint8_t* fc1_wq = reinterpret_cast<const uint8_t*>(fc1_weights_q);
   const uint8_t* fc2_wq = reinterpret_cast<const uint8_t*>(fc2_weights_q);
@@ -171,14 +153,6 @@ static void run_moe_fc_cpu_grouped(
     const auto& routes = buckets[static_cast<size_t>(e)];
     const size_t Me = routes.size();
     if (Me == 0) continue;
-
-    if (Me > 0) {
-      for (size_t r = 0; r < std::min(Me, 8UL); ++r) {
-        int64_t off = routes[r];
-        int64_t row = off / k;
-        float scale = route_scale[static_cast<size_t>(off)];
-      }
-    }
 
     // Gather inputs for this expert
     std::vector<float> A1(Me * K1_logical);
@@ -420,6 +394,9 @@ void run_moe_fc_cpu(const float* input_activations, const float* gating_output,
                     float* expert_outputs, float* expert_scales_output, int* expert_indices_output,
                     onnxruntime::concurrency::ThreadPool* thread_pool,
                     float activation_alpha = 1.702f, float activation_beta = 1.0f) {
+  ORT_UNUSED_PARAMETER(fc1_scales);
+  ORT_UNUSED_PARAMETER(fc2_scales);
+
   // Only SwiGLU interleaved activation is supported.
   const int64_t fc1_output_size = 2 * inter_size;
 
@@ -773,6 +750,10 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
                                  const Tensor* fc1_scales,
                                  const Tensor* fc2_scales,
                                  const Tensor* fc3_scales_optional) const {
+  ORT_UNUSED_PARAMETER(fc3_experts_weights_optional);
+  ORT_UNUSED_PARAMETER(fc3_experts_bias_optional);
+  ORT_UNUSED_PARAMETER(fc3_scales_optional);
+
   // Accuracy-first path: dequantize expert weights to float and use MLAS SGEMM.
 
   auto* thread_pool = context->GetOperatorThreadPool();
@@ -910,6 +891,9 @@ Status QMoE<T>::DirectFP32MoEImpl(OpKernelContext* context,
                                   const Tensor* fc2_experts_bias_optional,
                                   const Tensor* fc3_experts_weights_optional,
                                   const Tensor* fc3_experts_bias_optional) const {
+  ORT_UNUSED_PARAMETER(fc3_experts_weights_optional);
+  ORT_UNUSED_PARAMETER(fc3_experts_bias_optional);
+
   // Direct FP32 MoE implementation - no quantization involved
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
