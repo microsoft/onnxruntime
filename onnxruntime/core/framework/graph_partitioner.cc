@@ -22,6 +22,7 @@
 #include "core/graph/model.h"
 #include "core/graph/model_saving_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 // #define COUNT_NON_CUDA_OPS
@@ -906,6 +907,34 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   for (const auto& [name, _] : graph.GetAllInitializedTensors()) {
     if (ep_graph.GetNodeArg(name) != nullptr) {
       graph_utils::MakeInitializerCopyIfNotExist(graph, ep_graph, name);
+    }
+  }
+
+  // Generate EP compatibility strings for OrtEp types and add to model metadata
+  // At this point, the graph has been populated with all the EPContext nodes
+  {
+    ORT_RETURN_IF_ERROR(ep_graph.Resolve());
+    const GraphViewer graph_viewer(ep_graph);
+    for (const auto& ep : execution_providers) {
+      try {
+        // Generate the compatibility string for this EP
+        std::string compatibility_string = ep->GetCompiledModelCompatibilityInfo(graph_viewer);
+        if (!compatibility_string.empty()) {
+          // Create a unique key for this EP's compatibility info
+          // Use format: "ep_compatibility_info.<EP_TYPE>"
+          // All EPs in a session must have a unique Type() value, so this will be unique for the generated model
+          std::string metadata_key = std::string(kOrtModelMetadata_EpCompatibilityInfoPrefix) + ep->Type();
+          auto& model_metadata = ep_context_model.MetaData();
+          auto [it, was_inserted] =
+              model_metadata.insert_or_assign(metadata_key, compatibility_string);
+          if (!was_inserted) {
+            LOGS(logger, WARNING) << "Overwriting existing EP compatibility info for key: " << metadata_key << " (EP: " << ep->Type() << ")";
+          }
+          LOGS(logger, VERBOSE) << "Added EP compatibility info for " << ep->Type() << " with key: " << metadata_key;
+        }
+      } catch (const std::exception& ex) {
+        LOGS(logger, WARNING) << "Failed to generate compatibility string for EP " << ep->Type() << ": " << ex.what();
+      }
     }
   }
 
