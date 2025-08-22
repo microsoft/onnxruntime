@@ -576,7 +576,6 @@ ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
 ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
-ORT_DEFINE_RELEASE(SyncStream);
 ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
