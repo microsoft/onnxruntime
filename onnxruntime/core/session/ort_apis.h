@@ -562,7 +562,7 @@ ORT_API(void, GetKeyValuePairs, _In_ const OrtKeyValuePairs* kvps,
 ORT_API(void, RemoveKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key);
 ORT_API(void, ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs*);
 
-ORT_API_STATUS_IMPL(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* registration_name,
+ORT_API_STATUS_IMPL(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name,
                     const ORTCHAR_T* path);
 ORT_API_STATUS_IMPL(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name);
 
@@ -653,7 +653,7 @@ ORT_API_STATUS_IMPL(Graph_GetInitializers, _In_ const OrtGraph* graph,
                     _Out_writes_(num_initializers) const OrtValueInfo** initializers,
                     _In_ size_t num_initializers);
 ORT_API_STATUS_IMPL(Graph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes);
-ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph,
+ORT_API_STATUS_IMPL(Graph_GetNodes, _In_ const OrtGraph* graph,
                     _Out_writes_(num_nodes) const OrtNode** nodes, _In_ size_t num_nodes);
 ORT_API_STATUS_IMPL(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 ORT_API_STATUS_IMPL(Graph_GetGraphView, _In_ const OrtGraph* graph, _In_ const OrtNode** nodes, _In_ size_t num_nodes,
