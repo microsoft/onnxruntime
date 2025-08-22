@@ -420,18 +420,18 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
     const size_t fc1_bias_size = static_cast<size_t>(moe_params.num_experts * (2 * moe_params.inter_size));
     fc1_bias_float = std::make_unique<float[]>(fc1_bias_size);
     if constexpr (std::is_same_v<T, MLFloat16>) {
-        MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc1_bias_data), fc1_bias_float.get(), fc1_bias_size);
+      MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc1_bias_data), fc1_bias_float.get(), fc1_bias_size);
     } else {
-        std::copy(fc1_bias_data, fc1_bias_data + fc1_bias_size, fc1_bias_float.get());
+      std::copy(fc1_bias_data, fc1_bias_data + fc1_bias_size, fc1_bias_float.get());
     }
   }
   if (fc2_bias_data) {
     const size_t fc2_bias_size = static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size);
     fc2_bias_float = std::make_unique<float[]>(fc2_bias_size);
     if constexpr (std::is_same_v<T, MLFloat16>) {
-        MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc2_bias_data), fc2_bias_float.get(), fc2_bias_size);
+      MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc2_bias_data), fc2_bias_float.get(), fc2_bias_size);
     } else {
-        std::copy(fc2_bias_data, fc2_bias_data + fc2_bias_size, fc2_bias_float.get());
+      std::copy(fc2_bias_data, fc2_bias_data + fc2_bias_size, fc2_bias_float.get());
     }
   }
 
@@ -529,18 +529,18 @@ Status QMoE<T>::DirectFP32MoEImpl(OpKernelContext* context,
     const size_t fc1_bias_size = static_cast<size_t>(moe_params.num_experts * (2 * moe_params.inter_size));
     fc1_bias_float = std::make_unique<float[]>(fc1_bias_size);
     if constexpr (std::is_same_v<T, MLFloat16>) {
-        MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc1_bias_data), fc1_bias_float.get(), fc1_bias_size);
+      MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc1_bias_data), fc1_bias_float.get(), fc1_bias_size);
     } else {
-        std::copy(fc1_bias_data, fc1_bias_data + fc1_bias_size, fc1_bias_float.get());
+      std::copy(fc1_bias_data, fc1_bias_data + fc1_bias_size, fc1_bias_float.get());
     }
   }
   if (fc2_bias_data) {
     const size_t fc2_bias_size = static_cast<size_t>(moe_params.num_experts * moe_params.hidden_size);
     fc2_bias_float = std::make_unique<float[]>(fc2_bias_size);
     if constexpr (std::is_same_v<T, MLFloat16>) {
-        MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc2_bias_data), fc2_bias_float.get(), fc2_bias_size);
+      MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLAS_FP16*>(fc2_bias_data), fc2_bias_float.get(), fc2_bias_size);
     } else {
-        std::copy(fc2_bias_data, fc2_bias_data + fc2_bias_size, fc2_bias_float.get());
+      std::copy(fc2_bias_data, fc2_bias_data + fc2_bias_size, fc2_bias_float.get());
     }
   }
 
