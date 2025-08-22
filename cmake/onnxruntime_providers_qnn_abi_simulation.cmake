@@ -63,14 +63,21 @@ add_compile_definitions(BUILD_QNN_EP_STATIC_LIB=0)
 
   onnxruntime_add_shared_library_module(onnxruntime_providers_qnn_abi_simulation ${onnxruntime_providers_qnn_abi_all_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_qnn_abi_simulation ${ONNXRUNTIME_PROVIDERS_SHARED} ${GSL_TARGET} onnx
-                                                              onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers onnxruntime_common Boost::mp11 safeint_interface
-                                                              nlohmann_json::nlohmann_json)
+                                                                             onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers onnxruntime_common Boost::mp11 safeint_interface
+                                                                             nlohmann_json::nlohmann_json)
   target_link_libraries(onnxruntime_providers_qnn_abi_simulation PRIVATE ${ONNXRUNTIME_PROVIDERS_SHARED} ${ABSEIL_LIBS} ${CMAKE_DL_LIBS} onnxruntime_common ${PROTOBUF_LIB} onnx_proto)
+
+  # Link cpuinfo if supported - needed for CPU feature detection
+  if (CPUINFO_SUPPORTED)
+    onnxruntime_add_include_to_target(onnxruntime_providers_qnn_abi_simulation cpuinfo::cpuinfo)
+    target_link_libraries(onnxruntime_providers_qnn_abi_simulation PRIVATE cpuinfo::cpuinfo ${ONNXRUNTIME_CLOG_TARGET_NAME})
+  endif()
+
   add_dependencies(onnxruntime_providers_qnn_abi_simulation onnxruntime_providers_shared onnx onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_qnn_abi_simulation PRIVATE ${ONNXRUNTIME_ROOT}
-                                                                ${CMAKE_CURRENT_BINARY_DIR}
-                                                                ${onnxruntime_QNN_HOME}/include/QNN
-                                                                ${onnxruntime_QNN_HOME}/include)
+                                                                              ${CMAKE_CURRENT_BINARY_DIR}
+                                                                              ${onnxruntime_QNN_HOME}/include/QNN
+                                                                              ${onnxruntime_QNN_HOME}/include)
 
 
   target_compile_definitions(onnxruntime_providers_qnn PRIVATE
@@ -120,18 +127,31 @@ add_compile_definitions(BUILD_QNN_EP_STATIC_LIB=0)
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-  set(onnxruntime_providers_qnn_abi_target onnxruntime_providers_qnn_abi_simulation)
+  set(onnxruntime_providers_qnn_abi_simulation_target onnxruntime_providers_qnn_abi_simulation)
 
   if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+    # Create destination directory first to ensure it exists
     add_custom_command(
-      TARGET ${onnxruntime_providers_qnn_abi_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_abi_target}>
-      )
+      TARGET ${onnxruntime_providers_qnn_abi_simulation_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_abi_simulation_target}>
+      COMMENT "Creating QNN library destination directory"
+    )
+    
+    # Copy QNN library files with better error handling
+    if(QNN_LIB_FILES)
+      foreach(QNN_LIB_FILE ${QNN_LIB_FILES})
+        add_custom_command(
+          TARGET ${onnxruntime_providers_qnn_abi_simulation_target} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different "${QNN_LIB_FILE}" $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_abi_simulation_target}>
+          COMMENT "Copying QNN library: ${QNN_LIB_FILE}"
+        )
+      endforeach()
+    endif()
   endif()
   if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
     add_custom_command(
-      TARGET ${onnxruntime_providers_qnn_abi_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf" $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_abi_target}>
+      TARGET ${onnxruntime_providers_qnn_abi_simulation_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf" $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_abi_simulation_target}>
       )
   endif()
 
