@@ -4543,7 +4543,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
       // |<---smaller tensor---->|<---padding--->|<------------------large tensor----------------------------->|
       if (model_saving_options.align_offset && static_cast<int64_t>(tensor_bytes_size) >
                                                    model_saving_options.align_threshold) {
-        ORT_RETURN_IF_NOT(ExternalDataInfo::AlignAndPad(external_stream, model_saving_options.allocation_granularity,
+        ORT_RETURN_IF_NOT(ExternalDataInfo::AlignAndPad(external_stream, model_saving_options.on_disk_alignment_factor,
                                                         external_offset),
                           "Failed writing external data to: ", model_external_file_path);
       }
@@ -4576,7 +4576,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
           auto& os = ExternalDataInfo::WritePrepackedToFileAndAddToProto(
               *prepacked_weights_for_graph_, blob_keys_to_external_data,
               model_saving_options.align_offset, model_saving_options.align_threshold,
-              model_saving_options.allocation_granularity,
+              model_saving_options.on_disk_alignment_factor,
               external_stream, external_offset, *output_proto);
           ORT_RETURN_IF_NOT(os.good(), "Failed to write pre-packed blobs to external file");
         }
