@@ -59,70 +59,6 @@ static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
   return has_ep;
 }
 
-// Tests that the QNN EP is registered when added via the public C++ API.
-// Loads a simple ONNX model that adds floats.
-TEST_F(QnnHTPBackendTests, TestAddEpUsingPublicApi) {
-  onnxruntime::ProviderOptions options;
-#if defined(_WIN32)
-  options["backend_path"] = "QnnHtp.dll";
-#else
-  options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
-
-  {
-    // Test C++ API to add QNN EP with the short name 'QNN'.
-    Ort::SessionOptions so;
-
-    // Can only enforce that model runs on QNN in linux CI machines
-    // because they support the CPU backend and emulate the HTP backend.
-    // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
-#if defined(__linux__)
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-#endif
-    so.AppendExecutionProvider("QNN", options);
-
-    Ort::Session session(*ort_env, ort_model_path, so);
-    ASSERT_TRUE(SessionHasEp(session, kQnnExecutionProvider))
-        << "QNN EP was not found in registered providers for session "
-        << "providers for session when added to session with name 'QNN'";
-  }
-
-  {
-    // Test C++ API to add QNN EP with the long canonical name 'QNNExecutionProvider'.
-    Ort::SessionOptions so;
-
-    // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
-#if defined(__linux__)
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-#endif
-    so.AppendExecutionProvider(kQnnExecutionProvider, options);
-
-    Ort::Session session(*ort_env, ort_model_path, so);
-    ASSERT_TRUE(SessionHasEp(session, kQnnExecutionProvider))
-        << "QNN EP was not found in registered providers for session "
-        << "when added to session with name '" << kQnnExecutionProvider << "'";
-  }
-
-  {
-    Ort::SessionOptions so;
-
-    // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
-#if defined(__linux__)
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-#endif
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
-
-    Ort::Session session(*ort_env, ort_model_path, so);
-    ASSERT_TRUE(SessionHasEp(session, "QnnAbiTestProvider"))
-        << "QNN EP was not found in registered providers for session "
-        << "when added to session with name '" << "QnnAbiTestProvider" << "'";
-  }
-}
-
 // Tests the `session.disable_cpu_ep_fallback` configuration option when the backend cannot be loaded.
 // When the option is enabled, session creation throws an exception because the backend cannot be found.
 TEST(QnnEP, TestDisableCPUFallback_BackendNotFound) {
@@ -434,6 +370,71 @@ TEST(QnnEP, TestInvalidSpecificationOfBothBackendTypeAndBackendPath) {
   }
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+// Tests that the QNN EP is registered when added via the public C++ API.
+// Loads a simple ONNX model that adds floats.
+TEST_F(QnnHTPBackendTests, TestAddEpUsingPublicApi) {
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
+
+  {
+    // Test C++ API to add QNN EP with the short name 'QNN'.
+    Ort::SessionOptions so;
+
+    // Can only enforce that model runs on QNN in linux CI machines
+    // because they support the CPU backend and emulate the HTP backend.
+    // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
+#if defined(__linux__)
+    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+#endif
+    so.AppendExecutionProvider("QNN", options);
+
+    Ort::Session session(*ort_env, ort_model_path, so);
+    ASSERT_TRUE(SessionHasEp(session, kQnnExecutionProvider))
+        << "QNN EP was not found in registered providers for session "
+        << "providers for session when added to session with name 'QNN'";
+  }
+
+  {
+    // Test C++ API to add QNN EP with the long canonical name 'QNNExecutionProvider'.
+    Ort::SessionOptions so;
+
+    // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
+#if defined(__linux__)
+    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+#endif
+    so.AppendExecutionProvider(kQnnExecutionProvider, options);
+
+    Ort::Session session(*ort_env, ort_model_path, so);
+    ASSERT_TRUE(SessionHasEp(session, kQnnExecutionProvider))
+        << "QNN EP was not found in registered providers for session "
+        << "when added to session with name '" << kQnnExecutionProvider << "'";
+  }
+
+  {
+    Ort::SessionOptions so;
+
+    // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
+#if defined(__linux__)
+    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+#endif
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
+
+    Ort::Session session(*ort_env, ort_model_path, so);
+    ASSERT_TRUE(SessionHasEp(session, "QnnAbiTestProvider"))
+        << "QNN EP was not found in registered providers for session "
+        << "when added to session with name '" << "QnnAbiTestProvider" << "'";
+  }
+}
+
 // Conv node `Conv` is not supported: GetFileLength for conv_qdq_external_ini.bin failed:open file conv_qdq_external_ini.bin fail,
 // errcode = 2 - The system cannot find the file specified.
 TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
@@ -477,7 +478,6 @@ TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
   }
 }
 
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 TEST_F(QnnHTPBackendTests, RunConvInt4Model) {
   {
     Ort::SessionOptions so;
