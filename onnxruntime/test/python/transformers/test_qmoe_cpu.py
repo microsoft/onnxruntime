@@ -292,8 +292,9 @@ def create_cpu_moe_onnx_graph(
             activation_type=activation,
             # Add new attributes with backwards-compatible default values
             swiglu_fusion=1 if (use_swiglu and swiglu_interleaved) else 0,  # 1 = fused and interleaved
-            activation_alpha=1.702,  # SwiGLU default alpha
-            activation_beta=1.0,  # SwiGLU default beta
+            swiglu_limit=7.0,
+            activation_alpha=1.702,
+            activation_beta=1.0,
             domain="com.microsoft",
         ),
     ]

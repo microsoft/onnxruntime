@@ -20,6 +20,7 @@ float ApplyActivation(float x, ActivationType activation_type) {
     case ActivationType::Identity:
       return x;
     case ActivationType::SwiGLU:
+      // SwiGLU is a special case handled by ApplySwiGLUActivation, this is just a placeholder
       return x;
     default:
       return x;
@@ -27,9 +28,7 @@ float ApplyActivation(float x, ActivationType activation_type) {
 }
 
 void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_format,
-                           float activation_alpha, float activation_beta) {
-  constexpr float clamp_limit = 7.0f;
-
+                           float activation_alpha, float activation_beta, float clamp_limit) {
   if (is_interleaved_format) {
     for (int64_t i = 0; i < inter_size; ++i) {
       float gate_val = data[2 * i];
