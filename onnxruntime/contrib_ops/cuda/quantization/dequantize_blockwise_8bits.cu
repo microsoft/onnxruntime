@@ -272,6 +272,7 @@ template Status Dequantize8Bits<half, uint8_t>(
     int block_size,
     cudaStream_t stream);
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 template Status Dequantize8Bits<__nv_bfloat16, uint8_t>(
     __nv_bfloat16* output,
     const uint8_t* quant_data,
@@ -282,6 +283,9 @@ template Status Dequantize8Bits<__nv_bfloat16, uint8_t>(
     int n,
     int block_size,
     cudaStream_t stream);
+#else
+DECLARE_DEQUANTIZE_FALLBACK(Dequantize8Bits, __nv_bfloat16, uint8_t, 8.0, "BFloat16")
+#endif
 
 template Status Dequantize8Bits<float, float>(
     float* output,
@@ -305,6 +309,7 @@ template Status Dequantize8Bits<half, half>(
     int block_size,
     cudaStream_t stream);
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 template Status Dequantize8Bits<__nv_bfloat16, __nv_bfloat16>(
     __nv_bfloat16* output,
     const uint8_t* quant_data,
@@ -315,6 +320,10 @@ template Status Dequantize8Bits<__nv_bfloat16, __nv_bfloat16>(
     int n,
     int block_size,
     cudaStream_t stream);
+#else
+DECLARE_DEQUANTIZE_FALLBACK(Dequantize8Bits, __nv_bfloat16, __nv_bfloat16, 8.0, "BFloat16")
+#endif
+#undef DECLARE_DEQUANTIZE_FALLBACK
 
 // Generic dequantization kernel for 8 bits
 template <
@@ -518,6 +527,7 @@ template Status DequantizeBlockwise8b<half>(
     int columns,
     cudaStream_t stream);
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 template Status DequantizeBlockwise8b<__nv_bfloat16>(
     __nv_bfloat16* dst,
     const uint8_t* src,
@@ -528,6 +538,13 @@ template Status DequantizeBlockwise8b<__nv_bfloat16>(
     int rows,
     int columns,
     cudaStream_t stream);
+#else
+template <>
+Status DequantizeBlockwise8b<__nv_bfloat16>(
+    __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const uint8_t*, int, bool, int, int, cudaStream_t) {
+  return Status::OK();
+}
+#endif
 
 }  // namespace cuda
 }  // namespace contrib

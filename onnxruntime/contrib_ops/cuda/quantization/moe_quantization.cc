@@ -54,9 +54,8 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
                                  const Tensor* fc2_scales,
                                  const Tensor* fc3_scales_optional,
                                  const cudaDeviceProp& device_prop) const {
-  auto stream = context->GetComputeStream();
-
   const int sm = device_prop.major * 10 + device_prop.minor;
+  CHECK_GPU_SUPPORT_DATA_TYPE(T, sm);
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -78,6 +77,7 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
   size_t expanded_source_row_to_expanded_dest_row_size = k_ * moe_params.num_rows * sizeof(int);
   size_t expert_for_source_row_size = k_ * moe_params.num_rows * sizeof(int);
 
+  auto stream = context->GetComputeStream();
   IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, ws_size, false, stream);
   IAllocatorUniquePtr<void> fc2_output = IAllocator::MakeUniquePtr<void>(allocator, fc2_output_size, false, stream);
   IAllocatorUniquePtr<void> expert_scales =
