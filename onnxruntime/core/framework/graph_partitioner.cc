@@ -913,7 +913,8 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   // Generate EP compatibility strings for OrtEp types and add to model metadata
   // At this point, the graph has been populated with all the EPContext nodes
   {
-    const GraphViewer graph_viewer(graph);
+    ORT_RETURN_IF_ERROR(ep_graph.Resolve());
+    const GraphViewer graph_viewer(ep_graph);
     for (const auto& ep : execution_providers) {
       try {
         // Generate the compatibility string for this EP
