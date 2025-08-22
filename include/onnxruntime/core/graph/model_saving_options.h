@@ -32,13 +32,8 @@ struct ModelSavingOptions {
   // Only when tensor's data size is > the page_align_threshold it will be force
   // aligned. Default to 1MB.
   int64_t align_threshold = 1048576;
-  // The allocation Granularity for mmap() support.
-  // Typically 64KB for Windows & 4KB for other OSes. Default to 64KB.
-#ifdef _WIN32
-  int64_t allocation_granularity = 65536;
-#else
-  int64_t allocation_granularity = 4096;
-#endif
+  // Alignment factor for big tensors (bigger than align_threshold).
+  int64_t on_disk_alignment_factor = 4096;
   // Force embed all external initializer into the Onnx file
   // Used for EPContext model generation while some nodes fallback on CPU which has external data dependency
   bool force_embed_external_ini = false;

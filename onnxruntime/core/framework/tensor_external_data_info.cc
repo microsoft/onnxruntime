@@ -107,7 +107,7 @@ void ExternalDataInfo::SetExternalLocationToProto(const std::filesystem::path& e
 std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
     const PrepackedWeightsForGraph& prepacked_for_graph,
     const InlinedHashSet<std::string>& blob_keys, bool align,
-    int64_t align_threshold, int64_t allocation_granularity,
+    int64_t align_threshold, int64_t on_disk_alignment_factor,
     std::ostream& os, int64_t& external_offset, ::ONNX_NAMESPACE::TensorProto& proto) {
   size_t key_count = 0;
   for (const auto& key : blob_keys) {
@@ -120,7 +120,7 @@ std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
       const auto size_in_bytes = prepacked_weights->buffer_sizes_[i];
       if (align && static_cast<int64_t>(size_in_bytes) > align_threshold) {
         // return early on error
-        if (!AlignAndPad(os, allocation_granularity, external_offset)) {
+        if (!AlignAndPad(os, on_disk_alignment_factor, external_offset)) {
           return os;
         }
       }
