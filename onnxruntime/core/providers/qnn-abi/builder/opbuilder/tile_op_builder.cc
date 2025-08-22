@@ -1,0 +1,116 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/providers/qnn-abi/builder/opbuilder/base_op_builder.h"
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn-abi/builder/op_builder_factory.h"
+#include "core/providers/cpu/tensor/slice_helper.h"
+
+namespace onnxruntime {
+namespace qnn {
+class TileOpBuilder : public BaseOpBuilder {
+ public:
+  TileOpBuilder() : BaseOpBuilder("TileOpBuilder") {}
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TileOpBuilder);
+
+ protected:
+  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                       const OrtNodeUnit& node_unit,
+                       const logging::Logger& logger,
+                       std::vector<std::string>& input_names,
+                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
+
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                     const OrtNodeUnit& node_unit,
+                                     std::vector<std::string>&& input_names,
+                                     const logging::Logger& logger,
+                                     bool do_op_validation) const override ORT_MUST_USE_RESULT;
+
+  Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                  const OrtNodeUnit& node_unit,
+                                  const logging::Logger& logger,
+                                  const std::vector<std::string>& input_names,
+                                  size_t output_index,
+                                  Qnn_DataType_t qnn_data_type,
+                                  QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
+};
+
+Status TileOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                    const OrtNodeUnit& node_unit,
+                                    const logging::Logger& logger,
+                                    std::vector<std::string>& input_names,
+                                    bool do_op_validation) const {
+  const auto& inputs = node_unit.Inputs();
+  // QNN Tile only support 1 input, the 2nd input need to be initializer and set as Qnn node parameter
+  if (do_op_validation) {
+    auto& repeats_input_name = inputs[1].name;
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsConstantInput(repeats_input_name),
+                      "Qnn doesn't support dynamic repeats input");
+  }
+
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
+
+  return Status::OK();
+}
+
+Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                  const OrtNodeUnit& node_unit,
+                                                  std::vector<std::string>&& input_names,
+                                                  const logging::Logger& logger,
+                                                  bool do_op_validation) const {
+  std::vector<std::string> param_tensor_names;
+  // Already confirmed repeats input is initializer in ProcessInputs()
+  const auto& repeats_input_name = node_unit.Inputs()[1].name;
+
+  std::vector<uint8_t> unpacked_tensor;
+  const auto& input_tensor = qnn_model_wrapper.GetConstantTensor(repeats_input_name);
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(const_cast<OrtValueInfo&>(*input_tensor),
+                                                              unpacked_tensor));
+  // Onnx repeats are int64, Qnn use uint32
+  const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+  size_t tensor_byte_size = unpacked_tensor.size();
+  size_t size = tensor_byte_size / sizeof(int64_t);
+
+  std::vector<uint32_t> multiples;
+  std::transform(tensor_data, tensor_data + size, std::back_inserter(multiples),
+                 [](int64_t item) { return SafeInt<uint32_t>(item); });
+
+  uint32_t multiples_size = static_cast<uint32_t>(multiples.size());
+  std::vector<uint32_t> multiples_dim{multiples_size};
+  QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), QNN_OP_TILE_PARAM_MULTIPLES, std::move(multiples_dim),
+                                  std::move(multiples));
+  param_tensor_names.push_back(multiples_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(multiples_param));
+
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
+                                     std::move(input_names),
+                                     std::move(param_tensor_names),
+                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
+
+  return Status::OK();
+}
+
+Status TileOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                               const OrtNodeUnit& node_unit,
+                                               const logging::Logger& logger,
+                                               const std::vector<std::string>& input_names,
+                                               size_t output_index,
+                                               Qnn_DataType_t qnn_data_type,
+                                               QnnQuantParamsWrapper& quant_param) const {
+  if (!quant_param.IsPerTensor()) {
+    return Status::OK();
+  }
+
+  // Force the Tile operator output to use the same quantization parameters as the input if nearly equal.
+  // This helps the HTP backend employ certain optimizations.
+  return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
+                                                  0 /*input_index*/, output_index, qnn_data_type, quant_param);
+}
+
+void CreateTileOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.AddOpBuilder(op_type, std::make_unique<TileOpBuilder>());
+}
+
+}  // namespace qnn
+}  // namespace onnxruntime

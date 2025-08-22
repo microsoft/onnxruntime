@@ -26,6 +26,10 @@ const ::onnxruntime::Environment& GetEnvironment() {
   return ((OrtEnv*)*ort_env.get())->GetEnvironment();
 }
 
+Ort::Env* GetOrtEnv() {
+  return ort_env.get();
+}
+
 ::onnxruntime::logging::LoggingManager& DefaultLoggingManager() {
   return *((OrtEnv*)*ort_env.get())->GetEnvironment().GetLoggingManager();
 }

@@ -147,7 +147,7 @@
             RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
     set(onnxruntime_providers_qnn_target onnxruntime_providers_qnn)
-    
+
     if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
       add_custom_command(
         TARGET ${onnxruntime_providers_qnn_target} POST_BUILD

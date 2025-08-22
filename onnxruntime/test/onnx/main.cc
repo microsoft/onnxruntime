@@ -56,7 +56,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
-      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
+      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'qnn_abi', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -221,6 +221,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
   bool enable_qnn = false;
+  bool enable_qnn_abi = false;
   bool enable_nnapi = false;
   bool enable_vsinpu = false;
   bool enable_coreml = false;
@@ -242,6 +243,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   std::basic_string<ORTCHAR_T> ep_runtime_config_string;
   std::unordered_map<std::string, std::string> session_config_entries;
   std::string provider_name = "cpu";
+  // Only used for ABI
+  std::string registration_name = "";
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
   bool verbose_logging_required = false;
@@ -305,6 +308,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_tensorrt = true;
           } else if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
             enable_qnn = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("qnn_abi"))) {
+            enable_qnn_abi = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
           } else if (!CompareCString(optarg, ORT_TSTR("vsinpu"))) {
@@ -536,7 +541,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_qnn) {
+    if (enable_qnn || enable_qnn_abi) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
       std::string option_string = ToUTF8String(ep_runtime_config_string);
@@ -634,7 +639,58 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
         qnn_options[key] = value;
       }
-      sf.AppendExecutionProvider("QNN", qnn_options);
+      if (enable_qnn_abi) {
+        const OrtApi& c_api = Ort::GetApi();
+        const std::filesystem::path& library_path = "onnxruntime_providers_qnn_abi.dll";
+        registration_name = "QnnAbiTestProvider";
+        OrtStatusPtr status = c_api.RegisterExecutionProviderLibrary(env,
+                                                                     registration_name.c_str(),
+                                                                     library_path.c_str());
+        if (status != nullptr) {
+          fprintf(stderr, "Failed to register execution provider library: %s\n",
+                  Ort::GetApi().GetErrorMessage(status));
+          Ort::GetApi().ReleaseStatus(status);
+          return -1;
+        }
+
+        const OrtEpDevice* const* ep_devices = nullptr;
+        size_t num_devices;
+        status = c_api.GetEpDevices(env, &ep_devices, &num_devices);
+        if (status != nullptr) {
+          fprintf(stderr, "Failed to get EP devices: %s\n",
+                  Ort::GetApi().GetErrorMessage(status));
+          Ort::GetApi().ReleaseStatus(status);
+          return -1;
+        }
+
+        auto target_hw_device_type = OrtHardwareDeviceType_CPU;
+        if ((qnn_options.find("backend_type") != qnn_options.end() && qnn_options.at("backend_type") == "htp") ||
+            (qnn_options.find("backend_path") != qnn_options.end() && qnn_options.at("backend_path") ==
+#if _WIN32
+                                                                          "QnnHtp.dll"
+#else
+                                                                          "libQnnHtp.so"
+#endif
+             )) {
+          target_hw_device_type = OrtHardwareDeviceType_NPU;
+        }
+
+        auto it = std::find_if(ep_devices, ep_devices + num_devices,
+                               [&c_api, &registration_name, &target_hw_device_type](const OrtEpDevice* ep_device) {
+                                 return (c_api.EpDevice_EpName(ep_device) == registration_name &&
+                                         c_api.HardwareDevice_Type(c_api.EpDevice_Device(ep_device)) == target_hw_device_type);
+                               });
+
+        if (it == ep_devices + num_devices) {
+          fprintf(stderr, "Failed to find QNN ABI test provider device\n");
+          return -1;
+        }
+
+        sf.AppendExecutionProvider_V2(env, {Ort::ConstEpDevice(*it)}, qnn_options);
+      } else {
+        // old version
+        sf.AppendExecutionProvider("QNN", qnn_options);
+      }
 #else
       fprintf(stderr, "QNN is not supported in this build");
       return -1;
@@ -935,7 +991,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
       all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
-    if (enable_qnn) {
+    if (enable_qnn || enable_qnn_abi) {
       all_disabled_tests.insert(std::begin(qnn_disabled_tests), std::end(qnn_disabled_tests));
       all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
@@ -973,6 +1029,14 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   for (const auto& p : stat.GetFailedTest()) {
     fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
     result = -1;
+  }
+  if (enable_qnn_abi) {
+    auto status = Ort::GetApi().UnregisterExecutionProviderLibrary(env, registration_name.c_str());
+    if (status != nullptr) {
+      fprintf(stderr, "Failed to unregister execution provider library: %s\n",
+              Ort::GetApi().GetErrorMessage(status));
+      Ort::GetApi().ReleaseStatus(status);
+    }
   }
   return result;
 }

@@ -5,6 +5,7 @@
 
 #include "test/providers/qnn/qnn_test_utils.h"
 #include <cassert>
+#include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
@@ -13,6 +14,7 @@
 #include "core/common/span_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 
@@ -97,6 +99,73 @@ void TryEnableQNNSaver(ProviderOptions& qnn_options) {
   }
 }
 
+void RegisterQnnEpLibrary(RegisteredEpDeviceUniquePtr& registered_ep_device,
+                          Ort::SessionOptions& session_options,
+                          const std::string& registration_name,
+                          const std::unordered_map<std::string, std::string>& ep_options,
+                          bool simulated) {
+  Ort::Env* ort_env = GetOrtEnv();
+  const OrtApi& c_api = Ort::GetApi();
+
+  std::filesystem::path library_path = "";
+  if (simulated) {
+    library_path =
+#if _WIN32
+        "onnxruntime_providers_qnn_abi_simulation.dll";
+#else
+        "libonnxruntime_providers_qnn_abi_simulation.so";
+#endif
+  } else {
+    library_path =
+#if _WIN32
+        "onnxruntime_providers_qnn_abi.dll";
+#else
+        "libonnxruntime_providers_qnn_abi.so";
+#endif
+  }
+
+  ASSERT_ORTSTATUS_OK(c_api.RegisterExecutionProviderLibrary(*ort_env,
+                                                             registration_name.c_str(),
+                                                             library_path.c_str()));
+
+  const OrtEpDevice* const* ep_devices = nullptr;
+  size_t num_devices;
+  ASSERT_ORTSTATUS_OK(c_api.GetEpDevices(*ort_env, &ep_devices, &num_devices));
+
+  auto target_hw_device_type = OrtHardwareDeviceType_CPU;
+  if ((ep_options.find("backend_type") != ep_options.end() && ep_options.at("backend_type") == "htp") ||
+      (ep_options.find("backend_path") != ep_options.end() && ep_options.at("backend_path") ==
+#if _WIN32
+                                                                  "QnnHtp.dll"
+#else
+                                                                  "libQnnHtp.so"
+#endif
+       )) {
+#if defined(__linux__)
+    target_hw_device_type = OrtHardwareDeviceType_CPU;
+#else
+    target_hw_device_type = OrtHardwareDeviceType_NPU;
+#endif
+  }
+
+  auto it = std::find_if(ep_devices, ep_devices + num_devices,
+                         [&c_api, &registration_name, &target_hw_device_type](const OrtEpDevice* ep_device) {
+                           return (c_api.EpDevice_EpName(ep_device) == registration_name &&
+                                   c_api.HardwareDevice_Type(c_api.EpDevice_Device(ep_device)) == target_hw_device_type);
+                         });
+
+  ASSERT_NE(it, ep_devices + num_devices);
+
+  registered_ep_device = RegisteredEpDeviceUniquePtr(*it, [registration_name](const OrtEpDevice* /*ep*/) {
+    OrtStatus* status = Ort::GetApi().UnregisterExecutionProviderLibrary(*GetOrtEnv(), registration_name.c_str());
+    if (status != nullptr) {
+      Ort::GetApi().ReleaseStatus(status);
+    }
+  });
+
+  session_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(registered_ep_device.get())}, ep_options);
+}
+
 void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err, logging::Severity log_severity, bool verify_outputs,
@@ -128,6 +197,23 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
                             QnnExecutionProviderWithOptions(provider_options),
                             helper.feeds_, verification_params,
                             {}, verify_outputs);
+
+#if !BUILD_QNN_EP_STATIC_LIB
+  // Run with QNN-ABI.
+  std::cout << "DEBUG: ABI Test" << std::endl;
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  const std::string& registration_name = "QnnAbiTestProvider";
+  Ort::SessionOptions session_options;
+  RegisterQnnEpLibrary(registered_ep_device, session_options, registration_name, provider_options);
+
+  RunAndVerifyOutputsWithEPABI(AsByteSpan(model_data.data(), model_data.size()),
+                               session_options,
+                               registration_name,
+                               "QNN_EP_ABI_TestLogID",
+                               helper.feeds_,
+                               verification_params,
+                               verify_outputs);
+#endif  // !BUILD_QNN_EP_STATIC_LIB
 }
 
 void InferenceModel(const std::string& model_data, const char* log_id,
@@ -183,6 +269,49 @@ void InferenceModel(const std::string& model_data, const char* log_id,
   }
 
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &output_vals));
+}
+
+void InferenceModelABI(const std::string& model_data,
+                       const char* log_id,
+                       const ProviderOptions& provider_options,
+                       ExpectedEPNodeAssignment expected_ep_assignment,
+                       const NameMLValMap& feeds,
+                       std::vector<OrtValue>& output_vals,
+                       const std::unordered_map<std::string, std::string>& session_option_pairs,
+                       std::function<void(const Graph&)>* graph_checker) {
+  std::cout << "DEBUG: ABI InferenceModel" << std::endl;
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  const std::string& registration_name = "QnnAbiTestProvider";
+  Ort::SessionOptions session_options;
+  RegisterQnnEpLibrary(registered_ep_device, session_options, registration_name, provider_options);
+
+  session_options.SetLogId(log_id);
+  for (auto key_value : session_option_pairs) {
+    session_options.AddConfigEntry(key_value.first.c_str(), key_value.second.c_str());
+  }
+
+  Ort::RunOptions ort_run_options;
+  ort_run_options.SetRunTag(log_id);
+
+  OrtSessionWrapper ort_session(*GetOrtEnv(), model_data.data(), static_cast<int>(model_data.size()), session_options);
+
+  // Verify node assignment.
+  const auto& graph = ort_session.GetGraph();
+
+  auto ep_nodes = CountAssignedNodes(graph, registration_name);
+  if (expected_ep_assignment == ExpectedEPNodeAssignment::All) {
+    ASSERT_EQ(ep_nodes, graph.NumberOfNodes()) << "Not all nodes were assigned to " << registration_name;
+  } else if (expected_ep_assignment == ExpectedEPNodeAssignment::None) {
+    ASSERT_EQ(ep_nodes, 0) << "No nodes are supposed to be assigned to " << registration_name;
+  } else {
+    ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << registration_name;
+  }
+
+  if (graph_checker) {
+    (*graph_checker)(graph);
+  }
+
+  RunWithEPABI(&ort_session, ort_run_options, feeds, output_vals);
 }
 
 NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,

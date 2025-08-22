@@ -550,7 +550,6 @@ Status PluginExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const>
 }
 std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTransfer() const {
   OrtDataTransferImpl* data_transfer_impl = nullptr;
-
   if (ep_factory_.CreateDataTransfer != nullptr) {
     OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
     if (status != nullptr) {

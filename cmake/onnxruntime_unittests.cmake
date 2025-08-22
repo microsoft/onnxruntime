@@ -1118,7 +1118,7 @@ if (NOT IOS)
 
     target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} nlohmann_json::nlohmann_json)
     target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
-
+    
     if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_link_libraries(onnx_test_runner PRIVATE Python::Python)
     endif()
@@ -1239,7 +1239,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_include_directories(onnxruntime_perf_test PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
           ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
           ${CMAKE_CURRENT_BINARY_DIR})
-
+    
     if (WIN32)
       target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
       if (NOT DEFINED SYS_PATH_LIB)
@@ -1345,7 +1345,7 @@ endif()
     if (onnxruntime_USE_CUDA)
       list(APPEND onnxruntime_shared_lib_test_LIBS)
     endif()
-
+    
     if (onnxruntime_USE_TENSORRT)
       list(APPEND onnxruntime_shared_lib_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
@@ -1379,7 +1379,7 @@ endif()
     if (onnxruntime_USE_NV)
       target_include_directories(onnxruntime_shared_lib_test PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
     endif()
-
+    
 
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       target_sources(onnxruntime_shared_lib_test PRIVATE
@@ -1436,7 +1436,7 @@ endif()
       DEPENDS ${all_dependencies}
     )
 
-
+    
 
     target_compile_definitions(onnxruntime_test_debug_node_inputs_outputs
       PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)

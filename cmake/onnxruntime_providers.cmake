@@ -164,6 +164,10 @@ endif()
 
 if (onnxruntime_USE_QNN)
   include(onnxruntime_providers_qnn.cmake)
+  if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+   include(onnxruntime_providers_qnn_abi.cmake)
+   include(onnxruntime_providers_qnn_abi_simulation.cmake)
+  endif()
 endif()
 
 if (onnxruntime_USE_RKNPU)
