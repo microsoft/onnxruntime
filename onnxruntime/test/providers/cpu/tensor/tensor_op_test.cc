@@ -54,11 +54,9 @@ TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape) {
     OpTester test("Reshape");
     test.AddInput<float>("data", {1, 0}, std::vector<float>());
     test.AddInput<int64_t>("shape", {3}, {1, 0, -1}, false);
-    test.AddOutput<float>("reshaped", {1, 0, 1}, {});
+    test.AddOutput<float>("reshaped", {1, 0, 0}, {});
     // TensorRT, QNN don't support empty dimension
-    test.Run(OpTester::ExpectResult::kExpectFailure,
-             "The input tensor cannot be reshaped to the requested shape",
-             {kTensorrtExecutionProvider, kQnnExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
   }
 
   {
