@@ -137,9 +137,9 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
                              WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
-                             WGSL_TEMPLATE_PARAMETER(is_nvidia, is_nvidia_),
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
+                             WGSL_TEMPLATE_PARAMETER(prefer_subgroupshuffle, !is_nvidia_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_));
 }
