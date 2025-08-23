@@ -54,7 +54,7 @@ macro(setup_cuda_compiler)
     message(FATAL_ERROR "No CUDA compiler found")
   endif()
 
-  set(CUDA_REQUIRED_VERSION "11.4")
+  set(CUDA_REQUIRED_VERSION "11.8")
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS CUDA_REQUIRED_VERSION)
     message(FATAL_ERROR "CUDA version ${CMAKE_CUDA_COMPILER_VERSION} must be at least ${CUDA_REQUIRED_VERSION}")
   endif()

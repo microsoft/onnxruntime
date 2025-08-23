@@ -29,8 +29,17 @@
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4310)  // Ignore warning C4310: cast truncates constant value.
+#endif
+
 #include "cutlass/array.h"
 #include "cutlass/numeric_conversion.h"
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
@@ -43,7 +52,10 @@
 #include <cub/device/device_radix_sort.cuh>
 #include <cub/util_type.cuh>
 
+#include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
+
+using namespace onnxruntime::cuda;  // to use bfloat16 fallback defined in common.cuh
 
 namespace ort_fastertransformer {
 static constexpr int WARP_SIZE = 32;
@@ -904,8 +916,7 @@ inline __device__ float4 operator*(const float4 a, const float4 b) {
 }
 
 // TODO(wy): use cuda common header and investigate pipeline build issue.
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530 && \
-    ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530 && CUDART_VERSION < 12020
 inline __device__ half operator*(const half a, const half b) { return __float2half(__half2float(a) * __half2float(b)); }
 
 inline __device__ half2 operator*(const half2 a, const half2 b) { return make_half2(a.x * b.x, a.y * b.y); }
@@ -913,8 +924,7 @@ inline __device__ half2 operator*(const half2 a, const half2 b) { return make_ha
 
 // TODO(wy): use cuda common header and investigate pipeline build issue.
 inline __device__ half2_2 operator*(const half2_2 a, const half2_2 b) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530 && \
-    ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530 && CUDART_VERSION < 12020
   half2_2 result;
   result.x = a.x * b.x;
   result.y = a.y * b.y;
@@ -924,17 +934,11 @@ inline __device__ half2_2 operator*(const half2_2 a, const half2_2 b) {
 #endif
 }
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 inline __device__ __nv_bfloat162_2 operator*(const __nv_bfloat162_2 a, const __nv_bfloat162_2 b) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800 && \
-    ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
-  __nv_bfloat162_2 result;
-  result.x = a.x * b.x;
-  result.y = a.y * b.y;
-  return result;
-#else
   return __nv_bfloat162_2{__hmul2(a.x, b.x), __hmul2(a.y, b.y)};
-#endif
 }
+#endif
 
 }  // anonymous namespace
 
@@ -951,23 +955,39 @@ __global__ void elementWiseMulKernel(T* output, T const* input, size_t inter_siz
   }
 }
 
+template <typename T, bool Vectorized>
+void launchElementWiseMul(T* output, T const* input, int inter_size, int num_tokens, cudaStream_t stream) {
+  int const blocks = num_tokens;
+  if constexpr (Vectorized) {
+    if (inter_size & 3 == 0) {
+      using vec_type = typename T4<T>::Type;
+      int const threads = std::min(inter_size / 4, 1024);
+      elementWiseMulKernel<vec_type><<<blocks, threads, 0, stream>>>(
+          reinterpret_cast<vec_type*>(output), reinterpret_cast<vec_type const*>(input), inter_size / 4);
+      return;
+    } else if (inter_size & 1 == 0) {
+      using vec_type = typename T2<T>::Type;
+      int const threads = std::min(inter_size / 2, 1024);
+      elementWiseMulKernel<vec_type><<<blocks, threads, 0, stream>>>(
+          reinterpret_cast<vec_type*>(output), reinterpret_cast<vec_type const*>(input), inter_size / 2);
+      return;
+    }
+  }
+
+  int const threads = std::min(inter_size, 1024);
+  elementWiseMulKernel<T><<<blocks, threads, 0, stream>>>(output, input, inter_size);
+}
+
 template <typename T>
 void elementWiseMul(T* output, T const* input, int inter_size, int num_tokens, cudaStream_t stream) {
-  int const blocks = num_tokens;
-
-  if (inter_size & 3 == 0) {
-    using vec_type = typename T4<T>::Type;
-    int const threads = std::min(inter_size / 4, 1024);
-    elementWiseMulKernel<vec_type><<<blocks, threads, 0, stream>>>(
-        reinterpret_cast<vec_type*>(output), reinterpret_cast<vec_type const*>(input), inter_size / 4);
-  } else if (inter_size & 1 == 0) {
-    using vec_type = typename T2<T>::Type;
-    int const threads = std::min(inter_size / 2, 1024);
-    elementWiseMulKernel<vec_type><<<blocks, threads, 0, stream>>>(
-        reinterpret_cast<vec_type*>(output), reinterpret_cast<vec_type const*>(input), inter_size / 2);
+  if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
+    launchElementWiseMul<T, false>(output, input, inter_size, num_tokens, stream);
+#else
+    launchElementWiseMul<T, true>(output, input, inter_size, num_tokens, stream);
+#endif
   } else {
-    int const threads = std::min(inter_size, 1024);
-    elementWiseMulKernel<T><<<blocks, threads, 0, stream>>>(output, input, inter_size);
+    launchElementWiseMul<T, true>(output, input, inter_size, num_tokens, stream);
   }
 }
 
@@ -1233,14 +1253,6 @@ void initialize_moe_routing_kernelLauncher(const T* unpermuted_input, T* permute
 
 // Final kernel to unpermute and scale
 // This kernel unpermutes the original data, does the k-way reduction and performs the final skip connection.
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
-template <typename T, int RESIDUAL_NUM>
-__global__ void finalize_moe_routing_kernel(const T*, T*, const T*, const T*, const T*, const T*, const int*,
-                                            const int*, int, int) {
-  // Does not support pre-Kepler architectures
-  ;
-}
-#else
 template <typename T, int RESIDUAL_NUM>
 __global__ void finalize_moe_routing_kernel(const T* expanded_permuted_rows, T* reduced_unpermuted_output,
                                             const T* skip_1, const T* skip_2, const T* bias, const T* scales,
@@ -1285,7 +1297,6 @@ __global__ void finalize_moe_routing_kernel(const T* expanded_permuted_rows, T* 
     reduced_row_ptr[tid] = thread_output;
   }
 }
-#endif
 
 template <typename T>
 void finalize_moe_routing_kernelLauncher(const T* expanded_permuted_rows, T* reduced_unpermuted_output, const T* bias,
@@ -1358,20 +1369,50 @@ template void initialize_moe_routing_kernelLauncher(const __nv_bfloat16*, __nv_b
                                                     cudaStream_t);
 
 // ==================== Specializations for final routing ===================================
-template void finalize_moe_routing_kernelLauncher(const float*, float*, const float*, const float*, const int*,
-                                                  const int*, int, int, int, cudaStream_t);
-template void finalize_moe_routing_kernelLauncher(const half*, half*, const half*, const half*, const int*,
-                                                  const int*, int, int, int, cudaStream_t);
-template void finalize_moe_routing_kernelLauncher(const float*, float*, const float*, const float*, const float*,
-                                                  const int*, const int*, int, int, int, cudaStream_t);
-template void finalize_moe_routing_kernelLauncher(const half*, half*, const half*, const half*, const half*,
-                                                  const int*, const int*, int, int, int, cudaStream_t);
 template void finalize_moe_routing_kernelLauncher(const float*, float*, const float*, const float*, const float*,
                                                   const float*, const int*, const int*, int, int, int, cudaStream_t);
-template void finalize_moe_routing_kernelLauncher(const half*, half*, const half*, const half*, const half*,
-                                                  const half*, const int*, const int*, int, int, int, cudaStream_t);
-template void finalize_moe_routing_kernelLauncher(const __nv_bfloat16*, __nv_bfloat16*, const __nv_bfloat16*,
-                                                  const __nv_bfloat16*, const int*, const int*, int, int, int, cudaStream_t);
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 530
+template void finalize_moe_routing_kernelLauncher(const half* expanded_permuted_rows,
+                                                  half* reduced_unpermuted_output,
+                                                  const half* skip_1,
+                                                  const half* skip_2,
+                                                  const half* bias,
+                                                  const half* scales,
+                                                  const int* expanded_source_row_to_expanded_dest_row,
+                                                  const int* expert_for_source_row,
+                                                  int num_rows,
+                                                  int cols,
+                                                  int k,
+                                                  cudaStream_t stream);
+#else
+template <>
+void finalize_moe_routing_kernelLauncher(const half*, half*, const half*, const half*, const half*, const half*,
+  const int*, const int*, int, int, int, cudaStream_t) {
+  return;
+}
+#endif
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+template void finalize_moe_routing_kernelLauncher(const __nv_bfloat16* expanded_permuted_rows,
+                                                  __nv_bfloat16* reduced_unpermuted_output,
+                                                  const __nv_bfloat16* skip_1,
+                                                  const __nv_bfloat16* skip_2,
+                                                  const __nv_bfloat16* bias,
+                                                  const __nv_bfloat16* scales,
+                                                  const int* expanded_source_row_to_expanded_dest_row,
+                                                  const int* expert_for_source_row,
+                                                  int num_rows,
+                                                  int cols,
+                                                  int k,
+                                                  cudaStream_t stream);
+#else
+template <>
+void finalize_moe_routing_kernelLauncher(const __nv_bfloat16*, __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
+  const int*, const int*, int, int, int, cudaStream_t) {
+  return;
+}
+#endif
 
 template void invokeSwiGLU<float, true, true>(float*, float const*, int, int, float, float, cudaStream_t);
 template void invokeSwiGLU<half, true, true>(half*, half const*, int, int, float, float, cudaStream_t);
