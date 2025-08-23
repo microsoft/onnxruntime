@@ -439,7 +439,6 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
   SYSTEM_INFO sysinfo;
   GetSystemInfo(&sysinfo);
 
-  // static const DWORD page_size = sysinfo.dwPageSize;
   static const DWORD allocation_granularity = sysinfo.dwAllocationGranularity;
   const FileOffsetType offset_to_granularity = offset % static_cast<FileOffsetType>(allocation_granularity);
   const size_t mapped_length = length + static_cast<size_t>(offset_to_granularity);
