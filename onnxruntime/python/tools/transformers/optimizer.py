@@ -59,6 +59,7 @@ MODEL_TYPES = {
     "gpt2_tf": (Gpt2OnnxModel, "tf2onnx", 0),  # might add a class for GPT2OnnxModel for TF later.
     "gpt_neox": (BertOnnxModel, "pytorch", 0),  # GPT-NeoX
     "phi": (PhiOnnxModel, "pytorch", 0),
+    "qwen3": (BertOnnxModel, "pytorch", 1),  # Qwen3 Embedding model
     "sam2": (Sam2OnnxModel, "pytorch", 1),
     "swin": (BertOnnxModel, "pytorch", 1),
     "tnlr": (TnlrOnnxModel, "pytorch", 1),
@@ -240,7 +241,7 @@ def optimize_by_fusion(
      Returns:
         object of an optimizer class.
     """
-    if model_type not in ["bert", "t5", "swin", "unet", "vae", "clip", "sam2", "mmdit"] and (
+    if model_type not in ["bert", "t5", "swin", "unet", "vae", "clip", "sam2", "mmdit", "qwen3"] and (
         num_heads == 0 or hidden_size == 0
     ):
         logger.warning(f"Please specify parameters of num_heads and hidden_size for model_type {model_type}")
