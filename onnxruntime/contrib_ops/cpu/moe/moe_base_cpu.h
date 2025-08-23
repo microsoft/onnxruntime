@@ -6,7 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/op_kernel.h"
-#include "contrib_ops/cpu/quantization/moe_helper.h"
+#include "contrib_ops/cpu/moe/moe_helper.h"
 #include <limits>
 
 namespace onnxruntime {
