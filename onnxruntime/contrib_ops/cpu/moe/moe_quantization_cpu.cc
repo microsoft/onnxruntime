@@ -106,7 +106,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
-  // --- Intermediate buffers will be float for precision ---
   const size_t output_buffer_size = output->Shape().Size();
   auto final_output_float_ptr = IAllocator::MakeUniquePtr<float>(allocator, output_buffer_size);
   float* final_output_float = final_output_float_ptr.get();
@@ -183,6 +182,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   }
 
   int num_threads = std::min(static_cast<int>(num_experts), concurrency::ThreadPool::DegreeOfParallelism(tp));
+  if (num_threads == 0) num_threads = 1;
   auto thread_local_outputs_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads) * output_buffer_size);
   float* thread_local_outputs = thread_local_outputs_ptr.get();
   memset(thread_local_outputs, 0, static_cast<size_t>(num_threads) * output_buffer_size * sizeof(float));
@@ -204,15 +204,15 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const size_t bias1_size = fc1_out_features;
   const size_t bias2_size = hidden_size;
 
-  const size_t workspace_size_per_thread = A1_size + C1_size + A2_size + C2_size + B1_dequant_size + B2_dequant_size + bias1_size + bias2_size;
-  auto workspace_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads) * workspace_size_per_thread);
+  const size_t workspace_elements_per_thread = A1_size + C1_size + A2_size + C2_size + B1_dequant_size + B2_dequant_size + bias1_size + bias2_size;
+  auto workspace_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads) * workspace_elements_per_thread);
   float* workspace = workspace_ptr.get();
 
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_threads, [&](std::ptrdiff_t thread_id_pd) {
     int thread_id = static_cast<int>(thread_id_pd);
     auto work = concurrency::ThreadPool::PartitionWork(thread_id, num_threads, num_experts);
 
-    float* thread_workspace = workspace + static_cast<size_t>(thread_id) * workspace_size_per_thread;
+    float* thread_workspace = workspace + static_cast<size_t>(thread_id) * workspace_elements_per_thread;
 
     for (int64_t expert_idx = work.start; expert_idx < work.end; ++expert_idx) {
       const auto& routes = expert_token_map[expert_idx];
@@ -269,11 +269,9 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
       // --- Activation ---
       for (int64_t i = 0; i < num_expert_tokens; ++i) {
-        ApplySwiGLUActivation(C1 + i * fc1_out_features, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
-      }
-
-      for (int64_t i = 0; i < num_expert_tokens; ++i) {
-        memcpy(A2 + i * inter_size, C1 + i * fc1_out_features, inter_size * sizeof(float));
+        const float* C1_token = C1 + i * fc1_out_features;
+        float* A2_token = A2 + i * inter_size;
+        ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
       }
 
       // --- FC2 GEMM (A2 * W2^T) ---
@@ -298,7 +296,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         }
       }
 
-      // --- Scatter results to thread-local output buffer ---
       for (int64_t i = 0; i < num_expert_tokens; ++i) {
         const int64_t route_idx = routes[i];
         const int64_t token_idx = route_idx / k_;
@@ -332,21 +329,15 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-// Explicit template instantiation for float
+// Explicit template instantiation
 template QMoECPU<float>::QMoECPU(const OpKernelInfo& op_kernel_info);
 template Status QMoECPU<float>::Compute(OpKernelContext* context) const;
-
-// Explicit template instantiation for MLFloat16
 template QMoECPU<MLFloat16>::QMoECPU(const OpKernelInfo& op_kernel_info);
 template Status QMoECPU<MLFloat16>::Compute(OpKernelContext* context) const;
 
 // Kernel Registration
 ONNX_OPERATOR_TYPED_KERNEL_EX(
-    QMoE,
-    kMSDomain,
-    1,
-    float,
-    kCpuExecutionProvider,
+    QMoE, kMSDomain, 1, float, kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
@@ -354,11 +345,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     QMoECPU<float>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
-    QMoE,
-    kMSDomain,
-    1,
-    MLFloat16,
-    kCpuExecutionProvider,
+    QMoE, kMSDomain, 1, MLFloat16, kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())

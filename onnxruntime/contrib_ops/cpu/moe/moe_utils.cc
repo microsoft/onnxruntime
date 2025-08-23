@@ -27,12 +27,12 @@ float ApplyActivation(float x, ActivationType activation_type) {
   }
 }
 
-void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_format,
+void ApplySwiGLUActivation(const float* input_data, float* output_data, int64_t inter_size, bool is_interleaved_format,
                            float activation_alpha, float activation_beta, float clamp_limit) {
   if (is_interleaved_format) {
     for (int64_t i = 0; i < inter_size; ++i) {
-      float gate_val = data[2 * i];
-      float linear_val = data[2 * i + 1];
+      float gate_val = input_data[2 * i];
+      float linear_val = input_data[2 * i + 1];
 
       gate_val = std::min(gate_val, clamp_limit);
       linear_val = std::clamp(linear_val, -clamp_limit, clamp_limit);
@@ -41,7 +41,7 @@ void ApplySwiGLUActivation(float* data, int64_t inter_size, bool is_interleaved_
       float sigmoid_out = 1.0f / (1.0f + std::exp(-sigmoid_arg));
       float swish_out = gate_val * sigmoid_out;
 
-      data[i] = swish_out * (linear_val + activation_beta);
+      output_data[i] = swish_out * (linear_val + activation_beta);
     }
   } else {
     ORT_NOT_IMPLEMENTED("Non-interleaved format not supported for SwiGLU activation");
