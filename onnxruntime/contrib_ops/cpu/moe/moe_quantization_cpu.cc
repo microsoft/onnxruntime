@@ -182,7 +182,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     input_float = reinterpret_cast<const float*>(input_data);
   }
 
-  int num_threads = std::min(num_experts, concurrency::ThreadPool::DegreeOfParallelism(tp));
+  int num_threads = std::min(static_cast<int>(num_experts), concurrency::ThreadPool::DegreeOfParallelism(tp));
   auto thread_local_outputs_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads) * output_buffer_size);
   float* thread_local_outputs = thread_local_outputs_ptr.get();
   memset(thread_local_outputs, 0, static_cast<size_t>(num_threads) * output_buffer_size * sizeof(float));
