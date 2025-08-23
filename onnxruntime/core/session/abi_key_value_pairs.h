@@ -18,11 +18,11 @@ struct OrtKeyValuePairs {
     CopyFromMap(other.entries_);
   }
 
-  OrtKeyValuePairs(OrtKeyValuePairs&& other) : OrtKeyValuePairs{} {
+  OrtKeyValuePairs(OrtKeyValuePairs&& other) noexcept : OrtKeyValuePairs{} {
     swap(*this, other);
   }
 
-  OrtKeyValuePairs& operator=(OrtKeyValuePairs other) {  // handles copy and move assignment
+  OrtKeyValuePairs& operator=(OrtKeyValuePairs other) noexcept {  // handles copy and move assignment
     swap(*this, other);
     return *this;
   }

@@ -17,6 +17,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
+
+#if USE_FPA_INTB_GEMM
 using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
 using onnxruntime::llm::kernels::weight_only::GemmDims;
 using onnxruntime::llm::kernels::weight_only::GemmIdCore;
@@ -31,6 +33,7 @@ constexpr int kFpAIntBGemmOption_All = 0x01;
 constexpr int kFpAIntBGemmOption_Gemv = 0x02;
 constexpr int kFpAIntBGemmOption_Int4 = 0x04;
 constexpr int kFpAIntBGemmOption_Int8 = 0x08;
+#endif
 
 template <typename T>
 class MatMulNBits final : public CudaKernel {
@@ -57,6 +60,7 @@ class MatMulNBits final : public CudaKernel {
       is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
     }
 
+#if USE_FPA_INTB_GEMM
     if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
       int option = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmOption, 0);
       if ((option & (static_cast<int>(nbits_) | kFpAIntBGemmOption_All)) != 0 &&
@@ -95,20 +99,24 @@ class MatMulNBits final : public CudaKernel {
            int(has_g_idx_ ? 1 : 0), int(has_bias_ ? 1 : 0),
            int(has_fpA_intB_gemv_), int(has_fpA_intB_gemm_));
 #endif
+#endif
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
-
+#if USE_FPA_INTB_GEMM
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
+#endif
 
  private:
+#if USE_FPA_INTB_GEMM
   void InitGemmProfiler(int sm);
   void RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m);
 
   Status PrePack_B(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
   Status PrePack_Scale(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
   Status PrePack_ZeroPoint(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
+#endif
 
   int64_t K_;
   int64_t N_;
@@ -121,6 +129,8 @@ class MatMulNBits final : public CudaKernel {
   bool has_bias_{false};
   bool has_zero_points_{false};
   bool is_zero_points_scale_same_type_{false};
+
+#if USE_FPA_INTB_GEMM
   bool has_fpA_intB_gemv_{false};
   bool has_fpA_intB_gemm_{false};
 
@@ -135,6 +145,7 @@ class MatMulNBits final : public CudaKernel {
   IAllocatorUniquePtr<void> fpA_intB_weight_buffer_;
   IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;
   IAllocatorUniquePtr<void> fpA_intB_zero_buffer_;
+#endif
 };
 
 }  // namespace cuda

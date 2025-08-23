@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/dispatcher.h"
 
 namespace onnxruntime::llm {
@@ -29,3 +29,4 @@ INSTANTIATE_WEIGHT_ONLY_CUDA_DISPATCHERS(
 }  // namespace fpA_intB_gemv
 }  // namespace kernels
 }  // namespace onnxruntime::llm
+#endif
