@@ -131,41 +131,74 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   int* route_expert = route_expert_ptr.get();
   auto route_scale_ptr = IAllocator::MakeUniquePtr<float>(allocator, num_tokens * k_);
   float* route_scale = route_scale_ptr.get();
-  std::vector<std::vector<int64_t>> expert_token_map(num_experts);
 
-  for (int64_t i = 0; i < num_tokens; ++i) {
-    const float* logits = router_logits_float + i * num_experts;
+  // Parallelize the routing logic to improve performance for large token batches.
+  // Minor performance regression for single-token decoding is an acceptable trade-off
+  int num_routing_threads = (tp == nullptr || num_tokens < 4096) ? 1 : std::min(static_cast<int>(num_tokens), concurrency::ThreadPool::DegreeOfParallelism(tp));
+
+  std::vector<std::vector<std::vector<int64_t>>> thread_local_expert_token_maps(num_routing_threads);
+  for (auto& map : thread_local_expert_token_maps) {
+      map.resize(num_experts);
+  }
+
+  concurrency::ThreadPool::TrySimpleParallelFor(tp, num_routing_threads, [&](std::ptrdiff_t thread_id) {
+    auto work = concurrency::ThreadPool::PartitionWork(static_cast<int>(thread_id), num_routing_threads, num_tokens);
+    auto& local_expert_token_map = thread_local_expert_token_maps[thread_id];
+
+    // Pre-allocate buffers for this thread to reuse, avoiding allocations inside the loop.
     std::vector<std::pair<float, int64_t>> sorted_logits(num_experts);
-    for (int64_t j = 0; j < num_experts; ++j) {
-      sorted_logits[j] = {logits[j], j};
-    }
-    std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + k_, sorted_logits.end(), std::greater<>());
+    std::vector<float> top_k_exp(k_);
 
-    float max_logit = -std::numeric_limits<float>::infinity();
-    for (int64_t j = 0; j < k_; ++j) {
-      if (sorted_logits[j].first > max_logit) {
-        max_logit = sorted_logits[j].first;
+    for (int64_t i = work.start; i < work.end; ++i) {
+        const float* logits = router_logits_float + i * num_experts;
+        for (int64_t j = 0; j < num_experts; ++j) {
+            sorted_logits[j] = {logits[j], j};
+        }
+        std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + k_, sorted_logits.end(), std::greater<>());
+
+        float max_logit = -std::numeric_limits<float>::infinity();
+        for (int64_t j = 0; j < k_; ++j) {
+            if (sorted_logits[j].first > max_logit) {
+            max_logit = sorted_logits[j].first;
+            }
+        }
+
+        float sum_exp = 0.0f;
+        for (int64_t j = 0; j < k_; ++j) {
+            top_k_exp[j] = std::exp(sorted_logits[j].first - max_logit);
+            sum_exp += top_k_exp[j];
+        }
+
+        float scale = (sum_exp == 0.0f) ? 0.0f : (1.0f / sum_exp);
+        for (int64_t j = 0; j < k_; ++j) {
+            int64_t expert_idx = sorted_logits[j].second;
+            int64_t route_idx = i * k_ + j;
+            route_expert[route_idx] = static_cast<int>(expert_idx);
+            route_scale[route_idx] = top_k_exp[j] * scale;
+            if (route_scale[route_idx] > 0.0f) {
+                local_expert_token_map[expert_idx].push_back(route_idx);
+            }
+        }
+    }
+  });
+
+  // Merge the maps from each thread into a single global map.
+  std::vector<std::vector<int64_t>> expert_token_map(num_experts);
+  for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
+      size_t total_tokens_for_expert = 0;
+      for (int t = 0; t < num_routing_threads; ++t) {
+          total_tokens_for_expert += thread_local_expert_token_maps[t][expert_idx].size();
       }
-    }
+      expert_token_map[expert_idx].reserve(total_tokens_for_expert);
+  }
 
-    float sum_exp = 0.0f;
-    auto top_k_exp_ptr = IAllocator::MakeUniquePtr<float>(allocator, k_);
-    float* top_k_exp = top_k_exp_ptr.get();
-    for (int64_t j = 0; j < k_; ++j) {
-      top_k_exp[j] = std::exp(sorted_logits[j].first - max_logit);
-      sum_exp += top_k_exp[j];
-    }
-
-    float scale = (sum_exp == 0.0f) ? 0.0f : (1.0f / sum_exp);
-    for (int64_t j = 0; j < k_; ++j) {
-      int64_t expert_idx = sorted_logits[j].second;
-      int64_t route_idx = i * k_ + j;
-      route_expert[route_idx] = static_cast<int>(expert_idx);
-      route_scale[route_idx] = top_k_exp[j] * scale;
-      if (route_scale[route_idx] > 0.0f) {
-        expert_token_map[expert_idx].push_back(route_idx);
+  for (int t = 0; t < num_routing_threads; ++t) {
+      for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
+          auto& local_tokens = thread_local_expert_token_maps[t][expert_idx];
+          if (!local_tokens.empty()) {
+              expert_token_map[expert_idx].insert(expert_token_map[expert_idx].end(), local_tokens.begin(), local_tokens.end());
+          }
       }
-    }
   }
 
   // --- 3. Parallel Expert Computation ---
@@ -181,11 +214,11 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     input_float = reinterpret_cast<const float*>(input_data);
   }
 
-  int num_threads = std::min(static_cast<int>(num_experts), concurrency::ThreadPool::DegreeOfParallelism(tp));
-  if (num_threads == 0) num_threads = 1;
-  auto thread_local_outputs_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads) * output_buffer_size);
+  int num_expert_threads = (tp == nullptr) ? 1 : std::min(static_cast<int>(num_experts), concurrency::ThreadPool::DegreeOfParallelism(tp));
+  if (num_expert_threads == 0) num_expert_threads = 1;
+  auto thread_local_outputs_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_expert_threads) * output_buffer_size);
   float* thread_local_outputs = thread_local_outputs_ptr.get();
-  memset(thread_local_outputs, 0, static_cast<size_t>(num_threads) * output_buffer_size * sizeof(float));
+  memset(thread_local_outputs, 0, static_cast<size_t>(num_expert_threads) * output_buffer_size * sizeof(float));
 
   // Pre-calculate workspace size per thread to avoid allocations inside the loop
   size_t max_tokens_per_expert = 0;
@@ -205,12 +238,12 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const size_t bias2_size = hidden_size;
 
   const size_t workspace_elements_per_thread = A1_size + C1_size + A2_size + C2_size + B1_dequant_size + B2_dequant_size + bias1_size + bias2_size;
-  auto workspace_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_threads) * workspace_elements_per_thread);
+  auto workspace_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_expert_threads) * workspace_elements_per_thread);
   float* workspace = workspace_ptr.get();
 
-  concurrency::ThreadPool::TrySimpleParallelFor(tp, num_threads, [&](std::ptrdiff_t thread_id_pd) {
+  concurrency::ThreadPool::TrySimpleParallelFor(tp, num_expert_threads, [&](std::ptrdiff_t thread_id_pd) {
     int thread_id = static_cast<int>(thread_id_pd);
-    auto work = concurrency::ThreadPool::PartitionWork(thread_id, num_threads, num_experts);
+    auto work = concurrency::ThreadPool::PartitionWork(thread_id, num_expert_threads, num_experts);
 
     float* thread_workspace = workspace + static_cast<size_t>(thread_id) * workspace_elements_per_thread;
 
@@ -311,7 +344,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   });
 
   // --- 4. Final Reduction ---
-  for (int i = 0; i < num_threads; ++i) {
+  for (int i = 0; i < num_expert_threads; ++i) {
     for (size_t j = 0; j < output_buffer_size; ++j) {
       final_output_float[j] += thread_local_outputs[static_cast<size_t>(i) * output_buffer_size + j];
     }
