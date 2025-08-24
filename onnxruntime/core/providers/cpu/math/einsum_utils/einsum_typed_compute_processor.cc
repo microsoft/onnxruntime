@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "einsum_typed_compute_processor.h"
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
@@ -356,6 +358,33 @@ Status EinsumTypedComputeProcessor<T>::Run() {
   auto num_subscript_labels = einsum_compute_preprocessor_.GetNumSubscriptIndices();
 
   auto num_inputs = context_->InputCount();
+
+  {
+    bool has_empty_input = std::any_of(raw_inputs.begin(), raw_inputs.end(), [](const auto& input) {
+      return input->Shape().Size() == 0;
+    });
+    // Skip all the work, fill with zeros if needed
+    if (has_empty_input) {
+      AllocatorPtr cpu_allocator;
+      ORT_RETURN_IF_ERROR(context_->GetTempSpaceAllocator(&cpu_allocator));
+
+      const auto output_dims = einsum_compute_preprocessor_.GetOutputDims();
+      Tensor& output = *context_->Output(0, output_dims);
+      Tensor candidate_output(raw_inputs[0]->DataType(), output_dims, cpu_allocator);
+
+      if constexpr (std::is_integral<T>::value) {
+        std::fill_n(reinterpret_cast<T*>(candidate_output.MutableDataRaw()), candidate_output.Shape().Size(), T(0));
+      } else {
+        std::fill_n(reinterpret_cast<T*>(candidate_output.MutableDataRaw()), candidate_output.Shape().Size(), T(0.f));
+      }
+
+      auto status = device_data_copy_func_(candidate_output, output, einsum_ep_assets_);
+      ORT_ENFORCE(status.IsOK(), "Einsum op: Could not copy the intermediate output's buffer into the op's output buffer. Error: ",
+                  status.ErrorMessage());
+
+      return status;
+    }
+  }
 
   // Pre-process the first input so as to reduce any dims that only it has
   std::unique_ptr<const Tensor> result;
