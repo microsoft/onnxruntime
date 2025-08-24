@@ -38,7 +38,7 @@ def get_shape_from_type_proto(type_proto):
     if type_proto.tensor_type.HasField("shape"):
         return [get_dim_from_proto(d) for d in type_proto.tensor_type.shape.dim]
     else:
-        return None  # note no shape is different from shape without dim (scalar)
+        return []  # note no shape is different from shape without dim (scalar)
 
 
 def get_elem_type_from_type_proto(type_proto):
@@ -51,7 +51,7 @@ def get_elem_type_from_type_proto(type_proto):
 def get_shape_from_value_info(vi):
     cls_type = vi.type.WhichOneof("value")
     if cls_type is None:
-        return None
+        return []
     if is_sequence(vi.type):
         if vi.type.sequence_type.elem_type.WhichOneof("value") == "tensor_type":
             return get_shape_from_type_proto(vi.type.sequence_type.elem_type)
