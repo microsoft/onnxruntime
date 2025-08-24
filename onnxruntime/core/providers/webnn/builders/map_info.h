@@ -174,6 +174,7 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"Greater", {"greater", {{0, "a"}, {1, "b"}}}},
     {"Reciprocal", {"reciprocal", {{0, "input"}}}},
     {"ReduceMean", {"reduceMean", {{0, "input"}}}},
+    {"Round", {"roundEven", {{0, "input"}}}},
     {"GlobalMaxPool", {"maxPool2d", {{0, "input"}}}},
     {"HardSigmoid", {"hardSigmoid", {{0, "input"}}}},
     {"ReduceProd", {"reduceProduct", {{0, "input"}}}},
