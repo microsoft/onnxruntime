@@ -728,11 +728,19 @@ struct SM90_U32x4_STSM_T {
 };
 
 __device__ void warpgroup_arrive() {
+#ifdef CUTLASS_ARCH_MMA_SM90A_ENABLED
   asm volatile("wgmma.fence.sync.aligned;\n" ::: "memory");
+#else
+  CUTE_INVALID_CONTROL_PATH("wgmma is only available on SM90a");
+#endif
 }
 
 __device__ void warpgroup_commit_batch() {
+#ifdef CUTLASS_ARCH_MMA_SM90A_ENABLED
   asm volatile("wgmma.commit_group.sync.aligned;\n" ::: "memory");
+#else
+  CUTE_INVALID_CONTROL_PATH("wgmma is only available on SM90a");
+#endif
 }
 
 __device__ void warpgroup_fence_operand(float& reg) {
