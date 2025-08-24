@@ -1,0 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This is a marker file indicating that this package contains types. See: https://typing.python.org/en/latest/spec/distributing.html
+# As types are not complete for the python, the marker "partial" . See: https://typing.python.org/en/latest/spec/distributing.html#partial-stub-packages
+partial
