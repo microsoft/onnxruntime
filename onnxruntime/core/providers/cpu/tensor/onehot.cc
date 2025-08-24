@@ -178,18 +178,19 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   // Handle negative indices. It's faster to create a new indices instead of comparing in generator
   // since generator has much larger loops.
   const auto* indices_data = indices->Data<in_type>();
+
   const auto indices_size = indices->Shape().Size();
-  std::vector<in_type> adjusted_indices;
+  std::vector<int64_t> adjusted_indices;
   adjusted_indices.reserve(onnxruntime::narrow<size_t>(indices_size));
+  // As per spec in case 'indices' is of non-integer type, it will be casted to int64 before use.
   for (int64_t i = 0; i < indices_size; ++i) {
     if (indices_data[i] < 0)
-      adjusted_indices.push_back(indices_data[i] + static_cast<in_type>(depth_val));
+      adjusted_indices.push_back(static_cast<int64_t>(indices_data[i]) + depth_val);
     else
-      adjusted_indices.push_back(indices_data[i]);
+      adjusted_indices.push_back(static_cast<int64_t>(indices_data[i]));
   }
-  indices_data = adjusted_indices.data();
 
-  typename EigenTensorTypes<in_type, 2>::ConstEigenTensorMap indices_tensor_e(indices_data, indices_dims_e);
+  typename EigenTensorTypes<int64_t, 2>::ConstEigenTensorMap indices_tensor_e(adjusted_indices.data(), indices_dims_e);
 
   // Split output into 3-Tensor of size:
   //   prefix_dim_size x depth x suffix_dim_size.
@@ -201,7 +202,7 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   typename EigenTensorTypes<out_type>::ConstScalar on_value_e(values_data + 1);
   typename EigenTensorTypes<out_type>::ConstScalar off_value_e(values_data);
 
-  generator::OneGenerator<in_type, out_type> generator(indices_tensor_e, on_value_e, off_value_e);
+  generator::OneGenerator<int64_t, out_type> generator(indices_tensor_e, on_value_e, off_value_e);
 
   // TODO potential optimization opportunity
   // TODO figure out the eigen threadpool stuff for use here
