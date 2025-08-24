@@ -346,6 +346,7 @@ class OnnxTestCase : public ITestCase {
   }
 
   size_t GetDataCount() const override { return test_data_dirs_.size(); }
+  std::filesystem::path GetDataDir(size_t id) const override { return test_data_dirs_[id]; }
   const std::string& GetNodeName() const override { return model_info_->GetNodeName(); }
   const std::filesystem::path& GetModelUrl() const override { return model_info_->GetModelUrl(); }
   const std::string& GetTestCaseName() const override { return test_case_name_; }
