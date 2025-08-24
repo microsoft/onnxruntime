@@ -2,6 +2,13 @@
 // Licensed under the MIT License.
 
 #include "core/common/logging/sinks/ostream_sink.h"
+#include <sstream>
+
+#ifdef _WIN32
+#include <Windows.h>
+#include <io.h>
+#include <stdio.h>
+#endif
 
 namespace onnxruntime {
 namespace logging {
@@ -12,100 +19,89 @@ struct Color {
   constexpr static const char* kError = "\033[1;31m";     // bold red
   constexpr static const char* kFatal = "\033[1;37;41m";  // bold white on red background
   constexpr static const char* kEnd = "\033[m";
-#ifdef _WIN32
-  constexpr static const wchar_t* kLWarn = L"\033[0;93m";      // yellow
-  constexpr static const wchar_t* kLError = L"\033[1;31m";     // bold red
-  constexpr static const wchar_t* kLFatal = L"\033[1;37;41m";  // bold white on red background
-  constexpr static const wchar_t* kLEnd = L"\033[m";
-#endif
 };
 #endif
 
-#ifndef _WIN32
+#ifdef _WIN32
+// Writes a UTF-8 string to the Windows console using WriteConsoleW.
+static void WriteToConsole(const std::string& utf8_string, FILE* stream) {
+  // Convert the UTF-8 string to UTF-16
+  int utf16_length = MultiByteToWideChar(CP_UTF8, 0, utf8_string.c_str(), -1, NULL, 0);
+  if (utf16_length == 0) {
+    // fallback to fprintf on failure
+    fprintf(stream, "%s", utf8_string.c_str());
+    return;
+  }
+
+  std::wstring utf16_string(utf16_length, L'\0');
+  if (MultiByteToWideChar(CP_UTF8, 0, utf8_string.c_str(), -1, &utf16_string[0], utf16_length) == 0) {
+    // fallback to fprintf on failure
+    fprintf(stream, "%s", utf8_string.c_str());
+    return;
+  }
+
+  // Get the handle to the appropriate console buffer (stdout or stderr)
+  HANDLE hConsole = (stream == stderr) ? GetStdHandle(STD_ERROR_HANDLE) : GetStdHandle(STD_OUTPUT_HANDLE);
+
+  // Write the UTF-16 string to the console
+  // We subtract 1 from the length to exclude the null terminator.
+  DWORD chars_written = 0;
+  if (!WriteConsoleW(hConsole, utf16_string.c_str(), static_cast<DWORD>(utf16_string.length() - 1), &chars_written, NULL)) {
+    // fallback to fprintf on failure
+    fprintf(stream, "%s", utf8_string.c_str());
+  }
+}
+#endif
+
 void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) {
-  // operator for formatting of timestamp in ISO8601 format including microseconds
-  using timestamp_ns::operator<<;
+  std::ostringstream msg_stream;
 
-  // Two options as there may be multiple calls attempting to write to the same sink at once:
-  // 1) Use mutex to synchronize access to the stream.
-  // 2) Create the message in an ostringstream and output in one call.
-  //
-  // Going with #2 as it should scale better at the cost of creating the message in memory first
-  // before sending to the stream.
+  // Format the timestamp.
+  timestamp_ns::operator<<(msg_stream, timestamp);
 
-  std::ostringstream msg;
+  msg_stream << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id << ", "
+             << message.Location().ToString() << "] ";
 
 #ifndef ORT_MINIMAL_BUILD
+  const char* color_begin = "";
+  const char* color_end = "";
   if (message.Severity() == Severity::kWARNING) {
-    msg << Color::kWarn;
+    color_begin = Color::kWarn;
+    color_end = Color::kEnd;
   } else if (message.Severity() == Severity::kERROR) {
-    msg << Color::kError;
+    color_begin = Color::kError;
+    color_end = Color::kEnd;
   } else if (message.Severity() == Severity::kFATAL) {
-    msg << Color::kFatal;
+    color_begin = Color::kFatal;
+    color_end = Color::kEnd;
   }
-#endif
-
-  timestamp_ns::operator<<(msg, timestamp);  // handle ambiguity with C++20 where date and std::chrono have operator<<
-  msg << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id << ", "
-      << message.Location().ToString() << "] " << message.Message();
-
-#ifndef ORT_MINIMAL_BUILD
-  if (message.Severity() == Severity::kWARNING ||
-      message.Severity() == Severity::kERROR ||
-      message.Severity() == Severity::kFATAL) {
-    msg << Color::kEnd;
-  }
-#endif
-  msg << "\n";
-
-  (*stream_) << msg.str();
-
-  if (flush_) {
-    stream_->flush();
-  }
-}
+  msg_stream << color_begin << message.Message() << color_end;
 #else
-void WOStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) {
-  // operator for formatting of timestamp in ISO8601 format including microseconds
-  using date::operator<<;
-
-  // Two options as there may be multiple calls attempting to write to the same sink at once:
-  // 1) Use mutex to synchronize access to the stream.
-  // 2) Create the message in an ostringstream and output in one call.
-  //
-  // Going with #2 as it should scale better at the cost of creating the message in memory first
-  // before sending to the stream.
-
-  std::wostringstream msg;
-
-#ifndef ORT_MINIMAL_BUILD
-  if (message.Severity() == Severity::kWARNING) {
-    msg << Color::kLWarn;
-  } else if (message.Severity() == Severity::kERROR) {
-    msg << Color::kLError;
-  } else if (message.Severity() == Severity::kFATAL) {
-    msg << Color::kLFatal;
-  }
+  msg_stream << message.Message();
 #endif
 
-  msg << timestamp << L" [" << message.SeverityPrefix() << L":" << message.Category() << L":" << ToWideString(logger_id) << L", "
-      << ToWideString(message.Location().ToString()) << L"] " << ToWideString(message.Message());
+  msg_stream << "\n";
 
-#ifndef ORT_MINIMAL_BUILD
-  if (message.Severity() == Severity::kWARNING ||
-      message.Severity() == Severity::kERROR ||
-      message.Severity() == Severity::kFATAL) {
-    msg << Color::kLEnd;
+  std::string message_to_log = msg_stream.str();
+
+#ifdef _WIN32
+  // On Windows, if we are writing to a console, use WriteConsoleW for proper Unicode support.
+  // _isatty returns non-zero if the file descriptor is a TTY.
+  if ((stream_ == stdout || stream_ == stderr) && _isatty(_fileno(stream_))) {
+    WriteToConsole(message_to_log, stream_);
+  } else {
+    // If not a console (e.g., redirected to a file), write the original UTF-8 string.
+    fprintf(stream_, "%s", message_to_log.c_str());
   }
+#else
+  // On other platforms, print the UTF-8 string directly.
+  fprintf(stream_, "%s", message_to_log.c_str());
 #endif
-  msg << L"\n";
-
-  (*stream_) << msg.str();
 
   if (flush_) {
-    stream_->flush();
+    fflush(stream_);
   }
 }
-#endif
+
 }  // namespace logging
 }  // namespace onnxruntime
