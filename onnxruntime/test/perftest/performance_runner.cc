@@ -149,12 +149,11 @@ Status PerformanceRunner::Run() {
   std::chrono::duration<double> session_create_duration = session_create_end_ - session_create_start_;
   // TODO: end profiling
   // if (!performance_test_config_.run_config.profile_file.empty()) session_object->EndProfiling();
-  auto first_inference_duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(initial_inference_result_.end - initial_inference_result_.start).count();
+  std::chrono::duration<double> first_inference_duration = initial_inference_result_.end - initial_inference_result_.start;
   std::chrono::duration<double> inference_duration = performance_result_.end - performance_result_.start;
 
   std::cout << "Session creation time cost: " << session_create_duration.count() << " s\n"
-            << "First inference time cost: " << first_inference_duration << " ms\n"
+            << "First inference time cost: " << first_inference_duration.count() * 1000 << " ms\n"
             << "Total inference time cost: " << performance_result_.total_time_cost << " s\n"  // sum of time taken by each request
             << "Total inference requests: " << performance_result_.time_costs.size() << "\n"
             << "Average inference time cost: " << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms\n"
