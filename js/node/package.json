@@ -11,7 +11,7 @@
       6
     ]
   },
-  "version": "1.23.0",
+  "version": "1.24.0",
   "dependencies": {
     "adm-zip": "^0.5.16",
     "global-agent": "^3.0.0",
