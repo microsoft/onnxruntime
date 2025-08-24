@@ -62,7 +62,7 @@ struct OrtEnv {
   // tracking active users. It is set to nullptr when the last reference is released
   // (and not shutting down).
   static OrtEnv* p_instance_;
-  static std::mutex m_;
+  // Mutex is now accessed through GetOrtEnvMutex() function
   static int ref_count_;
 
   std::unique_ptr<onnxruntime::Environment> value_;

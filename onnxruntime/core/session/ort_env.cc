@@ -27,9 +27,15 @@ void CleanupWebGpuContexts();
 }  // namespace onnxruntime
 #endif
 
+// Fix for static destruction order issue:
+// Use a function-local static to ensure mutex is not destroyed early
+static std::mutex& GetOrtEnvMutex() {
+  static std::mutex* mutex = new std::mutex();
+  return *mutex;
+}
+
 OrtEnv* OrtEnv::p_instance_;
 int OrtEnv::ref_count_ = 0;
-std::mutex OrtEnv::m_;
 
 OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
     : value_(std::move(value1)) {
@@ -49,7 +55,7 @@ OrtEnv::~OrtEnv() {
 OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
                             onnxruntime::common::Status& status,
                             const OrtThreadingOptions* tp_options) {
-  std::lock_guard<std::mutex> lock(m_);
+  std::lock_guard<std::mutex> lock(GetOrtEnvMutex());
   if (!p_instance_) {
     std::unique_ptr<LoggingManager> lmgr;
     std::string name = lm_info.logid;
@@ -96,7 +102,7 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
   OrtEnv* instance_to_delete = nullptr;
 
   {  // Scope for the lock guard
-    std::lock_guard<std::mutex> lock(m_);
+    std::lock_guard<std::mutex> lock(GetOrtEnvMutex());
     assert(p_instance_ == env_ptr);
 
     --ref_count_;
