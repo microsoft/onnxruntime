@@ -33,7 +33,7 @@
   }
 
 #define GETTER_INFO(cls, name) \
-  {#name, BIND_THIS_GETTER(cls, name)}
+  { #name, BIND_THIS_GETTER(cls, name) }
 
 #define DEFINE_METHOD(name)                                     \
   Value name##_method(Runtime& runtime, const Value& thisValue, \

@@ -35,12 +35,13 @@ class InferenceSessionHostObject
         runtime, std::make_shared<InferenceSessionHostObject>(env));
   }
 
+ protected:
+  class LoadModelAsyncWorker;
+  class RunAsyncWorker;
+
  private:
   std::shared_ptr<Env> env_;
   std::shared_ptr<Ort::Session> session_;
-
-  class LoadModelAsyncWorker;
-  class RunAsyncWorker;
 
   DEFINE_METHOD(loadModel);
   DEFINE_METHOD(run);

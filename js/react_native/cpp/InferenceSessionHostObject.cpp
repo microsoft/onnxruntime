@@ -3,6 +3,7 @@
 #include "JsiUtils.h"
 #include "SessionUtils.h"
 #include "TensorUtils.h"
+#include <mutex>
 
 using namespace facebook::jsi;
 
@@ -72,7 +73,10 @@ class InferenceSessionHostObject::RunAsyncWorker : public AsyncWorker {
  public:
   RunAsyncWorker(Runtime& runtime, const Value* arguments, size_t count,
                  std::shared_ptr<InferenceSessionHostObject> session)
-      : AsyncWorker(runtime, session->env_), session_(session), memoryInfo_(Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault)) {
+      : AsyncWorker(runtime, session->env_),
+        env_(session->env_),
+        session_(session->session_),
+        memoryInfo_(Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault)) {
     if (count < 1)
       throw JSError(runtime, "run requires at least 1 argument");
     if (count > 2 && !arguments[2].isUndefined()) {
@@ -111,15 +115,19 @@ class InferenceSessionHostObject::RunAsyncWorker : public AsyncWorker {
     std::transform(outputNames_.begin(), outputNames_.end(),
                    outputNames.begin(),
                    [](const std::string& name) { return name.c_str(); });
-    session_->session_->Run(runOptions_, inputNames.data(), inputValues_.data(),
-                            inputValues_.size(), outputNames.data(),
-                            outputValues_.data(), outputValues_.size());
+    auto session = session_.lock();
+    if (!session) {
+      throw std::runtime_error("Session is released");
+    }
+    session->Run(runOptions_, inputNames.data(), inputValues_.data(),
+                 inputValues_.size(), outputNames.data(),
+                 outputValues_.data(), outputValues_.size());
   }
 
   Value onResolve(Runtime& rt) {
     auto resultObject = Object(rt);
     auto tensorConstructor =
-        session_->env_->getTensorConstructor(rt).asObject(rt);
+        env_->getTensorConstructor(rt).asObject(rt);
     for (size_t i = 0; i < outputValues_.size(); ++i) {
       if (jsOutputValues_[i] != nullptr && outputValues_[i].IsTensor()) {
         resultObject.setProperty(rt, outputNames_[i].c_str(),
@@ -134,8 +142,13 @@ class InferenceSessionHostObject::RunAsyncWorker : public AsyncWorker {
     return Value(rt, resultObject);
   }
 
+  void onAbort() {
+    runOptions_.SetTerminate();
+  }
+
  private:
-  std::shared_ptr<InferenceSessionHostObject> session_;
+  std::shared_ptr<Env> env_;
+  std::weak_ptr<Ort::Session> session_;
   Ort::MemoryInfo memoryInfo_;
   Ort::RunOptions runOptions_;
   std::vector<std::string> inputNames_;

@@ -29,15 +29,17 @@ class Env : public std::enable_shared_from_this<Env> {
     tensorConstructor_ = tensorConstructor;
   }
 
-  inline facebook::react::CallInvoker* getJsInvoker() const {
-    return jsInvoker_.get();
-  }
   inline facebook::jsi::Value
   getTensorConstructor(facebook::jsi::Runtime& runtime) const {
     return tensorConstructor_->lock(runtime);
   }
 
   inline Ort::Env& getOrtEnv() const { return *ortEnv_; }
+
+  inline void runOnJsThread(std::function<void()>&& func) {
+    if (!jsInvoker_) return;
+    jsInvoker_->invokeAsync(std::move(func));
+  }
 
  private:
   std::shared_ptr<facebook::react::CallInvoker> jsInvoker_;
