@@ -62,5 +62,10 @@ class CPUDataTransfer : public IDataTransfer {
   using IDataTransfer::CopyTensor;
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;
+  // This is needed for calling IDataTransfer::CopyTensors
+  // with CPU and GPU tensors. The reason is that IDataTransfer::CopyTensors
+  // always calls CopyTensorAsync when a stream is provided.
+  using IDataTransfer::CopyTensorAsync;
+  common::Status CopyTensorAsync(const Tensor& src, Tensor& dst, Stream& /*stream*/) const override;
 };
 }  // namespace onnxruntime
