@@ -138,7 +138,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
   std::vector<std::vector<std::vector<int64_t>>> thread_local_expert_token_maps(num_routing_threads);
   for (auto& map : thread_local_expert_token_maps) {
-      map.resize(num_experts);
+    map.resize(num_experts);
   }
 
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_routing_threads, [&](std::ptrdiff_t thread_id) {
@@ -150,55 +150,55 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     std::vector<float> top_k_exp(k_);
 
     for (int64_t i = work.start; i < work.end; ++i) {
-        const float* logits = router_logits_float + i * num_experts;
-        for (int64_t j = 0; j < num_experts; ++j) {
-            sorted_logits[j] = {logits[j], j};
-        }
-        std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + k_, sorted_logits.end(), std::greater<>());
+      const float* logits = router_logits_float + i * num_experts;
+      for (int64_t j = 0; j < num_experts; ++j) {
+        sorted_logits[j] = {logits[j], j};
+      }
+      std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + k_, sorted_logits.end(), std::greater<>());
 
-        float max_logit = -std::numeric_limits<float>::infinity();
-        for (int64_t j = 0; j < k_; ++j) {
-            if (sorted_logits[j].first > max_logit) {
-            max_logit = sorted_logits[j].first;
-            }
+      float max_logit = -std::numeric_limits<float>::infinity();
+      for (int64_t j = 0; j < k_; ++j) {
+        if (sorted_logits[j].first > max_logit) {
+          max_logit = sorted_logits[j].first;
         }
+      }
 
-        float sum_exp = 0.0f;
-        for (int64_t j = 0; j < k_; ++j) {
-            top_k_exp[j] = std::exp(sorted_logits[j].first - max_logit);
-            sum_exp += top_k_exp[j];
-        }
+      float sum_exp = 0.0f;
+      for (int64_t j = 0; j < k_; ++j) {
+        top_k_exp[j] = std::exp(sorted_logits[j].first - max_logit);
+        sum_exp += top_k_exp[j];
+      }
 
-        float scale = (sum_exp == 0.0f) ? 0.0f : (1.0f / sum_exp);
-        for (int64_t j = 0; j < k_; ++j) {
-            int64_t expert_idx = sorted_logits[j].second;
-            int64_t route_idx = i * k_ + j;
-            route_expert[route_idx] = static_cast<int>(expert_idx);
-            route_scale[route_idx] = top_k_exp[j] * scale;
-            if (route_scale[route_idx] > 0.0f) {
-                local_expert_token_map[expert_idx].push_back(route_idx);
-            }
+      float scale = (sum_exp == 0.0f) ? 0.0f : (1.0f / sum_exp);
+      for (int64_t j = 0; j < k_; ++j) {
+        int64_t expert_idx = sorted_logits[j].second;
+        int64_t route_idx = i * k_ + j;
+        route_expert[route_idx] = static_cast<int>(expert_idx);
+        route_scale[route_idx] = top_k_exp[j] * scale;
+        if (route_scale[route_idx] > 0.0f) {
+          local_expert_token_map[expert_idx].push_back(route_idx);
         }
+      }
     }
   });
 
   // Merge the maps from each thread into a single global map.
   std::vector<std::vector<int64_t>> expert_token_map(num_experts);
   for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
-      size_t total_tokens_for_expert = 0;
-      for (int t = 0; t < num_routing_threads; ++t) {
-          total_tokens_for_expert += thread_local_expert_token_maps[t][expert_idx].size();
-      }
-      expert_token_map[expert_idx].reserve(total_tokens_for_expert);
+    size_t total_tokens_for_expert = 0;
+    for (int t = 0; t < num_routing_threads; ++t) {
+      total_tokens_for_expert += thread_local_expert_token_maps[t][expert_idx].size();
+    }
+    expert_token_map[expert_idx].reserve(total_tokens_for_expert);
   }
 
   for (int t = 0; t < num_routing_threads; ++t) {
-      for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
-          auto& local_tokens = thread_local_expert_token_maps[t][expert_idx];
-          if (!local_tokens.empty()) {
-              expert_token_map[expert_idx].insert(expert_token_map[expert_idx].end(), local_tokens.begin(), local_tokens.end());
-          }
+    for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
+      auto& local_tokens = thread_local_expert_token_maps[t][expert_idx];
+      if (!local_tokens.empty()) {
+        expert_token_map[expert_idx].insert(expert_token_map[expert_idx].end(), local_tokens.begin(), local_tokens.end());
       }
+    }
   }
 
   // --- 3. Parallel Expert Computation ---
