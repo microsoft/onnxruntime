@@ -1782,7 +1782,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
                type = OrtDevice::GPU;
                vendor = OrtDevice::VendorIds::MICROSOFT;
              } else if (type == OrtDevice::GPU) {
-#if USE_CUDA
+#if USE_CUDA || USE_NV || USE_NV_PROVIDER_INTERFACE || USE_CUDA_PROVIDER_INTERFACE
                vendor = OrtDevice::VendorIds::NVIDIA;
 #elif USE_ROCM || USE_MIGRAPHX
                vendor = OrtDevice::VendorIds::AMD;
