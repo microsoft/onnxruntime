@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 // Do not include this file directly. Please include "onnxruntime_c_api.h" instead.
+#include "onnxruntime_common_enums.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -481,18 +482,6 @@ typedef enum OrtEpDataLayout {
 
   OrtEpDataLayout_Default = OrtEpDataLayout_NCHW,
 } OrtEpDataLayout;
-
-/**
- * \brief Enumeration describing the compatibility state of a compiled model relative to an execution provider.
- *
- * \since Version 1.23.
- */
-typedef enum OrtCompiledModelCompatibility {
-  OrtCompiledModelCompatibility_EP_NOT_APPLICABLE = 0,
-  OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL,
-  OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION,
-  OrtCompiledModelCompatibility_EP_UNSUPPORTED,
-} OrtCompiledModelCompatibility;
 
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.

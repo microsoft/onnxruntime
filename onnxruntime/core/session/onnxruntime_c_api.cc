@@ -3423,6 +3423,41 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
   API_IMPL_END
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+// Validate compiled model compatibility info for a specific EP device
+ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevice, _In_ const OrtEpDevice* ep_device,
+                    _In_ const char* compatibility_info,
+                    _Out_ OrtCompiledModelCompatibility* out_status) {
+  API_IMPL_BEGIN
+  if (ep_device == nullptr || compatibility_info == nullptr || out_status == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument provided to GetEpCompatibilityForDevice.");
+  }
+
+  OrtCompiledModelCompatibility status = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  OrtStatus* ort_status = nullptr;
+  OrtEpFactory* factory = ep_device->GetMutableFactory();
+  if (factory && factory->ValidateCompiledModelCompatibilityInfo) {
+    ort_status = factory->ValidateCompiledModelCompatibilityInfo(factory, compatibility_info, &status);
+  }
+  if (ort_status != nullptr) {
+    return ToOrtStatus(ToStatusAndRelease(ort_status));
+  }
+
+  *out_status = status;
+  return nullptr;
+  API_IMPL_END
+}
+#else
+// Minimal build stub
+ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevice, _In_ const OrtEpDevice* /*ep_device*/,
+                    _In_ const char* /*compatibility_info*/,
+                    _Out_ OrtCompiledModelCompatibility* /*out_status*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+#endif
+
 #else  // defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, _In_ const char* /*registration_name*/,
                     const ORTCHAR_T* /*path*/) {
@@ -4108,6 +4143,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::CopyTensors,
 
     &OrtApis::Graph_GetModelMetadata,
+    &OrtApis::GetEpCompatibilityForDevice,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
