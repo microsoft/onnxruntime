@@ -33,7 +33,7 @@ API header files:
    - Provides APIs used to traverse an input model graph.
 
 ### Data Types
-**OrtHardwareDeviceType**
+[OrtHardwareDeviceType](#ort-hardware-device-type)
 
 Enumerates classes of hardware devices.
 
