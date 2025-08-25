@@ -555,6 +555,12 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
     return false;
   }
 
+  auto dtype = type_proto->tensor_type().elem_type();
+  // Enable bfloat16 -> float16 on-the-fly conversion
+  if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16 ||
+      dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 ||
+      dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16)
+    return true;
   if (is_initializer) {
     auto dtype = type_proto->tensor_type().elem_type();
     for (auto const& var : supported_types_initializer_) {
@@ -609,9 +615,6 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
             (var.second == dtype)) {
           return true;
         }
-        // experimentally for GPU and qdq stripping mode allow int16 types
-        if (npu_qdq_optimizer_enabled_ && (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 || dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16))
-          return true;
       }
 #ifndef NDEBUG
       if (openvino_ep::backend_utils::IsDebugEnabled()) {

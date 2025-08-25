@@ -375,6 +375,56 @@ static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
   return false;
 }
 
+static bool IsModelBF16(const onnxruntime::GraphViewer& graph_viewer) {
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  for (std::size_t i = 0; i < node_indices.size(); i++) {
+    gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_indices[i]));
+    for (auto& output : node->OutputDefs()) {
+      if (output->ToProto().type().tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16)
+        return true;
+    }
+  }
+  return false;
+}
+
+static bool Is16BitTensor(const onnxruntime::NodeArg* node_arg) {
+  const auto* type_proto = node_arg ? node_arg->TypeAsProto() : nullptr;
+  return type_proto && type_proto->has_tensor_type() &&
+         (type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT16 ||
+          type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_INT16);
+}
+
+// Check to see if the graph has Q/DQ nodes with int16 or uint16 quantization
+static bool IsQDQGraphWithUint16OrInt16(const onnxruntime::GraphViewer& graph_viewer) {
+  std::unordered_set<std::string> qdq_ops = {"QuantizeLinear", "DequantizeLinear"};
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_indices[i]));
+
+    if (qdq_ops.find(node->OpType()) != qdq_ops.end()) {
+      const auto& input_defs = node->InputDefs();
+
+      if (node->OpType() == "DequantizeLinear") {
+        // DequantizeLinear: [quantized_input, scale, zero_point] -> [float_output]
+        // Check quantized input tensor and optional zero point
+        if (Is16BitTensor(input_defs.empty() ? nullptr : input_defs[0]) ||
+            (input_defs.size() >= 3 && Is16BitTensor(input_defs[2]))) {
+          return true;
+        }
+      } else if (node->OpType() == "QuantizeLinear") {
+        // QuantizeLinear: [float_input, scale, zero_point] -> [quantized_output]
+        const auto& output_defs = node->OutputDefs();
+        if (Is16BitTensor(output_defs.empty() ? nullptr : output_defs[0]) ||
+            (input_defs.size() >= 3 && Is16BitTensor(input_defs[2]))) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& onnx_model_path_name,
                                 [[maybe_unused]] ONNX_NAMESPACE::ModelProto* model_proto,
                                 [[maybe_unused]] const onnxruntime::Node& fused_node) {
@@ -433,6 +483,10 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   }
 #endif
 
+  // Check if the graph is QDQ and has int16 or uint16 quantization
+  // If so, we will apply the QDQ scales fix transformation (for GPU device only)
+  bool is_qdq_graph_uint16_or_int16 = IsQDQGraphWithUint16OrInt16(subgraph);
+
   const auto& onnx_model_path_name = subgraph.ModelPath();
   // QDQ stripping enabled only for the NPU and experimentally on the GPU
   if ((session_context_.device_type.find("NPU") != std::string::npos) &&
@@ -446,7 +500,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
   } else if ((session_context_.device_type.find("GPU") != std::string::npos) &&
-             enable_ovep_qdq_optimizer) {
+             is_qdq_graph_uint16_or_int16) {
     // Create a copy of the model
     std::unique_ptr<onnxruntime::Model> model;
     Status status = qdq_scales_fix::Transform(subgraph, logger, model);
