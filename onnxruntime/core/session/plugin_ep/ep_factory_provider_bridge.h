@@ -65,9 +65,9 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
     return ep_factory_.CreateSyncStreamForDevice(&ep_factory_, device, stream_options, stream);
   }
 
-  OrtEpFactory& ep_factory_;           // OrtEpFactory from the provider bridge EP
-  ProviderLibrary& provider_library_;  // ProviderLibrary from the provider bridge EP
-  std::optional<std::filesystem::path> library_path_;  // Library path for EP metadata
+  OrtEpFactory& ep_factory_;
+  ProviderLibrary& provider_library_;
+  std::optional<std::filesystem::path> library_path_;
 };
 
 }  // namespace onnxruntime
