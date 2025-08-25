@@ -90,7 +90,12 @@ BackendManager::BackendManager(SessionContext& session_context,
           "[OpenVINO-EP] Bounded dynamic model execution using provider option reshape_input is not supported for OVEP EPContext model";
       ORT_THROW(exception_str);
     }
-    model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
+    if (subgraph_context_.is_ep_ctx_ovir_encapsulated) {
+      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.onnx_model_path_name.replace_extension("xml").string(), subgraph);
+    } else {
+      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
+    }
+    
   } else {
     model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
   }
@@ -236,7 +241,9 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
     std::ofstream blob_file(blob_filename,
                             std::ios::out | std::ios::trunc | std::ios::binary);
     if (!blob_file) {
-      ORT_THROW("Unable to open file for epctx model dump.");
+      std::ostringstream err_msg;
+      err_msg << "Unable to open file for epctx model dump: " << blob_filename;
+      ORT_THROW(err_msg.str());
     }
     compiled_model.export_model(blob_file);
     model_blob_str = blob_filename.filename().string();
