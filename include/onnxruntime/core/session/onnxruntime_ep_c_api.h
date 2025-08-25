@@ -889,20 +889,28 @@ struct OrtEpFactory {
    */
   ORT_API_T(const char*, GetVersion, _In_ const OrtEpFactory* this_ptr);
 
-  /** \brief Validate the compatibility of a compiled model with the execution provider.
+  /** \brief Validate the compatibility of a compiled model with the execution provider for one or more devices.
    *
-   * This function validates if a model produced with the supplied compatibility info string is supported by the underlying EP.
-   * The EP should check if a compiled model is compatible with the EP and set the model_compatibility parameter accordingly.
+   * Given a compatibility info string produced during model compilation, the EP should determine whether the
+   * compiled model is compatible with the EP when targeting the provided hardware devices. All devices provided
+   * must belong to the same execution provider instance that this factory creates.
+   *
+   * The EP implementation should consider the set of devices (e.g., multi-adapter or multi-GPU scenarios) when
+   * evaluating compatibility and set `model_compatibility` accordingly.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] compatibility_info The compatibility information string that will be used
-   * \param[out] model_compatibility OrtCompiledModelCompatibility enum value describing the compatibility of the model with the EP.
+   * \param[in] devices Array of OrtHardwareDevice pointers that the EP would run on. All must map to this EP.
+   * \param[in] num_devices Number of entries in `devices`.
+   * \param[in] compatibility_info The compatibility information string produced when the model was compiled.
+   * \param[out] model_compatibility OrtCompiledModelCompatibility value describing the compatibility of the model with the EP.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(ValidateCompiledModelCompatibilityInfo, _In_ OrtEpFactory* this_ptr,
+                  _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                  _In_ size_t num_devices,
                   _In_ const char* compatibility_info,
                   _Out_ OrtCompiledModelCompatibility* model_compatibility);
 

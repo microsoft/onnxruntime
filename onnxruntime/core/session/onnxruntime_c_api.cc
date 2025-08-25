@@ -3424,20 +3424,46 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-// Validate compiled model compatibility info for a specific EP device
-ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevice, _In_ const OrtEpDevice* ep_device,
+// Validate compiled model compatibility info for specific EP device(s)
+ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevices,
+                    _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices,
+                    _In_ size_t num_ep_devices,
                     _In_ const char* compatibility_info,
                     _Out_ OrtCompiledModelCompatibility* out_status) {
   API_IMPL_BEGIN
-  if (ep_device == nullptr || compatibility_info == nullptr || out_status == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument provided to GetEpCompatibilityForDevice.");
+  if (ep_devices == nullptr || num_ep_devices == 0 || compatibility_info == nullptr || out_status == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument provided to GetEpCompatibilityForDevices.");
+  }
+
+  // Validate inputs and ensure all devices belong to the same EP/factory
+  const OrtEpFactory* first_factory = nullptr;
+  for (size_t i = 0; i < num_ep_devices; ++i) {
+    if (ep_devices[i] == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_devices contains a null entry.");
+    }
+    const OrtEpFactory* f = ep_devices[i]->GetMutableFactory();
+    if (i == 0) {
+      first_factory = f;
+    } else if (f != first_factory) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "All ep_devices must be from the same execution provider.");
+    }
   }
 
   OrtCompiledModelCompatibility status = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
   OrtStatus* ort_status = nullptr;
-  OrtEpFactory* factory = ep_device->GetMutableFactory();
+  OrtEpFactory* factory = ep_devices[0]->GetMutableFactory();
   if (factory && factory->ValidateCompiledModelCompatibilityInfo) {
-    ort_status = factory->ValidateCompiledModelCompatibilityInfo(factory, compatibility_info, &status);
+    // collect hardware devices corresponding to the ep_devices
+    InlinedVector<const OrtHardwareDevice*> hardware_devices;
+    hardware_devices.reserve(num_ep_devices);
+    for (size_t i = 0; i < num_ep_devices; ++i) {
+      hardware_devices.push_back(ep_devices[i]->device);
+    }
+    ort_status = factory->ValidateCompiledModelCompatibilityInfo(factory,
+                                                                 hardware_devices.data(),
+                                                                 hardware_devices.size(),
+                                                                 compatibility_info,
+                                                                 &status);
   }
   if (ort_status != nullptr) {
     return ToOrtStatus(ToStatusAndRelease(ort_status));
@@ -3449,7 +3475,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevice, _In_ const OrtEpDevice
 }
 #else
 // Minimal build stub
-ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevice, _In_ const OrtEpDevice* /*ep_device*/,
+ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevices,
+                    _In_reads_(num_ep_devices) const OrtEpDevice* const* /*ep_devices*/,
+                    _In_ size_t /*num_ep_devices*/,
                     _In_ const char* /*compatibility_info*/,
                     _Out_ OrtCompiledModelCompatibility* /*out_status*/) {
   API_IMPL_BEGIN
@@ -4143,7 +4171,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::CopyTensors,
 
     &OrtApis::Graph_GetModelMetadata,
-    &OrtApis::GetEpCompatibilityForDevice,
+    &OrtApis::GetEpCompatibilityForDevices,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

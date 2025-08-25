@@ -638,7 +638,9 @@ ORT_API_STATUS_IMPL(Graph_GetName, _In_ const OrtGraph* graph, _Outptr_ const ch
 ORT_API_STATUS_IMPL(Graph_GetModelMetadata, _In_ const OrtGraph* graph, _Outptr_ OrtModelMetadata** out);
 
 // EP Compatibility Info APIs
-ORT_API_STATUS_IMPL(GetEpCompatibilityForDevice, _In_ const OrtEpDevice* ep_device,
+ORT_API_STATUS_IMPL(GetEpCompatibilityForDevices,
+                    _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices,
+                    _In_ size_t num_ep_devices,
                     _In_ const char* compatibility_info,
                     _Out_ OrtCompiledModelCompatibility* out_status);
 ORT_API_STATUS_IMPL(Graph_GetModelPath, _In_ const OrtGraph* graph, _Outptr_ const ORTCHAR_T** model_path);

@@ -6491,17 +6491,21 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetModelMetadata, _In_ const OrtGraph* graph, _Outptr_ OrtModelMetadata** out);
 
-  /** \brief Validate a compiled model's compatibility information for a specific EP device.
+  /** \brief Validate a compiled model's compatibility information for one or more EP devices.
    *
-   * \param[in] ep_device The EP device to validate against (e.g., from GetEpDevices
+   * \param[in] ep_devices The EP devices to validate against (e.g., from GetEpDevices).
+   *                        All devices must belong to the same execution provider.
+   * \param[in] num_ep_devices The number of EP devices provided.
    * \param[in] compatibility_info The compatibility info string produced when the model was compiled.
-   * \param[out] out_status The resulting compatibility status for the EP device.
+   * \param[out] out_status The resulting compatibility status for the EP devices.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetEpCompatibilityForDevice, _In_ const OrtEpDevice* ep_device,
+  ORT_API2_STATUS(GetEpCompatibilityForDevices,
+                  _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices,
+                  _In_ size_t num_ep_devices,
                   _In_ const char* compatibility_info,
                   _Out_ OrtCompiledModelCompatibility* out_status);
 };
