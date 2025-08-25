@@ -21,6 +21,17 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
+
+  if (c.NumComponents() == 1) {
+    shader.MainFunctionBody() << "let outputIndices = " << c.OffsetToIndices("global_idx") << ";\n"
+                              << "let offset_a = " << a.BroadcastedIndicesToOffset("outputIndices", c) << ";\n"
+                              << "let offset_b = " << b.BroadcastedIndicesToOffset("outputIndices", c) << ";\n"
+                              << "let a = " << a.GetByOffset("offset_a") << ";\n"
+                              << "let b = " << b.GetByOffset("offset_b") << ";\n"
+                              << c.SetByOffset("global_idx", expression_);
+    return Status::OK();
+  }
+
   // check whether can use element-wise mode.
   // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
   // In element-wise mode, no indices calculation is needed.
@@ -133,9 +144,37 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
+  std::string additional_impl;
+  if (get_additional_impl_) {
+    additional_impl = get_additional_impl_(lhs_tensor->GetElementType(), rhs_tensor->GetElementType());
+  }
+
   bool is_broadcast = lhs_shape != rhs_shape;
   bool is_lhs_scalar = lhs_shape.IsScalar();
   bool is_rhs_scalar = rhs_shape.IsScalar();
+
+
+  if (output_tensor->DataType() == DataTypeImpl::GetType<int64_t>()) {
+    BinaryElementwiseProgram program{kernel_name_,
+                                     expression_,
+                                     additional_impl,
+                                     is_broadcast,
+                                     is_lhs_scalar,
+                                     is_rhs_scalar,
+                                     false,
+                                     false,
+                                     false};
+    program
+        .SetDispatchGroupSize((size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({
+            {static_cast<uint32_t>(size)},
+        })
+        .AddOutput({output_tensor, ProgramTensorMetadataDependency::TypeAndRank});
+    program
+        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::TypeAndRank},
+                    {rhs_tensor, ProgramTensorMetadataDependency::TypeAndRank}});
+    return context.RunProgram(program);
+  }
 
   // Check if either input is boolean
   // For boolean inputs, we need to handle them differently in the shader. This is because `bool` is not a valid type in
@@ -174,11 +213,6 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
   }
 
   uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
-
-  std::string additional_impl;
-  if (get_additional_impl_) {
-    additional_impl = get_additional_impl_(lhs_tensor->GetElementType(), rhs_tensor->GetElementType());
-  }
 
   BinaryElementwiseProgram program{kernel_name_,
                                    expression_,
@@ -312,9 +346,9 @@ WEBGPU_BINARY_VERSIONED_KERNEL(Mul, 13, 13, Mul, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(Mul, 14, Mul, WebGpuSupportedNumberTypes())
 
 WEBGPU_BINARY_IMPL(Sub, "a - b")
-WEBGPU_BINARY_VERSIONED_KERNEL(Sub, 7, 12, Sub, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Sub, 13, 13, Sub, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Sub, 14, Sub, WebGpuSupportedNumberTypes())
+WEBGPU_BINARY_VERSIONED_KERNEL(Sub, 7, 12, Sub, WebGpuSupportedNumberTypesExtended())
+WEBGPU_BINARY_VERSIONED_KERNEL(Sub, 13, 13, Sub, WebGpuSupportedNumberTypesExtended())
+WEBGPU_BINARY_KERNEL(Sub, 14, Sub, WebGpuSupportedNumberTypesExtended())
 
 std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   SS(s, 1024);
