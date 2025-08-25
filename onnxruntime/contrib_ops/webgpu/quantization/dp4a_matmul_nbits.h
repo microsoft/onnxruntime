@@ -21,10 +21,11 @@ class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram
 
 class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
  public:
-  DP4AMatMulNBitsProgram(uint32_t block_size, uint32_t nbits, bool has_zero_points) : Program{"DP4AMatMulNBits"},
-                                                                                      block_size_(block_size),
-                                                                                      nbits_(nbits),
-                                                                                      has_zero_points_(has_zero_points) {}
+  DP4AMatMulNBitsProgram(uint32_t block_size, uint32_t nbits, bool has_zero_points, bool is_qualcomm) : Program{"DP4AMatMulNBits"},
+                                                                                                        block_size_(block_size),
+                                                                                                        nbits_(nbits),
+                                                                                                        has_zero_points_(has_zero_points),
+                                                                                                        is_qualcomm_(is_qualcomm) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -39,6 +40,7 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
   uint32_t block_size_;
   uint32_t nbits_;
   bool has_zero_points_;
+  bool is_qualcomm_;
 };
 
 class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMProgram> {
