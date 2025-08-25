@@ -49,7 +49,7 @@
 #include "contrib_ops/cuda/llm/common/memory_utils.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/common/data_type.h"
-#include "contrib_ops/cuda/llm/common/env_utils.h" // for getEnvEnablePDL()
+#include "contrib_ops/cuda/llm/common/env_utils.h"  // for getEnvEnablePDL()
 #include "contrib_ops/cuda/llm/common/workspace.h"
 #include "contrib_ops/cuda/llm/cutlass_type_conversion.h"
 #include "contrib_ops/cuda/llm/kernels/pre_quant_scale_kernel.h"
@@ -1819,7 +1819,7 @@ __global__ void doActivationKernel(T* output, GemmOutputType const* gemm_result,
 #endif
 
   [[maybe_unused]] constexpr int64_t VecSize = IsNVFP4 ? TmaWarpSpecializedGroupedGemmInput::NVFP4BlockScaleVectorSize
-                                      : TmaWarpSpecializedGroupedGemmInput::MXFPXBlockScaleVectorSize;
+                                                       : TmaWarpSpecializedGroupedGemmInput::MXFPXBlockScaleVectorSize;
   // Load 128-bits per thread, according to the smallest data type we read/write
   constexpr int64_t ACTIVATION_ELEM_PER_THREAD = (IsNVFP4 || IsMXFP8)
                                                      ? CVT_FP4_ELTS_PER_THREAD
@@ -1998,11 +1998,11 @@ void doActivation(T* output, GemmOutputType const* gemm_result, float const* fp8
       return fn_list[static_cast<int>(activation_type)];
     };
     [[maybe_unused]] auto NVFP4 = onnxruntime::llm::common::ConstExprWrapper<TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType,
-                                                            TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::NVFP4>{};
+                                                                             TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::NVFP4>{};
     [[maybe_unused]] auto MXFPX = onnxruntime::llm::common::ConstExprWrapper<TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType,
-                                                            TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::MXFPX>{};
+                                                                             TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::MXFPX>{};
     [[maybe_unused]] auto NONE = onnxruntime::llm::common::ConstExprWrapper<TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType,
-                                                           TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::NONE>{};
+                                                                            TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::NONE>{};
 #ifdef ENABLE_FP4
     if constexpr (std::is_same_v<T, __nv_fp4_e2m1>) {
       ORT_ENFORCE(

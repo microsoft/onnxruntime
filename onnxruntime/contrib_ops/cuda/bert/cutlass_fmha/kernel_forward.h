@@ -696,7 +696,7 @@ struct AttentionKernel {
           thread_id(),
           {0, col});
     };
-    
+
     auto createOutputAccumIter = [&](int col) ->
         typename MM1::OutputTileIteratorAccum {
           using OutputTileIteratorAccum = typename MM1::OutputTileIteratorAccum;

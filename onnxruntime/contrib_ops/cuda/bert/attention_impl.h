@@ -24,7 +24,7 @@ constexpr int kCumulatedSequenceLengthCacheMaxBatchSize = 128;
 // longlong4 is deprecated in cuda 13.
 // LongLong4 is similar to longlong4_32a, except this is also visible in Host compiler (longlong4_32a is only visible to nvcc);
 typedef struct __align__(32) {
-    long long int  x, y, z, w;
+  long long int x, y, z, w;
 } LongLong4;
 
 // A cache for cumulated sequence length. It will be initialized in the first request, then become read-only after that.

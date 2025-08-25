@@ -11,7 +11,7 @@
 
 namespace onnxruntime::contrib::cuda {
 
-  // SwiGLU with interleaved is like the following python code using PyTorch:
+// SwiGLU with interleaved is like the following python code using PyTorch:
 //   dim = x.shape[-1]
 //   x = x.view(-1, dim // 2, 2)
 //   x_glu, x_linear = x[..., 0], x[..., 1]
@@ -95,4 +95,4 @@ template void invokeSwiGLU<float, true, true>(float*, float const*, int, int, fl
 template void invokeSwiGLU<half, true, true>(half*, half const*, int, int, float, float, cudaStream_t);
 template void invokeSwiGLU<__nv_bfloat16, true, true>(__nv_bfloat16*, __nv_bfloat16 const*, int, int, float, float, cudaStream_t);
 
-}  // namespace ort_fastertransformer
+}  // namespace onnxruntime::contrib::cuda

@@ -15,7 +15,7 @@ namespace contrib {
 namespace rocm {
 
 typedef struct __align__(32) {
-    long long int  x, y, z, w;
+  long long int x, y, z, w;
 } LongLong4;
 
 size_t GetAttentionScratchSize(

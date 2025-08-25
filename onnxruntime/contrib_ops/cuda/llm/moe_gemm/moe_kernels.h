@@ -848,6 +848,6 @@ void populateRandomBuffer(void* buffer_void, size_t size, cudaStream_t stream);
 }  // namespace cutlass_kernels
 }  // namespace onnxruntime::llm::kernels
 
-#ifdef __GNUC__ 
+#ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif

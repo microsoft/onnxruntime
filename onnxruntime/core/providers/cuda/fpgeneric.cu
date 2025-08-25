@@ -13,7 +13,6 @@
 #include "core/providers/cuda/curand_wrapper.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
-
 #define TRANS_TILE_DIM 32
 #define BLOCK_ROWS 8
 #define COPY_TILE_DIM 1024

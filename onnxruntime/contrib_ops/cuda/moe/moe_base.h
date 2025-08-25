@@ -14,10 +14,10 @@ namespace contrib {
 namespace cuda {
 
 class MoEBase {
-public:  
+ public:
   using ActivationType = onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
 
-protected:
+ protected:
   MoEBase(const OpKernelInfo& op_kernel_info, const cudaDeviceProp& device_prop) {
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
 
