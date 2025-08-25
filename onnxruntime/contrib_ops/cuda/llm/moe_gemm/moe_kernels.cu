@@ -2863,8 +2863,7 @@ bool CutlassMoeFCRunner<T, WeightType, OutputType, InputType, BackBoneType, Enab
 
   for (int expert_idx = 0; expert_idx < num_experts_per_node; ++expert_idx) {
     int weight_index = expert_idx + start_expert;
-    for (size_t i = host_expert_first_token_offset[expert_idx]; i < host_expert_first_token_offset[expert_idx + 1];
-         ++i) {
+    for (int64_t i = host_expert_first_token_offset[expert_idx]; i < host_expert_first_token_offset[expert_idx + 1]; ++i) {
       int source_index = host_permuted_rows[i] % num_rows;
       int32_t lora_rank = lora_params.fc1_lora_ranks[source_index];
       host_permuted_fc1_weight_ptrs[i * 2] = reinterpret_cast<ScaleBiasType const*>(lora_params.fc1_lora_weight_ptrs[source_index * 2]) + weight_index * hidden_size * lora_rank;
