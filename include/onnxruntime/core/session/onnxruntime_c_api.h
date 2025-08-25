@@ -33,6 +33,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include "onnxruntime_common_enums.h"
 
 /** \brief The API version defined in this header
  *
@@ -6480,6 +6481,20 @@ struct OrtApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Graph_GetModelMetadata, _In_ const OrtGraph* graph, _Outptr_ OrtModelMetadata** out);
+
+  /** \brief Validate a compiled model's compatibility information for a specific EP device.
+   *
+   * \param[in] ep_device The EP device to validate against (e.g., from GetEpDevices
+   * \param[in] compatibility_info The compatibility info string produced when the model was compiled.
+   * \param[out] out_status The resulting compatibility status for the EP device.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetEpCompatibilityForDevice, _In_ const OrtEpDevice* ep_device,
+                  _In_ const char* compatibility_info,
+                  _Out_ OrtCompiledModelCompatibility* out_status);
 };
 
 /*
