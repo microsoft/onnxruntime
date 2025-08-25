@@ -104,6 +104,8 @@ class OpKernelContextInternal : public OpKernelContext {
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
+  void RecordCustomEventsToProfiler(profiling::Events& events) const noexcept { session_state_.Profiler().RecordCustomEvents(events); }
+
  private:
 #if !defined(ORT_MINIMAL_BUILD)
   class AccountingAllocator : public IAllocator {

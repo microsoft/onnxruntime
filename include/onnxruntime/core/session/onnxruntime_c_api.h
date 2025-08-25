@@ -6480,6 +6480,14 @@ struct OrtApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Graph_GetModelMetadata, _In_ const OrtGraph* graph, _Outptr_ OrtModelMetadata** out);
+
+  /** \brief Push Custom Op Compute profiling events back to Onnxruntime Profiler Events.
+   *
+   * \param[in] context OrtKernelContext instance
+   * \param[in] CustomOp Kernel Compute profiling events vector.
+   *
+   */
+  ORT_API2_STATUS(KernelContext_RecordCustomEventsToProfiler, _In_ const OrtKernelContext* context, _In_ void* events);
 };
 
 /*

@@ -761,6 +761,14 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetScratchBuffer, _In_ const OrtKerne
   return nullptr;
 };
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_RecordCustomEventsToProfiler, _In_ const OrtKernelContext* context,
+                    _In_ void* events) {
+  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+    reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->RecordCustomEventsToProfiler(*(reinterpret_cast<onnxruntime::profiling::Events*>(events)));
+    return nullptr;
+  });
+};
+
 #if ENABLE_CUSTOM_OP_API
 #include "core/framework/customregistry.h"
 namespace onnxruntime {
