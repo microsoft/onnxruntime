@@ -125,7 +125,6 @@ Status QMoE<T>::ComputeInternal(OpKernelContext* context) const {
       source_rows_buffer.get(), moe_params.num_rows, moe_params.num_experts, k_, normalize_routing_weights_,
       use_sparse_mixer_, Stream(context));
 
-  constexpr bool use_lora = false;
   constexpr bool use_deepseek_fp8_block_scale = false;
   constexpr bool min_latency_mode = false;
   bool use_awq = (fc1_zeros != nullptr);
@@ -133,12 +132,11 @@ Status QMoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t workspace_size = m_moe_runner->getWorkspaceSize(
       moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
-      activation_type_, parallelism_config, use_lora, use_deepseek_fp8_block_scale, min_latency_mode, use_awq);
+      activation_type_, parallelism_config, use_deepseek_fp8_block_scale, min_latency_mode, use_awq);
   auto work_space = GetScratchBuffer<void>(workspace_size, context->GetComputeStream());
 
   onnxruntime::llm::kernels::cutlass_kernels::QuantParams quant_params;
   onnxruntime::llm::kernels::cutlass_kernels::MoeMinLatencyParams min_latency_params;
-  onnxruntime::llm::kernels::LoraParams lora_params;
   if (block_size_ > 0) {
     quant_params = onnxruntime::llm::kernels::cutlass_kernels::QuantParams::GroupWise(
         block_size_,
@@ -180,8 +178,6 @@ Status QMoE<T>::ComputeInternal(OpKernelContext* context) const {
       nullptr,  // unpermuted_row_to_permuted_row
       parallelism_config,
       false,
-      false,
-      lora_params,
       false,
       false,
       min_latency_params,
