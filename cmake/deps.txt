@@ -56,5 +56,5 @@ extensions;https://github.com/microsoft/onnxruntime-extensions/archive/c24b7bab0
 directx_headers;https://github.com/microsoft/DirectX-Headers/archive/refs/tags/v1.613.1.zip;47653509a3371eabb156360f42faf582f314bf2e
 cudnn_frontend;https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.12.0.zip;7e733cfdc410d777b76122d64232499205589a96
 dawn;https://github.com/google/dawn/archive/794b6fadc4171f7b853a77ffdf0948fbec431f41.zip;77bb02deace0d140411f02a2fb8f5f925ea6a1b6
-kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.9.0.tar.gz;a2765979f64efb173a4b8ba4de39dcba9c655786
+kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.10.0.tar.gz;11b62149cb2514b3b9069cc435c3aa7a4e82b97a
 duktape;https://github.com/svaarala/duktape/releases/download/v2.7.0/duktape-2.7.0.tar.xz;8200c8e417dbab7adcc12c4dbdef7651cfc55794
