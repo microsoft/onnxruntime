@@ -2455,6 +2455,12 @@ inline void KernelContext::ParallelFor(void (*fn)(void*, size_t), size_t total, 
   ThrowOnError(GetApi().KernelContext_ParallelFor(ctx_, fn, total, num_batch, usr_data));
 }
 
+inline void* KernelContext::RecordCustomEventsToProfiler(void* events) const {
+  void* out = nullptr;
+  ThrowOnError(GetApi().KernelContext_RecordCustomEventsToProfiler(ctx_, events));
+  return out;
+}
+
 inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType type) {
   Ort::ThrowOnError(GetApi().CreateOpAttr(name, data, len, type, &p_));
 }

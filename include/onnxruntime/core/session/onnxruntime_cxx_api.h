@@ -2543,6 +2543,7 @@ struct KernelContext {
   OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;
   OrtKernelContext* GetOrtKernelContext() const { return ctx_; }
   void ParallelFor(void (*fn)(void*, size_t), size_t total, size_t num_batch, void* usr_data) const;
+  void* RecordCustomEventsToProfiler(void* events) const;
 
  private:
   OrtKernelContext* ctx_;
