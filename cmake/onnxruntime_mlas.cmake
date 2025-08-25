@@ -430,6 +430,14 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
         )
+        
+        # Conditionally add the SVE implementation if compiler supports it
+        if (USE_SVE)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+        endif()
+
         if (onnxruntime_USE_KLEIDIAI)
           setup_kleidiai()
         endif()
