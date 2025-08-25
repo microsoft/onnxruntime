@@ -3,7 +3,7 @@ beartype==0.15.0
 flatbuffers
 cerberus
 h5py
-onnx @ git+https://github.com/onnx/onnx@3d8c08bc936a74698ee02796b71aaa5b225c6dd0
+onnx @ git+https://github.com/onnx/onnx@54b72a5edd399eb096ee09fecdef03201e9bde89
 # Python dependencies required for pytorch development
 astunparse
 expecttest!=0.2.0
