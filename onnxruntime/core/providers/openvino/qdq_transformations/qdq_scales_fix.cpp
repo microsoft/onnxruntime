@@ -3,6 +3,7 @@
 
 #include "qdq_scales_fix.h"
 #include "core/providers/openvino/ov_protobuf_utils.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/float16.h"
 
 #include <fstream>
@@ -904,22 +905,11 @@ Status copy_model(const GraphViewer& src_graph_viewer,
   }
 
   for (auto& [name, tensor_proto] : src_graph.GetAllInitializedTensors()) {
-    dst_graph.AddInitializedTensor(*tensor_proto);
-  }
-
-  for (auto node_arg : src_graph.GetInputsIncludingInitializers()) {
-    auto check_inputs = [node_arg](auto input_node_arg) {
-      return input_node_arg->Name() == node_arg->Name();
-    };
-    if (std::find_if(dst_graph_inputs.begin(), dst_graph_inputs.end(), check_inputs) != dst_graph_inputs.end())
-      continue;
-
-    auto src_tensor_proto = src_graph.GetConstantInitializer(node_arg->Name(), true);
-    if (src_tensor_proto) {
-      auto dst_tensor_proto = onnx::TensorProto::Create();
-      dst_tensor_proto->copy_from(src_tensor_proto);
-      dst_graph.AddInitializedTensor(*dst_tensor_proto);
-    }
+    auto ort_value = OrtValue();
+    if (src_graph.GetOrtValueInitializer(name, ort_value))
+      ORT_RETURN_IF_ERROR(dst_graph.AddInitializedOrtValue(*tensor_proto, ort_value));
+    else
+      dst_graph.AddInitializedTensor(*tensor_proto);
   }
 
   ORT_RETURN_IF_ERROR(dst_graph.Resolve());
