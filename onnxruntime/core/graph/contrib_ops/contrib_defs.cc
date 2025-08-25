@@ -1464,7 +1464,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Attr("expert_weight_bits",
-              "Number of bits used in quantized weights. Default is 4 bits", ,
+              "Number of bits used in quantized weights. Default is 4 bits",
               AttributeProto::INT,
               static_cast<int64_t>(4))
         .Attr("swiglu_fusion",
