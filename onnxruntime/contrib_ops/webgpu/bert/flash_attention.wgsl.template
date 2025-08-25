@@ -3,6 +3,7 @@
 #param is_fp16
 #param is_qualcomm
 #param is_unidirectional
+#param prefer_subgroupshuffle
 #param qkv_head_size
 #param qkv_num_heads
 
@@ -110,6 +111,22 @@ fn loadAttentionBias(q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> 
 }
 #endif
 
+fn fetchKTile(k_idx: u32, vec_idx: u32, k_val: q_value_t) -> q_value_t {
+#if prefer_subgroupshuffle
+    return subgroupShuffle(k_val, k_idx);
+#else
+    return k_tile[k_idx][vec_idx];
+#endif
+}
+
+fn fetchVTile(k_idx: u32, vec_idx: u32, v_val: q_value_t) -> q_value_t {
+#if prefer_subgroupshuffle
+    return subgroupShuffle(v_val, k_idx);
+#else
+    return v_tile[k_idx][vec_idx];
+#endif
+}
+
 $MAIN {
   let head_idx = u32(workgroup_idx / uniforms.num_seq_tile);
   let capped_sg_id = min(sg_id, max_k_step - 1u);
@@ -149,47 +166,54 @@ $MAIN {
     var qk_4 : vec4<q_element_t>;
     if (sg_size > 8) {
       for (var i : u32 = 0u; i < head_size_vec; i++) {
-#if is_qualcomm
+#if prefer_subgroupshuffle
+ #if is_qualcomm
         var k_local = q_value_t(0);
         if (sg_id < max_k_step) {
           k_local = k_tile[sg_id][i];
         }
-#else
+ #else
         var k_local = k_tile[capped_sg_id][i];
+ #endif
+#else
+        var k_local = q_value_t(0);
 #endif
         var q_own = q_tile[i];
-        qk_1[0] += dot(q_own, subgroupShuffle(k_local, 0));
-        qk_1[1] += dot(q_own, subgroupShuffle(k_local, 1));
-        qk_1[2] += dot(q_own, subgroupShuffle(k_local, 2));
-        qk_1[3] += dot(q_own, subgroupShuffle(k_local, 3));
-        qk_2[0] += dot(q_own, subgroupShuffle(k_local, 4));
-        qk_2[1] += dot(q_own, subgroupShuffle(k_local, 5));
-        qk_2[2] += dot(q_own, subgroupShuffle(k_local, 6));
-        qk_2[3] += dot(q_own, subgroupShuffle(k_local, 7));
-        qk_3[0] += dot(q_own, subgroupShuffle(k_local, 8));
-        qk_3[1] += dot(q_own, subgroupShuffle(k_local, 9));
-        qk_3[2] += dot(q_own, subgroupShuffle(k_local, 10));
-        qk_3[3] += dot(q_own, subgroupShuffle(k_local, 11));
-        qk_4[0] += dot(q_own, subgroupShuffle(k_local, 12));
-        qk_4[1] += dot(q_own, subgroupShuffle(k_local, 13));
-        qk_4[2] += dot(q_own, subgroupShuffle(k_local, 14));
-        qk_4[3] += dot(q_own, subgroupShuffle(k_local, 15));
+        qk_1[0] += dot(q_own, fetchKTile(0, i, k_local));
+        qk_1[1] += dot(q_own, fetchKTile(1, i, k_local));
+        qk_1[2] += dot(q_own, fetchKTile(2, i, k_local));
+        qk_1[3] += dot(q_own, fetchKTile(3, i, k_local));
+        qk_2[0] += dot(q_own, fetchKTile(4, i, k_local));
+        qk_2[1] += dot(q_own, fetchKTile(5, i, k_local));
+        qk_2[2] += dot(q_own, fetchKTile(6, i, k_local));
+        qk_2[3] += dot(q_own, fetchKTile(7, i, k_local));
+        qk_3[0] += dot(q_own, fetchKTile(8, i, k_local));
+        qk_3[1] += dot(q_own, fetchKTile(9, i, k_local));
+        qk_3[2] += dot(q_own, fetchKTile(10, i, k_local));
+        qk_3[3] += dot(q_own, fetchKTile(11, i, k_local));
+        qk_4[0] += dot(q_own, fetchKTile(12, i, k_local));
+        qk_4[1] += dot(q_own, fetchKTile(13, i, k_local));
+        qk_4[2] += dot(q_own, fetchKTile(14, i, k_local));
+        qk_4[3] += dot(q_own, fetchKTile(15, i, k_local));
       }
     } else {
       for (var i : u32 = 0u; i < head_size_vec; i++) {
+#if prefer_subgroupshuffle
         var k_local = k_tile[capped_sg_id][i];
+#else
+        var k_local = q_value_t(0);
+#endif
         var q_own = q_tile[i];
-        qk_1[0] += dot(q_own, subgroupShuffle(k_local, 0));
-        qk_1[1] += dot(q_own, subgroupShuffle(k_local, 1));
-        qk_1[2] += dot(q_own, subgroupShuffle(k_local, 2));
-        qk_1[3] += dot(q_own, subgroupShuffle(k_local, 3));
-        qk_2[0] += dot(q_own, subgroupShuffle(k_local, 4));
-        qk_2[1] += dot(q_own, subgroupShuffle(k_local, 5));
-        qk_2[2] += dot(q_own, subgroupShuffle(k_local, 6));
-        qk_2[3] += dot(q_own, subgroupShuffle(k_local, 7));
+        qk_1[0] += dot(q_own, fetchKTile(0, i, k_local));
+        qk_1[1] += dot(q_own, fetchKTile(1, i, k_local));
+        qk_1[2] += dot(q_own, fetchKTile(2, i, k_local));
+        qk_1[3] += dot(q_own, fetchKTile(3, i, k_local));
+        qk_2[0] += dot(q_own, fetchKTile(4, i, k_local));
+        qk_2[1] += dot(q_own, fetchKTile(5, i, k_local));
+        qk_2[2] += dot(q_own, fetchKTile(6, i, k_local));
+        qk_2[3] += dot(q_own, fetchKTile(7, i, k_local));
       }
     }
-
     qk_1 = qk_1 + loadAttentionBias(q_idx_global, k_start, head_idx);
     qk_2 = qk_2 + loadAttentionBias(q_idx_global, k_start + 4, head_idx);
     if (sg_size > 8) {
@@ -326,36 +350,44 @@ $MAIN {
 #else
     if (sg_size > 8) {
       for (var i : u32 = 0; i < head_size_vec; i++) {
+ #if prefer_subgroupshuffle
         var val = v_tile[capped_sg_id][i];
-        var sum = subgroupShuffle(val, 0) * qk_1[0];
-        sum += subgroupShuffle(val, 1) * qk_1[1];
-        sum += subgroupShuffle(val, 2) * qk_1[2];
-        sum += subgroupShuffle(val, 3) * qk_1[3];
-        sum += subgroupShuffle(val, 4) * qk_2[0];
-        sum += subgroupShuffle(val, 5) * qk_2[1];
-        sum += subgroupShuffle(val, 6) * qk_2[2];
-        sum += subgroupShuffle(val, 7) * qk_2[3];
-        sum += subgroupShuffle(val, 8) * qk_3[0];
-        sum += subgroupShuffle(val, 9) * qk_3[1];
-        sum += subgroupShuffle(val, 10) * qk_3[2];
-        sum += subgroupShuffle(val, 11) * qk_3[3];
-        sum += subgroupShuffle(val, 12) * qk_4[0];
-        sum += subgroupShuffle(val, 13) * qk_4[1];
-        sum += subgroupShuffle(val, 14) * qk_4[2];
-        sum += subgroupShuffle(val, 15) * qk_4[3];
+ #else
+        var val = q_value_t(0);
+ #endif
+        var sum = fetchVTile(0, i, val) * qk_1[0];
+        sum += fetchVTile(1, i, val) * qk_1[1];
+        sum += fetchVTile(2, i, val) * qk_1[2];
+        sum += fetchVTile(3, i, val) * qk_1[3];
+        sum += fetchVTile(4, i, val) * qk_2[0];
+        sum += fetchVTile(5, i, val) * qk_2[1];
+        sum += fetchVTile(6, i, val) * qk_2[2];
+        sum += fetchVTile(7, i, val) * qk_2[3];
+        sum += fetchVTile(8, i, val) * qk_3[0];
+        sum += fetchVTile(9, i, val) * qk_3[1];
+        sum += fetchVTile(10, i, val) * qk_3[2];
+        sum += fetchVTile(11, i, val) * qk_3[3];
+        sum += fetchVTile(12, i, val) * qk_4[0];
+        sum += fetchVTile(13, i, val) * qk_4[1];
+        sum += fetchVTile(14, i, val) * qk_4[2];
+        sum += fetchVTile(15, i, val) * qk_4[3];
         o_tile[i] = o_tile[i] * o_ratio + sum;
       }
     } else {
       for (var i : u32 = 0; i < head_size_vec; i++) {
+ #if prefer_subgroupshuffle
         var val = v_tile[capped_sg_id][i];
-        var sum = subgroupShuffle(val, 0) * qk_1[0];
-        sum += subgroupShuffle(val, 1) * qk_1[1];
-        sum += subgroupShuffle(val, 2) * qk_1[2];
-        sum += subgroupShuffle(val, 3) * qk_1[3];
-        sum += subgroupShuffle(val, 4) * qk_2[0];
-        sum += subgroupShuffle(val, 5) * qk_2[1];
-        sum += subgroupShuffle(val, 6) * qk_2[2];
-        sum += subgroupShuffle(val, 7) * qk_2[3];
+ #else
+        var val = q_value_t(0);
+ #endif
+        var sum = fetchVTile(0, i, val) * qk_1[0];
+        sum += fetchVTile(1, i, val) * qk_1[1];
+        sum += fetchVTile(2, i, val) * qk_1[2];
+        sum += fetchVTile(3, i, val) * qk_1[3];
+        sum += fetchVTile(4, i, val) * qk_2[0];
+        sum += fetchVTile(5, i, val) * qk_2[1];
+        sum += fetchVTile(6, i, val) * qk_2[2];
+        sum += fetchVTile(7, i, val) * qk_2[3];
         o_tile[i] = o_tile[i] * o_ratio + sum;
       }
     }
