@@ -513,7 +513,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
     } else {
       // User wants to store data inline the TensorProto's raw_data
       tensor_proto->set_data_location(onnx::TensorProto_DataLocation_DEFAULT);
-      tensor_proto->set_raw_data(data, data_bytes);
+      onnxruntime::utils::SetRawDataInTensorProto(*tensor_proto,data,data_bytes);
     }
   }
 
@@ -850,7 +850,7 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
       const void* data = tensor.GetTensorData<void>();
 
       // Copy the Ortvalue to TensorProto as raw data
-      tensor_proto.set_raw_data(data, data_bytes);
+      onnxruntime::utils::SetRawDataInTensorProto(tensor_proto,data,data_bytes);
 
       *(attr_proto.mutable_t()) = std::move(tensor_proto);
       break;
