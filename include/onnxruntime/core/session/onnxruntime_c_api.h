@@ -87,7 +87,7 @@ extern "C" {
 #else
 #define ORT_EXPORT
 #endif
-#define ORT_API_CALL _stdcall
+#define ORT_API_CALL __stdcall
 #define ORT_MUST_USE_RESULT
 #define ORTCHAR_T wchar_t
 #else
