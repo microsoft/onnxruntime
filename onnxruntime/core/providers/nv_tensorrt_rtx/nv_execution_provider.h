@@ -12,7 +12,7 @@ typedef void* cublasHandle_t;
 typedef void* cudnnStatus_t;
 #endif
 #include "core/providers/nv_tensorrt_rtx/nv_includes.h"
-
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include <mutex>
 #include "core/providers/cuda/cuda_graph.h"
 #include "nv_execution_provider_info.h"
@@ -305,9 +305,11 @@ class NvExecutionProvider : public IExecutionProvider {
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
+  // CUDA Graph support
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
+  void HandleCudaGraphStart(cudaStream_t stream, bool require_io_binding, CudaGraphAnnotation_t cuda_graph_annotation_id, bool& graph_replay_on_this_run, bool& should_start_capture);
 
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,
@@ -405,15 +407,6 @@ class NvExecutionProvider : public IExecutionProvider {
   // Call cudaStreamSynchronize() after TRT enqueueV3()
   mutable bool sync_stream_after_enqueue_ = true;
 
-  CUDAGraph cuda_graph_;
-  bool is_graph_captured_ = false;
-  int regular_run_count_before_graph_capture_ = 0;
-  // There is chance (currently only happens in CUDA EP) that the second regular run allocates GPU memory for causes like:
-  // (1) memory pattern is enabled. (2) arena allocation for stream.
-  // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
-  // to allocate enough memory in Arena before graph capturing.
-  const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
-
   // [Note] We don't use PerThreadContext for now since it has issue with multithreading
   //
   // TRT or CUDA objects that must be maintained on a per thread basis will be put under this PerThreadContext data structure.
@@ -436,14 +429,20 @@ class NvExecutionProvider : public IExecutionProvider {
     bool UpdateTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context);
     void ResetTensorRTContext(std::string fused_node);
 
-    void InitCUDAGraph();
-    void SetGraphStream(cudaStream_t stream);
-    bool IsGraphCaptureAllowed() const;
-    void CaptureBegin(int graph_annotation_id);
-    void CaptureEnd(int graph_annotation_id);
-    bool IsGraphCaptured(int graph_annotation_id) const;
-    Status ReplayGraph(int graph_annotation_id);
-    void IncrementRegularRunCountBeforeGraphCapture();
+    // CUDA Graph management
+    void SetCudaGraphStream(cudaStream_t stream) { cuda_graph_.SetStream(stream); }
+    bool IsGraphCaptureAllowed(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
+    bool IsGraphCaptureAllowedOnRun(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
+    CudaGraphAnnotation_t GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
+    void SetCurrentGraphAnnotationId(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    CudaGraphAnnotation_t GetCurrentGraphAnnotationId() const;
+    void CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
+    Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync_status_flag);
+    void IncrementRegularRunCountBeforeGraphCapture(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    void ResetWarmupRuns(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    void DeleteCapturedGraph(CudaGraphAnnotation_t cuda_graph_annotation_id);
 
    private:
     cudnnHandle_t external_cudnn_handle_ = nullptr;
@@ -466,13 +465,18 @@ class NvExecutionProvider : public IExecutionProvider {
     // Cuda graph with multi threads will be supported in the future, so cuda_graph_ is put under PerThreadContext.
     // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph instance is enough (no need to maintain one CUDAGraph instance per TRT subgraph)
     CUDAGraph cuda_graph_;
+    // Map of graph id to regular_run_count_before_graph_capture
+    std::unordered_map<CudaGraphAnnotation_t, int> graph_id_to_run_count_;
     bool is_graph_captured_ = false;
     int regular_run_count_before_graph_capture_ = 0;
+    // Current graph annotation ID for this run
+    CudaGraphAnnotation_t current_graph_annotation_id_ = kCudaGraphAnnotationDefault;
     // There is chance (currently only happens in CUDA EP) that the second regular run allocates GPU memory for causes like:
     // (1) memory pattern is enabled. (2) arena allocation for stream.
     // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
     // to allocate enough memory in Arena before graph capturing.
-    const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
+    const int min_num_runs_before_cuda_graph_capture_ = 2;  // required min regular runs before graph capture for the necessary memory allocations.
+    // https://github.com/NVIDIA/TensorRT/blob/main/samples/common/sampleInference.cpp#L1258-L1291 Based on the trtexec code
   };
 
   using PerThreadContextMap = std::unordered_map<const NvExecutionProvider*, std::weak_ptr<PerThreadContext>>;
@@ -605,11 +609,6 @@ class NvExecutionProvider : public IExecutionProvider {
                                         std::unordered_map<std::string, size_t>& input_map,
                                         std::unordered_map<std::string, size_t>& output_map,
                                         std::vector<NodeComputeInfo>& node_compute_funcs);
-
-  bool IsGraphCaptureAllowed() const;
-  void CaptureBegin(int graph_annotation_id);
-  void CaptureEnd(int graph_annotation_id);
-  void IncrementRegularRunCountBeforeGraphCapture();
 
   /**
    * Get the pointer to the IBuilder instance.
