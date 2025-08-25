@@ -50,12 +50,6 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/saturation_check.cpp
 )
 
-# Conditionally add the SVE implementation if compiler supports it
-if(USE_SVE)
-  list(APPEND MLAS_SRC ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
-  list(APPEND MLAS_SRC ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)  
-endif()
-
 target_sources(onnxruntime_mlas PRIVATE
   ${MLAS_INC_DIR}/mlas_float16.h
   ${MLAS_INC_DIR}/mlas_gemm_postprocessor.h
@@ -438,6 +432,14 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
         )
+        
+        # Conditionally add the SVE implementation if compiler supports it
+        if (USE_SVE)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+        endif()
+
         if (onnxruntime_USE_KLEIDIAI)
           setup_kleidiai()
         endif()
@@ -466,7 +468,6 @@ else()
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
-            ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp
           )
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
@@ -482,7 +483,6 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
