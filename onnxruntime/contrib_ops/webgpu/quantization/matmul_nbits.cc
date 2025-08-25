@@ -73,7 +73,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
 
   const uint32_t components_a = a.NumComponents();
-  const uint32_t components_b = b.NumComponents() / 4;  // b is stored as uint32 which includs 4 uint8.
+  const uint32_t components_b = b.NumComponents() / 4;  // b is stored as uint32 which includes 4 uint8.
   constexpr uint32_t tile_size_k_vec = 16;
   const uint32_t elements_in_value_b = components_b * (32 / nbits_);
   const uint32_t tile_size_k = tile_size_k_vec * elements_in_value_b;
@@ -88,6 +88,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
+                             WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
                              WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
@@ -106,8 +107,10 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   ORT_ENFORCE(bias == nullptr, "bias as input is not supported yet.");
 
   const bool has_zero_points = zero_points != nullptr;
+  const uint32_t nbits = onnxruntime::narrow<uint32_t>(bits_);
   if (has_zero_points) {
     ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(), "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
+    ORT_ENFORCE(nbits != 2, "Currently, zero points are not supported for Q2 quantization.");
   }
 
   MatMulComputeHelper helper;
@@ -124,10 +127,12 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
   const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
   const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_);
-  const uint32_t nbits = onnxruntime::narrow<uint32_t>(bits_);
 
-  const uint32_t n_blocks_per_col = (K + block_size - 1) / block_size;
-  const uint32_t blob_size = (block_size / 8) * nbits;
+  // Special case matrix used by bitnets where there is a single scale for the entire
+  const bool single_scale_weights = (block_size == K * N);
+  const uint32_t block_size_per_col = single_scale_weights ? K : block_size;
+  const uint32_t n_blocks_per_col = (K + block_size_per_col - 1) / block_size_per_col;
+  const uint32_t blob_size = (block_size_per_col / 8) * nbits;
   const uint32_t blob_size_in_words = blob_size / 4;
   const uint32_t components_a = GetMaxComponents(K);
   const uint32_t components_b = GetMaxComponents(blob_size_in_words);
@@ -157,6 +162,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const bool use_wide_tile_program = block_size == 32 &&
                                      components_a == 4 &&
                                      components_b == 4 &&
+                                     nbits != 2 &&
                                      M >= kMinMForTileOptimization;
   if (use_wide_tile_program) {
     // Enforce output components to 1.
@@ -212,7 +218,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   constexpr uint32_t kU32Components = 4;
   uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
-  MatMulNBitsProgram program{tile_size, nbits, has_zero_points};
+  uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
+  MatMulNBitsProgram program{tile_size, nbits, has_zero_points, single_scale_weights};
   program.SetWorkgroupSize(workgroup_size);
   program.SetDispatchGroupSize((N + tile_size - 1) / tile_size, M, batch_count);
   program
@@ -220,8 +227,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                   {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
                   {scales, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {n_blocks_per_col * blob_size / components_b_with_u32}, {block_size}, {n_blocks_per_col}, {zero_blocks_per_col}, {num_N_tile}, {batch_count}})
-      .CacheHint(nbits, has_zero_points);
+      .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {K_of_b}, {block_size}, {n_blocks_per_col}, {zero_blocks_per_col}, {num_N_tile}, {batch_count}})
+      .CacheHint(nbits, has_zero_points, single_scale_weights);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
