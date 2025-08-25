@@ -54,11 +54,9 @@ TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape) {
     OpTester test("Reshape");
     test.AddInput<float>("data", {1, 0}, std::vector<float>());
     test.AddInput<int64_t>("shape", {3}, {1, 0, -1}, false);
-    test.AddOutput<float>("reshaped", {1, 0, 1}, {});
+    test.AddOutput<float>("reshaped", {1, 0, 0}, {});
     // TensorRT, QNN don't support empty dimension
-    test.Run(OpTester::ExpectResult::kExpectFailure,
-             "The input tensor cannot be reshaped to the requested shape",
-             {kTensorrtExecutionProvider, kQnnExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
   }
 
   {
@@ -476,6 +474,48 @@ TEST(TensorOpTest, ShapeTest3D) {
   test.AddOutput<int64_t>("shape", {3}, {2, 3, 4});
   // TensorRT: volume of dimensions is not consistent with weights size
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, Shape_Int4_Uint4) {
+  {
+    OpTester test("Shape", 21);
+
+    test.AddInput<Int4x2>("data", {2, 3}, {Int4x2(0, 1), Int4x2(3, 15), Int4x2(2, 8)});
+    test.AddOutput<int64_t>("shape", {2}, {2, 3});
+    // TensorRT, QNN, NNAPI, OpenVINO, DML, CoreML don't support Int4.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kCoreMLExecutionProvider});
+  }
+
+  {
+    OpTester test("Shape", 21);
+
+    test.AddInput<UInt4x2>("data", {2, 3}, {UInt4x2(0, 1), UInt4x2(3, 15), UInt4x2(2, 8)});
+    test.AddOutput<int64_t>("shape", {2}, {2, 3});
+    // TensorRT, QNN, NNAPI, OpenVINO, DML, CoreML don't support Uint4.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kCoreMLExecutionProvider});
+  }
+}
+
+TEST(TensorOpTest, Reshape_Int4_Uint4) {
+  {
+    OpTester test("Reshape", 21);
+
+    test.AddInput<Int4x2>("data", {2, 3}, {Int4x2(0, 1), Int4x2(3, 15), Int4x2(2, 8)});
+    test.AddInput<int64_t>("shape", {3}, {-1, 0, 2});
+    test.AddOutput<Int4x2>("reshaped", {1, 3, 2}, {Int4x2(0, 1), Int4x2(3, 15), Int4x2(2, 8)});
+    // TensorRT, QNN, NNAPI, OpenVINO, DML, CoreML don't support Int4.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kCoreMLExecutionProvider});
+  }
+
+  {
+    OpTester test("Reshape", 21);
+
+    test.AddInput<UInt4x2>("data", {2, 3}, {UInt4x2(0, 1), UInt4x2(3, 15), UInt4x2(2, 8)});
+    test.AddInput<int64_t>("shape", {3}, {-1, 0, 2});
+    test.AddOutput<UInt4x2>("reshaped", {1, 3, 2}, {UInt4x2(0, 1), UInt4x2(3, 15), UInt4x2(2, 8)});
+    // TensorRT, QNN, NNAPI, OpenVINO, DML, CoreML don't support Uint4.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kCoreMLExecutionProvider});
+  }
 }
 
 }  // namespace test
