@@ -30,8 +30,8 @@ static void RunMoETest(const std::vector<float>& input, const std::vector<float>
 
     std::vector<int64_t> input_dims = {num_rows, hidden_size};
     std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-    std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size};
-    std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size};
+    std::vector<int64_t> fc1_experts_weights_dims = {num_experts, inter_size, hidden_size};
+    std::vector<int64_t> fc2_experts_weights_dims = {num_experts, hidden_size, inter_size};
     std::vector<int64_t> fc3_experts_weights_dims = fc1_experts_weights_dims;
     std::vector<int64_t> fc1_experts_bias_dims = {num_experts, inter_size};
     std::vector<int64_t> fc2_experts_bias_dims = {num_experts, hidden_size};

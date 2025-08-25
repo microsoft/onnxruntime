@@ -1464,7 +1464,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Attr("expert_weight_bits",
-              "Number of bits used in quantized weights. 0 means FP32 (no quantization), default is 4 bits",
+              "Number of bits used in quantized weights. Default is 4 bits", ,
               AttributeProto::INT,
               static_cast<int64_t>(4))
         .Attr("swiglu_fusion",
@@ -1545,7 +1545,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "output tensor with same shape of input",
                 "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
-        .TypeConstraint("T1", {"tensor(uint8)", "tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain weights type to uint8 (quantized) or float (FP32 mode) tensors.")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Constrain weights type to uint8 tensors.")
         .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain scales type to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 

@@ -106,7 +106,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
-  const size_t output_buffer_size = output->Shape().Size();
+  const size_t output_buffer_size = static_cast<size_t>(output->Shape().Size());
 
   const T* input_data = input->Data<T>();
   const T* router_probs_data = router_probs->Data<T>();
@@ -115,18 +115,18 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   IAllocatorUniquePtr<float> router_logits_float_buffer;
   const float* router_logits_float;
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    router_logits_float_buffer = IAllocator::MakeUniquePtr<float>(allocator, num_tokens * num_experts);
+    router_logits_float_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * num_experts));
     router_logits_float = router_logits_float_buffer.get();
     MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(router_probs_data),
                                  const_cast<float*>(router_logits_float),
-                                 num_tokens * num_experts);
+                                 static_cast<size_t>(num_tokens * num_experts));
   } else {
     router_logits_float = reinterpret_cast<const float*>(router_probs_data);
   }
 
-  auto route_expert_ptr = IAllocator::MakeUniquePtr<int>(allocator, num_tokens * k_);
+  auto route_expert_ptr = IAllocator::MakeUniquePtr<int>(allocator, static_cast<size_t>(num_tokens * k_));
   int* route_expert = route_expert_ptr.get();
-  auto route_scale_ptr = IAllocator::MakeUniquePtr<float>(allocator, num_tokens * k_);
+  auto route_scale_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * k_));
   float* route_scale = route_scale_ptr.get();
 
   // Parallelize the routing logic to improve performance for large token batches.
@@ -135,65 +135,65 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
   std::vector<std::vector<std::vector<int64_t>>> thread_local_expert_token_maps(num_routing_threads);
   for (auto& map : thread_local_expert_token_maps) {
-    map.resize(num_experts);
+    map.resize(static_cast<size_t>(num_experts));
   }
 
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_routing_threads, [&](std::ptrdiff_t thread_id) {
-    auto work = concurrency::ThreadPool::PartitionWork(static_cast<int>(thread_id), num_routing_threads, num_tokens);
+    auto work = concurrency::ThreadPool::PartitionWork(static_cast<int>(thread_id), num_routing_threads, static_cast<std::ptrdiff_t>(num_tokens));
     auto& local_expert_token_map = thread_local_expert_token_maps[thread_id];
 
     // Pre-allocate buffers for this thread to reuse, avoiding allocations inside the loop.
-    std::vector<std::pair<float, int64_t>> sorted_logits(num_experts);
-    std::vector<float> top_k_exp(k_);
+    std::vector<std::pair<float, int64_t>> sorted_logits(static_cast<size_t>(num_experts));
+    std::vector<float> top_k_exp(static_cast<size_t>(k_));
 
     for (int64_t i = work.start; i < work.end; ++i) {
       const float* logits = router_logits_float + i * num_experts;
       for (int64_t j = 0; j < num_experts; ++j) {
-        sorted_logits[j] = {logits[j], j};
+        sorted_logits[static_cast<size_t>(j)] = {logits[j], j};
       }
-      std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + k_, sorted_logits.end(), std::greater<>());
+      std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + static_cast<std::ptrdiff_t>(k_), sorted_logits.end(), std::greater<>());
 
       float max_logit = -std::numeric_limits<float>::infinity();
       for (int64_t j = 0; j < k_; ++j) {
-        if (sorted_logits[j].first > max_logit) {
-          max_logit = sorted_logits[j].first;
+        if (sorted_logits[static_cast<size_t>(j)].first > max_logit) {
+          max_logit = sorted_logits[static_cast<size_t>(j)].first;
         }
       }
 
       float sum_exp = 0.0f;
       for (int64_t j = 0; j < k_; ++j) {
-        top_k_exp[j] = std::exp(sorted_logits[j].first - max_logit);
-        sum_exp += top_k_exp[j];
+        top_k_exp[static_cast<size_t>(j)] = std::exp(sorted_logits[static_cast<size_t>(j)].first - max_logit);
+        sum_exp += top_k_exp[static_cast<size_t>(j)];
       }
 
       float scale = (sum_exp == 0.0f) ? 0.0f : (1.0f / sum_exp);
       for (int64_t j = 0; j < k_; ++j) {
-        int64_t expert_idx = sorted_logits[j].second;
+        int64_t expert_idx = sorted_logits[static_cast<size_t>(j)].second;
         int64_t route_idx = i * k_ + j;
         route_expert[route_idx] = static_cast<int>(expert_idx);
-        route_scale[route_idx] = top_k_exp[j] * scale;
+        route_scale[route_idx] = top_k_exp[static_cast<size_t>(j)] * scale;
         if (route_scale[route_idx] > 0.0f) {
-          local_expert_token_map[expert_idx].push_back(route_idx);
+          local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
         }
       }
     }
   });
 
   // Merge the maps from each thread into a single global map.
-  std::vector<std::vector<int64_t>> expert_token_map(num_experts);
+  std::vector<std::vector<int64_t>> expert_token_map(static_cast<size_t>(num_experts));
   for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
     size_t total_tokens_for_expert = 0;
     for (int t = 0; t < num_routing_threads; ++t) {
-      total_tokens_for_expert += thread_local_expert_token_maps[t][expert_idx].size();
+      total_tokens_for_expert += thread_local_expert_token_maps[t][static_cast<size_t>(expert_idx)].size();
     }
-    expert_token_map[expert_idx].reserve(total_tokens_for_expert);
+    expert_token_map[static_cast<size_t>(expert_idx)].reserve(total_tokens_for_expert);
   }
 
   for (int t = 0; t < num_routing_threads; ++t) {
     for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
-      auto& local_tokens = thread_local_expert_token_maps[t][expert_idx];
+      auto& local_tokens = thread_local_expert_token_maps[t][static_cast<size_t>(expert_idx)];
       if (!local_tokens.empty()) {
-        expert_token_map[expert_idx].insert(expert_token_map[expert_idx].end(), local_tokens.begin(), local_tokens.end());
+        expert_token_map[static_cast<size_t>(expert_idx)].insert(expert_token_map[static_cast<size_t>(expert_idx)].end(), local_tokens.begin(), local_tokens.end());
       }
     }
   }
@@ -202,11 +202,11 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   IAllocatorUniquePtr<float> input_float_buffer;
   const float* input_float;
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    input_float_buffer = IAllocator::MakeUniquePtr<float>(allocator, num_tokens * hidden_size);
+    input_float_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * hidden_size));
     input_float = input_float_buffer.get();
     MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(input_data),
                                  const_cast<float*>(input_float),
-                                 num_tokens * hidden_size);
+                                 static_cast<size_t>(num_tokens * hidden_size));
   } else {
     input_float = reinterpret_cast<const float*>(input_data);
   }
@@ -225,14 +225,14 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  const size_t A1_size = max_tokens_per_expert * hidden_size;
-  const size_t C1_size = max_tokens_per_expert * fc1_out_features;
-  const size_t A2_size = max_tokens_per_expert * inter_size;
-  const size_t C2_size = max_tokens_per_expert * hidden_size;
-  const size_t B1_dequant_size = fc1_out_features * hidden_size;
-  const size_t B2_dequant_size = hidden_size * inter_size;
-  const size_t bias1_size = fc1_out_features;
-  const size_t bias2_size = hidden_size;
+  const size_t A1_size = static_cast<size_t>(max_tokens_per_expert * hidden_size);
+  const size_t C1_size = static_cast<size_t>(max_tokens_per_expert * fc1_out_features);
+  const size_t A2_size = static_cast<size_t>(max_tokens_per_expert * inter_size);
+  const size_t C2_size = static_cast<size_t>(max_tokens_per_expert * hidden_size);
+  const size_t B1_dequant_size = static_cast<size_t>(fc1_out_features * hidden_size);
+  const size_t B2_dequant_size = static_cast<size_t>(hidden_size * inter_size);
+  const size_t bias1_size = static_cast<size_t>(fc1_out_features);
+  const size_t bias2_size = static_cast<size_t>(hidden_size);
 
   const size_t workspace_elements_per_thread = A1_size + C1_size + A2_size + C2_size + B1_dequant_size + B2_dequant_size + bias1_size + bias2_size;
   auto workspace_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_expert_threads) * workspace_elements_per_thread);
@@ -240,12 +240,12 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_expert_threads, [&](std::ptrdiff_t thread_id_pd) {
     int thread_id = static_cast<int>(thread_id_pd);
-    auto work = concurrency::ThreadPool::PartitionWork(thread_id, num_expert_threads, num_experts);
+    auto work = concurrency::ThreadPool::PartitionWork(thread_id, num_expert_threads, static_cast<std::ptrdiff_t>(num_experts));
 
     float* thread_workspace = workspace + static_cast<size_t>(thread_id) * workspace_elements_per_thread;
 
     for (int64_t expert_idx = work.start; expert_idx < work.end; ++expert_idx) {
-      const auto& routes = expert_token_map[expert_idx];
+      const auto& routes = expert_token_map[static_cast<size_t>(expert_idx)];
       if (routes.empty()) {
         continue;
       }
@@ -264,10 +264,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
       // --- Gather input tokens for the current expert ---
       for (int64_t i = 0; i < num_expert_tokens; ++i) {
-        const int64_t token_idx = routes[i] / k_;
+        const int64_t token_idx = routes[static_cast<size_t>(i)] / k_;
         memcpy(A1 + i * hidden_size,
                input_float + token_idx * hidden_size,
-               hidden_size * sizeof(float));
+               static_cast<size_t>(hidden_size) * sizeof(float));
       }
 
       // --- FC1 GEMM (X * W1^T) ---
@@ -277,18 +277,18 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                       fc1_out_features, hidden_size, B1_dequant);
 
       MlasGemm(CblasNoTrans, CblasTrans,
-               num_expert_tokens, fc1_out_features, hidden_size,
-               1.0f, A1, hidden_size,
-               B1_dequant, hidden_size,
-               0.0f, C1, fc1_out_features,
+               static_cast<size_t>(num_expert_tokens), static_cast<size_t>(fc1_out_features), static_cast<size_t>(hidden_size),
+               1.0f, A1, static_cast<size_t>(hidden_size),
+               B1_dequant, static_cast<size_t>(hidden_size),
+               0.0f, C1, static_cast<size_t>(fc1_out_features),
                nullptr);
 
       const T* B1_bias = (fc1_experts_bias) ? fc1_experts_bias->Data<T>() + expert_idx * fc1_out_features : nullptr;
       if (B1_bias) {
         if constexpr (std::is_same_v<T, MLFloat16>) {
-          MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), bias1_float, fc1_out_features);
+          MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), bias1_float, static_cast<size_t>(fc1_out_features));
         } else {
-          memcpy(bias1_float, B1_bias, fc1_out_features * sizeof(float));
+          memcpy(bias1_float, B1_bias, static_cast<size_t>(fc1_out_features) * sizeof(float));
         }
         for (int64_t i = 0; i < num_expert_tokens; ++i) {
           for (int64_t j = 0; j < fc1_out_features; ++j) {
@@ -311,23 +311,23 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                       hidden_size, inter_size, B2_dequant);
 
       MlasGemm(CblasNoTrans, CblasTrans,
-               num_expert_tokens, hidden_size, inter_size,
-               1.0f, A2, inter_size,
-               B2_dequant, inter_size,
-               0.0f, C2, hidden_size,
+               static_cast<size_t>(num_expert_tokens), static_cast<size_t>(hidden_size), static_cast<size_t>(inter_size),
+               1.0f, A2, static_cast<size_t>(inter_size),
+               B2_dequant, static_cast<size_t>(inter_size),
+               0.0f, C2, static_cast<size_t>(hidden_size),
                nullptr);
 
       const T* B2_bias = (fc2_experts_bias) ? fc2_experts_bias->Data<T>() + expert_idx * hidden_size : nullptr;
       if (B2_bias) {
         if constexpr (std::is_same_v<T, MLFloat16>) {
-          MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), bias2_float, hidden_size);
+          MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), bias2_float, static_cast<size_t>(hidden_size));
         } else {
-          memcpy(bias2_float, B2_bias, hidden_size * sizeof(float));
+          memcpy(bias2_float, B2_bias, static_cast<size_t>(hidden_size) * sizeof(float));
         }
       }
 
       for (int64_t i = 0; i < num_expert_tokens; ++i) {
-        const int64_t route_idx = routes[i];
+        const int64_t route_idx = routes[static_cast<size_t>(i)];
         const int64_t token_idx = route_idx / k_;
         const float weight = route_scale[route_idx];
 
@@ -358,7 +358,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     // --- 5. Convert final float buffer to output type T ---
     MlasConvertFloatToHalfBuffer(final_output_float,
                                  reinterpret_cast<MLFloat16*>(output->MutableData<T>()),
-                                 output_buffer_size);
+                                 static_cast<size_t>(output_buffer_size));
   } else {  // T is float
     accumulate(output->MutableData<T>());
   }
