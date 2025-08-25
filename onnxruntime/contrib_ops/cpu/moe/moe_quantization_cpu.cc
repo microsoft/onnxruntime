@@ -107,9 +107,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
   const size_t output_buffer_size = output->Shape().Size();
-  auto final_output_float_ptr = IAllocator::MakeUniquePtr<float>(allocator, output_buffer_size);
-  float* final_output_float = final_output_float_ptr.get();
-  memset(final_output_float, 0, output_buffer_size * sizeof(float));
 
   const T* input_data = input->Data<T>();
   const T* router_probs_data = router_probs->Data<T>();
@@ -343,20 +340,27 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     }
   });
 
-  // --- 4. Final Reduction ---
-  for (int i = 0; i < num_expert_threads; ++i) {
-    for (size_t j = 0; j < output_buffer_size; ++j) {
-      final_output_float[j] += thread_local_outputs[static_cast<size_t>(i) * output_buffer_size + j];
+  // --- 4. Final Reduction (accumulate expert outputs to a float buffer) ---
+  auto accumulate = [&](float* buffer) {
+    memset(buffer, 0, output_buffer_size * sizeof(float));
+    for (int i = 0; i < num_expert_threads; ++i) {
+      for (size_t j = 0; j < output_buffer_size; ++j) {
+        buffer[j] += thread_local_outputs[static_cast<size_t>(i) * output_buffer_size + j];
+      }
     }
-  }
+  };
 
-  // --- 5. Convert final float buffer to output type T ---
   if constexpr (std::is_same_v<T, MLFloat16>) {
+    auto final_output_float_ptr = IAllocator::MakeUniquePtr<float>(allocator, output_buffer_size);
+    float* final_output_float = final_output_float_ptr.get();
+    accumulate(final_output_float);
+
+    // --- 5. Convert final float buffer to output type T ---
     MlasConvertFloatToHalfBuffer(final_output_float,
                                  reinterpret_cast<MLFloat16*>(output->MutableData<T>()),
                                  output_buffer_size);
-  } else {
-    memcpy(output->MutableData<T>(), final_output_float, output_buffer_size * sizeof(float));
+  } else {  // T is float
+    accumulate(output->MutableData<T>());
   }
 
   return Status::OK();
