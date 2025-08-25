@@ -10,11 +10,9 @@ Dependencies:
 - ONNXRuntime python wheel installed
 """
 
-import os
-import sys
-import time
 import argparse
-import logging
+import os
+import time
 
 import onnxruntime as ort
 
@@ -50,11 +48,11 @@ def load_session(model_path, provider):
     start = time.perf_counter()
     session = ort.InferenceSession(model_path, providers=providers)
     stop = time.perf_counter()
-    print(f"> Session load time: {stop-start: .3f} sec")
+    print(f"> Session load time: {stop - start: .3f} sec")
     return
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compile ONNX model with ONNX Runtime")
     parser.add_argument("-i", "--model_path", type=str, required=True, help="Path to the ONNX model file")
     parser.add_argument("-o", "--output_path", type=str, help="Path to save the compiled EP context model")
