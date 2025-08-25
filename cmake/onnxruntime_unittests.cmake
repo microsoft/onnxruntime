@@ -1582,6 +1582,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if (HAS_QSPECTRE)
       list(APPEND custom_op_lib_option "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /Qspectre>")
     endif()
+    set(custom_op_lib_link ${custom_op_lib_link} CUDA::cudart)
   endif()
 
   file(GLOB custom_op_src ${custom_op_src_patterns})

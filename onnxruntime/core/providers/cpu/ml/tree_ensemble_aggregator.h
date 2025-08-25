@@ -178,7 +178,7 @@ struct TreeNodeElement {
 
   inline NODE_MODE_ORT mode() const { return NODE_MODE_ORT(flags & 0x1F); }
   inline bool is_not_leaf() const { return !(flags & NODE_MODE_ORT::LEAF); }
-  inline bool is_missing_track_true() const { return flags & MissingTrack::kTrue; }
+  inline bool is_missing_track_true() const { return static_cast<uint8_t>(flags) & static_cast<uint8_t>(MissingTrack::kTrue); }
 
 #if defined(_TREE_DEBUG)
   std::string str() const {

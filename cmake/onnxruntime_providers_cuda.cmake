@@ -189,6 +189,9 @@
       endif()
       # skip diagnosis error caused by cuda header files
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
+
+      # Suppress -Wattributes warning from protobuf headers with nvcc on Linux
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-attributes>")
     endif()
 
     if (UNIX)
