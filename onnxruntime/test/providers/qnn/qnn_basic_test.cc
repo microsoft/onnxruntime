@@ -11,13 +11,10 @@
 #if BUILD_QNN_EP_STATIC_LIB
 #include "core/providers/qnn/qnn_allocator.h"  // Used by QnnHTPBackendTests.UseHtpSharedMemoryAllocatorForInputs
 #endif
-#include "core/session/abi_devices.h"
-#include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
-#include "core/session/utils.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
 #include "test/util/include/api_asserts.h"
@@ -59,318 +56,6 @@ static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
   return has_ep;
 }
 
-// Tests the `session.disable_cpu_ep_fallback` configuration option when the backend cannot be loaded.
-// When the option is enabled, session creation throws an exception because the backend cannot be found.
-TEST(QnnEP, TestDisableCPUFallback_BackendNotFound) {
-  {
-    Ort::SessionOptions so;
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-
-    onnxruntime::ProviderOptions options;
-#if defined(_WIN32)
-    options["backend_path"] = "DoesNotExist.dll";  // Invalid backend path!
-#else
-    options["backend_path"] = "libDoesNotExist.so";  // Invalid backend path!
-#endif
-
-    so.AppendExecutionProvider("QNN", options);
-
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
-
-    try {
-      Ort::Session session(*ort_env, ort_model_path, so);
-      FAIL();  // Should not get here!
-    } catch (const Ort::Exception& excpt) {
-      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
-      ASSERT_THAT(excpt.what(), testing::HasSubstr("This session contains graph nodes that are assigned to the default "
-                                                   "CPU EP, but fallback to CPU EP has been explicitly disabled by "
-                                                   "the user."));
-    }
-  }
-
-  {
-    Ort::SessionOptions so;
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-
-    onnxruntime::ProviderOptions options;
-#if defined(_WIN32)
-    options["backend_path"] = "DoesNotExist.dll";  // Invalid backend path!
-#else
-    options["backend_path"] = "libDoesNotExist.so";  // Invalid backend path!
-#endif
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
-
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
-
-    try {
-      Ort::Session session(*ort_env, ort_model_path, so);
-      FAIL();  // Should not get here!
-    } catch (const Ort::Exception& excpt) {
-      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
-      ASSERT_THAT(excpt.what(), testing::HasSubstr("This session contains graph nodes that are assigned to the default "
-                                                   "CPU EP, but fallback to CPU EP has been explicitly disabled by "
-                                                   "the user."));
-    }
-  }
-}
-
-// Tests the `session.disable_cpu_ep_fallback` configuration option when the entire model cannot be assigned to QNN EP.
-// When the option is enabled, Session creation should throw an exception.
-TEST(QnnEP, TestDisableCPUFallback_ModelNotFullySupported) {
-  {
-    Ort::SessionOptions so;
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-
-    onnxruntime::ProviderOptions options;
-#if defined(_WIN32)
-    options["backend_path"] = "QnnCpu.dll";
-#else
-    options["backend_path"] = "libQnnCpu.so";
-#endif
-    options["offload_graph_io_quantization"] = "0";
-
-    so.AppendExecutionProvider("QNN", options);
-
-    // QNN EP doesn't support MatMulInteger.
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "qnn_ep_partial_support.onnx";
-
-    try {
-      Ort::Session session(*ort_env, ort_model_path, so);
-      FAIL();  // Should not get here!
-    } catch (const Ort::Exception& excpt) {
-      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
-      ASSERT_THAT(excpt.what(), testing::HasSubstr("This session contains graph nodes that are assigned to the default "
-                                                   "CPU EP, but fallback to CPU EP has been explicitly disabled by "
-                                                   "the user."));
-    }
-  }
-
-  {
-    Ort::SessionOptions so;
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-
-    onnxruntime::ProviderOptions options;
-#if defined(_WIN32)
-    options["backend_path"] = "QnnCpu.dll";
-#else
-    options["backend_path"] = "libQnnCpu.so";
-#endif
-    options["offload_graph_io_quantization"] = "0";
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
-
-    // QNN EP doesn't support MatMulInteger.
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "qnn_ep_partial_support.onnx";
-
-    try {
-      Ort::Session session(*ort_env, ort_model_path, so);
-      FAIL();  // Should not get here!
-    } catch (const Ort::Exception& excpt) {
-      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
-      ASSERT_THAT(excpt.what(), testing::HasSubstr("This session contains graph nodes that are assigned to the default "
-                                                   "CPU EP, but fallback to CPU EP has been explicitly disabled by "
-                                                   "the user."));
-    }
-  }
-}
-
-// The model is supported on QNN CPU backend, but CPU fallback is disabled
-// QNN EP report error for this scenario also
-TEST(QnnEP, TestDisableCPUFallback_TryingToRunOnQnnCPU) {
-  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
-                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
-  auto model_func = BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain);
-
-  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
-
-  auto& logging_manager = DefaultLoggingManager();
-  // logging_manager.SetDefaultLoggerSeverity(log_severity);
-
-  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
-                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
-                           logging_manager.DefaultLogger());
-  Graph& graph = model.MainGraph();
-  ModelTestBuilder helper(graph);
-  model_func(helper);
-  helper.SetGraphOutputs();
-  ASSERT_STATUS_OK(model.MainGraph().Resolve());
-
-  // Serialize the model to a string.
-  std::string model_data;
-  model.ToProto().SerializeToString(&model_data);
-
-  {
-    Ort::SessionOptions so;
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-
-    onnxruntime::ProviderOptions options;
-#if defined(_WIN32)
-    options["backend_path"] = "QnnCpu.dll";
-#else
-    options["backend_path"] = "libQnnCpu.so";
-#endif
-    options["offload_graph_io_quantization"] = "0";
-
-    so.AppendExecutionProvider("QNN", options);
-
-    try {
-      Ort::Session session(*ort_env, model_data.data(), model_data.size(), so);
-      FAIL();  // Should not get here!
-    } catch (const Ort::Exception& excpt) {
-      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
-      ASSERT_THAT(excpt.what(), testing::HasSubstr("This session contains graph nodes that are assigned to the default "
-                                                   "CPU EP, but fallback to CPU EP has been explicitly disabled by "
-                                                   "the user."));
-    }
-  }
-
-  {
-    Ort::SessionOptions so;
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-
-    onnxruntime::ProviderOptions options;
-#if defined(_WIN32)
-    options["backend_path"] = "QnnCpu.dll";
-#else
-    options["backend_path"] = "libQnnCpu.so";
-#endif
-    options["offload_graph_io_quantization"] = "0";
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
-
-    try {
-      Ort::Session session(*ort_env, model_data.data(), model_data.size(), so);
-      FAIL();  // Should not get here!
-    } catch (const Ort::Exception& excpt) {
-      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
-      ASSERT_THAT(excpt.what(), testing::HasSubstr("This session contains graph nodes that are assigned to the default "
-                                                   "CPU EP, but fallback to CPU EP has been explicitly disabled by "
-                                                   "the user."));
-    }
-  }
-}
-
-// Tests invalid use of the `session.disable_cpu_ep_fallback` configuration option.
-// It is invalid to set the option and explicitly add the CPU EP to the session.
-TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
-  {
-    Ort::SessionOptions so;
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-
-    onnxruntime::ProviderOptions options;
-#if defined(_WIN32)
-    options["backend_path"] = "QnnCpu.dll";
-#else
-    options["backend_path"] = "libQnnCpu.so";
-#endif
-    options["offload_graph_io_quantization"] = "0";
-
-    so.AppendExecutionProvider("QNN", options);
-
-    // Invalid! Adds CPU EP to session, but also disables CPU fallback.
-    Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
-
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
-
-    try {
-      Ort::Session session(*ort_env, ort_model_path, so);
-      FAIL();  // Should not get here!
-    } catch (const Ort::Exception& excpt) {
-      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
-      ASSERT_THAT(excpt.what(), testing::HasSubstr("Conflicting session configuration: explicitly added the CPU EP to the "
-                                                   "session, but also disabled fallback to the CPU EP via session "
-                                                   "configuration options."));
-    }
-  }
-
-  {
-    Ort::SessionOptions so;
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-
-    onnxruntime::ProviderOptions options;
-#if defined(_WIN32)
-    options["backend_path"] = "QnnCpu.dll";
-#else
-    options["backend_path"] = "libQnnCpu.so";
-#endif
-    options["offload_graph_io_quantization"] = "0";
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
-
-    // Invalid! Adds CPU EP to session, but also disables CPU fallback.
-    Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
-
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
-
-    try {
-      Ort::Session session(*ort_env, ort_model_path, so);
-      FAIL();  // Should not get here!
-    } catch (const Ort::Exception& excpt) {
-      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
-      ASSERT_THAT(excpt.what(), testing::HasSubstr("Conflicting session configuration: explicitly added the CPU EP to the "
-                                                   "session, but also disabled fallback to the CPU EP via session "
-                                                   "configuration options."));
-    }
-  }
-}
-
-TEST(QnnEP, TestInvalidSpecificationOfBothBackendTypeAndBackendPath) {
-  {
-    Ort::SessionOptions so{};
-
-    onnxruntime::ProviderOptions options{};
-    options["backend_type"] = "cpu";
-#if defined(_WIN32)
-    options["backend_path"] = "QnnCpu.dll";
-#else
-    options["backend_path"] = "libQnnCpu.so";
-#endif
-
-    so.AppendExecutionProvider("QNN", options);
-
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
-
-    try {
-      Ort::Session session(*ort_env, ort_model_path, so);
-      FAIL();
-    } catch (const Ort::Exception& e) {
-      ASSERT_EQ(e.GetOrtErrorCode(), ORT_FAIL);
-      ASSERT_THAT(e.what(), testing::HasSubstr("Only one of 'backend_type' and 'backend_path' should be set."));
-    }
-  }
-
-  {
-    Ort::SessionOptions so{};
-
-    onnxruntime::ProviderOptions options{};
-    options["backend_type"] = "cpu";
-#if defined(_WIN32)
-    options["backend_path"] = "QnnCpu.dll";
-#else
-    options["backend_path"] = "libQnnCpu.so";
-#endif
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
-
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
-
-    try {
-      Ort::Session session(*ort_env, ort_model_path, so);
-      FAIL();
-    } catch (const Ort::Exception& e) {
-      ASSERT_EQ(e.GetOrtErrorCode(), ORT_FAIL);
-      ASSERT_THAT(e.what(), testing::HasSubstr("Only one of 'backend_type' and 'backend_path' should be set."));
-    }
-  }
-}
-
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 // Tests that the QNN EP is registered when added via the public C++ API.
 // Loads a simple ONNX model that adds floats.
 TEST_F(QnnHTPBackendTests, TestAddEpUsingPublicApi) {
@@ -416,155 +101,239 @@ TEST_F(QnnHTPBackendTests, TestAddEpUsingPublicApi) {
         << "QNN EP was not found in registered providers for session "
         << "when added to session with name '" << kQnnExecutionProvider << "'";
   }
+}
 
+// Tests the `session.disable_cpu_ep_fallback` configuration option when the backend cannot be loaded.
+// When the option is enabled, session creation throws an exception because the backend cannot be found.
+TEST(QnnEP, TestDisableCPUFallback_BackendNotFound) {
   {
     Ort::SessionOptions so;
-
-    // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
-#if defined(__linux__)
     so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+
+    onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+    options["backend_path"] = "DoesNotExist.dll";  // Invalid backend path!
+#else
+    options["backend_path"] = "libDoesNotExist.so";  // Invalid backend path!
 #endif
 
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
+    so.AppendExecutionProvider("QNN", options);
 
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
+
+    try {
+      Ort::Session session(*ort_env, ort_model_path, so);
+      FAIL();  // Should not get here!
+    } catch (const Ort::Exception& excpt) {
+      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
+      ASSERT_THAT(excpt.what(), testing::HasSubstr("This session contains graph nodes that are assigned to the default "
+                                                   "CPU EP, but fallback to CPU EP has been explicitly disabled by "
+                                                   "the user."));
+    }
+  }
+}
+
+// Tests the `session.disable_cpu_ep_fallback` configuration option when the entire model cannot be assigned to QNN EP.
+// When the option is enabled, Session creation should throw an exception.
+TEST(QnnEP, TestDisableCPUFallback_ModelNotFullySupported) {
+  {
+    Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+
+    onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+    options["backend_path"] = "QnnCpu.dll";
+#else
+    options["backend_path"] = "libQnnCpu.so";
+#endif
+    options["offload_graph_io_quantization"] = "0";
+
+    so.AppendExecutionProvider("QNN", options);
+
+    // QNN EP doesn't support MatMulInteger.
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "qnn_ep_partial_support.onnx";
+
+    try {
+      Ort::Session session(*ort_env, ort_model_path, so);
+      FAIL();  // Should not get here!
+    } catch (const Ort::Exception& excpt) {
+      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
+      ASSERT_THAT(excpt.what(), testing::HasSubstr("This session contains graph nodes that are assigned to the default "
+                                                   "CPU EP, but fallback to CPU EP has been explicitly disabled by "
+                                                   "the user."));
+    }
+  }
+}
+
+// The model is supported on QNN CPU backend, but CPU fallback is disabled
+// QNN EP report error for this scenario also
+TEST(QnnEP, TestDisableCPUFallback_TryingToRunOnQnnCPU) {
+  SessionOptions so;
+  // Disable fallback to the CPU EP.
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnCpu.dll";
+#else
+  options["backend_path"] = "libQnnCpu.so";
+#endif
+  options["offload_graph_io_quantization"] = "0";
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  auto model_func = BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain);
+
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  // logging_manager.SetDefaultLoggerSeverity(log_severity);
+
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  model_func(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  InferenceSession session_object{so, GetEnvironment()};
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &so);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  auto status = session_object.Initialize();
+  ASSERT_EQ(status.Code(), ORT_FAIL);
+  ASSERT_THAT(status.ErrorMessage().c_str(), testing::HasSubstr("This session contains graph nodes that are assigned to the default "
+                                                                "CPU EP, but fallback to CPU EP has been explicitly disabled by "
+                                                                "the user."));
+}
+
+// Tests invalid use of the `session.disable_cpu_ep_fallback` configuration option.
+// It is invalid to set the option and explicitly add the CPU EP to the session.
+TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
+  {
+    Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+
+    onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+    options["backend_path"] = "QnnCpu.dll";
+#else
+    options["backend_path"] = "libQnnCpu.so";
+#endif
+    options["offload_graph_io_quantization"] = "0";
+
+    so.AppendExecutionProvider("QNN", options);
+
+    // Invalid! Adds CPU EP to session, but also disables CPU fallback.
+    Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
+
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
+
+    try {
+      Ort::Session session(*ort_env, ort_model_path, so);
+      FAIL();  // Should not get here!
+    } catch (const Ort::Exception& excpt) {
+      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+      ASSERT_THAT(excpt.what(), testing::HasSubstr("Conflicting session configuration: explicitly added the CPU EP to the "
+                                                   "session, but also disabled fallback to the CPU EP via session "
+                                                   "configuration options."));
+    }
+  }
+}
+
+TEST(QnnEP, TestInvalidSpecificationOfBothBackendTypeAndBackendPath) {
+  onnxruntime::ProviderOptions provider_options{};
+  provider_options["backend_type"] = "cpu";
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnCpu.dll";
+#else
+  provider_options["backend_path"] = "libQnnCpu.so";
+#endif
+
+  Ort::SessionOptions so{};
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
+
+  try {
     Ort::Session session(*ort_env, ort_model_path, so);
-    ASSERT_TRUE(SessionHasEp(session, "QnnAbiTestProvider"))
-        << "QNN EP was not found in registered providers for session "
-        << "when added to session with name '" << "QnnAbiTestProvider" << "'";
+    FAIL();
+  } catch (const Ort::Exception& e) {
+    ASSERT_EQ(e.GetOrtErrorCode(), ORT_FAIL);
+    ASSERT_THAT(e.what(), testing::HasSubstr("Only one of 'backend_type' and 'backend_path' should be set."));
   }
 }
 
 // Conv node `Conv` is not supported: GetFileLength for conv_qdq_external_ini.bin failed:open file conv_qdq_external_ini.bin fail,
 // errcode = 2 - The system cannot find the file specified.
 TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
-  {
-    Ort::SessionOptions so;
-    onnxruntime::ProviderOptions options;
+  Ort::SessionOptions so;
+  onnxruntime::ProviderOptions options;
 #if defined(_WIN32)
-    options["backend_path"] = "QnnHtp.dll";
+  options["backend_path"] = "QnnHtp.dll";
 #else
-    options["backend_path"] = "libQnnHtp.so";
+  options["backend_path"] = "libQnnHtp.so";
 #endif
-    options["offload_graph_io_quantization"] = "0";
+  options["offload_graph_io_quantization"] = "0";
 
-    so.AppendExecutionProvider("QNN", options);
+  so.AppendExecutionProvider("QNN", options);
 
-    Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
+  Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
 
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_external_ini.onnx";
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_external_ini.onnx";
 
-    Ort::Session session(*ort_env, ort_model_path, so);
-  }
-
-  {
-    Ort::SessionOptions so;
-    onnxruntime::ProviderOptions options;
-#if defined(_WIN32)
-    options["backend_path"] = "QnnHtp.dll";
-#else
-    options["backend_path"] = "libQnnHtp.so";
-#endif
-    options["offload_graph_io_quantization"] = "0";
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
-
-    Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
-
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_external_ini.onnx";
-
-    Ort::Session session(*ort_env, ort_model_path, so);
-  }
+  Ort::Session session(*ort_env, ort_model_path, so);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 TEST_F(QnnHTPBackendTests, RunConvInt4Model) {
-  {
-    Ort::SessionOptions so;
+  Ort::SessionOptions so;
 
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-    so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
-    onnxruntime::ProviderOptions options;
-
-#if defined(_WIN32)
-    options["backend_path"] = "QnnHtp.dll";
-#else
-    options["backend_path"] = "libQnnHtp.so";
-#endif
-
-    so.AppendExecutionProvider("QNN", options);
-
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv.int4_weights.qdq.onnx";
-    Ort::Session session(*ort_env, ort_model_path, so);
-
-    TensorShape input_shape = {1, 3, 8, 8};
-    std::vector<float> input0_data(input_shape.Size(), 0.2f);
-
-    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-    std::vector<Ort::Value> ort_inputs;
-    std::vector<const char*> ort_input_names;
-
-    // Add input0
-    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
-        memory_info, input0_data.data(), input0_data.size(), &input_shape[0], input_shape.NumDimensions()));
-    ort_input_names.push_back("input_0");
-
-    // Run session and get outputs
-    std::array<const char*, 1> output_names{"output_0"};
-    std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
-                                                      ort_inputs.size(), output_names.data(), output_names.size());
-
-    // Check output shape.
-    Ort::Value& ort_output = ort_outputs[0];
-    auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
-    std::vector<int64_t> output_shape = typeshape.GetShape();
-
-    EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 5, 6, 6));
-  }
-
-  {
-    Ort::SessionOptions so;
-
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-    so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
-    onnxruntime::ProviderOptions options;
+  so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+  onnxruntime::ProviderOptions options;
 
 #if defined(_WIN32)
-    options["backend_path"] = "QnnHtp.dll";
+  options["backend_path"] = "QnnHtp.dll";
 #else
-    options["backend_path"] = "libQnnHtp.so";
+  options["backend_path"] = "libQnnHtp.so";
 #endif
 
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
+  so.AppendExecutionProvider("QNN", options);
 
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv.int4_weights.qdq.onnx";
-    Ort::Session session(*ort_env, ort_model_path, so);
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv.int4_weights.qdq.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
 
-    TensorShape input_shape = {1, 3, 8, 8};
-    std::vector<float> input0_data(input_shape.Size(), 0.2f);
+  TensorShape input_shape = {1, 3, 8, 8};
+  std::vector<float> input0_data(input_shape.Size(), 0.2f);
 
-    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-    std::vector<Ort::Value> ort_inputs;
-    std::vector<const char*> ort_input_names;
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
 
-    // Add input0
-    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
-        memory_info, input0_data.data(), input0_data.size(), &input_shape[0], input_shape.NumDimensions()));
-    ort_input_names.push_back("input_0");
+  // Add input0
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), &input_shape[0], input_shape.NumDimensions()));
+  ort_input_names.push_back("input_0");
 
-    // Run session and get outputs
-    std::array<const char*, 1> output_names{"output_0"};
-    std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
-                                                      ort_inputs.size(), output_names.data(), output_names.size());
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"output_0"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
 
-    // Check output shape.
-    Ort::Value& ort_output = ort_outputs[0];
-    auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
-    std::vector<int64_t> output_shape = typeshape.GetShape();
+  // Check output shape.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_shape = typeshape.GetShape();
 
-    EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 5, 6, 6));
-  }
+  EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 5, 6, 6));
 }
 #endif  // #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
@@ -616,10 +385,7 @@ static void AddSerializerConfigs(TestBackend serializer_backend, onnxruntime::Pr
 #endif
 }
 
-static Ort::Session InitNHWCResizeModel(const ORTCHAR_T* ort_model_path,
-                                        TestBackend backend,
-                                        bool use_abi,
-                                        RegisteredEpDeviceUniquePtr& registered_ep_device,
+static Ort::Session InitNHWCResizeModel(const ORTCHAR_T* ort_model_path, TestBackend backend,
                                         std::optional<TestBackend> serializer_backend = std::nullopt,
                                         std::string htp_graph_finalization_opt_mode = "",
                                         std::string qnn_context_priority = "",
@@ -667,11 +433,7 @@ static Ort::Session InitNHWCResizeModel(const ORTCHAR_T* ort_model_path,
     options["device_id"] = std::move(device_id);
   }
 
-  if (use_abi) {
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
-  } else {
-    so.AppendExecutionProvider("QNN", options);
-  }
+  so.AppendExecutionProvider("QNN", options);
 
   Ort::Session session(*ort_env, ort_model_path, so);
 
@@ -685,27 +447,14 @@ static Ort::Session InitNHWCResizeModel(const ORTCHAR_T* ort_model_path,
 // The models passed to this function are subgraphs extracted from a larger model that exhibited
 // shape inferencing issues on QNN. Thus, the models are expected to have a specific input/output
 // types and shapes.
-static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path,
-                               TestBackend backend,
-                               bool use_abi = false,
+static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, TestBackend backend,
                                std::optional<TestBackend> serializer_backend = std::nullopt,
                                std::string htp_graph_finalization_opt_mode = "",
                                std::string qnn_context_priority = "",
                                std::string soc_model = "",
                                std::string htp_arch = "",
                                std::string device_id = "") {
-  // Only constructed if use_abi=true.
-  RegisteredEpDeviceUniquePtr registered_ep_device;
-  Ort::Session session = InitNHWCResizeModel(ort_model_path,
-                                             backend,
-                                             use_abi,
-                                             registered_ep_device,
-                                             serializer_backend,
-                                             htp_graph_finalization_opt_mode,
-                                             qnn_context_priority,
-                                             soc_model,
-                                             htp_arch,
-                                             device_id);
+  Ort::Session session = InitNHWCResizeModel(ort_model_path, backend, serializer_backend, htp_graph_finalization_opt_mode, qnn_context_priority, soc_model, htp_arch, device_id);
 
   // Input can be all zeros since we're testing for correct shape inference.
   std::array<float, 1 * 3 * 4 * 5> input0_data = {};
@@ -749,36 +498,24 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path,
 // the scales input. Use the QNN CPU backend.
 TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_scales_opset11) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_scales_opset11.onnx", TestBackend::Cpu);
-#if !BUILD_QNN_EP_STATIC_LIB
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_scales_opset11.onnx", TestBackend::Cpu, true);
-#endif
 }
 
 // Test shape inference of NHWC Resize operator (opset 18) that uses
 // the scales input. Use the QNN CPU backend.
 TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_scales_opset18) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_scales_opset18.onnx", TestBackend::Cpu);
-#if !BUILD_QNN_EP_STATIC_LIB
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_scales_opset18.onnx", TestBackend::Cpu, true);
-#endif
 }
 
 // Test shape inference of NHWC Resize operator (opset 11) that uses
 // the sizes input. Use the QNN CPU backend.
 TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_sizes_opset11) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset11.onnx", TestBackend::Cpu);
-#if !BUILD_QNN_EP_STATIC_LIB
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset11.onnx", TestBackend::Cpu, true);
-#endif
 }
 
 // Test shape inference of NHWC Resize operator (opset 18) that uses
 // the sizes input. Use the QNN CPU backend.
 TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_sizes_opset18) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx", TestBackend::Cpu);
-#if !BUILD_QNN_EP_STATIC_LIB
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx", TestBackend::Cpu, true);
-#endif
 }
 
 // Test that QNN Saver generates the expected files for a model meant to run on the QNN CPU backend.
@@ -791,27 +528,11 @@ TEST_F(QnnCPUBackendTests, QnnSaver_OutputFiles) {
 
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
                      TestBackend::Cpu,     // backend
-                     false,                // use_abi
                      TestBackend::Saver);  // serializer_backend
 
   // Check that QNN Saver output files exist.
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
-
-#if !BUILD_QNN_EP_STATIC_LIB
-  // Remove pre-existing QNN Saver output files. Note that fs::remove_all() can handle non-existing paths.
-  std::filesystem::remove_all(qnn_saver_output_dir);
-  ASSERT_FALSE(std::filesystem::exists(qnn_saver_output_dir));
-
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
-                     TestBackend::Cpu,     // backend
-                     true,                 // use_abi
-                     TestBackend::Saver);  // serializer_backend
-
-  // Check that QNN Saver output files exist.
-  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
-  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
-#endif
 }
 
 struct ModelAndBuilder {
@@ -894,70 +615,40 @@ TEST_F(QnnCPUBackendTests, MultithreadSessionRun) {
                                           TestInputDef<float>(shape, false, input_data)),
                       "add3.f32");
 
+  SessionOptions session_opts;
+  session_opts.session_logid = "logger0";
+
+  RunOptions run_opts;
+  run_opts.run_tag = session_opts.session_logid;
+
+  InferenceSession session_obj{session_opts, GetEnvironment()};
   onnxruntime::ProviderOptions options;
+
 #if defined(_WIN32)
   options["backend_path"] = "QnnCpu.dll";
 #else
   options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunOptions run_opts;
-  run_opts.run_tag = "logger0";
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
 
-  {
-    SessionOptions session_opts;
-    session_opts.session_logid = "logger0";
+  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_obj.Initialize();
+  ASSERT_TRUE(status.IsOK());
 
-    InferenceSession session_obj{session_opts, GetEnvironment()};
-
-    auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
-    EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
-
-    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-    ASSERT_TRUE(status.IsOK());
-    status = session_obj.Initialize();
-    ASSERT_TRUE(status.IsOK());
-
-    std::vector<std::thread> threads;
-    constexpr int num_threads = 5;
-    constexpr int loop_count = 10;
-    for (int i = 0; i < num_threads; i++) {
-      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                    model->builder.feeds_, model->builder.output_names_,
-                                    output_shapes, output_values, loop_count));
-    }
-
-    for (auto& th : threads) {
-      th.join();
-    }
+  std::vector<std::thread> threads;
+  constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
+  for (int i = 0; i < num_threads; i++) {
+    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                  model->builder.feeds_, model->builder.output_names_,
+                                  output_shapes, output_values, loop_count));
   }
 
-  {
-    Ort::SessionOptions session_opts;
-    session_opts.SetLogId("logger0");
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, session_opts, "QnnAbiTestProvider", options);
-
-    auto* ort_session_opts = static_cast<OrtSessionOptions*>(session_opts);
-    InferenceSession session_obj{ort_session_opts->value, GetEnvironment()};
-
-    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-    ASSERT_TRUE(status.IsOK());
-    ASSERT_EQ(InitializeSession(ort_session_opts, session_obj), nullptr);
-
-    std::vector<std::thread> threads;
-    constexpr int num_threads = 5;
-    constexpr int loop_count = 10;
-    for (int i = 0; i < num_threads; i++) {
-      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                    model->builder.feeds_, model->builder.output_names_,
-                                    output_shapes, output_values, loop_count));
-    }
-
-    for (auto& th : threads) {
-      th.join();
-    }
+  for (auto& th : threads) {
+    th.join();
   }
 }
 
@@ -1004,7 +695,15 @@ TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
                                                    TestInputDef<float>(shape, false, input_data)),
                       "add3.qdq");
 
+  SessionOptions session_opts;
+  session_opts.session_logid = "logger0";
+
+  RunOptions run_opts;
+  run_opts.run_tag = session_opts.session_logid;
+
+  InferenceSession session_obj{session_opts, GetEnvironment()};
   onnxruntime::ProviderOptions options;
+
 #if defined(_WIN32)
   options["backend_path"] = "QnnHtp.dll";
 #else
@@ -1012,66 +711,26 @@ TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
 #endif
   options["offload_graph_io_quantization"] = "0";
 
-  RunOptions run_opts;
-  run_opts.run_tag = "logger0";
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
 
-  {
-    SessionOptions session_opts;
-    session_opts.session_logid = "logger0";
+  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_obj.Initialize();
+  ASSERT_TRUE(status.IsOK());
 
-    InferenceSession session_obj{session_opts, GetEnvironment()};
+  std::vector<std::thread> threads;
+  constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
 
-    auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
-    EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
-
-    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-    ASSERT_TRUE(status.IsOK());
-    status = session_obj.Initialize();
-    ASSERT_TRUE(status.IsOK());
-
-    std::vector<std::thread> threads;
-    constexpr int num_threads = 5;
-    constexpr int loop_count = 10;
-
-    for (int i = 0; i < num_threads; i++) {
-      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                    model->builder.feeds_, model->builder.output_names_,
-                                    output_shapes, output_values, loop_count));
-    }
-
-    for (auto& th : threads) {
-      th.join();
-    }
+  for (int i = 0; i < num_threads; i++) {
+    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                  model->builder.feeds_, model->builder.output_names_,
+                                  output_shapes, output_values, loop_count));
   }
 
-  {
-    Ort::SessionOptions session_opts;
-    session_opts.SetLogId("logger0");
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, session_opts, "QnnAbiTestProvider", options);
-
-    auto* ort_session_opts = static_cast<OrtSessionOptions*>(session_opts);
-    InferenceSession session_obj{ort_session_opts->value, GetEnvironment()};
-
-    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-    ASSERT_TRUE(status.IsOK());
-    ASSERT_EQ(InitializeSession(ort_session_opts, session_obj), nullptr);
-    status = session_obj.Initialize();
-    ASSERT_TRUE(status.IsOK());
-
-    std::vector<std::thread> threads;
-    constexpr int num_threads = 5;
-    constexpr int loop_count = 10;
-    for (int i = 0; i < num_threads; i++) {
-      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                    model->builder.feeds_, model->builder.output_names_,
-                                    output_shapes, output_values, loop_count));
-    }
-
-    for (auto& th : threads) {
-      th.join();
-    }
+  for (auto& th : threads) {
+    th.join();
   }
 }
 
@@ -1089,7 +748,12 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
                                                    TestInputDef<float>(shape, false, input_data)),
                       "add3.qdq");
 
+  SessionOptions session_opts;
+  session_opts.session_logid = "logger0";
+
+  InferenceSession session_obj{session_opts, GetEnvironment()};
   onnxruntime::ProviderOptions options;
+
 #if defined(_WIN32)
   options["backend_path"] = "QnnHtp.dll";
 #else
@@ -1097,86 +761,39 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
 #endif
   options["offload_graph_io_quantization"] = "0";
 
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_obj.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  std::vector<std::thread> threads;
+  constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
+
   std::vector<std::string> perf_modes{
       "burst", "balanced", "default", "high_performance", "high_power_saver",
       "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver"};
 
-  {
-    SessionOptions session_opts;
-    session_opts.session_logid = "logger0";
+  size_t post_i = perf_modes.size() - 1;
+  ASSERT_TRUE(post_i > num_threads);
+  for (int i = 0; i < num_threads; ++i, --post_i) {
+    RunOptions run_opts;
+    run_opts.run_tag = session_opts.session_logid;
+    auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
+    ASSERT_TRUE(rt.IsOK());
+    rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
+    ASSERT_TRUE(rt.IsOK());
 
-    InferenceSession session_obj{session_opts, GetEnvironment()};
-
-    auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
-    EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
-
-    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-    ASSERT_TRUE(status.IsOK());
-    status = session_obj.Initialize();
-    ASSERT_TRUE(status.IsOK());
-
-    std::vector<std::thread> threads;
-    constexpr int num_threads = 5;
-    constexpr int loop_count = 10;
-
-    size_t post_i = perf_modes.size() - 1;
-    ASSERT_TRUE(post_i > num_threads);
-    for (int i = 0; i < num_threads; ++i, --post_i) {
-      RunOptions run_opts;
-      run_opts.run_tag = session_opts.session_logid;
-      auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
-      ASSERT_TRUE(rt.IsOK());
-      rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
-      ASSERT_TRUE(rt.IsOK());
-
-      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                    model->builder.feeds_, model->builder.output_names_,
-                                    output_shapes, output_values, loop_count));
-    }
-
-    for (auto& th : threads) {
-      th.join();
-    }
+    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                  model->builder.feeds_, model->builder.output_names_,
+                                  output_shapes, output_values, loop_count));
   }
 
-  {
-    Ort::SessionOptions session_opts;
-    session_opts.SetLogId("logger0");
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, session_opts, "QnnAbiTestProvider", options);
-
-    auto* ort_session_opts = static_cast<OrtSessionOptions*>(session_opts);
-    InferenceSession session_obj{ort_session_opts->value, GetEnvironment()};
-
-    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-    ASSERT_TRUE(status.IsOK());
-    ASSERT_EQ(InitializeSession(ort_session_opts, session_obj), nullptr);
-    status = session_obj.Initialize();
-    ASSERT_TRUE(status.IsOK());
-
-    std::vector<std::thread> threads;
-    constexpr int num_threads = 5;
-    constexpr int loop_count = 10;
-
-    size_t post_i = perf_modes.size() - 1;
-    ASSERT_TRUE(post_i > num_threads);
-    for (int i = 0; i < num_threads; ++i, --post_i) {
-      RunOptions run_opts;
-      run_opts.run_tag = "logger0";
-      auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
-      ASSERT_TRUE(rt.IsOK());
-      rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
-      ASSERT_TRUE(rt.IsOK());
-
-      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                    model->builder.feeds_, model->builder.output_names_,
-                                    output_shapes, output_values, loop_count));
-    }
-
-    for (auto& th : threads) {
-      th.join();
-    }
+  for (auto& th : threads) {
+    th.join();
   }
 }
 
@@ -1194,7 +811,15 @@ TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
                                                    TestInputDef<float>(shape, false, input_data)),
                       "add3.qdq");
 
+  SessionOptions session_opts;
+  session_opts.session_logid = "logger0";
+
+  RunOptions run_opts;
+  run_opts.run_tag = session_opts.session_logid;
+
+  InferenceSession session_obj{session_opts, GetEnvironment()};
   onnxruntime::ProviderOptions options;
+
 #if defined(_WIN32)
   options["backend_path"] = "QnnHtp.dll";
 #else
@@ -1203,67 +828,26 @@ TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
   options["offload_graph_io_quantization"] = "0";
   options["htp_performance_mode"] = "burst";
 
-  RunOptions run_opts;
-  run_opts.run_tag = "logger0";
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
 
-  {
-    SessionOptions session_opts;
-    session_opts.session_logid = "logger0";
+  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_obj.Initialize();
+  ASSERT_TRUE(status.IsOK());
 
-    InferenceSession session_obj{session_opts, GetEnvironment()};
+  std::vector<std::thread> threads;
+  constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
 
-    auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
-    EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
-
-    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-    ASSERT_TRUE(status.IsOK());
-    status = session_obj.Initialize();
-    ASSERT_TRUE(status.IsOK());
-
-    std::vector<std::thread> threads;
-    constexpr int num_threads = 5;
-    constexpr int loop_count = 10;
-
-    for (int i = 0; i < num_threads; i++) {
-      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                    model->builder.feeds_, model->builder.output_names_,
-                                    output_shapes, output_values, loop_count));
-    }
-
-    for (auto& th : threads) {
-      th.join();
-    }
+  for (int i = 0; i < num_threads; i++) {
+    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                  model->builder.feeds_, model->builder.output_names_,
+                                  output_shapes, output_values, loop_count));
   }
 
-  {
-    Ort::SessionOptions session_opts;
-    session_opts.SetLogId("logger0");
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, session_opts, "QnnAbiTestProvider", options);
-
-    auto* ort_session_opts = static_cast<OrtSessionOptions*>(session_opts);
-    InferenceSession session_obj{ort_session_opts->value, GetEnvironment()};
-
-    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-    ASSERT_TRUE(status.IsOK());
-    ASSERT_EQ(InitializeSession(ort_session_opts, session_obj), nullptr);
-    status = session_obj.Initialize();
-    ASSERT_TRUE(status.IsOK());
-
-    std::vector<std::thread> threads;
-    constexpr int num_threads = 5;
-    constexpr int loop_count = 10;
-
-    for (int i = 0; i < num_threads; i++) {
-      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                    model->builder.feeds_, model->builder.output_names_,
-                                    output_shapes, output_values, loop_count));
-    }
-
-    for (auto& th : threads) {
-      th.join();
-    }
+  for (auto& th : threads) {
+    th.join();
   }
 }
 
@@ -1282,7 +866,12 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
                                                    TestInputDef<float>(shape, false, input_data)),
                       "add3.qdq");
 
+  SessionOptions session_opts;
+  session_opts.session_logid = "logger0";
+
+  InferenceSession session_obj{session_opts, GetEnvironment()};
   onnxruntime::ProviderOptions options;
+
 #if defined(_WIN32)
   options["backend_path"] = "QnnHtp.dll";
 #else
@@ -1291,86 +880,39 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
   options["offload_graph_io_quantization"] = "0";
   options["htp_performance_mode"] = "burst";
 
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_obj.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  std::vector<std::thread> threads;
+  constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
+
   std::vector<std::string> perf_modes{
       "burst", "balanced", "default", "high_performance", "high_power_saver",
       "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver"};
 
-  {
-    SessionOptions session_opts;
-    session_opts.session_logid = "logger0";
+  size_t post_i = perf_modes.size() - 1;
+  ASSERT_TRUE(post_i > num_threads);
+  for (int i = 0; i < num_threads; ++i, --post_i) {
+    RunOptions run_opts;
+    run_opts.run_tag = session_opts.session_logid;
+    auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
+    ASSERT_TRUE(rt.IsOK());
+    rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
+    ASSERT_TRUE(rt.IsOK());
 
-    InferenceSession session_obj{session_opts, GetEnvironment()};
-
-    auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
-    EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
-
-    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-    ASSERT_TRUE(status.IsOK());
-    status = session_obj.Initialize();
-    ASSERT_TRUE(status.IsOK());
-
-    std::vector<std::thread> threads;
-    constexpr int num_threads = 5;
-    constexpr int loop_count = 10;
-
-    size_t post_i = perf_modes.size() - 1;
-    ASSERT_TRUE(post_i > num_threads);
-    for (int i = 0; i < num_threads; ++i, --post_i) {
-      RunOptions run_opts;
-      run_opts.run_tag = session_opts.session_logid;
-      auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
-      ASSERT_TRUE(rt.IsOK());
-      rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
-      ASSERT_TRUE(rt.IsOK());
-
-      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                    model->builder.feeds_, model->builder.output_names_,
-                                    output_shapes, output_values, loop_count));
-    }
-
-    for (auto& th : threads) {
-      th.join();
-    }
+    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                  model->builder.feeds_, model->builder.output_names_,
+                                  output_shapes, output_values, loop_count));
   }
 
-  {
-    Ort::SessionOptions session_opts;
-    session_opts.SetLogId("logger0");
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    RegisterQnnEpLibrary(registered_ep_device, session_opts, "QnnAbiTestProvider", options);
-
-    auto* ort_session_opts = static_cast<OrtSessionOptions*>(session_opts);
-    InferenceSession session_obj{ort_session_opts->value, GetEnvironment()};
-
-    auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
-    ASSERT_TRUE(status.IsOK());
-    ASSERT_EQ(InitializeSession(ort_session_opts, session_obj), nullptr);
-    status = session_obj.Initialize();
-    ASSERT_TRUE(status.IsOK());
-
-    std::vector<std::thread> threads;
-    constexpr int num_threads = 5;
-    constexpr int loop_count = 10;
-
-    size_t post_i = perf_modes.size() - 1;
-    ASSERT_TRUE(post_i > num_threads);
-    for (int i = 0; i < num_threads; ++i, --post_i) {
-      RunOptions run_opts;
-      run_opts.run_tag = "logger0";
-      auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
-      ASSERT_TRUE(rt.IsOK());
-      rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
-      ASSERT_TRUE(rt.IsOK());
-
-      threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
-                                    model->builder.feeds_, model->builder.output_names_,
-                                    output_shapes, output_values, loop_count));
-    }
-
-    for (auto& th : threads) {
-      th.join();
-    }
+  for (auto& th : threads) {
+    th.join();
   }
 }
 
@@ -1379,9 +921,6 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
 // Maps to QNN's ResizeBilinear operator.
 TEST_F(QnnHTPBackendTests, TestNHWCResizeShapeInference_qdq_sizes_opset18) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx", TestBackend::Htp);
-#if !BUILD_QNN_EP_STATIC_LIB
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx", TestBackend::Htp, true);
-#endif
 }
 
 // Test that QNN Ir generates the expected file for a model meant to run on the QNN HTP backend.
@@ -1396,7 +935,6 @@ TEST_F(QnnHTPBackendTests, QnnIr_OutputFiles) {
     FAIL();
   }
 
-  RegisteredEpDeviceUniquePtr registered_ep_device;
   const std::filesystem::path qnn_dlc_dir = kDlcOutputDir;
 
   // Remove pre-existing QNN Ir output files. Note that fs::remove_all() can handle non-existing paths.
@@ -1404,10 +942,8 @@ TEST_F(QnnHTPBackendTests, QnnIr_OutputFiles) {
   ASSERT_FALSE(std::filesystem::exists(qnn_dlc_dir));
 
   InitNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
-                      TestBackend::Htp,      // backend
-                      false,                 // use_abi
-                      registered_ep_device,  // registered_ep_device
-                      TestBackend::Ir);      // serializer backend
+                      TestBackend::Htp,  // backend
+                      TestBackend::Ir);  // serializer backend
 
   // File names are taken from graph node names. Just make sure that we got one .dlc
   // in the expected directory.
@@ -1420,30 +956,6 @@ TEST_F(QnnHTPBackendTests, QnnIr_OutputFiles) {
     ++file_count;
   }
   EXPECT_EQ(file_count, 1);
-
-#if !BUILD_QNN_EP_STATIC_LIB
-  // Remove pre-existing QNN Ir output files. Note that fs::remove_all() can handle non-existing paths.
-  std::filesystem::remove_all(qnn_dlc_dir);
-  ASSERT_FALSE(std::filesystem::exists(qnn_dlc_dir));
-
-  InitNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
-                      TestBackend::Htp,      // backend
-                      true,                  // use_abi
-                      registered_ep_device,  // registered_ep_device
-                      TestBackend::Ir);      // serializer backend
-
-  // File names are taken from graph node names. Just make sure that we got one .dlc
-  // in the expected directory.
-  ASSERT_TRUE(std::filesystem::exists(qnn_dlc_dir));
-
-  file_count = 0;
-  for (const auto& entry : std::filesystem::directory_iterator(qnn_dlc_dir)) {
-    EXPECT_TRUE(entry.is_regular_file());
-    EXPECT_EQ(entry.path().extension(), ".dlc");
-    ++file_count;
-  }
-  EXPECT_EQ(file_count, 1);
-#endif
 }
 
 // Test that QNN Saver generates the expected files for a model meant to run on the QNN HTP backend.
@@ -1456,27 +968,11 @@ TEST_F(QnnHTPBackendTests, DISABLED_QnnSaver_OutputFiles) {
 
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
                      TestBackend::Htp,     // backend
-                     false,                // use_abi
                      TestBackend::Saver);  // serializer_backend
 
   // Check that QNN Saver output files exist.
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
-
-#if !BUILD_QNN_EP_STATIC_LIB
-  // Remove pre-existing QNN Saver output files. Note that fs::remove_all() can handle non-existing paths.
-  std::filesystem::remove_all(qnn_saver_output_dir);
-  ASSERT_FALSE(std::filesystem::exists(qnn_saver_output_dir));
-
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
-                     TestBackend::Htp,     // backend
-                     true,                 // use_abi
-                     TestBackend::Saver);  // serializer_backend
-
-  // Check that QNN Saver output files exist.
-  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
-  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
-#endif
 }
 
 // Test that models run with various HTP graph finalization optimization modes.
@@ -1489,16 +985,8 @@ TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
   for (auto mode : graph_opt_modes) {
     RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
                        TestBackend::Htp,  // backend
-                       false,             // use_abi
                        std::nullopt,      // serializer_backend
                        mode);             // htp_graph_finalization_opt_mode
-#if !BUILD_QNN_EP_STATIC_LIB
-    RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
-                       TestBackend::Htp,  // backend
-                       true,              // use_abi
-                       std::nullopt,      // serializer_backend
-                       mode);             // htp_graph_finalization_opt_mode
-#endif
   }
 }
 
@@ -1517,20 +1005,10 @@ TEST_F(QnnHTPBackendTests, HTPSocModels) {
   for (auto soc_model : soc_models) {
     RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
                        TestBackend::Htp,  // backend
-                       false,             // use_abi
                        std::nullopt,      // serializer_backend
                        "",                // htp_graph_finalization_opt_mode
                        "",                // qnn_context_priority
                        soc_model);
-#if !BUILD_QNN_EP_STATIC_LIB
-    RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
-                       TestBackend::Htp,  // backend
-                       true,              // use_abi
-                       std::nullopt,      // serializer_backend
-                       "",                // htp_graph_finalization_opt_mode
-                       "",                // qnn_context_priority
-                       soc_model);
-#endif
   }
 }
 
@@ -1542,24 +1020,12 @@ TEST_F(QnnHTPBackendTests, HTPArchValues) {
   for (auto htp_arch : htp_archs) {
     RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
                        TestBackend::Htp,  // backend
-                       false,             // use_abi
                        std::nullopt,      // enable_qnn_saver
                        "",                // htp_graph_finalization_opt_mode
                        "",                // qnn_context_priority
                        "",                // soc_model
                        htp_arch,          // htp_arch
                        "0");              // device_id
-#if !BUILD_QNN_EP_STATIC_LIB
-    RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
-                       TestBackend::Htp,  // backend
-                       true,              // use_abi
-                       std::nullopt,      // enable_qnn_saver
-                       "",                // htp_graph_finalization_opt_mode
-                       "",                // qnn_context_priority
-                       "",                // soc_model
-                       htp_arch,          // htp_arch
-                       "0");              // device_id
-#endif
   }
 }
 
@@ -1567,18 +1033,9 @@ TEST_F(QnnHTPBackendTests, HTPArchValues) {
 TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
                      TestBackend::Htp,  // use_htp
-                     false,             // use_abi
                      std::nullopt,      // enable_qnn_saver
                      "",                // htp_graph_finalization_opt_mode
                      "high");           // qnn_context_priority
-#if !BUILD_QNN_EP_STATIC_LIB
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
-                     TestBackend::Htp,  // use_htp
-                     true,              // use_abi
-                     std::nullopt,      // enable_qnn_saver
-                     "",                // htp_graph_finalization_opt_mode
-                     "high");           // qnn_context_priority
-#endif
 }
 
 // Create a model with Cast + Add (quantized)
@@ -1754,7 +1211,7 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
       if (op_type == "Reshape" || op_type == "Softmax") {
         EXPECT_EQ(ep_name, kCpuExecutionProvider);
       } else {
-        EXPECT_TRUE((ep_name == kQnnExecutionProvider) || (ep_name == "QnnAbiTestProvider"));
+        EXPECT_EQ(ep_name, kQnnExecutionProvider);
       }
     }
   };
@@ -1781,6 +1238,7 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
 
 TEST_F(QnnHTPBackendTests, DumpJsonQNNGraph) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+  Ort::SessionOptions so;
   onnxruntime::ProviderOptions options;
 #if defined(_WIN32)
   options["backend_path"] = "QnnHtp.dll";
@@ -1793,53 +1251,25 @@ TEST_F(QnnHTPBackendTests, DumpJsonQNNGraph) {
   options["json_qnn_graph_dir"] = dump_dir.string();
   options["dump_json_qnn_graph"] = "1";
 
-  {
-    // Remove pre-existing json files. Note that fs::remove_all() can handle non-existing paths.
-    std::filesystem::remove_all(dump_dir);
-    ASSERT_TRUE(std::filesystem::create_directory(dump_dir));
+  // Remove pre-existing json files. Note that fs::remove_all() can handle non-existing paths.
+  std::filesystem::remove_all(dump_dir);
+  ASSERT_TRUE(std::filesystem::create_directory(dump_dir));
 
-    Ort::SessionOptions so;
-    so.AppendExecutionProvider("QNN", options);
-    Ort::Session session(*ort_env, ort_model_path, so);
+  so.AppendExecutionProvider("QNN", options);
+  Ort::Session session(*ort_env, ort_model_path, so);
 
-    // Check that QNN JSON file(s) exist.
-    bool has_a_json_file = false;
-    for (auto const& dir_entry : std::filesystem::directory_iterator{dump_dir}) {
-      EXPECT_TRUE(dir_entry.is_regular_file());
-      EXPECT_EQ(dir_entry.path().extension().string(), ".json");
-      has_a_json_file = true;
-    }
-    EXPECT_TRUE(has_a_json_file);
-
-    // Cleaup generated files.
-    // Comment the following line to inspect generated JSON files.
-    std::filesystem::remove_all(dump_dir);
+  // Check that QNN JSON file(s) exist.
+  bool has_a_json_file = false;
+  for (auto const& dir_entry : std::filesystem::directory_iterator{dump_dir}) {
+    EXPECT_TRUE(dir_entry.is_regular_file());
+    EXPECT_EQ(dir_entry.path().extension().string(), ".json");
+    has_a_json_file = true;
   }
+  EXPECT_TRUE(has_a_json_file);
 
-  {
-    // Remove pre-existing json files. Note that fs::remove_all() can handle non-existing paths.
-    std::filesystem::remove_all(dump_dir);
-    ASSERT_TRUE(std::filesystem::create_directory(dump_dir));
-
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    Ort::SessionOptions so;
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
-
-    Ort::Session session(*ort_env, ort_model_path, so);
-
-    // Check that QNN JSON file(s) exist.
-    bool has_a_json_file = false;
-    for (auto const& dir_entry : std::filesystem::directory_iterator{dump_dir}) {
-      EXPECT_TRUE(dir_entry.is_regular_file());
-      EXPECT_EQ(dir_entry.path().extension().string(), ".json");
-      has_a_json_file = true;
-    }
-    EXPECT_TRUE(has_a_json_file);
-
-    // Cleaup generated files.
-    // Comment the following line to inspect generated JSON files.
-    std::filesystem::remove_all(dump_dir);
-  }
+  // Cleaup generated files.
+  // Comment the following line to inspect generated JSON files.
+  std::filesystem::remove_all(dump_dir);
 }
 
 // Test option for offloading quantization of graph inputs and dequantization of graph outputs to the CPU EP.
@@ -1867,7 +1297,7 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
           EXPECT_TRUE(produces_graph_output);
           num_dq += 1;
         } else {
-          EXPECT_TRUE((ep_name == kQnnExecutionProvider) || (ep_name == "QnnAbiTestProvider"));
+          EXPECT_EQ(ep_name, kQnnExecutionProvider);
           num_qnn_fused_node += 1;
         }
       }
@@ -1987,23 +1417,6 @@ TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
 
     EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
   }
-
-  {
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    Ort::SessionOptions so;
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
-
-    EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
-  }
-
-  // The std::unique_ptr should be destroyed after leaving the scope.
-  {
-    RegisteredEpDeviceUniquePtr registered_ep_device;
-    Ort::SessionOptions so;
-    RegisterQnnEpLibrary(registered_ep_device, so, "QnnAbiTestProvider", options);
-
-    EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
-  }
 }
 #endif  // !BUILD_QNN_EP_STATIC_LIB
 
@@ -2011,17 +1424,17 @@ TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
 // Tests autoEP feature to automatically select an EP that supports the NPU.
 // Currently only works on Windows.
 TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
-  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, "QnnAbiTestProvider",
-                                                                     ORT_TSTR("onnxruntime_providers_qnn_abi.dll")));
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
+                                                                     ORT_TSTR("onnxruntime_providers_qnn.dll")));
 
   Ort::SessionOptions so;
   so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_NPU);
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
   Ort::Session session(*ort_env, ort_model_path, so);
-  EXPECT_TRUE(SessionHasEp(session, "QnnAbiTestProvider"));
+  EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
 
-  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, "QnnAbiTestProvider"));
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider));
 }
 #endif  // defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
 
@@ -2055,41 +1468,8 @@ TEST_F(QnnHTPBackendTests, TestMismatchedGraphInputAndTensorWrapperCount) {
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-#if !BUILD_QNN_EP_STATIC_LIB
-// Tests that both the actual QNN EP and the simulated QNN EP can be registered for ABI compatibility.
-// Tests that the simulated QNN EP is equal to the actual QNN EP.
-TEST_F(QnnCPUBackendTests, TestSimulatedQnnEp) {
-  // Run with QNN-ABI.
-  onnxruntime::ProviderOptions provider_options;
-  provider_options["backend_type"] = "cpu";
-
-  // Register actual EP factory.
-  RegisteredEpDeviceUniquePtr registered_ep_device;
-  const std::string& registration_name = "QnnAbiTestProvider";
-  Ort::SessionOptions session_options;
-  RegisterQnnEpLibrary(registered_ep_device, session_options, registration_name, provider_options);
-
-  // Register simulated EP factory.
-  RegisteredEpDeviceUniquePtr registered_ep_device_sim;
-  const std::string& registration_name_sim = "QnnAbiTestProviderSimulation";
-  Ort::SessionOptions session_options_sim;
-  RegisterQnnEpLibrary(registered_ep_device_sim, session_options_sim, registration_name_sim, provider_options,
-                       /*simulated*/ true);
-
-  // Compare the EP factories.
-  OrtEpFactory* ep_factory = registered_ep_device.get()->ep_factory;
-  OrtEpFactory* ep_factory_sim = registered_ep_device_sim.get()->ep_factory;
-
-  EXPECT_STRNE(ep_factory->GetName(ep_factory), ep_factory_sim->GetName(ep_factory_sim));
-  EXPECT_STREQ(ep_factory->GetVendor(ep_factory), ep_factory_sim->GetVendor(ep_factory_sim));
-  EXPECT_EQ(ep_factory->GetVendorId(ep_factory), ep_factory_sim->GetVendorId(ep_factory_sim));
-  EXPECT_STRNE(ep_factory->GetVersion(ep_factory), ep_factory_sim->GetVersion(ep_factory_sim));
-}
-#endif  // !BUILD_QNN_EP_STATIC_LIB
-
 // Test that QNN Ir generates the expected files for a model meant to run on any QNN backend.
 TEST_F(QnnIRBackendTests, QnnIr_OutputFiles) {
-  RegisteredEpDeviceUniquePtr registered_ep_device;
   const std::filesystem::path qnn_dlc_dir = kDlcOutputDir;
 
   // Remove pre-existing QNN Ir output files. Note that fs::remove_all() can handle non-existing paths.
@@ -2097,10 +1477,8 @@ TEST_F(QnnIRBackendTests, QnnIr_OutputFiles) {
   ASSERT_FALSE(std::filesystem::exists(qnn_dlc_dir));
 
   InitNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
-                      TestBackend::Ir,       // backend
-                      false,                 // use_abi,
-                      registered_ep_device,  // registered_ep_device
-                      TestBackend::Ir);      // serializer backend
+                      TestBackend::Ir,   // backend
+                      TestBackend::Ir);  // serializer backend
 
   // File names are taken from graph node names. Just make sure that we got one .dlc
   // in the expected directory.
@@ -2113,35 +1491,10 @@ TEST_F(QnnIRBackendTests, QnnIr_OutputFiles) {
     ++file_count;
   }
   EXPECT_EQ(file_count, 1);
-
-#if !BUILD_QNN_EP_STATIC_LIB
-  // Remove pre-existing QNN Ir output files. Note that fs::remove_all() can handle non-existing paths.
-  std::filesystem::remove_all(qnn_dlc_dir);
-  ASSERT_FALSE(std::filesystem::exists(qnn_dlc_dir));
-
-  InitNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
-                      TestBackend::Ir,       // backend
-                      true,                  // use_abi
-                      registered_ep_device,  // registered_ep_device
-                      TestBackend::Ir);      // serializer backend
-
-  // File names are taken from graph node names. Just make sure that we got one .dlc
-  // in the expected directory.
-  ASSERT_TRUE(std::filesystem::exists(qnn_dlc_dir));
-
-  file_count = 0;
-  for (const auto& entry : std::filesystem::directory_iterator(qnn_dlc_dir)) {
-    EXPECT_TRUE(entry.is_regular_file());
-    EXPECT_EQ(entry.path().extension(), ".dlc");
-    ++file_count;
-  }
-  EXPECT_EQ(file_count, 1);
-#endif
 }
 
 // Test that QNN Saver generates the expected files for a model meant to run on any QNN backend.
 TEST(QnnSaverBackendTests, DISABLED_QnnSaver_OutputFiles) {
-  RegisteredEpDeviceUniquePtr registered_ep_device;
   const std::filesystem::path qnn_saver_output_dir = "saver_output";
 
   // Remove pre-existing QNN Saver output files. Note that fs::remove_all() can handle non-existing paths.
@@ -2149,30 +1502,12 @@ TEST(QnnSaverBackendTests, DISABLED_QnnSaver_OutputFiles) {
   ASSERT_FALSE(std::filesystem::exists(qnn_saver_output_dir));
 
   InitNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
-                      TestBackend::Saver,    // backend
-                      false,                 // use_abi,
-                      registered_ep_device,  // registered_ep_device
-                      TestBackend::Saver);   // serializer_backend
+                      TestBackend::Saver,   // backend
+                      TestBackend::Saver);  // serializer_backend
 
   // Check that QNN Saver output files exist.
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
-
-#if !BUILD_QNN_EP_STATIC_LIB
-  // Remove pre-existing QNN Saver output files. Note that fs::remove_all() can handle non-existing paths.
-  std::filesystem::remove_all(qnn_saver_output_dir);
-  ASSERT_FALSE(std::filesystem::exists(qnn_saver_output_dir));
-
-  InitNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
-                      TestBackend::Saver,    // backend
-                      true,                  // use_abi
-                      registered_ep_device,  // registered_ep_device
-                      TestBackend::Saver);   // serializer_backend
-
-  // Check that QNN Saver output files exist.
-  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
-  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
-#endif
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

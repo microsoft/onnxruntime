@@ -61,11 +61,10 @@ inline void TrimStringFromRight(std::string& s) {
  * @param s The string to trim.
  * @return The trimmed string.
  */
-inline std::string TrimString(std::string_view s) {
-  std::string s_trimmed{s};
-  TrimStringFromRight(s_trimmed);
-  TrimStringFromLeft(s_trimmed);
-  return s_trimmed;
+inline std::string TrimString(std::string s) {
+  TrimStringFromRight(s);
+  TrimStringFromLeft(s);
+  return s;
 }
 
 /**
