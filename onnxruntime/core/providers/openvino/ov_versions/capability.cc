@@ -166,17 +166,24 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     auto connected_clusters = GetConnectedClusters(graph_viewer_, ng_clusters);
 
     int no_of_clusters = 0;
-
+    size_t  cluster_index = 0;
+    size_t  total_clusters = connected_clusters.size();
     for (auto this_cluster : connected_clusters) {
-      // If subgraph has less then three, graph is considered trivial unless its an epctx cluster
-      if (this_cluster.size() < 3) {
-        bool is_epctx_node = false;
-        for (auto node_idx : this_cluster) {
-          if (graph_viewer_.GetNode(node_idx)->OpType() == "EPContext")
-            is_epctx_node = true;
-        }
-        if (!is_epctx_node)
-          continue;
+      bool omit_subgraph = false;
+
+      //auto id = this_cluster.at(0);
+      if (this_cluster.size() == 1) {
+          //check next cluster
+          auto index = this_cluster.at(0);
+          if (graph_viewer_.GetNode(index)->OpType() == "EPContext") {
+              omit_subgraph=false;
+          } else if(cluster_index < total_clusters-1) {
+              bool append_node = AddTrivialClusterToNextClusterIfConnected(graph_viewer_, index, connected_clusters[cluster_index+1]);
+              if(append_node) {
+                connected_clusters[cluster_index+1].emplace_back(index);
+              }
+              omit_subgraph=true;
+          }
       }
 
       std::vector<std::string> cluster_graph_inputs, cluster_inputs, cluster_outputs;
@@ -217,15 +224,17 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
           }
         }
       }
-      if (omit_subgraph)
-        continue;
 
       /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
-      if (!cluster_inputs.empty()) {
-        AppendClusterToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
-        no_of_clusters++;
+      if (!omit_subgraph) {
+        if (!cluster_inputs.empty()) {
+          AppendClusterToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
+          no_of_clusters++;
+        }
       }
+
+      cluster_index = cluster_index+1;
     }
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Supported subgraphs on OpenVINO: " << no_of_clusters;
   }
