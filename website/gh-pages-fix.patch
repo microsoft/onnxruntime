@@ -1,0 +1,11 @@
+--- a/src/routes/components/hero.svelte
++++ b/src/routes/components/hero.svelte
+@@ -113,7 +113,7 @@
+ 					<a class="underline" href="https://">More interested in training? More info here.</a>
+ 				</p> -->
+ 				<p class="text-lg mt-2">
+-					<a class="text-blue-800 font-medium" href="./getting-started"
++					<a class="text-blue-700 dark:text-blue-300 font-medium hover:text-blue-600 dark:hover:text-blue-200 transition-colors" href="./getting-started"
+ 						>Interested in using other languages? See the many others we support →</a
+ 					>
+ 				</p>
