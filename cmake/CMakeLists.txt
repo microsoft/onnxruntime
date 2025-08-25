@@ -22,7 +22,9 @@ if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
 endif()
 
 # Needed for Java
-set(CMAKE_C_STANDARD 99)
+if (NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_C_STANDARD 99)
+endif()
 
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
@@ -32,11 +34,13 @@ include(CheckFunctionExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
 
-# TODO: update this once all system adapt c++20
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-set(CMAKE_CXX_STANDARD 20)
-else()
-set(CMAKE_CXX_STANDARD 17)
+if (NOT CMAKE_CXX_STANDARD)
+  # TODO: update this once all system adapt c++20
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(CMAKE_CXX_STANDARD 20)
+  else()
+    set(CMAKE_CXX_STANDARD 17)
+  endif()
 endif()
 
 if (MSVC)
