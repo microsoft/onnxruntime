@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 // Do not include this file directly. Please include "onnxruntime_c_api.h" instead.
-#include "onnxruntime_common_enums.h"
 
 #ifdef __cplusplus
 extern "C" {

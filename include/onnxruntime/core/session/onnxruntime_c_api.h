@@ -33,7 +33,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include "onnxruntime_common_enums.h"
 
 /** \brief The API version defined in this header
  *
@@ -903,6 +902,16 @@ typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t n
  *
  * \nosubgrouping
  */
+/*
+ * Public enum for compiled model compatibility across EPs.
+ */
+typedef enum OrtCompiledModelCompatibility {
+  OrtCompiledModelCompatibility_EP_NOT_APPLICABLE = 0,
+  OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL,
+  OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION,
+  OrtCompiledModelCompatibility_EP_UNSUPPORTED,
+} OrtCompiledModelCompatibility;
+
 struct OrtApi {
   /// \name OrtStatus
   /// @{
