@@ -7,6 +7,8 @@ on:
     branches: [main, rel-*]
   pull_request:
     branches: [main, rel-*]
+  merge_group:
+    types: [checks_requested]
 
   # Allow this workflow to be run manually from the Actions tab
   workflow_dispatch:
