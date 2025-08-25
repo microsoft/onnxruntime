@@ -13,10 +13,8 @@
 using namespace onnxruntime;
 const OrtApi* g_ort = NULL;
 
-
 int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_config);
 void CompileEpContextModel(Ort::Env& env, const perftest::PerformanceTestConfig& test_config);
-
 
 #ifdef _WIN32
 int real_main(int argc, wchar_t* argv[]) {
@@ -75,7 +73,7 @@ int real_main(int argc, char* argv[]) {
   int status = 0;
 
   // EP context perf test
-  if(test_config.run_config.compile_ep_context) {
+  if (test_config.run_config.compile_ep_context) {
     {
       std::cout << "\n> Compiling model...\n";
       CompileEpContextModel(env, test_config);
@@ -113,7 +111,6 @@ int main(int argc, char* argv[]) {
   return retval;
 }
 
-
 int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_config) {
   std::random_device rd;
   perftest::PerformanceRunner perf_runner(env, test_config, rd);
@@ -133,7 +130,6 @@ int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_confi
   perf_runner.SerializeResult();
   return 0;
 }
-
 
 void CompileEpContextModel(Ort::Env& env, const perftest::PerformanceTestConfig& test_config) {
   auto output_ctx_model_path = test_config.run_config.compile_model_path;

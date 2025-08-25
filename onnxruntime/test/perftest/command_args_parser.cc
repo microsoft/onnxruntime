@@ -493,8 +493,10 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // --compile_model_path
   const auto& compile_model_path = absl::GetFlag(FLAGS_compile_model_path);
-  if (!compile_model_path.empty()) test_config.run_config.compile_model_path = ToPathString(compile_model_path);
-  else test_config.run_config.compile_model_path = ToPathString("model_ctx.onnx");
+  if (!compile_model_path.empty())
+    test_config.run_config.compile_model_path = ToPathString(compile_model_path);
+  else
+    test_config.run_config.compile_model_path = ToPathString("model_ctx.onnx");
 
   // --compile_embed_mode
   if (absl::GetFlag(FLAGS_compile_embed_mode) < 0 || absl::GetFlag(FLAGS_compile_embed_mode) >= 2) return false;
