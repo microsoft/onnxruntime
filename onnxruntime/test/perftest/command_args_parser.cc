@@ -170,8 +170,8 @@ ABSL_FLAG(std::string, plugin_ep_options, "",
 ABSL_FLAG(bool, list_ep_devices, false, "Prints all available device indices and their properties (including metadata). This option makes the program exit early without performing inference.\n");
 ABSL_FLAG(std::string, select_ep_devices, "", "Specifies a semicolon-separated list of device indices to add to the session and run with.");
 ABSL_FLAG(bool, compile_ep_context, DefaultPerformanceTestConfig().run_config.compile_ep_context, "Generate an EP context model");
-ABSL_FLAG(std::string, compile_model_path, "", "The compiled model path for saving EP context model. Overwrites if already exists. Default is model_ctx.onnx");
-ABSL_FLAG(int, compile_embed_mode, DefaultPerformanceTestConfig().run_config.compile_embed_mode, "Embed binary blob within EP context node. Can be 0 or 1. Default is 0");
+ABSL_FLAG(std::string, compile_model_path, "model_ctx.onnx", "The compiled model path for saving EP context model. Overwrites if already exists");
+ABSL_FLAG(int, compile_embed_mode, DefaultPerformanceTestConfig().run_config.compile_embed_mode, "Embed binary blob within EP context node. Can be 0 or 1");
 ABSL_FLAG(bool, h, false, "Print program usage.");
 
 namespace onnxruntime {
@@ -493,10 +493,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // --compile_model_path
   const auto& compile_model_path = absl::GetFlag(FLAGS_compile_model_path);
-  if (!compile_model_path.empty())
-    test_config.run_config.compile_model_path = ToPathString(compile_model_path);
-  else
-    test_config.run_config.compile_model_path = ToPathString("model_ctx.onnx");
+  test_config.run_config.compile_model_path = ToPathString(compile_model_path);
 
   // --compile_embed_mode
   if (absl::GetFlag(FLAGS_compile_embed_mode) < 0 || absl::GetFlag(FLAGS_compile_embed_mode) >= 2) return false;

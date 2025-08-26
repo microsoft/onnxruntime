@@ -14,7 +14,7 @@ using namespace onnxruntime;
 const OrtApi* g_ort = NULL;
 
 int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_config);
-void CompileEpContextModel(Ort::Env& env, const perftest::PerformanceTestConfig& test_config);
+Ort::Status CompileEpContextModel(const Ort::Env& env, const perftest::PerformanceTestConfig& test_config);
 
 #ifdef _WIN32
 int real_main(int argc, wchar_t* argv[]) {
@@ -76,7 +76,10 @@ int real_main(int argc, char* argv[]) {
   if (test_config.run_config.compile_ep_context) {
     {
       std::cout << "\n> Compiling model...\n";
-      CompileEpContextModel(env, test_config);
+      auto compile_status = CompileEpContextModel(env, test_config);
+
+      if (!compile_status.IsOK())
+        return -1;
     }
 
     {
@@ -131,14 +134,14 @@ int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_confi
   return 0;
 }
 
-void CompileEpContextModel(Ort::Env& env, const perftest::PerformanceTestConfig& test_config) {
+Ort::Status CompileEpContextModel(const Ort::Env& env, const perftest::PerformanceTestConfig& test_config) {
   auto output_ctx_model_path = test_config.run_config.compile_model_path;
-  const auto provider_name_ = test_config.machine_config.provider_type_name;
+  const auto provider_name = test_config.machine_config.provider_type_name;
 
   Ort::SessionOptions session_options;
 
-  std::unordered_map<std::string, std::string> provider_options_;
-  session_options.AppendExecutionProvider(provider_name_, provider_options_);
+  std::unordered_map<std::string, std::string> provider_options;
+  session_options.AppendExecutionProvider(provider_name, provider_options);
 
   Ort::ModelCompilationOptions model_compile_options(env, session_options);
   model_compile_options.SetEpContextEmbedMode(test_config.run_config.compile_embed_mode);
@@ -148,17 +151,16 @@ void CompileEpContextModel(Ort::Env& env, const perftest::PerformanceTestConfig&
   Ort::Status status;
   std::chrono::duration<double> compile_duration;
   {
-    auto compile_time_start_ = std::chrono::high_resolution_clock::now();
+    auto compile_time_start = std::chrono::high_resolution_clock::now();
     status = Ort::CompileModel(env, model_compile_options);
-    auto compile_time_end_ = std::chrono::high_resolution_clock::now();
-    compile_duration = compile_time_end_ - compile_time_start_;
+    auto compile_time_end = std::chrono::high_resolution_clock::now();
+    compile_duration = compile_time_end - compile_time_start;
   }
-  model_compile_options.release();
 
   if (!status.IsOK()) {
     std::cout << "Failed to compile model: " << status.GetErrorMessage() << std::endl;
   } else {
     std::cout << "Compile time cost: " << compile_duration.count() << " s\n";
   }
-  return;
+  return status;
 }
