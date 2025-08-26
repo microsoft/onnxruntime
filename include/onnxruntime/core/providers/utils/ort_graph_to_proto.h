@@ -203,19 +203,14 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
 
 #define ORT_EP_UTILS_C_RETURN_IF_ERROR(fn) \
   do {                                     \
-    OrtStatus* _status = (fn);             \
-    if (_status != nullptr) {              \
-      return Ort::Status{_status};         \
+    Ort::Status _status{(fn)};             \
+    if (!_status.IsOK()) {                 \
+      return _status;                      \
     }                                      \
   } while (0)
 
 #define ORT_EP_UTILS_CXX_RETURN_IF_ERROR(fn) \
-  do {                                       \
-    Ort::Status _status = (fn);              \
-    if (!_status.IsOK()) {                   \
-      return _status;                        \
-    }                                        \
-  } while (0)
+  ORT_EP_UTILS_C_RETURN_IF_ERROR(fn)
 
 #define ORT_EP_UTILS_C_RETURN_IF(cond, ort_api, msg)               \
   do {                                                             \
@@ -653,112 +648,61 @@ static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info,
 }
 
 static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& ort_attr, onnx::AttributeProto& attr_proto) {
-  const OrtApi& ort_api = Ort::GetApi();
-
-  const char* attr_name = nullptr;
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.OpAttr_GetName(&ort_attr, &attr_name));
+  Ort::ConstOpAttr attr(&ort_attr);
+  std::string attr_name;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetName(attr_name));
   attr_proto.set_name(attr_name);
 
-  size_t total_attr_bytes = 0;
-  OrtOpAttrType attr_type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.OpAttr_GetType(&ort_attr, &attr_type));
+  OrtOpAttrType attr_type;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetType(attr_type));
 
   switch (attr_type) {
     case OrtOpAttrType::ORT_OP_ATTR_INT: {
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_INT);
-
       int64_t i_val = 0;
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ReadOpAttr(&ort_attr, attr_type, &i_val, sizeof(i_val), &total_attr_bytes));
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValue(i_val));
+      attr_proto.set_type(onnx::AttributeProto_AttributeType_INT);
       attr_proto.set_i(i_val);
       break;
     }
     case OrtOpAttrType::ORT_OP_ATTR_INTS: {
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_INTS);
-
-      // First call to ReadOpAttr gets the total byte size. Second call reads the data.
-      Ort::Status status{ort_api.ReadOpAttr(&ort_attr, attr_type, nullptr, 0, &total_attr_bytes)};
-      std::vector<int64_t> i_vals(total_attr_bytes / sizeof(int64_t));
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ReadOpAttr(&ort_attr, attr_type, i_vals.data(), total_attr_bytes,
-                                                        &total_attr_bytes));
-
+      std::vector<int64_t> i_vals;
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValueArray(i_vals));
       auto* ints = attr_proto.mutable_ints();
-      for (int64_t val : i_vals) {
-        ints->Add(val);
-      }
+      ints->Assign(i_vals.begin(), i_vals.end());
+      attr_proto.set_type(onnx::AttributeProto_AttributeType_INTS);
       break;
     }
     case OrtOpAttrType::ORT_OP_ATTR_FLOAT: {
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_FLOAT);
-
       float f_val = 0.0f;
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ReadOpAttr(&ort_attr, attr_type, &f_val, sizeof(f_val), &total_attr_bytes));
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValue(f_val));
+      attr_proto.set_type(onnx::AttributeProto_AttributeType_FLOAT);
       attr_proto.set_f(f_val);
       break;
     }
     case OrtOpAttrType::ORT_OP_ATTR_FLOATS: {
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_FLOATS);
-
-      // First call to ReadOpAttr gets the total byte size. Second call reads the data.
-      Ort::Status status{ort_api.ReadOpAttr(&ort_attr, attr_type, nullptr, 0, &total_attr_bytes)};
-      std::vector<float> f_vals(total_attr_bytes / sizeof(float));
-
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ReadOpAttr(&ort_attr, attr_type, f_vals.data(), total_attr_bytes,
-                                                        &total_attr_bytes));
-
+      std::vector<float> f_vals;
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValueArray(f_vals));
       auto* floats = attr_proto.mutable_floats();
-      for (float val : f_vals) {
-        floats->Add(val);
-      }
+      floats->Assign(f_vals.begin(), f_vals.end());
+      attr_proto.set_type(onnx::AttributeProto_AttributeType_FLOATS);
       break;
     }
     case OrtOpAttrType::ORT_OP_ATTR_STRING: {
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_STRING);
-
-      // First call to ReadOpAttr gets the total byte size. Second call reads the data.
-      Ort::Status status{ort_api.ReadOpAttr(&ort_attr, attr_type, nullptr, 0, &total_attr_bytes)};
       std::string* str = attr_proto.mutable_s();
-
-      str->resize(total_attr_bytes);
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ReadOpAttr(&ort_attr, attr_type, str->data(), total_attr_bytes,
-                                                        &total_attr_bytes));
-
-      str->resize(total_attr_bytes);
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValue(*str));
+      attr_proto.set_type(onnx::AttributeProto_AttributeType_STRING);
       break;
     }
     case OrtOpAttrType::ORT_OP_ATTR_STRINGS: {
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_STRINGS);
-
-      // First call to ReadOpAttr gets the total byte size. Second call reads the data.
-      Ort::Status status{ort_api.ReadOpAttr(&ort_attr, attr_type, nullptr, 0, &total_attr_bytes)};
-      std::vector<char> chars(total_attr_bytes, '\0');
-
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.ReadOpAttr(&ort_attr, attr_type, chars.data(), total_attr_bytes,
-                                                        &total_attr_bytes));
-
+      std::vector<std::string> result;
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValueArray(result));
       auto* strs = attr_proto.mutable_strings();
-
-      // Strings are all in a single buffer, each separated with a '\0'.
-      // Extract each string and add it to the STRINGS attribute array.
-      char* at = chars.data();
-      char* end = at + chars.size();
-
-      while (at < end) {
-        char* str_begin = at;
-
-        while (*at && at < end) {
-          at++;
-        }
-
-        strs->Add()->assign(str_begin, at - str_begin);
-        if (at < end) {
-          assert(*at == '\0');
-          at++;  // Skip '\0' to get to the beginning of the next string.
-        }
-      }
-
+      strs->Assign(result.begin(), result.end());
+      attr_proto.set_type(onnx::AttributeProto_AttributeType_STRINGS);
       break;
     }
     case OrtOpAttrType::ORT_OP_ATTR_TENSOR: {
+      const OrtApi& ort_api = Ort::GetApi();
       attr_proto.set_type(onnx::AttributeProto_AttributeType_TENSOR);
 
       onnx::TensorProto tensor_proto;

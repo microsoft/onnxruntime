@@ -2402,16 +2402,19 @@ struct ConstOpAttrImpl : Base<T> {
   using B::B;
 
   // Wraps OrtApi::OpAttr_GetName
-  std::string GetName() const;
+  Status GetName(std::string& name) const;
   // Wraps OrtApi::OpAttr_GetType
-  OrtOpAttrType GetType() const;
+  Status GetType(OrtOpAttrType& type) const;
 
+  // Wraps OrtApi::ReadAttr for a single value
+  // This does not support Tensor Attribute
+  // for that call Node API.
   template <typename R>
-  R GetValue() const;
+  Status GetValue(R& out) const;
 
- private:
-  template <typename T1>
-  void CheckAttrType() const;
+  // Wraps OrtApi::ReadAttr for an array of values
+  template <typename R>
+  Status GetValueArray(std::vector<R>& out) const;
 };
 }  // namespace detail
 
@@ -2774,7 +2777,7 @@ struct ShapeInferContext {
   Strings GetAttrStrings(const char* attr_name);
 
  private:
-  const OrtOpAttr* GetAttrHdl(const char* attr_name) const;
+  ConstOpAttr GetAttrHdl(const char* attr_name) const;
   const OrtApi* ort_api_;
   OrtShapeInferContext* ctx_;
   std::vector<Shape> input_shapes_;
@@ -2927,25 +2930,29 @@ struct CustomOpBase : OrtCustomOp {
 
 namespace detail {
 template <typename T>
-struct ValueInfoImpl : Ort::detail::Base<T> {
+struct ConstValueInfoImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
 
+  /// < A wrapper around OrtApi::GetValueInfoName
+  /// <returns></returns>
   std::string Name() const;
   ConstTypeInfo TypeInfo() const;
+
+  size_t GetNumConsumers() const;
 };
 }  // namespace detail
 
 // Const object holder that does not own the underlying object
-using ConstValueInfo = detail::ValueInfoImpl<Ort::detail::Unowned<const OrtValueInfo>>;
+using ConstValueInfo = detail::ConstValueInfoImpl<Ort::detail::Unowned<const OrtValueInfo>>;
 
 /** \brief Wrapper around ::OrtValueInfo
  *
  */
-struct ValueInfo : detail::ValueInfoImpl<OrtValueInfo> {
+struct ValueInfo : detail::ConstValueInfoImpl<OrtValueInfo> {
   explicit ValueInfo(std::nullptr_t) {}  ///< No instance is created
   /// Take ownership of a pointer created by C API
-  explicit ValueInfo(OrtValueInfo* p) : ValueInfoImpl<OrtValueInfo>{p} {}
+  explicit ValueInfo(OrtValueInfo* p) : ConstValueInfoImpl<OrtValueInfo>{p} {}
 
   // Create ValueInfo for a tensor
   explicit ValueInfo(const std::string& name, const ConstTypeInfo& type_info);

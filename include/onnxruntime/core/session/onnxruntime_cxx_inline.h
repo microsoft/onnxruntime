@@ -2479,106 +2479,153 @@ template <typename T>
 constexpr OrtOpAttrType TypeToAttrType();
 
 template <>
-constexpr OrtOpAttrType TypeToAttrType<int>() {
+inline constexpr OrtOpAttrType TypeToAttrType<int64_t>() {
   return OrtOpAttrType::ORT_OP_ATTR_INT;
 }
 
 template <>
-constexpr OrtOpAttrType TypeToAttrType<float>() {
+inline constexpr OrtOpAttrType TypeToAttrType<float>() {
   return OrtOpAttrType::ORT_OP_ATTR_FLOAT;
 }
 
-template <>
-constexpr OrtOpAttrType TypeToAttrType<char>() {
-  return OrtOpAttrType::ORT_OP_ATTR_STRING;
-}
-
 template <typename T>
-constexpr OrtOpAttrType TypeToAttrsType();
+inline constexpr OrtOpAttrType TypeToAttrsType();
 
 template <>
-constexpr OrtOpAttrType TypeToAttrsType<int>() {
+inline constexpr OrtOpAttrType TypeToAttrsType<int64_t>() {
   return OrtOpAttrType::ORT_OP_ATTR_INTS;
 }
 
 template <>
-constexpr OrtOpAttrType TypeToAttrsType<float>() {
+inline constexpr OrtOpAttrType TypeToAttrsType<float>() {
   return OrtOpAttrType::ORT_OP_ATTR_FLOATS;
 }
 
-template <>
-constexpr OrtOpAttrType TypeToAttrsType<char>() {
-  return OrtOpAttrType::ORT_OP_ATTR_STRINGS;
+inline Status CheckAttrType(const OrtOpAttr* attr, OrtOpAttrType requested_type) {
+  OrtOpAttrType type;
+  Ort::Status status(GetApi().OpAttr_GetType(attr, &type));
+  if (!status.IsOK()) return status;
+  if (requested_type != type) {
+    std::string msg = "Attribute type mismatch: expected " + std::to_string(requested_type) +
+                      ", but got " + std::to_string(type);
+    return Ort::Status(msg.c_str(), OrtErrorCode::ORT_INVALID_ARGUMENT);
+  }
+  return Ort::Status{};
 }
 
-template <typename T>
-inline size_t GetDataSize(const OrtOpAttr* attr) {
-  constexpr auto attr_type = TypeToAttrType<T>();
+inline size_t GetDataSize(const OrtOpAttr* attr, OrtOpAttrType attr_type) {
   size_t result{};
-  ThrowOnError(GetApi().ReadOpAttr(attr, attr_type, nullptr, sizeof(T), &result));
+  // Ignore the status here because we check the data type so the error should only be about
+  // the size
+  [[maybe_unused]] Status status{GetApi().ReadOpAttr(attr, attr_type, nullptr, 0, &result)};
   return result;
 }
 
 template <typename T>
-T GetNumericValue(const OrtOpAttr* attr) {
+Ort::Status GetNumericValue(const OrtOpAttr* attr, T& out) {
   static_assert(std::is_arithmetic<T>::value, "T must be an arithmetic type");
-  T out{};
   size_t size{};
-  ThrowOnError(GetApi().ReadOpAttr(attr, TypeToAttrType<T>(), &out, sizeof(out), &size));
-  return out;
-}
-
-template <typename T>
-template <typename T1>
-inline void ConstOpAttrImpl<T>::CheckAttrType() const {
-  auto this_type = this->GetType();
-  if (TypeToAttrType<T1>() != this_type)
-    ORT_CXX_API_THROW(
-        "Attribute type mismatch: expected " + std::to_string(TypeToAttrType<T1>()) +
-            ", but got " + std::to_string(this_type),
-        OrtErrorCode::ORT_INVALID_ARGUMENT);
+  return Ort::Status{GetApi().ReadOpAttr(attr, TypeToAttrType<T>(), &out, sizeof(out), &size)};
 }
 
 template <typename T>
 struct GetValueImpl {
-  static T Get(const OrtOpAttr* attr) {
-    return GetNumericValue<T>(attr);
+  static Status GetValue(const OrtOpAttr* attr, T& out) {
+    return GetNumericValue<T>(attr, out);
+  }
+  static Status GetValues(const OrtOpAttr* attr, std::vector<T>& out) {
+    // Api deficiency when it comes to value arrays. It is not possible
+    // to tell if the error is due to the type mismatch or the size
+    // so we check the type first, and then ignore the status of the size check
+    constexpr auto deduced_type = TypeToAttrsType<T>();
+    auto status = CheckAttrType(attr, deduced_type);
+    if (!status.IsOK()) return status;
+    auto size = GetDataSize(attr, deduced_type);
+    std::vector<T> result;
+    if (size > 0) {
+      result.resize(size / sizeof(T));
+      status = Status{GetApi().ReadOpAttr(
+          attr, deduced_type, result.data(), size, &size)};
+      if (!status.IsOK()) return status;
+    }
+    out.swap(result);
+    return status;
   }
 };
 
 // Create GetValueImpl specializations for std::string
 template <>
 struct GetValueImpl<std::string> {
-  static std::string Get(const OrtOpAttr* attr) {
-    auto size = GetDataSize<char>(attr);
-    std::string out;
-    out.resize(size);
-    ThrowOnError(GetApi().ReadOpAttr(
-        attr, OrtOpAttrType::ORT_OP_ATTR_STRING, out.data(), size, &size));
-    out.resize(size);
-    return out;
+  static Status GetValue(const OrtOpAttr* attr, std::string& out) {
+    // Api deficiency when it comes to value arrays. It is not possible
+    // to tell if the error is due to the type mismatch or the size
+    // so we check the type first, and then ignore the status of the size check
+    auto status = CheckAttrType(attr, OrtOpAttrType::ORT_OP_ATTR_STRING);
+    if (!status.IsOK()) return status;
+    auto size = GetDataSize(attr, OrtOpAttrType::ORT_OP_ATTR_STRING);
+    std::string result;
+    if (size > 0) {
+      result.resize(size);
+      status = Status{GetApi().ReadOpAttr(
+          attr, OrtOpAttrType::ORT_OP_ATTR_STRING, result.data(), size, &size)};
+      if (!status.IsOK()) return status;
+    }
+    out.swap(result);
+    return status;
+  }
+  static Status GetValues(const OrtOpAttr* attr, std::vector<std::string>& out) {
+    auto status = CheckAttrType(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
+    if (!status.IsOK()) return status;
+
+    size_t total_buffer_size = 0;
+    // Ignore status, we checked the type above so the error is due to the size.
+    status = Status{GetApi().ReadOpAttr(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS, nullptr, 0, &total_buffer_size)};
+
+    // Create a temporary buffer to hold the string data
+    std::vector<char> buffer;
+    buffer.resize(total_buffer_size);
+
+    status = Status{GetApi().ReadOpAttr(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS, buffer.data(),
+                                        total_buffer_size, &total_buffer_size)};
+    if (!status.IsOK()) return status;
+
+    std::vector<std::string> result;
+    const char* data = buffer.data();
+    const char* end = data + total_buffer_size;
+    while (data < end) {
+      result.emplace_back(data);
+      data += result.back().size() + 1;  // Move past the null terminator
+    }
+    out.swap(result);
+    return status;
   }
 };
 
 template <typename T>
 template <typename R>
-inline R ConstOpAttrImpl<T>::GetValue() const {
-  this->CheckAttrType<R>();
-  return GetValueImpl<R>::Get(this->p_);
+inline Status ConstOpAttrImpl<T>::GetValue(R& out) const {
+  return GetValueImpl<R>::GetValue(this->p_, out);
 }
 
 template <typename T>
-inline std::string ConstOpAttrImpl<T>::GetName() const {
+template <typename R>
+inline Status ConstOpAttrImpl<T>::GetValueArray(std::vector<R>& out) const {
+  return GetValueImpl<R>::GetValues(this->p_, out);
+}
+
+template <typename T>
+inline Status ConstOpAttrImpl<T>::GetName(std::string& out) const {
   const char* name = nullptr;
-  Ort::ThrowOnError(GetApi().OpAttr_GetName(this->p_, &name));
-  return (name != nullptr) ? std::string{name} : std::string{};
+  Status status(GetApi().OpAttr_GetName(this->p_, &name));
+  if (status.IsOK() && name != nullptr) {
+    out.assign(name);
+  }
+  return status;
 }
 
 template <typename T>
-inline OrtOpAttrType ConstOpAttrImpl<T>::GetType() const {
-  OrtOpAttrType type;
-  Ort::ThrowOnError(GetApi().OpAttr_GetType(this->p_, &type));
-  return type;
+inline Status ConstOpAttrImpl<T>::GetType(OrtOpAttrType& type) const {
+  return Status(GetApi().OpAttr_GetType(this->p_, &type));
 }
 }  // namespace detail
 
@@ -2882,115 +2929,69 @@ inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shap
 }
 
 inline int64_t ShapeInferContext::GetAttrInt(const char* attr_name) {
-  const auto* attr = GetAttrHdl(attr_name);
-  int64_t i = {};
-  size_t out = {};
-  Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_INT, &i, sizeof(i), &out));
-  return i;
+  auto attr = GetAttrHdl(attr_name);
+  int64_t value;
+  Status status = attr.GetValue<int64_t>(value);
+  if (!status.IsOK()) {
+    ORT_CXX_API_THROW("Getting int attribute failed: " + status.GetErrorMessage(), status.GetErrorCode());
+  }
+  return value;
 }
 
 inline ShapeInferContext::Ints ShapeInferContext::GetAttrInts(const char* attr_name) {
-  const auto* attr = GetAttrHdl(attr_name);
-  int64_t i = {};
-  size_t out = {};
-  // first call to get the bytes needed
-  // 1. A status == nullptr means that ReadOpAttr was successful. A status != nullptr means failure.
-  // 2. The ReadOpAttr function should normally be called twice: once to get the needed buffer size (returns a status != nullptr), and a second time to actually read the ints (returns status == null on success).
-  // 3. This code tries a subtle optimization in the first call to ReadOpAttr. It passes in a buffer (&i) of size 1 just in case there is only 1 int. In this case, status == nullptr and we need to return {i}.
-  auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_INTS, &i, sizeof(i), &out);
-  if (status) {
-    size_t num_i = out / sizeof(int64_t);
-    ShapeInferContext::Ints ints(num_i, 0);
-    Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_INTS, ints.data(), out, &out));
-    return ints;
-  } else {
-    if (out == 0u) {
-      return {};
-    }
-    return {i};
+  auto attr = GetAttrHdl(attr_name);
+  ShapeInferContext::Ints result;
+  auto status = attr.GetValueArray<int64_t>(result);
+  if (!status.IsOK()) {
+    ORT_CXX_API_THROW("Getting ints attribute failed: " + status.GetErrorMessage(), status.GetErrorCode());
   }
+  return result;
 }
 
 inline float ShapeInferContext::GetAttrFloat(const char* attr_name) {
-  const auto* attr = GetAttrHdl(attr_name);
-  float f = {};
-  size_t out = {};
-  Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_FLOAT, &f, sizeof(f), &out));
-  return f;
+  auto attr = GetAttrHdl(attr_name);
+  float value;
+  Status status = attr.GetValue<float>(value);
+  if (!status.IsOK()) {
+    ORT_CXX_API_THROW("Getting float attribute failed: " + status.GetErrorMessage(), status.GetErrorCode());
+  }
+  return value;
 }
 
 inline ShapeInferContext::Floats ShapeInferContext::GetAttrFloats(const char* attr_name) {
-  const auto* attr = GetAttrHdl(attr_name);
-  float f = {};
-  size_t out = {};
-  // first call to get the bytes needed
-  // 1. A status == nullptr means that ReadOpAttr was successful. A status != nullptr means failure.
-  // 2. The ReadOpAttr function should normally be called twice: once to get the needed buffer size (returns a status != nullptr), and a second time to actually read the ints (returns status == null on success).
-  // 3. This code tries a subtle optimization in the first call to ReadOpAttr. It passes in a buffer (&i) of size 1 just in case there is only 1 int. In this case, status == nullptr and we need to return {i}.
-  auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_FLOATS, &f, sizeof(f), &out);
-  if (status) {
-    size_t num_f = out / sizeof(float);
-    ShapeInferContext::Floats floats(num_f, 0);
-    Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_FLOATS, floats.data(), out, &out));
-    return floats;
-  } else {
-    if (out == 0u) {
-      return {};
-    }
-    return {f};
+  auto attr = GetAttrHdl(attr_name);
+  ShapeInferContext::Floats result;
+  auto status = attr.GetValueArray<float>(result);
+  if (!status.IsOK()) {
+    ORT_CXX_API_THROW("Getting floats attribute failed: " + status.GetErrorMessage(), status.GetErrorCode());
   }
+  return result;
 }
 
 inline std::string ShapeInferContext::GetAttrString(const char* attr_name) {
-  const auto* attr = GetAttrHdl(attr_name);
-  char c = {};
-  size_t out = {};
-  // first call to get the bytes needed
-  auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRING, &c, sizeof(char), &out);
-  if (status) {
-    std::vector<char> chars(out, '\0');
-    Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRING, chars.data(), out, &out));
-    return std::string{chars.data(), out};
-  } else {
-    return {c};
+  auto attr = GetAttrHdl(attr_name);
+  std::string value;
+  Status status = attr.GetValue<std::string>(value);
+  if (!status.IsOK()) {
+    ORT_CXX_API_THROW("Getting string attribute failed: " + status.GetErrorMessage(), status.GetErrorCode());
   }
+  return value;
 }
 
 inline ShapeInferContext::Strings ShapeInferContext::GetAttrStrings(const char* attr_name) {
-  const auto* attr = GetAttrHdl(attr_name);
-  char c = {};
-  size_t out = {};
-  // first call to get the bytes needed
-  // 1. A status == nullptr means that ReadOpAttr was successful. A status != nullptr means failure.
-  // 2. The ReadOpAttr function should normally be called twice: once to get the needed buffer size (returns a status != nullptr), and a second time to actually read the ints (returns status == null on success).
-  // 3. This code tries a subtle optimization in the first call to ReadOpAttr. It passes in a buffer (&i) of size 1 just in case there is only 1 int. In this case, status == nullptr and we need to return {i}.
-  auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRINGS, &c, sizeof(char), &out);
-  if (status) {
-    std::vector<char> chars(out, '\0');
-    Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRINGS, chars.data(), out, &out));
-    ShapeInferContext::Strings strings;
-    char* char_st = chars.data();
-    char* char_ed = char_st + out;
-    while (char_st < char_ed) {
-      strings.emplace_back(char_st);
-      while (*char_st != '\0') {
-        char_st++;
-      }
-      char_st++;
-    }
-    return strings;
-  } else {
-    if (out == 0u) {
-      return {};
-    }
-    return {std::string{c}};
+  auto attr = GetAttrHdl(attr_name);
+  ShapeInferContext::Strings result;
+  auto status = attr.GetValueArray<std::string>(result);
+  if (!status.IsOK()) {
+    ORT_CXX_API_THROW("Getting strings attribute failed: " + status.GetErrorMessage(), status.GetErrorCode());
   }
+  return result;
 }
 
-inline const OrtOpAttr* ShapeInferContext::GetAttrHdl(const char* attr_name) const {
+inline ConstOpAttr ShapeInferContext::GetAttrHdl(const char* attr_name) const {
   const OrtOpAttr* attr_hdl = {};
   Ort::ThrowOnError(ort_api_->ShapeInferContext_GetAttribute(ctx_, attr_name, &attr_hdl));
-  return attr_hdl;
+  return ConstOpAttr{attr_hdl};
 }
 
 namespace detail {
@@ -3071,14 +3072,14 @@ inline ValueInfo::ValueInfo(const std::string& name, const ConstTypeInfo& type_i
 
 namespace detail {
 template <>
-inline std::string ValueInfoImpl<OrtValueInfo>::Name() const {
+inline std::string ConstValueInfoImpl<OrtValueInfo>::Name() const {
   const char* name = nullptr;
   ThrowOnError(GetApi().GetValueInfoName(this->p_, &name));
   return name;
 }
 
 template <>
-inline ConstTypeInfo ValueInfoImpl<OrtValueInfo>::TypeInfo() const {
+inline ConstTypeInfo ConstValueInfoImpl<OrtValueInfo>::TypeInfo() const {
   const OrtTypeInfo* type_info = nullptr;
   ThrowOnError(GetApi().GetValueInfoTypeInfo(this->p_, &type_info));
   return ConstTypeInfo{type_info};
