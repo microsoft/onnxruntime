@@ -95,7 +95,7 @@ BackendManager::BackendManager(SessionContext& session_context,
     } else {
       model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
     }
-    
+
   } else {
     model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
   }

@@ -680,22 +680,22 @@ static void AddInitializerAsInput(onnxruntime::Graph& dst_graph,
 // To check if the input parameters of a DQ or Q node are quantization parameters
 // Scale and Zero point parameters are quantization parameters
 static bool IsQuantizationParameter(const std::string& initializer_name,
-                                   const onnxruntime::GraphViewer& src_graph) {
-    // Check if this initializer is used as scale or zero_point in any DQ/Q node
-    for (auto& node_idx : src_graph.GetNodesInTopologicalOrder()) {
-        const auto* node = src_graph.GetNode(node_idx);
-        if (node->OpType() == "DequantizeLinear" || node->OpType() == "QuantizeLinear") {
-            const auto& input_defs = node->InputDefs();
-            // Check if this initializer is used as scale (input 1) or zero_point (input 2)
-            if (input_defs.size() >= 2 && input_defs[1]->Name() == initializer_name) {
-                return true; // This is a scale parameter
-            }
-            if (input_defs.size() >= 3 && input_defs[2]->Name() == initializer_name) {
-                return true; // This is a zero_point parameter
-            }
-        }
+                                    const onnxruntime::GraphViewer& src_graph) {
+  // Check if this initializer is used as scale or zero_point in any DQ/Q node
+  for (auto& node_idx : src_graph.GetNodesInTopologicalOrder()) {
+    const auto* node = src_graph.GetNode(node_idx);
+    if (node->OpType() == "DequantizeLinear" || node->OpType() == "QuantizeLinear") {
+      const auto& input_defs = node->InputDefs();
+      // Check if this initializer is used as scale (input 1) or zero_point (input 2)
+      if (input_defs.size() >= 2 && input_defs[1]->Name() == initializer_name) {
+        return true;  // This is a scale parameter
+      }
+      if (input_defs.size() >= 3 && input_defs[2]->Name() == initializer_name) {
+        return true;  // This is a zero_point parameter
+      }
     }
-    return false;
+  }
+  return false;
 }
 
 // Creates a new model without the DQ/Q operators in the src graph.
@@ -866,31 +866,29 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
     if (!init_with_data &&
         utils::HasExternalData(initializer_tensor) &&
         enable_ovep_weight_sharing) {
+      // Only convert to input if it's not a quantization parameter
+      bool is_quant_param = IsQuantizationParameter(name, src_graph);
 
-        // Only convert to input if it's not a quantization parameter
-        bool is_quant_param = IsQuantizationParameter(name, src_graph);
+      if (!is_quant_param) {
+        // This is actual weight data - so to convert to input for weight sharing
+        insert_metadata(initializer_tensor);
+        AddInitializerAsInput(dst_graph, accumulated_inputs, src_graph, name);
+      } else {
+        // This is a quantization parameter - keep as initializer even if external
 
-        if (!is_quant_param) {
-            // This is actual weight data - so to convert to input for weight sharing
-            insert_metadata(initializer_tensor);
-            AddInitializerAsInput(dst_graph, accumulated_inputs, src_graph, name);
-        } else {
-            // This is a quantization parameter - keep as initializer even if external
-
-            if (initializers_to_keep.count(name) > 0) {
-
-                dst_graph.AddInitializedTensor(initializer_tensor);
-            }
-        }
-    } else {
-        // Add as an initialized tensor if it does not have external data
         if (initializers_to_keep.count(name) > 0) {
-            if (init_with_data) {
-                dst_graph.AddInitializedTensor(*init_with_data);
-            } else {
-                dst_graph.AddInitializedTensor(initializer_tensor);
-            }
+          dst_graph.AddInitializedTensor(initializer_tensor);
         }
+      }
+    } else {
+      // Add as an initialized tensor if it does not have external data
+      if (initializers_to_keep.count(name) > 0) {
+        if (init_with_data) {
+          dst_graph.AddInitializedTensor(*init_with_data);
+        } else {
+          dst_graph.AddInitializedTensor(initializer_tensor);
+        }
+      }
     }
 
     current_scope_initializer_set.insert(name);
