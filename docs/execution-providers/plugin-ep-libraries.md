@@ -55,14 +55,36 @@ Enumerates classes of hardware devices:<br>
 </ul>
 </td>
 </tr>
+
+<tr>
+<td>
+OrtHardwareDevice
+</td>
+<td>
+Opaque type that represents a physical hardware device.
+</td>
+</tr>
+
+<tr>
+<td>
+Test code block
+</td>
+<td>
+Code:<br/>
+<pre lang="c++">int main(void) {&#13;  printf("Hi\n");&#13;}</pre>
+</td>
+</tr>
+
+<tr>
+<td>
+Test code block 2
+</td>
+<td>
+Some code here:<br><pre><code>{<br>  "id": 10,<br>  "username": "alanpartridge"<br>}</code></pre>
+</td>
+</tr>
+
 </table>
-
-|        Type           |                    Description                  |
-|-----------------------|-------------------------------------------------|
-| OrtHardwareDeviceType | Enumerates classes of hardware devices:<br/><ul><li>OrtHardwareDeviceType_CPU</li><li>OrtHardwareDeviceType_GPU</li><li>OrtHardwareDeviceType_NPU</li></ul> |
-| OrtHardwareDevice     | Opaque type that represents a physical hardware device (e.g., CPU, GPU, NPU). |
-| TestCode              | Code:<br/><pre lang="c++">int main(void) {&#13;  printf("Hi\n");&#13;}</pre> |
-
 
 #### OrtHardwareDeviceType
 
