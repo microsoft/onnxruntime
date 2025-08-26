@@ -157,7 +157,7 @@ ArmKleidiAI::MlasGemmBatch(
         return true;
     }
 
-    if (Data->alpha == 0.0f) {
+    if (Data->alpha == 0.0f || K == 0) {
         if (Data->beta == 0.0f) {
             for (size_t i = 0; i < M; ++i) {
                 std::fill_n(Data->C + i * Data->ldc, N, 0.0f);
@@ -171,22 +171,6 @@ ArmKleidiAI::MlasGemmBatch(
         }
         return true;
     }
-
-    if (K == 0) {
-        if (Data->beta == 0.0f) {
-            for (size_t i = 0; i < M; ++i) {
-                std::fill_n(Data->C + i * Data->ldc, N, 0.0f);
-            }
-        } else if (Data->beta != 1.0f) {
-            for (size_t i = 0; i < M; ++i) {
-                for (size_t j = 0; j < N; ++j) {
-                    Data->C[i * Data->ldc + j] *= Data->beta;
-                }
-            }
-        }
-        return true;
-    }
-
 
     if (TransA == CblasNoTrans) {
         const size_t mr = kai_get_mr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
@@ -196,7 +180,7 @@ ArmKleidiAI::MlasGemmBatch(
         auto m_step = kai_get_m_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
         auto n_step = kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
 
-        if ((M < m_step && N < n_step) && !Data->BIsPacked) {
+        if (M < m_step && N < n_step && !Data->BIsPacked) {
             // Fallback to MLAS
             return false;
         }
