@@ -29,6 +29,7 @@ limitations under the License.
 #include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
@@ -441,24 +442,23 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
 
   static const DWORD allocation_granularity = sysinfo.dwAllocationGranularity;
   const FileOffsetType offset_to_granularity = offset % static_cast<FileOffsetType>(allocation_granularity);
-  const size_t mapped_length = length + static_cast<size_t>(offset_to_granularity);
+  const SIZE_T mapped_length = SafeInt<SIZE_T>(offset_to_granularity) + length;
   const FileOffsetType mapped_offset = offset - offset_to_granularity;
-  if (mapped_offset % allocation_granularity != 0) {
-    const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "mapped offset must be a multiple of the allocation granularity",
-                           " , mapped_offset = ", mapped_offset,
-                           " , allocation_granularity = ", allocation_granularity,
-                           " , errcode = ", error_code,
-                           " - ", std::system_category().message(error_code));
-  }
+  assert((mapped_offset % allocation_granularity) == 0);
 
   void* const mapped_base = MapViewOfFile(file_mapping_handle.get(),
                                           FILE_MAP_READ,
                                           static_cast<DWORD>((mapped_offset >> 32) & 0xFFFFFFFF),
                                           static_cast<DWORD>(mapped_offset & 0xFFFFFFFF),
                                           mapped_length);
-  GSL_SUPPRESS(r.11)
+
+  if (mapped_base == nullptr) {
+    const auto error_code = GetLastError();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "MapViewOfFile ", ToUTF8String(Basename(file_path)),
+                           " fail, errcode = ", error_code,
+                           " - ", std::system_category().message(error_code));
+  }
 
   mapped_memory =
       MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_granularity,
