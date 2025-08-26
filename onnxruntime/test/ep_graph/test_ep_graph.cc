@@ -242,6 +242,11 @@ TEST(EpGraphTest, SerializeToProto_InputModelHasExternalIni) {
         return Ort::Status{nullptr};
       }
 
+      // For BE system, Before writing to file, we need to do data coversion.
+      if constexpr (endian::native != endian::little) {
+        OrtEpUtils::ConvertExternalData(value_info, const_cast<void*>(data), bytes);
+      }
+
       offset = ext_ini_ofs.tellp();
       location = ext_ini_file_path;
       ext_ini_ofs.write(static_cast<const char*>(data), bytes);
@@ -361,10 +366,14 @@ TEST(EpGraphTest, SerializeToProto_Mnist) {
       // OrtValueInfo* could be used to query initializer's name, type, shape,
       // node consumers, etc.
       (void)value_info;
-
       if (bytes <= 127) {
         is_external = false;  // Keep small initializers stored inside the TensorProto.
         return Ort::Status{nullptr};
+      }
+
+      // For BE system, Before writing to file, we need to do data coversion.
+      if constexpr (endian::native != endian::little) {
+        OrtEpUtils::ConvertExternalData(value_info, const_cast<void*>(data), bytes);
       }
 
       offset = ext_ini_ofs.tellp();

@@ -344,68 +344,109 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
   void* bytes = NULL;
   size_t num_elements = 0;
 
-  switch (tensor.data_type()) {
-    case TensorProto_DataType_FLOAT:
-      bytes = tensor.mutable_float_data()->mutable_data();
-      num_elements = tensor.float_data_size();
-      element_size = sizeof(float);
-      break;
-
-    case TensorProto_DataType_UINT8:
-    case TensorProto_DataType_INT8:
-      bytes = tensor.mutable_int32_data()->mutable_data();
-      num_elements = tensor.int32_data_size();
-      element_size = sizeof(uint8_t);
-      break;
-
-    case TensorProto_DataType_UINT16:
-    case TensorProto_DataType_INT16:
-    case TensorProto_DataType_FLOAT16:
-    case TensorProto_DataType_BFLOAT16:
-      bytes = tensor.mutable_int32_data()->mutable_data();
-      num_elements = tensor.int32_data_size();
-      element_size = sizeof(uint16_t);
-      break;
-    case TensorProto_DataType_INT32:
-      bytes = tensor.mutable_int32_data()->mutable_data();
-      num_elements = tensor.int32_data_size();
-      element_size = sizeof(int32_t);
-      break;
-
-    // uint32_t is stored in uint64_t
-    case TensorProto_DataType_UINT32:
-    case TensorProto_DataType_UINT64:
-      bytes = tensor.mutable_uint64_data()->mutable_data();
-      num_elements = tensor.uint64_data_size();
-      element_size = sizeof(uint64_t);
-      break;
-
-    case TensorProto_DataType_INT64:
-      bytes = tensor.mutable_int64_data()->mutable_data();
-      num_elements = tensor.int64_data_size();
-      element_size = sizeof(int64_t);
-      break;
-
-    case TensorProto_DataType_DOUBLE:
-      bytes = tensor.mutable_double_data()->mutable_data();
-      num_elements = tensor.double_data_size();
-      element_size = sizeof(double);
-      break;
-
-    case TensorProto_DataType_COMPLEX64:
-      bytes = tensor.mutable_float_data()->mutable_data();
-      num_elements = tensor.float_data_size();
-      element_size = sizeof(float);
-      break;
-  }
-
-  if (element_size == 1) {
-    return;
-  }
-
+  // For some data_type, element size differs for raw data vs
+  // data set using the add_<data_type>data() API
   if (tensor.has_raw_data()) {
+    switch (tensor.data_type()) {
+      case TensorProto_DataType_FLOAT:
+        element_size = sizeof(float);
+        break;
+
+      case TensorProto_DataType_UINT8:
+      case TensorProto_DataType_INT8:
+        element_size = sizeof(uint8_t);
+        break;
+
+      case TensorProto_DataType_UINT16:
+      case TensorProto_DataType_INT16:
+      case TensorProto_DataType_FLOAT16:
+      case TensorProto_DataType_BFLOAT16:
+        element_size = sizeof(uint16_t);
+        break;
+      case TensorProto_DataType_INT32:
+      case TensorProto_DataType_UINT32:
+        element_size = sizeof(int32_t);
+        break;
+
+      case TensorProto_DataType_UINT64:
+        element_size = sizeof(uint64_t);
+        break;
+
+      case TensorProto_DataType_INT64:
+        element_size = sizeof(int64_t);
+        break;
+
+      case TensorProto_DataType_DOUBLE:
+        element_size = sizeof(double);
+        break;
+
+      case TensorProto_DataType_COMPLEX64:
+        element_size = sizeof(float);
+        break;
+    }
+    if (element_size <= 1) {
+      return;
+    }
     num_elements = tensor.raw_data().size() / element_size;
     bytes = tensor.mutable_raw_data()->data();
+  } else {  // tensor.has_raw_data()
+
+    switch (tensor.data_type()) {
+      case TensorProto_DataType_FLOAT:
+        bytes = tensor.mutable_float_data()->mutable_data();
+        num_elements = tensor.float_data_size();
+        element_size = sizeof(float);
+        break;
+
+      case TensorProto_DataType_UINT8:
+      case TensorProto_DataType_INT8:
+        bytes = tensor.mutable_int32_data()->mutable_data();
+        num_elements = tensor.int32_data_size();
+        element_size = sizeof(uint8_t);
+        break;
+
+      case TensorProto_DataType_UINT16:
+      case TensorProto_DataType_INT16:
+      case TensorProto_DataType_FLOAT16:
+      case TensorProto_DataType_BFLOAT16:
+      case TensorProto_DataType_INT32:
+        bytes = tensor.mutable_int32_data()->mutable_data();
+        num_elements = tensor.int32_data_size();
+        // We are setting this to int32_t size because we need to swap all 4 bytes
+        // to represent 16 bits within 32 bits correctly on a LE/BE system.
+        element_size = sizeof(int32_t);
+        break;
+
+      // uint32_t is stored in uint64_t
+      case TensorProto_DataType_UINT32:
+      case TensorProto_DataType_UINT64:
+        bytes = tensor.mutable_uint64_data()->mutable_data();
+        num_elements = tensor.uint64_data_size();
+        element_size = sizeof(uint64_t);
+        break;
+
+      case TensorProto_DataType_INT64:
+        bytes = tensor.mutable_int64_data()->mutable_data();
+        num_elements = tensor.int64_data_size();
+        element_size = sizeof(int64_t);
+        break;
+
+      case TensorProto_DataType_DOUBLE:
+        bytes = tensor.mutable_double_data()->mutable_data();
+        num_elements = tensor.double_data_size();
+        element_size = sizeof(double);
+        break;
+
+      case TensorProto_DataType_COMPLEX64:
+        bytes = tensor.mutable_float_data()->mutable_data();
+        num_elements = tensor.float_data_size();
+        element_size = sizeof(float);
+        break;
+    }
+
+    if (element_size == 1) {
+      return;
+    }
   }
 
   gsl::span<std::byte> span = gsl::make_span(reinterpret_cast<std::byte*>(bytes), num_elements * element_size);

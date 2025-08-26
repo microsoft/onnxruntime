@@ -123,6 +123,7 @@
 
 #include <functional>
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/framework/endian.h"
 #include "onnx/onnx_pb.h"
 
 namespace OrtEpUtils {
@@ -233,6 +234,7 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(const OrtValueInfo& ort_value_
                                                   /*out*/ std::vector<std::string>& symbolic_dims);
 static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info, onnx::ValueInfoProto& value_info_proto);
 static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& ort_attr, onnx::AttributeProto& attr_proto);
+static Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes);
 
 Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
                             onnx::GraphProto& graph_proto,
@@ -513,7 +515,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
     } else {
       // User wants to store data inline the TensorProto's raw_data
       tensor_proto->set_data_location(onnx::TensorProto_DataLocation_DEFAULT);
-      onnxruntime::utils::SetRawDataInTensorProto(*tensor_proto,data,data_bytes);
+      onnxruntime::utils::SetRawDataInTensorProto(*tensor_proto, data, data_bytes);
     }
   }
 
@@ -850,7 +852,7 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
       const void* data = tensor.GetTensorData<void>();
 
       // Copy the Ortvalue to TensorProto as raw data
-      onnxruntime::utils::SetRawDataInTensorProto(tensor_proto,data,data_bytes);
+      onnxruntime::utils::SetRawDataInTensorProto(tensor_proto, data, data_bytes);
 
       *(attr_proto.mutable_t()) = std::move(tensor_proto);
       break;
@@ -861,6 +863,54 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
     }
   }
 
+  return Ort::Status{nullptr};
+}
+
+static Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes) {
+  if constexpr (onnxruntime::endian::native == onnxruntime::endian::little) {
+    return Ort::Status{nullptr};
+  }
+  std::vector<int64_t> initializer_dims;
+  std::vector<std::string> initializer_sym_dims;
+  ONNXTensorElementDataType initializer_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  size_t element_size = 0;
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(*value_info, false,
+                                                                  initializer_elem_type, initializer_dims,
+                                                                  initializer_sym_dims));
+  switch (initializer_elem_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      element_size = sizeof(float);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      element_size = sizeof(uint8_t);
+      break;
+
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      element_size = sizeof(uint16_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+      element_size = sizeof(int32_t);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+      element_size = sizeof(int64_t);
+      break;
+
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+      element_size = sizeof(double);
+      break;
+    default: {
+      std::string err_msg = "Unexpected ONNXTensorElementDataType with value " + std::to_string(static_cast<int>(initializer_elem_type));
+      return Ort::Status(err_msg.c_str(), ORT_FAIL);
+    }
+  }
+  gsl::span<std::byte> span = gsl::make_span(reinterpret_cast<std::byte*>(data), bytes);
+  onnxruntime::utils::SwapByteOrderInplace(element_size, span);
   return Ort::Status{nullptr};
 }
 
