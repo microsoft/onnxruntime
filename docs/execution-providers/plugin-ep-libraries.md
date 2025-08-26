@@ -88,11 +88,7 @@ Opaque type that represents a pairing of an EP and hardware device that can run 
 OrtNodeFusionOptions
 </td>
 <td>
-Struct that contains options for fusing nodes supported by an EP.<br/>
-<code>struct OrtNodeFusionOptions {<br/>
-  uint32_t ort_version_supported;<br/>
-  bool drop_constant_initializers;<br/>
-}</code>
+Struct that contains options for fusing nodes supported by an EP.
 </td>
 </tr>
 
@@ -137,30 +133,34 @@ Enumerates the operator data layouts that could be preferred by an EP. By defaul
 OrtMemoryDevice
 </td>
 <td>
+Opaque type that represents a combination of a physical device and memory type. A memory allocation and allocator are associated with a specific `OrtMemoryDevice`, and this information is used to determine when data transfer is required.
 </td>
 </tr>
 
 <tr>
 <td>
-OrtDataTransferImpl
+<a href="#ort-data-transfer-impl">OrtDataTransferImpl</a>
 </td>
 <td>
-</td>
-</tr>
-
-<tr>
-<td>
-OrtSyncNotificationImpl
-</td>
-<td>
+Struct of functions that an EP implements to copy data between the devices that the EP uses and CPU.
 </td>
 </tr>
 
 <tr>
 <td>
-OrtSyncStreamImpl
+<a href="#ort-sync-notification-impl">OrtSyncNotificationImpl</a>
 </td>
 <td>
+Struct of functions that an EP implements for Stream notifications.
+</td>
+</tr>
+
+<tr>
+<td>
+<a href="#ort-sync-stream-impl">OrtSyncStreamImpl</a>
+</td>
+<td>
+Struct of functions that an EP implements if it needs to support Streams.
 </td>
 </tr>
 
@@ -191,6 +191,7 @@ An instance of an Ep that can execute model nodes on one or more hardware device
 OrtRunOptions
 </td>
 <td>
+Opaque object containing options passed to the `OrtApi::Run()` function, which runs a model.
 </td>
 </tr>
 
@@ -199,6 +200,7 @@ OrtRunOptions
 OrtGraph
 </td>
 <td>
+Opaque type that represents a graph. Provided to `OrtEp` instances in calls to `OrtEp::GetCapability()` and `OrtEp::Compile()`.
 </td>
 </tr>
 
@@ -207,6 +209,13 @@ OrtGraph
 OrtValueInfo
 </td>
 <td>
+Opaque type that contains information for a value in a graph. A graph value can be a graph input, graph output, graph initializer, node input, or node output. An `OrtValueInfo` instance has the following information.<br/>
+<ul>
+<li>Type and shape (e.g., `OrtTypeInfo`)</li>
+<li>`OrtNode` consumers</li>
+<li>`OrtNode` producer</li>
+<li>Information that classifies the value as a graph input, graph output, initializer, etc.</li>
+<ul>
 </td>
 </tr>
 
@@ -215,6 +224,7 @@ OrtValueInfo
 OrtExternalInitializerInfo
 </td>
 <td>
+Opaque type that contains information for an initializer stored in an external file. An `OrtExternalInitializerInfo` instance contains the file path, file offset, and byte size for the initializer. Can be obtained from an `OrtValueInfo` via the function `ValueInfo_GetExternalInitializerInfo()`.
 </td>
 </tr>
 
@@ -223,6 +233,7 @@ OrtExternalInitializerInfo
 OrtTypeInfo
 </td>
 <td>
+Opaque type that contains the element type and shape information for ONNX tensors, sequences, maps, sparse tensors, etc.
 </td>
 </tr>
 
@@ -231,6 +242,7 @@ OrtTypeInfo
 OrtTensorTypeAndShapeInfo
 </td>
 <td>
+Opaque type that contains the element type and shape information for an ONNX tensor.
 </td>
 </tr>
 
@@ -239,6 +251,16 @@ OrtTensorTypeAndShapeInfo
 OrtNode
 </td>
 <td>
+Opaque type that represents a node in a graph.
+</td>
+</tr>
+
+<tr>
+<td>
+<a href="#ort-op-attr-type">OrtOpAttrType</a>
+</td>
+<td>
+Enumerates attribute types.
 </td>
 </tr>
 
@@ -247,15 +269,7 @@ OrtNode
 OrtOpAttr
 </td>
 <td>
-</td>
-</tr>
-
-<tr>
-<td>
-Test code block 2
-</td>
-<td>
-Some code here:<br/><code>{<br/>  "id": 10,<br/>  "username": "alanpartridge"<br/>}</code>
+Opaque type that represents an ONNX operator attribute.
 </td>
 </tr>
 
