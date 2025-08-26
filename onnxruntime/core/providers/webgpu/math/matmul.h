@@ -49,5 +49,20 @@ class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
   const bool is_channels_last_;
 };
 
+class MatMulTiledSubgroupProgram final : public Program<MatMulTiledSubgroupProgram> {
+ public:
+  MatMulTiledSubgroupProgram() : Program{"MatMulTiledSubgroup"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"Batch", ProgramUniformVariableDataType::Uint32},
+                                          {"M", ProgramUniformVariableDataType::Uint32},
+                                          {"K", ProgramUniformVariableDataType::Uint32},
+                                          {"k_of_a", ProgramUniformVariableDataType::Uint32},
+                                          {"n_div_4", ProgramUniformVariableDataType::Uint32},
+                                          {"M_tiles", ProgramUniformVariableDataType::Uint32},
+                                          {"N_tiles", ProgramUniformVariableDataType::Uint32}, );
+};
+
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -1,0 +1,73 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+fn load_a(batch : u32, m : u32, k_idx : u32) -> a_value_t {
+  if (batch < uniforms.Batch && m < uniforms.M && k_idx < uniforms.k_of_a) {
+    let offset = batch * uniforms.M * uniforms.k_of_a + m * uniforms.k_of_a + k_idx;
+    return a[offset];
+  }
+  return a_value_t();
+}
+
+fn load_b(batch : u32, k : u32, n_idx : u32) -> b_value_t {
+  if (batch < uniforms.Batch && k < uniforms.K && n_idx < uniforms.n_div_4) {
+    let offset = batch * uniforms.K * uniforms.n_div_4 + k * uniforms.n_div_4 + n_idx;
+    return b[offset];
+  }
+  return b_value_t();
+}
+
+fn write_output(batch : u32, m : u32, n_idx : u32, value : output_value_t) {
+  if (batch < uniforms.Batch && m < uniforms.M && n_idx < uniforms.n_div_4) {
+    let offset = batch * uniforms.M * uniforms.n_div_4 + m * uniforms.n_div_4 + n_idx;
+    output[offset] = value;
+  }
+}
+
+var<workgroup> b_cache : array<b_value_t, 64>;
+
+$MAIN {
+  let batch = workgroup_idx / (uniforms.M_tiles * uniforms.N_tiles);
+  let m_base = ((workgroup_idx / uniforms.N_tiles) % uniforms.M_tiles) * 64;
+  let n_base = (workgroup_idx % uniforms.N_tiles) * 64;
+
+  var results : array<output_element_t, 64>;
+  for (var k_idx = 0u; k_idx < uniforms.k_of_a; k_idx++) {
+    let a_data = load_a(batch, m_base + local_idx, k_idx);
+
+    // Loads and transposes a 4x16 block of matrix B into the workgroup cache.
+    let b_local_k = local_idx / 16;
+    let b_local_n_idx = local_idx % 16;
+    let b_data = load_b(batch, 4 * k_idx + b_local_k, n_base / 4 + b_local_n_idx);
+    b_cache[4 * b_local_n_idx][b_local_k] = b_data[0];
+    b_cache[4 * b_local_n_idx + 1u][b_local_k] = b_data[1];
+    b_cache[4 * b_local_n_idx + 2u][b_local_k] = b_data[2];
+    b_cache[4 * b_local_n_idx + 3u][b_local_k] = b_data[3];
+    workgroupBarrier();
+
+    if (sg_size == 32u) {
+      var b_data = b_cache[sg_id];
+      for (var n = 0u; n < 32u; n++) {
+        results[n] += dot(a_data, subgroupShuffle(b_data, n));
+      }
+      b_data = b_cache[sg_id + 32u];
+      for (var n = 0u; n < 32u; n++) {
+        results[n + 32u] += dot(a_data, subgroupShuffle(b_data, n));
+      }
+    } else {
+      for (var n = 0; n < 64; n++) {
+        results[n] += dot(a_data, b_cache[n]);
+      }
+    }
+    workgroupBarrier();
+  }
+
+  for (var n_idx = 0u; n_idx < 16u; n_idx++) {
+    let output = output_value_t(results[4 * n_idx],
+                                results[4 * n_idx + 1u],
+                                results[4 * n_idx + 2u],
+                                results[4 * n_idx + 3u]);
+
+    write_output(batch, m_base + local_idx, n_base / 4 + n_idx, output);
+  }
+}  // MAIN
