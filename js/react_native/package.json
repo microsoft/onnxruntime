@@ -1,5 +1,5 @@
 {
-  "react-native": "lib/index",
+  "react-native": "dist/commonjs/index",
   "module": "dist/module/index",
   "engines": {
     "node": ">=18"
