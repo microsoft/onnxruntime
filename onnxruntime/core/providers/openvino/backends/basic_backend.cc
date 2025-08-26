@@ -59,7 +59,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
         };
         // If the EPContext node with OVIR Encapsulation, then create
         // an executable network from EP_CACHE_CONTEXT using read_model() & compile_model()
-        exe_network_ = OVCore::Get()->ImportEPCtxOVIREncapsulation(*model_stream,
+        exe_network_ = OVCore::Get()->ImportEPCtxOVIREncapsulation(*model_stream->stream_,
                                                                    hw_target,
                                                                    device_config,
                                                                    enable_causallm,
