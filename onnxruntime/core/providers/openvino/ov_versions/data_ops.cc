@@ -121,6 +121,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"DepthToSpace", V_2020_4, {"CPU", "GPU"}},
     {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"DequantizeLinear", V_2024_4, {"NPU"}},
+    {"DynamicQuantizeLinear", V_2025_2, {"CPU", "GPU"}},
     {"DynamicQuantizeMatMul", V_2025_0, {"CPU", "GPU"}},
     {"Div", V_2020_4, {"CPU", "GPU"}},
     {"Dropout", V_2020_4, {"CPU", "GPU"}},
@@ -172,6 +173,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"LSTM", V_2020_4, {"CPU", "GPU"}},
     {"MatMul", V_2020_4, {"CPU", "GPU"}},
     {"MatMulInteger", V_2022_1, {"CPU"}},
+    {"MatMulInteger", V_2025_2, {"GPU"}},
     {"MatMulNBits", V_2024_5, {"CPU", "GPU"}},
     {"Max", V_2020_4, {"CPU", "GPU"}},
     {"MaxPool", V_2020_4, {"CPU", "GPU"}},
@@ -191,7 +193,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Pad", V_2020_4, {"CPU", "GPU"}},
     {"Pow", V_2020_4, {"CPU", "GPU"}},
     {"PRelu", V_2020_4, {"CPU", "GPU"}},
-    {"QLinearMatMul", V_2022_3, {"CPU"}},
+    // {"QLinearMatMul", V_2022_3, {"CPU"}},
     {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"QuickGelu", V_2025_0, {"CPU", "GPU"}},
     {"RNN", V_2023_1, {"CPU", "GPU"}},
@@ -361,6 +363,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Clip", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Div", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"DequantizeLinear", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"DynamicQuantizeLinear", V_2025_2, {"All"}});
   no_dimension_supported_.push_back({"Equal", V_2022_1, {"CPU"}});
   no_dimension_supported_.push_back({"Equal", V_2023_0, {"GPU"}});
   no_dimension_supported_.push_back({"Expand", V_2023_3, {"CPU"}});
@@ -374,6 +377,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Loop", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Max", V_2024_4, {"All"}});
   no_dimension_supported_.push_back({"Min", V_2020_4, {"All"}});
+  no_dimension_supported_.push_back({"MatMulInteger", V_2025_2, {"All"}});
   no_dimension_supported_.push_back({"Mul", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Neg", V_2023_0, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"Pow", V_2023_0, {"CPU", "GPU"}});
