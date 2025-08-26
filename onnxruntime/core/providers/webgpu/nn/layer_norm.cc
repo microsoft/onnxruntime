@@ -159,8 +159,6 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
 
   const auto x_shape = x->Shape();
 
-  const bool is_fp16 = x->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-
   const size_t axis = NormalizeAxis(axis_, x_shape.NumDimensions());
   const uint32_t norm_count = onnxruntime::narrow<uint32_t>(x_shape.SizeToDimension(axis));
   const int64_t norm_size = x_shape.SizeFromDimension(axis);
@@ -197,7 +195,7 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   // Check if we should use split norm dimension optimization
   const bool split_norm_dim = norm_size % 512 == 0 && norm_count == 1;
 
-  LayerNormProgram program{bias != nullptr, is_fp16, simplified, mean != nullptr, inv_std_dev != nullptr, split_norm_dim};
+  LayerNormProgram program{bias != nullptr, simplified, mean != nullptr, inv_std_dev != nullptr, split_norm_dim};
 
   program.CacheHint(components, simplified, split_norm_dim)
       .AddInputs({{x, ProgramTensorMetadataDependency::Type, GetOverrideShape(x->Shape(), components), components}})

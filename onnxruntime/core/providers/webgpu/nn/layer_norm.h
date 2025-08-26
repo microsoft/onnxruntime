@@ -11,11 +11,10 @@ namespace webgpu {
 
 class LayerNormProgram final : public Program<LayerNormProgram> {
  public:
-  LayerNormProgram(bool has_bias, bool is_fp16, bool simplified, bool has_mean_output,
+  LayerNormProgram(bool has_bias, bool simplified, bool has_mean_output,
                    bool has_inv_std_dev_output, bool split_norm_dim = false)
       : Program{"LayerNorm"},
         has_bias_{has_bias},
-        is_fp16_{is_fp16},
         simplified_{simplified},
         has_mean_output_{has_mean_output},
         has_inv_std_dev_output_{has_inv_std_dev_output},
@@ -31,7 +30,6 @@ class LayerNormProgram final : public Program<LayerNormProgram> {
 
  private:
   bool has_bias_;
-  bool is_fp16_;
   bool simplified_;
   bool has_mean_output_;
   bool has_inv_std_dev_output_;
