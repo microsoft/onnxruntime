@@ -215,7 +215,7 @@ Opaque type that contains information for a value in a graph. A graph value can 
 <li>`OrtNode` consumers</li>
 <li>`OrtNode` producer</li>
 <li>Information that classifies the value as a graph input, graph output, initializer, etc.</li>
-<ul>
+</ul>
 </td>
 </tr>
 
