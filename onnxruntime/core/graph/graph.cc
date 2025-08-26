@@ -4536,9 +4536,9 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
         continue;
       }
 
-      // update external_offset for alignment
+      // update external_offset for alignment (if enabled)
       // need to do padding before write actual tensor data as we do offset alignment at the begin of
-      // large tensors (offset need to be page aligned and allocation granularity aligned) like below:
+      // large tensors (offset need to be page aligned) like below:
       // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
       // |<---smaller tensor---->|<---padding--->|<------------------large tensor----------------------------->|
       if (model_saving_options.align_offset && static_cast<int64_t>(tensor_bytes_size) >
