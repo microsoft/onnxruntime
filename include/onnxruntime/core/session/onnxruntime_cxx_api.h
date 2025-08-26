@@ -127,7 +127,7 @@ struct Global {
     // that is delay loaded or delay loads its dependencies.
     //
     // This DOES NOT make it safe to _use_ arbitrary ORT C++ APIs when
-    // initializaing static members, however.
+    // initializing static members, however.
     static const OrtApi* api = DefaultInit();
 
     if (newValue) {

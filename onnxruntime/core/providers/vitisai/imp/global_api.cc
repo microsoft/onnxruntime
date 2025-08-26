@@ -332,7 +332,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   InitProviderOrtApi();
   set_version_info(the_global_api);
   the_global_api.host_ = Provider_GetHost();
-  assert(Ort::Global<void>::api_ != nullptr);
+  assert(&Ort::GetApi() != nullptr);
   the_global_api.ort_api_ = &Ort::GetApi();
   the_global_api.model_load = [](const std::string& filename) -> Model* {
     auto model_proto = ONNX_NAMESPACE::ModelProto::Create();
