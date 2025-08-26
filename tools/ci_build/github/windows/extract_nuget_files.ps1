@@ -1,105 +1,133 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# This file is used by Zip-Nuget Packaging NoContribOps Pipeline,Zip-Nuget-Java Packaging Pipeline
+# This file is used by Zip-Nuget-Java Packaging Pipeline
 
-# Re-construct a build directory that contains binaries from all the different platforms we're including
-# in the native ORT nuget package
+# Define the directory for NuGet artifacts.
 $nuget_artifacts_dir = "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo\nuget-artifacts"
-New-Item -Path $nuget_artifacts_dir -ItemType directory
+# Create the directory if it doesn't exist.
+New-Item -Path $nuget_artifacts_dir -ItemType directory -ErrorAction SilentlyContinue
 
 ## .zip files
-# unzip directly
-# exclude the iOS xcframework as we need to leave that zipped up to preserve symlinks
-Get-ChildItem -Path $Env:BUILD_BINARIESDIRECTORY\nuget-artifact\* -Include *.zip -Exclude onnxruntime_ios_xcframework.*.zip |
+# Unzip files directly, excluding the iOS xcframework to preserve its symlinks.
+Get-ChildItem -Path "$Env:BUILD_BINARIESDIRECTORY\nuget-artifact\*" -Include *.zip -Exclude onnxruntime_ios_xcframework.*.zip |
 Foreach-Object {
- $cmd = "7z.exe x $($_.FullName) -y -o$nuget_artifacts_dir"
- Write-Output $cmd
- Invoke-Expression -Command $cmd
+    $arguments = "x", "$($_.FullName)", "-y", "-o$nuget_artifacts_dir"
+    Write-Output "Executing: 7z.exe $arguments"
+    # Directly call 7z.exe using the call operator '&'
+    & 7z.exe $arguments
+    # Check the exit code of the last command. A non-zero code indicates an error.
+    if ($LASTEXITCODE -ne 0) {
+        throw "Error extracting '$($_.FullName)'. Exit code: $LASTEXITCODE"
+    }
 }
 
 ## .tgz files
-# first extract the tar file from the tgz
-Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.tgz |
+# First, extract the .tar file from the .tgz archive.
+Get-ChildItem "$Env:BUILD_BINARIESDIRECTORY\nuget-artifact" -Filter *.tgz |
 Foreach-Object {
- $cmd = "7z.exe x $($_.FullName) -y -o$Env:BUILD_BINARIESDIRECTORY\nuget-artifact"
- Write-Output $cmd
- Invoke-Expression -Command $cmd
+    $arguments = "x", "$($_.FullName)", "-y", "-o$Env:BUILD_BINARIESDIRECTORY\nuget-artifact"
+    Write-Output "Executing: 7z.exe $arguments"
+    & 7z.exe $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Error extracting '$($_.FullName)'. Exit code: $LASTEXITCODE"
+    }
 }
 
-# now extract the actual folder structure from the tar file to the build dir
-Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.tar |
+# Now, extract the contents from the .tar file into the final directory.
+Get-ChildItem "$Env:BUILD_BINARIESDIRECTORY\nuget-artifact" -Filter *.tar |
 Foreach-Object {
- $cmd = "7z.exe x $($_.FullName) -y -o$nuget_artifacts_dir"
- Write-Output $cmd
- Invoke-Expression -Command $cmd
+    $arguments = "x", "$($_.FullName)", "-y", "-o$nuget_artifacts_dir"
+    Write-Output "Executing: 7z.exe $arguments"
+    & 7z.exe $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Error extracting '$($_.FullName)'. Exit code: $LASTEXITCODE"
+    }
 }
 
-# process iOS xcframework
-$xcframeworks = Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter onnxruntime_ios_xcframework.*.zip
+# Process iOS xcframework
+$xcframeworks = Get-ChildItem "$Env:BUILD_BINARIESDIRECTORY\nuget-artifact" -Filter onnxruntime_ios_xcframework.*.zip
 if ($xcframeworks.Count -eq 1) {
-  $xcframework = $xcframeworks[0]
-  $target_dir = "$nuget_artifacts_dir\onnxruntime-ios-xcframework"
-  # remove version info from filename and use required filename format
-  $target_file = "$target_dir\onnxruntime.xcframework.zip"
-  New-Item -Path $target_dir -ItemType directory
+    $xcframework = $xcframeworks[0]
+    $target_dir = "$nuget_artifacts_dir\onnxruntime-ios-xcframework"
+    # Use the required filename format, removing version info.
+    $target_file = "$target_dir\onnxruntime.xcframework.zip"
+    New-Item -Path $target_dir -ItemType directory -ErrorAction SilentlyContinue
 
-  Write-Output "Copy-Item $($xcframework.FullName) $target_file"
-  Copy-Item $xcframework.FullName $target_file
+    Write-Output "Copying $($xcframework.FullName) to $target_file"
+    Copy-Item $xcframework.FullName $target_file
 }
 elseif ($xcframeworks.Count -gt 1) {
-  Write-Error "Expected at most one onnxruntime_ios_xcframework*.zip file but got: [$xcframeworks]"
+    Write-Error "Expected at most one onnxruntime_ios_xcframework*.zip file but got: [$xcframeworks]"
 }
 
-
-# copy android AAR.
-# for full build of onnxruntime Android AAR, there should only be one .aar file
-# called onnxruntime-android-x.y.z.aar or onnxruntime-training-android-x.y.z.aar but sanity check that
-$aars = Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.aar
+# Copy Android AAR file.
+# There should only be one .aar file for a full build.
+$aars = Get-ChildItem "$Env:BUILD_BINARIESDIRECTORY\nuget-artifact" -Filter *.aar
 if ($aars.Count -eq 1) {
-  $aar = $aars[0]
-  $aar_prefix = "onnxruntime"
-  if ($aar -like "onnxruntime-training*") {
-    $aar_prefix = "onnxruntime-training"
-  }
-  $target_dir = "$nuget_artifacts_dir\$aar_prefix-android-aar"
-  $target_file = "$target_dir\onnxruntime.aar"  # remove '-mobile' and version info from filename
-  New-Item -Path $target_dir -ItemType directory
+    $aar = $aars[0]
+    $aar_prefix = "onnxruntime"
+    if ($aar.Name -like "onnxruntime-training*") {
+        $aar_prefix = "onnxruntime-training"
+    }
+    $target_dir = "$nuget_artifacts_dir\$aar_prefix-android-aar"
+    # Remove version info from the filename for consistency.
+    $target_file = "$target_dir\onnxruntime.aar"
+    New-Item -Path $target_dir -ItemType directory -ErrorAction SilentlyContinue
 
-  Write-Output "Copy-Item $($aar.FullName) $target_file"
-  Copy-Item $aar.FullName $target_file
+    Write-Output "Copying $($aar.FullName) to $target_file"
+    Copy-Item $aar.FullName $target_file
 }
 elseif ($aars.Count -gt 1) {
-  Write-Error "Expected at most one Android .aar file but got: [$aars]"
+    Write-Error "Expected at most one Android .aar file but got: [$aars]"
 }
 
-# Check whether this is a training pipeline
-$is_training_pipeline = $false
-if (Test-Path -Path $nuget_artifacts_dir\onnxruntime-training-win-x64-*) {
-  $is_training_pipeline = $true
-  Write-Output "onnxruntime-training-win-x64-* dir exists. This is a training pipeline."
-}
-
-# Copy onnxruntime and protoc binaries to the binaries dir as these are required
-# by Microsoft.ML.OnnxRuntime.Tests.NetCoreApp
+# Check if this is a training pipeline by looking for a specific directory.
+$is_training_pipeline = Test-Path -Path "$nuget_artifacts_dir\onnxruntime-training-win-x64-*"
 if ($is_training_pipeline) {
-  Copy-Item -Path $nuget_artifacts_dir\onnxruntime-training-win-x64-*\lib\* -Destination $Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo
+    Write-Output "onnxruntime-training-win-x64-* dir exists. This is a training pipeline."
+}
+
+# Copy onnxruntime and protoc binaries required by tests.
+$destinationDir = "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo"
+if ($is_training_pipeline) {
+    Copy-Item -Path "$nuget_artifacts_dir\onnxruntime-training-win-x64-*\lib\*" -Destination $destinationDir -Recurse
 }
 else {
-  Copy-Item -Path $nuget_artifacts_dir\onnxruntime-win-x64-*\lib\* -Destination $Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo
+    Copy-Item -Path "$nuget_artifacts_dir\onnxruntime-win-x64-*\lib\*" -Destination $destinationDir -Recurse
 }
 
-"Get-ChildItem -Directory -Path $nuget_artifacts_dir\onnxruntime-*"
-$ort_dirs = Get-ChildItem -Directory -Path $nuget_artifacts_dir\onnxruntime-*
-foreach ($ort_dir in $ort_dirs)
-{
-  # remove the last '-xxx' segment from the dir name. typically that's the architecture.
-  $dirname = Split-Path -Path $ort_dir -Leaf
-  $dirname = $dirname.SubString(0,$dirname.LastIndexOf('-'))
-  Write-Output "Renaming $ort_dir to $dirname"
-  Rename-Item -Path $ort_dir -NewName $nuget_artifacts_dir\$dirname
+# Rename directories to remove the architecture-specific suffix.
+Write-Output "Renaming onnxruntime directories..."
+Get-ChildItem -Directory -Path "$nuget_artifacts_dir\onnxruntime-*" | ForEach-Object {
+    $dirname = $_.Name
+    # Find the last hyphen and remove the suffix.
+    $lastHyphenIndex = $dirname.LastIndexOf('-')
+    if ($lastHyphenIndex -gt -1) {
+        $newName = $dirname.Substring(0, $lastHyphenIndex)
+        $newPath = Join-Path -Path $_.Parent.FullName -ChildPath $newName
+        Write-Output "Renaming '$($_.FullName)' to '$newPath'"
+        Rename-Item -Path $_.FullName -NewName $newName
+    }
 }
 
-# List artifacts
-"Post copy artifacts"
-Get-ChildItem -Recurse $nuget_artifacts_dir\
+# List the final artifacts.
+Write-Output "Post-copy artifacts:"
+Get-ChildItem -Recurse $nuget_artifacts_dir
+
+# Check if all .so files are symlinks, which is required for the package structure.
+Write-Output "Checking for .so file symlinks..."
+$so_files = Get-ChildItem -Recurse -Path $nuget_artifacts_dir -Filter *.so
+# Find any .so files that are NOT symlinks.
+$non_symlink_so_files = $so_files | Where-Object { -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) }
+
+if ($non_symlink_so_files) {
+    Write-Error "Found .so files that are not symlinks:"
+    foreach ($file in $non_symlink_so_files) {
+        Write-Error "- $($file.FullName)"
+    }
+    throw "One or more .so files are not symlinks. This can cause issues in the NuGet package."
+}
+else {
+    Write-Output "All found .so files are correctly configured as symlinks."
+}
