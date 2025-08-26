@@ -114,6 +114,12 @@ def archive_windows(target_platform: str, config: str) -> None:
             archive.write(build_dir / config / "CTestTestfile.cmake", "CTestTestfile.cmake")
             archive.write(build_dir / config / "ctest.exe", "ctest.exe")
             archive.write(build_dir / config / "run_tests.ps1", "run_tests.ps1")
+
+            logging.debug("Adding _deps")
+            for filename in (build_dir / config / "_deps").glob("**/*"):
+                if _should_archive(filename, reject=_ORT_REJECT_RE):
+                    arcname = str(filename.relative_to(build_dir / config))
+                    archive.write(filename, arcname)
         else:
             ep_build_dir = build_dir / config
             relative_to = ep_build_dir

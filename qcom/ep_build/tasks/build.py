@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import os
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from pathlib import Path
 from typing import Literal
 
@@ -72,6 +72,7 @@ class QdcTestsTask(RunExecutablesWithVenvTask):
         group_name: str | None,
         venv: Path | None,
         platforms: Collection[Literal["android", "windows"]],
+        extra_args: Iterable[str] | None = None,
     ) -> None:
         if "QDC_API_TOKEN" not in os.environ:
             raise RuntimeError("QDC_API_TOKEN must be set in the environment to run tests on QDC.")
@@ -84,6 +85,9 @@ class QdcTestsTask(RunExecutablesWithVenvTask):
 
         if len(platforms) > 0:
             cmd.extend(["--enable-platforms", *platforms])
+
+        if extra_args is not None:
+            cmd.extend(extra_args)
 
         if is_host_github_runner():
             actor = os.environ["GITHUB_ACTOR"]

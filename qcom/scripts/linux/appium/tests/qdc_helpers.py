@@ -11,6 +11,9 @@ ORT_BUILD_CONFIG = "Release"
 # this is where our zip file is extracted on the QDC host.
 QDC_HOST_PATH = os.environ.get("QDC_TEST_ROOT", "/qdc/appium")
 
+# directory containing model test suites
+MODEL_TEST_PATH = os.environ.get("MODEL_TEST_ROOT", f"{QDC_HOST_PATH}/model_tests")
+
 # this is where we will copy our files on the Android device.
 ORT_DEVICE_PATH = "/data/local/tmp/onnxruntime"
 
@@ -23,7 +26,9 @@ ORT_TEST_RESULTS_DEVICE_LOG = f"{ORT_DEVICE_PATH}/{ORT_BUILD_CONFIG}/onnxruntime
 # all files in this folder will be uploaded back to QDC.
 QDC_LOG_PATH = "/data/local/tmp/QDC_logs"
 
-QNN_ADSP_LIBRARY_PATH = "\\;".join([f"{ORT_DEVICE_PATH}/lib/hexagon-v{arch}/unsigned" for arch in [66, 68, 73, 75, 79]])
+QNN_ADSP_LIBRARY_PATH = "\\;".join(
+    f"{ORT_DEVICE_PATH}/lib/hexagon-v{arch}/unsigned" for arch in [66, 68, 73, 75, 79, 81]
+)
 QNN_LD_LIBRARY_PATH = f"{ORT_DEVICE_PATH}/{ORT_BUILD_CONFIG}:{ORT_DEVICE_PATH}/lib/aarch64-android"
 
 
@@ -51,6 +56,12 @@ class TestBase:
         # Push binaries from QDC_HOST_PATH to /data/local/tmp
         for item in Path(QDC_HOST_PATH).iterdir():
             adb.push(item, Path(ORT_DEVICE_PATH))
+
+        # Push test models
+        adb.shell(["mkdir", "-p", f"{ORT_DEVICE_PATH}/model_tests"])
+        for item in Path(MODEL_TEST_PATH).iterdir():
+            # We're playing games with .resolve() and .name because adb push doesn't follow symlinks.
+            adb.push(item.resolve(), Path(ORT_DEVICE_PATH) / "model_tests" / item.name)
 
         # Builds sometimes come from Windows, where executable bits are not set.
         # fmt: off

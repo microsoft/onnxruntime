@@ -60,7 +60,7 @@ function Get-DefaultCMakeGenerator() {
         }
         "windows" {
             $HostArch = (Get-HostArch)
-            # It's entirely possible that $Arch is "arm64" and $HostArch is "arm64ec".
+            # It's entirely possible that $Arch is "arm64ec" and $HostArch is "arm64".
             # Unfortunately, Launch-VsDevShell.ps1 doesn't support arm64ec so we cannot
             # use Ninja.
             if ($Arch -eq $HostArch) {

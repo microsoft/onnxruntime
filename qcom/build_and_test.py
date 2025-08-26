@@ -446,6 +446,7 @@ class TaskLibrary:
         env = dict(os.environ)
         test_root = REPO_ROOT / "build" / "qdc_test_root"
         env["QDC_TEST_ROOT"] = str(test_root)
+        env["MODEL_TEST_ROOT"] = str(REPO_ROOT / "build" / "android" / "model_tests")
 
         # This is a pretty slow way to do this, but it's easy to implement
         # and essentially free to maintain. If you find yourself using this
@@ -479,6 +480,9 @@ class TaskLibrary:
                 "Testing ONNX Runtime for Android in QDC",
                 self.__venv_path,
                 ["android"],
+                extra_args=[
+                    "--append-android-package=onnx_models:model_tests/onnx_models",
+                ],
             )
         )
 
@@ -490,6 +494,9 @@ class TaskLibrary:
                 "Testing ONNX Runtime for Windows on ARM64 in QDC",
                 self.__venv_path,
                 ["windows"],
+                extra_args=[
+                    "--append-windows-package=onnx_models:model_tests/onnx_models",
+                ],
             )
         )
 

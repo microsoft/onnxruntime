@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: MIT
 
 param(
-    [Parameter(Mandatory = $true,
-               HelpMessage = "Path to onnx/models models")]
-    $OnnxModelsRoot
+    [Parameter(HelpMessage = "Path to onnx/models models")]
+    $OnnxModelsRoot = $null
 )
 
 $RootDir = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)").Path
+
+if (-not $OnnxModelsRoot) {
+    $OnnxModelsRoot = (Join-Path $RootDir (Join-Path "model_tests" "onnx_models"))
+}
 
 $Config = "Release"
 $TimeoutSec = 60 * 60
@@ -41,7 +44,6 @@ $NewBuildDirectoryBackslashes = ($NewBuildDirectory -replace "/", "\\")
     -replace $OldBuildDirectoryRegex, $NewBuildDirectory `
     -replace $OldBuildDirectoryBackslashesRegex, $NewBuildDirectoryBackslashes |
     Out-File -Encoding ascii $CTestTestFile
-
 
 # Figure out if HTP is available
 if ((Get-CimInstance Win32_operatingsystem).OSArchitecture -eq "ARM 64-bit Processor") {
@@ -123,12 +125,16 @@ if (Test-Path "C:\Temp\TestContent") {
         }
     }
 
-    New-Item -ItemType Directory -Force -Path $QdcLogsDir
+    New-Item -ItemType Directory -Force -Path $QdcLogsDir | Out-Null
     if (-not $?) {
         throw "Failed to create QDC logs dir $QdcLogsDir"
     }
 
+    # This location depends on whether we built with Ninja or Visual Studio.
     $LocalLogsDir = (Join-Path $RootDir $Config)
+    if (-not (Test-Path $LocalLogsDir)) {
+        $LocalLogsDir = $RootDir
+    }
     Write-Host "Copying logs $LocalLogsDir\*.xml --> $QdcLogsDir"
     Copy-Item $LocalLogsDir\*.xml $QdcLogsDir
 }

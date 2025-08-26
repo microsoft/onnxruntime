@@ -18,6 +18,10 @@ class CTestPlan:
         self.__tests = self.__parse_tests(ctesttestfile_path, build_directory, device_test_root)
 
     @property
+    def names(self) -> list[str]:
+        return list(self.__tests.keys())
+
+    @property
     def plan(self) -> list[list[str]]:
         return list(self.__tests.values())
 

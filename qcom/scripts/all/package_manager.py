@@ -21,6 +21,7 @@ import tqdm
 import yaml
 
 QCOM_ROOT = Path(__file__).parent.parent.parent
+REPO_ROOT = QCOM_ROOT.parent
 PACKAGE_CONFIG = QCOM_ROOT / "packages.yml"
 DEFAULT_PACKAGE_CACHE_DIR = Path(
     os.environ.get(
@@ -29,6 +30,8 @@ DEFAULT_PACKAGE_CACHE_DIR = Path(
     )
 )
 DEFAULT_MAX_CACHE_SIZE_BYTES = int(os.environ.get("ORT_BUILD_PACKAGE_CACHE_SIZE", f"{5 * 1024 * 1024 * 1024}"))  # 5 GiB
+
+DEFAULT_TOOLS_DIR = Path(os.environ.get("ORT_BUILD_TOOLS_PATH", REPO_ROOT / "build" / "tools"))
 
 CAFILE = os.environ.get("REQUESTS_CA_BUNDLE", certifi.where())
 
@@ -139,14 +142,14 @@ class PackageManager:
     A simple package manager.
     """
 
-    def __init__(self, package: str, package_root: Path) -> None:
+    def __init__(self, package: str, package_root: Path | None = None) -> None:
         full_config = self.__parse_config(PACKAGE_CONFIG)
         if package not in full_config:
             raise ValueError(f"Unknown package {package}.")
         self.__cache = FileCache()
         self.__config = full_config[package]
         self.__package = package
-        self.__package_root = package_root
+        self.__package_root = package_root if package_root is not None else DEFAULT_TOOLS_DIR
         self.__package_root.mkdir(parents=True, exist_ok=True)
 
     @classmethod
@@ -275,7 +278,6 @@ def make_parser() -> argparse.ArgumentParser:
         "--package-root",
         action="store",
         help="Path to the package installation directory",
-        required=True,
         type=Path,
     )
 
