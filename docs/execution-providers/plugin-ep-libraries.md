@@ -35,6 +35,11 @@ API header files:
 
 ### Data Types
 
+| Type | Description |
+|------|-------------|
+| OrtHardwareDeviceType| Enumerates classes of hardware devices:<br/><ul><li>CPU</li></ul>|
+| OrtHardwareDevice | Enumerates classes of hardware devices |
+
 <!-- Use an HTML table to allow embedding a code block in a cell -->
 <table>
 <tr>
