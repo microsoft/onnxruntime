@@ -1,7 +1,7 @@
 
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/common/safeint.h"
@@ -581,3 +581,4 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
 }  // namespace weight_only
 }  // namespace kernels
 }  // namespace onnxruntime::llm
+#endif
