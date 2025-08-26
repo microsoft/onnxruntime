@@ -794,6 +794,7 @@ class SparseMoeBlockORTHelper(nn.Module):
                 problematic_ort = torch.isnan(ort_output) | torch.isinf(ort_output)
                 if torch.equal(problematic_torch, problematic_ort):
                     max_diff = 0.0
+        else:
             max_diff = (torch_output.cpu() - ort_output.cpu()).abs().max()
 
         is_swiglu = hasattr(self, "use_swiglu") and self.use_swiglu
