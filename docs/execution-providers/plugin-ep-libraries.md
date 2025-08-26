@@ -275,7 +275,9 @@ Opaque type that represents an ONNX operator attribute.
 
 </table>
 
+
 ### Plugin EP Library Registration APIs
+The following table lists the API functions used for registration of a plugin EP library.
 
 <table>
 <tr>
@@ -338,6 +340,7 @@ SessionOptionsSetEpSelectionPolicyDelegate
 </table>
 
 ### Plugin EP Library Exported Symbols
+The following table lists the functions that have to be exported from the plugin EP library.
 
 <table>
 <tr>
