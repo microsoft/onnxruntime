@@ -44,32 +44,24 @@ API header files:
 
 <tr>
 <td>
-
-[OrtHardwareDeviceType](#ort-hardware-device-type)
-
+<a href="#ort-hardware-device-type">OrtHardwareDeviceType</a>
 </td>
 <td>
-
-Enumerates classes of hardware devices:
-- OrtHardwareDeviceType_CPU
-- OrtHardwareDeviceType_GPU
-- OrtHardwareDeviceType_NPU
-
-</td>
-</tr>
-
-<tr>
-<td>
-[OrtHardwareDeviceType](#ort-hardware-device-type)
-</td>
-<td>
-Enumerates classes of hardware devices:
-- OrtHardwareDeviceType_CPU
-- OrtHardwareDeviceType_GPU
-- OrtHardwareDeviceType_NPU
+Enumerates classes of hardware devices:<br>
+<ul>
+<li>OrtHardwareDeviceType_CPU</li>
+<li>OrtHardwareDeviceType_GPU</li>
+<li>OrtHardwareDeviceType_NPU</li>
+</ul>
 </td>
 </tr>
 </table>
+
+|        Type           |                    Description                  |
+|-----------------------|-------------------------------------------------|
+| OrtHardwareDeviceType | Enumerates classes of hardware devices:<br/><ul><li>OrtHardwareDeviceType_CPU</li><li>OrtHardwareDeviceType_GPU</li><li>OrtHardwareDeviceType_NPU</li></ul> |
+| OrtHardwareDevice     | Opaque type that represents a physical hardware device (e.g., CPU, GPU, NPU). |
+| TestCode              | Code:<br/><pre lang="c++">int main(void) {&#13;  printf("Hi\n");&#13;}</pre> |
 
 
 #### OrtHardwareDeviceType
