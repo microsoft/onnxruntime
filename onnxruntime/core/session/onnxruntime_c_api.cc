@@ -3423,7 +3423,6 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
   API_IMPL_END
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 // Validate compiled model compatibility info for specific EP device(s)
 ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevices,
                     _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices,
@@ -3473,18 +3472,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevices,
   return nullptr;
   API_IMPL_END
 }
-#else
-// Minimal build stub
-ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevices,
-                    _In_reads_(num_ep_devices) const OrtEpDevice* const* /*ep_devices*/,
-                    _In_ size_t /*num_ep_devices*/,
-                    _In_ const char* /*compatibility_info*/,
-                    _Out_ OrtCompiledModelCompatibility* /*out_status*/) {
-  API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
-  API_IMPL_END
-}
-#endif
 
 #else  // defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, _In_ const char* /*registration_name*/,
@@ -3503,6 +3490,17 @@ ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* /*
 
 ORT_API_STATUS_IMPL(OrtApis::GetEpDevices, _In_ const OrtEnv* /*env*/,
                     _Outptr_ const OrtEpDevice* const** /*ep_devices*/, _Out_ size_t* /*num_ep_devices*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+// Minimal build stub for GetEpCompatibilityForDevices to satisfy symbol references from the API table
+ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevices,
+                    _In_reads_(num_ep_devices) const OrtEpDevice* const* /*ep_devices*/,
+                    _In_ size_t /*num_ep_devices*/,
+                    _In_ const char* /*compatibility_info*/,
+                    _Out_ OrtCompiledModelCompatibility* /*out_status*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
   API_IMPL_END
