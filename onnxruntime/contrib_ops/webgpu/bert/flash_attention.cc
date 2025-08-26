@@ -31,10 +31,9 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
   const auto& copy_kv_shape = shader.AddIndices("copy_kv_shape");
-
+  shader.AddInput("seqlen_k");
   // If prepare_indirect_dispatch is enabled, add seqlen_k input and indirect_buffer output
   if (prepare_indirect_dispatch_) {
-    shader.AddInput("seqlen_k");
     shader.AddOutput("indirect_buffer", ShaderUsage::UseUniform);
   }
 
@@ -43,13 +42,13 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  let head_size_id = output_indices[3];\n"
                                "  let sequence_id = output_indices[2];\n"
                                "  let num_head_id = output_indices[1];\n"
-                               "  let batch = output_indices[0];\n";
+                               "  let batch = output_indices[0];\n"
+                               "  let total_seq_length = u32(seqlen_k[0u]) + 1u;\n";
 
   // Add indirect dispatch logic for thread 0
   if (prepare_indirect_dispatch_) {
     shader.MainFunctionBody() << "  // Prepare indirect dispatch buffer for thread 0\n"
                               << "  if (global_idx == 0u) {\n"
-                              << "    let total_seq_length = u32(seqlen_k[0u]) + 1u;\n"
                               << "    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
                               << "    indirect_buffer[0] = num_total_seq_length_tile;\n"
                               << "    indirect_buffer[1] = uniforms.num_heads;\n"
@@ -58,7 +57,7 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   if (has_past_) {
-    shader.MainFunctionBody() << "let past_sequence_length = uniforms.past_sequence_length;\n";
+    shader.MainFunctionBody() << "let past_sequence_length = total_seq_length - uniforms.kv_sequence_length;\n";
     if (past_present_share_buffer_) {
       shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, past_sequence_length + sequence_id, head_size_id)") << ";\n"
                                 << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id, head_size_id)" : "key_indices_t(batch, sequence_id, num_head_id, head_size_id)") << ";\n"
@@ -122,8 +121,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
                        {V, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components}});
   }
 
-  // Add seqlen_k input if preparing indirect dispatch
-  if (prepare_indirect_dispatch) {
+  if (seqlen_k != nullptr) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
 
@@ -144,20 +142,11 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
       .SetWorkgroupSize(64)
       .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_, prepare_indirect_dispatch)
       .AddUniformVariables({{static_cast<uint32_t>(copy_size)},
-                            // Note that when parameters.past_present_share_buffer_ is true, parameters.past_sequence_length_ will become to
-                            // max_sequence_length. To get a valid past_sequence_length, we use total_sequence_length - kv_sequence_length.
-                            {static_cast<uint32_t>(parameters.total_sequence_length_ - parameters.kv_sequence_length_)},
+                            {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {tile_size},
                             {static_cast<uint32_t>(parameters.num_heads_)}});
 
   return context.RunProgram(program);
-}
-
-// Overloaded version for backward compatibility
-Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
-                   const Tensor* K, const Tensor* past_key, Tensor* present_key,
-                   const Tensor* V, const Tensor* past_value, Tensor* present_value) {
-  return CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, nullptr, nullptr);
 }
 
 Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -240,7 +229,6 @@ Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& conte
       .CacheHint(tile_size, has_attention_bias)
       .AddUniformVariables({{static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<float>(alpha)},
-                            // present_sequence_length is used to index into the KV cache, for static kv cache it is the max sequence length.
                             {static_cast<uint32_t>(present_sequence_length)},
                             {static_cast<uint32_t>(parameters.n_reps)},
                             {num_present_sequence_length_tile},
@@ -345,7 +333,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
   if (parameters.sequence_length_ > 1) {
     // For encode path, use the original CopyKVCache without indirect dispatch preparation
-    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value));
+    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, seqlen_k, nullptr));
 
     const uint32_t tile_size = 64;
     bool has_attention_bias = attention_bias != nullptr;
@@ -409,7 +397,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, seqlen_k, indirect_buffer_ptr));
   } else {
     // Use the original CopyKVCache without indirect dispatch preparation
-    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value));
+    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, seqlen_k, nullptr));
   }
 
   // The metadata is used to store the max and sum of each tile.
