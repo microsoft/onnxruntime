@@ -37,7 +37,9 @@ API header files:
 
 | Type | Description |
 |------|-------------|
-| OrtHardwareDeviceType| Enumerates classes of hardware devices:<br/><ul><li>CPU</li></ul>|
+| OrtHardwareDeviceType| Enumerates classes of hardware devices:<br/>
+                         - CPU
+                         - GPU |
 | OrtHardwareDevice | Enumerates classes of hardware devices |
 
 <!-- Use an HTML table to allow embedding a code block in a cell -->
@@ -102,7 +104,7 @@ Struct that contains options for fusing nodes supported by an EP.
 OrtNodeComputeContext
 </td>
 <td>
-Opaque type that contains a compiled/fused node's name and host memory allocation functions. ONNX Runtime provides an instance of `OrtNodeComputeContext` as an argument to `OrtNodeComputeInfo::CreateState()`.
+Opaque type that contains a compiled/fused node's name and host memory allocation functions. ONNX Runtime provides an instance of <code>OrtNodeComputeContext</code> as an argument to <code>OrtNodeComputeInfo::CreateState()</code>.
 </td>
 </tr>
 
