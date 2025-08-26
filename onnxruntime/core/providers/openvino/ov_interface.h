@@ -26,6 +26,7 @@ namespace openvino_ep {
 class OVCore;
 class OVInferRequest;
 class OVExeNetwork;
+struct ModelBlobWrapper;
 
 typedef ov::Tensor OVTensor;
 typedef ov::ProfilingInfo OVProfilingInfo;
@@ -82,7 +83,7 @@ struct OVCore : WeakSingleton<OVCore> {
                             ov::AnyMap& device_config,
                             const std::string& name);
   // OV Interface for Import model Stream
-  OVExeNetwork ImportModel(std::istream& model_stream,
+  OVExeNetwork ImportModel(ModelBlobWrapper& model_blob,
                            std::string hw_target,
                            const ov::AnyMap& device_config,
                            std::string name);
