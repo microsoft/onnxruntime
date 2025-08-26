@@ -1998,3 +1998,15 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
 endif()
 
 include(onnxruntime_fuzz_test.cmake)
+
+block()
+
+set(cpuinfo_test_srcs ${TEST_SRC_DIR}/cpuinfo_test_main.cc)
+
+add_executable(cpuinfo_test ${cpuinfo_test_srcs})
+
+if (CPUINFO_SUPPORTED)
+  target_link_libraries(cpuinfo_test PRIVATE cpuinfo::cpuinfo)
+endif()
+
+endblock()

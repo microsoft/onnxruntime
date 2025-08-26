@@ -10,6 +10,9 @@ cmake_policy(SET CMP0104 OLD)
 # Project
 project(onnxruntime C CXX ASM)
 
+message(WARNING "CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
+message(WARNING "CMAKE_HOST_SYSTEM_PROCESSOR: ${CMAKE_HOST_SYSTEM_PROCESSOR}")
+
 # Disable fast-math for Intel oneAPI compiler
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
   if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")

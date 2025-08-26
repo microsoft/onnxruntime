@@ -338,6 +338,8 @@ def generate_vcpkg_install_options(build_dir, args):
                 "--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/\\;x-block-origin"
             )
 
+    vcpkg_install_options.append("--debug")
+
     return vcpkg_install_options
 
 
