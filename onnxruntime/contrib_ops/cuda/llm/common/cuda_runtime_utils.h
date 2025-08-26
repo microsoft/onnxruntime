@@ -20,6 +20,14 @@
 #include <cuda_runtime_api.h>
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
+#ifdef ENABLE_BF16
+#include <cuda_bf16.h>
+#endif
+
+#ifdef ENABLE_FP8
+#include <cuda_fp8.h>
+#endif
+
 namespace onnxruntime::llm::common {
 inline int getDevice() {
   int deviceID{0};
@@ -132,10 +140,12 @@ template <>          struct num_elems<float2>          { static constexpr int va
 template <>          struct num_elems<float4>          { static constexpr int value = 4; };
 template <>          struct num_elems<half>            { static constexpr int value = 1; };
 template <>          struct num_elems<half2>           { static constexpr int value = 2; };
+
 #ifdef ENABLE_BF16
 template <>          struct num_elems<__nv_bfloat16>   { static constexpr int value = 1; };
 template <>          struct num_elems<__nv_bfloat162>  { static constexpr int value = 2; };
 #endif
+
 #ifdef ENABLE_FP8
 template <>          struct num_elems<__nv_fp8_e4m3>   { static constexpr int value = 1; };
 template <>          struct num_elems<__nv_fp8x2_e4m3>  { static constexpr int value = 2; };
@@ -149,10 +159,12 @@ template<>                    struct packed_as<int8_t, 2>         { using type =
 template<>                    struct packed_as<int32_t, 2>        { using type = int2; };
 template<>                    struct packed_as<half2, 1>          { using type = half; };
 template<>                    struct packed_as<float2, 1>         { using type = float; };
+
 #ifdef ENABLE_BF16
 template<> struct packed_as<__nv_bfloat16,  2> { using type = __nv_bfloat162; };
 template<> struct packed_as<__nv_bfloat162, 1> { using type = __nv_bfloat16;  };
 #endif
+
 #ifdef ENABLE_FP8
 template<> struct packed_as<__nv_fp8_e4m3,  2> { using type = __nv_fp8x2_e4m3; };
 template<> struct packed_as<__nv_fp8x2_e4m3, 1> { using type = __nv_fp8_e4m3;  };
