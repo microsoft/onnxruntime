@@ -436,13 +436,13 @@ TEST(EpGraphTest, SerializeToProto_ExternalInitializersInMemory) {
   }
 
   for (size_t i = 0; i < api_num_initializers; ++i) {
-    const OrtValue* ort_value = nullptr;
-    const void* ort_value_data = nullptr;
-    const char* value_name = nullptr;
+    std::string value_name;
+    Ort::ConstValue ort_value;
 
-    ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(api_initializers[i], &value_name));
-    ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(api_initializers[i], &ort_value));
-    ASSERT_ORTSTATUS_OK(ort_api.GetTensorData(ort_value, &ort_value_data));
+    Ort::ConstValueInfo vi(api_initializers[i]);
+    ASSERT_ORTSTATUS_OK(vi.Name(value_name));
+    ASSERT_ORTSTATUS_OK(vi.GetInitializer(ort_value));
+    const void* ort_value_data = ort_value.GetTensorRawData();
 
     auto iter = tensor_proto_map.find(value_name);
     ASSERT_NE(iter, tensor_proto_map.end());
@@ -717,25 +717,22 @@ static void CheckValueInfoConsumers(const GraphViewer& graph_viewer, const OrtVa
 static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
                                       const ONNX_NAMESPACE::TensorProto* tensor_proto,
                                       const GraphViewer& graph_viewer) {
-  const OrtApi& ort_api = Ort::GetApi();
-
-  const char* api_initializer_name = nullptr;
-  ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(api_value_info, &api_initializer_name));
-  ASSERT_NE(api_initializer_name, nullptr);
+  Ort::ConstValueInfo vi(api_value_info);
+  std::string api_initializer_name;
+  ASSERT_ORTSTATUS_OK(vi.Name(api_initializer_name));
 
   // Check external initializer info (if any).
-  OrtExternalInitializerInfo* api_ext_info = nullptr;
-  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetExternalInitializerInfo(api_value_info, &api_ext_info));
-  DeferOrtRelease<OrtExternalInitializerInfo> defer_release_info(&api_ext_info, ort_api.ReleaseExternalInitializerInfo);
+  Ort::ExternalInitializerInfo api_ext_info;
+  ASSERT_ORTSTATUS_OK(vi.GetExternalInitializerInfo(api_ext_info));
 
   std::unique_ptr<ExternalDataInfo> ext_info = nullptr;
   bool has_ext_info = graph_viewer.GetGraph().GetExternalInitializerInfo(api_initializer_name, ext_info, true);
 
   if (has_ext_info) {
     ASSERT_NE(api_ext_info, nullptr);
-    const ORTCHAR_T* api_ext_file_path = ort_api.ExternalInitializerInfo_GetFilePath(api_ext_info);
-    int64_t api_ext_file_offset = ort_api.ExternalInitializerInfo_GetFileOffset(api_ext_info);
-    size_t api_ext_byte_size = ort_api.ExternalInitializerInfo_GetByteSize(api_ext_info);
+    const std::basic_string<ORTCHAR_T> api_ext_file_path = api_ext_info.GetFilePath();
+    int64_t api_ext_file_offset = api_ext_info.GetFileOffset();
+    size_t api_ext_byte_size = api_ext_info.GetByteSize();
 
     ASSERT_EQ(PathString(api_ext_file_path), ext_info->GetRelPath());
     ASSERT_EQ(api_ext_file_offset, static_cast<int64_t>(ext_info->GetOffset()));
@@ -745,38 +742,33 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
     ASSERT_FALSE(utils::HasExternalDataInFile(*tensor_proto));
   }
 
-  const OrtValue* api_initializer_value = nullptr;
-  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(api_value_info, &api_initializer_value));
+  Ort::ConstValue api_initializer_value;
+  ASSERT_ORTSTATUS_OK(vi.GetInitializer(api_initializer_value));
   ASSERT_NE(api_initializer_value, nullptr);
 
   // Check initializer type.
   const ONNX_NAMESPACE::TypeProto type_proto = utils::TypeProtoFromTensorProto(*tensor_proto);
   auto type_info = OrtTypeInfo::FromTypeProto(type_proto);
 
-  const OrtTypeInfo* api_type_info = nullptr;
-  ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoTypeInfo(api_value_info, &api_type_info));
+  Ort::ConstTypeInfo api_type_info;
+  ASSERT_ORTSTATUS_OK(vi.TypeInfo(api_type_info));
   CheckTypeInfo(api_type_info, type_info.get());
 }
 
 static void CheckInitializerValueInfosCApi(gsl::span<const OrtValueInfo* const> initializer_value_infos,
                                            const InitializedTensorSet& initializer_tensor_protos,
                                            const GraphViewer& graph_viewer) {
-  const OrtApi& ort_api = Ort::GetApi();
-
   for (size_t i = 0; i < initializer_value_infos.size(); i++) {
-    const OrtValueInfo* api_value_info = initializer_value_infos[i];
-
-    const char* api_initializer_name = nullptr;
-    ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(api_value_info, &api_initializer_name));
-    ASSERT_NE(api_initializer_name, nullptr);
+    Ort::ConstValueInfo vi(initializer_value_infos[i]);
+    std::string api_initializer_name;
+    ASSERT_ORTSTATUS_OK(vi.Name(api_initializer_name));
 
     auto tensor_proto_iter = initializer_tensor_protos.find(api_initializer_name);
     ASSERT_NE(tensor_proto_iter, initializer_tensor_protos.end());
 
     const ONNX_NAMESPACE::TensorProto* tensor_proto = tensor_proto_iter->second;
     ASSERT_NE(tensor_proto, nullptr);
-
-    CheckInitializerValueInfo(api_value_info, tensor_proto, graph_viewer);
+    CheckInitializerValueInfo(vi, tensor_proto, graph_viewer);
   }
 }
 
@@ -785,21 +777,17 @@ static void CheckInitializerValueInfosCApi(gsl::span<const OrtValueInfo* const> 
 static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const OrtValueInfo* const> value_infos,
                                 gsl::span<const NodeArg* const> node_args) {
   ASSERT_EQ(value_infos.size(), node_args.size());
-  const OrtApi& ort_api = Ort::GetApi();
   const auto& graph_viewer_inputs = graph_viewer.GetInputsIncludingInitializers();
   const auto& graph_viewer_outputs = graph_viewer.GetOutputs();
 
   for (size_t i = 0; i < value_infos.size(); i++) {
     const NodeArg* node_arg = node_args[i];
-    const OrtValueInfo* value_info = value_infos[i];
+    Ort::ConstValueInfo vi(value_infos[i]);
 
     if (node_arg->Exists()) {
       const auto& value_name = node_arg->Name();
-
-      ASSERT_NE(value_info, nullptr);
-
-      const char* api_name = nullptr;
-      ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(value_info, &api_name));
+      std::string api_name;
+      ASSERT_ORTSTATUS_OK(vi.Name(api_name));
       ASSERT_EQ(std::string(api_name), value_name);
 
       bool is_graph_input = std::any_of(graph_viewer_inputs.begin(), graph_viewer_inputs.end(),
@@ -821,37 +809,37 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
 
       bool api_is_req_graph_input = false;
       bool api_is_opt_graph_input = false;
-      ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_IsRequiredGraphInput(value_info, &api_is_req_graph_input));
-      ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_IsOptionalGraphInput(value_info, &api_is_opt_graph_input));
+      ASSERT_ORTSTATUS_OK(vi.IsRequiredGraphInput(api_is_req_graph_input));
+      ASSERT_ORTSTATUS_OK(vi.IsOptionalGraphInput(api_is_opt_graph_input));
       ASSERT_EQ(api_is_req_graph_input, is_graph_input && (initializer == nullptr));
       ASSERT_EQ(api_is_opt_graph_input, can_override_initializer && (initializer != nullptr) && !is_const_initializer);
 
       bool api_is_graph_output = false;
-      ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_IsGraphOutput(value_info, &api_is_graph_output));
+      ASSERT_ORTSTATUS_OK(vi.IsGraphOutput(api_is_graph_output));
       ASSERT_EQ(api_is_graph_output, is_graph_output);
 
       bool is_outer_scope = graph_viewer.GetGraph().IsOuterScopeValue(node_arg->Name());
       bool api_is_outer_scope = false;
-      ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_IsFromOuterScope(value_info, &api_is_outer_scope));
+      ASSERT_ORTSTATUS_OK(vi.IsFromOuterScope(api_is_outer_scope));
       ASSERT_EQ(api_is_outer_scope, is_outer_scope);
 
       bool api_is_const_initializer = false;
-      ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_IsConstantInitializer(value_info, &api_is_const_initializer));
+      ASSERT_ORTSTATUS_OK(vi.IsConstantInitializer(api_is_const_initializer));
       ASSERT_EQ(api_is_const_initializer, is_const_initializer);
 
       if (is_const_initializer || api_is_opt_graph_input) {
-        CheckInitializerValueInfo(value_info, initializer, graph_viewer);
+        CheckInitializerValueInfo(vi, initializer, graph_viewer);
       } else {
         auto node_arg_type_info = OrtTypeInfo::FromTypeProto(*node_arg->TypeAsProto());
-        const OrtTypeInfo* api_type_info = nullptr;
-        ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoTypeInfo(value_info, &api_type_info));
+        Ort::ConstTypeInfo api_type_info;
+        ASSERT_ORTSTATUS_OK(vi.TypeInfo(api_type_info));
         CheckTypeInfo(api_type_info, node_arg_type_info.get());
       }
 
-      CheckValueInfoProducer(graph_viewer, value_info, node_arg);
-      CheckValueInfoConsumers(graph_viewer, value_info, node_arg);
+      CheckValueInfoProducer(graph_viewer, vi, node_arg);
+      CheckValueInfoConsumers(graph_viewer, vi, node_arg);
     } else {
-      ASSERT_EQ(value_info, nullptr);  // A missing optional input has a null OrtValueInfo.
+      ASSERT_EQ(vi, nullptr);  // A missing optional input has a null OrtValueInfo.
     }
   }
 }

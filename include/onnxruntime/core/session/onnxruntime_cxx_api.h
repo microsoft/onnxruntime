@@ -2930,43 +2930,13 @@ struct CustomOpBase : OrtCustomOp {
 
 namespace detail {
 template <typename T>
-struct ConstValueInfoImpl : Ort::detail::Base<T> {
-  using B = Ort::detail::Base<T>;
-  using B::B;
-
-  /// < A wrapper around OrtApi::GetValueInfoName
-  /// <returns></returns>
-  std::string Name() const;
-  ConstTypeInfo TypeInfo() const;
-
-  size_t GetNumConsumers() const;
-};
-}  // namespace detail
-
-// Const object holder that does not own the underlying object
-using ConstValueInfo = detail::ConstValueInfoImpl<Ort::detail::Unowned<const OrtValueInfo>>;
-
-/** \brief Wrapper around ::OrtValueInfo
- *
- */
-struct ValueInfo : detail::ConstValueInfoImpl<OrtValueInfo> {
-  explicit ValueInfo(std::nullptr_t) {}  ///< No instance is created
-  /// Take ownership of a pointer created by C API
-  explicit ValueInfo(OrtValueInfo* p) : ConstValueInfoImpl<OrtValueInfo>{p} {}
-
-  // Create ValueInfo for a tensor
-  explicit ValueInfo(const std::string& name, const ConstTypeInfo& type_info);
-
-  ConstValueInfo GetConst() const { return ConstValueInfo{this->p_}; }
-};
-
-namespace detail {
-template <typename T>
 struct NodeImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
 };
 }  // namespace detail
+
+using ConstNode = detail::NodeImpl<Ort::detail::Unowned<const OrtNode>>;
 
 /** \brief Wrapper around ::OrtNode
  *
@@ -2998,6 +2968,63 @@ struct Node : detail::NodeImpl<OrtNode> {
                    std::vector<OpAttr>& attributes,
                    OrtNode*& node);
 #endif  // !defined(ORT_MINIMAL_BUILD)
+};
+
+struct ValueInfoConsumerProducerInfo {
+  ConstNode producer;
+  size_t index;  // either producer output or consumer output index
+};
+
+namespace detail {
+template <typename T>
+struct ConstValueInfoImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  /// < A wrapper around OrtApi::GetValueInfoName
+  Status Name(std::string& name) const;
+  /// < A wrapper around OrtApi::GetValueInfoTypeInfo
+  Status TypeInfo(ConstTypeInfo& type_info) const;
+  ///< Wraps OrtApi::ValueInfo_GetProducerNode
+  Status GetProducerNode(ValueInfoConsumerProducerInfo& info) const;
+  /// < A wrapper around OrtApi::ValueInfo_GetValueNumConsumers
+  Status GetNumConsumers(size_t& num) const;
+  /// < A wrapper around OrtApi::ValueInfo_GetValueConsumers
+  Status GetConsumers(std::vector<ValueInfoConsumerProducerInfo>& out) const;
+  /// < A wrapper around OrtApi::ValueInfo_GetInitializerValue
+  Status GetInitializer(ConstValue& value) const;
+  /// < A wrapper around OrtApi::ValueInfo_GetExternalInitializerInfo
+  Status GetExternalInitializerInfo(ExternalInitializerInfo& info) const;
+  /// < A wrapper around OrtApi::ValueInfo_IsRequiredGraphInput
+  Status IsRequiredGraphInput(bool& out) const;
+  /// < A wrapper around OrtApi::ValueInfo_IsOptionalGraphInput
+  Status IsOptionalGraphInput(bool& out) const;
+  /// < A wrapper around OrtApi::ValueInfo_IsGraphOutput
+  Status IsGraphOutput(bool& out) const;
+  /// < A wrapper around OrtApi::ValueInfo_IsConstantInitializer
+  Status IsConstantInitializer(bool& out) const;
+  /// < A wrapper around OrtApi::ValueInfo_IsFromOuterScope
+  Status IsFromOuterScope(bool& out) const;
+};
+}  // namespace detail
+
+// Const object holder that does not own the underlying object
+using ConstValueInfo = detail::ConstValueInfoImpl<detail::Unowned<const OrtValueInfo>>;
+
+/** \brief Wrapper around ::OrtValueInfo
+ *
+ */
+struct ValueInfo : detail::ConstValueInfoImpl<OrtValueInfo> {
+  explicit ValueInfo(std::nullptr_t) {}  ///< No instance is created
+  /// Take ownership of a pointer created by C API
+  explicit ValueInfo(OrtValueInfo* p) : ConstValueInfoImpl<OrtValueInfo>{p} {}
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Create ValueInfo for a tensor
+  explicit ValueInfo(const std::string& name, const ConstTypeInfo& type_info);
+#endif
+
+  ConstValueInfo GetConst() const { return ConstValueInfo{this->p_}; }
 };
 
 namespace detail {

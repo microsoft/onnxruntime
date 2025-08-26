@@ -3071,18 +3071,96 @@ inline ValueInfo::ValueInfo(const std::string& name, const ConstTypeInfo& type_i
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace detail {
-template <>
-inline std::string ConstValueInfoImpl<OrtValueInfo>::Name() const {
-  const char* name = nullptr;
-  ThrowOnError(GetApi().GetValueInfoName(this->p_, &name));
-  return name;
+template <typename T>
+inline Status ConstValueInfoImpl<T>::Name(std::string& name) const {
+  const char* p = nullptr;
+  auto status = Status(GetApi().GetValueInfoName(this->p_, &p));
+  if (!status.IsOK()) return status;
+  name.assign(p);
+  return status;
 }
 
-template <>
-inline ConstTypeInfo ConstValueInfoImpl<OrtValueInfo>::TypeInfo() const {
+template <typename T>
+inline Status ConstValueInfoImpl<T>::TypeInfo(ConstTypeInfo& type_info) const {
   const OrtTypeInfo* type_info = nullptr;
-  ThrowOnError(GetApi().GetValueInfoTypeInfo(this->p_, &type_info));
-  return ConstTypeInfo{type_info};
+  auto status = Status(GetApi().GetValueInfoTypeInfo(this->p_, &type_info));
+  if (!status.IsOK()) return status;
+  type_info = ConstTypeInfo{type_info};
+  return status;
+}
+
+template <typename T>
+inline Status ConstValueInfoImpl<T>::GetProducerNode(ValueInfoConsumerProducerInfo& info) const {
+  const OrtNode* out = nullptr;
+  auto status = Status(GetApi().ValueInfo_GetValueProducerNode(this->p_, &out, &info.index));
+  if (!status.IsOK()) return status;
+  info.producer = ConstNode{out};
+  return status;
+}
+
+template <typename T>
+inline Status ConstValueInfoImpl<T>::GetNumConsumers(size_t& num) const {
+  num = 0;
+  return Status(GetApi().ValueInfo_GetValueNumConsumers(this->p_, &num));
+}
+
+template <typename T>
+inline Status ConstValueInfoImpl<T>::GetConsumers(std::vector<ValueInfoConsumerProducerInfo>& out) const {
+  size_t num = 0;
+  auto status = GetNumConsumers(num);
+  if (!status.IsOK()) return status;
+  std::vector<const OrtNode*> nodes(num);
+  std::vector<size_t> indices(num);
+  status = Status(GetApi().ValueInfo_GetValueConsumers(this->p_, nodes.data(), indices.data(), num));
+  if (!status.IsOK()) return status;
+  out.reserve(num);
+  for (size_t i = 0; i < num; ++i) {
+    out.push_back({ConstNode{nodes[i]}, indices[i]});
+  }
+  return status;
+}
+
+template <typename T>
+inline Status ConstValueInfoImpl<T>::GetInitializer(ConstValue& value) const {
+  const OrtValue* out = nullptr;
+  auto status = Status(GetApi().ValueInfo_GetInitializer(this->p_, &out));
+  if (!status.IsOK()) return status;
+  value = ConstValue{out};
+  return status;
+}
+
+template <typename T>
+inline Status ConstValueInfoImpl<T>::GetExternalInitializerInfo(ExternalInitializerInfo& info) const {
+  OrtExternalInitializerInfo* out = nullptr;
+  auto status = Status(GetApi().ValueInfo_GetExternalInitializerInfo(this->p_, &out));
+  if (!status.IsOK()) return status;
+  info = ExternalInitializerInfo{out};
+  return status;
+}
+
+template <typename T>
+inline Status ConstValueInfoImpl<T>::IsRequiredGraphInput(bool& out) const {
+  return Status(GetApi().ValueInfo_IsRequiredGraphInput(this->p_, &out));
+}
+
+template <typename T>
+inline Status ConstValueInfoImpl<T>::IsOptionalGraphInput(bool& out) const {
+  return Status(GetApi().ValueInfo_IsOptionalGraphInput(this->p_, &out));
+}
+
+template <typename T>
+inline Status ConstValueInfoImpl<T>::IsGraphOutput(bool& out) const {
+  return Status(GetApi().ValueInfo_IsGraphOutput(this->p_, &out));
+}
+
+template <typename T>
+inline Status ConstValueInfoImpl<T>::IsConstantInitializer(bool& out) const {
+  return Status(GetApi().ValueInfo_IsConstantInitializer(this->p_, &out));
+}
+
+template <typename T>
+inline Status ConstValueInfoImpl<T>::IsFromOuterScope(bool& out) const {
+  return Status(GetApi().ValueInfo_IsFromOuterScope(this->p_, &out));
 }
 
 #if !defined(ORT_MINIMAL_BUILD)

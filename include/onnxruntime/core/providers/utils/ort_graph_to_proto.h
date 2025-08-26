@@ -212,11 +212,11 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
 #define ORT_EP_UTILS_CXX_RETURN_IF_ERROR(fn) \
   ORT_EP_UTILS_C_RETURN_IF_ERROR(fn)
 
-#define ORT_EP_UTILS_C_RETURN_IF(cond, ort_api, msg)               \
-  do {                                                             \
-    if ((cond)) {                                                  \
-      return Ort::Status{(ort_api).CreateStatus(ORT_FAIL, (msg))}; \
-    }                                                              \
+#define ORT_EP_UTILS_C_RETURN_IF(cond, msg) \
+  do {                                      \
+    if ((cond)) {                           \
+      return Ort::Status{msg, ORT_FAIL};    \
+    }                                       \
   } while (0)
 
 namespace OrtEpUtils {
@@ -523,7 +523,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
   // Check that OrtGraph is a top-level graph (no parent node).
   const OrtNode* parent_node = nullptr;
   ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetParentNode(&ort_graph, &parent_node));
-  ORT_EP_UTILS_C_RETURN_IF(parent_node != nullptr, ort_api, "Cannot serialize nested OrtGraph into a ModelProto");
+  ORT_EP_UTILS_C_RETURN_IF(parent_node != nullptr, "Cannot serialize nested OrtGraph into a ModelProto");
 
   // Set model description.
   model_proto.set_doc_string("Serialized from OrtGraph");
@@ -537,7 +537,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
   // Set operator sets.
   size_t num_operator_sets = 0;
   ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetNumOperatorSets(&ort_graph, &num_operator_sets));
-  ORT_EP_UTILS_C_RETURN_IF(num_operator_sets == 0, ort_api, "OrtGraph should have at least one operator set.");
+  ORT_EP_UTILS_C_RETURN_IF(num_operator_sets == 0, "OrtGraph should have at least one operator set.");
 
   std::vector<const char*> domains(num_operator_sets, nullptr);
   std::vector<int64_t> opset_versions(num_operator_sets);
@@ -565,40 +565,36 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(const OrtValueInfo& ort_value_
                                                   /*out*/ ONNXTensorElementDataType& elem_type,
                                                   /*out*/ std::vector<int64_t>& dims,
                                                   /*out*/ std::vector<std::string>& symbolic_dims) {
-  const OrtApi& ort_api = Ort::GetApi();
+  Ort::ConstValueInfo vi(&ort_value_info);
+  Ort::ConstTypeInfo ort_type_info;
+  ORT_EP_UTILS_C_RETURN_IF_ERROR(vi.TypeInfo(ort_type_info));
 
-  const OrtTypeInfo* ort_type_info = nullptr;
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetValueInfoTypeInfo(&ort_value_info, &ort_type_info));
+  try {
+    ONNXType ort_onnx_type = ort_type_info.GetONNXType();
+    ORT_EP_UTILS_C_RETURN_IF(ort_onnx_type != ONNX_TYPE_TENSOR, "Expected OrtValueInfo to represent a Tensor");
 
-  ONNXType ort_onnx_type = ONNX_TYPE_UNKNOWN;
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetOnnxTypeFromTypeInfo(ort_type_info, &ort_onnx_type));
-  ORT_EP_UTILS_C_RETURN_IF(ort_onnx_type != ONNX_TYPE_TENSOR, ort_api, "Expected OrtValueInfo to represent a Tensor");
+    Ort::ConstTensorTypeAndShapeInfo ort_type_shape = ort_type_info.GetTensorTypeAndShapeInfo();
+    ONNXTensorElementDataType ort_elem_type = ort_type_shape.GetElementType();
 
-  const OrtTensorTypeAndShapeInfo* ort_type_shape = nullptr;
-  ONNXTensorElementDataType ort_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.CastTypeInfoToTensorInfo(ort_type_info, &ort_type_shape));
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetTensorElementType(ort_type_shape, &ort_elem_type));
+    size_t num_dims = ort_type_shape.GetDimensionsCount();
+    std::vector<int64_t> ort_dims(num_dims, 0);
+    ort_type_shape.GetDimensions(ort_dims.data(), ort_dims.size());
 
-  size_t num_dims = 0;
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetDimensionsCount(ort_type_shape, &num_dims));
+    elem_type = ort_elem_type;
+    dims = std::move(ort_dims);
 
-  std::vector<int64_t> ort_dims(num_dims, 0);
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetDimensions(ort_type_shape, ort_dims.data(), ort_dims.size()));
+    if (get_symbolic_dims) {
+      std::vector<const char*> ort_dim_syms(num_dims, nullptr);
+      ort_type_shape.GetSymbolicDimensions(ort_dim_syms.data(), ort_dim_syms.size());
 
-  elem_type = ort_elem_type;
-  dims = std::move(ort_dims);
-
-  if (get_symbolic_dims) {
-    std::vector<const char*> ort_dim_syms(num_dims, nullptr);
-    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.GetSymbolicDimensions(ort_type_shape, ort_dim_syms.data(),
-                                                                 ort_dim_syms.size()));
-
-    symbolic_dims.reserve(num_dims);
-    for (const char* sym_dim : ort_dim_syms) {
-      symbolic_dims.push_back(sym_dim);
+      symbolic_dims.reserve(num_dims);
+      for (const char* sym_dim : ort_dim_syms) {
+        symbolic_dims.push_back(sym_dim);
+      }
     }
+  } catch (const Ort::Exception& ex) {
+    return Ort::Status{ex};
   }
-
   return Ort::Status{nullptr};
 }
 

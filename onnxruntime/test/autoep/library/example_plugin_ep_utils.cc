@@ -5,23 +5,23 @@
 
 #include <string>
 
-OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api, const OrtSessionOptions& session_options,
+OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& /* ort_api */, const OrtSessionOptions& session_options,
                                           const char* config_key, const std::string& default_val,
                                           /*out*/ std::string& config_val) {
-  int has_config = 0;
-  RETURN_IF_ERROR(ort_api.HasSessionConfigEntry(&session_options, config_key, &has_config));
+  try {
+    Ort::ConstSessionOptions sess_opt{&session_options};
+    bool has_config = sess_opt.HasConfigEntry(config_key);
 
-  if (has_config != 1) {
-    config_val = default_val;
-    return nullptr;
+    if (!has_config) {
+      config_val = default_val;
+      return nullptr;
+    }
+
+    config_val = sess_opt.GetConfigEntry(config_key);
+  } catch (const Ort::Exception& ex) {
+    Ort::Status status(ex.what(), ex.GetOrtErrorCode());
+    return status.release();
   }
-
-  size_t size = 0;
-  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key, nullptr, &size));
-
-  config_val.resize(size);
-  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key, config_val.data(), &size));
-  config_val.resize(size - 1);  // remove the terminating '\0'
 
   return nullptr;
 }
