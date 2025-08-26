@@ -72,7 +72,7 @@ void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id
   cuda_graph_set_.Put(cuda_graph_annotation_id, graph_exec);
 }
 
-Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync_status_flag = true) {
+Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync_status_flag) {
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread
   LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id "
