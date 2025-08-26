@@ -454,7 +454,7 @@ TEST(EpCompatibilityCapiTest, InvalidArguments) {
   OrtCompiledModelCompatibility out_status = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
 
   // ep_devices == nullptr
-  OrtStatus* st = api->GetEpCompatibilityForDevices(nullptr, 0, "info", &out_status);
+  OrtStatus* st = api->GetModelCompatibilityForEpDevices(nullptr, 0, "info", &out_status);
   ASSERT_NE(st, nullptr);
   EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
   api->ReleaseStatus(st);
@@ -466,13 +466,13 @@ TEST(EpCompatibilityCapiTest, InvalidArguments) {
 
   // compatibility_info == nullptr
   const OrtEpDevice* devices1[] = {device};
-  st = api->GetEpCompatibilityForDevices(devices1, 1, nullptr, &out_status);
+  st = api->GetModelCompatibilityForEpDevices(devices1, 1, nullptr, &out_status);
   ASSERT_NE(st, nullptr);
   EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
   api->ReleaseStatus(st);
 
   // out_status == nullptr
-  st = api->GetEpCompatibilityForDevices(devices1, 1, "some-info", nullptr);
+  st = api->GetModelCompatibilityForEpDevices(devices1, 1, "some-info", nullptr);
   ASSERT_NE(st, nullptr);
   EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
   api->ReleaseStatus(st);
@@ -490,11 +490,12 @@ TEST(EpCompatibilityCapiTest, CpuEpReturnsNotApplicableIfNoValidation) {
 
   OrtCompiledModelCompatibility out_status = static_cast<OrtCompiledModelCompatibility>(-1);
   const OrtEpDevice* devices2[] = {device};
-  OrtStatus* st = api->GetEpCompatibilityForDevices(devices2, 1, "arbitrary-compat-string", &out_status);
+  OrtStatus* st = api->GetModelCompatibilityForEpDevices(devices2, 1, "arbitrary-compat-string", &out_status);
   ASSERT_EQ(st, nullptr) << (st ? api->GetErrorMessage(st) : "");
 
   // For providers that don't implement validation, API should return EP_NOT_APPLICABLE.
   EXPECT_EQ(out_status, OrtCompiledModelCompatibility_EP_NOT_APPLICABLE);
+  api->ReleaseStatus(st);
 
   api->ReleaseEnv(env);
 }

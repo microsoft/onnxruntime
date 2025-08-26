@@ -6503,7 +6503,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetEpCompatibilityForDevices,
+  ORT_API2_STATUS(GetModelCompatibilityForEpDevices,
                   _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices,
                   _In_ size_t num_ep_devices,
                   _In_ const char* compatibility_info,

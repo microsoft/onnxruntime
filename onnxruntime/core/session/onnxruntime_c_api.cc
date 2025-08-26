@@ -3424,14 +3424,14 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
 }
 
 // Validate compiled model compatibility info for specific EP device(s)
-ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevices,
+ORT_API_STATUS_IMPL(OrtApis::GetModelCompatibilityForEpDevices,
                     _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices,
                     _In_ size_t num_ep_devices,
                     _In_ const char* compatibility_info,
                     _Out_ OrtCompiledModelCompatibility* out_status) {
   API_IMPL_BEGIN
   if (ep_devices == nullptr || num_ep_devices == 0 || compatibility_info == nullptr || out_status == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument provided to GetEpCompatibilityForDevices.");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument provided to GetModelCompatibilityForEpDevices.");
   }
 
   // Validate inputs and ensure all devices belong to the same EP/factory
@@ -3477,32 +3477,32 @@ ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevices,
 ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, _In_ const char* /*registration_name*/,
                     const ORTCHAR_T* /*path*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "RegisterExecutionProviderLibrary is not supported in a minimal build.");
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/,
                     _In_ const char* /*registration_name*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "UnregisterExecutionProviderLibrary is not supported in a minimal build.");
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetEpDevices, _In_ const OrtEnv* /*env*/,
                     _Outptr_ const OrtEpDevice* const** /*ep_devices*/, _Out_ size_t* /*num_ep_devices*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetEpDevices is not supported in a minimal build.");
   API_IMPL_END
 }
 
-// Minimal build stub for GetEpCompatibilityForDevices to satisfy symbol references from the API table
-ORT_API_STATUS_IMPL(OrtApis::GetEpCompatibilityForDevices,
+// Minimal build stub for GetModelCompatibilityForEpDevices to satisfy symbol references from the API table
+ORT_API_STATUS_IMPL(OrtApis::GetModelCompatibilityForEpDevices,
                     _In_reads_(num_ep_devices) const OrtEpDevice* const* /*ep_devices*/,
                     _In_ size_t /*num_ep_devices*/,
                     _In_ const char* /*compatibility_info*/,
                     _Out_ OrtCompiledModelCompatibility* /*out_status*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetModelCompatibilityForEpDevices is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -3514,7 +3514,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
                     _In_reads_(num_op_options) const char* const* /*ep_option_vals*/,
                     size_t /*num_ep_options*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SessionOptionsAppendExecutionProvider_V2 is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -3527,7 +3527,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession*
                     _Out_writes_(num_values) const OrtEpDevice** /*inputs_ep_devices*/,
                     _In_ size_t /*num_values*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SessionGetEpDeviceForInputs is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -3535,7 +3535,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
                     _In_opt_ const OrtKeyValuePairs* /*stream_options*/,
                     _Outptr_ OrtSyncStream** /*ort_stream*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CreateSyncStreamForEpDevice is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -3554,7 +3554,7 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* /*env*/,
                     _In_opt_ OrtSyncStream* /*stream*/,
                     _In_ size_t /*num_tensors*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CopyTensors is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -4169,7 +4169,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::CopyTensors,
 
     &OrtApis::Graph_GetModelMetadata,
-    &OrtApis::GetEpCompatibilityForDevices,
+    &OrtApis::GetModelCompatibilityForEpDevices,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

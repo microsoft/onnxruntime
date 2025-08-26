@@ -889,13 +889,13 @@ struct OrtEpFactory {
    */
   ORT_API_T(const char*, GetVersion, _In_ const OrtEpFactory* this_ptr);
 
-  /** \brief Validate the compatibility of a compiled model with the execution provider for one or more devices.
+  /** \brief Validate the compatibility of a compiled model with the execution provider factory for one or more devices.
    *
-   * Given a compatibility info string produced during model compilation, the EP should determine whether the
-   * compiled model is compatible with the EP when targeting the provided hardware devices. All devices provided
+   * Given a compatibility info string produced during model compilation, the EP factory should determine whether the
+   * compiled model is compatible with the EP factory when targeting the provided hardware devices. All devices provided
    * must belong to the same execution provider instance that this factory creates.
    *
-   * The EP implementation should consider the set of devices (e.g., multi-adapter or multi-GPU scenarios) when
+   * The EP factory implementation should consider the set of devices (e.g., multi-adapter or multi-GPU scenarios) when
    * evaluating compatibility and set `model_compatibility` accordingly.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
