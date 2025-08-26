@@ -33,7 +33,7 @@ int real_main(int argc, char* argv[]) {
     ORT_TRY {
       OrtLoggingLevel logging_level = test_config.run_config.f_verbose
                                           ? ORT_LOGGING_LEVEL_VERBOSE
-                                          : ORT_LOGGING_LEVEL_ERROR;
+                                          : ORT_LOGGING_LEVEL_WARNING;
       env = Ort::Env(logging_level, "Default");
     }
     ORT_CATCH(const Ort::Exception& e) {
