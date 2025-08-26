@@ -34,6 +34,44 @@ API header files:
 
 
 ### Data Types
+
+<!-- Use an HTML table to allow embedding a code block in a cell -->
+<table>
+<tr>
+<th>Type</th>
+<th>Description</th>
+</tr>
+
+<tr>
+<td>
+
+[OrtHardwareDeviceType](#ort-hardware-device-type)
+
+</td>
+<td>
+
+Enumerates classes of hardware devices:
+- OrtHardwareDeviceType_CPU
+- OrtHardwareDeviceType_GPU
+- OrtHardwareDeviceType_NPU
+
+</td>
+</tr>
+
+<tr>
+<td>
+[OrtHardwareDeviceType](#ort-hardware-device-type)
+</td>
+<td>
+Enumerates classes of hardware devices:
+- OrtHardwareDeviceType_CPU
+- OrtHardwareDeviceType_GPU
+- OrtHardwareDeviceType_NPU
+</td>
+</tr>
+</table>
+
+
 #### OrtHardwareDeviceType
 
 Enumerates classes of hardware devices.
