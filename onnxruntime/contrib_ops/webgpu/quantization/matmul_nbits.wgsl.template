@@ -6,6 +6,7 @@
 #param component_b
 #param elements_in_value_b
 #param n_bits
+#param single_scale_weights
 #param sub_tile_count
 #param tile_size_k_vec
 #param tile_size_k
@@ -35,6 +36,12 @@ $MAIN {
   let idx = local_idx % tile_size_k_vec;
   let idy = local_idx / tile_size_k_vec;
 
+#if single_scale_weights
+  let block_idx = 0;
+  let scale_b = scales_b[0];
+  let zero = mm_read_zero(0, 0, uniforms.N, uniforms.zero_blocks_per_col);
+#endif
+
   for (var kidx = 0u; kidx < uniforms.K; kidx += tile_size_k)
   {
     for (var id = local_idx; id < a_length_per_tile; id += workgroup_size_x)
@@ -49,9 +56,11 @@ $MAIN {
       var k_offset = kidx / elements_in_value_b + idx;
       if (b_global < uniforms.N && k_offset < uniforms.K_of_b)
       {
+#if !single_scale_weights
         let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
         let scale_b = scales_b[b_global * uniforms.blocks_per_col + block_idx];
         let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+#endif
         var b_value = input_b[b_global * uniforms.K_of_b + k_offset];
 
 #if n_bits == 4
@@ -89,6 +98,38 @@ $MAIN {
 #elif component_a == 4
             sum += dot(tile_A[a_offset], b_value);
             a_offset += 1;
+#endif
+        }
+#elif n_bits == 2
+        var sum = output_element_t(0);
+        var a_offset = idx * (16 / component_a) * component_b;
+        for (var i = 0u; i < component_b; i++) {
+            let b_data_0 = vec4<output_element_t>(unpack4xU8(b_value[i] & 0x03030303u)) - vec4<output_element_t>(zero);
+            let b_data_1 = vec4<output_element_t>(unpack4xU8((b_value[i] >> 2) & 0x03030303u)) - vec4<output_element_t>(zero);
+            let b_data_2 = vec4<output_element_t>(unpack4xU8((b_value[i] >> 4) & 0x03030303u)) - vec4<output_element_t>(zero);
+            let b_data_3 = vec4<output_element_t>(unpack4xU8((b_value[i] >> 6) & 0x03030303u)) - vec4<output_element_t>(zero);
+
+            let b0 = vec4<output_element_t>(b_data_0[0], b_data_1[0], b_data_2[0], b_data_3[0]) * scale_b;
+            let b1 = vec4<output_element_t>(b_data_0[1], b_data_1[1], b_data_2[1], b_data_3[1]) * scale_b;
+            let b2 = vec4<output_element_t>(b_data_0[2], b_data_1[2], b_data_2[2], b_data_3[2]) * scale_b;
+            let b3 = vec4<output_element_t>(b_data_0[3], b_data_1[3], b_data_2[3], b_data_3[3]) * scale_b;
+
+#if component_a == 1
+            sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1], tile_A[a_offset + 2], tile_A[a_offset + 3]), b0) +
+                        dot(vec4<output_element_t>(tile_A[a_offset + 4], tile_A[a_offset + 5], tile_A[a_offset + 6], tile_A[a_offset + 7]), b1) +
+                        dot(vec4<output_element_t>(tile_A[a_offset + 8], tile_A[a_offset + 9], tile_A[a_offset + 10], tile_A[a_offset + 11]), b2) +
+                        dot(vec4<output_element_t>(tile_A[a_offset + 12], tile_A[a_offset + 13], tile_A[a_offset + 14], tile_A[a_offset + 15]), b3);
+            a_offset += 16;
+#elif component_a == 2
+            sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]), b0) +
+                        dot(vec4<output_element_t>(tile_A[a_offset + 2], tile_A[a_offset + 3]), b1) +
+                        dot(vec4<output_element_t>(tile_A[a_offset + 4], tile_A[a_offset + 5]), b2) +
+                        dot(vec4<output_element_t>(tile_A[a_offset + 6], tile_A[a_offset + 7]), b3);
+            a_offset += 8;
+#elif component_a == 4
+            sum += dot(tile_A[a_offset], b0) + dot(tile_A[a_offset + 1], b1) +
+                    dot(tile_A[a_offset + 2], b2) + dot(tile_A[a_offset + 3], b3);
+            a_offset += 4;
 #endif
         }
 #endif

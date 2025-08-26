@@ -109,7 +109,26 @@ fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
     }
 #endif
 
+#if n_bits == 2
+    fn loadSHMB(b_global_base:u32, kidx_v:u32, row: u32, col: u32)
+    {
+        let b_global = b_global_base + row;
+        if (b_global >= uniforms.N)
+        {
+            return;
+        }
+        let b_value = input_b[b_global*uniforms.K16+kidx_v+col];
+        tile_B[col][row] = DequantizedFrom2BitsTo8Bits(b_value);
+        let block_idx = kidx_v/(block_size/16);
+        scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + block_idx];
+    }
+#endif
+
 $MAIN {
+#if n_bits == 2
+    LoadDequantizationTable(local_idx);
+    workgroupBarrier();
+#endif
     // During the load phase we use all 256 threads to load 64 rows of A/B.
     // For each row we load tile_size_k_vec (2) vectorized elements, which are 32 elements of K.
     let a_global_base = u32(workgroup_idx / uniforms.num_N_tile) * tile_size;
@@ -149,7 +168,7 @@ $MAIN {
     var lane_output3: vec4<output_element_t>;
     var lane_output4: vec4<output_element_t>;
 #endif
-    // K's vectrorization is 16 items per index. See input_a/input_b.
+    // K's vectorization is 16 items per index. See input_a/input_b.
     // tile_size_k_vec - is the k tile size in vectorized space (1/16). That is
     // k tile size is 32. In vectorized space that is 32/16 = 2.
     for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=tile_size_k_vec)
