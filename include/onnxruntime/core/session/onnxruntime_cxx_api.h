@@ -728,6 +728,7 @@ struct Status : detail::Base<OrtStatus> {
   using Base = detail::Base<OrtStatus>;
   using Base::Base;
 
+  Status() = default;
   explicit Status(std::nullptr_t) noexcept {}      ///< Create an empty object, must be assigned a valid one to be used
   explicit Status(OrtStatus* status) noexcept;     ///< Takes ownership of OrtStatus instance returned from the C API.
   explicit Status(const Exception&);               ///< Creates status instance out of exception

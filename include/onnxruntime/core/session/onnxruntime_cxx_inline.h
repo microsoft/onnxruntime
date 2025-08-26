@@ -823,7 +823,7 @@ inline Status Env::CopyTensors(const std::vector<Value>& src_tensors,
     return Status("Source and destination tensor vectors must have the same size", ORT_INVALID_ARGUMENT);
   }
   if (src_tensors.empty()) {
-    return Status();
+    return Status(nullptr);
   }
 
   const OrtValue* const* src_tensors_ptr = reinterpret_cast<const OrtValue* const*>(src_tensors.data());
