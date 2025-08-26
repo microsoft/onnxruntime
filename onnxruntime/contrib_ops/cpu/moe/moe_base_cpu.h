@@ -6,7 +6,8 @@
 #include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/op_kernel.h"
-#include "contrib_ops/cpu/quantization/moe_helper.h"
+#include "contrib_ops/cpu/moe/moe_helper.h"
+#include <limits>
 
 namespace onnxruntime {
 namespace contrib {
@@ -46,12 +47,21 @@ class MoEBaseCPU {
     if (use_sparse_mixer_) {
       ORT_ENFORCE(k_ == 2, "Sparse mixer only supports k=2");
     }
+
+    swiglu_fusion_ = op_kernel_info.GetAttrOrDefault<int64_t>("swiglu_fusion", 0);
+    swiglu_limit_ = op_kernel_info.GetAttrOrDefault<float>("swiglu_limit", std::numeric_limits<float>::infinity());
+    activation_alpha_ = op_kernel_info.GetAttrOrDefault<float>("activation_alpha", 1.0f);
+    activation_beta_ = op_kernel_info.GetAttrOrDefault<float>("activation_beta", 0.0f);
   }
 
   bool normalize_routing_weights_;
   bool use_sparse_mixer_;
   int64_t k_;
   ActivationType activation_type_;
+  float activation_alpha_;
+  float activation_beta_;
+  float swiglu_limit_;
+  int64_t swiglu_fusion_;
 };
 
 }  // namespace contrib
