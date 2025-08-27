@@ -47,7 +47,7 @@ jobs:
     BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-  timeoutInMinutes: 120
+  timeoutInMinutes: 240
   workspace:
     clean: all
   strategy:
