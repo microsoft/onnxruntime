@@ -71,6 +71,12 @@ Whether to use the graph inference engine to speed up performance. The recommend
 
 Default value: true
 
+### enable_cann_subgraph
+
+The CANN backend supports automatic splitting of ONNX models. If set to true, it will support more ONNX models, but it may also introduce some performance overhead (as some nodes may fall back to the CPU).
+
+Default value: false
+
 ### dump_graphs
 
 Whether to dump the subgraph into onnx format for analysis of subgraph segmentation.
