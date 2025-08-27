@@ -11,7 +11,6 @@
 #endif
 
 #include <NvInfer.h>
-#include <NvInferPlugin.h>
 #include <NvInferRuntime.h>
 #include <NvOnnxParser.h>
 

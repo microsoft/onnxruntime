@@ -15,7 +15,6 @@
 #include "core/framework/ort_value.h"
 #include "nv_execution_provider.h"
 #include "nv_execution_provider_utils.h"
-#include "nv_execution_provider_custom_ops.h"
 #include "nv_allocator.h"
 #include "nv_data_transfer.h"
 #include "onnx_ctx_model_helper.h"
@@ -1199,7 +1198,6 @@ NvExecutionProvider::~NvExecutionProvider() {
   if (!external_stream_ && stream_ != nullptr) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
-  ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
 
   if (alloc_ != nullptr) {
     // This code is same as OrtApis::ReleaseAllocator defined in allocator_adapters.cc.
@@ -1324,13 +1322,6 @@ nvinfer1::IBuilder* NvExecutionProvider::GetBuilder(TensorrtLogger& trt_logger) 
     }
   }
   return builder_.get();
-}
-
-void NvExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
-  auto status = CreateTensorRTCustomOpDomainList(custom_op_domain_list, info_.extra_plugin_lib_paths);
-  if (status != Status::OK()) {
-    LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to get TRT plugins from TRT plugin registration.";
-  }
 }
 
 // Check the graph is the subgraph of control flow op
