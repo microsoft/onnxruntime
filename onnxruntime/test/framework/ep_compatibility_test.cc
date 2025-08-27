@@ -408,3 +408,94 @@ TEST_F(EpCompatibilityTest, TestSessionOptionConfiguration) {
   EXPECT_TRUE(has_config);
   EXPECT_EQ(config_value, "0");
 }
+
+// -----------------------------
+// C API unit tests
+// -----------------------------
+
+namespace {
+
+// Helper to create an OrtEnv and fetch a CPU EP device pointer via the C API.
+// Returns a pair of (env, cpu_device). Caller releases env via api->ReleaseEnv.
+static std::pair<OrtEnv*, const OrtEpDevice*> CreateEnvAndGetCpuEpDevice(const OrtApi* api) {
+  OrtEnv* env = nullptr;
+  EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "EpCompatCapiTest", &env));
+  EXPECT_NE(env, nullptr);
+
+  const OrtEpDevice* const* devices = nullptr;
+  size_t num_devices = 0;
+  EXPECT_EQ(nullptr, api->GetEpDevices(env, &devices, &num_devices));
+  EXPECT_GT(num_devices, 0u);
+
+  const OrtEpDevice* cpu_device = nullptr;
+  for (size_t i = 0; i < num_devices; ++i) {
+    const char* name = api->EpDevice_EpName(devices[i]);
+    if (name && std::string(name) == "CPUExecutionProvider") {
+      cpu_device = devices[i];
+      break;
+    }
+  }
+
+  // Fallback: just pick the first device if CPU wasn't found (environment-dependent builds).
+  if (!cpu_device && num_devices > 0) {
+    cpu_device = devices[0];
+  }
+
+  EXPECT_NE(cpu_device, nullptr);
+  return {env, cpu_device};
+}
+
+}  // namespace
+
+TEST(EpCompatibilityCapiTest, InvalidArguments) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtCompiledModelCompatibility out_status = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+
+  // ep_devices == nullptr
+  OrtStatus* st = api->GetModelCompatibilityForEpDevices(nullptr, 0, "info", &out_status);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  // Prepare a valid device
+  auto [env, device] = CreateEnvAndGetCpuEpDevice(api);
+  ASSERT_NE(env, nullptr);
+  ASSERT_NE(device, nullptr);
+
+  // compatibility_info == nullptr
+  const OrtEpDevice* devices1[] = {device};
+  st = api->GetModelCompatibilityForEpDevices(devices1, 1, nullptr, &out_status);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  // out_status == nullptr
+  st = api->GetModelCompatibilityForEpDevices(devices1, 1, "some-info", nullptr);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  api->ReleaseEnv(env);
+}
+
+TEST(EpCompatibilityCapiTest, CpuEpReturnsNotApplicableIfNoValidation) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  auto [env, device] = CreateEnvAndGetCpuEpDevice(api);
+  ASSERT_NE(env, nullptr);
+  ASSERT_NE(device, nullptr);
+
+  OrtCompiledModelCompatibility out_status = static_cast<OrtCompiledModelCompatibility>(-1);
+  const OrtEpDevice* devices2[] = {device};
+  OrtStatus* st = api->GetModelCompatibilityForEpDevices(devices2, 1, "arbitrary-compat-string", &out_status);
+  ASSERT_EQ(st, nullptr) << (st ? api->GetErrorMessage(st) : "");
+
+  // For providers that don't implement validation, API should return EP_NOT_APPLICABLE.
+  EXPECT_EQ(out_status, OrtCompiledModelCompatibility_EP_NOT_APPLICABLE);
+  api->ReleaseStatus(st);
+
+  api->ReleaseEnv(env);
+}
