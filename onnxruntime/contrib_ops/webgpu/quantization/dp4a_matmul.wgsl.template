@@ -4,6 +4,7 @@
 #param block_size
 #param n_bits
 #param has_zero_points
+#param is_qualcomm
 
 #include "quantization/dp4a_matmul_common.wgsl.template"
 
@@ -108,7 +109,26 @@ fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
     }
 #endif
 
+#if n_bits == 2
+    fn loadSHMB(b_global_base:u32, kidx_v:u32, row: u32, col: u32)
+    {
+        let b_global = b_global_base + row;
+        if (b_global >= uniforms.N)
+        {
+            return;
+        }
+        let b_value = input_b[b_global*uniforms.K16+kidx_v+col];
+        tile_B[col][row] = DequantizedFrom2BitsTo8Bits(b_value);
+        let block_idx = kidx_v/(block_size/16);
+        scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + block_idx];
+    }
+#endif
+
 $MAIN {
+#if n_bits == 2
+    LoadDequantizationTable(local_idx);
+    workgroupBarrier();
+#endif
     // During the load phase we use all 256 threads to load 64 rows of A/B.
     // For each row we load tile_size_k_vec (2) vectorized elements, which are 32 elements of K.
     let a_global_base = u32(workgroup_idx / uniforms.num_N_tile) * tile_size;
@@ -119,19 +139,36 @@ $MAIN {
 
     // During the compute phase, we have the 64x64 tile split into
     // subtiles of 16x16. We have a grid of 4x4 subtiles.
-    let subtile_id = u32(local_idx / subtile_size);
-    let subtile_idx = u32(subtile_id / 4);
-    let subtile_idy = u32(subtile_id % 4);
-    let base_A = subtile_idx * 16;
-    let base_B = subtile_idy * 16;
+    var subtile_id = u32(local_idx / subtile_size);
+    var subtile_idx = u32(subtile_id / 4);
+    var subtile_idy = u32(subtile_id % 4);
+    var base_A = subtile_idx * 16;
+    var base_B = subtile_idy * 16;
     // For each subtile we have 16 threads assigned.
-    let a_idx = u32(local_idx % subtile_size);
+    var a_idx = u32(local_idx % subtile_size);
 
+#if is_qualcomm
+    // subtile_idx is always 0
+    // subtile_idy is one of {0,1,2,3}
+    // The subtile is now rectangular 64x16 for qualcomm case and we have 4 subtiles, this way we don't need to
+    // increase the number of lane_output each thread needs to track. That is if we want to use a subtile that is 64x64
+    // we would need var lane_outputs: array<output_element_t, 64>;
+    if (sg_size == 64) {
+        subtile_id = u32(local_idx / sg_size);
+        subtile_idx = u32(subtile_id / 4);
+        subtile_idy = u32(subtile_id % 4);
+        base_A = subtile_idx * sg_size;
+        base_B = subtile_idy * 16;
+        a_idx = sg_id;
+    }
+    var lane_outputs: array<output_element_t, 16>;
+#else
     var lane_output1: vec4<output_element_t>;
     var lane_output2: vec4<output_element_t>;
     var lane_output3: vec4<output_element_t>;
     var lane_output4: vec4<output_element_t>;
-    // K's vectrorization is 16 items per index. See input_a/input_b.
+#endif
+    // K's vectorization is 16 items per index. See input_a/input_b.
     // tile_size_k_vec - is the k tile size in vectorized space (1/16). That is
     // k tile size is 32. In vectorized space that is 32/16 = 2.
     for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=tile_size_k_vec)
@@ -154,6 +191,34 @@ $MAIN {
         var own_scale_a: output_element_t = scale_A[base_A + a_idx];
 
 #if has_zero_points && n_bits == 8
+ #if is_qualcomm
+        if (sg_size == 64)
+        {
+            var own_b0: vec4<u32>;
+            var own_b1: vec4<u32>;
+            var own_scale_b: output_element_t;
+            var zero: i32;
+            if (sg_id < 16)
+            {
+                own_b0 = tile_B[0][base_B + sg_id];
+                own_b1 = tile_B[1][base_B + sg_id];
+                own_scale_b = scale_B[base_B + sg_id];
+                zero = zeroes[base_B + sg_id];
+            }
+            // Step 2: Access registers across the subgroup using subgroupShuffle and perform the matmul.
+            for (var i = 0u; i < 16u; i++)
+            {
+                lane_outputs[i] += SDP8AI(own_a0, subgroupShuffle(own_b0, i), own_a1, subgroupShuffle(own_b1, i), subgroupShuffle(own_scale_b, i) * own_scale_a, subgroupShuffle(zero, i));
+            }
+        }
+        else
+        {
+            for (var i = 0u; i < 16u; i++)
+            {
+                lane_outputs[i] += SDP8AI(own_a0, tile_B[0][base_B + i], own_a1, tile_B[1][base_B + i],  own_scale_a * scale_B[base_B + i], zeroes[base_B + i]);
+            }
+        }
+ #else
         if (sg_size == 16)
         {
             var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
@@ -206,7 +271,34 @@ $MAIN {
             lane_output4[2] += SDP8AI(own_a0, tile_B[0][base_B + 14], own_a1, tile_B[1][base_B + 14],  own_scale_a * scale_B[base_B + 14], zeroes[base_B + 14]);
             lane_output4[3] += SDP8AI(own_a0, tile_B[0][base_B + 15], own_a1, tile_B[1][base_B + 15],  own_scale_a * scale_B[base_B + 15], zeroes[base_B + 15]);
         }
+ #endif
 #else
+ #if is_qualcomm
+        if (sg_size == 64)
+        {
+            var own_b0: vec4<u32>;
+            var own_b1: vec4<u32>;
+            var own_scale_b: output_element_t;
+            if (sg_id < 16)
+            {
+                own_b0 = tile_B[0][base_B + sg_id];
+                own_b1 = tile_B[1][base_B + sg_id];
+                own_scale_b = scale_B[base_B + sg_id];
+            }
+            // Step 2: Access registers across the subgroup using subgroupShuffle and perform the matmul.
+            for (var i = 0u; i < 16u; i++)
+            {
+                lane_outputs[i] += SDP8AI(own_a0, subgroupShuffle(own_b0, i), own_a1, subgroupShuffle(own_b1, i), subgroupShuffle(own_scale_b, i) * own_scale_a);
+            }
+        }
+        else
+        {
+            for (var i = 0u; i < 16u; i++)
+            {
+                lane_outputs[i] += SDP8AI(own_a0, tile_B[0][base_B + i], own_a1, tile_B[1][base_B + i],  own_scale_a * scale_B[base_B + i]);
+            }
+        }
+ #else
         if (sg_size == 16)
         {
             var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
@@ -258,6 +350,7 @@ $MAIN {
             lane_output4[2] += SDP8AI(own_a0, tile_B[0][base_B + 14], own_a1, tile_B[1][base_B + 14],  own_scale_a * scale_B[base_B + 14]);
             lane_output4[3] += SDP8AI(own_a0, tile_B[0][base_B + 15], own_a1, tile_B[1][base_B + 15],  own_scale_a * scale_B[base_B + 15]);
         }
+ #endif
 #endif
         workgroupBarrier();
     }
@@ -268,9 +361,16 @@ $MAIN {
     // This creates a shader requirement that uniforms.N % 16 == 0
     if (a_global < uniforms.M && b_global < uniforms.N)
     {
+#if is_qualcomm
+        output[output_idx] = vec4<output_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]);
+        output[output_idx+1] = vec4<output_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]);
+        output[output_idx+2] = vec4<output_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11]);
+        output[output_idx+3] = vec4<output_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15]);
+#else
         output[output_idx] = lane_output1;
         output[output_idx+1] = lane_output2;
         output[output_idx+2] = lane_output3;
         output[output_idx+3] = lane_output4;
+#endif
     }
 }  // MAIN
