@@ -368,7 +368,10 @@ if (CPUINFO_SUPPORTED)
       URL ${DEP_URL_pytorch_cpuinfo}
       URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
       EXCLUDE_FROM_ALL
-      PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch
+      PATCH_COMMAND
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
+        # https://github.com/pytorch/cpuinfo/pull/324
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
   else()
