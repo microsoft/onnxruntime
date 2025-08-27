@@ -741,4 +741,6 @@ ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
                     _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                     _In_opt_ OrtSyncStream* stream,
                     _In_ size_t num_tensors);
+
+ORT_API_STATUS_IMPL(KernelContext_RecordCustomEventsToProfiler, _In_ const OrtKernelContext* context, _In_ void* events);
 }  // namespace OrtApis

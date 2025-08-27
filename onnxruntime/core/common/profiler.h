@@ -119,6 +119,13 @@ class Profiler {
     }
   }
 
+  void RecordCustomEvents(Events& events) noexcept {
+    for (auto& e : events) {
+      e.ts = e.ts - std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time_.time_since_epoch()).count();
+      events_.emplace_back(e);
+    }
+  };
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
 
