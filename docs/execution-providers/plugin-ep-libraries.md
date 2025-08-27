@@ -40,12 +40,12 @@ The following table lists the **required** varibles and functions that an implem
 <tr>
 <td><a href="#c-api-ort-ep-ort-version-supported">ort_version_supported</a></td>
 <td>The ONNX Runtime version with which the EP was compiled. Implementation should set to <code>ORT_API_VERSION</code>.</td>
-<td><a href="https://github.com/microsoft/onnxruntime/blob/16ae99ede405d3d6c59d7cce80c53f5f7055aeed/onnxruntime/test/autoep/library/ep.cc#L160">ExampleEp constructor</a></td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/16ae99ede405d3d6c59d7cce80c53f5f7055aeed/onnxruntime/test/autoep/library/ep.cc#L160">ExampleEp()</a></td>
 </tr>
 
 <tr>
 <td><a href="#c-api-ort-ep-get-name">GetName</a></td>
-<td>Get the execution provider name. The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy the string.</td>
+<td>Get the execution provider name.</td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/16ae99ede405d3d6c59d7cce80c53f5f7055aeed/onnxruntime/test/autoep/library/ep.cc#L181">ExampleEp::GetNameImpl()</a></td>
 </tr>
 
@@ -146,12 +146,21 @@ Implementation of this function is optional. If not provided, ORT will use `OrtE
 <td></td>
 </tr>
 
+<tr>
+<td><a href="c-api-ort-ep-get-compiled-model-compatability-info">GetCompiledModelCompatibilityInfo</a></td>
+<td>
+Get a string with details about the EP stack used to produce a compiled model.<br/><br/>
+The compatibility information string can be used with <code>OrtEpFactory::ValidateCompiledModelCompatibilityInfo</code> to determine if a compiled model is compatible with the EP.
+</td>
+<td></td>
+</tr>
+
 </table>
 
 ### Defining an OrtEpFactory
 An `OrtEpFactory` represents an instance of an EP factory that is used by an ONNX Runtime session to query device support, create allocators, create data transfer objects, and create instances of an EP (i.e., an `OrtEp`).
 
-The following table lists the required variables and functions that an implementer must define for an `OrtEpFactory`.
+The following table lists the **required** variables and functions that an implementer must define for an `OrtEpFactory`.
 
 <table>
 <tr>
@@ -168,8 +177,56 @@ The following table lists the required variables and functions that an implement
 
 <tr>
 <td><a href="#c-api-ort-ep-factory-get-name">GetName</a></td>
-<td>Get the name of the EP that the factory creates. Must match `OrtEp::GetName()`.</td>
+<td>Get the name of the EP that the factory creates. Must match <code>OrtEp::GetName()</code>.</td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L77">ExampleEpFactory::GetNameImpl()</a></td>
+</tr>
+
+<tr>
+<td><a href="#c-api-ort-ep-factory-get-vendor">GetVendor</a></td>
+<td>Get the name of the name of the vendor that owns the EP that the factory creates.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L83">ExampleEpFactory::GetVendor()</a></td>
+</tr>
+
+<tr>
+<td><a href="#c-api-ort-ep-factory-get-vendor-id">GetVendorId</a></td>
+<td>Get the vendor ID of the vendor that owns the EP that the factory creates. This is typically the <a href="https://pcisig.com/membership/member-companies">PCI vendor ID</a>.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L89">ExampleEpFactory::GetVendorId()</a></td>
+</tr>
+
+<tr>
+<td><a href="#c-api-ort-ep-factory-get-version">GetVersion</a></td>
+<td>Get the version of the EP that the factory creates. The version string should adhere to the <a href="https://github.com/semver/semver/blob/v2.0.0/semver.md">Semantic Versioning 2.0 specification</a>.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L95">ExampleEpFactory::GetVersionImpl()</a></td>
+</tr>
+
+<tr>
+<td><a href="#c-api-ort-ep-factory-get-supported-devices">GetSupportedDevices</a></td>
+<td>Get information about the <code>OrtHardwareDevice</code> instances supported by an EP created by the factory.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L101">ExampleEpFactory::GetSupportedDevicesImpl()</a></td>
+</tr>
+
+<tr>
+<td><a href="#c-api-ort-ep-factory-create-ep">CreateEp</a></td>
+<td>Creates an <code>OrtEp</code> instance for use in an ONNX Runtime session. ORT calls <code>OrtEpFactory::ReleaseEp()</code> to release the instance.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L163">ExampleEpFactory::CreateEpImpl()</a></td>
+</tr>
+
+</table>
+
+The following table lists the **optional** functions that an implementer may define for an `OrtEpFactory`.
+
+<table>
+<tr>
+<th>Field</th>
+<th>Summary</th>
+<th>Example implementation</th>
+</tr>
+
+<tr>
+<td><a href="#c-api-ort-ep-factory-create-allocator">CreateAllocator</a></td>
+<td>Create an <code>OrtAllocator</code> that can be shared across sessions for the given <code>OrtMemoryInfo</code>.<br/><br/>
+The factory that creates the EP is responsible for providing the allocators required by the EP. The <code>OrtMemoryInfo</code> instance will match one of the values set in the <code>OrtEpDevice</code> using <code>EpDevice_AddAllocatorInfo</code>.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L212">ExampleEpFactory::CreateAllocatorImpl()</a></td>
 </tr>
 
 </table>
