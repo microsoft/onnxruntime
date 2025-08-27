@@ -1655,7 +1655,7 @@ static void RunMoECpuTest(const std::vector<float>& input, const std::vector<flo
   int64_t fc1_output_size = is_swiglu ? (2 * inter_size) : inter_size;
 
   std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, fc1_output_size};  // Legacy format
-  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size};  // Legacy format (matches CUDA)
+  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size};       // Legacy format (matches CUDA)
   std::vector<int64_t> fc3_experts_weights_dims = fc1_experts_weights_dims;
   std::vector<int64_t> fc1_experts_bias_dims = {num_experts, fc1_output_size};
   std::vector<int64_t> fc2_experts_bias_dims = {num_experts, hidden_size};
