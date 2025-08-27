@@ -90,7 +90,8 @@ The following table lists the **optional** functions that an implementor may def
 <td>
 Get the EP's preferred data layout.<br/><br/>
 If this function is not implemented, ORT assumes that the EP prefers the data layout <code>OrtEpDataLayout::NCHW</code>.
-</td></td>
+</td>
+<td></td>
 </tr>
 
 <tr>
@@ -98,7 +99,8 @@ If this function is not implemented, ORT assumes that the EP prefers the data la
 <td>
 Given an op with domain <code>domain</code> and type <code>op_type</code>, determine whether an associated node's data layout should be converted to a <code>target_data_layout</code>. If the EP prefers a non-default data layout, this function will be called during layout transformation with <code>target_data_layout</code> set to the EP's preferred data layout<br/><br/>
 Implementation of this function is optional. If an EP prefers a non-default data layout, it may implement this to customize the specific op data layout preferences at a finer granularity.
-</td></td>
+</td>
+<td></td>
 </tr>
 
 <tr>
@@ -106,7 +108,8 @@ Implementation of this function is optional. If an EP prefers a non-default data
 <td>
 Set dynamic options on this EP. Dynamic options can be set by the application at any time after session creation with <a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#ab1117a51683e4fbb42687c9db6e8d5fb"><code>OrtApi::SetEpDynamicOptions()</code></a>.<br/><br/>
 Implementation of this function is optional. An EP should only impliment this function if it needs to handle any dynamic options.
-</td></td>
+</td>
+<td></td>
 </tr>
 
 <tr>
@@ -114,7 +117,8 @@ Implementation of this function is optional. An EP should only impliment this fu
 <td>
 Called by ORT to notify the EP of the start of a run.<br/><br/>
 Implementation of this function is optional. An EP should only impliment this function if it needs to handle application-provided options at the start of a run.
-</td></td>
+</td>
+<td></td>
 </tr>
 
 <tr>
@@ -122,7 +126,8 @@ Implementation of this function is optional. An EP should only impliment this fu
 <td>
 Called by ORT to notify the EP of the end of a run.<br/><br/>
 Implementation of this function is optional. An EP should only impliment this function if it needs to handle application-provided options at the end of a run.
-</td></td>
+</td>
+<td></td>
 </tr>
 
 </table>
