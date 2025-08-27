@@ -321,7 +321,7 @@ ArmKleidiAI::MlasGemmBatch(
 
             if (can_memcpy) {
                 std::memcpy(dst_tile, temp_tile, TileSizeM * TileSizeN * sizeof(float));
-                return true;
+                return;
             }
 
             float alpha = Data[BIdx].alpha;
@@ -347,7 +347,7 @@ ArmKleidiAI::MlasGemmBatch(
                     }
                 }
             }
-            return true;
+            return;
         });
         return true;
     }
