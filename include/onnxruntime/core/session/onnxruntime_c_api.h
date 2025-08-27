@@ -87,7 +87,7 @@ extern "C" {
 #else
 #define ORT_EXPORT
 #endif
-#define ORT_API_CALL _stdcall
+#define ORT_API_CALL __stdcall
 #define ORT_MUST_USE_RESULT
 #define ORTCHAR_T wchar_t
 #else
@@ -5829,7 +5829,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph,
+  ORT_API2_STATUS(Graph_GetNodes, _In_ const OrtGraph* graph,
                   _Out_writes_(num_nodes) const OrtNode** nodes, _In_ size_t num_nodes);
 
   /** \brief Get the parent node for the given graph, if any exists.
@@ -6469,6 +6469,17 @@ struct OrtApi {
                   _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                   _In_opt_ OrtSyncStream* stream,
                   _In_ size_t num_tensors);
+
+  /** \brief Get ::OrtModelMetadata from an ::OrtGraph
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] out Newly created ::OrtModelMetadata. Must be freed using OrtApi::ReleaseModelMetadata.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetModelMetadata, _In_ const OrtGraph* graph, _Outptr_ OrtModelMetadata** out);
 };
 
 /*

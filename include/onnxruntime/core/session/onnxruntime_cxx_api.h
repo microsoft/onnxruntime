@@ -566,6 +566,7 @@ ORT_DEFINE_RELEASE(ModelMetadata);
 ORT_DEFINE_RELEASE(IoBinding);
 ORT_DEFINE_RELEASE(ArenaCfg);
 ORT_DEFINE_RELEASE(Status);
+ORT_DEFINE_RELEASE(SyncStream);
 ORT_DEFINE_RELEASE(OpAttr);
 ORT_DEFINE_RELEASE(Op);
 ORT_DEFINE_RELEASE(KernelInfo);
@@ -573,9 +574,15 @@ ORT_DEFINE_RELEASE(ValueInfo);
 ORT_DEFINE_RELEASE(Node);
 ORT_DEFINE_RELEASE(Graph);
 ORT_DEFINE_RELEASE(Model);
-ORT_DEFINE_RELEASE(KeyValuePairs)
+ORT_DEFINE_RELEASE(KeyValuePairs);
+ORT_DEFINE_RELEASE(PrepackedWeightsContainer);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
+
+// This is defined explicitly since OrtTensorRTProviderOptionsV2 is not a C API type,
+// but the struct has V2 in its name to indicate that it is the second version of the options.
+inline void OrtRelease(OrtTensorRTProviderOptionsV2* ptr) { GetApi().ReleaseTensorRTProviderOptions(ptr); }
+inline void OrtRelease(OrtCUDAProviderOptionsV2* ptr) { GetApi().ReleaseCUDAProviderOptions(ptr); }
 
 #undef ORT_DEFINE_RELEASE
 #undef ORT_DEFINE_RELEASE_FROM_API_STRUCT
@@ -628,6 +635,7 @@ struct Base {
   }
 
   constexpr operator contained_type*() const noexcept { return p_; }
+  constexpr contained_type& operator*() const noexcept { return *p_; }
 
   /// \brief Relinquishes ownership of the contained C object pointer
   /// The underlying object is not destroyed
@@ -672,6 +680,7 @@ struct Base<Unowned<T>> {
   }
 
   constexpr operator contained_type*() const noexcept { return p_; }
+  constexpr contained_type& operator*() const noexcept { return *p_; }
 
  protected:
   contained_type* p_{};
@@ -697,6 +706,11 @@ struct Model;
 struct Node;
 struct ModelMetadata;
 struct TypeInfo;
+struct PrepackedWeightsContainer;
+struct Session;
+struct SessionOptions;
+struct SyncStream;
+struct TensorRTProviderOptions;
 struct Value;
 struct ValueInfo;
 
@@ -711,14 +725,12 @@ using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
  *  constructors to construct an instance of a Status object from exceptions.
  */
 struct Status : detail::Base<OrtStatus> {
-  using Base = detail::Base<OrtStatus>;
-  using Base::Base;
-
-  explicit Status(std::nullptr_t) noexcept {}               ///< Create an empty object, must be assigned a valid one to be used
-  explicit Status(OrtStatus* status) noexcept;              ///< Takes ownership of OrtStatus instance returned from the C API.
-  explicit Status(const Exception&) noexcept;               ///< Creates status instance out of exception
-  explicit Status(const std::exception&) noexcept;          ///< Creates status instance out of exception
-  Status(const char* message, OrtErrorCode code) noexcept;  ///< Creates status instance out of null-terminated string message.
+  Status() = default;                              // Same as with std::nullptr_t. But can be used in re-sizable containers and represent success.
+  explicit Status(std::nullptr_t) noexcept {}      ///< Create an empty object, must be assigned a valid one to be used
+  explicit Status(OrtStatus* status) noexcept;     ///< Takes ownership of OrtStatus instance returned from the C API.
+  explicit Status(const Exception&);               ///< Creates status instance out of exception
+  explicit Status(const std::exception&);          ///< Creates status instance out of exception
+  Status(const char* message, OrtErrorCode code);  ///< Creates status instance out of null-terminated string message.
   std::string GetErrorMessage() const;
   OrtErrorCode GetErrorCode() const;
   bool IsOK() const noexcept;  ///< Returns true if instance represents an OK (non-error) status.
@@ -752,6 +764,58 @@ struct ThreadingOptions : detail::Base<OrtThreadingOptions> {
 
   /// \brief Wraps OrtApi::SetGlobalCustomJoinThreadFn
   ThreadingOptions& SetGlobalCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);
+};
+
+/** \brief The TensorRTOptions (V2)
+ *
+ * Used to pass options to TRT EP
+ */
+struct TensorRTProviderOptions : detail::Base<OrtTensorRTProviderOptionsV2> {
+  TensorRTProviderOptions(std::nullptr_t) {}
+  /// \brief Wraps OrtApi::CreateTensorRTProviderOptionsV2
+  TensorRTProviderOptions();
+  ///< Wrapper around OrtApi::UpdateTensorRTProviderOptions
+  void Update(const std::unordered_map<std::string, std::string>& options);
+  ///< Wrapper around OrtApi::UpdateTensorRTProviderOptions
+  void UpdateWithValue(const char* key, void* value);
+
+  ///< Wrapper around  OrtApi::GetTensorRTProviderOptionsByName
+  void* GetOptionByName(const char* name) const;
+  ///< Wrapper around  OrtApi::GetTensorRTProviderOptionsAsString
+  std::string GetTensorRTProviderOptionsAsString() const;
+};
+
+/** \brief The CUDAProviderOptions (V2)
+ *
+ * Used to pass options to CUDA EP
+ */
+struct CUDAProviderOptions : detail::Base<OrtCUDAProviderOptionsV2> {
+  CUDAProviderOptions(std::nullptr_t) {}
+  /// \brief Wraps OrtApi::CreateCUDAProviderOptions
+  CUDAProviderOptions();
+  ///< Wrapper around OrtApi::UpdateCUDAProviderOptions
+  void Update(const std::unordered_map<std::string, std::string>& options);
+  ///< Wrapper around OrtApi::GetCUDAProviderOptionsAsString
+  std::string GetCUDAProviderOptionsAsString() const;
+  ///< Wrapper around OrtApi::UpdateCUDAProviderOptionsWithValue
+  void UpdateWithValue(const char* key, void* value);
+  ///< Wrapper around OrtApi::GetCUDAProviderOptionsByName
+  void* GetOptionByName(const char* name) const;
+};
+
+/** \brief The PrepackedWeightsContainer
+ *
+ * Create only and pass to Ort::Session constructor for multiple sessions
+ * to share pre-packed weights.
+ */
+struct PrepackedWeightsContainer : detail::Base<OrtPrepackedWeightsContainer> {
+  using Base = detail::Base<OrtPrepackedWeightsContainer>;
+  ///< No instance is created
+  explicit PrepackedWeightsContainer(std::nullptr_t) {}
+  ///< Take ownership of a pointer created by C API
+  explicit PrepackedWeightsContainer(OrtPrepackedWeightsContainer* p) : Base{p} {}
+  /// \brief Wraps OrtApi::CreatePrepackedWeightsContainer
+  PrepackedWeightsContainer();
 };
 
 namespace detail {
@@ -795,6 +859,111 @@ struct KeyValuePairs : detail::KeyValuePairsImpl<OrtKeyValuePairs> {
 
 namespace detail {
 template <typename T>
+struct MemoryInfoImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  std::string GetAllocatorName() const;             ///< Wrapper MemoryInfoGetName
+  OrtAllocatorType GetAllocatorType() const;        ///< Wrapper MemoryInfoGetType
+  int GetDeviceId() const;                          ///< Wrapper MemoryInfoGetId
+  OrtMemoryInfoDeviceType GetDeviceType() const;    ///< Wrapper MemoryInfoGetDeviceType
+  OrtMemType GetMemoryType() const;                 ///< Wrapper MemoryInfoGetMemType
+  OrtDeviceMemoryType GetDeviceMemoryType() const;  ///< Wrapper MemoryInfoGetDeviceMemType
+  uint32_t GetVendorId() const;                     ///< Wrapper MemoryInfoGetVendorId
+
+  template <typename U>
+  bool operator==(const MemoryInfoImpl<U>& o) const;
+};
+}  // namespace detail
+
+// Const object holder that does not own the underlying object
+using ConstMemoryInfo = detail::MemoryInfoImpl<detail::Unowned<const OrtMemoryInfo>>;
+
+/** \brief Wrapper around ::OrtMemoryInfo
+ *
+ */
+struct MemoryInfo : detail::MemoryInfoImpl<OrtMemoryInfo> {
+  static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
+  explicit MemoryInfo(std::nullptr_t) {}                                       ///< No instance is created
+  explicit MemoryInfo(OrtMemoryInfo* p) : MemoryInfoImpl<OrtMemoryInfo>{p} {}  ///< Take ownership of a pointer created by C API
+  MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
+  MemoryInfo(const char* name, OrtMemoryInfoDeviceType device_type, uint32_t vendor_id, uint32_t device_id,
+             OrtDeviceMemoryType mem_type, size_t alignment, OrtAllocatorType allocator_type);  ///< Wrapper around CreateMemoryInfo_V2
+  ConstMemoryInfo GetConst() const { return ConstMemoryInfo{this->p_}; }
+};
+
+/// <summary>
+/// Represents native memory allocation coming from one of the
+/// OrtAllocators registered with OnnxRuntime.
+/// Use it to wrap an allocation made by an allocator
+/// so it can be automatically released when no longer needed.
+/// </summary>
+struct MemoryAllocation {
+  MemoryAllocation(OrtAllocator* allocator, void* p, size_t size);
+  ~MemoryAllocation();
+  MemoryAllocation(const MemoryAllocation&) = delete;
+  MemoryAllocation& operator=(const MemoryAllocation&) = delete;
+  MemoryAllocation(MemoryAllocation&&) noexcept;
+  MemoryAllocation& operator=(MemoryAllocation&&) noexcept;
+
+  void* get() { return p_; }
+  size_t size() const { return size_; }
+
+ private:
+  OrtAllocator* allocator_;
+  void* p_;
+  size_t size_;
+};
+
+namespace detail {
+template <typename T>
+struct AllocatorImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  void* Alloc(size_t size);
+  MemoryAllocation GetAllocation(size_t size);
+  void Free(void* p);
+  ConstMemoryInfo GetInfo() const;
+
+  /** \brief Function that returns the statistics of the allocator.
+   *
+   * \return A pointer to a KeyValuePairs object that will be filled with the allocator statistics.
+   */
+  KeyValuePairs GetStats() const;
+};
+}  // namespace detail
+
+/** \brief Wrapper around ::OrtAllocator default instance that is owned by Onnxruntime
+ *
+ */
+struct AllocatorWithDefaultOptions : detail::AllocatorImpl<detail::Unowned<OrtAllocator>> {
+  explicit AllocatorWithDefaultOptions(std::nullptr_t) {}  ///< Convenience to create a class member and then replace with an instance
+  AllocatorWithDefaultOptions();
+};
+
+/** \brief Wrapper around ::OrtAllocator
+ *
+ */
+
+struct Allocator : detail::AllocatorImpl<OrtAllocator> {
+  explicit Allocator(std::nullptr_t) {}  ///< Convenience to create a class member and then replace with an instance
+  Allocator(const Session& session, const OrtMemoryInfo*);
+};
+
+using UnownedAllocator = detail::AllocatorImpl<detail::Unowned<OrtAllocator>>;
+
+/** \brief Wrapper around ::OrtSyncStream
+ *
+ */
+struct SyncStream : detail::Base<OrtSyncStream> {
+  explicit SyncStream(std::nullptr_t) {}                             ///< Create an empty SyncStream object, must be assigned a valid one to be used
+  explicit SyncStream(OrtSyncStream* p) : Base<OrtSyncStream>{p} {}  ///< Take ownership of a pointer created by C API
+  void* GetHandle() const;                                           ///< Wraps SyncStream_GetHandle
+};
+
+namespace detail {
+template <typename T>
 struct HardwareDeviceImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
@@ -823,6 +992,8 @@ struct EpDeviceImpl : Ort::detail::Base<T> {
   ConstKeyValuePairs EpMetadata() const;
   ConstKeyValuePairs EpOptions() const;
   ConstHardwareDevice Device() const;
+  ConstMemoryInfo GetMemoryInfo(OrtDeviceMemoryType memory_type) const;       ///< Wraps EpDevice_MemoryInfo
+  SyncStream CreateSyncStream(ConstKeyValuePairs stream_options = {}) const;  /// Wraps EpDevice_CreateSyncStream
 };
 }  // namespace detail
 
@@ -877,10 +1048,28 @@ struct Env : detail::Base<OrtEnv> {
                                     const std::unordered_map<std::string, std::string>& options,
                                     const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocatorV2
 
+  Env& RegisterAllocator(OrtAllocator* allocator);  ///< Wraps OrtApi::RegisterAllocator
+
+  Env& UnregisterAllocator(const OrtMemoryInfo* mem_info);  ///< Wraps OrtApi::UnregisterAllocator
+
+  UnownedAllocator CreateSharedAllocator(const OrtEpDevice* ep_device, OrtDeviceMemoryType mem_type,
+                                         OrtAllocatorType allocator_type,
+                                         const OrtKeyValuePairs* allocator_options);  ///< Wraps OrtApi::CreateSharedAllocator
+
+  // Result may be nullptr
+  UnownedAllocator GetSharedAllocator(const OrtMemoryInfo* mem_info);  ///< Wraps OrtApi::GetSharedAllocator
+
+  void ReleaseSharedAllocator(const OrtEpDevice* ep_device,
+                              OrtDeviceMemoryType mem_type);  ///< Wraps OrtApi::ReleaseSharedAllocator
+
   Env& RegisterExecutionProviderLibrary(const char* registration_name, const std::basic_string<ORTCHAR_T>& path);  ///< Wraps OrtApi::RegisterExecutionProviderLibrary
   Env& UnregisterExecutionProviderLibrary(const char* registration_name);                                          ///< Wraps OrtApi::UnregisterExecutionProviderLibrary
 
   std::vector<ConstEpDevice> GetEpDevices() const;
+
+  Status CopyTensors(const std::vector<Value>& src_tensors,
+                     const std::vector<Value>& dst_tensors,
+                     OrtSyncStream* stream) const;  ///< Wraps OrtApi::CopyTensors
 };
 
 /** \brief Custom Op Domain
@@ -1018,8 +1207,6 @@ struct CustomOpConfigs {
  * Wraps ::OrtSessionOptions object and methods
  */
 
-struct SessionOptions;
-
 namespace detail {
 // we separate const-only methods because passing const ptr to non-const methods
 // is only discovered when inline methods are compiled which is counter-intuitive
@@ -1077,6 +1264,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
                                                                const std::vector<char*>& external_initializer_file_buffer_array,
                                                                const std::vector<size_t>& external_initializer_file_lengths);  ///< Wraps OrtApi::AddExternalInitializersFromFilesInMemory
 
+  SessionOptionsImpl& AppendExecutionProvider_CPU(int use_arena);                                            ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CPU
   SessionOptionsImpl& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
   SessionOptionsImpl& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);     ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2
   SessionOptionsImpl& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_ROCM
@@ -1264,6 +1452,10 @@ struct ConstSessionImpl : Base<T> {
   std::vector<std::string> GetOutputNames() const;
   std::vector<std::string> GetOverridableInitializerNames() const;
 
+  std::vector<ConstMemoryInfo> GetMemoryInfoForInputs() const;   ///< Wrapper for OrtApi::SessionGetMemoryInfoForInputs
+  std::vector<ConstMemoryInfo> GetMemoryInfoForOutputs() const;  ///< Wrapper for OrtApi::SessionGetMemoryInfoForOutputs
+  std::vector<ConstEpDevice> GetEpDeviceForInputs() const;       ///< Wrapper for OrtApi::SessionGetEpDeviceForInputs
+
   /** \brief Returns a copy of input name at the specified index.
    *
    * \param index must less than the value returned by GetInputCount()
@@ -1425,37 +1617,6 @@ struct Session : detail::SessionImpl<OrtSession> {
 
   ConstSession GetConst() const { return ConstSession{this->p_}; }
   UnownedSession GetUnowned() const { return UnownedSession{this->p_}; }
-};
-
-namespace detail {
-template <typename T>
-struct MemoryInfoImpl : Base<T> {
-  using B = Base<T>;
-  using B::B;
-
-  std::string GetAllocatorName() const;
-  OrtAllocatorType GetAllocatorType() const;
-  int GetDeviceId() const;
-  OrtMemoryInfoDeviceType GetDeviceType() const;
-  OrtMemType GetMemoryType() const;
-
-  template <typename U>
-  bool operator==(const MemoryInfoImpl<U>& o) const;
-};
-}  // namespace detail
-
-// Const object holder that does not own the underlying object
-using ConstMemoryInfo = detail::MemoryInfoImpl<detail::Unowned<const OrtMemoryInfo>>;
-
-/** \brief Wrapper around ::OrtMemoryInfo
- *
- */
-struct MemoryInfo : detail::MemoryInfoImpl<OrtMemoryInfo> {
-  static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
-  explicit MemoryInfo(std::nullptr_t) {}                                       ///< No instance is created
-  explicit MemoryInfo(OrtMemoryInfo* p) : MemoryInfoImpl<OrtMemoryInfo>{p} {}  ///< Take ownership of a pointer created by C API
-  MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
-  ConstMemoryInfo GetConst() const { return ConstMemoryInfo{this->p_}; }
 };
 
 namespace detail {
@@ -1686,7 +1847,7 @@ struct ConstValueImpl : Base<T> {
   /// <typeparam name="T"></typeparam>
   /// <returns>const pointer to data, no copies made</returns>
   template <typename R>
-  const R* GetTensorData() const;  ///< Wraps OrtApi::GetTensorMutableData   /// <summary>
+  const R* GetTensorData() const;  ///< Wraps OrtApi::GetTensorData   /// <summary>
 
   /// <summary>
   /// Returns a non-typed pointer to a tensor contained data.
@@ -1956,7 +2117,7 @@ struct Value : detail::ValueImpl<OrtValue> {
   using OrtSparseValuesParam = detail::OrtSparseValuesParam;
   using Shape = detail::Shape;
 
-  explicit Value(std::nullptr_t) {}  ///< Create an empty Value object, must be assigned a valid one to be used
+  Value(std::nullptr_t) {}  ///< Create an empty Value object, must be assigned a valid one to be used
   Value(Value&&) = default;
   Value& operator=(Value&&) = default;
 
@@ -2121,67 +2282,6 @@ struct Value : detail::ValueImpl<OrtValue> {
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 };
 
-/// <summary>
-/// Represents native memory allocation coming from one of the
-/// OrtAllocators registered with OnnxRuntime.
-/// Use it to wrap an allocation made by an allocator
-/// so it can be automatically released when no longer needed.
-/// </summary>
-struct MemoryAllocation {
-  MemoryAllocation(OrtAllocator* allocator, void* p, size_t size);
-  ~MemoryAllocation();
-  MemoryAllocation(const MemoryAllocation&) = delete;
-  MemoryAllocation& operator=(const MemoryAllocation&) = delete;
-  MemoryAllocation(MemoryAllocation&&) noexcept;
-  MemoryAllocation& operator=(MemoryAllocation&&) noexcept;
-
-  void* get() { return p_; }
-  size_t size() const { return size_; }
-
- private:
-  OrtAllocator* allocator_;
-  void* p_;
-  size_t size_;
-};
-
-namespace detail {
-template <typename T>
-struct AllocatorImpl : Base<T> {
-  using B = Base<T>;
-  using B::B;
-
-  void* Alloc(size_t size);
-  MemoryAllocation GetAllocation(size_t size);
-  void Free(void* p);
-  ConstMemoryInfo GetInfo() const;
-
-  /** \brief Function that returns the statistics of the allocator.
-   *
-   * \return A pointer to a KeyValuePairs object that will be filled with the allocator statistics.
-   */
-  KeyValuePairs GetStats() const;
-};
-
-}  // namespace detail
-
-/** \brief Wrapper around ::OrtAllocator default instance that is owned by Onnxruntime
- *
- */
-struct AllocatorWithDefaultOptions : detail::AllocatorImpl<detail::Unowned<OrtAllocator>> {
-  explicit AllocatorWithDefaultOptions(std::nullptr_t) {}  ///< Convenience to create a class member and then replace with an instance
-  AllocatorWithDefaultOptions();
-};
-
-/** \brief Wrapper around ::OrtAllocator
- *
- */
-struct Allocator : detail::AllocatorImpl<OrtAllocator> {
-  explicit Allocator(std::nullptr_t) {}  ///< Convenience to create a class member and then replace with an instance
-  Allocator(const Session& session, const OrtMemoryInfo*);
-};
-
-using UnownedAllocator = detail::AllocatorImpl<detail::Unowned<OrtAllocator>>;
-
 namespace detail {
 namespace binding_utils {
 // Bring these out of template
@@ -2244,6 +2344,12 @@ struct ArenaCfg : detail::Base<OrtArenaCfg> {
    * See docs/C_API.md for details on what the following parameters mean and how to choose these values
    */
   ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk);
+
+  /**
+   * Wraps Ort::CreateArenaCfgV2
+   * See C API for details on what the following parameters mean and how to choose these values
+   */
+  explicit ArenaCfg(const std::unordered_map<std::string, size_t>& arena_config);
 };
 
 //
@@ -2834,6 +2940,7 @@ struct GraphImpl : Ort::detail::Base<T> {
   void SetOutputs(std::vector<ValueInfo>& outputs);
   void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
   void AddNode(Node& node);                                                                 // Graph takes ownership of Node
+  ModelMetadata GetModelMetadata() const;                                                   ///< Wraps OrtApi::Graph_GetModelMetadata
 #endif                                                                                      // !defined(ORT_MINIMAL_BUILD)
 };
 }  // namespace detail
@@ -2848,6 +2955,7 @@ struct Graph : detail::GraphImpl<OrtGraph> {
   Graph();
 #endif
 };
+using ConstGraph = detail::GraphImpl<Ort::detail::Unowned<const OrtGraph>>;
 
 namespace detail {
 template <typename T>

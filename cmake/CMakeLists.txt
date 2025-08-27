@@ -22,7 +22,9 @@ if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
 endif()
 
 # Needed for Java
-set(CMAKE_C_STANDARD 99)
+if (NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_C_STANDARD 99)
+endif()
 
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
@@ -32,11 +34,13 @@ include(CheckFunctionExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
 
-# TODO: update this once all system adapt c++20
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-set(CMAKE_CXX_STANDARD 20)
-else()
-set(CMAKE_CXX_STANDARD 17)
+if (NOT CMAKE_CXX_STANDARD)
+  # TODO: update this once all system adapt c++20
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(CMAKE_CXX_STANDARD 20)
+  else()
+    set(CMAKE_CXX_STANDARD 17)
+  endif()
 endif()
 
 if (MSVC)
@@ -98,7 +102,8 @@ option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
-option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
+cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
+cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" ON "onnxruntime_USE_CUDA" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -696,6 +701,7 @@ if (onnxruntime_USE_CUDA)
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
     set(onnxruntime_USE_LEAN_ATTENTION OFF)
     set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
+    set(onnxruntime_USE_FPA_INTB_GEMM OFF)
   endif()
 
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.6)
@@ -706,6 +712,11 @@ if (onnxruntime_USE_CUDA)
   elseif(WIN32 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
     message( STATUS "Flash-Attention unsupported in Windows with CUDA compiler version < 12.0")
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
+  endif()
+
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
+    message( STATUS "FpA IntB Gemm unsupported for CUDA compiler version < 12.0")
+    set(onnxruntime_USE_FPA_INTB_GEMM OFF)
   endif()
 
   if (WIN32)
@@ -735,6 +746,11 @@ if (onnxruntime_USE_CUDA)
     if (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
       message( STATUS "Enable memory efficient attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_MEMORY_EFFICIENT_ATTENTION=1)
+    endif()
+
+    if (onnxruntime_USE_FPA_INTB_GEMM)
+      message( STATUS "Enable FpA IntB Gemm for CUDA EP")
+      list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
     endif()
 endif()
 
