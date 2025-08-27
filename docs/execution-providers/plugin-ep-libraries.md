@@ -21,6 +21,11 @@ An ONNX Runtime Execution Provider (EP) executes model operations on one or more
 This page provides a reference for the APIs necessary to develop and use plugin EP libraries with ONNX Runtime.
 
 ## Creating a plugin EP library
+A plugin EP is built as a dynamic/shared library that exports the functions `CreateEpFactories()` and `ReleaseEpFactory()`. ONNX Runtime calls `CreateEpFactories()` to obtain one or more instances of `OrtEpFactory`. An `OrtEpFactory` creates `OrtEp` instances and specifies the hardware devices supported by the EPs it creates. A plugin EP library provides ONNX Runtime with custom implementations of `OrtEpFactory` and `OrtEp`.
+
+### Defining an OrtEp
+### Defining an OrtEpFactory
+### Exporting functions from the library
 
 ## Using a plugin EP library
 
@@ -34,13 +39,6 @@ API header files:
 
 
 ### Data Types
-
-| Type | Description |
-|------|-------------|
-| OrtHardwareDeviceType| Enumerates classes of hardware devices:<br/>
-                         - CPU
-                         - GPU |
-| OrtHardwareDevice | Enumerates classes of hardware devices |
 
 <!-- Use an HTML table to allow embedding a code block in a cell -->
 <table>
