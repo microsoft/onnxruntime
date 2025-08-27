@@ -321,8 +321,6 @@ class NvExecutionProvider : public IExecutionProvider {
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
 
-  void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const override;
-
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;

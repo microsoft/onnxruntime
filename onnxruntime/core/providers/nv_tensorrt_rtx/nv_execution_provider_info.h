@@ -41,7 +41,6 @@ struct NvExecutionProviderInfo {
   bool detailed_build_log{false};
   bool sparsity_enable{false};
   int auxiliary_streams{-1};
-  std::string extra_plugin_lib_paths{""};
   std::string profile_min_shapes{""};
   std::string profile_max_shapes{""};
   std::string profile_opt_shapes{""};
@@ -56,6 +55,5 @@ struct NvExecutionProviderInfo {
   static NvExecutionProviderInfo FromProviderOptions(const ProviderOptions& options,
                                                      const ConfigOptions& session_options);
   static ProviderOptions ToProviderOptions(const NvExecutionProviderInfo& info);
-  std::vector<OrtCustomOpDomain*> custom_op_domain_list;
 };
 }  // namespace onnxruntime

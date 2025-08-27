@@ -11,7 +11,6 @@
 #include "nv_allocator.h"
 #include "core/framework/provider_options.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
-#include "core/providers/nv_tensorrt_rtx/nv_execution_provider_custom_ops.h"
 #include <string.h>
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
@@ -29,19 +28,6 @@ struct ProviderInfo_Nv_Impl final : ProviderInfo_Nv {
     if (cuda_err != cudaSuccess) {
       return CreateStatus(ORT_FAIL, "Failed to get device id.");
     }
-    return nullptr;
-  }
-
-  OrtStatus* GetTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) override {
-    common::Status status = CreateTensorRTCustomOpDomainList(domain_list, extra_plugin_lib_paths);
-    if (!status.IsOK()) {
-      return CreateStatus(ORT_FAIL, "[NvTensorRTRTX EP] Can't create custom ops for TRT plugins.");
-    }
-    return nullptr;
-  }
-
-  OrtStatus* ReleaseCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list) override {
-    ReleaseTensorRTCustomOpDomainList(domain_list);
     return nullptr;
   }
 } g_info;
