@@ -473,9 +473,9 @@ MlasGemmQuantCopyPackA8x8(
             }
             if (CountM == 1) {
                 D += 16;
-            }
-            else
+            } else {
                 D += 16 * 4;
+            }
             a += 16;
             y -= 16;
         }
