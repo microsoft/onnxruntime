@@ -23,20 +23,18 @@ This page provides a reference for the APIs necessary to develop and use plugin 
 ## Creating a plugin EP library
 A plugin EP is built as a dynamic/shared library that exports the functions `CreateEpFactories()` and `ReleaseEpFactory()`. ONNX Runtime calls `CreateEpFactories()` to obtain one or more instances of `OrtEpFactory`. An `OrtEpFactory` creates `OrtEp` instances and specifies the hardware devices supported by the EPs it creates.
 
-In essence, A plugin EP library provides ONNX Runtime with custom implementations of `OrtEpFactory` and `OrtEp`.
-
 The ONNX Runtime repository includes a [sample plugin EP library](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/autoep/library), which is referenced in the following sections.
 
 ### Defining an OrtEp
 An `OrtEp` represents an instance of an EP that is used by an ONNX Runtime session to identify and execute the model operations supported by the EP.
 
-The following table lists the required varibles and functions that an implementor must define for an `OrtEp`.
+The following table lists the **required** varibles and functions that an implementer must define for an `OrtEp`.
 
 <table>
 <tr>
 <th>Field</th>
 <th>Summary</th>
-<th>Sample EP reference</th>
+<th>Example implementation</th>
 </tr>
 
 <tr>
@@ -82,7 +80,7 @@ The following table lists the **optional** functions that an implementor may def
 <tr>
 <th>Field</th>
 <th>Summary</th>
-<th>Sample EP reference</th>
+<th>Example implementation</th>
 </tr>
 
 <tr>
@@ -130,9 +128,53 @@ Implementation of this function is optional. An EP should only impliment this fu
 <td></td>
 </tr>
 
+<tr>
+<td><a href="c-api-ort-ep-create-allocator">CreateAllocator</a></td>
+<td>
+Create an <code>OrtAllocator</code> for the given <code>OrtMemoryInfo</code> for an <code>OrtSession</code>.<br/><br/>The <code>OrtMemoryInfo</code> instance will match one of the values set in the <code>OrtEpDevice</code> using <code>EpDevice_AddAllocatorInfo</code>. Any allocator specific options should be read from the session options.<br/><br/>
+Implementation of this function is optional. If not provided, ORT will use `OrtEpFactory::CreateAllocator()`.
+</td>
+<td></td>
+</tr>
+
+<tr>
+<td><a href="c-api-ort-ep-create-sync-stream-for-device">CreateSyncStreamForDevice</a></td>
+<td>
+Create a synchronization stream for the given memory device for an <code>OrtSession</code>.<br/><br/>This is used to create a synchronization stream for the execution provider and is used to synchronize operations on the device during model execution. Any stream specific options should be read from the session options.<br/><br/>
+Implementation of this function is optional. If not provided, ORT will use `OrtEpFactory::CreateSyncStreamForDevice()`.
+</td>
+<td></td>
+</tr>
+
 </table>
 
 ### Defining an OrtEpFactory
+An `OrtEpFactory` represents an instance of an EP factory that is used by an ONNX Runtime session to query device support, create allocators, create data transfer objects, and create instances of an EP (i.e., an `OrtEp`).
+
+The following table lists the required variables and functions that an implementer must define for an `OrtEpFactory`.
+
+<table>
+<tr>
+<th>Field</th>
+<th>Summary</th>
+<th>Example implementation</th>
+</tr>
+
+<tr>
+<td><a href="#c-api-ort-ep-factory-ort-version-supported">ort_version_supported</a></td>
+<td>The ONNX Runtime version with which the EP was compiled. Implementation should set this to <code>ORT_API_VERSION</code>.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L16">ExampleEpFactory()</a></td>
+</tr>
+
+<tr>
+<td><a href="#c-api-ort-ep-factory-get-name">GetName</a></td>
+<td>Get the name of the EP that the factory creates. Must match `OrtEp::GetName()`.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L77">ExampleEpFactory::GetNameImpl()</a></td>
+</tr>
+
+</table>
+
+
 ### Exporting functions to create and release factories
 
 ## Using a plugin EP library
