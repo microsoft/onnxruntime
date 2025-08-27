@@ -1482,24 +1482,41 @@ class Cos final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).cos();
+    MakeEigenArrayMap<T>(Y) = MakeEigenArrayMap<T>(X).cos();
     return Status::OK();
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Cos,
     7,
     21,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cos<float>);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Cos,
+    7,
+    21,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Cos<double>);
+
 // Opset 22 starts to support bfloat16
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Cos,
     22,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cos<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Cos,
+    22,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Cos<double>);
 
 template <typename T>
 class Tan final : public OpKernel {
@@ -1510,22 +1527,38 @@ class Tan final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).tan();
+    MakeEigenArrayMap<T>(Y) = MakeEigenArrayMap<T>(X).tan();
     return Status::OK();
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Tan,
     7, 21,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Tan<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Tan,
+    7, 21,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Tan<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Tan,
     22,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Tan<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Tan,
+    22,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Tan<double>);
 
 template <typename T>
 class Asin final : public OpKernel {
@@ -1536,24 +1569,41 @@ class Asin final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).asin();
+    MakeEigenArrayMap<T>(Y) = MakeEigenArrayMap<T>(X).asin();
     return Status::OK();
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Asin,
     7,
     21,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Asin<float>);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Asin,
+    7,
+    21,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Asin<double>);
+
 // Opset 22 starts to support bfloat16
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Asin,
     22,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Asin<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Asin,
+    22,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Asin<double>);
 
 template <typename T>
 class Acos final : public OpKernel {
@@ -1564,24 +1614,41 @@ class Acos final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).acos();
+    MakeEigenArrayMap<T>(Y) = MakeEigenArrayMap<T>(X).acos();
     return Status::OK();
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Acos,
     7,
     21,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Acos<float>);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Acos,
+    7,
+    21,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Acos<double>);
+
 // Opset 22 starts to support bfloat16
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Acos,
     22,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Acos<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Acos,
+    22,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Acos<double>);
 
 template <typename T>
 class Atan final : public OpKernel {
@@ -1592,24 +1659,41 @@ class Atan final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).atan();
+    MakeEigenArrayMap<T>(Y) = MakeEigenArrayMap<T>(X).atan();
     return Status::OK();
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Atan,
     7,
     21,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Atan<float>);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Atan,
+    7,
+    21,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Atan<double>);
+
 // Opset 22 starts to support bfloat16
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Atan,
     22,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Atan<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Atan,
+    22,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Atan<double>);
 
 template <typename T>
 class Sinh final : public OpKernel {
@@ -1620,24 +1704,41 @@ class Sinh final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).sinh();
+    MakeEigenArrayMap<T>(Y) = MakeEigenArrayMap<T>(X).sinh();
     return Status::OK();
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Sinh,
     9,
     21,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Sinh<float>);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Sinh,
+    9,
+    21,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Sinh<double>);
+
 // Opset 22 starts to support bfloat16
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Sinh,
     22,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Sinh<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Sinh,
+    22,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Sinh<double>);
 
 template <typename T>
 class Cosh final : public OpKernel {
@@ -1648,24 +1749,41 @@ class Cosh final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).cosh();
+    MakeEigenArrayMap<T>(Y) = MakeEigenArrayMap<T>(X).cosh();
     return Status::OK();
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Cosh,
     9,
     21,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cosh<float>);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Cosh,
+    9,
+    21,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Cosh<double>);
+
 // Opset 22 starts to support bfloat16
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Cosh,
     22,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cosh<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Cosh,
+    22,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Cosh<double>);
 
 template <typename T>
 class Asinh final : public OpKernel {
@@ -1677,8 +1795,8 @@ class Asinh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
 
-    auto X_data = X.Data<float>();
-    auto Y_data = Y.MutableData<float>();
+    auto X_data = X.Data<T>();
+    auto Y_data = Y.MutableData<T>();
 
     auto in = gsl::make_span(X_data, narrow<ptrdiff_t>(X.Shape().Size()));
     auto out = gsl::make_span(Y_data, narrow<ptrdiff_t>(Y.Shape().Size()));
@@ -1693,19 +1811,36 @@ class Asinh final : public OpKernel {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Asinh);
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Asinh,
     9,
     21,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Asinh<float>);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Asinh,
+    9,
+    21,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Asinh<double>);
+
 // Opset 22 starts to support bfloat16
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Asinh,
     22,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Asinh<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Asinh,
+    22,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Asinh<double>);
 
 template <typename T>
 class Acosh final : public OpKernel {
@@ -1717,8 +1852,8 @@ class Acosh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
 
-    auto X_data = X.Data<float>();
-    auto Y_data = Y.MutableData<float>();
+    auto X_data = X.Data<T>();
+    auto Y_data = Y.MutableData<T>();
 
     auto in = gsl::make_span(X_data, narrow<ptrdiff_t>(X.Shape().Size()));
     auto out = gsl::make_span(Y_data, narrow<ptrdiff_t>(Y.Shape().Size()));
@@ -1733,19 +1868,36 @@ class Acosh final : public OpKernel {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Acosh);
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Acosh,
     9,
     21,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Acosh<float>);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Acosh,
+    9,
+    21,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Acosh<double>);
+
 // Opset 22 starts to support bfloat16
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Acosh,
     22,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Acosh<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Acosh,
+    22,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Acosh<double>);
 
 template <typename T>
 class Atanh final : public OpKernel {
@@ -1757,8 +1909,8 @@ class Atanh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
 
-    auto X_data = X.Data<float>();
-    auto Y_data = Y.MutableData<float>();
+    auto X_data = X.Data<T>();
+    auto Y_data = Y.MutableData<T>();
 
     auto in = gsl::make_span(X_data, narrow<ptrdiff_t>(X.Shape().Size()));
     auto out = gsl::make_span(Y_data, narrow<ptrdiff_t>(Y.Shape().Size()));
@@ -1773,19 +1925,36 @@ class Atanh final : public OpKernel {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Atanh);
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Atanh,
     9,
     21,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Atanh<float>);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Atanh,
+    9,
+    21,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Atanh<double>);
+
 // Opset 22 starts to support bfloat16
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Atanh,
     22,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Atanh<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Atanh,
+    22,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Atanh<double>);
 
 template <>
 Status PRelu<float>::Compute(OpKernelContext* context) const {
