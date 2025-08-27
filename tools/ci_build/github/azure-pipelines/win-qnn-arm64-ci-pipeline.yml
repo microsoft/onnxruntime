@@ -43,7 +43,7 @@ jobs:
     buildArch: arm64
     BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-  timeoutInMinutes: 240
+  timeoutInMinutes: 300
   workspace:
     clean: all
   strategy:
