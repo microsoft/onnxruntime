@@ -23,9 +23,9 @@ class QnnModelWrapper;
 
 class LowPowerBlockQuantizedMatMulFusion : public IQnnNodeGroup {
  public:
-  LowPowerBlockQuantizedMatMulFusion(const NodeUnit& Scale_DQL_node_unit,
-                                     const NodeUnit& W_QL_node_unit,
-                                     const NodeUnit& MatMul_node_unit);
+  LowPowerBlockQuantizedMatMulFusion(const NodeUnit* Scale_DQL_node_unit,
+                                     const NodeUnit* W_QL_node_unit,
+                                     const NodeUnit* MatMul_node_unit);
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(LowPowerBlockQuantizedMatMulFusion);
 
   Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const override;

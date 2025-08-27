@@ -23,12 +23,12 @@ class QnnModelWrapper;
 
 class LowPowerBlockQuantizedGemmFusion : public IQnnNodeGroup {
  public:
-  LowPowerBlockQuantizedGemmFusion(const NodeUnit& Scale_DQL_node_unit,
-                                   const NodeUnit& W_QL_node_unit,
-                                   const NodeUnit& W_DQL_node_unit,
-                                   const NodeUnit& Act_DQL_node_unit,
-                                   const NodeUnit& Gemm_node_unit,
-                                   const NodeUnit& Output_QL_node_unit);
+  LowPowerBlockQuantizedGemmFusion(const NodeUnit* Scale_DQL_node_unit,
+                                   const NodeUnit* W_QL_node_unit,
+                                   const NodeUnit* W_DQL_node_unit,
+                                   const NodeUnit* Act_DQL_node_unit,
+                                   const NodeUnit* Gemm_node_unit,
+                                   const NodeUnit* Output_QL_node_unit);
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(LowPowerBlockQuantizedGemmFusion);
 
   Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
