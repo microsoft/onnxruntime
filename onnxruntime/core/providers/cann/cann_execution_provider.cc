@@ -1266,7 +1266,7 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
   // the single operator operation mode of CANN
   if (info_.enable_cann_graph) {
     std::vector<NodeIndex>&& unsupported_nodes = SupportONNXModel(graph_viewer);
-    if (!unsupported_nodes.empty() && !info_.disable_graph_split) {
+    if (info_.enable_cann_subgraph && !unsupported_nodes.empty()) {
       auto partitions = GetSubGraphPartition(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
 
       for (const auto& partition : partitions) {

@@ -2902,7 +2902,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCANNProviderOptions, _Outptr_ OrtCANNProvider
   options->npu_mem_limit = SIZE_MAX;
   options->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
   options->enable_cann_graph = 1;
-  options->disable_graph_split = 0;
+  options->enable_cann_subgraph = 0;
   options->dump_graphs = 0;
   options->dump_om_model = 1;
   options->default_memory_arena_cfg = nullptr;
