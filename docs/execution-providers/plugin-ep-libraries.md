@@ -243,10 +243,54 @@ The factory that creates the EP is responsible for providing the allocators requ
 <td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L272">ExampleEpFactory::ReleaseAllocatorImpl()</a></td>
 </tr>
 
+<tr>
+<td><a href="#c-api-ort-ep-factory-create-data-transfer">CreateDataTransfer</a></td>
+<td>Creates an <code>OrtDataTransferImpl</code> instance for the factory.<br/><br/>
+An <code>OrtDataTransferImpl</code> can be used to copy data between devices that the EP supports.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L286">ExampleEpFactory::CreateDataTransferImpl()</a></td>
+</tr>
+
+<tr>
+<td><a href="#c-api-ort-ep-factory-is-stream-aware">IsStreamAware</a></td>
+<td>Returns true if the EPs created by the factory are stream-aware.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L295">ExampleEpFactory::IsStreamAwareImpl()</a></td>
+</tr>
+
+<tr>
+<td><a href="#c-api-ort-ep-factory-create-sync-stream-for-device">CreateSyncStreamForDevice</a></td>
+<td>Creates a synchronization stream for the given <code>OrtMemoryDevice</code>.<br/><br/>
+This is use to create a synchronization stream for the <code>OrtMemoryDevice</code> that can be used for operations outside of a session.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L300">ExampleEpFactory::CreateSyncStreamForDeviceImpl()</a></td>
+</tr>
+
 </table>
 
 
 ### Exporting functions to create and release factories
+ONNX Runtime expects a plugin EP library to export certain functions/symbols.
+The following table lists the functions that have to be exported from the plugin EP library.
+
+<table>
+<tr>
+<th>Function</th>
+<th>Description</th>
+<th>Example implementation</th>
+</tr>
+
+<tr>
+<td>CreateEpFactories</td>
+<td>ONNX Runtime calls this function to create <code>OrtEpFactory</code> instances.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/example_plugin_ep.cc#L17">ExampleEp: CreateEpFactories</a></td>
+</tr>
+
+<tr>
+<td>ReleaseEpFactory</td>
+<td>ONNX Runtime calls this function to release an <code>OrtEpFactory</code> instance.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/example_plugin_ep.cc#L41">ExampleEp: ReleaseEpFactory</a></td>
+</tr>
+
+</table>
+
 
 ## Using a plugin EP library
 
@@ -558,37 +602,6 @@ SessionOptionsSetEpSelectionPolicy
 <tr>
 <td>
 SessionOptionsSetEpSelectionPolicyDelegate
-</td>
-<td>
-</td>
-</tr>
-
-</table>
-
-### Plugin EP Library Exported Symbols
-The following table lists the functions that have to be exported from the plugin EP library.
-
-<table>
-<tr>
-<th>
-Function
-</th>
-<th>
-Description
-</th>
-</tr>
-
-<tr>
-<td>
-CreateEpFactories
-</td>
-<td>
-</td>
-</tr>
-
-<tr>
-<td>
-ReleaseEpFactory
 </td>
 <td>
 </td>
