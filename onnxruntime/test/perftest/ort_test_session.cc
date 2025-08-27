@@ -238,6 +238,18 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name_ == onnxruntime::kNvTensorRTRTXExecutionProvider) {
 #ifdef USE_NV
+#ifdef _MSC_VER
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    ParseSessionConfigs(ov_string, provider_options);
+    if (!provider_options.empty()) {
+      std::cout << "Setting NV TensorRT RTX provider options to:\n";
+      for (const auto& provider_option : provider_options) {
+        std::cout << "\t" << provider_option.first << ":" << provider_option.second << "\n";
+      }
+    }
     session_options.AppendExecutionProvider("NvTensorRtRtx", provider_options);
     if (performance_test_config.run_config.enable_cuda_io_binding) {
       device_memory_name_ = CUDA;
