@@ -10,16 +10,9 @@ OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& /* ort_api */, const Ort
                                           /*out*/ std::string& config_val) {
   try {
     Ort::ConstSessionOptions sess_opt{&session_options};
-    bool has_config = sess_opt.HasConfigEntry(config_key);
-
-    if (!has_config) {
-      config_val = default_val;
-      return nullptr;
-    }
-
-    config_val = sess_opt.GetConfigEntry(config_key);
+    config_val = sess_opt.GetConfigEntryOrDefault(config_key, default_val);
   } catch (const Ort::Exception& ex) {
-    Ort::Status status(ex.what(), ex.GetOrtErrorCode());
+    Ort::Status status(ex);
     return status.release();
   }
 

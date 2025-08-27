@@ -2402,9 +2402,9 @@ struct ConstOpAttrImpl : Base<T> {
   using B::B;
 
   // Wraps OrtApi::OpAttr_GetName
-  Status GetName(std::string& name) const;
+  std::string GetName() const;
   // Wraps OrtApi::OpAttr_GetType
-  Status GetType(OrtOpAttrType& type) const;
+  OrtOpAttrType GetType() const;
 
   // Wraps OrtApi::ReadAttr for a single value
   // This does not support Tensor Attribute
@@ -2982,29 +2982,27 @@ struct ConstValueInfoImpl : Base<T> {
   using B::B;
 
   /// < A wrapper around OrtApi::GetValueInfoName
-  Status Name(std::string& name) const;
+  std::string GetName() const;
   /// < A wrapper around OrtApi::GetValueInfoTypeInfo
-  Status TypeInfo(ConstTypeInfo& type_info) const;
+  ConstTypeInfo TypeInfo() const;
   ///< Wraps OrtApi::ValueInfo_GetProducerNode
-  Status GetProducerNode(ValueInfoConsumerProducerInfo& info) const;
-  /// < A wrapper around OrtApi::ValueInfo_GetValueNumConsumers
-  Status GetNumConsumers(size_t& num) const;
+  ValueInfoConsumerProducerInfo GetProducerNode() const;
   /// < A wrapper around OrtApi::ValueInfo_GetValueConsumers
-  Status GetConsumers(std::vector<ValueInfoConsumerProducerInfo>& out) const;
+  std::vector<ValueInfoConsumerProducerInfo> GetConsumers() const;
   /// < A wrapper around OrtApi::ValueInfo_GetInitializerValue
   Status GetInitializer(ConstValue& value) const;
   /// < A wrapper around OrtApi::ValueInfo_GetExternalInitializerInfo
   Status GetExternalInitializerInfo(ExternalInitializerInfo& info) const;
   /// < A wrapper around OrtApi::ValueInfo_IsRequiredGraphInput
-  Status IsRequiredGraphInput(bool& out) const;
+  bool IsRequiredGraphInput() const;
   /// < A wrapper around OrtApi::ValueInfo_IsOptionalGraphInput
-  Status IsOptionalGraphInput(bool& out) const;
+  bool IsOptionalGraphInput() const;
   /// < A wrapper around OrtApi::ValueInfo_IsGraphOutput
-  Status IsGraphOutput(bool& out) const;
+  bool IsGraphOutput() const;
   /// < A wrapper around OrtApi::ValueInfo_IsConstantInitializer
-  Status IsConstantInitializer(bool& out) const;
+  bool IsConstantInitializer() const;
   /// < A wrapper around OrtApi::ValueInfo_IsFromOuterScope
-  Status IsFromOuterScope(bool& out) const;
+  bool IsFromOuterScope() const;
 };
 }  // namespace detail
 

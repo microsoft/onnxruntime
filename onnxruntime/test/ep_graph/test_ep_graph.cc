@@ -158,8 +158,7 @@ TEST(EpGraphTest, GetAttributeByName) {
     ASSERT_NE(attr_p, nullptr);
 
     Ort::ConstOpAttr attr{attr_p};
-    OrtOpAttrType type;
-    ASSERT_ORTSTATUS_OK(attr.GetType(type));
+    OrtOpAttrType type = attr.GetType();
     ASSERT_EQ(ORT_OP_ATTR_STRING, type);
     std::string auto_pad_val;
     ASSERT_ORTSTATUS_OK(attr.GetValue<std::string>(auto_pad_val));
@@ -440,7 +439,7 @@ TEST(EpGraphTest, SerializeToProto_ExternalInitializersInMemory) {
     Ort::ConstValue ort_value;
 
     Ort::ConstValueInfo vi(api_initializers[i]);
-    ASSERT_ORTSTATUS_OK(vi.Name(value_name));
+    value_name = vi.GetName();
     ASSERT_ORTSTATUS_OK(vi.GetInitializer(ort_value));
     const void* ort_value_data = ort_value.GetTensorRawData();
 
@@ -718,8 +717,7 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
                                       const ONNX_NAMESPACE::TensorProto* tensor_proto,
                                       const GraphViewer& graph_viewer) {
   Ort::ConstValueInfo vi(api_value_info);
-  std::string api_initializer_name;
-  ASSERT_ORTSTATUS_OK(vi.Name(api_initializer_name));
+  std::string api_initializer_name = vi.GetName();
 
   // Check external initializer info (if any).
   Ort::ExternalInitializerInfo api_ext_info;
@@ -750,8 +748,7 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
   const ONNX_NAMESPACE::TypeProto type_proto = utils::TypeProtoFromTensorProto(*tensor_proto);
   auto type_info = OrtTypeInfo::FromTypeProto(type_proto);
 
-  Ort::ConstTypeInfo api_type_info;
-  ASSERT_ORTSTATUS_OK(vi.TypeInfo(api_type_info));
+  Ort::ConstTypeInfo api_type_info = vi.TypeInfo();
   CheckTypeInfo(api_type_info, type_info.get());
 }
 
@@ -760,8 +757,7 @@ static void CheckInitializerValueInfosCApi(gsl::span<const OrtValueInfo* const> 
                                            const GraphViewer& graph_viewer) {
   for (size_t i = 0; i < initializer_value_infos.size(); i++) {
     Ort::ConstValueInfo vi(initializer_value_infos[i]);
-    std::string api_initializer_name;
-    ASSERT_ORTSTATUS_OK(vi.Name(api_initializer_name));
+    std::string api_initializer_name = vi.GetName();
 
     auto tensor_proto_iter = initializer_tensor_protos.find(api_initializer_name);
     ASSERT_NE(tensor_proto_iter, initializer_tensor_protos.end());
@@ -786,8 +782,7 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
 
     if (node_arg->Exists()) {
       const auto& value_name = node_arg->Name();
-      std::string api_name;
-      ASSERT_ORTSTATUS_OK(vi.Name(api_name));
+      std::string api_name = vi.GetName();
       ASSERT_EQ(std::string(api_name), value_name);
 
       bool is_graph_input = std::any_of(graph_viewer_inputs.begin(), graph_viewer_inputs.end(),
@@ -807,32 +802,26 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
                                                                                               /*check_outer_scope*/ true);
       bool can_override_initializer = graph_viewer.CanOverrideInitializer();
 
-      bool api_is_req_graph_input = false;
-      bool api_is_opt_graph_input = false;
-      ASSERT_ORTSTATUS_OK(vi.IsRequiredGraphInput(api_is_req_graph_input));
-      ASSERT_ORTSTATUS_OK(vi.IsOptionalGraphInput(api_is_opt_graph_input));
+      bool api_is_req_graph_input = vi.IsRequiredGraphInput();
+      bool api_is_opt_graph_input = vi.IsOptionalGraphInput();
       ASSERT_EQ(api_is_req_graph_input, is_graph_input && (initializer == nullptr));
       ASSERT_EQ(api_is_opt_graph_input, can_override_initializer && (initializer != nullptr) && !is_const_initializer);
 
-      bool api_is_graph_output = false;
-      ASSERT_ORTSTATUS_OK(vi.IsGraphOutput(api_is_graph_output));
+      bool api_is_graph_output = vi.IsGraphOutput();
       ASSERT_EQ(api_is_graph_output, is_graph_output);
 
       bool is_outer_scope = graph_viewer.GetGraph().IsOuterScopeValue(node_arg->Name());
-      bool api_is_outer_scope = false;
-      ASSERT_ORTSTATUS_OK(vi.IsFromOuterScope(api_is_outer_scope));
+      bool api_is_outer_scope = vi.IsFromOuterScope();
       ASSERT_EQ(api_is_outer_scope, is_outer_scope);
 
-      bool api_is_const_initializer = false;
-      ASSERT_ORTSTATUS_OK(vi.IsConstantInitializer(api_is_const_initializer));
+      bool api_is_const_initializer = vi.IsConstantInitializer();
       ASSERT_EQ(api_is_const_initializer, is_const_initializer);
 
       if (is_const_initializer || api_is_opt_graph_input) {
         CheckInitializerValueInfo(vi, initializer, graph_viewer);
       } else {
         auto node_arg_type_info = OrtTypeInfo::FromTypeProto(*node_arg->TypeAsProto());
-        Ort::ConstTypeInfo api_type_info;
-        ASSERT_ORTSTATUS_OK(vi.TypeInfo(api_type_info));
+        Ort::ConstTypeInfo api_type_info = vi.TypeInfo();
         CheckTypeInfo(api_type_info, node_arg_type_info.get());
       }
 

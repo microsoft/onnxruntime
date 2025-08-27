@@ -566,8 +566,7 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(const OrtValueInfo& ort_value_
                                                   /*out*/ std::vector<int64_t>& dims,
                                                   /*out*/ std::vector<std::string>& symbolic_dims) {
   Ort::ConstValueInfo vi(&ort_value_info);
-  Ort::ConstTypeInfo ort_type_info;
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(vi.TypeInfo(ort_type_info));
+  Ort::ConstTypeInfo ort_type_info = vi.TypeInfo();
 
   try {
     ONNXType ort_onnx_type = ort_type_info.GetONNXType();
@@ -577,8 +576,7 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(const OrtValueInfo& ort_value_
     ONNXTensorElementDataType ort_elem_type = ort_type_shape.GetElementType();
 
     size_t num_dims = ort_type_shape.GetDimensionsCount();
-    std::vector<int64_t> ort_dims(num_dims, 0);
-    ort_type_shape.GetDimensions(ort_dims.data(), ort_dims.size());
+    std::vector<int64_t> ort_dims = ort_type_shape.GetShape();
 
     elem_type = ort_elem_type;
     dims = std::move(ort_dims);
@@ -645,160 +643,164 @@ static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info,
 
 static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& ort_attr, onnx::AttributeProto& attr_proto) {
   Ort::ConstOpAttr attr(&ort_attr);
-  std::string attr_name;
-  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetName(attr_name));
-  attr_proto.set_name(attr_name);
+  try {
+    std::string attr_name = attr.GetName();
+    attr_proto.set_name(attr_name);
 
-  OrtOpAttrType attr_type;
-  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetType(attr_type));
+    OrtOpAttrType attr_type = attr.GetType();
 
-  switch (attr_type) {
-    case OrtOpAttrType::ORT_OP_ATTR_INT: {
-      int64_t i_val = 0;
-      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValue(i_val));
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_INT);
-      attr_proto.set_i(i_val);
-      break;
-    }
-    case OrtOpAttrType::ORT_OP_ATTR_INTS: {
-      std::vector<int64_t> i_vals;
-      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValueArray(i_vals));
-      auto* ints = attr_proto.mutable_ints();
-      ints->Assign(i_vals.begin(), i_vals.end());
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_INTS);
-      break;
-    }
-    case OrtOpAttrType::ORT_OP_ATTR_FLOAT: {
-      float f_val = 0.0f;
-      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValue(f_val));
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_FLOAT);
-      attr_proto.set_f(f_val);
-      break;
-    }
-    case OrtOpAttrType::ORT_OP_ATTR_FLOATS: {
-      std::vector<float> f_vals;
-      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValueArray(f_vals));
-      auto* floats = attr_proto.mutable_floats();
-      floats->Assign(f_vals.begin(), f_vals.end());
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_FLOATS);
-      break;
-    }
-    case OrtOpAttrType::ORT_OP_ATTR_STRING: {
-      std::string* str = attr_proto.mutable_s();
-      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValue(*str));
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_STRING);
-      break;
-    }
-    case OrtOpAttrType::ORT_OP_ATTR_STRINGS: {
-      std::vector<std::string> result;
-      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValueArray(result));
-      auto* strs = attr_proto.mutable_strings();
-      strs->Assign(result.begin(), result.end());
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_STRINGS);
-      break;
-    }
-    case OrtOpAttrType::ORT_OP_ATTR_TENSOR: {
-      const OrtApi& ort_api = Ort::GetApi();
-      attr_proto.set_type(onnx::AttributeProto_AttributeType_TENSOR);
-
-      onnx::TensorProto tensor_proto;
-
-      // TensorProto as an attribute value doesn't require a name.
-
-      OrtValue* ort_value = nullptr;
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetTensorAttributeAsOrtValue(&ort_node, &ort_attr, &ort_value));
-
-      Ort::Value tensor(ort_value);
-
-      // Get tensor type and shape info
-      Ort::TensorTypeAndShapeInfo type_shape_info = tensor.GetTensorTypeAndShapeInfo();
-
-      // Get tensor type
-      ONNXTensorElementDataType element_type = type_shape_info.GetElementType();
-
-      size_t element_size = 0;
-      switch (element_type) {
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_FLOAT);
-          element_size = sizeof(float);
-          break;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT8);
-          element_size = sizeof(uint8_t);
-          break;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_INT8);
-          element_size = sizeof(int8_t);
-          break;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT16);
-          element_size = sizeof(uint16_t);
-          break;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_INT16);
-          element_size = sizeof(int16_t);
-          break;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_INT32);
-          element_size = sizeof(int32_t);
-          break;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_INT64);
-          element_size = sizeof(int64_t);
-          break;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_BOOL);
-          element_size = sizeof(bool);
-          break;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_DOUBLE);
-          element_size = sizeof(double);
-          break;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT32);
-          element_size = sizeof(uint32_t);
-          break;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: {
-          tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT64);
-          element_size = sizeof(uint64_t);
-          break;
-        }
-        default: {
-          std::string err_msg = "Unexpected ONNXTensorElementDataType with value " + std::to_string(static_cast<int>(element_type));
-          return Ort::Status(err_msg.c_str(), ORT_FAIL);
-        }
+    switch (attr_type) {
+      case OrtOpAttrType::ORT_OP_ATTR_INT: {
+        int64_t i_val = 0;
+        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValue(i_val));
+        attr_proto.set_type(onnx::AttributeProto_AttributeType_INT);
+        attr_proto.set_i(i_val);
+        break;
       }
-
-      auto shape = type_shape_info.GetShape();
-
-      for (auto& dim : shape) {
-        tensor_proto.add_dims(dim);
+      case OrtOpAttrType::ORT_OP_ATTR_INTS: {
+        std::vector<int64_t> i_vals;
+        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValueArray(i_vals));
+        auto* ints = attr_proto.mutable_ints();
+        ints->Assign(i_vals.begin(), i_vals.end());
+        attr_proto.set_type(onnx::AttributeProto_AttributeType_INTS);
+        break;
       }
+      case OrtOpAttrType::ORT_OP_ATTR_FLOAT: {
+        float f_val = 0.0f;
+        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValue(f_val));
+        attr_proto.set_type(onnx::AttributeProto_AttributeType_FLOAT);
+        attr_proto.set_f(f_val);
+        break;
+      }
+      case OrtOpAttrType::ORT_OP_ATTR_FLOATS: {
+        std::vector<float> f_vals;
+        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValueArray(f_vals));
+        auto* floats = attr_proto.mutable_floats();
+        floats->Assign(f_vals.begin(), f_vals.end());
+        attr_proto.set_type(onnx::AttributeProto_AttributeType_FLOATS);
+        break;
+      }
+      case OrtOpAttrType::ORT_OP_ATTR_STRING: {
+        std::string* str = attr_proto.mutable_s();
+        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValue(*str));
+        attr_proto.set_type(onnx::AttributeProto_AttributeType_STRING);
+        break;
+      }
+      case OrtOpAttrType::ORT_OP_ATTR_STRINGS: {
+        std::vector<std::string> result;
+        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(attr.GetValueArray(result));
+        auto* strs = attr_proto.mutable_strings();
+        strs->Assign(result.begin(), result.end());
+        attr_proto.set_type(onnx::AttributeProto_AttributeType_STRINGS);
+        break;
+      }
+      case OrtOpAttrType::ORT_OP_ATTR_TENSOR: {
+        const OrtApi& ort_api = Ort::GetApi();
+        attr_proto.set_type(onnx::AttributeProto_AttributeType_TENSOR);
 
-      size_t element_count = type_shape_info.GetElementCount();
-      size_t data_bytes = element_count * element_size;
-      const void* data = tensor.GetTensorData<void>();
+        onnx::TensorProto tensor_proto;
 
-      // Copy the Ortvalue to TensorProto as raw data
-      tensor_proto.set_raw_data(data, data_bytes);
+        // TensorProto as an attribute value doesn't require a name.
 
-      *(attr_proto.mutable_t()) = std::move(tensor_proto);
-      break;
+        OrtValue* ort_value = nullptr;
+        ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetTensorAttributeAsOrtValue(&ort_node, &ort_attr, &ort_value));
+
+        Ort::Value tensor(ort_value);
+
+        // Get tensor type and shape info
+        Ort::TensorTypeAndShapeInfo type_shape_info = tensor.GetTensorTypeAndShapeInfo();
+
+        // Get tensor type
+        ONNXTensorElementDataType element_type = type_shape_info.GetElementType();
+
+        size_t element_size = 0;
+        switch (element_type) {
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_FLOAT);
+            element_size = sizeof(float);
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT8);
+            element_size = sizeof(uint8_t);
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_INT8);
+            element_size = sizeof(int8_t);
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT16);
+            element_size = sizeof(uint16_t);
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_INT16);
+            element_size = sizeof(int16_t);
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_INT32);
+            element_size = sizeof(int32_t);
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_INT64);
+            element_size = sizeof(int64_t);
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_BOOL);
+            element_size = sizeof(bool);
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_DOUBLE);
+            element_size = sizeof(double);
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT32);
+            element_size = sizeof(uint32_t);
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT64);
+            element_size = sizeof(uint64_t);
+            break;
+          }
+          default: {
+            std::string err_msg = "Unexpected ONNXTensorElementDataType with value " + std::to_string(static_cast<int>(element_type));
+            return Ort::Status(err_msg.c_str(), ORT_FAIL);
+          }
+        }
+
+        auto shape = type_shape_info.GetShape();
+
+        for (auto& dim : shape) {
+          tensor_proto.add_dims(dim);
+        }
+
+        size_t element_count = type_shape_info.GetElementCount();
+        size_t data_bytes = element_count * element_size;
+        const void* data = tensor.GetTensorData<void>();
+
+        // Copy the Ortvalue to TensorProto as raw data
+        tensor_proto.set_raw_data(data, data_bytes);
+
+        *(attr_proto.mutable_t()) = std::move(tensor_proto);
+        break;
+      }
+      default: {
+        std::string err_msg = "Unexpected OrtOpAttrType with value " + std::to_string(static_cast<int>(attr_type));
+        return Ort::Status(err_msg.c_str(), ORT_FAIL);
+      }
     }
-    default: {
-      std::string err_msg = "Unexpected OrtOpAttrType with value " + std::to_string(static_cast<int>(attr_type));
-      return Ort::Status(err_msg.c_str(), ORT_FAIL);
-    }
+  } catch (const Ort::Exception& ex) {
+    return Ort::Status{ex};
+  } catch (const std::exception& ex) {
+    return Ort::Status{ex.what(), ORT_FAIL};
   }
 
   return Ort::Status{nullptr};
