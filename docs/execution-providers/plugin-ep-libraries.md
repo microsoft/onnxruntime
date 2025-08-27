@@ -21,12 +21,14 @@ An ONNX Runtime Execution Provider (EP) executes model operations on one or more
 This page provides a reference for the APIs necessary to develop and use plugin EP libraries with ONNX Runtime.
 
 ## Creating a plugin EP library
-A plugin EP is built as a dynamic/shared library that exports the functions `CreateEpFactories()` and `ReleaseEpFactory()`. ONNX Runtime calls `CreateEpFactories()` to obtain one or more instances of `OrtEpFactory`. An `OrtEpFactory` creates `OrtEp` instances and specifies the hardware devices supported by the EPs it creates. A plugin EP library provides ONNX Runtime with custom implementations of `OrtEpFactory` and `OrtEp`.
+A plugin EP is built as a dynamic/shared library that exports the functions `CreateEpFactories()` and `ReleaseEpFactory()`. ONNX Runtime calls `CreateEpFactories()` to obtain one or more instances of `OrtEpFactory`. An `OrtEpFactory` creates `OrtEp` instances and specifies the hardware devices supported by the EPs it creates.
+
+In essence, A plugin EP library provides ONNX Runtime with custom implementations of `OrtEpFactory` and `OrtEp`.
 
 The ONNX Runtime repository includes a [sample plugin EP library](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/autoep/library), which is referenced in the following sections.
 
 ### Defining an OrtEp
-An `OrtEp` represents an instance of an EP that is used by an ONNX Runtime session to determine the model operations supported by the EP and run the supported model operations.
+An `OrtEp` represents an instance of an EP that is used by an ONNX Runtime session to identify and execute the model operations supported by the EP.
 
 The following table lists the required varibles and functions that an implementor must define for an `OrtEp`.
 
@@ -38,34 +40,34 @@ The following table lists the required varibles and functions that an implemento
 </tr>
 
 <tr>
-<td>ort_version_supported</td>
+<td><a href="#c-api-ort-ep-ort-version-supported">ort_version_supported</a></td>
 <td>The ONNX Runtime version with which the EP was compiled. Implementation should set to <code>ORT_API_VERSION</code>.</td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/16ae99ede405d3d6c59d7cce80c53f5f7055aeed/onnxruntime/test/autoep/library/ep.cc#L160">ExampleEp constructor</a></td>
 </tr>
 
 <tr>
-<td>GetName</td>
+<td><a href="#c-api-ort-ep-get-name">GetName</a></td>
 <td>Get the execution provider name. The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy the string.</td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/16ae99ede405d3d6c59d7cce80c53f5f7055aeed/onnxruntime/test/autoep/library/ep.cc#L181">ExampleEp::GetNameImpl()</a></td>
 </tr>
 
 <tr>
-<td>GetCapability</td>
+<td><a href="#c-api-ort-ep-get-capability">GetCapability</a></td>
 <td>Get information about the nodes/subgraphs supported by the <code>OrtEp</code> instance.</td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/16ae99ede405d3d6c59d7cce80c53f5f7055aeed/onnxruntime/test/autoep/library/ep.cc#L231">ExampleEp::GetCapabilityImpl()</a></td>
 </tr>
 
 <tr>
-<td>Compile</td>
+<td><a href="#c-api-ort-ep-compile">Compile</a></td>
 <td>
-Compile <code>OrtGraph</code> instances assigned to the <code>OrtEp</code>. Implementation must set a <code>OrtNodeComputeInfo</code> instance for each <code>OrtGraph</code> in order to define its computation function.<br/>
+Compile <code>OrtGraph</code> instances assigned to the <code>OrtEp</code>. Implementation must set a <code>OrtNodeComputeInfo</code> instance for each <code>OrtGraph</code> in order to define its computation function.<br/><br/>
 If the session is configured to generate a pre-compiled model, the execution provider must return <code>count</code> number of EPContext nodes.
 </td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/16ae99ede405d3d6c59d7cce80c53f5f7055aeed/onnxruntime/test/autoep/library/ep.cc#L293">ExampleEp::CompileImpl()</a></td>
 </tr>
 
 <tr>
-<td>ReleaseNodeComputeInfos</td>
+<td><a href="c-api-ort-ep-release-node-compute-infos">ReleaseNodeComputeInfos</a></td>
 <td>
 Release <code>OrtNodeComputeInfo</code> instances.
 </td>
@@ -74,6 +76,56 @@ Release <code>OrtNodeComputeInfo</code> instances.
 
 </table>
 
+The following table lists the **optional** functions that an implementor may define for an `OrtEp`. If an optional `OrtEp` function is not defined, ONNX Runtime uses a default implementation.
+
+<table>
+<tr>
+<th>Field</th>
+<th>Summary</th>
+<th>Sample EP reference</th>
+</tr>
+
+<tr>
+<td><a href="c-api-ort-ep-get-preferred-data-layout">GetPreferredDataLayout</a></td>
+<td>
+Get the EP's preferred data layout.<br/><br/>
+If this function is not implemented, ORT assumes that the EP prefers the data layout <code>OrtEpDataLayout::NCHW</code>.
+</td></td>
+</tr>
+
+<tr>
+<td><a href="c-api-ort-ep-should-convert-data-layout-for-op">ShouldConvertDataLayoutForOp</a></td>
+<td>
+Given an op with domain <code>domain</code> and type <code>op_type</code>, determine whether an associated node's data layout should be converted to a <code>target_data_layout</code>. If the EP prefers a non-default data layout, this function will be called during layout transformation with <code>target_data_layout</code> set to the EP's preferred data layout<br/><br/>
+Implementation of this function is optional. If an EP prefers a non-default data layout, it may implement this to customize the specific op data layout preferences at a finer granularity.
+</td></td>
+</tr>
+
+<tr>
+<td><a href="c-api-ort-ep-set-dynamic-options">SetDynamicOptions</a></td>
+<td>
+Set dynamic options on this EP. Dynamic options can be set by the application at any time after session creation with <a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#ab1117a51683e4fbb42687c9db6e8d5fb"><code>OrtApi::SetEpDynamicOptions()</code></a>.<br/><br/>
+Implementation of this function is optional. An EP should only impliment this function if it needs to handle any dynamic options.
+</td></td>
+</tr>
+
+<tr>
+<td><a href="c-api-ort-ep-on-run-start">OnRunStart</a></td>
+<td>
+Called by ORT to notify the EP of the start of a run.<br/><br/>
+Implementation of this function is optional. An EP should only impliment this function if it needs to handle application-provided options at the start of a run.
+</td></td>
+</tr>
+
+<tr>
+<td><a href="c-api-ort-ep-on-run-end">OnRunEnd</a></td>
+<td>
+Called by ORT to notify the EP of the end of a run.<br/><br/>
+Implementation of this function is optional. An EP should only impliment this function if it needs to handle application-provided options at the end of a run.
+</td></td>
+</tr>
+
+</table>
 
 ### Defining an OrtEpFactory
 ### Exporting functions to create and release factories
