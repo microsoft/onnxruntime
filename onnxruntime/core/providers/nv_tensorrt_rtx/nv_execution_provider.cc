@@ -30,6 +30,7 @@
 #include <map>
 #include <memory>
 #include <filesystem>
+#include <thread>
 // TODO: find a better way to share this
 #include "core/providers/cuda/cuda_stream_handle.h"
 
@@ -1157,7 +1158,7 @@ nvinfer1::IBuilder* NvExecutionProvider::GetBuilder(TensorrtLogger& trt_logger) 
     {
       auto lock = GetApiLock();
       builder_ = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
-      unsigned int num_threads = boost::thread::hardware_concurrency();
+      unsigned int num_threads = std::thread::hardware_concurrency();
       builder_->setMaxThreads(num_threads / 2);
       LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Set threads that the builder can use to:" << builder_->getMaxThreads();
     }
