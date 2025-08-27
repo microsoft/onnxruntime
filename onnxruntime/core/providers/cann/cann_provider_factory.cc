@@ -76,6 +76,7 @@ struct CANN_Provider : Provider {
     info.npu_mem_limit = params->npu_mem_limit;
     info.arena_extend_strategy = params->arena_extend_strategy;
     info.enable_cann_graph = params->enable_cann_graph != 0;
+    info.disable_graph_split = params->disable_graph_split != 0;
     info.dump_graphs = params->dump_graphs != 0;
     info.dump_om_model = params->dump_om_model != 0;
     info.precision_mode = params->precision_mode;
@@ -94,6 +95,7 @@ struct CANN_Provider : Provider {
     cann_options.npu_mem_limit = internal_options.npu_mem_limit;
     cann_options.arena_extend_strategy = internal_options.arena_extend_strategy;
     cann_options.enable_cann_graph = internal_options.enable_cann_graph;
+    cann_options.disable_graph_split = internal_options.disable_graph_split;
     cann_options.dump_graphs = internal_options.dump_graphs;
     cann_options.dump_om_model = internal_options.dump_om_model;
     cann_options.precision_mode = internal_options.precision_mode;
