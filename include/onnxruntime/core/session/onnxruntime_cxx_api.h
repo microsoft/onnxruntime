@@ -725,9 +725,7 @@ using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
  *  constructors to construct an instance of a Status object from exceptions.
  */
 struct Status : detail::Base<OrtStatus> {
-  using Base = detail::Base<OrtStatus>;
-  using Base::Base;
-
+  Status() = default;                              // Same as with std::nullptr_t. But can be used in re-sizable containers and represent success.
   explicit Status(std::nullptr_t) noexcept {}      ///< Create an empty object, must be assigned a valid one to be used
   explicit Status(OrtStatus* status) noexcept;     ///< Takes ownership of OrtStatus instance returned from the C API.
   explicit Status(const Exception&);               ///< Creates status instance out of exception
