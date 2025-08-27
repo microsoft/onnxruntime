@@ -36,6 +36,8 @@ TEST(Float4_Tests, BasicFloatConversion) {
        std::pair<float, float>(6.f, -6.f)},
       {std::pair<float, float>(-2.5f, 2.5),
        std::pair<float, float>(-2.f, 2.f)},
+      {std::pair<float, float>(-1.25f, 1.25f),
+       std::pair<float, float>(-1.25f, 1.25f)},
       {std::pair<float, float>(std::numeric_limits<float>::infinity(),
                                -std::numeric_limits<float>::infinity()),
        std::pair<float, float>(6.f, -6.f)}};
@@ -61,6 +63,7 @@ TEST(Float4_Tests, BasicFloatConversion) {
   EXPECT_EQ(NaNs_converted.first, 6.f);
   EXPECT_EQ(NaNs_converted.second, 6.f);
 }
+
 TEST(Float4_Tests, BitRepresentationChecks) {
   // FromBits test
   std::pair<float, float> pair;
@@ -74,9 +77,9 @@ TEST(Float4_Tests, BitRepresentationChecks) {
 
   // Bit representation test
   uint8_t bits = Float4E2M1x2(-6.f, 6.f).ToBits();
-  // First nibble is the second value and the second nibble is the first value
-  EXPECT_EQ((bits & 0xF0) >> 4, 0x07);  // -6
-  EXPECT_EQ((bits & 0x0F), 0x0F);       // +6
+  // High nibble stores the second value + 6 and low nibble stores the first value - 6
+  EXPECT_EQ((bits & 0xF0) >> 4, 0x07);  // +6
+  EXPECT_EQ((bits & 0x0F), 0x0F);       // -6
 }
 
 TEST(Float4_Tests, PackingAndUnpacking) {

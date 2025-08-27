@@ -76,10 +76,10 @@ struct Float4E2M1x2 {
       sign = -1.f;
     }
 
-    float exponent = static_cast<float>((bits_shifted & exponent_bitmask) >> 1);
+    int exponent = static_cast<int>((bits_shifted & exponent_bitmask) >> 1);
     float mantissa = static_cast<float>(bits_shifted & mantissa_bitmask);
 
-    return (exponent == 0) ? (sign * (mantissa / 2.f)) : (sign * (1.f + mantissa / 2.f) * std::pow(2.f, (exponent - 1)));
+    return (exponent == 0) ? (sign * (mantissa / 2.f)) : (sign * (1.f + mantissa / 2.f) * static_cast<float>(1 << (exponent - 1)));
   }
 
   ORT_HOST_DEVICE uint8_t FloatToFp4ConversionCpuHelper(float f, size_t shift) const {
@@ -113,7 +113,7 @@ struct Float4E2M1x2 {
     float f_abs = std::abs(f);
     if (f_abs > 0.25 && f_abs < 0.75) {
       res |= 0x01;
-    } else if (f_abs >= 0.75 && f_abs < 1.25) {
+    } else if (f_abs >= 0.75 && f_abs <= 1.25) {
       res |= 0x02;
     } else if (f_abs > 1.25 && f_abs < 1.75) {
       res |= 0x03;
