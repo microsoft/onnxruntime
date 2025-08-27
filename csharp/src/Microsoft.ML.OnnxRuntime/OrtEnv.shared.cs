@@ -7,6 +7,13 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
+    /// <summary>
+    /// Represents the compatibility status of a pre-compiled model with one or more execution provider devices.
+    /// </summary>
+    /// <remarks>
+    /// This enum is used to determine whether a pre-compiled model can be used with specific execution providers
+    /// and devices, or if recompilation is needed. 
+    /// </remarks>
     public enum OrtCompiledModelCompatibility
     {
         EP_NOT_APPLICABLE = 0,
