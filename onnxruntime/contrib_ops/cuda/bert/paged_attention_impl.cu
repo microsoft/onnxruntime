@@ -340,20 +340,18 @@ Status FlashAttention(
 
 template <typename T>
 Status QkvToContext(
-    const cudaDeviceProp& device_prop,
-    cublasHandle_t& /*cublas*/,
-    Stream* ort_stream,
-    contrib::PagedAttentionParameters& parameters,
-    PagedAttentionData<T>& data) {
+    [[maybe_unused]] const cudaDeviceProp& device_prop,
+    [[maybe_unused]] cublasHandle_t& /*cublas*/,
+    [[maybe_unused]] Stream* ort_stream,
+    [[maybe_unused]] contrib::PagedAttentionParameters& parameters,
+    [[maybe_unused]] PagedAttentionData<T>& data) {
+#if USE_FLASH_ATTENTION
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
-
-#if USE_FLASH_ATTENTION
   if (data.use_flash_attention) {
     return FlashAttention(device_prop, stream, parameters, data, scale);
   }
 #endif
-
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unfused Paged Attention not implemented.");
 }
 

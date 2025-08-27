@@ -3,6 +3,7 @@
 
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "moe.h"
 
@@ -29,6 +30,10 @@ MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), Mo
 
 template <typename T>
 Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
+  auto& device_prop = GetDeviceProp();
+  const int sm = device_prop.major * 10 + device_prop.minor;
+  CHECK_GPU_SUPPORT_DATA_TYPE(T, sm);
+
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
   const Tensor* fc1_experts_weights = context->Input<Tensor>(2);
@@ -49,9 +54,6 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   using CudaT = typename OrtToCudaType<T>::type;
   auto stream = context->GetComputeStream();
-
-  auto& device_prop = GetDeviceProp();
-  const int sm = device_prop.major * 10 + device_prop.minor;
 
   ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm,
                                                                      activation_type_,

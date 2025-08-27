@@ -119,14 +119,19 @@ __global__ void Dequantize4BitsKernelReOrder(
       zp = (rid & 0x01) ? (zp >> 4) : (zp & 0x0f);
     }
 
+    T zp_value = Cast<T>(zp);
     if constexpr (std::is_same_v<T, half>) {
-      T zp_adjust = -scale * __short2half_rn(zp);
+      T zp_adjust = -scale * zp_value;
       output_i[i] = __uint2half_rn((quant_value >> (4 * i)) & 0xF) * scale + zp_adjust;
     } else if constexpr (std::is_same_v<T, __nv_bfloat16>) {
-      T zp_adjust = __hneg(scale) * __ushort2bfloat16_rn(zp);
+      T zp_adjust = -scale * zp_value;
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800 && CUDA_VERSION < 12020
+      output_i[i] = __float2bfloat16_rn(static_cast<float>((quant_value >> (4 * i)) & 0xF)) * scale + zp_adjust;
+#else
       output_i[i] = __uint2bfloat16_rn((quant_value >> (4 * i)) & 0xF) * scale + zp_adjust;
+#endif
     } else {
-      T zp_adjust = -scale * T(zp);
+      T zp_adjust = -scale * zp_value;
       output_i[i] = T((quant_value >> (4 * i)) & 0xF) * scale + zp_adjust;
     }
   }
@@ -149,20 +154,28 @@ __global__ void Dequantize4BitsKernel(
   int element_offset = block_id * block_size + ((threadIdx.x * 8) & (block_size - 1));
   uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / 2));
   T scale = *(scale_data + block_id);
+
   T zero_point_value;
   if constexpr (std::is_same_v<ZeroT, uint8_t>) {
     const int scales_shape_x = groups_per_K;
     const int zero_point_shape_x = (groups_per_K + 1) / 2;
     int kb_idx = block_id % scales_shape_x;
     int n_idx = block_id / scales_shape_x;
+
     uint8_t zp = 8;
     if (zero_points) {
       zp = zero_points[n_idx * zero_point_shape_x + kb_idx / 2];
       zp = (kb_idx & 0x01) ? (zp >> 4) : (zp & 0x0f);
     }
-    zero_point_value = static_cast<T>(zp);
+
+    zero_point_value = Cast<T>(zp);
   } else {
-    zero_point_value = zero_points ? *(zero_points + block_id) : static_cast<T>(8);
+    if (zero_points) {
+      zero_point_value = *(zero_points + block_id);
+    } else {
+      constexpr uint8_t zp = 8;
+      zero_point_value = static_cast<T>(zp);
+    }
   }
 
   output = output + element_offset;
@@ -246,6 +259,7 @@ template Status Dequantize4Bits<half, uint8_t>(
     int block_size,
     cudaStream_t stream);
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 template Status Dequantize4Bits<__nv_bfloat16, uint8_t>(
     __nv_bfloat16* output,
     const uint8_t* quant_data,
@@ -256,6 +270,9 @@ template Status Dequantize4Bits<__nv_bfloat16, uint8_t>(
     int n,
     int block_size,
     cudaStream_t stream);
+#else
+DECLARE_DEQUANTIZE_FALLBACK(Dequantize4Bits, __nv_bfloat16, uint8_t, 8.0, "BFloat16")
+#endif
 
 template Status Dequantize4Bits<float, float>(
     float* output,
@@ -279,6 +296,7 @@ template Status Dequantize4Bits<half, half>(
     int block_size,
     cudaStream_t stream);
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 template Status Dequantize4Bits<__nv_bfloat16, __nv_bfloat16>(
     __nv_bfloat16* output,
     const uint8_t* quant_data,
@@ -289,6 +307,10 @@ template Status Dequantize4Bits<__nv_bfloat16, __nv_bfloat16>(
     int n,
     int block_size,
     cudaStream_t stream);
+#else
+DECLARE_DEQUANTIZE_FALLBACK(Dequantize4Bits, __nv_bfloat16, __nv_bfloat16, 8.0, "BFloat16")
+#endif
+#undef DECLARE_DEQUANTIZE_FALLBACK
 
 template <
     typename ElementT,
@@ -492,6 +514,7 @@ template Status DequantizeBlockwise4b<half>(
     int columns,
     cudaStream_t stream);
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 template Status DequantizeBlockwise4b<__nv_bfloat16>(
     __nv_bfloat16* dst,
     const uint8_t* src,
@@ -502,6 +525,13 @@ template Status DequantizeBlockwise4b<__nv_bfloat16>(
     int rows,
     int columns,
     cudaStream_t stream);
+#else
+template <>
+Status DequantizeBlockwise4b<__nv_bfloat16>(
+    __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const uint8_t*, int, bool, int, int, cudaStream_t) {
+  return Status::OK();
+}
+#endif
 
 }  // namespace cuda
 }  // namespace contrib
