@@ -3089,9 +3089,13 @@ inline ConstTypeInfo ConstValueInfoImpl<T>::TypeInfo() const {
 
 template <typename T>
 inline ValueInfoConsumerProducerInfo ConstValueInfoImpl<T>::GetProducerNode() const {
-  const OrtNode* out = nullptr;
-  ThrowOnError(GetApi().ValueInfo_GetValueProducerNode(this->p_, &out, &info.index));
-  return ConstNode{out};
+  ValueInfoConsumerProducerInfo info;
+  const OrtNode* producer;
+  size_t index;
+  ThrowOnError(GetApi().ValueInfo_GetValueProducer(this->p_, &producer, &index));
+  info.node = ConstNode(producer);
+  info.index = static_cast<int64_t>(index);
+  return info;
 }
 
 template <typename T>
@@ -3099,7 +3103,7 @@ inline std::vector<ValueInfoConsumerProducerInfo> ConstValueInfoImpl<T>::GetCons
   size_t num = 0;
   ThrowOnError(GetApi().ValueInfo_GetValueNumConsumers(this->p_, &num));
   std::vector<const OrtNode*> nodes(num);
-  std::vector<size_t> indices(num);
+  std::vector<int64_t> indices(num);
   ThrowOnError(GetApi().ValueInfo_GetValueConsumers(this->p_, nodes.data(), indices.data(), num));
   std::vector<ValueInfoConsumerProducerInfo> out;
   out.reserve(num);

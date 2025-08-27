@@ -52,6 +52,7 @@ namespace Ort {
  * If <tt>ORT_NO_EXCEPTIONS</tt> is defined, then any error will result in a call to abort()
  */
 struct Exception : std::exception {
+  Exception(const std::string& string, OrtErrorCode code) : message_{string}, code_{code} {}
   Exception(std::string&& string, OrtErrorCode code) : message_{std::move(string)}, code_{code} {}
 
   OrtErrorCode GetOrtErrorCode() const { return code_; }
@@ -2969,8 +2970,8 @@ struct Node : detail::NodeImpl<OrtNode> {
 };
 
 struct ValueInfoConsumerProducerInfo {
-  ConstNode producer;
-  size_t index;  // either producer output or consumer output index
+  ConstNode node;
+  int64_t index;  // either producer output or consumer output index
 };
 
 namespace detail {

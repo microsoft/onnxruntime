@@ -720,8 +720,8 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
   std::string api_initializer_name = vi.GetName();
 
   // Check external initializer info (if any).
-  Ort::ExternalInitializerInfo api_ext_info;
-  ASSERT_ORTSTATUS_OK(vi.GetExternalInitializerInfo(api_ext_info));
+  Ort::ExternalInitializerInfo api_ext_info{nullptr};
+  auto external_status = vi.GetExternalInitializerInfo(api_ext_info);
 
   std::unique_ptr<ExternalDataInfo> ext_info = nullptr;
   bool has_ext_info = graph_viewer.GetGraph().GetExternalInitializerInfo(api_initializer_name, ext_info, true);

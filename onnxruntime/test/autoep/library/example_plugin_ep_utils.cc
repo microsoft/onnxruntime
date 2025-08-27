@@ -19,27 +19,19 @@ OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& /* ort_api */, const Ort
   return nullptr;
 }
 
-OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value_info, bool& result) {
+void IsFloatTensor(Ort::ConstValueInfo value_info, bool& result) {
   result = false;
 
-  const OrtTypeInfo* type_info = nullptr;
-  RETURN_IF_ERROR(ort_api.GetValueInfoTypeInfo(value_info, &type_info));
-
-  ONNXType onnx_type = ONNX_TYPE_UNKNOWN;
-  RETURN_IF_ERROR(ort_api.GetOnnxTypeFromTypeInfo(type_info, &onnx_type));
+  auto type_info = value_info.TypeInfo();
+  ONNXType onnx_type = type_info.GetONNXType();
   if (onnx_type != ONNX_TYPE_TENSOR) {
-    return nullptr;
+    return;
   }
 
-  const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-  RETURN_IF_ERROR(ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape));
-
-  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  RETURN_IF_ERROR(ort_api.GetTensorElementType(type_shape, &elem_type));
+  auto type_shape = type_info.GetTensorTypeAndShapeInfo();
+  ONNXTensorElementDataType elem_type = type_shape.GetElementType();
   if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-    return nullptr;
+    return;
   }
-
   result = true;
-  return nullptr;
 }
