@@ -64,7 +64,7 @@ class ExternalDataInfo {
   static std::ostream& WritePrepackedToFileAndAddToProto(
       const PrepackedWeightsForGraph& prepacked_for_graph,
       const InlinedHashSet<std::string>& blob_keys,
-      bool align, int64_t align_threshold, int64_t on_disk_alignment_factor,
+      bool align, int64_t align_threshold, int64_t on_disk_alignment,
       std::ostream& os,
       int64_t& external_offset,
       ::ONNX_NAMESPACE::TensorProto& proto);
