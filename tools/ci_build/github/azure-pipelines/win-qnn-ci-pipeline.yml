@@ -70,7 +70,7 @@ jobs:
 
   - template: templates/jobs/win-ci-build-steps.yml
     parameters:
-      WithCache: True
+      WithCache: False
       Today: $(TODAY)
       AdditionalKey: "win-qnn | $(BuildConfig)"
       BuildPyArguments: >-
