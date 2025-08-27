@@ -23,9 +23,47 @@ This page provides a reference for the APIs necessary to develop and use plugin 
 ## Creating a plugin EP library
 A plugin EP is built as a dynamic/shared library that exports the functions `CreateEpFactories()` and `ReleaseEpFactory()`. ONNX Runtime calls `CreateEpFactories()` to obtain one or more instances of `OrtEpFactory`. An `OrtEpFactory` creates `OrtEp` instances and specifies the hardware devices supported by the EPs it creates. A plugin EP library provides ONNX Runtime with custom implementations of `OrtEpFactory` and `OrtEp`.
 
+The ONNX Runtime repository includes a [sample plugin EP library](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/autoep/library), which is referenced in the following sections.
+
 ### Defining an OrtEp
+An `OrtEp` represents an instance of an EP that is used by an ONNX Runtime session to determine the model operations supported by the EP and run the supported model operations.
+
+The following table lists the required varibles and functions that an implementor must define for an `OrtEp`.
+
+<table>
+<tr>
+<th>Field</th>
+<th>Signature</th>
+<th>Summary</th>
+</tr>
+
+<tr>
+<td>ort_version_supported</td>
+<td><pre><code>uint32_t ort_version_supported;</code></pre></td>
+<td>The ONNX Runtime version with which the EP was compiled. Implementation should set to <code>ORT_API_VERSION</code>.</td>
+</tr>
+
+<tr>
+<td>GetName</td>
+<td><pre><code>const char* GetName(OrtEp* this_ptr);</code></pre></td>
+<td>Get the execution provider name. The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy the string.</td>
+</tr>
+
+<tr>
+<td>GetCapability</td>
+<td><pre><code>
+OrtStatus* GetCapability(OrtEp* this_ptr,<br/>
+                         const OrtGraph* graph,<br/>
+                         OrtEpGraphSupportInfo* graph_support_info);
+</code></pre></td>
+<td>Get information about the nodes/subgraphs supported by the <code>OrtEp</code> instance.</td>
+</tr>
+
+</table>
+
+
 ### Defining an OrtEpFactory
-### Exporting functions from the library
+### Exporting functions to create and release factories
 
 ## Using a plugin EP library
 
