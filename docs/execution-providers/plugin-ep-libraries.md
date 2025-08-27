@@ -223,10 +223,24 @@ The following table lists the **optional** functions that an implementer may def
 </tr>
 
 <tr>
+<td><a href="#c-api-ort-ep-factory-validate-compiled-model-compatibility-info">ValidateCompiledModelCompatibilityInfo</a></td>
+<td>Validate the compatibility of a compiled model with the EP.<br/><br/>
+This function validates if a model produced with the supllied compatibility information string is supported by the underlying EP.
+The implementation should check if a compiled model is compatible with the EP and return the appropriate <code>OrtCompiledModelCompatibility</code> value.</td>
+<td></td>
+</tr>
+
+<tr>
 <td><a href="#c-api-ort-ep-factory-create-allocator">CreateAllocator</a></td>
 <td>Create an <code>OrtAllocator</code> that can be shared across sessions for the given <code>OrtMemoryInfo</code>.<br/><br/>
 The factory that creates the EP is responsible for providing the allocators required by the EP. The <code>OrtMemoryInfo</code> instance will match one of the values set in the <code>OrtEpDevice</code> using <code>EpDevice_AddAllocatorInfo</code>.</td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L212">ExampleEpFactory::CreateAllocatorImpl()</a></td>
+</tr>
+
+<tr>
+<td><a href="#c-api-ort-ep-factory-release-allocator">ReleaseAllocator</a></td>
+<td>Releases an <code>OrtAllocator</code> instance created by the factory.</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L272">ExampleEpFactory::ReleaseAllocatorImpl()</a></td>
 </tr>
 
 </table>
