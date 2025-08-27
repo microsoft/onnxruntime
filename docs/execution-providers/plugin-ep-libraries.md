@@ -33,46 +33,30 @@ The following table lists the required varibles and functions that an implemento
 <table>
 <tr>
 <th>Field</th>
-<th>Signature</th>
 <th>Summary</th>
 <th>Sample EP reference</th>
 </tr>
 
 <tr>
 <td>ort_version_supported</td>
-<td><pre><code>uint32_t ort_version_supported;</code></pre></td>
 <td>The ONNX Runtime version with which the EP was compiled. Implementation should set to <code>ORT_API_VERSION</code>.</td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/16ae99ede405d3d6c59d7cce80c53f5f7055aeed/onnxruntime/test/autoep/library/ep.cc#L160">ExampleEp constructor</a></td>
 </tr>
 
 <tr>
 <td>GetName</td>
-<td><pre><code>const char* GetName(OrtEp* this_ptr);</code></pre></td>
 <td>Get the execution provider name. The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy the string.</td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/16ae99ede405d3d6c59d7cce80c53f5f7055aeed/onnxruntime/test/autoep/library/ep.cc#L181">ExampleEp::GetNameImpl()</a></td>
 </tr>
 
 <tr>
 <td>GetCapability</td>
-<td><pre><code>
-OrtStatus* GetCapability(OrtEp* this_ptr,
-                         const OrtGraph* graph,
-                         OrtEpGraphSupportInfo* graph_support_info);
-</code></pre></td>
 <td>Get information about the nodes/subgraphs supported by the <code>OrtEp</code> instance.</td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/16ae99ede405d3d6c59d7cce80c53f5f7055aeed/onnxruntime/test/autoep/library/ep.cc#L231">ExampleEp::GetCapabilityImpl()</a></td>
 </tr>
 
 <tr>
 <td>Compile</td>
-<td><pre><code>
-OrtStatus* Compile(OrtEp* this_ptr,
-                   const OrtGraph** graphs,
-                   const OrtNode** fused_nodes,
-                   size_t count,
-                   OrtNodeComputeInfo** node_compute_infos,
-                   OrtNode** ep_context_nodes);
-</code></pre></td>
 <td>
 Compile <code>OrtGraph</code> instances assigned to the <code>OrtEp</code>. Implementation must set a <code>OrtNodeComputeInfo</code> instance for each <code>OrtGraph</code> in order to define its computation function.<br/>
 If the session is configured to generate a pre-compiled model, the execution provider must return <code>count</code> number of EPContext nodes.
@@ -82,11 +66,6 @@ If the session is configured to generate a pre-compiled model, the execution pro
 
 <tr>
 <td>ReleaseNodeComputeInfos</td>
-<td><pre><code>
-void ReleaseNodeComputeInfos(OrtEp* this_ptr,
-                             OrtNodeComputeInfo** node_compute_infos,
-                             size_t num_node_compute_infos);
-</code></pre></td>
 <td>
 Release <code>OrtNodeComputeInfo</code> instances.
 </td>
