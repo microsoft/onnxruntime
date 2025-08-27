@@ -177,10 +177,10 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     const bool is_vec4 = helper.K() % 4 == 0 && helper.N() % 4 == 0;
 
     // TODO: Implement broadcasting for batch dimensions.
-    if (are_matrices && batch_dims_a == batch_dims_b && is_vec4) {
-      const uint32_t m = narrow<uint32_t>(helper.M());  // left matrix first dimension
-      const uint32_t n = narrow<uint32_t>(helper.N());  // right matrix second dimension
-      const uint32_t k = narrow<uint32_t>(helper.K());  // right matrix first dimension
+    if (!has_bias && are_matrices && batch_dims_a == batch_dims_b && is_vec4) {
+      const uint32_t m = narrow<uint32_t>(helper.M());
+      const uint32_t n = narrow<uint32_t>(helper.N());
+      const uint32_t k = narrow<uint32_t>(helper.K());
 
       auto output_shape = output_tensor->Shape();
 
@@ -192,7 +192,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
       const uint32_t kTileM = 64;
       const uint32_t kTileN = 64;
       const uint32_t kMTiles = (m + kTileM - 1) / kTileM;
-      const uint32_t kNTiles = (n + kTileM - 1) / kTileN;
+      const uint32_t kNTiles = (n + kTileN - 1) / kTileN;
 
       MatMulTiledSubgroupProgram program;
       program.SetWorkgroupSize(64, 1, 1);
