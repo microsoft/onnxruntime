@@ -12,7 +12,8 @@ New-Item -Path $nuget_artifacts_dir -ItemType directory -ErrorAction SilentlyCon
 # Unzip files directly, excluding the iOS xcframework to preserve its symlinks.
 Get-ChildItem -Path "$Env:BUILD_BINARIESDIRECTORY\nuget-artifact\*" -Include *.zip -Exclude onnxruntime_ios_xcframework.*.zip |
 Foreach-Object {
-    $arguments = "x", "$($_.FullName)", "-y", "-o$nuget_artifacts_dir"
+    # The -snld20 flag is used to bypass security checks for creating symbolic links (added in 7-Zip 25.01).
+    $arguments = "x", "$($_.FullName)", "-y", "-o$nuget_artifacts_dir", "-snld20"
     Write-Output "Executing: 7z.exe $arguments"
     # Directly call 7z.exe using the call operator '&'
     & 7z.exe $arguments
@@ -26,7 +27,8 @@ Foreach-Object {
 # First, extract the .tar file from the .tgz archive.
 Get-ChildItem "$Env:BUILD_BINARIESDIRECTORY\nuget-artifact" -Filter *.tgz |
 Foreach-Object {
-    $arguments = "x", "$($_.FullName)", "-y", "-o$Env:BUILD_BINARIESDIRECTORY\nuget-artifact"
+    # The -snld20 flag is used to bypass security checks for creating symbolic links (added in 7-Zip 25.01).
+    $arguments = "x", "$($_.FullName)", "-y", "-o$Env:BUILD_BINARIESDIRECTORY\nuget-artifact", "-snld20"
     Write-Output "Executing: 7z.exe $arguments"
     & 7z.exe $arguments
     if ($LASTEXITCODE -ne 0) {
@@ -37,7 +39,8 @@ Foreach-Object {
 # Now, extract the contents from the .tar file into the final directory.
 Get-ChildItem "$Env:BUILD_BINARIESDIRECTORY\nuget-artifact" -Filter *.tar |
 Foreach-Object {
-    $arguments = "x", "$($_.FullName)", "-y", "-o$nuget_artifacts_dir"
+    # The -snld20 flag is used to bypass security checks for creating symbolic links (added in 7-Zip 25.01).
+    $arguments = "x", "$($_.FullName)", "-y", "-o$nuget_artifacts_dir", "-snld20"
     Write-Output "Executing: 7z.exe $arguments"
     & 7z.exe $arguments
     if ($LASTEXITCODE -ne 0) {
