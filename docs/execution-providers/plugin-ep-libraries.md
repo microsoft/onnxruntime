@@ -298,7 +298,7 @@ The sample application code below uses the following API functions to register a
  - [RegisterExecutionProviderLibrary](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a7c8ea74a2ee54d03052f3d7cd1e1335d)
  - [UnregisterExecutionProviderLibrary](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#acd4d148e149af2f2304a45b65891543f)
 
-```C++
+```cpp
 // Note: this snippet does not handle errors.
 
 const char* lib_registration_name = "my_plugin_ep_library";
@@ -333,7 +333,7 @@ For example, if a single factory instance supports both CPU and NPU, then the ca
   - ep_device_0: (factory_0, CPU)
   - ep_device_1: (factory_0, NPU)
 
-<p align="center"><img width="60%" src="../../images/plugin_ep_sd_lib_reg.png" alt="EP Context node example"/></p>
+<p align="center"><img width="90%" src="../../images/plugin_ep_sd_lib_reg.png" alt="EP Context node example"/></p>
 
 ## API reference
 API header files:
