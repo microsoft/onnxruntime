@@ -213,7 +213,7 @@ static const std::unordered_set<std::string> ONNX_ZOO_MODELS = {
 
 // Helper function to check if a model is allowed
 inline bool IsModelAllowed(const std::string& model_name) {
-    return ONNX_ZOO_MODELS.count(model_name) > 0;
+  return ONNX_ZOO_MODELS.count(model_name) > 0;
 }
 
 // parameter is provider_name + "_" + model_path
