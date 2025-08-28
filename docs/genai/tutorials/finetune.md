@@ -161,5 +161,5 @@ python app.py -m <model folder> -a <.onnx_adapter files> -t <prompt template> -s
 
 ## References
 
-* [Python API docs](../api/python.md#adapter-class)
+* [Python API docs](../api/python.md)
 * [Olive CLI docs](https://microsoft.github.io/Olive/how-to/index.html#working-with-the-cli)
