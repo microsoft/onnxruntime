@@ -379,6 +379,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Validate a compiled model's compatibility information for one or more EP devices.
         /// </summary>
+        /// <param name="epDevices">The list of EP devices to validate against.</param>
+        /// <param name="compatibilityInfo">The opaque compatibility information string from the precompiled model to validate.</param>
+        /// <returns>OrtCompiledModelCompatibility enum value denoting the compatibility status</returns>
         public OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(IReadOnlyList<OrtEpDevice> epDevices, string compatibilityInfo)
         {
             if (epDevices == null || epDevices.Count == 0)
