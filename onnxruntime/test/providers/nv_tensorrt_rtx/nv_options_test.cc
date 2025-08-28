@@ -28,7 +28,10 @@ TEST(NvExecutionProviderTest, RuntimeCaching) {
   clearFileIfExists(model_name_ctx);
   std::string graph_name = "test";
   std::vector<int> dims = {1, 3, 2};
-  std::string runtime_cahe_name = "runtime_cache.trt";
+  std::string runtime_cache_name = "runtime_cache.trt";
+  if (std::filesystem::exists(runtime_cache_name)) {
+    std::filesystem::remove(runtime_cache_name);
+  }
   CreateBaseModel(model_name, graph_name, dims);
   // AOT time
   {
@@ -36,27 +39,21 @@ TEST(NvExecutionProviderTest, RuntimeCaching) {
     Ort::RunOptions run_options;
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
     so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, model_name_ctx_str.c_str());
-    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {
-      {"nv_runtime_cache_path", runtime_cahe_name.c_str()}
-    });
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {{"nv_runtime_cache_path", runtime_cache_name.c_str()}});
     Ort::Session session_object(*ort_env, model_name.c_str(), so);
 
     auto io_binding = generate_io_binding(session_object);
     session_object.Run(run_options, io_binding);
   }
   // the cache will be dumped to disk upon session destruction
-  ASSERT_TRUE(std::filesystem::exists(runtime_cahe_name.c_str()));
+  ASSERT_TRUE(std::filesystem::exists(runtime_cache_name.c_str()));
 
   // use existing cache
   {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
-    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {{"nv_runtime_cache_path", runtime_cache_name.c_str()}});
     Ort::Session session_object(*ort_env, model_name_ctx.c_str(), so);
-
-    auto io_binding = generate_io_binding(session_object);
-    session_object.Run(run_options, io_binding);
   }
 
   // create new cache
@@ -64,14 +61,9 @@ TEST(NvExecutionProviderTest, RuntimeCaching) {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
     std::string new_cache_name = "runtime_cache_new.trt";
-    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {
-      {"nv_runtime_cache_path", new_cache_name.c_str()}
-    });
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {{"nv_runtime_cache_path", new_cache_name.c_str()}});
     {
       Ort::Session session_object(*ort_env, model_name_ctx.c_str(), so);
-      auto io_binding = generate_io_binding(session_object);
-      session_object.Run(run_options, io_binding);
     }
     // the cache will be dumped to disk upon session destruction
     ASSERT_TRUE(std::filesystem::exists(new_cache_name.c_str()));
@@ -84,14 +76,9 @@ TEST(NvExecutionProviderTest, RuntimeCaching) {
     // we assume the ONNX file as cache would should fail deserialization and overwrite the model
     std::string new_cache_name = PathToUTF8(model_name);
     auto file_size_old = std::filesystem::file_size(new_cache_name);
-    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {
-      {"nv_runtime_cache_path", new_cache_name.c_str()}
-    });
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {{"nv_runtime_cache_path", new_cache_name.c_str()}});
     {
       Ort::Session session_object(*ort_env, model_name_ctx.c_str(), so);
-      auto io_binding = generate_io_binding(session_object);
-      session_object.Run(run_options, io_binding);
     }
     auto file_size_new = std::filesystem::file_size(new_cache_name);
     // the cache will be dumped to disk upon session destruction

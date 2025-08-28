@@ -29,17 +29,11 @@ class MappedFileView {
     size_ = 0;
   }
 
-  const void* data() {
-    return data_;
-  }
+  const void* data() { return data_; }
 
-  size_t size() {
-    return size_;
-  }
+  size_t size() { return size_; }
 
-  bool empty() {
-    return size_ == 0 || data_ == nullptr;
-  }
+  bool empty() { return size_ == 0 || data_ == nullptr; }
 
   MappedFileView(const std::string& path) {
     data_ = nullptr;
@@ -88,7 +82,8 @@ class MappedFileView {
   }
 
   ~MappedFileView() { Unmap(); }
-private:
+
+ private:
   const char* data_ = nullptr;
   size_t size_ = 0;
 #if defined(_WIN32)
@@ -137,9 +132,7 @@ inline void WriteFile(const std::string& path, const void* data, size_t size) {
   }
 }
 
-inline void WriteFile(const std::string& path, const std::vector<char>& data) {
-  WriteFile(path, data.data(), data.size());
-}
+inline void WriteFile(const std::string& path, const std::vector<char>& data) { WriteFile(path, data.data(), data.size()); }
 
 inline std::string VerifyPathAndMakeAbsolute(const std::string& path) {
   std::filesystem::path p(path);
