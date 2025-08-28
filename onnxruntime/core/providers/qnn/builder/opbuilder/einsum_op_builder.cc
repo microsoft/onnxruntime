@@ -48,13 +48,13 @@ std::optional<Equation> ParseEquation(std::string_view equation_string) {
   if (term_1.size() < 2 || term_2.size() < 2 || result.size() < 2) {
     return std::nullopt;
   }
-  if (!std::all_of(term_1.begin(), term_1.end(), [](unsigned char c) { return std::islower(c); })) {
+  if (!std::all_of(term_1.begin(), term_1.end(), [](unsigned char c) { return std::isalpha(c); })) {
     return std::nullopt;
   }
-  if (!std::all_of(term_2.begin(), term_2.end(), [](unsigned char c) { return std::islower(c); })) {
+  if (!std::all_of(term_2.begin(), term_2.end(), [](unsigned char c) { return std::isalpha(c); })) {
     return std::nullopt;
   }
-  if (!std::all_of(result.begin(), result.end(), [](unsigned char c) { return std::islower(c); })) {
+  if (!std::all_of(result.begin(), result.end(), [](unsigned char c) { return std::isalpha(c); })) {
     return std::nullopt;
   }
   return std::make_tuple(term_1, term_2, result);
