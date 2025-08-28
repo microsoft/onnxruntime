@@ -27,16 +27,15 @@ struct MemoryInfoPerTensor {
 };
 
 struct MemoryInfoMap {
-  using MemoryInfoMapT = std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::MemoryInfoPerTensor>;
+  using MemoryInfoMapT = std::unordered_map<OrtValueIndex, MemoryInfoPerTensor>;
 
- public:
   MemoryInfoMap() = default;
 
   void AddPlannedMemory(const OrtValueIndex& idx, const MemoryBlock& mb) {
     map_[idx].planned_block = mb;
   }
 
-  void AddAllocMemory(const OrtValueIndex& idx, MemoryBlock& mb) {
+  void AddAllocMemory(const OrtValueIndex& idx, const MemoryBlock& mb) {
     map_[idx].allocated_block = mb;
     if (ptr_offset == 0 || (ptr_offset > mb.offset_ && mb.offset_ != 0)) {
       ptr_offset = mb.offset_;

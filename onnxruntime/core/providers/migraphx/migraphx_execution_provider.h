@@ -127,7 +127,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   bool exhaustive_tune_ = false;
   mutable std::filesystem::path model_path_{};
   size_t mem_limit_{std::numeric_limits<size_t>::max()};
-  ArenaExtendStrategy arena_extend_strategy_{ArenaExtendStrategy::kNextPowerOfTwo};
+  ArenaExtendStrategy arena_extend_strategy_{ArenaExtendStrategy::kSameAsRequested};
 
   std::unordered_map<std::string, migraphx::program> map_progs_;
   std::unordered_map<std::string, std::string> map_onnx_string_;
