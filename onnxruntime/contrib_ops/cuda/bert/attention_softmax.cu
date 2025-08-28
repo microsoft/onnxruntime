@@ -1057,6 +1057,20 @@ template Status ComputeSoftmaxWithMask1D<half>(cudaStream_t stream,
                                                half* output,
                                                const bool causal);
 
+template Status ComputeSoftmaxWithMask1D<BFloat16>(cudaStream_t stream,
+                                               const int total_sequence_length,
+                                               const int sequence_length,
+                                               const int batch_size,
+                                               const int num_heads,
+                                               const int* mask_index,
+                                               const int* mask_start,
+                                               const BFloat16* attn_bias,
+                                               const bool broadcast_attn_bias_dim_0,
+                                               const bool broadcast_attn_bias_dim_1,
+                                               const BFloat16* input,
+                                               BFloat16* output,
+                                               const bool causal);
+
 template Status ComputeSoftmaxWithRawMask<float>(Stream* ort_stream,
                                                  const int total_sequence_length,
                                                  const int sequence_length,
@@ -1095,6 +1109,26 @@ template Status ComputeSoftmaxWithRawMask<half>(Stream* ort_stream,
                                                 const int max_sequence_length,
                                                 const bool use_persistent_softmax,
                                                 half* persistent_softmax_workspace,
+                                                const float mask_filter_value);
+
+template Status ComputeSoftmaxWithRawMask<BFloat16>(Stream* ort_stream,
+                                                const int total_sequence_length,
+                                                const int sequence_length,
+                                                const int batch_size,
+                                                const int num_heads,
+                                                const int* attention_mask,
+                                                const bool* key_padding_mask,
+                                                const BFloat16* attn_bias,
+                                                const bool broadcast_attn_bias_dim_0,
+                                                const bool broadcast_attn_bias_dim_1,
+                                                const BFloat16* input,
+                                                BFloat16* output,
+                                                const bool causal,
+                                                const float rsqrt_head_size,
+                                                const int mask_dimension,
+                                                const int max_sequence_length,
+                                                const bool use_persistent_softmax,
+                                                BFloat16* persistent_softmax_workspace,
                                                 const float mask_filter_value);
 
 }  // namespace attention_softmax_cuda

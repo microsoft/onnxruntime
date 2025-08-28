@@ -889,6 +889,20 @@ void LaunchAddBiasTransposeTrt(
 }
 
 template <>
+void LaunchAddBiasTransposeTrt<onnxruntime::BFloat16>(
+    cudaStream_t /*stream*/, const int /*max_threads_per_block*/,
+    const int /*batch_size*/, const int /*sequence_length*/,
+    const int /*num_heads*/, const int /*head_size*/,
+    const onnxruntime::BFloat16* /*biases*/,
+    const onnxruntime::BFloat16* /*query*/,
+    const onnxruntime::BFloat16* /*key*/,
+    const onnxruntime::BFloat16* /*value*/,
+    onnxruntime::BFloat16* /*output*/,
+    bool /*is_cross_attention*/, int /*kv_sequence_length*/) {
+  ORT_ENFORCE(false, "BF16 not supported for LaunchAddBiasTransposeTrt.");
+}
+
+template <>
 void LaunchAddBiasTransposeTrt(
     cudaStream_t stream, const int max_threads_per_block,
     const int batch_size, const int sequence_length,

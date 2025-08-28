@@ -488,6 +488,11 @@ struct T4<half> {
   using Type = Half4;
 };
 
+template <>
+struct T4<BFloat16> {
+  using Type = float2;
+};
+
 template <typename T>
 struct T2;
 
@@ -499,6 +504,11 @@ struct T2<float> {
 template <>
 struct T2<half> {
   using Type = half2;
+};
+
+template<>
+struct T2<BFloat16> {
+  using Type = __nv_bfloat162;
 };
 
 template <typename T>
@@ -867,6 +877,14 @@ template void AddBiasTransposePacked<half>(
 
 template void AddBiasTransposePacked<float>(
     const float* query, const float* key, const float* value, const float* bias, float* output,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int qk_head_size, const int v_head_size,
+    AttentionQkvFormat source_format, AttentionQkvFormat target_format,
+    const int32_t* token_offset, int32_t token_count,
+    cudaStream_t stream);
+
+template void AddBiasTransposePacked<BFloat16>(
+    const BFloat16* query, const BFloat16* key, const BFloat16* value, const BFloat16* bias, BFloat16* output,
     const int batch_size, const int sequence_length,
     const int num_heads, const int qk_head_size, const int v_head_size,
     AttentionQkvFormat source_format, AttentionQkvFormat target_format,
