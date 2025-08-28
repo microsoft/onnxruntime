@@ -3054,10 +3054,18 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetTensorAttributeAsOrtValue, _In_ const Ort
   const auto& tensor_proto = attr_proto->t();
 
   // Check that TensorProto is valid.
-  ORT_ENFORCE(utils::HasDataType(tensor_proto), "Tensor proto doesn't have data type.");
-  ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(tensor_proto.data_type()), "Tensor proto has invalid data type.");
-  ORT_ENFORCE(!utils::HasExternalData(tensor_proto),
-              "Tensor proto with external data for value attribute is not supported.");
+  if (!utils::HasDataType(tensor_proto)) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Tensor proto doesn't have data type.");
+  }
+
+  if (!ONNX_NAMESPACE::TensorProto::DataType_IsValid(tensor_proto.data_type())) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Tensor proto has invalid data type.");
+  }
+
+  if (utils::HasExternalData(tensor_proto)) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
+                                 "Tensor proto with external data for value attribute is not supported.");
+  }
 
   // Initialize OrtValue for tensor attribute.
   auto tensor_attribute_value = std::make_unique<OrtValue>();
