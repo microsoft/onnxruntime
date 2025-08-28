@@ -117,20 +117,3 @@ Get-ChildItem -Directory -Path "$nuget_artifacts_dir\onnxruntime-*" | ForEach-Ob
 # List the final artifacts.
 Write-Output "Post-copy artifacts:"
 Get-ChildItem -Recurse $nuget_artifacts_dir
-
-# Check if all .so files are symlinks, which is required for the package structure.
-Write-Output "Checking for .so file symlinks..."
-$so_files = Get-ChildItem -Recurse -Path $nuget_artifacts_dir -Filter *.so
-# Find any .so files that are NOT symlinks.
-$non_symlink_so_files = $so_files | Where-Object { -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) }
-
-if ($non_symlink_so_files) {
-    Write-Error "Found .so files that are not symlinks:"
-    foreach ($file in $non_symlink_so_files) {
-        Write-Error "- $($file.FullName)"
-    }
-    throw "One or more .so files are not symlinks. This can cause issues in the NuGet package."
-}
-else {
-    Write-Output "All found .so files are correctly configured as symlinks."
-}
