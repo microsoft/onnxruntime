@@ -328,8 +328,8 @@ ONNX Runtime discovered during initialization.
 The factory returns `OrtEpDevice` instances from `OrtEpFactory::GetSupportedDevices()`.
 Each `OrtEpDevice` instance pairs a factory with a hardware device that the factory supports.
 For example, if a single factory instance supports both CPU and NPU, then the call to `OrtEpFactory::GetSupportedDevices()` returns two `OrtEpDevice` instances:
-    - ep_device_0: (factory_0, CPU)
-    - ep_device_1: (factory_0, NPU)
+  - ep_device_0: (factory_0, CPU)
+  - ep_device_1: (factory_0, NPU)
 
 <br/>
 <p align="center"><img width="100%" src="../../images/plugin_ep_sd_lib_reg.png" alt="Sequence diagram showing registration and unregistration of a plugin EP library"/></p>
@@ -519,7 +519,7 @@ Opaque type that contains a compiled/fused node's name and host memory allocatio
 OrtNodeComputeInfo
 </td>
 <td>
-Struct that contains the computation function for a compiled `OrtGraph` instance. Initialized by an `OrtEp` instance.
+Struct that contains the computation function for a compiled <code>OrtGraph</code> instance. Initialized by an <code>OrtEp</code> instance.
 </td>
 </tr>
 
@@ -528,7 +528,7 @@ Struct that contains the computation function for a compiled `OrtGraph` instance
 OrtEpGraphSupportInfo
 </td>
 <td>
-Opaque type that contains information on the nodes supported by an EP. An instance of `OrtEpGraphSupportInfo` is passed to `OrtEp::GetCapability()` and the EP populates the `OrtEpGraphSupportInfo` instance with information on the nodes that it supports.
+Opaque type that contains information on the nodes supported by an EP. An instance of <code>OrtEpGraphSupportInfo</code> is passed to <code>OrtEp::GetCapability()</code> and the EP populates the <code>OrtEpGraphSupportInfo</code> instance with information on the nodes that it supports.
 </td>
 </tr>
 
@@ -546,7 +546,7 @@ Enumerates the operator data layouts that could be preferred by an EP. By defaul
 OrtMemoryDevice
 </td>
 <td>
-Opaque type that represents a combination of a physical device and memory type. A memory allocation and allocator are associated with a specific `OrtMemoryDevice`, and this information is used to determine when data transfer is required.
+Opaque type that represents a combination of a physical device and memory type. A memory allocation and allocator are associated with a specific <code>OrtMemoryDevice</code>, and this information is used to determine when data transfer is required.
 </td>
 </tr>
 
@@ -582,11 +582,11 @@ Struct of functions that an EP implements if it needs to support Streams.
 <a href="#ort-ep-factory">OrtEpFactory</a>
 </td>
 <td>
-A plugin EP library provides ORT with one or more instances of `OrtEpFactory`. An `OrtEpFactory` implements functions that are used by ORT to query device support, create allocators, create data transfer objects, and create instances of an EP (i.e., an `OrtEp` instance).<br/>
+A plugin EP library provides ORT with one or more instances of <code>OrtEpFactory</code>. An <code>OrtEpFactory</code> implements functions that are used by ORT to query device support, create allocators, create data transfer objects, and create instances of an EP (i.e., an <code>OrtEp</code> instance).<br/>
 
-An `OrtEpFactory` may support more than one hardware device (`OrtHardwareDevice`). If more than one hardware device is supported by the factory, an EP instance created by the factory is expected to internally partition any graph nodes assigned to the EP among its supported hardware devices.<br/>
+An <code>OrtEpFactory</code> may support more than one hardware device (<code>OrtHardwareDevice</code>). If more than one hardware device is supported by the factory, an EP instance created by the factory is expected to internally partition any graph nodes assigned to the EP among its supported hardware devices.<br/>
 
-Alternatively, if an EP library author needs ONNX Runtime to partition the graph nodes among different hardware devices supported by the EP library, then the EP library must provide multiple `OrtEpFactory` instances. Each `OrtEpFactory` instance must support one hardware device and must create an EP instance with a unique name (e.g., MyEP_CPU, MyEP_GPU, MyEP_NPU).
+Alternatively, if an EP library author needs ONNX Runtime to partition the graph nodes among different hardware devices supported by the EP library, then the EP library must provide multiple <code>OrtEpFactory</code> instances. Each <code>OrtEpFactory</code> instance must support one hardware device and must create an EP instance with a unique name (e.g., MyEP_CPU, MyEP_GPU, MyEP_NPU).
 </td>
 </tr>
 
@@ -595,7 +595,7 @@ Alternatively, if an EP library author needs ONNX Runtime to partition the graph
 <a href="#ort-ep">OrtEp</a>
 </td>
 <td>
-An instance of an Ep that can execute model nodes on one or more hardware devices (`OrtHardwareDevice`). An `OrtEp` implements functions that are used by ORT to query graph node support, compile supported nodes, query preferred data layout, set run options, etc. An `OrtEpFactory` creates an `OrtEp` instance via the `OrtEpFactory::CreateEp()` function.
+An instance of an Ep that can execute model nodes on one or more hardware devices (<code>OrtHardwareDevice</code>). An <code>OrtEp</code> implements functions that are used by ORT to query graph node support, compile supported nodes, query preferred data layout, set run options, etc. An <code>OrtEpFactory</code> creates an <code>OrtEp</code> instance via the <code>OrtEpFactory::CreateEp()</code> function.
 </td>
 </tr>
 
@@ -604,7 +604,7 @@ An instance of an Ep that can execute model nodes on one or more hardware device
 OrtRunOptions
 </td>
 <td>
-Opaque object containing options passed to the `OrtApi::Run()` function, which runs a model.
+Opaque object containing options passed to the <code>OrtApi::Run()</code> function, which runs a model.
 </td>
 </tr>
 
@@ -613,7 +613,7 @@ Opaque object containing options passed to the `OrtApi::Run()` function, which r
 OrtGraph
 </td>
 <td>
-Opaque type that represents a graph. Provided to `OrtEp` instances in calls to `OrtEp::GetCapability()` and `OrtEp::Compile()`.
+Opaque type that represents a graph. Provided to <code>OrtEp</code> instances in calls to <code>OrtEp::GetCapability()</code> and <code>OrtEp::Compile()</code>.
 </td>
 </tr>
 
@@ -622,11 +622,11 @@ Opaque type that represents a graph. Provided to `OrtEp` instances in calls to `
 OrtValueInfo
 </td>
 <td>
-Opaque type that contains information for a value in a graph. A graph value can be a graph input, graph output, graph initializer, node input, or node output. An `OrtValueInfo` instance has the following information.<br/>
+Opaque type that contains information for a value in a graph. A graph value can be a graph input, graph output, graph initializer, node input, or node output. An <code>OrtValueInfo</code> instance has the following information.<br/>
 <ul>
-<li>Type and shape (e.g., `OrtTypeInfo`)</li>
-<li>`OrtNode` consumers</li>
-<li>`OrtNode` producer</li>
+<li>Type and shape (e.g., <code>OrtTypeInfo</code>)</li>
+<li><code>OrtNode</code> consumers</li>
+<li><code>OrtNode</code> producer</li>
 <li>Information that classifies the value as a graph input, graph output, initializer, etc.</li>
 </ul>
 </td>
@@ -637,7 +637,7 @@ Opaque type that contains information for a value in a graph. A graph value can 
 OrtExternalInitializerInfo
 </td>
 <td>
-Opaque type that contains information for an initializer stored in an external file. An `OrtExternalInitializerInfo` instance contains the file path, file offset, and byte size for the initializer. Can be obtained from an `OrtValueInfo` via the function `ValueInfo_GetExternalInitializerInfo()`.
+Opaque type that contains information for an initializer stored in an external file. An <code>OrtExternalInitializerInfo</code> instance contains the file path, file offset, and byte size for the initializer. Can be obtained from an <code>OrtValueInfo</code> via the function <code>ValueInfo_GetExternalInitializerInfo()</code>.
 </td>
 </tr>
 
@@ -704,49 +704,59 @@ Description
 
 <tr>
 <td>
-RegisterExecutionProviderLibrary
+<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a7c8ea74a2ee54d03052f3d7cd1e1335d">RegisterExecutionProviderLibrary</a>
 </td>
 <td>
-</td>
-</tr>
-
-<tr>
-<td>
-UnregisterExecutionProviderLibrary
-</td>
-<td>
+Register an EP library with ORT. The library must export the <code>CreateEpFactories</code> and <code>ReleaseEpFactory</code> functions.
 </td>
 </tr>
 
 <tr>
 <td>
-GetEpDevices
+<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#acd4d148e149af2f2304a45b65891543f">UnregisterExecutionProviderLibrary</a>
 </td>
 <td>
-</td>
-</tr>
-
-<tr>
-<td>
-SessionOptionsAppendExecutionProvider_V2
-</td>
-<td>
+Unregister an EP library with ORT. Caller <b>MUST</b> ensure there are no <code>OrtSession</code> instances using the EPs created by the library before calling this function.
 </td>
 </tr>
 
 <tr>
 <td>
-SessionOptionsSetEpSelectionPolicy
+<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a52107386ff1be870f55a0140e6add8dd">GetEpDevices</a>
 </td>
 <td>
+Get the list of available OrtEpDevice instances.<br/><br/>
+Each <code>OrtEpDevice</code> instance contains details of the execution provider and the device it will use.
 </td>
 </tr>
 
 <tr>
 <td>
-SessionOptionsSetEpSelectionPolicyDelegate
+<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a285a5da8c9a63eff55dc48e4cf3b56f6">SessionOptionsAppendExecutionProvider_V2</a>
 </td>
 <td>
+Append the execution provider that is responsible for the provided <code>OrtEpDevice</code> instances to the session options.
+</td>
+</tr>
+
+<tr>
+<td>
+<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a2ae116df2c6293e4094a6742a6c46f7e">SessionOptionsSetEpSelectionPolicy</a>
+</td>
+<td>
+Set the execution provider selection policy for the session.<br/><br/>
+Allows users to specify a device selection policy for automatic EP selection. If custom selection is required please use
+<code>SessionOptionsSetEpSelectionPolicyDelegate</code> instead.
+</td>
+</tr>
+
+<tr>
+<td>
+<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a29c026bc7aa6672f93b7f9e31fd3e4a7">SessionOptionsSetEpSelectionPolicyDelegate</a>
+</td>
+<td>
+Set the execution provider selection policy delegate for the session.<br/><br/>
+Allows users to provide a custom device selection policy for automatic EP selection.
 </td>
 </tr>
 
