@@ -353,6 +353,9 @@ static Status GetInputIndices(const EpNode& consumer_node,
       [&found, &value_info_name, &indices](gsl::span<const EpValueInfo* const> input_value_infos,
                                            bool is_implicit) -> void {
     for (size_t i = 0; i < input_value_infos.size(); i++) {
+      if (input_value_infos[i] == nullptr) {  // input_value_info == nullptr means the input is optional
+        continue;
+      }
       if (input_value_infos[i]->GetName() == value_info_name) {
         indices.push_back(is_implicit ? -1 : static_cast<int64_t>(i));
         found = true;
