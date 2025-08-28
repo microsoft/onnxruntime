@@ -228,16 +228,11 @@ struct TensorrtFuncState {
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
   std::vector<nvinfer1::IOptimizationProfile*> profiles;
-  bool engine_decryption_enable = false;
-  int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
-  int (*engine_encryption)(const char*, char*, size_t) = nullptr;
   bool detailed_build_log = false;
   bool sparsity_enable = false;
   int auxiliary_streams = -1;
   bool cuda_graph_enable = 0;
   bool is_dynamic_shape = false;
-  std::string cache_prefix;
-  std::string cache_suffix;
   // runtime parameters
   std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
   std::vector<TensorParams> input_tensors;
@@ -288,14 +283,6 @@ class NvExecutionProvider : public IExecutionProvider {
   // TODO: we might want to transition to this, it allows for an easier option specification:
   //  explicit NvExecutionProvider(const ProviderOptions& provider_options_map, const ConfigOptions* config_options);
   virtual ~NvExecutionProvider();
-
-  cublasHandle_t PerThreadDefaultCublasHandle() {
-    return GetPerThreadContext().CublasHandle();
-  }
-
-  cudnnHandle_t PerThreadDefaultCudnnHandle() {
-    return GetPerThreadContext().CudnnHandle();
-  }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
@@ -351,7 +338,6 @@ class NvExecutionProvider : public IExecutionProvider {
   size_t min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 0;
   size_t max_shared_mem_size_ = 0;
-  bool force_sequential_engine_build_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
   bool weight_stripped_engine_enable_ = false;
@@ -364,21 +350,17 @@ class NvExecutionProvider : public IExecutionProvider {
   size_t onnx_external_data_bytestream_size_ = 0;
   bool sparsity_enable_ = false;
   int auxiliary_streams_ = -1;
-  std::string cache_path_, engine_decryption_lib_path_;
+  std::string cache_path_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   std::mutex tensorrt_mu_;
   int device_id_;
   std::string compute_capability_;
   size_t max_ctx_mem_size_ = 0;
   mutable char model_path_[4096] = {};  // Reserved for max path length
-  bool engine_decryption_enable_ = false;
-  int (*engine_decryption_)(const char*, char*, size_t*) = nullptr;
-  int (*engine_encryption_)(const char*, char*, size_t) = nullptr;
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
   bool multi_profile_enable_ = false;
   std::filesystem::path runtime_cache_;
-  std::string cache_prefix_;
   std::string op_types_to_exclude_;
   int nv_profile_index_ = 0;
   std::unique_ptr<onnxruntime::Model> ep_context_model_;
@@ -420,10 +402,6 @@ class NvExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
   std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_maps_;
 
-  // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
-  cudnnHandle_t external_cudnn_handle_ = nullptr;
-  cublasHandle_t external_cublas_handle_ = nullptr;
-
   // Call cudaStreamSynchronize() after TRT enqueueV3()
   mutable bool sync_stream_after_enqueue_ = true;
 
@@ -434,20 +412,7 @@ class NvExecutionProvider : public IExecutionProvider {
   class PerThreadContext final {
    public:
     PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream);
-    ~PerThreadContext();
-
-    cublasHandle_t CublasHandle() const {
-      return external_cublas_handle_;
-    }
-
-    cudnnHandle_t CudnnHandle() const {
-      return external_cudnn_handle_;
-    }
-
-    bool IsTensorRTContextInMap(std::string fused_node);
-    nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
-    bool UpdateTensorRTContext(std::string fused_node, tensorrt_ptr::unique_pointer_exec_ctx context);
-    void ResetTensorRTContext(std::string fused_node);
+    ~PerThreadContext() = default;
 
     // CUDA Graph management
     void SetCudaGraphStream(cudaStream_t stream) { cuda_graph_.SetStream(stream); }
@@ -465,23 +430,6 @@ class NvExecutionProvider : public IExecutionProvider {
     void DeleteCapturedGraph(CudaGraphAnnotation_t cuda_graph_annotation_id);
 
    private:
-    cudnnHandle_t external_cudnn_handle_ = nullptr;
-    cublasHandle_t external_cublas_handle_ = nullptr;
-
-    // Maintaining execution context on a per thread basis is suggested by TRT doc.
-    // Also, for enqueueV2() in execution context, to perform inference concurrently in multiple streams, use one execution context per stream.
-    // ORT multi-streams feature uses one stream for one thread, therefore maintaining execution context on a per thread basis is necessary for TRT EP,
-    // otherwise it may result in undefined behavior or synchronization issues.
-    //
-    // See more details here:
-    // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-    // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_execution_context.html#a63cd95430852038ce864e17c670e0b36
-    std::unordered_map<std::string, tensorrt_ptr::unique_pointer_exec_ctx> trt_context_map_;
-
-    // The profile shape ranges for the engine that the execution context maintained by the PerThreadContext is built with.
-    // TRT EP needs this info to determine whether to rebuild the execution context.
-    std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;
-
     // Cuda graph with multi threads will be supported in the future, so cuda_graph_ is put under PerThreadContext.
     // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph instance is enough (no need to maintain one CUDAGraph instance per TRT subgraph)
     CUDAGraph cuda_graph_;
