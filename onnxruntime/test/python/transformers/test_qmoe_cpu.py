@@ -682,7 +682,7 @@ class SparseMoeBlockORTHelper(nn.Module):
         if hasattr(self, "quant_bits") and self.quant_bits > 0:
             # QMoE: Pass raw logits directly (QMoE does softmax internally)
             router_input = router_logits
-            print("DEBUG: Using QMoE routing (raw logits)")
+            # print("DEBUG: Using QMoE routing (raw logits)")
         else:
             # Regular MoE: Apply the same routing logic as PyTorch reference
             # This converts raw logits to proper routing probabilities
@@ -700,12 +700,12 @@ class SparseMoeBlockORTHelper(nn.Module):
                     expert_idx = selected_experts[i, j]
                     router_input[i, expert_idx] = routing_weights[i, j]
 
-            print("DEBUG: Using regular MoE routing (processed probabilities)")
+        #     print("DEBUG: Using regular MoE routing (processed probabilities)")
 
-        print(f"DEBUG: router_input stats: mean={router_input.mean():.6f}, std={router_input.std():.6f}")
-        print(
-            f"DEBUG: hidden_states_flat stats: mean={hidden_states_flat.mean():.6f}, std={hidden_states_flat.std():.6f}"
-        )
+        # print(f"DEBUG: router_input stats: mean={router_input.mean():.6f}, std={router_input.std():.6f}")
+        # print(
+        #     f"DEBUG: hidden_states_flat stats: mean={hidden_states_flat.mean():.6f}, std={hidden_states_flat.std():.6f}"
+        # )
 
         torch_dtype = onnx_to_torch_type_map[self.onnx_dtype]
 
@@ -738,13 +738,13 @@ class SparseMoeBlockORTHelper(nn.Module):
                         buffer_ptr=tensor.data_ptr(),
                     )
 
-            print("DEBUG: About to run ORT inference...")
+            # print("DEBUG: About to run ORT inference...")
 
             iobinding.synchronize_inputs()
             self.ort_sess.run_with_iobinding(iobinding)
             iobinding.synchronize_outputs()
 
-            print("DEBUG: ORT inference completed successfully")
+            # print("DEBUG: ORT inference completed successfully")
 
             if enable_performance_test:
                 repeat = 100
@@ -1290,28 +1290,28 @@ class RegularMoESparseMoeBlock(SparseMoeBlockORTHelper):
 
         # Debug: Print output statistics
         activation_type = "SwiGLU" if self.use_swiglu else "SiLU"
-        print(
-            f"DEBUG - {activation_type}: torch_output stats: mean={torch_output.mean():.6f}, std={torch_output.std():.6f}, min={torch_output.min():.6f}, max={torch_output.max():.6f}"
-        )
-        print(
-            f"DEBUG - {activation_type}: ort_output stats: mean={ort_output.mean():.6f}, std={ort_output.std():.6f}, min={ort_output.min():.6f}, max={ort_output.max():.6f}"
-        )
+        # print(
+        #     f"DEBUG - {activation_type}: torch_output stats: mean={torch_output.mean():.6f}, std={torch_output.std():.6f}, min={torch_output.min():.6f}, max={torch_output.max():.6f}"
+        # )
+        # print(
+        #     f"DEBUG - {activation_type}: ort_output stats: mean={ort_output.mean():.6f}, std={ort_output.std():.6f}, min={ort_output.min():.6f}, max={ort_output.max():.6f}"
+        # )
 
         # Debug: Check if tensors are sharing memory (for SwiGLU bug investigation)
         if self.use_swiglu:
-            print("DEBUG - SwiGLU Memory Check:")
-            print(f"  torch_output.data_ptr() = {torch_output.data_ptr()}")
-            print(f"  ort_output.data_ptr() = {ort_output.data_ptr()}")
-            print(f"  torch_output is ort_output = {torch_output is ort_output}")
-            print(
-                f"  torch_output.shares_memory_with(ort_output) = {torch_output.storage().data_ptr() == ort_output.storage().data_ptr()}"
-            )
+            # print("DEBUG - SwiGLU Memory Check:")
+            # print(f"  torch_output.data_ptr() = {torch_output.data_ptr()}")
+            # print(f"  ort_output.data_ptr() = {ort_output.data_ptr()}")
+            # print(f"  torch_output is ort_output = {torch_output is ort_output}")
+            # print(
+            #     f"  torch_output.shares_memory_with(ort_output) = {torch_output.storage().data_ptr() == ort_output.storage().data_ptr()}"
+            # )
 
             # Check first few values for bit-for-bit comparison
             torch_sample = torch_output.flatten()[:10]
             ort_sample = ort_output.flatten()[:10]
-            print(f"  torch_sample[:10] = {torch_sample.tolist()}")
-            print(f"  ort_sample[:10] = {ort_sample.tolist()}")
+            # print(f"  torch_sample[:10] = {torch_sample.tolist()}")
+            # print(f"  ort_sample[:10] = {ort_sample.tolist()}")
 
             # Force modification to check if they're linked
             ort_output_modified = ort_output.clone()
@@ -1326,9 +1326,9 @@ class RegularMoESparseMoeBlock(SparseMoeBlockORTHelper):
         torch_has_inf = torch.isinf(torch_output).any()
         ort_has_inf = torch.isinf(ort_output).any()
 
-        print(
-            f"DEBUG - {activation_type}: torch_has_nan={torch_has_nan}, ort_has_nan={ort_has_nan}, torch_has_inf={torch_has_inf}, ort_has_inf={ort_has_inf}"
-        )
+        # print(
+        #     f"DEBUG - {activation_type}: torch_has_nan={torch_has_nan}, ort_has_nan={ort_has_nan}, torch_has_inf={torch_has_inf}, ort_has_inf={ort_has_inf}"
+        # )
 
         if torch_has_nan or ort_has_nan or torch_has_inf or ort_has_inf:
             torch_output_clean = torch.where(
@@ -1346,16 +1346,16 @@ class RegularMoESparseMoeBlock(SparseMoeBlockORTHelper):
             #     if torch.equal(problematic_torch, problematic_ort):
             #         max_diff = 0.0
 
-            print(f"DEBUG - {activation_type}: max_diff after cleaning NaN/Inf = {max_diff:.6f}")
+            # print(f"DEBUG - {activation_type}: max_diff after cleaning NaN/Inf = {max_diff:.6f}")
         else:
             max_diff = (torch_output.cpu() - ort_output.cpu()).abs().max()
 
         # Debug: Show precise max_diff for SwiGLU case
-        if self.use_swiglu:
-            print(f"DEBUG - SwiGLU: Precise max_diff = {max_diff:.12f} (scientific: {max_diff:.6e})")
-            # Show a few actual differences
-            diff_tensor = (torch_output.cpu() - ort_output.cpu()).abs()
-            print(f"DEBUG - SwiGLU: Top 5 differences = {torch.topk(diff_tensor.flatten(), 5).values.tolist()}")
+        # if self.use_swiglu:
+        #     print(f"DEBUG - SwiGLU: Precise max_diff = {max_diff:.12f} (scientific: {max_diff:.6e})")
+        #     # Show a few actual differences
+        #     diff_tensor = (torch_output.cpu() - ort_output.cpu()).abs()
+        #     print(f"DEBUG - SwiGLU: Top 5 differences = {torch.topk(diff_tensor.flatten(), 5).values.tolist()}")
 
         # Format output similar to SwiGLU tests
         print(f"Parity check - {activation_type} 0-bit: max_diff = {max_diff:.6f}")

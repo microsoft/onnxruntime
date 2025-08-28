@@ -27,16 +27,16 @@ class MoE final : public OpKernel, public MoEBaseCPU {
                  const Tensor* fc3_experts_bias,
                  Tensor* output) const;
 
-  void ProcessExpert(const float* input_data,
-                     const float* fc1_weights,
-                     const float* fc1_bias,
-                     const float* fc2_weights,
-                     const float* fc2_bias,
-                     float* output_data,
-                     int64_t hidden_size,
-                     int64_t inter_size,
-                     int64_t fc1_inter_size,
-                     bool legacy_shape) const;
+  Status ProcessExpert(const float* input_data,
+                       const float* fc1_weights,
+                       const float* fc1_bias,
+                       const float* fc2_weights,
+                       const float* fc2_bias,
+                       float* output_data,
+                       int64_t hidden_size,
+                       int64_t inter_size,
+                       int64_t fc1_inter_size,
+                       bool legacy_shape) const;
 
   void ApplyActivationInPlace(float* data, int64_t size, bool is_swiglu_format = false) const;
 };

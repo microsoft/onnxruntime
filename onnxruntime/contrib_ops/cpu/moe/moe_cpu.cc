@@ -108,6 +108,7 @@ Status MoE::MoEImpl(OpKernelContext* context,
 
     // Find top-k experts for this row
     std::vector<std::pair<float, int64_t>> expert_scores;
+    expert_scores.reserve(num_experts);  // Pre-allocate to avoid reallocations
     for (int64_t expert = 0; expert < num_experts; ++expert) {
       expert_scores.emplace_back(current_router[expert], expert);
     }
@@ -122,9 +123,15 @@ Status MoE::MoEImpl(OpKernelContext* context,
       for (int64_t i = 0; i < k_; ++i) {
         total_weight += expert_scores[i].first;
       }
-      if (total_weight > 0.0f) {
+      // Check for numerical stability - avoid division by very small numbers
+      if (total_weight > 1e-8f) {
         for (int64_t i = 0; i < k_; ++i) {
           expert_scores[i].first /= total_weight;
+        }
+      } else {
+        // If total weight is too small, set uniform weights
+        for (int64_t i = 0; i < k_; ++i) {
+          expert_scores[i].first = 1.0f / static_cast<float>(k_);
         }
       }
     }
@@ -136,6 +143,12 @@ Status MoE::MoEImpl(OpKernelContext* context,
       const int64_t expert_idx = expert_scores[i].second;
 
       if (weight <= 0.0f) continue;
+
+      // Validate expert index to prevent out-of-bounds access
+      if (expert_idx < 0 || expert_idx >= num_experts) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Expert index out of bounds: ", expert_idx, " (valid range: 0-", num_experts - 1, ")");
+      }
 
       // Calculate weight offsets based on layout
       const float* fc1_expert_weights;
@@ -158,10 +171,10 @@ Status MoE::MoEImpl(OpKernelContext* context,
       std::fill(expert_output.begin(), expert_output.end(), 0.0f);
 
       // Process this expert
-      ProcessExpert(current_input, fc1_expert_weights, fc1_expert_bias,
-                    fc2_expert_weights, fc2_expert_bias,
-                    expert_output.data(), hidden_size, inter_size, fc1_inter_size,
-                    legacy_shape);
+      ORT_RETURN_IF_ERROR(ProcessExpert(current_input, fc1_expert_weights, fc1_expert_bias,
+                                        fc2_expert_weights, fc2_expert_bias,
+                                        expert_output.data(), hidden_size, inter_size, fc1_inter_size,
+                                        legacy_shape));
 
       // Accumulate weighted expert output
       for (int64_t j = 0; j < hidden_size; ++j) {
@@ -173,30 +186,27 @@ Status MoE::MoEImpl(OpKernelContext* context,
   return Status::OK();
 }
 
-void MoE::ProcessExpert(const float* input_data,
-                        const float* fc1_weights,
-                        const float* fc1_bias,
-                        const float* fc2_weights,
-                        const float* fc2_bias,
-                        float* output_data,
-                        int64_t hidden_size,
-                        int64_t inter_size,
-                        int64_t fc1_inter_size,
-                        bool legacy_shape) const {
+Status MoE::ProcessExpert(const float* input_data,
+                          const float* fc1_weights,
+                          const float* fc1_bias,
+                          const float* fc2_weights,
+                          const float* fc2_bias,
+                          float* output_data,
+                          int64_t hidden_size,
+                          int64_t inter_size,
+                          int64_t fc1_inter_size,
+                          bool legacy_shape) const {
   const bool is_swiglu = (activation_type_ == ActivationType::SwiGLU);
-
-  // DEBUG: Add logging for SwiGLU debugging
-  if (is_swiglu) {
-    printf("DEBUG MoE Kernel: Processing SwiGLU expert - hidden_size=%lld, inter_size=%lld, fc1_inter_size=%lld\n",
-           (long long)hidden_size, (long long)inter_size, (long long)fc1_inter_size);
-    printf("DEBUG MoE Kernel: activation_alpha_=%f, activation_beta_=%f, swiglu_limit_=%f\n",
-           activation_alpha_, activation_beta_, swiglu_limit_);
-    printf("DEBUG MoE Kernel: Input sample: [%.6f, %.6f, %.6f]\n",
-           input_data[0], input_data[1], input_data[2]);
-  }
 
   // Allocate intermediate buffer
   std::vector<float> fc1_output(fc1_inter_size);
+
+  // Validate buffer sizes to prevent memory corruption
+  if (fc1_inter_size <= 0 || hidden_size <= 0 || inter_size <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid tensor dimensions: hidden_size=", hidden_size,
+                           ", inter_size=", inter_size, ", fc1_inter_size=", fc1_inter_size);
+  }
 
   // FC1: input -> intermediate using MLAS GEMM for better performance
   // For legacy layout: weights are [hidden_size, fc1_inter_size], stored row-major
@@ -204,25 +214,26 @@ void MoE::ProcessExpert(const float* input_data,
   // MLAS expects: C = A * B^T + bias (if beta=0, bias is ignored in GEMM)
 
   MLAS_SGEMM_DATA_PARAMS fc1_params;
-  fc1_params.A = input_data;  // input: [1, hidden_size]
-  fc1_params.lda = hidden_size;
+  fc1_params.A = input_data;     // input: [1, hidden_size]
+  fc1_params.lda = hidden_size;  // leading dimension of A (single row, so stride = hidden_size)
   fc1_params.alpha = 1.0f;
   fc1_params.beta = 0.0f;
   fc1_params.C = fc1_output.data();
+  fc1_params.ldc = fc1_inter_size;  // leading dimension of C (single row, so stride = fc1_inter_size)
 
   if (legacy_shape) {
-    // Legacy: weights [hidden_size, fc1_inter_size] -> need transpose for GEMM
-    // A[1, hidden_size] * B^T[hidden_size, fc1_inter_size] = C[1, fc1_inter_size]
+    // Legacy: weights [hidden_size, fc1_inter_size] stored row-major
+    // GEMM: A[1, hidden_size] * B^T[hidden_size, fc1_inter_size] = C[1, fc1_inter_size]
+    // Before transpose, B is [hidden_size, fc1_inter_size] with ldb = fc1_inter_size
     fc1_params.B = fc1_weights;
     fc1_params.ldb = fc1_inter_size;  // leading dimension of B before transpose
-    fc1_params.ldc = fc1_inter_size;
     MlasGemm(CblasNoTrans, CblasTrans, 1, fc1_inter_size, hidden_size, fc1_params, nullptr);
   } else {
-    // New: weights [fc1_inter_size, hidden_size] -> no transpose needed
-    // A[1, hidden_size] * B^T[fc1_inter_size, hidden_size] = C[1, fc1_inter_size]
+    // New: weights [fc1_inter_size, hidden_size] stored row-major
+    // GEMM: A[1, hidden_size] * B^T[fc1_inter_size, hidden_size] = C[1, fc1_inter_size]
+    // Before transpose, B is [fc1_inter_size, hidden_size] with ldb = hidden_size
     fc1_params.B = fc1_weights;
     fc1_params.ldb = hidden_size;  // leading dimension of B before transpose
-    fc1_params.ldc = fc1_inter_size;
     MlasGemm(CblasNoTrans, CblasTrans, 1, fc1_inter_size, hidden_size, fc1_params, nullptr);
   }
 
@@ -244,23 +255,11 @@ void MoE::ProcessExpert(const float* input_data,
     fc2_input_buffer.resize(inter_size);
     fc2_input = fc2_input_buffer.data();
 
-    // DEBUG: Check FC1 output before SwiGLU
-    printf("DEBUG MoE Kernel: FC1 output sample before SwiGLU: [%.6f, %.6f, %.6f, %.6f]\n",
-           fc1_output[0], fc1_output[1], fc1_output[2], fc1_output[3]);
-
     // Apply SwiGLU activation: transform fc1_output[2*inter_size] -> fc2_input[inter_size]
     ApplySwiGLUActivation(fc1_output.data(), fc2_input, inter_size, true,
                           activation_alpha_, activation_beta_, swiglu_limit_);
-
-    // DEBUG: Check FC2 input after SwiGLU
-    printf("DEBUG MoE Kernel: FC2 input sample after SwiGLU: [%.6f, %.6f, %.6f]\n",
-           fc2_input[0], fc2_input[1], fc2_input[2]);
   } else {
     ApplyActivationInPlace(fc1_output.data(), fc1_inter_size);
-
-    // DEBUG: Check activation output for SiLU
-    printf("DEBUG MoE Kernel: After SiLU activation: [%.6f, %.6f, %.6f]\n",
-           fc1_output[0], fc1_output[1], fc1_output[2]);
   }
 
   // FC2: intermediate -> output using MLAS GEMM
@@ -268,25 +267,26 @@ void MoE::ProcessExpert(const float* input_data,
   // Both have size inter_size
 
   MLAS_SGEMM_DATA_PARAMS fc2_params;
-  fc2_params.A = fc2_input;  // intermediate: [1, inter_size]
-  fc2_params.lda = inter_size;
+  fc2_params.A = fc2_input;     // intermediate: [1, inter_size]
+  fc2_params.lda = inter_size;  // leading dimension of A (single row, so stride = inter_size)
   fc2_params.alpha = 1.0f;
   fc2_params.beta = 0.0f;
   fc2_params.C = output_data;
+  fc2_params.ldc = hidden_size;  // leading dimension of C (single row, so stride = hidden_size)
 
   if (legacy_shape) {
-    // Legacy: weights [inter_size, hidden_size] -> need transpose for GEMM
-    // A[1, inter_size] * B^T[inter_size, hidden_size] = C[1, hidden_size]
+    // Legacy: weights [inter_size, hidden_size] stored row-major
+    // GEMM: A[1, inter_size] * B^T[inter_size, hidden_size] = C[1, hidden_size]
+    // Before transpose, B is [inter_size, hidden_size] with ldb = hidden_size
     fc2_params.B = fc2_weights;
     fc2_params.ldb = hidden_size;  // leading dimension of B before transpose
-    fc2_params.ldc = hidden_size;
     MlasGemm(CblasNoTrans, CblasTrans, 1, hidden_size, inter_size, fc2_params, nullptr);
   } else {
-    // New: weights [hidden_size, inter_size] -> no transpose needed
-    // A[1, inter_size] * B^T[hidden_size, inter_size] = C[1, hidden_size]
+    // New: weights [hidden_size, inter_size] stored row-major
+    // GEMM: A[1, inter_size] * B^T[hidden_size, inter_size] = C[1, hidden_size]
+    // Before transpose, B is [hidden_size, inter_size] with ldb = inter_size
     fc2_params.B = fc2_weights;
     fc2_params.ldb = inter_size;  // leading dimension of B before transpose
-    fc2_params.ldc = hidden_size;
     MlasGemm(CblasNoTrans, CblasTrans, 1, hidden_size, inter_size, fc2_params, nullptr);
   }
 
@@ -297,14 +297,7 @@ void MoE::ProcessExpert(const float* input_data,
     }
   }
 
-  // DEBUG: Final output sample
-  if (is_swiglu) {
-    printf("DEBUG MoE Kernel: Final SwiGLU output: [%.6f, %.6f, %.6f]\n",
-           output_data[0], output_data[1], output_data[2]);
-  } else {
-    printf("DEBUG MoE Kernel: Final SiLU output: [%.6f, %.6f, %.6f]\n",
-           output_data[0], output_data[1], output_data[2]);
-  }
+  return Status::OK();
 }
 
 void MoE::ApplyActivationInPlace(float* data, int64_t size, bool is_swiglu_format) const {
