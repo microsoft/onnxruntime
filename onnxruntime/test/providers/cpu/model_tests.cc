@@ -114,7 +114,6 @@ static const std::unordered_set<std::string> ONNX_ZOO_MODELS = {
     "VGG 19-caffe2",
     "YOLOv3",
     "ZFNet-512",
-    
     // Additional Zoo-only models (138)
     "AlexNet-int8",
     "BERT-Squad-int8",
