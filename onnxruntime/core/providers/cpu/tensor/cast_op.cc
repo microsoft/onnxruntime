@@ -420,7 +420,6 @@ struct TensorCaster<float, MLFloat16> {
   }
 };
 
-
 // (U)Int4x2 -> string or numeric types
 template <typename SrcType, typename DstType>
 struct TensorCaster<SrcType, DstType,
