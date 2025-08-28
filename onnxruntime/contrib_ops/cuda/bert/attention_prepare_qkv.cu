@@ -776,6 +776,12 @@ template Status PrepareQkv<half>(
     cudaStream_t stream,
     int max_threads_per_block);
 
+template Status PrepareQkv<BFloat16>(
+    contrib::AttentionParameters& parameters,
+    AttentionData<BFloat16>& data,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

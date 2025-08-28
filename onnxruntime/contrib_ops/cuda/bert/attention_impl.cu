@@ -997,11 +997,6 @@ Status QkvToContext(
           static_cast<int>(data.fused_cross_attention_kernel != nullptr) +
           static_cast<int>(data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention)) <= 1);
 
-  int a = 1;
-  if (a == 1) {
-return onnxruntime::common::Status::OK();
-  }
-
   DUMP_STRING_INIT();
   DUMP_STRING("Preparing Q, K, V");
     ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));

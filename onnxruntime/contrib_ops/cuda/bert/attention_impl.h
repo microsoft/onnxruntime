@@ -114,7 +114,7 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
 
 Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const nv_bfloat16* input, nv_bfloat16* output,
+                      const int max_threads_per_block, const bool reversed_bs, const BFloat16* input, BFloat16* output,
                       int total_matrix_count = -1);
 
 Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
@@ -122,6 +122,9 @@ Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, c
 
 Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
                               const half* input, half* output, cudaStream_t stream, const int max_threads_per_block);
+
+Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+                              const BFloat16* input, BFloat16* output, cudaStream_t stream, const int max_threads_per_block);
 
 template <typename T>
 Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int v_head_size,
