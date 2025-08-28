@@ -293,6 +293,47 @@ The following table lists the functions that have to be exported from the plugin
 
 
 ## Using a plugin EP library
+### Plugin EP library registration
+The sample application code below uses the following API functions to register and unregister a plugin EP library.
+ - [RegisterExecutionProviderLibrary](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a7c8ea74a2ee54d03052f3d7cd1e1335d)
+ - [UnregisterExecutionProviderLibrary](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#acd4d148e149af2f2304a45b65891543f)
+
+```C++
+// Note: this snippet does not handle errors.
+
+const char* lib_registration_name = "my_plugin_ep_library";
+
+// Register plugin EP library with ONNX Runtime.
+OrtStatus* status = ort_api->RegisterExecutionProviderLibrary(
+  ort_env,
+  lib_registration_name,  // Registration name can be anything the application chooses.
+  "my_ep.dll"             // Path to the plugin EP library
+);
+
+
+{
+  OrtSession* session = nullptr;
+
+  // Create an OrtSession and run a model ...
+}
+
+// Unregister the library using the application-specified registration name.
+// Must only unregister a library after all sessions that use the library have been released.
+status = ort_api->UnregisterExecutionProviderLibrary(ort_env, lib_registration_name);
+```
+
+As shown in the following sequence diagram, registering a plugin EP library causes ONNX Runtime to load the library and
+call the library's `CreateEpFactories()` function. During the call to `CreateEpFactories()`, ONNX Runtime determines the subset
+of hardware devices supported by each factory by calling `OrtEpFactory::GetSupportedDevices()` with all hardware devices that
+ONNX Runtime discovered during initialization.
+
+The factory returns `OrtEpDevice` instances from `OrtEpFactory::GetSupportedDevices()`.
+Each `OrtEpDevice` instance pairs a factory with a hardware device that the factory supports.
+For example, if a single factory instance supports both CPU and NPU, then the call to `OrtEpFactory::GetSupportedDevices()` returns two `OrtEpDevice` instances:
+  - ep_device_0: (factory_0, CPU)
+  - ep_device_1: (factory_0, NPU)
+
+<p align="center"><img width="60%" src="../../images/plugin_ep_sd_lib_reg.png" alt="EP Context node example"/></p>
 
 ## API reference
 API header files:
