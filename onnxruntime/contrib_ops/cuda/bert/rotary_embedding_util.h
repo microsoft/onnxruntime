@@ -315,6 +315,30 @@ __device__ __inline__ void write_smem_transpose(const uint4& vec, Half4* smem, i
 }
 
 template <>
+__device__ __inline__ void vec_from_smem_transpose(uint32_t& vec, onnxruntime::BFloat16* smem,
+                                                   int transpose_idx, int smem_pitch) {
+  return;
+}
+
+template <>
+__device__ __inline__ void vec_from_smem_transpose(uint2& vec, __nv_bfloat162* smem,
+                                                   int transpose_idx, int smem_pitch) {
+  return;
+}
+
+template <>
+__device__ __inline__ void write_smem_transpose(const uint32_t& vec, onnxruntime::BFloat16* smem,
+                                                int transpose_idx, int smem_pitch) {
+  return;
+}
+
+template <>
+__device__ __inline__ void write_smem_transpose(const uint2& vec, __nv_bfloat162* smem,
+                                                int transpose_idx, int smem_pitch) {
+  return;
+}
+
+template <>
 __device__ __inline__ void write_smem_transpose(const uint4& vec, uint16_t* smem, int transpose_idx, int smem_pitch) {
   union {
     uint64_t u64;

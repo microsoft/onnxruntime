@@ -743,11 +743,6 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
   DumpInputs(parameters, data);
 #endif
 
-if constexpr (std::is_same_v<T, onnxruntime::BFloat16>) {
-  // Skip BF16 — not implemented
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "BF16 PrepareQkv not supported");
-} else {
   if (nullptr != data.gemm_buffer) {  // Attention operator
     ORT_RETURN_IF_ERROR(PrepareQkv_Attention<T>(
         parameters, data, stream, max_threads_per_block));
@@ -755,7 +750,6 @@ if constexpr (std::is_same_v<T, onnxruntime::BFloat16>) {
     ORT_RETURN_IF_ERROR(PrepareQkv_MultiHeadAttention<T>(
         parameters, data, stream, max_threads_per_block));
   }
-}
 
   assert(data.qkv_format != AttentionQkvFormat::UNKNOWN);
 
