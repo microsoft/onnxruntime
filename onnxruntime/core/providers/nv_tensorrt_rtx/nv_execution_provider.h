@@ -64,21 +64,20 @@ namespace tensorrt_ptr {
  */
 struct IExecutionContextDeleter {
   IExecutionContextDeleter() = default;
-  IExecutionContextDeleter(std::string& runtime_cache_path) : runtime_cache_(runtime_cache_path) {};
+  IExecutionContextDeleter(const std::string& runtime_cache_path, std::unique_ptr<nvinfer1::IRuntimeCache>&& runtime_cache) : runtime_cache_path_(runtime_cache_path), runtime_cache_(std::move(runtime_cache)) {};
   void operator()(nvinfer1::IExecutionContext* context) {
     if (context != nullptr) {
-      if (!runtime_cache_.empty()) {
-        auto runtime_config = std::unique_ptr<nvinfer1::IRuntimeConfig>(context->getRuntimeConfig());
-        auto runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(runtime_config->getRuntimeCache());
-        auto serialized_cache_data = std::unique_ptr<nvinfer1::IHostMemory>(runtime_cache->serialize());
-        file_utils::WriteFile(runtime_cache_, serialized_cache_data->data(), serialized_cache_data->size());
+      if (!runtime_cache_path_.empty()) {
+        auto serialized_cache_data = std::unique_ptr<nvinfer1::IHostMemory>(runtime_cache_->serialize());
+        file_utils::WriteFile(runtime_cache_path_, serialized_cache_data->data(), serialized_cache_data->size());
       }
       delete context;
     }
   }
 
  private:
-  std::string runtime_cache_;
+  std::string runtime_cache_path_;
+  std::unique_ptr<nvinfer1::IRuntimeCache> runtime_cache_;
 };
 
 struct TensorrtInferDeleter {
