@@ -31,9 +31,6 @@ using StreamUniquePtr = std::unique_ptr<OrtSyncStream, std::function<void(OrtSyn
 // test copying input to CUDA using an OrtEpFactory based EP.
 // tests GetSharedAllocator, CreateSyncStreamForEpDevice and CopyTensors APIs
 TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
-  OrtEnv* env = *ort_env;
-  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-
 #ifdef _WIN32
   std::string cuda_lib = "onnxruntime_providers_cuda.dll";
 #else
@@ -47,10 +44,10 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
   // register the provider bridge based CUDA EP so allocator and data transfer is available
   // not all the CIs have the provider library in the expected place so we allow for that
   const char* ep_registration_name = "ORT CUDA";
-  ASSERT_ORTSTATUS_OK(api->RegisterExecutionProviderLibrary(env, ep_registration_name,
-                                                            ORT_TSTR("onnxruntime_providers_cuda")));
+  ort_env->RegisterExecutionProviderLibrary(ep_registration_name,
+                                            ORT_TSTR("onnxruntime_providers_cuda"));
 
-  const OrtEpDevice* cuda_device = nullptr;
+  Ort::ConstEpDevice cuda_device{nullptr};
   for (const auto& ep_device : ort_env->GetEpDevices()) {
     std::string vendor{ep_device.EpVendor()};
     std::string name = {ep_device.EpName()};
@@ -70,13 +67,11 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
 
     // we pass in the CUDA cudaStream_t from the OrtSyncStream via provider options so need to create it upfront.
     // in the future the stream should be an input to the Session Run.
-    OrtSyncStream* stream = nullptr;
-    StreamUniquePtr stream_ptr;
+    Ort::SyncStream stream{nullptr};
     if (use_streams) {
-      ASSERT_ORTSTATUS_OK(api->CreateSyncStreamForEpDevice(cuda_device, /*options*/ nullptr, &stream));
-      stream_ptr = StreamUniquePtr(stream, [api](OrtSyncStream* stream) { api->ReleaseSyncStream(stream); });
+      stream = cuda_device.CreateSyncStream();
 
-      size_t stream_addr = reinterpret_cast<size_t>(api->SyncStream_GetHandle(stream));
+      size_t stream_addr = reinterpret_cast<size_t>(stream.GetHandle());
       options.AddConfigEntry("ep.cudaexecutionprovider.user_compute_stream", std::to_string(stream_addr).c_str());
       // we explicitly specify user_compute_stream, so why do we also need to set has_user_compute_stream?
       options.AddConfigEntry("ep.cudaexecutionprovider.has_user_compute_stream", "1");
@@ -87,24 +82,27 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
     size_t num_inputs = session.GetInputCount();
 
     // find the input location so we know which inputs can be provided on device.
-    std::vector<const OrtMemoryInfo*> input_locations;
-    input_locations.resize(num_inputs, nullptr);
-    ASSERT_ORTSTATUS_OK(api->SessionGetMemoryInfoForInputs(session, input_locations.data(), num_inputs));
+    auto input_locations = session.GetMemoryInfoForInputs();
+    ASSERT_EQ(session.GetInputCount(), input_locations.size());
+
+    // Testing coverage
+    auto input_ep_devices = session.GetEpDeviceForInputs();
+    ASSERT_EQ(session.GetInputCount(), input_ep_devices.size());
+
+    // This is for testing
+    auto output_locations = session.GetMemoryInfoForOutputs();
+    ASSERT_EQ(session.GetOutputCount(), output_locations.size());
 
     std::vector<Ort::Value> cpu_tensors;
 
     // info for device copy
-    std::vector<const OrtValue*> src_tensor_ptrs;
-    std::vector<OrtValue*> dst_tensor_ptrs;
-
-    // values we'll call Run with
-    std::vector<Ort::Value> input_tensors;
+    std::vector<Ort::Value> device_tensors;
 
     ASSERT_EQ(num_inputs, 1);
 
     // create cpu based input data.
     Ort::AllocatorWithDefaultOptions cpu_allocator;
-    std::vector<int64_t> shape{1, 1, 28, 28};
+    constexpr const std::array<int64_t, 4U> shape{1, 1, 28, 28};
     std::vector<float> input_data(28 * 28, 0.5f);
     Ort::Value input_value = Ort::Value::CreateTensor<float>(cpu_allocator.GetInfo(),
                                                              input_data.data(), input_data.size(),
@@ -112,16 +110,13 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
     cpu_tensors.push_back(std::move(input_value));
 
     for (size_t idx = 0; idx < num_inputs; ++idx) {
-      const OrtMemoryInfo* mem_info = input_locations[idx];
-      OrtDeviceMemoryType mem_type;
-      OrtMemoryInfoDeviceType device_type;
-      ASSERT_ORTSTATUS_OK(api->MemoryInfoGetDeviceMemType(mem_info, &mem_type));
-      api->MemoryInfoGetDeviceType(mem_info, &device_type);
+      auto mem_info = input_locations[idx];
+      OrtDeviceMemoryType mem_type = mem_info.GetDeviceMemoryType();
+      OrtMemoryInfoDeviceType device_type = mem_info.GetDeviceType();
 
       if (device_type == OrtMemoryInfoDeviceType_GPU && mem_type == OrtDeviceMemoryType_DEFAULT) {
         // copy to device
-        OrtAllocator* allocator = nullptr;
-        ASSERT_ORTSTATUS_OK(api->GetSharedAllocator(env, mem_info, &allocator));
+        auto allocator = ort_env->GetSharedAllocator(mem_info);
 
         // allocate new on-device memory
         auto src_shape = cpu_tensors[idx].GetTensorTypeAndShapeInfo().GetShape();
@@ -138,18 +133,12 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
                                                       ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &value);
         */
 
-        src_tensor_ptrs.push_back(cpu_tensors[idx]);
-        dst_tensor_ptrs.push_back(device_value);
-        input_tensors.push_back(std::move(device_value));
-      } else {
-        // input is on CPU accessible memory. move to input_tensors
-        input_tensors.push_back(std::move(cpu_tensors[idx]));
+        device_tensors.push_back(std::move(device_value));
       }
     }
 
-    if (!src_tensor_ptrs.empty()) {
-      ASSERT_ORTSTATUS_OK(api->CopyTensors(env, src_tensor_ptrs.data(), dst_tensor_ptrs.data(), stream,
-                                           src_tensor_ptrs.size()));
+    if (!device_tensors.empty()) {
+      ASSERT_CXX_ORTSTATUS_OK(ort_env->CopyTensors(cpu_tensors, device_tensors, stream));
 
       // Stream support is still a work in progress.
       //
@@ -161,18 +150,19 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
       // iobinding.SynchronizeInputs();  // this doesn't actually require any bound inputs
     }
 
-    std::vector<const char*> input_names = {"Input3"};
-    std::vector<const char*> output_names = {"Plus214_Output_0"};
+    const auto& input_tensors = (!device_tensors.empty()) ? device_tensors : cpu_tensors;
+
+    constexpr const std::array<const char*, 1U> input_names = {"Input3"};
+    constexpr const std::array<const char*, 1U> output_names = {"Plus214_Output_0"};
     Ort::Value output;
 
     session.Run(Ort::RunOptions{}, input_names.data(), input_tensors.data(), input_tensors.size(),
                 output_names.data(), &output, 1);
 
-    const float* results = nullptr;
-    ASSERT_ORTSTATUS_OK(api->GetTensorData(output, reinterpret_cast<const void**>(&results)));
+    const float* results = output.GetTensorData<float>();
 
     // expected results from the CPU EP. can check/re-create by running with PREFER_CPU.
-    std::vector<float> expected = {
+    constexpr const std::array<float, 10U> expected = {
         -0.701670527f,
         -0.583666623f,
         0.0480501056f,
@@ -193,7 +183,7 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
   run_test(/*use_streams*/ true);
   run_test(/*use_streams*/ false);
 
-  ASSERT_ORTSTATUS_OK(api->UnregisterExecutionProviderLibrary(env, ep_registration_name));
+  ort_env->UnregisterExecutionProviderLibrary(ep_registration_name);
 }
 #endif  // USE_CUDA
 

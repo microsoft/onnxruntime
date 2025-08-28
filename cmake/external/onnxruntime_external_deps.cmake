@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 message(STATUS "Loading Dependencies URLs ...")
 
 include(external/helper_functions.cmake)
@@ -221,11 +224,6 @@ onnxruntime_fetchcontent_makeavailable(Protobuf)
 if(Protobuf_FOUND)
   message(STATUS "Using protobuf from find_package(or vcpkg). Protobuf version: ${Protobuf_VERSION}")
 else()
-  if(protobuf_SOURCE_DIR)
-    if(onnxruntime_USE_WEBGPU)
-      set(DAWN_PROTOBUF_DIR ${protobuf_SOURCE_DIR})
-    endif()
-  endif()
   # Adjust warning flags
   if (TARGET libprotoc)
     if (NOT MSVC)
@@ -333,7 +331,13 @@ if (onnxruntime_ENABLE_CPUINFO)
       set(CPUINFO_SUPPORTED TRUE)
     endif()
     if (WIN32)
-      set(CPUINFO_SUPPORTED TRUE)
+      # There's an error when linking with cpuinfo on arm64ec with a vcpkg build (--use_vcpkg).
+      # TODO Fix it and then re-enable cpuinfo on arm64ec.
+      if (onnxruntime_target_platform STREQUAL "ARM64EC")
+        set(CPUINFO_SUPPORTED FALSE)
+      else()
+        set(CPUINFO_SUPPORTED TRUE)
+      endif()
     elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
       message(WARNING
         "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "
@@ -364,23 +368,23 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
   if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
-      message(STATUS "Applying a patch for Windows ARM64/ARM64EC in cpuinfo")
-      onnxruntime_fetchcontent_declare(
-        pytorch_cpuinfo
-        URL ${DEP_URL_pytorch_cpuinfo}
-        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-        EXCLUDE_FROM_ALL
-        PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/9bb12d342fd9479679d505d93a478a6f9cd50a47.patch
-        FIND_PACKAGE_ARGS NAMES cpuinfo
-      )
+    message(STATUS "Applying a patch for Windows ARM64/ARM64EC in cpuinfo")
+    onnxruntime_fetchcontent_declare(
+      pytorch_cpuinfo
+      URL ${DEP_URL_pytorch_cpuinfo}
+      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+      EXCLUDE_FROM_ALL
+      PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch
+      FIND_PACKAGE_ARGS NAMES cpuinfo
+    )
   else()
-      onnxruntime_fetchcontent_declare(
-        pytorch_cpuinfo
-        URL ${DEP_URL_pytorch_cpuinfo}
-        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-        EXCLUDE_FROM_ALL
-        FIND_PACKAGE_ARGS NAMES cpuinfo
-      )
+    onnxruntime_fetchcontent_declare(
+      pytorch_cpuinfo
+      URL ${DEP_URL_pytorch_cpuinfo}
+      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+      EXCLUDE_FROM_ALL
+      FIND_PACKAGE_ARGS NAMES cpuinfo
+    )
   endif()
   set(ONNXRUNTIME_CPUINFO_PROJ pytorch_cpuinfo)
   onnxruntime_fetchcontent_makeavailable(${ONNXRUNTIME_CPUINFO_PROJ})
@@ -567,7 +571,7 @@ if (onnxruntime_USE_XNNPACK)
      ENDIF()
      ADD_LIBRARY(xnnpack STATIC IMPORTED)
      find_library(xnnpack_LIBRARY NAMES XNNPACK)
-     find_library(microkernels_prod_LIBRARY NAMES microkernels-prod)
+     find_library(microkernels_prod_LIBRARY NAMES xnnpack-microkernels-prod)
      find_package(unofficial-pthreadpool CONFIG REQUIRED)
 
      target_include_directories(xnnpack INTERFACE "${XNNPACK_HDR}")
@@ -642,19 +646,28 @@ if (onnxruntime_USE_WEBGPU)
     set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
     set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
     set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
+    set(DAWN_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
     set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
-        set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
+      if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
+        set(DAWN_BUILD_MONOLITHIC_LIBRARY SHARED CACHE BOOL "" FORCE)
         set(DAWN_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
 
         if (onnxruntime_USE_EXTERNAL_DAWN)
-          message(FATAL_ERROR "onnxruntime_USE_EXTERNAL_DAWN and onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY cannot be enabled at the same time.")
+          message(FATAL_ERROR "onnxruntime_USE_EXTERNAL_DAWN and onnxruntime_BUILD_DAWN_SHARED_LIBRARY cannot be enabled at the same time.")
         endif()
       else()
         # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
         set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
         set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+
+        # use the same protobuf/abseil for ORT and Dawn when static linking
+        if(abseil_cpp_SOURCE_DIR)
+          set(DAWN_ABSEIL_DIR ${abseil_cpp_SOURCE_DIR})
+        endif()
+        if(protobuf_SOURCE_DIR)
+          set(DAWN_PROTOBUF_DIR ${protobuf_SOURCE_DIR})
+        endif()
       endif()
 
       if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
@@ -711,6 +724,7 @@ if (onnxruntime_USE_WEBGPU)
         set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
       endif()
     endif()
+
     if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
       # use the custom dawn source path if provided
       #
@@ -744,7 +758,11 @@ if (onnxruntime_USE_WEBGPU)
           #
           # - (private) Fulfill the BinSkim requirements
           #   Some build warnings are not allowed to be disabled in project level.
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch)
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch &&
+
+          # Android devices doesn't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
+          # in the uniform and converting to fp16 before using.
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/uniform_and_storage_buffer_16_bit_access.patch)
 
       onnxruntime_fetchcontent_declare(
         dawn
@@ -759,7 +777,7 @@ if (onnxruntime_USE_WEBGPU)
   endif()
 
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+    if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::webgpu_dawn)
     else()
       if (NOT onnxruntime_USE_EXTERNAL_DAWN)
@@ -817,6 +835,14 @@ if(onnxruntime_USE_COREML)
   # we don't build directly so use Populate. selected files are built from onnxruntime_providers_coreml.cmake
   FetchContent_Populate(coremltools)
 
+endif()
+
+if(onnxruntime_USE_KLEIDIAI)
+  # Disable the KleidiAI tests
+  set(KLEIDIAI_BUILD_TESTS  OFF)
+
+  onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
+  onnxruntime_fetchcontent_makeavailable(kleidiai)
 endif()
 
 set(onnxruntime_LINK_DIRS)

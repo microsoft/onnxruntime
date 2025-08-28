@@ -292,10 +292,8 @@ struct ProviderHostImpl : ProviderHost {
   Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg, file, line); }
   void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg, file, line); }
 
-#ifdef USE_MIGRAPHX
   std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGraphX().CreateMIGraphXAllocator(device_id, name); }
   std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGraphX().CreateMIGraphXPinnedAllocator(device_id, name); }
-#endif
 
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return GetProviderInfo_CUDA().CreateGPUDataTransfer(); }
 
@@ -1260,6 +1258,10 @@ struct ProviderHostImpl : ProviderHost {
   void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) override { p->AddInitializedTensor(tensor); }
   Status Graph__AddInitializedOrtValue(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor,
                                        const OrtValue& value) override { return p->AddInitializedOrtValue(tensor, value); }
+  bool Graph__GetOrtValueInitializer(const Graph* p, const std::string& tensor_name, OrtValue& value,
+                                     bool check_outer_scope) override {
+    return p->GetOrtValueInitializer(tensor_name, value, check_outer_scope);
+  }
   Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
     return p->AddNode(name, op_type, description, input_args, output_args, attributes, domain);
   }
@@ -1357,6 +1359,10 @@ struct ProviderHostImpl : ProviderHost {
                                                                          const std::string& name,
                                                                          bool check_outer_scope) const override {
     return p->GetConstantInitializer(name, check_outer_scope);
+  }
+  bool GraphViewer__GetOrtValueInitializer(const GraphViewer* p, const std::string& tensor_name,
+                                           OrtValue& value) override {
+    return p->GetOrtValueInitializer(tensor_name, value);
   }
   const Node* GraphViewer__ParentNode(const GraphViewer* p) override { return p->ParentNode(); }
   int GraphViewer__NumberOfNodes(const GraphViewer* p) noexcept override { return p->NumberOfNodes(); }
@@ -1804,23 +1810,25 @@ Status ProviderLibrary::Load() {
 
   try {
     std::lock_guard<std::mutex> lock{mutex_};
-    s_library_shared.Ensure();
+    if (!provider_) {
+      s_library_shared.Ensure();
 
-    if (absolute_) {
-      // If filename_ is not absolute it should not be loaded.
-      if (!std::filesystem::path{filename_}.is_absolute()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+      if (absolute_) {
+        // If filename_ is not absolute it should not be loaded.
+        if (!std::filesystem::path{filename_}.is_absolute()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+        }
+        ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
+      } else {
+        auto full_path = Env::Default().GetRuntimePath() + filename_;
+        ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
       }
-      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
-    } else {
-      auto full_path = Env::Default().GetRuntimePath() + filename_;
-      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+
+      Provider* (*PGetProvider)();
+      ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+
+      provider_ = PGetProvider();
     }
-
-    Provider* (*PGetProvider)();
-    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
-
-    provider_ = PGetProvider();
   } catch (const std::exception&) {
     Unload();  // If anything fails we unload the library and rethrow
     throw;
@@ -1837,7 +1845,9 @@ Provider& ProviderLibrary::Get() {
       }
 
       std::lock_guard<std::mutex> lock{mutex_};
-      provider_->Initialize();
+      if (!initialized_) {
+        provider_->Initialize();
+      }
       initialized_ = true;
     }
 
@@ -2106,8 +2116,13 @@ std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(
   return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
-  return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
+std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
+  return s_library_migraphx.Get().CreateExecutionProviderFactory(&provider_options);
+}
+
+std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* options) {
+  const auto provider_options{s_library_migraphx.Get().GetProviderOptions(options)};
+  return s_library_migraphx.Get().CreateExecutionProviderFactory(&provider_options);
 }
 
 // Adapter to convert the legacy OrtOpenVINOProviderOptions to ProviderOptions

@@ -67,6 +67,7 @@
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 #endif
 #include "core/optimizer/qdq_transformer/weight_bias_quantization.h"
+#include "core/optimizer/qdq_transformer/where_dummy_dq.h"
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
@@ -271,6 +272,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         // It runs unconditionally in InferenceSession::TransformGraph() prior to Level1 optimizers.
         // We also put it here with other Level1 optimizers so that it can fix things up after their changes.
         transformers.emplace_back(std::make_unique<EnsureUniqueDQForNodeUnit>());
+        transformers.emplace_back(std::make_unique<WhereDummyDq>());
       }
 
       // add __backwardpass attribute to nodes after YieldOp, ROCm-only
@@ -440,6 +442,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // PR #6351 implemented similar fusion-pattern for CUDA only, and can only fuse conv-add-relu,
       // while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
+#else
+      ORT_UNUSED_PARAMETER(logger);
 #endif
 
     } break;
@@ -531,6 +535,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
         }
 #else
         ORT_UNUSED_PARAMETER(cpu_execution_provider);
+        ORT_UNUSED_PARAMETER(logger);
 #endif
       }
     } break;

@@ -132,7 +132,17 @@ class WebGpuContext final {
 
   void Flush(const webgpu::BufferManager& buffer_mgr);
 
+  /**
+   * Get the buffer manager.
+   */
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
+
+  /**
+   * Get the initializer buffer manager.
+   *
+   * This buffer manager is used for read-only buffers (e.g. initializers).
+   */
+  webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
@@ -236,6 +246,7 @@ class WebGpuContext final {
   wgpu::ComputePassEncoder current_compute_pass_encoder_;
 
   std::unique_ptr<webgpu::BufferManager> buffer_mgr_;
+  std::unique_ptr<webgpu::BufferManager> initializer_buffer_mgr_;
   std::unique_ptr<ProgramManager> program_mgr_;
 
   uint32_t num_pending_dispatches_ = 0;

@@ -18,7 +18,7 @@ struct CannNotification : public synchronize::Notification {
   }
 
   void Activate() override {
-    CANN_CALL_THROW(aclrtRecordEvent(event_, static_cast<aclrtStream>(stream_.GetHandle())));
+    CANN_CALL_THROW(aclrtRecordEvent(event_, static_cast<aclrtStream>(GetStream().GetHandle())));
   }
 
   void wait_on_device(Stream& device_stream) {

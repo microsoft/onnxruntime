@@ -18,10 +18,9 @@ common::Status ComputeConvPads(const std::vector<int64_t> input_shape,
                                const std::vector<int64_t>& onnx_strides,
                                const std::vector<int64_t>& onnx_dilations,
                                AutoPadType auto_pad_type,
-                               std::vector<int64_t>& pads_out,
-                               bool use_nchw) {
-  const int64_t input_size_y = use_nchw ? input_shape[2] : input_shape[1];
-  const int64_t input_size_x = use_nchw ? input_shape[3] : input_shape[2];
+                               std::vector<int64_t>& pads_out) {
+  const int64_t input_size_y = input_shape[2];
+  const int64_t input_size_x = input_shape[3];
   const int64_t stride_y = onnx_strides[0];
   const int64_t stride_x = onnx_strides[1];
   const int64_t dilation_y = onnx_dilations[0];
@@ -53,17 +52,12 @@ common::Status HandleAutoPad(const std::vector<int64_t> input_shape,
                              const std::vector<int64_t>& onnx_strides,
                              const std::vector<int64_t>& onnx_dilations,
                              AutoPadType auto_pad_type,
-                             std::vector<int64_t>& pads_out,
-                             bool use_nchw) {
-  if (AutoPadType::SAME_UPPER == auto_pad_type) {
-    ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
-                                        onnx_pads, onnx_strides, onnx_dilations,
-                                        AutoPadType::SAME_UPPER, pads_out, use_nchw));
-  } else {
-    ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
-                                        onnx_pads, onnx_strides, onnx_dilations,
-                                        AutoPadType::SAME_LOWER, pads_out, use_nchw));
-  }
+                             std::vector<int64_t>& pads_out) {
+  AutoPadType pad_type = (AutoPadType::SAME_UPPER == auto_pad_type) ? AutoPadType::SAME_UPPER : AutoPadType::SAME_LOWER;
+
+  ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
+                                      onnx_pads, onnx_strides, onnx_dilations,
+                                      pad_type, pads_out));
   return Status::OK();
 }
 
@@ -110,10 +104,9 @@ common::Status ComputeConvTransposePadsAndOutputShape(const std::vector<int64_t>
                                                       const std::vector<int64_t>& onnx_output_padding,
                                                       AutoPadType auto_pad_type,
                                                       std::vector<int64_t>& pads_out,
-                                                      std::vector<int64_t>& output_shape_out,
-                                                      bool use_nchw) {
-  const int64_t input_size_y = use_nchw ? input_shape[2] : input_shape[1];
-  const int64_t input_size_x = use_nchw ? input_shape[3] : input_shape[2];
+                                                      std::vector<int64_t>& output_shape_out) {
+  const int64_t input_size_y = input_shape[2];
+  const int64_t input_size_x = input_shape[3];
   const int64_t stride_y = onnx_strides[0];
   const int64_t stride_x = onnx_strides[1];
   const int64_t dilation_y = onnx_dilations[0];

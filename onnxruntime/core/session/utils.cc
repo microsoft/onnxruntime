@@ -17,12 +17,13 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include "core/session/ep_factory_internal.h"
-#include "core/session/ep_plugin_provider_interfaces.h"
-#include "core/session/ep_library_plugin.h"
-#include "core/session/ep_library_provider_bridge.h"
+#include "core/session/plugin_ep/ep_factory_internal.h"
+#include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
+#include "core/session/plugin_ep/ep_library_plugin.h"
+#include "core/session/plugin_ep/ep_library_provider_bridge.h"
 #include "core/session/model_compilation_options.h"
 #include "core/session/provider_policy_context.h"
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -204,6 +205,117 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   return CreateSessionAndLoadModelImpl(options, env->GetEnvironment(), model_path, model_data, model_data_length, sess);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+static const char* GetCompatibilityStatusString(OrtCompiledModelCompatibility status) {
+  switch (status) {
+    case OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL:
+      return "SUPPORTED_OPTIMAL";
+    case OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION:
+      return "SUPPORTED_PREFER_RECOMPILATION";
+    case OrtCompiledModelCompatibility_EP_UNSUPPORTED:
+      return "UNSUPPORTED";
+    case OrtCompiledModelCompatibility_EP_NOT_APPLICABLE:
+      return "NOT_APPLICABLE";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
+  // Get model metadata
+  auto [status, model_metadata] = sess.GetModelMetadata();
+  if (!status.IsOK() || !model_metadata) {
+    // No metadata available, skip validation
+    return Status::OK();
+  }
+
+  const auto& custom_metadata = model_metadata->custom_metadata_map;
+  if (custom_metadata.empty()) {
+    // No custom metadata available, skip validation
+    return Status::OK();
+  }
+
+  // Check if user wants to fail on suboptimal models
+  bool fail_on_suboptimal = sess.GetSessionOptions().config_options.GetConfigEntry(
+                                kOrtSessionOptionsFailOnSuboptimalCompiledModel) == "1";
+
+  const auto& registered_provider_types = sess.GetRegisteredProviderTypes();
+
+  // Access the execution providers through the session state (available after Initialize)
+  const auto& execution_providers = sess.GetSessionState().GetExecutionProviders();
+
+  for (const auto& ep_type : registered_provider_types) {
+    // Construct the full metadata key using the prefix + EP type
+    const std::string metadata_key = std::string(kOrtModelMetadata_EpCompatibilityInfoPrefix) + ep_type;
+
+    auto metadata_it = custom_metadata.find(metadata_key);
+    if (metadata_it != custom_metadata.end()) {
+      const std::string& compatibility_info = metadata_it->second;
+
+      // Get the actual EP instance to call validation
+      const IExecutionProvider* ep = execution_providers.Get(ep_type);
+
+      if (ep != nullptr) {
+        // Call the EP's validation method (virtual method with default implementation)
+        OrtCompiledModelCompatibility compatibility_status;
+        Status validation_result = ep->ValidateCompiledModelCompatibilityInfo(
+            compatibility_info, compatibility_status);
+
+        if (validation_result.IsOK()) {
+          // Log the compatibility status
+          const char* status_str = GetCompatibilityStatusString(compatibility_status);
+          LOGS(*sess.GetLogger(), INFO)
+              << "EP " << ep_type << " compiled model compatibility: " << status_str;
+
+          // Enforce compatibility based on status
+          switch (compatibility_status) {
+            case OrtCompiledModelCompatibility_EP_NOT_APPLICABLE:
+            case OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL:
+              // Continue execution
+              break;
+
+            case OrtCompiledModelCompatibility_EP_UNSUPPORTED:
+              // Always fail for unsupported models
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                     "Compiled model is not supported by execution provider: " + ep_type);
+
+            case OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION:
+              // Behavior depends on user setting
+              if (fail_on_suboptimal) {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                       "Compiled model is suboptimal for execution provider: " + ep_type +
+                                           ". Recompilation recommended for better performance.");
+              }
+              // Otherwise continue with warning
+              LOGS(*sess.GetLogger(), WARNING)
+                  << "EP " << ep_type << " reports compiled model is supported but suboptimal. "
+                  << "Consider recompiling for better performance.";
+              break;
+
+            default:
+              // Handle any unknown status values
+              LOGS(*sess.GetLogger(), WARNING)
+                  << "EP " << ep_type << " returned unknown compatibility status: " << compatibility_status;
+              break;
+          }
+        } else {
+          // Validation failed - this should cause session initialization to fail
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Failed to validate compiled model compatibility for EP " + ep_type +
+                                     ": " + validation_result.ErrorMessage());
+        }
+      }
+    } else {
+      // No compatibility info found for this EP - normal for non-compiled models
+      LOGS(*sess.GetLogger(), VERBOSE)
+          << "No compiled model compatibility info found for EP " << ep_type;
+    }
+  }
+
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _In_ onnxruntime::InferenceSession& sess,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container) {
@@ -250,6 +362,12 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
   }
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(sess.Initialize());
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Validate compiled model compatibility for all registered execution providers
+  // This must be done after Initialize() so the session state is available
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ValidateCompiledModelCompatibility(sess));
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   return nullptr;
 }

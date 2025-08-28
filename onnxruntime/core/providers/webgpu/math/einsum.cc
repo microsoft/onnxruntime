@@ -34,13 +34,13 @@ bool IsInteger(const std::string& s) {
 }
 }  // namespace
 
-#define WEBGPU_EINSUM_TYPED_KERNEL_DECL(version)                                               \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                               \
-      Einsum, kOnnxDomain, version, float, kWebGpuExecutionProvider,                           \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
+#define WEBGPU_EINSUM_KERNEL_DECL(version)                                            \
+  ONNX_OPERATOR_KERNEL_EX(                                                            \
+      Einsum, kOnnxDomain, version, kWebGpuExecutionProvider,                         \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
       Einsum);
 
-WEBGPU_EINSUM_TYPED_KERNEL_DECL(12);
+WEBGPU_EINSUM_KERNEL_DECL(12);
 
 EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
                                const std::string& raw_equation) {
@@ -222,11 +222,11 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   const ShaderVariableHelper& output =
-      shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+      shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
   // Helper variables for shader generation.
-  std::string init_prod = "var prod = 1.0;";
-  std::string init_sum = "var sum = 0.0;";
+  std::string init_prod = "var prod = output_element_t(1);";
+  std::string init_sum = "var sum = output_element_t(0);";
   std::string update_sum = "sum += prod;";
   std::vector<std::string> idx_copy;
   std::vector<std::string> reduce_ops;

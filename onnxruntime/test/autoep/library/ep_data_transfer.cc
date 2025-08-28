@@ -65,10 +65,8 @@ OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(OrtDataTransferImpl
   for (size_t i = 0; i < num_tensors; ++i) {
     // the implementation for a 'real' EP would be something along these lines.
     // See CudaDataTransferImpl in onnxruntime\core\providers\cuda\cuda_provider_factory.cc
-    const OrtMemoryDevice* src_device = nullptr;
-    const OrtMemoryDevice* dst_device = nullptr;
-    RETURN_IF_ERROR(impl.ep_api.Value_GetMemoryDevice(src_tensors[i], &src_device));
-    RETURN_IF_ERROR(impl.ep_api.Value_GetMemoryDevice(dst_tensors[i], &dst_device));
+    const OrtMemoryDevice* src_device = impl.ep_api.Value_GetMemoryDevice(src_tensors[i]);
+    const OrtMemoryDevice* dst_device = impl.ep_api.Value_GetMemoryDevice(dst_tensors[i]);
 
     OrtMemoryInfoDeviceType src_device_type = impl.ep_api.MemoryDevice_GetDeviceType(src_device);
     OrtMemoryInfoDeviceType dst_device_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_device);

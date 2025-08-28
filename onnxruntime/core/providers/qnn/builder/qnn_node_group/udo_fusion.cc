@@ -99,7 +99,7 @@ static Status CreateOrValidateOnQnn(
     const logging::Logger& logger) {
   ORT_UNUSED_PARAMETER(do_op_validation);
 
-  std::string node_name = utils::GetNodeName(node_unit);
+  const std::string node_name = utils::GetUniqueName(node_unit);
 
   // get qnn inputs
   const auto& inputs = node_unit.Inputs();
