@@ -551,24 +551,27 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
  * written to an external file or stored within the model. ORT calls this function for every initializer when
  * generating a model.
  *
- * If the function sets the `is_external` output parameter to false, ORT stores initializer data within the model.
+ * If the function implementation sets the `new_external_info` output parameter to NULL, ORT stores the initializer data
+ * within the generated model.
  *
- * Otherwise, if `is_external` is set to false, ORT assumes that this function stores the initializer data to a file.
- * In this case, ORT configures the model's initializer to point to the location and offset returned from this function
- * via the `location` and `offset` output parameters.
+ * Otherwise, if the function implementation sets `new_external_info` to a valid OrtExternalInitializerInfo instance,
+ * ORT assumes that this function stores the initializer data in a file. In this case, ORT configures the model's
+ * initializer to point to the location specified by the `new_external_info` output parameter.
  *
  * \param[in] state Opaque pointer holding the user's state.
  * \param[in] initializer_name The initializer's name as a null-terminated string.
- * \param[in] initializer_data Pointer to the initializer's raw data (contiguous).
- * \param[in] initializer_num_bytes The size in bytes of the initializer's data.
- * \param[in] initializer_type The type and shape information for the initializer.
- * \param[out] is_external Output parameter set to true if the initializer data is to be stored externally.
- *                         The function implemented is responsible for writing the initializer data to file.
- *                         If set to false, ORT stores the initializers within the model.
- * \param[out] location Output parameter set to the location (i.e., file path) into which the initializer data is stored
- *                      by the function implementer. Ignored if `is_external` is set to false.
- * \param[out] offset Output parameter set to the location offset into which the initializer data is stored
- *                    by the function implementer. Ignored if `is_external` is set to false.
+ * \param[in] initializer_value OrtValue containing the initializer's data, type, and shape.
+ * \param[in] external_info If the initializer is originally stored in an external file, `external_info` contains
+ *                          the file path, file offset, and the data's byte size within the file. Otherwise,
+ *                          `external_info` is NULL if the initializer is not originally stored in a file.
+ * \param[out] new_external_info Output parameter set to a new OrtExternalInitializerInfo instance indicating the
+ *                               location where the function implementation stored the initializer data.
+ *                               The function implementation must use `OrtApi::CreateExternalInitializerInfo()` to
+ *                               create the instance.
+ *                               If the function implementation sets `new_external_info` to NULL,
+ *                               ORT stores the initializers within the model.
+ *
+ * \note ORT takes ownership of the `new_external_info` output parameter.
  *
  * \return OrtStatus* Write status. Return nullptr on success.
  *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
@@ -576,11 +579,9 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
  */
 typedef OrtStatus*(ORT_API_CALL* OrtHandleInitializerDataFunc)(_In_ void* state,
                                                                _In_ const char* initializer_name,
-                                                               _In_ const void* initializer_data,
-                                                               _In_ size_t initializer_num_bytes,
-                                                               _In_ const OrtTypeInfo* initializer_type,
-                                                               _Out_ bool* is_external,
-                                                               _Out_ const ORTCHAR_T** location, _Out_ int64_t* offset);
+                                                               _In_ const OrtValue* initializer_value,
+                                                               _In_opt_ const OrtExternalInitializerInfo* external_info,
+                                                               _Outptr_result_maybenull_ OrtExternalInitializerInfo** new_external_info);
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -6235,6 +6236,21 @@ struct OrtApi {
    * \since Version 1.23.
    */
   ORT_CLASS_RELEASE(ExternalInitializerInfo);
+
+  /** \brief Creates an OrtExternalInitializerInfo instance.
+   *
+   * \param[in] filepath The relative path to the file that stores the initializer's data. ORT copies this path string.
+   * \param[in] file_offset The byte offset where the initializer's data is stored within the file.
+   * \param[in] byte_size The size in bytes of the initializer's data within the file.
+   * \param[out] out Output parameter set to the new OrtExternalInitializerInfo instance.
+   *                 Must be released by calling ReleaseExternalInitializerInfo().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(CreateExternalInitializerInfo, _In_ const ORTCHAR_T* filepath, _In_ int64_t file_offset,
+                  _In_ size_t byte_size, _Outptr_ OrtExternalInitializerInfo** out);
 
   /** \brief Get the relative path to the file that stores the initializer's data.
    *

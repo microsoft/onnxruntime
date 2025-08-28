@@ -4650,14 +4650,17 @@ Status Graph::ToGraphProtoWithInitializerHandlerImpl(OrtHandleInitializerDataFun
   // This loop processes subgraphs bottom up.
   for (const auto& node : Nodes()) {
     if (node.ContainsSubgraph()) {
-      // Let find this node in the output_graph_proto
+      // Let's find this node in the output_graph_proto
+      // The node name is optional, so we may need to check by the output value name
+      // given that they can only assigned once.
       auto hit = std::find_if(output_graph_proto.mutable_node()->begin(),
                               output_graph_proto.mutable_node()->end(),
                               [&node](const ONNX_NAMESPACE::NodeProto& proto) {
-                                // ONNX allows empty node names. However, Graph::Resolve() ensures node names are
-                                // unique. Therefore, we can match on node name since there will be at most one node
-                                // with an empty name.
-                                return proto.name() == node.Name();
+                                const auto& node_name = node.Name();
+                                if (!node_name.empty())
+                                  return proto.name() == node_name;
+                                return (proto.output_size() > 0 &&
+                                        proto.output(0) == node.OutputDefs()[0]->Name());
                               });
       ORT_RETURN_IF_NOT(hit != output_graph_proto.mutable_node()->end(), "Node ", node.Name(),
                         " not found in output_graph_proto");
@@ -4714,39 +4717,41 @@ Status Graph::ToGraphProtoWithInitializerHandlerImpl(OrtHandleInitializerDataFun
       }
       output_proto->set_doc_string(initializer->doc_string());
 
-      // Get an OrtValue with the initializer data. If this Graph has already loaded the initializer into an
-      // OrtValue, we use that. Otherwise, if the initializer points to external data, we load it
-      // (potentially via memory mapping). Lastly, we resort to copying the initializer into an OrtValue.
       OrtValue ort_value;
-      bool has_ort_value = GetOrtValueInitializer(initializer->name(), ort_value, /*check_outer_scope*/ false);
+      std::unique_ptr<ExternalDataInfo> original_ext_data_info = nullptr;
 
-      if (!has_ort_value) {
-        if (utils::HasExternalData(*initializer)) {
-          ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), ModelPath(), *initializer, ort_value));
-        } else {
+      if (utils::HasExternalDataInFile(*initializer)) {
+        // Initializer has data in an external file. Load it into OrtValue (potentially via memory mapping).
+        ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(initializer->external_data(), original_ext_data_info));
+        ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), ModelPath(), *initializer, ort_value));
+      } else {
+        // Initializer is either stored inline within the TensorProto or it is "external data in memory".
+        // Get an OrtValue (if already loaded by Graph) or copy into an OrtValue otherwise.
+        bool graph_has_ort_value = GetOrtValueInitializer(initializer->name(), ort_value, /*check_outer_scope*/ false);
+        if (!graph_has_ort_value) {
+          assert(!utils::HasExternalData(*initializer));
           ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), ModelPath(), *initializer,
                                                            CPUAllocator::DefaultInstance(), ort_value));
         }
       }
 
-      const Tensor& tensor = ort_value.Get<Tensor>();
-      auto type_proto = utils::TypeProtoFromTensorProto(*initializer);
-      std::unique_ptr<OrtTypeInfo> type_info = OrtTypeInfo::FromTypeProto(type_proto);
+      // Call the user's initializer handler function. If the user wants to store the initializer externally,
+      // the handler function will use OrtApi::CreateExternalInitializerInfo() to create a new
+      // OrtExternalInitializerInfo instance that indicates the location of the data.
+      ExternalDataInfo* new_external_info = nullptr;
+      Status status = ToStatusAndRelease(handle_initializer_func(state, initializer->name().c_str(),
+                                                                 &ort_value,
+                                                                 static_cast<OrtExternalInitializerInfo*>(original_ext_data_info.get()),
+                                                                 reinterpret_cast<OrtExternalInitializerInfo**>(&new_external_info)));
 
-      // The following variables are set by the call to handle_initializer_func.
-      bool is_external = false;
-      const ORTCHAR_T* ext_location = nullptr;
-      int64_t ext_offset = 0;
+      std::unique_ptr<ExternalDataInfo> new_external_info_holder(new_external_info);  // Take ownership
+      ORT_RETURN_IF_ERROR(status);
 
-      ORT_RETURN_IF_ERROR(ToStatusAndRelease(handle_initializer_func(state, initializer->name().c_str(),
-                                                                     tensor.DataRaw(), tensor.SizeInBytes(),
-                                                                     type_info.get(), &is_external,
-                                                                     &ext_location, &ext_offset)));
-
-      if (is_external) {
-        ExternalDataInfo::SetExternalLocationToProto(ext_location, ext_offset,
-                                                     tensor.SizeInBytes(), *output_proto);
+      if (new_external_info != nullptr) {
+        ExternalDataInfo::SetExternalLocationToProto(new_external_info->GetRelPath(), new_external_info->GetOffset(),
+                                                     new_external_info->GetLength(), *output_proto);
       } else {
+        const Tensor& tensor = ort_value.Get<Tensor>();
         output_proto->clear_data_location();
         output_proto->set_raw_data(tensor.DataRaw(), tensor.SizeInBytes());
       }

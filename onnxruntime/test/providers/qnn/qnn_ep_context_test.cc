@@ -687,28 +687,61 @@ struct CustomInitializerHandlerState {
 
 static OrtStatus* ORT_API_CALL TestHandleInitializerDataFunc(void* state,
                                                              const char* initializer_name,
-                                                             const void* initializer_data,
-                                                             size_t initializer_num_bytes,
-                                                             const OrtTypeInfo* initializer_type,
-                                                             bool* is_external,
-                                                             const ORTCHAR_T** location, int64_t* offset) {
+                                                             const OrtValue* initializer_value,
+                                                             const OrtExternalInitializerInfo* external_info,
+                                                             OrtExternalInitializerInfo** new_external_info) {
+  const OrtApi& ort_api = Ort::GetApi();
   CustomInitializerHandlerState* custom_state = reinterpret_cast<CustomInitializerHandlerState*>(state);
-  (void)initializer_type;
 
   if (std::string("constant") == initializer_name) {
     // Keep a specific initializer in the model just to test both scenarios.
     // A real implementation may check the byte size and keep small initializers in the model.
-    *is_external = false;
+    *new_external_info = nullptr;
     return nullptr;
   }
 
-  // Other initializers are stored in an external file.
-  *is_external = true;
-  *offset = custom_state->outfile->tellp();
-  *location = custom_state->external_file_path;
+  //
+  // Store other initializers in an external file.
+  //
 
-  custom_state->outfile->write(static_cast<const char*>(initializer_data), initializer_num_bytes);
+  // If the original initializer was stored in an external file, keep it there (just for testing).
+  if (external_info != nullptr) {
+    const ORTCHAR_T* location = ort_api.ExternalInitializerInfo_GetFilePath(external_info);
+    int64_t offset = ort_api.ExternalInitializerInfo_GetFileOffset(external_info);
+    size_t byte_size = ort_api.ExternalInitializerInfo_GetByteSize(external_info);
+
+    if (OrtStatus* status = ort_api.CreateExternalInitializerInfo(location, offset, byte_size, new_external_info);
+        status != nullptr) {
+      return status;
+    }
+
+    return nullptr;
+  }
+
+  // Get initializer's byte size
+  size_t byte_size = 0;
+  if (OrtStatus* status = ort_api.GetTensorSizeInBytes(initializer_value, &byte_size); status != nullptr) {
+    return status;
+  }
+
+  // Get initializer's data.
+  const void* initializer_data = nullptr;
+  if (OrtStatus* status = ort_api.GetTensorData(initializer_value, &initializer_data); status != nullptr) {
+    return status;
+  }
+
+  // Write initializer data to some file.
+  int64_t offset = custom_state->outfile->tellp();
+  const ORTCHAR_T* location = custom_state->external_file_path;
+
+  custom_state->outfile->write(static_cast<const char*>(initializer_data), byte_size);
   custom_state->outfile->flush();
+
+  // Provide caller (ORT) with the new external info.
+  if (OrtStatus* status = ort_api.CreateExternalInitializerInfo(location, offset, byte_size, new_external_info);
+      status != nullptr) {
+    return status;
+  }
 
   return nullptr;
 }

@@ -2538,6 +2538,15 @@ ORT_API(void, OrtApis::ReleaseExternalInitializerInfo, _Frees_ptr_opt_ OrtExtern
   delete static_cast<onnxruntime::ExternalDataInfo*>(info);
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateExternalInitializerInfo, _In_ const ORTCHAR_T* filepath,
+                    _In_ int64_t file_offset, _In_ size_t byte_size, _Outptr_ OrtExternalInitializerInfo** out) {
+  API_IMPL_BEGIN
+  auto ext_data_info = std::make_unique<onnxruntime::ExternalDataInfo>(filepath, file_offset, byte_size);
+  *out = static_cast<OrtExternalInitializerInfo*>(ext_data_info.release());
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(const ORTCHAR_T*, OrtApis::ExternalInitializerInfo_GetFilePath, _In_ const OrtExternalInitializerInfo* info) {
   return info->GetRelPath().c_str();
 }
@@ -4142,6 +4151,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetGraph,
     &OrtApis::Node_GetEpName,
     &OrtApis::ReleaseExternalInitializerInfo,
+    &OrtApis::CreateExternalInitializerInfo,
     &OrtApis::ExternalInitializerInfo_GetFilePath,
     &OrtApis::ExternalInitializerInfo_GetFileOffset,
     &OrtApis::ExternalInitializerInfo_GetByteSize,
