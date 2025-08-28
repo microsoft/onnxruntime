@@ -7,6 +7,7 @@
 #include <iostream>
 #include <codecvt>
 #include <fstream>
+#include "onnxruntime_c_api.h"
 #ifdef _WIN32
 #include <Windows.h>
 #endif
@@ -14,6 +15,7 @@
 
 #include "core/common/exceptions.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/provider_options.h"
 #include "core/providers/shared/common.h"
 
 #include "vaip/dll_safe.h"
@@ -74,6 +76,8 @@ static onnxruntime::PathString GetDynamicLibraryLocationByAddress(const void* ad
 vaip_core::OrtApiForVaip* create_org_api_hook();
 struct OrtVitisAIEpAPI {
   void (*initialize_onnxruntime_vitisai_ep)(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
+  void (*refresh_vitisai_ep_domains)(std::vector<OrtCustomOpDomain*>& ret_domain);
+  void (*vitisai_on_ep_factory_created)(const onnxruntime::ProviderOptions& options);
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_with_options)(
       const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_with_error_handling)(
@@ -130,6 +134,8 @@ struct OrtVitisAIEpAPI {
       ::onnxruntime::LogRuntimeError(0, status2, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
       ORT_THROW(status2);
     }
+    std::ignore = env.GetSymbolFromLibrary(handle_, "vitisai_on_ep_factory_created", (void**)&vitisai_on_ep_factory_created);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "refresh_vitisai_ep_domains", (void**)&refresh_vitisai_ep_domains);
     std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
                                            (void**)&vaip_get_version);
     std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_collect", (void**)&profiler_collect);
@@ -153,8 +159,10 @@ struct OrtVitisAIEpAPI {
 
 static OrtVitisAIEpAPI s_library_vitisaiep;
 static std::shared_ptr<KernelRegistry> s_kernel_registry_vitisaiep;
+static std::vector<const OrtCustomOp*> s_vitisaiep_registered_ops;
 static std::vector<OrtCustomOpDomain*> s_domains_vitisaiep;
 static vaip_core::OrtApiForVaip the_global_api;
+
 std::shared_ptr<KernelRegistry> get_kernel_registry_vitisaiep() { return s_kernel_registry_vitisaiep; }
 const std::vector<OrtCustomOpDomain*>& get_domains_vitisaiep() { return s_domains_vitisaiep; }
 
@@ -246,58 +254,84 @@ struct MyCustomOpKernel : OpKernel {
   void* op_kernel_;
 };
 
-void create_kernel_registry(const std::vector<OrtCustomOpDomain*>& domains) {
+KernelCreateInfo get_kernel_create_info(const OrtCustomOpDomain* domain, const OrtCustomOp* op) {
+  const size_t input_count = op->GetInputTypeCount(op);
+  const size_t output_count = op->GetOutputTypeCount(op);
+  auto def_builder = KernelDefBuilder::Create();
+  def_builder->SetName(op->GetName(op));
+  def_builder->SetDomain(domain->domain_.c_str());
+  def_builder->SinceVersion(op->GetStartVersion(op), op->GetEndVersion(op));
+  if (op->version > 12) {
+    for (auto i = 0u; i < input_count; i++) {
+      def_builder->InputMemoryType(op->GetInputMemoryType(op, i), i);
+    }
+  }
+  def_builder->Provider(op->GetExecutionProviderType(op));
+
+  auto schema = Provider_GetHost()->GetSchema(op->GetName(op), op->GetStartVersion(op), domain->domain_);
+  assert(schema != nullptr);
+  for (size_t i = 0; i < input_count; i++) {
+    const auto input_type = op->GetInputType(op, i);
+    auto input_name = schema->inputs__GetName(i);
+    if (schema->typeConstraintMap().count(schema->inputs__GetTypeStr(i))) {
+      input_name = schema->inputs__GetTypeStr(i);
+    }
+    if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+      def_builder->TypeConstraint(input_name.c_str(), DataTypeImpl::AllTensorTypes());
+    } else {
+      def_builder->TypeConstraint(input_name.c_str(), DataTypeImpl::GetTensorTypeFromOnnxType(input_type));
+    }
+  }
+  for (size_t i = 0; i < output_count; i++) {
+    const auto output_type = op->GetOutputType(op, i);
+    auto output_name = schema->outputs__GetName(i);
+    if (schema != nullptr) {
+      if (schema->typeConstraintMap().count(schema->outputs__GetTypeStr(i))) {
+        output_name = schema->outputs__GetTypeStr(i);
+      }
+    }
+    if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+      def_builder->TypeConstraint(output_name.c_str(), DataTypeImpl::AllTensorTypes());
+    } else {
+      def_builder->TypeConstraint(output_name.c_str(), DataTypeImpl::GetTensorTypeFromOnnxType(output_type));
+    }
+  }
+  KernelCreateFn kernel_create_fn =
+      [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<MyCustomOpKernel>(info, *op);
+    return Status::OK();
+  };
+  return KernelCreateInfo(def_builder->Build(), kernel_create_fn);
+}
+
+void initialize_kernel_registry(const std::vector<OrtCustomOpDomain*>& domains) {
   s_kernel_registry_vitisaiep = KernelRegistry::Create();
   for (const auto& domain : domains) {
     for (const auto* op : domain->custom_ops_) {
-      const size_t input_count = op->GetInputTypeCount(op);
-      const size_t output_count = op->GetOutputTypeCount(op);
-      auto def_builder = KernelDefBuilder::Create();
-      def_builder->SetName(op->GetName(op));
-      def_builder->SetDomain(domain->domain_.c_str());
-      def_builder->SinceVersion(op->GetStartVersion(op), op->GetEndVersion(op));
-      if (op->version > 12) {
-        for (auto i = 0u; i < input_count; i++) {
-          def_builder->InputMemoryType(op->GetInputMemoryType(op, i), i);
-        }
-      }
-      def_builder->Provider(op->GetExecutionProviderType(op));
-
-      auto schema = Provider_GetHost()->GetSchema(op->GetName(op), op->GetStartVersion(op), domain->domain_);
-      for (size_t i = 0; i < input_count; i++) {
-        const auto input_type = op->GetInputType(op, i);
-        auto input_name = schema->inputs__GetName(i);
-        if (schema->typeConstraintMap().count(schema->inputs__GetTypeStr(i))) {
-          input_name = schema->inputs__GetTypeStr(i);
-        }
-        if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-          def_builder->TypeConstraint(input_name.c_str(), DataTypeImpl::AllTensorTypes());
-        } else {
-          def_builder->TypeConstraint(input_name.c_str(), DataTypeImpl::GetTensorTypeFromOnnxType(input_type));
-        }
-      }
-      for (size_t i = 0; i < output_count; i++) {
-        const auto output_type = op->GetOutputType(op, i);
-        auto output_name = schema->outputs__GetName(i);
-        if (schema != nullptr) {
-          if (schema->typeConstraintMap().count(schema->outputs__GetTypeStr(i))) {
-            output_name = schema->outputs__GetTypeStr(i);
-          }
-        }
-        if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-          def_builder->TypeConstraint(output_name.c_str(), DataTypeImpl::AllTensorTypes());
-        } else {
-          def_builder->TypeConstraint(output_name.c_str(), DataTypeImpl::GetTensorTypeFromOnnxType(output_type));
-        }
-      }
-      KernelCreateFn kernel_create_fn =
-          [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-        out = std::make_unique<MyCustomOpKernel>(info, *op);
-        return Status::OK();
-      };
-      std::ignore = s_kernel_registry_vitisaiep->Register(KernelCreateInfo(def_builder->Build(), kernel_create_fn));
+      s_vitisaiep_registered_ops.push_back(op);
+      auto kernel_create_info = get_kernel_create_info(domain, op);
+      std::ignore = s_kernel_registry_vitisaiep->Register(std::move(kernel_create_info));
     }
   }
+}
+
+static void refresh_kernel_registry(const std::vector<OrtCustomOpDomain*>& domains) {
+  for (const auto& domain : domains) {
+    for (const auto* op : domain->custom_ops_) {
+      if (std::find(s_vitisaiep_registered_ops.begin(), s_vitisaiep_registered_ops.end(), op) == s_vitisaiep_registered_ops.end()) {
+        s_vitisaiep_registered_ops.push_back(op);
+        auto kernel_create_info = get_kernel_create_info(domain, op);
+        std::ignore = s_kernel_registry_vitisaiep->Register(std::move(kernel_create_info));
+      }
+    }
+  }
+}
+
+void refresh_vitisai_ep_kernels() {
+  if (s_library_vitisaiep.refresh_vitisai_ep_domains)
+    s_library_vitisaiep.refresh_vitisai_ep_domains(s_domains_vitisaiep);
+  vaip::register_xir_ops(s_domains_vitisaiep);
+  refresh_kernel_registry(s_domains_vitisaiep);
 }
 
 void initialize_vitisai_ep() {
@@ -305,7 +339,7 @@ void initialize_vitisai_ep() {
   s_domains_vitisaiep.reserve(100);
   s_library_vitisaiep.initialize_onnxruntime_vitisai_ep(create_org_api_hook(), s_domains_vitisaiep);
   vaip::register_xir_ops(s_domains_vitisaiep);
-  create_kernel_registry(s_domains_vitisaiep);
+  initialize_kernel_registry(s_domains_vitisaiep);
 }
 
 void deinitialize_vitisai_ep() {
@@ -318,6 +352,13 @@ void deinitialize_vitisai_ep() {
 
   s_library_vitisaiep.Clear();
   s_kernel_registry_vitisaiep.reset();
+  s_vitisaiep_registered_ops.clear();
+}
+
+void vitisai_on_ep_factory_created(const onnxruntime::ProviderOptions& options) {
+  if (s_library_vitisaiep.vitisai_on_ep_factory_created) {
+    s_library_vitisaiep.vitisai_on_ep_factory_created(options);
+  }
 }
 
 static void set_version_info(vaip_core::OrtApiForVaip& api) {
