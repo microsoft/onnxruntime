@@ -2927,52 +2927,9 @@ struct CustomOpBase : OrtCustomOp {
   int end_ver_ = MAX_CUSTOM_OP_END_VER;
 };
 
-namespace detail {
-template <typename T>
-struct NodeImpl : Ort::detail::Base<T> {
-  using B = Ort::detail::Base<T>;
-  using B::B;
-};
-}  // namespace detail
-
-using ConstNode = detail::NodeImpl<Ort::detail::Unowned<const OrtNode>>;
-
-/** \brief Wrapper around ::OrtNode
- *
- */
-struct Node : detail::NodeImpl<OrtNode> {
-  explicit Node(std::nullptr_t) {}                     ///< No instance is created
-  explicit Node(OrtNode* p) : NodeImpl<OrtNode>{p} {}  ///< Take ownership of a pointer created by C API
-
-#if !defined(ORT_MINIMAL_BUILD)
-  Node(const std::string& operator_name, const std::string& operator_domain,
-       const std::string& node_name,
-       const std::vector<std::string>& input_names,
-       const std::vector<std::string>& output_names);
-
-  /// <summary>
-  /// Wraps CreateNode. Node takes ownership of attributes on success and updates the OpAttr in `attributes` to do so.
-  /// </summary>
-  Node(const std::string& operator_name, const std::string& operator_domain,
-       const std::string& node_name,
-       const std::vector<std::string>& input_names,
-       const std::vector<std::string>& output_names,
-       std::vector<OpAttr>& attributes);
-
- private:
-  static void Init(const std::string& operator_name, const std::string& operator_domain,
-                   const std::string& node_name,
-                   const std::vector<std::string>& input_names,
-                   const std::vector<std::string>& output_names,
-                   std::vector<OpAttr>& attributes,
-                   OrtNode*& node);
-#endif  // !defined(ORT_MINIMAL_BUILD)
-};
-
-struct ValueInfoConsumerProducerInfo {
-  ConstNode node;
-  int64_t index;  // either producer output or consumer output index
-};
+// Forward declaration to resolve circular dependency
+// on ConstNode
+struct ValueInfoConsumerProducerInfo;
 
 namespace detail {
 template <typename T>
@@ -3012,6 +2969,7 @@ using ConstValueInfo = detail::ConstValueInfoImpl<detail::Unowned<const OrtValue
  *
  */
 struct ValueInfo : detail::ConstValueInfoImpl<OrtValueInfo> {
+  ValueInfo() = default;                 // Same thing as with nullptr
   explicit ValueInfo(std::nullptr_t) {}  ///< No instance is created
   /// Take ownership of a pointer created by C API
   explicit ValueInfo(OrtValueInfo* p) : ConstValueInfoImpl<OrtValueInfo>{p} {}
@@ -3020,14 +2978,104 @@ struct ValueInfo : detail::ConstValueInfoImpl<OrtValueInfo> {
   // Create ValueInfo for a tensor
   explicit ValueInfo(const std::string& name, const ConstTypeInfo& type_info);
 #endif
-
   ConstValueInfo GetConst() const { return ConstValueInfo{this->p_}; }
 };
 
+// Forward declaration
 namespace detail {
 template <typename T>
-struct GraphImpl : Ort::detail::Base<T> {
-  using B = Ort::detail::Base<T>;
+struct ConstGraphImpl;
+}
+
+namespace detail {
+template <typename T>
+struct ConstNodeImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  size_t GetId() const;
+  std::string GetName() const;
+  std::string GetOperatorType() const;
+  std::string GetDomain() const;
+  int GetSinceVersion() const;
+
+  std::vector<ConstValueInfo> GetInputs() const;
+  std::vector<ConstValueInfo> GetOutputs() const;
+  std::vector<ConstValueInfo> GetImplictiInputs() const;
+
+  std::vector<ConstOpAttr> GetAttributes() const;
+  ConstOpAttr GetAttributeByName(const std::string& name) const;
+  Value GetTensorAttributeAsOrtValue(const std::string& name) const;
+
+  // ConstGraph is not available yet
+  std::vector<detail::ConstGraphImpl<detail::Unowned<const OrtGraph>>> GetSubgraphs() const;
+  detail::ConstGraphImpl<detail::Unowned<const OrtGraph>> GetGraph() const;
+
+  std::string GetEpName() const;
+};
+}  // namespace detail
+
+using ConstNode = detail::ConstNodeImpl<detail::Unowned<const OrtNode>>;
+
+/** \brief Wrapper around ::OrtNode
+ *
+ */
+struct Node : detail::ConstNodeImpl<OrtNode> {
+  Node() = default;                                         // Same thing as with nullptr
+  explicit Node(std::nullptr_t) {}                          ///< No instance is created
+  explicit Node(OrtNode* p) : ConstNodeImpl<OrtNode>{p} {}  ///< Take ownership of a pointer created by C API
+
+#if !defined(ORT_MINIMAL_BUILD)
+  Node(const std::string& operator_name, const std::string& operator_domain,
+       const std::string& node_name,
+       const std::vector<std::string>& input_names,
+       const std::vector<std::string>& output_names);
+
+  /// <summary>
+  /// Wraps CreateNode. Node takes ownership of attributes on success and updates the OpAttr in `attributes` to do so.
+  /// </summary>
+  Node(const std::string& operator_name, const std::string& operator_domain,
+       const std::string& node_name,
+       const std::vector<std::string>& input_names,
+       const std::vector<std::string>& output_names,
+       std::vector<OpAttr>& attributes);
+
+ private:
+  static void Init(const std::string& operator_name, const std::string& operator_domain,
+                   const std::string& node_name,
+                   const std::vector<std::string>& input_names,
+                   const std::vector<std::string>& output_names,
+                   std::vector<OpAttr>& attributes,
+                   OrtNode*& node);
+#endif  // !defined(ORT_MINIMAL_BUILD)
+};
+
+// Return struct for some of ValueInfo APIs.
+// Must be declared after ConstNode is available.
+struct ValueInfoConsumerProducerInfo {
+  ConstNode node;
+  // either producer output or consumer output index
+  // producer is unsigned only, output can be -1
+  int64_t index;
+};
+
+namespace detail {
+
+template <typename T>
+struct ConstGraphImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  ModelMetadata GetModelMetadata() const;  ///< Wraps OrtApi::Graph_GetModelMetadata
+#endif
+};
+
+using ConstGraph = detail::ConstGraphImpl<detail::Unowned<const OrtGraph>>;
+
+template <typename T>
+struct GraphImpl : ConstGraphImpl<T> {
+  using B = ConstGraphImpl<T>;
   using B::B;
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -3035,7 +3083,6 @@ struct GraphImpl : Ort::detail::Base<T> {
   void SetOutputs(std::vector<ValueInfo>& outputs);
   void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
   void AddNode(Node& node);                                                                 // Graph takes ownership of Node
-  ModelMetadata GetModelMetadata() const;                                                   ///< Wraps OrtApi::Graph_GetModelMetadata
 #endif                                                                                      // !defined(ORT_MINIMAL_BUILD)
 };
 }  // namespace detail
@@ -3050,7 +3097,6 @@ struct Graph : detail::GraphImpl<OrtGraph> {
   Graph();
 #endif
 };
-using ConstGraph = detail::GraphImpl<Ort::detail::Unowned<const OrtGraph>>;
 
 namespace detail {
 template <typename T>
@@ -3065,7 +3111,7 @@ struct ModelImpl : Ort::detail::Base<T> {
 }  // namespace detail
 
 // Const object holder that does not own the underlying object
-using ConstModel = detail::ModelImpl<Ort::detail::Unowned<const OrtModel>>;
+using UnowedModel = detail::ModelImpl<detail::Unowned<OrtModel>>;
 
 /** \brief Wrapper around ::OrtModel
  *
@@ -3079,8 +3125,6 @@ struct Model : detail::ModelImpl<OrtModel> {
 #if !defined(ORT_MINIMAL_BUILD)
   explicit Model(const std::vector<DomainOpsetPair>& opsets);
 #endif
-
-  ConstModel GetConst() const { return ConstModel{this->p_}; }
 };
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"

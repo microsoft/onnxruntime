@@ -1757,7 +1757,7 @@ inline Session::Session(const Env& env, const void* model_data, size_t model_dat
 
 #if !defined(ORT_MINIMAL_BUILD)
 inline Session::Session(const Env& env, const Model& model, const SessionOptions& options) {
-  ThrowOnError(GetModelEditorApi().CreateSessionFromModel(env, model.GetConst(), options, &this->p_));
+  ThrowOnError(GetModelEditorApi().CreateSessionFromModel(env, model, options, &this->p_));
 }
 
 // static
@@ -3007,6 +3007,135 @@ inline std::vector<const char*> StringsToCharPtrs(const std::vector<std::string>
 }
 }  // namespace detail
 
+namespace detail {
+template <typename T>
+inline size_t ConstNodeImpl<T>::GetId() const {
+  size_t id;
+  ThrowOnError(GetApi().Node_GetId(this->p_, &id));
+  return id;
+}
+
+template <typename T>
+inline std::string ConstNodeImpl<T>::GetName() const {
+  const char* name;
+  ThrowOnError(GetApi().Node_GetName(this->p_, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline std::string ConstNodeImpl<T>::GetOperatorType() const {
+  const char* type;
+  ThrowOnError(GetApi().Node_GetOperatorType(this->p_, &type));
+  return std::string(type);
+}
+
+template <typename T>
+inline std::string ConstNodeImpl<T>::GetDomain() const {
+  const char* domain;
+  ThrowOnError(GetApi().Node_GetDomain(this->p_, &domain));
+  return std::string(domain);
+}
+
+template <typename T>
+inline int ConstNodeImpl<T>::GetSinceVersion() const {
+  int since_version;
+  ThrowOnError(GetApi().Node_GetSinceVersion(this->p_, &since_version));
+  return since_version;
+}
+
+template <typename T>
+inline std::vector<ConstValueInfo> ConstNodeImpl<T>::GetInputs() const {
+  static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
+  size_t num_vi;
+  ThrowOnError(GetApi().Node_GetNumInputs(this->p_, &num_vi));
+  std::vector<ConstValueInfo> result;
+  result.resize(num_vi);
+  ThrowOnError(GetApi().Node_GetInputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()), num_vi));
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstValueInfo> ConstNodeImpl<T>::GetOutputs() const {
+  static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
+  size_t num_vi;
+  ThrowOnError(GetApi().Node_GetNumOutputs(this->p_, &num_vi));
+  std::vector<ConstValueInfo> result;
+  result.resize(num_vi);
+  ThrowOnError(GetApi().Node_GetOutputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()), num_vi));
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstValueInfo> ConstNodeImpl<T>::GetImplictiInputs() const {
+  static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
+  size_t num_vi;
+  ThrowOnError(GetApi().Node_GetNumImplicitInputs(this->p_, &num_vi));
+  std::vector<ConstValueInfo> result;
+  result.resize(num_vi);
+  ThrowOnError(GetApi().Node_GetImplicitInputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()),
+                                               num_vi));
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstOpAttr> ConstNodeImpl<T>::GetAttributes() const {
+  static_assert(sizeof(const OrtAttr*) == sizeof(ConstOpAttr), "Must be the same size");
+  size_t num_attr;
+  ThrowOnError(GetApi().Node_GetNumAttributes(this->p_, &num_attr));
+  std::vector<ConstOpAttr> attrs;
+  attrs.resize(num_attr);
+  ThrowOnError(GetApi().Node_GetAttributes(this->p_, reinterpret_cast<const OrtOpAttr**>(attrs.data()), num_attr));
+  return attrs;
+}
+
+template <typename T>
+inline ConstOpAttr ConstNodeImpl<T>::GetAttributeByName(const std::string& name) const {
+  const OrtOpAttr* attr;
+  ThrowOnError(GetApi().Node_GetAttributeByName(this->p_, name.c_str(), &attr));
+  return ConstOpAttr{attr};
+}
+
+template <typename T>
+inline Value ConstNodeImpl<T>::GetTensorAttributeAsOrtValue(const std::string& name) const {
+  auto attr = GetAttributeByName(name);
+  auto attr_type = attr.GetType();
+  if (ORT_OP_ATTR_TENSOR != attr_type) {
+    throw Ort::Exception("Attribute: " + name + " expected to be of tensor type, but its type is : " +
+                             std::to_string(attr_type),
+                         ORT_INVALID_ARGUMENT);
+  }
+  OrtValue* ort_value;
+  ThrowOnError(GetApi().Node_GetTensorAttributeAsOrtValue(this->p_, attr, &ort_value));
+  return Value{ort_value};
+}
+
+template <typename T>
+inline std::vector<ConstGraph> ConstNodeImpl<T>::GetSubgraphs() const {
+  static_assert(sizeof(const OrtGraph*) == sizeof(Graph));
+  size_t num_graphs;
+  ThrowOnError(GetApi().Node_GetNumSubgraphs(this->p_, &num_graphs));
+  std::vector<ConstGraph> result;
+  result.resize(num_graphs);
+  ThrowOnError(GetApi().Node_GetSubgraphs(this->p_, reinterpret_cast<const OrtGraph**>(result.data()), num_graphs));
+  return result;
+}
+
+template <typename T>
+inline ConstGraph ConstNodeImpl<T>::GetGraph() const {
+  const Graph* graph;
+  ThrowOnError(GetApi().Node_GetGraph(this->p_, &graph));
+  return ConstGraph{graph};
+}
+
+template <typename T>
+inline std::string ConstNodeImpl<T>::GetEpName() const {
+  const char* name;
+  ThrowOnError(GetApi().Node_GetEpName(this->p_, *name));
+  return std::string(name);
+}
+
+}  // namespace detail
+
 #if !defined(ORT_MINIMAL_BUILD)
 // static
 inline void Node::Init(const std::string& operator_name, const std::string& operator_domain,
@@ -3167,8 +3296,16 @@ inline bool ConstValueInfoImpl<T>::IsFromOuterScope() const {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-template <>
-inline void GraphImpl<OrtGraph>::SetInputs(std::vector<ValueInfo>& inputs) {
+
+template <typename T>
+inline ModelMetadata ConstGraphImpl<T>::GetModelMetadata() const {
+  OrtModelMetadata* out;
+  ThrowOnError(GetApi().Graph_GetModelMetadata(this->p_, &out));
+  return ModelMetadata{out};
+}
+
+template <typename T>
+inline void GraphImpl<T>::SetInputs(std::vector<ValueInfo>& inputs) {
   std::vector<OrtValueInfo*> inputs_ptrs;
   inputs_ptrs.reserve(inputs.size());
   std::transform(inputs.begin(), inputs.end(), std::back_inserter(inputs_ptrs),
@@ -3180,8 +3317,8 @@ inline void GraphImpl<OrtGraph>::SetInputs(std::vector<ValueInfo>& inputs) {
   std::for_each(inputs.begin(), inputs.end(), [](ValueInfo& vi) { vi.release(); });
 }
 
-template <>
-inline void GraphImpl<OrtGraph>::SetOutputs(std::vector<ValueInfo>& outputs) {
+template <typename T>
+inline void GraphImpl<T>::SetOutputs(std::vector<ValueInfo>& outputs) {
   std::vector<OrtValueInfo*> outputs_ptrs;
   outputs_ptrs.reserve(outputs.size());
   std::transform(outputs.begin(), outputs.end(), std::back_inserter(outputs_ptrs),
@@ -3193,23 +3330,18 @@ inline void GraphImpl<OrtGraph>::SetOutputs(std::vector<ValueInfo>& outputs) {
   std::for_each(outputs.begin(), outputs.end(), [](ValueInfo& vi) { vi.release(); });
 }
 
-template <>
-inline void GraphImpl<OrtGraph>::AddInitializer(const std::string& name, Value& initializer, bool data_is_external) {
+template <typename T>
+inline void GraphImpl<T>::AddInitializer(const std::string& name, Value& initializer, bool data_is_external) {
   // Graph takes ownership of `initializer`
-  ThrowOnError(GetModelEditorApi().AddInitializerToGraph(p_, name.c_str(), initializer.release(), data_is_external));
-}
-
-template <>
-inline void GraphImpl<OrtGraph>::AddNode(Node& node) {
-  // Graph takes ownership of `node`
-  ThrowOnError(GetModelEditorApi().AddNodeToGraph(p_, node.release()));
+  // XXX: Check we assume that on error the ownership is not transferred.
+  ThrowOnError(GetModelEditorApi().AddInitializerToGraph(p_, name.c_str(), initializer, data_is_external));
+  initializer.release()
 }
 
 template <typename T>
-inline ModelMetadata GraphImpl<T>::GetModelMetadata() const {
-  OrtModelMetadata* out;
-  ThrowOnError(GetApi().Graph_GetModelMetadata(this->p_, &out));
-  return ModelMetadata{out};
+inline void GraphImpl<T>::AddNode(Node& node) {
+  // Graph takes ownership of `node`
+  ThrowOnError(GetModelEditorApi().AddNodeToGraph(p_, node.release()));
 }
 
 template <>
