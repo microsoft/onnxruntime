@@ -12,6 +12,7 @@
 #include <type_traits>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
 #include <assert.h>
@@ -40,20 +41,39 @@ extern const OrtApi* g_ort;
 namespace onnxruntime {
 namespace perftest {
 
-std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
+RunTiming OnnxRuntimeTestSession::Run() {
   // Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
   const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
   const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
 
   auto& input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
+  Ort::RunOptions run_options;
+  RunTiming timing;
+  if (CUDA == device_memory_name_) {
+    run_options.AddConfigEntry(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "1");
+    Ort::IoBinding io_binding(session_);
+    const OrtMemoryInfo* mem_info;
+    Ort::ThrowOnError(Ort::GetApi().AllocatorGetInfo(allocator_, &mem_info));
 
-  session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-               output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
+    for (size_t i = 0; i < input_names_.size(); ++i) {
+      io_binding.BindInput(input_names_[i], input[i]);
+    }
+    for (auto& name : output_names_) {
+      io_binding.BindOutput(name.c_str(), mem_info);
+    }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> duration_seconds = end - start;
-  return duration_seconds;
+    session_.Run(run_options, io_binding);
+    timing.submit_timing = std::chrono::high_resolution_clock::now() - start;
+    io_binding.SynchronizeOutputs();
+    timing.total_timing = std::chrono::high_resolution_clock::now() - start;
+  } else {
+    session_.Run(run_options, input_names_.data(), input.data(), input_names_.size(),
+                 output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
+    timing.submit_timing = std::chrono::high_resolution_clock::now() - start;
+    timing.total_timing = timing.submit_timing;
+  }
+  return timing;
 }
 
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
@@ -239,21 +259,25 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name_ == onnxruntime::kNvTensorRTRTXExecutionProvider) {
 #ifdef USE_NV
 #ifdef _MSC_VER
-    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+    std::string opt_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 #else
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+    std::string opt_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    ParseSessionConfigs(ov_string, provider_options);
+    ParseSessionConfigs(opt_string, provider_options);
     if (!provider_options.empty()) {
       std::cout << "Setting NV TensorRT RTX provider options to:\n";
       for (const auto& provider_option : provider_options) {
         std::cout << "\t" << provider_option.first << ":" << provider_option.second << "\n";
       }
     }
-    session_options.AppendExecutionProvider("NvTensorRtRtx", provider_options);
     if (performance_test_config.run_config.enable_cuda_io_binding) {
       device_memory_name_ = CUDA;
+      cudaStream_t stream;
+      cudaStreamCreate(&stream);
+      auto stream_str = std::to_string(reinterpret_cast<uintptr_t>(stream));
+      provider_options["user_compute_stream"] = stream_str;
     }
+    session_options.AppendExecutionProvider("NvTensorRtRtx", provider_options);
 #else
     ORT_THROW("NV TensorRT RTX is not supported in this build\n");
 #endif

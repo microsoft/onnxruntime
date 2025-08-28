@@ -29,7 +29,7 @@ class OnnxRuntimeTestSession : public TestSession {
 
   ~OnnxRuntimeTestSession() = default;
 
-  std::chrono::duration<double> Run() override;
+  RunTiming Run() override;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxRuntimeTestSession);
 
