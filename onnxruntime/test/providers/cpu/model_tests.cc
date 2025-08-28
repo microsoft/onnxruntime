@@ -209,8 +209,7 @@ static const std::unordered_set<std::string> ONNX_ZOO_MODELS = {
     "YOLOv3-12-int8",
     "YOLOv4",
     "ZFNet-512-int8",
-    "ZFNet-512-qdq"
-};
+    "ZFNet-512-qdq"};
 
 // Helper function to check if a model is allowed
 inline bool IsModelAllowed(const std::string& model_name) {
