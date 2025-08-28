@@ -39,10 +39,8 @@ class TestEpCompatibility(unittest.TestCase):
 
         # API requires all devices belong to the same EP; we pass only one.
         status = get_model_compatibility_for_ep_devices(selected, "arbitrary-compat-string")
-        self.assertEqual(
-            status,
-            OrtCompiledModelCompatibility.EP_NOT_APPLICABLE
-        )
+        self.assertEqual(status, OrtCompiledModelCompatibility.EP_NOT_APPLICABLE)
+
 
 if __name__ == "__main__":
     unittest.main()
