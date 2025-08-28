@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cuda_fp16.h>
+#include <cuda_bf16.h> 
 #include <cublas_v2.h>
 #include <gsl/gsl>
 #include <iostream>
@@ -96,6 +97,10 @@ Status LaunchTransCtx(cudaStream_t stream,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                       const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
 
+Status LaunchTransCtx(cudaStream_t stream,
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs, const BFloat16* input, BFloat16* output);
+
 // BxSxMxNxH or SxBxMxNxH (reversed_bs is true) => MxBxNxSxH
 Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
@@ -105,6 +110,11 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
 Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                       const int max_threads_per_block, const bool reversed_bs, const half* input, half* output,
+                      int total_matrix_count = -1);
+
+Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs, const nv_bfloat16* input, nv_bfloat16* output,
                       int total_matrix_count = -1);
 
 Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,

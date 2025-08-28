@@ -47,6 +47,8 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/transformer_common.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
+#include <cuda_bf16.h>
+
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::attention_softmax_cuda;
 
@@ -762,11 +764,36 @@ Status UnfusedAttention(
       ORT_RETURN_IF_ERROR(
           (CopyQK<T, QK>(stream, static_cast<int>(qk_size), data.scratch, reinterpret_cast<QK*>(data.output_qk))));
     }
+    /*
     ORT_RETURN_IF_ERROR(
         ComputeSoftmax<T>(
             stream, total_sequence_length, sequence_length, batch_size, num_heads,
             data.attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
             data.scratch, scratch2, parameters.is_unidirectional));
+
+      */
+
+    if constexpr (std::is_same<T, onnxruntime::BFloat16>::value) {
+      ORT_RETURN_IF_ERROR(
+          ComputeSoftmax<nv_bfloat16>(
+              stream,
+              total_sequence_length,
+              sequence_length,
+              batch_size,
+              num_heads,
+              reinterpret_cast<const nv_bfloat16*>(data.attention_bias),
+              broadcast_attn_bias_dim_0,
+              broadcast_attn_bias_dim_1,
+              reinterpret_cast<nv_bfloat16*>(data.scratch),
+              reinterpret_cast<nv_bfloat16*>(scratch2),
+              parameters.is_unidirectional));
+    } else {
+      ORT_RETURN_IF_ERROR(
+          ComputeSoftmax<T>(
+              stream, total_sequence_length, sequence_length, batch_size, num_heads,
+              data.attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
+              data.scratch, scratch2, parameters.is_unidirectional));
+    }
   }
 
   DUMP_TENSOR_D("Softmax", scratch2, batch_size, num_heads, sequence_length, total_sequence_length);
@@ -970,9 +997,14 @@ Status QkvToContext(
           static_cast<int>(data.fused_cross_attention_kernel != nullptr) +
           static_cast<int>(data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention)) <= 1);
 
+  int a = 1;
+  if (a == 1) {
+return onnxruntime::common::Status::OK();
+  }
+
   DUMP_STRING_INIT();
   DUMP_STRING("Preparing Q, K, V");
-  ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
+    ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
 
   if (!parameters.past_present_share_buffer) {
     ORT_RETURN_IF_ERROR(ConcatPastToPresent<T>(batch_size, num_heads, qk_head_size, v_head_size,
@@ -1040,6 +1072,8 @@ template struct AttentionData<float>;
 
 template struct AttentionData<half>;
 
+template struct AttentionData<BFloat16>;
+
 template Status QkvToContext<float>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
@@ -1055,6 +1089,14 @@ template Status QkvToContext<half>(
     Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data);
+
+template Status QkvToContext<BFloat16>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    cudnnHandle_t& cudnn,
+    Stream* ort_stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<BFloat16>& data);
 
 template Status QkvToContext<float, half>(
     const cudaDeviceProp& device_prop,

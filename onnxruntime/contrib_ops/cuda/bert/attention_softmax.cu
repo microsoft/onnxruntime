@@ -999,6 +999,12 @@ template Status ComputeSoftmax<half>(
     const bool broadcast_attn_bias_dim_0, const bool broadcast_attn_bias_dim_1,
     half* input, half* output, bool causal);
 
+template Status ComputeSoftmax<nv_bfloat16>(
+    cudaStream_t stream, const int total_sequence_length, const int sequence_length,
+    const int batch_size, const int num_heads, const nv_bfloat16* attn_bias,
+    const bool broadcast_attn_bias_dim_0, const bool broadcast_attn_bias_dim_1,
+    nv_bfloat16* input, nv_bfloat16* output, bool causal);
+
 template Status ComputeSoftmaxWithCumSeqLength<float>(
     const float* input,
     const float* attn_bias,

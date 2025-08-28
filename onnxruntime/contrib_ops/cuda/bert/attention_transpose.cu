@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
+#include <cuda_bf16.h>
 
 using namespace onnxruntime::cuda;
 
@@ -156,6 +157,54 @@ Status LaunchTransCtx(cudaStream_t stream,
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeCtxLarge<half><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
+    }
+  }
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchTransCtx(cudaStream_t stream,
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs,
+                      const onnxruntime::BFloat16* input, onnxruntime::BFloat16* output) {
+  const dim3 grid(sequence_length, batch_size, 1);
+
+  if ((head_size % 4) == 0) {
+    // 4×bf16 packed in 8 bytes → use float2 path
+    const int H = head_size / 4;
+    const float2* input2 = reinterpret_cast<const float2*>(input);
+    float2* output2 = reinterpret_cast<float2*>(output);
+
+    if (H * num_heads <= max_threads_per_block) {
+      const dim3 block(H, num_heads, 1);
+      TransposeCtx<float2><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2);
+    } else {
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+      TransposeCtxLarge<float2><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2);
+    }
+
+  } else if ((head_size & 1) == 0) {
+    // 2×bf16 packed → use __nv_bfloat162 path
+    const int H = head_size / 2;
+    const __nv_bfloat162* input2 = reinterpret_cast<const __nv_bfloat162*>(input);
+    __nv_bfloat162* output2 = reinterpret_cast<__nv_bfloat162*>(output);
+
+    if (H * num_heads <= max_threads_per_block) {
+      const dim3 block(H, num_heads, 1);
+      TransposeCtx<__nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2);
+    } else {
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+      TransposeCtxLarge<__nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2);
+    }
+
+  } else {
+    // Odd H: scalar bf16 path
+    if (head_size * num_heads <= max_threads_per_block) {
+      const dim3 block(head_size, num_heads, 1);
+      TransposeCtx<onnxruntime::BFloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
+    } else {
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+      TransposeCtxLarge<onnxruntime::BFloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
     }
   }
 

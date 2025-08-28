@@ -36,20 +36,24 @@ constexpr int kPresentOutputIndex = 1;
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {
   kernel_options_ = this->GetAttentionKernelOptions();
 
-  disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
+  constexpr bool kIsFp16 = std::is_same<T, MLFloat16>::value;
+  constexpr bool kIsBf16 = std::is_same<T, BFloat16>::value;
+  constexpr bool kIs16bit = kIsFp16 || kIsBf16;
 
-  enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
-
-  enable_fused_causal_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtCausalAttention();
+  // We only support FP16 for TRT fused/flash/causal attention.
+  disable_fused_self_attention_ = !kIsFp16 || !kernel_options_->UseTrtFusedAttention();
+  enable_trt_flash_attention_ = kIsFp16 && kernel_options_->UseTrtFlashAttention();
+  enable_fused_causal_attention_ = kIsFp16 && kernel_options_->UseTrtCausalAttention();
 
   disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
 
-  disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
+  disable_flash_attention_ = !kIs16bit || !kernel_options_->UseFlashAttention();
 }
 
 template <typename T>
