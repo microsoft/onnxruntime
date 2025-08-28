@@ -1999,15 +1999,15 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
   int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
   concurrency::ThreadPool::TryBatchParallelFor(
-    tp, static_cast<int32_t>(task_count),
-    [&](ptrdiff_t task_idx) {
-      const auto start = task_idx * length_per_task;
-      const float* p_input = input_data + start;
-      float* p_output = output_data + start;
-      int64_t count = std::min(length_per_task, elem_count - start);
-      MlasComputeErf(p_input, p_output, narrow<size_t>(count));
-    },
-    0);
+      tp, static_cast<int32_t>(task_count),
+      [&](ptrdiff_t task_idx) {
+        const auto start = task_idx * length_per_task;
+        const float* p_input = input_data + start;
+        float* p_output = output_data + start;
+        int64_t count = std::min(length_per_task, elem_count - start);
+        MlasComputeErf(p_input, p_output, narrow<size_t>(count));
+      },
+      0);
 
   return Status::OK();
 }
@@ -2016,7 +2016,6 @@ template <>
 Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
-
 
 class Mod final : public OpKernel {
  public:

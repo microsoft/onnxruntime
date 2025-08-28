@@ -81,6 +81,10 @@ void ComputeJob(
   }
 }
 
+// Helper to convert int64_t -> Eigen::Index safely
+inline Eigen::Index ToEigenIndex(int64_t v) {
+  return static_cast<Eigen::Index>(v);
+}
 
 template <typename U>
 void ComputeJob(
@@ -98,24 +102,26 @@ void ComputeJob(
     U* mean_data,
     U* inv_std_dev_data,
     AllocatorPtr alloc) {
-
   ORT_UNUSED_PARAMETER(scale_data);
   ORT_UNUSED_PARAMETER(bias_data);
-  ORT_UNUSED_PARAMETER(alloc);  
+  ORT_UNUSED_PARAMETER(alloc);
 
   // reinterpret input/output MLFloat16* as Eigen::half*
   const Eigen::half* p_input = reinterpret_cast<const Eigen::half*>(X_data + task_idx * norm_size);
   Eigen::half* p_output = reinterpret_cast<Eigen::half*>(Y_data + task_idx * norm_size);
 
-  Eigen::Map<const Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> input_vec(p_input, norm_size);
-  Eigen::Map<Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> output_vec(p_output, norm_size);
+  // Fix: cast norm_size to Eigen::Index
+  Eigen::Map<const Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> input_vec(
+      p_input, ToEigenIndex(norm_size));
+  Eigen::Map<Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> output_vec(
+      p_output, ToEigenIndex(norm_size));
 
   // Compute mean and mean_square in float for precision
   float mean = 0.0f;
   float mean_square = 0.0f;
 
   for (int64_t i = 0; i < norm_size; ++i) {
-    float val = static_cast<float>(input_vec[i]);
+    float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
     mean += val;
     mean_square += val * val;
   }
@@ -131,7 +137,7 @@ void ComputeJob(
   int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
 
   for (int64_t h = 0; h < norm_size; ++h, ++i) {
-    float x = static_cast<float>(input_vec[h]);
+    float x = static_cast<float>(input_vec[ToEigenIndex(h)]);
 
     float y = 0.0f;
     if (simplified) {
@@ -142,7 +148,7 @@ void ComputeJob(
       y = (x - mean) / mean_square * scale_float_ptr[i] + bias_float_ptr[i];
     }
 
-    output_vec[h] = static_cast<Eigen::half>(y);
+    output_vec[ToEigenIndex(h)] = static_cast<Eigen::half>(y);
   }
 
   if (mean_data != nullptr) {
@@ -153,7 +159,6 @@ void ComputeJob(
     inv_std_dev_data[task_idx] = MLFloat16(1.0f / mean_square);
   }
 }
-
 
 void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, IAllocatorUniquePtr<float>& dest, bool& is_packed) {
   if (tensor.GetElementType() == utils::ToTensorProtoElementType<MLFloat16>()) {
