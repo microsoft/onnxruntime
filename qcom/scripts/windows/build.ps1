@@ -37,20 +37,15 @@ $RepoRoot = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.De
 . "$RepoRoot\qcom\scripts\windows\utils.ps1"
 
 $BuildRoot = (Join-Path $RepoRoot "build")
-if ($TargetPlatform -eq "android") {
-    $TargetPlatformArch = $TargetPlatform
-} else {
-    $TargetPlatformArch = "$TargetPlatform-$Arch"
-}
 
 if ($Mode -eq "generate_sln") {
     $BuildDir = (Join-Path $BuildRoot "vs")
 }
 else {
-    $BuildDir = (Join-Path $BuildRoot "$TargetPlatformArch")
+    $BuildDir = (Join-Path $BuildRoot "$TargetPlatform-$Arch")
 }
 
-$ValidArchs = "arm64", "arm64ec", "x86_64"
+$ValidArchs = "aarch64", "arm64", "arm64ec", "x86_64"
 
 if (-Not ($ValidArchs -contains $Arch)) {
     throw "Invalid arch $Arch. Supported architectures: $ValidArchs"
@@ -220,7 +215,7 @@ if ($MakeTestArchive) {
     python.exe "$RepoRoot\qcom\scripts\all\archive_tests.py" `
         "--config=$Config" `
         "--qairt-sdk-root=$QairtSdkRoot" `
-        "--target-platform=$TargetPlatformArch"
+        "--target-platform=$TargetPlatform-$Arch"
     if (-not $?) {
         $failed = $true
     }

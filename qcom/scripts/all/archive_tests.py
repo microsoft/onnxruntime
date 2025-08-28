@@ -52,10 +52,10 @@ def _should_archive(path: Path, accept: re.Pattern | None = None, reject: re.Pat
     return True
 
 
-def archive_android(config: str, qairt_sdk_root: Path) -> None:
+def archive_android(target_platform: str, config: str, qairt_sdk_root: Path) -> None:
     build_root = REPO_ROOT / "build"
-    archive_path = build_root / "onnxruntime-tests-android.zip"
-    build_dir = build_root / "android"
+    archive_path = build_root / f"onnxruntime-tests-{target_platform}.zip"
+    build_dir = build_root / target_platform
 
     archive_path.unlink(missing_ok=True)
 
@@ -81,10 +81,10 @@ def archive_android(config: str, qairt_sdk_root: Path) -> None:
                 archive.write(filename, arcname)
 
 
-def archive_linux(config: str) -> None:
+def archive_linux(target_platform: str, config: str) -> None:
     build_root = REPO_ROOT / "build"
-    archive_path = build_root / "onnxruntime-tests-linux.tar.bz2"
-    build_dir = build_root / "linux"
+    archive_path = build_root / f"onnxruntime-tests-{target_platform}.tar.bz2"
+    build_dir = build_root / target_platform
 
     archive_path.unlink(missing_ok=True)
 
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--target-platform",
         help="The platform for which to package tests.",
-        choices=["android", "linux", "windows-arm64", "windows-arm64ec", "windows-x86_64"],
+        choices=["android-aarch64", "linux-x86_64", "windows-arm64", "windows-arm64ec", "windows-x86_64"],
         required=True,
     )
 
@@ -160,10 +160,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.target_platform == "android":
-        archive_android(args.config, args.qairt_sdk_root)
-    elif args.target_platform == "linux":
-        archive_linux(args.config)
+    if args.target_platform.startswith("android-"):
+        archive_android(args.target_platform, args.config, args.qairt_sdk_root)
+    elif args.target_platform.startswith("linux-"):
+        archive_linux(args.target_platform, args.config)
     elif args.target_platform.startswith("windows-"):
         archive_windows(args.target_platform, args.config)
     else:

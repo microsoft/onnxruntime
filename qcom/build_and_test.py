@@ -154,14 +154,15 @@ class TaskLibrary:
         return f"digraph {{\n{elements_str}\n}}"
 
     @task
-    @depends(["build_ort_android"])
-    def archive_ort_android(self, plan: Plan) -> str:
+    @depends(["build_ort_android_aarch64"])
+    def archive_ort_android_aarch64(self, plan: Plan) -> str:
         if is_host_linux() or is_host_mac():
             return plan.add_step(
                 BuildEpLinuxTask(
                     "Archiving ONNX Runtime for Android",
                     self.__venv_path,
                     "android",
+                    "aarch64",
                     self.__qairt_sdk_root,
                     "archive",
                 )
@@ -172,7 +173,7 @@ class TaskLibrary:
                     "Archiving ONNX Runtime for Android",
                     self.__venv_path,
                     "android",
-                    "arm64",
+                    "aarch64",
                     "Release",
                     self.__qairt_sdk_root,
                     "archive",
@@ -182,13 +183,14 @@ class TaskLibrary:
             raise NotImplementedError("Archiving for Android on this host is not supported.")
 
     @task
-    @depends(["build_ort_linux"])
-    def archive_ort_linux(self, plan: Plan) -> str:
+    @depends(["build_ort_linux_x86_64"])
+    def archive_ort_linux_x86_64(self, plan: Plan) -> str:
         return plan.add_step(
             BuildEpLinuxTask(
                 "Archiving ONNX Runtime for Linux",
                 self.__venv_path,
                 "linux",
+                "x86_64",
                 self.__qairt_sdk_root,
                 "archive",
             )
@@ -242,7 +244,7 @@ class TaskLibrary:
     @public_task("Build ONNX Runtime")
     @depends(
         [
-            (is_host_linux(), "build_ort_linux"),
+            (is_host_linux(), "build_ort_linux_host"),
             (is_host_windows(), "build_ort_windows_host"),
         ]
     )
@@ -251,13 +253,14 @@ class TaskLibrary:
 
     @task
     @depends(["create_venv"])
-    def build_ort_android(self, plan: Plan) -> str:
+    def build_ort_android_aarch64(self, plan: Plan) -> str:
         if is_host_linux() or is_host_mac():
             return plan.add_step(
                 BuildEpLinuxTask(
                     "Building ONNX Runtime for Android",
                     self.__venv_path,
                     "android",
+                    "aarch64",
                     self.__qairt_sdk_root,
                     "build",
                 )
@@ -268,7 +271,7 @@ class TaskLibrary:
                     "Building ONNX Runtime for Android",
                     self.__venv_path,
                     "android",
-                    "arm64",
+                    "aarch64",
                     "Release",
                     self.__qairt_sdk_root,
                     "build",
@@ -278,13 +281,19 @@ class TaskLibrary:
             raise NotImplementedError("Building for Android on this host is not supported.")
 
     @task
+    @depends(["build_ort_linux_x86_64"])
+    def build_ort_linux_host(self, plan: Plan) -> str:
+        return plan.add_step(NoOpTask())
+
+    @task
     @depends(["create_venv"])
-    def build_ort_linux(self, plan: Plan) -> str:
+    def build_ort_linux_x86_64(self, plan: Plan) -> str:
         return plan.add_step(
             BuildEpLinuxTask(
                 "Building ONNX Runtime for Linux",
                 self.__venv_path,
                 "linux",
+                "x86_64",
                 self.__qairt_sdk_root,
                 "build",
             )
@@ -350,12 +359,12 @@ class TaskLibrary:
         return plan.add_step(CreateVenvTask(self.__python_executable, self.__venv_path))
 
     @task
-    def extract_ort_linux(self, plan: Plan) -> str:
+    def extract_ort_linux_x86_64(self, plan: Plan) -> str:
         return plan.add_step(
             ExtractArchiveTask(
                 "Extracting ONNX Runtime for Linux",
-                REPO_ROOT / "build" / "onnxruntime-tests-linux.tar.bz2",
-                REPO_ROOT / "build" / "linux" / "Release",
+                REPO_ROOT / "build" / "onnxruntime-tests-linux-x86_64.tar.bz2",
+                REPO_ROOT / "build" / "linux-x86_64" / "Release",
             )
         )
 
@@ -428,25 +437,31 @@ class TaskLibrary:
         return plan.add_step(NoOpTask())
 
     @task
-    @depends(["build_ort_linux"])
+    @depends(["test_ort_linux_x86_64"])
     def test_ort_linux(self, plan: Plan) -> str:
+        return plan.add_step(NoOpTask())
+
+    @task
+    @depends(["build_ort_linux_x86_64"])
+    def test_ort_linux_x86_64(self, plan: Plan) -> str:
         return plan.add_step(
             BuildEpLinuxTask(
                 "Testing ONNX Runtime for Linux",
                 self.__venv_path,
                 "linux",
+                "x86_64",
                 self.__qairt_sdk_root,
                 "test",
             )
         )
 
     @task
-    @depends(["archive_ort_android"])
-    def test_ort_local_android(self, plan: Plan) -> str:
+    @depends(["archive_ort_android_aarch64"])
+    def test_ort_local_android_aarch64(self, plan: Plan) -> str:
         env = dict(os.environ)
         test_root = REPO_ROOT / "build" / "qdc_test_root"
         env["QDC_TEST_ROOT"] = str(test_root)
-        env["MODEL_TEST_ROOT"] = str(REPO_ROOT / "build" / "android" / "model_tests")
+        env["MODEL_TEST_ROOT"] = str(REPO_ROOT / "build" / "android-aarch64" / "model_tests")
 
         # This is a pretty slow way to do this, but it's easy to implement
         # and essentially free to maintain. If you find yourself using this
@@ -458,7 +473,7 @@ class TaskLibrary:
                 tasks=[
                     ExtractArchiveTask(
                         "Extracting ONNX Runtime for Android",
-                        REPO_ROOT / "build" / "onnxruntime-tests-android.zip",
+                        REPO_ROOT / "build" / "onnxruntime-tests-android-aarch64.zip",
                         test_root,
                     ),
                     PyTestTask(
@@ -473,8 +488,8 @@ class TaskLibrary:
         )
 
     @task
-    @depends(["archive_ort_android"])
-    def test_ort_qdc_android(self, plan: Plan) -> str:
+    @depends(["archive_ort_android_aarch64"])
+    def test_ort_qdc_android_aarch64(self, plan: Plan) -> str:
         return plan.add_step(
             QdcTestsTask(
                 "Testing ONNX Runtime for Android in QDC",

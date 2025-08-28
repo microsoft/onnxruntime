@@ -51,7 +51,9 @@ from qdc_public_api_client.models.post_artifacts_uuid_continueupload_body import
 from qdc_public_api_client.models.test_framework import TestFramework
 from qdc_public_api_client.types import File, Response, Unset
 
-ORT_APPIUM_ARCHIVE = (Path(__file__).parent.parent.parent.parent / "build" / "onnxruntime-tests-android.zip").absolute()
+ORT_APPIUM_ARCHIVE = (
+    Path(__file__).parent.parent.parent.parent / "build" / "onnxruntime-tests-android-aarch64.zip"
+).absolute()
 ORT_TEST_WIN_ARM64 = (
     Path(__file__).parent.parent.parent.parent / "build" / "onnxruntime-tests-windows-arm64.zip"
 ).absolute()

@@ -20,11 +20,13 @@ class BuildEpLinuxTask(BashScriptsWithVenvTask):
         group_name: str | None,
         venv: Path | None,
         target_platform: Literal["android", "linux"],
+        target_arch: Literal["aarch64", "x86_64"],
         qairt_sdk_root: Path | None,
         mode: str,
     ) -> None:
         cmd = [
             str(REPO_ROOT / "qcom" / "scripts" / "linux" / "build.sh"),
+            f"--target-arch={target_arch}",
             f"--target-platform={target_platform}",
             f"--mode={mode}",
         ]
@@ -41,7 +43,7 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
         group_name: str | None,
         venv: Path | None,
         target_platform: Literal["android", "windows"],
-        arch: Literal["arm64", "arm64ec", "x86_64"],
+        target_arch: Literal["aarch64", "arm64", "arm64ec", "x86_64"],
         config: Literal["Debug", "Release", "RelWithDebInfo"],
         qairt_sdk_root: Path | None,
         mode: str,
@@ -49,7 +51,7 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
         cmd = [
             str(REPO_ROOT / "qcom" / "scripts" / "windows" / "build.ps1"),
             "-Arch",
-            arch,
+            target_arch,
             "-Config",
             config,
             "-TargetPlatform",

@@ -47,6 +47,10 @@ for i in "$@"; do
       target_platform="${i#*=}"
       shift
       ;;
+    --target-arch=*)
+      target_arch="${i#*=}"
+      shift
+      ;;
     *)
       die "Unknown option: $i"
       ;;
@@ -56,7 +60,7 @@ done
 cmake_generator="Ninja"
 
 build_root="${REPO_ROOT}/build"
-build_dir="${build_root}/${target_platform}"
+build_dir="${build_root}/${target_platform}-${target_arch}"
 
 qairt_sdk_file_path="${build_dir}/qairt-sdk-path-${config}.txt"
 
@@ -167,7 +171,7 @@ trap scrub_mirror EXIT
 if [ -n "${make_test_archive}" ]; then
   python "${REPO_ROOT}/qcom/scripts/all/archive_tests.py" \
     "--config=${config}" \
-    "--target-platform=${target_platform}" \
+    "--target-platform=${target_platform}-${target_arch}" \
     "--qairt-sdk-root=${qairt_sdk_root}"
 else
   cd "${REPO_ROOT}"
@@ -204,7 +208,7 @@ else
         -j 1 \
         -e qnn \
         -i "backend_type|cpu" \
-        "${REPO_ROOT}/cmake/external/onnx/onnx/backend/test/data/node"
+        "${build_dir}/${config}/_deps/onnx-src/onnx/backend/test/data/node"
 
     log_info "-=-=-=- Running onnx/models float32 tests -=-=-=-=-"
     cd "${onnx_models_root}"
