@@ -136,7 +136,7 @@ class OVInferRequest {
       cached_binding.tensor_ptr.reset();
       auto ov_tensor = std::make_shared<ov::Tensor>(type, shape, const_cast<void*>(ort_ptr));
       ovInfReq.set_tensor(name, *ov_tensor);
-      cached_binding = {ov_tensor, ort_ptr};
+      cached_binding = {std::move(ov_tensor), ort_ptr};
     }
   }
 
