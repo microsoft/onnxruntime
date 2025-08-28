@@ -46,9 +46,12 @@ struct ForwardToFactoryImpl {
   }
 
   static OrtStatus* ORT_API_CALL ValidateCompiledModelCompatibilityInfo(OrtEpFactory* this_ptr,
+                                                                        _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                                                        size_t num_devices,
                                                                         const char* compatibility_info,
                                                                         OrtCompiledModelCompatibility* model_compatibility) noexcept {
-    return static_cast<TFactory*>(this_ptr)->ValidateCompiledModelCompatibilityInfo(compatibility_info, model_compatibility);
+    return static_cast<TFactory*>(this_ptr)->ValidateCompiledModelCompatibilityInfo(devices, num_devices,
+                                                                                    compatibility_info, model_compatibility);
   }
 
   static OrtStatus* ORT_API_CALL CreateAllocator(_In_ OrtEpFactory* this_ptr,

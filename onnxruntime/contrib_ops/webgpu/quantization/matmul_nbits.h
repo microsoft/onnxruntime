@@ -37,7 +37,7 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
 
 class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
  public:
-  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points) : Program{"MatMulNBits"}, tile_size_(tile_size), nbits_(nbits), has_zero_points_(has_zero_points) {}
+  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool single_scale_weights) : Program{"MatMulNBits"}, tile_size_(tile_size), nbits_(nbits), has_zero_points_(has_zero_points), single_scale_weights_(single_scale_weights) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -55,6 +55,7 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   uint32_t tile_size_;
   uint32_t nbits_;
   bool has_zero_points_;
+  bool single_scale_weights_;
 };
 
 class MatMulNBits final : public WebGpuKernel {
@@ -65,8 +66,8 @@ class MatMulNBits final : public WebGpuKernel {
     block_size_ = info.GetAttr<int64_t>("block_size");
     bits_ = info.GetAttr<int64_t>("bits");
     accuracy_level_ = info.GetAttrOrDefault<int64_t>("accuracy_level", 4);
-    ORT_ENFORCE(bits_ == 4 || bits_ == 8,
-                "Only 4b/8b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    ORT_ENFORCE(bits_ == 4 || bits_ == 8 || bits_ == 2,
+                "Only 4b/8b/2b quantization is supported for MatMulNBits op, additional bits support is planned.");
   }
 
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
