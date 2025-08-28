@@ -335,7 +335,7 @@ For example, if a single factory instance supports both CPU and NPU, then the ca
 <p align="center"><img width="100%" src="../../images/plugin_ep_sd_lib_reg.png" alt="Sequence diagram showing registration and unregistration of a plugin EP library"/></p>
 
 ### Session creation with explicit OrtEpDevice(s)
-The application code below use the API function [SessionOptionsAppendExecutionProvider_V2](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a285a5da8c9a63eff55dc48e4cf3b56f6) to add an EP to an ONNX Runtime session.
+The application code below uses the API function [SessionOptionsAppendExecutionProvider_V2](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a285a5da8c9a63eff55dc48e4cf3b56f6) to add an EP from a library to an ONNX Runtime session.
 
 The application first calls [GetEpDevices](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a52107386ff1be870f55a0140e6add8dd) to get a list of `OrtEpDevices`
 available to the application. Each `OrtEpDevice` represents a hardware device supported by an `OrtEpFactory`.
@@ -397,6 +397,45 @@ As shown in the following sequence diagram, ONNX Runtime calls `OrtEpFactory::Cr
 
 <br/>
 <p align="center"><img width="100%" src="../../images/plugin_ep_sd_appendv2.png" alt="Sequence diagram showing session creation with explicit ep devices"/></p>
+
+### Session creation with automatic EP selection
+The application code below uses the API function [SessionOptionsSetEpSelectionPolicy](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a2ae116df2c6293e4094a6742a6c46f7e) to have ONNX Runtime automatically select an EP based on the user's policy (e.g., PREFER_NPU).
+If the plugin EP library registered with ONNX Runtime has a factory that supports NPU, then ONNX Runtime may select an EP from that factory to run the model.
+
+```cpp
+// NOTE: this snippet does not properly handle errors.
+
+// NOTE: Assume plugin EP library has been registered and supports NPU
+OrtStatus* status = ort_api->RegisterExecutionProviderLibrary(/*...*/);
+
+OrtSessionOptions* session_options = nullptr;
+status = ort_api->CreateSessionOptions(&session_options);
+status = ort_api->SessionOptionsSetEpSelectionPolicy(
+    session_options,
+    OrtExecutionProviderDevicePolicy::PREFER_NPU,
+);
+
+
+OrtSession* session = nullptr;
+status = ort_api->CreateSession(
+    ort_env,
+    ORT_TSTR("model.onnx"),
+    session_options,
+    &session
+);
+
+// Run model ...
+
+// Release resources
+ort_api->ReleaseStatus(status);
+ort_api->ReleaseSession(session);
+ort_api->ReleaseSessionOptions(session_options);
+
+status = ort_api->UnregisterExecutionProviderLibrary(/*...*/);
+```
+
+<br/>
+<p align="center"><img width="100%" src="../../images/plugin_ep_sd_autoep.png" alt="Sequence diagram showing session creation with automatic EP selection"/></p>
 
 ## API reference
 API header files:
