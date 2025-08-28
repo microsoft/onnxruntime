@@ -300,20 +300,18 @@ The sample application code below uses the following API functions to register a
 
 ```cpp
 // Note: this snippet does not handle errors.
-
-const char* lib_registration_name = "my_plugin_ep_library";
+const char* lib_registration_name = "ep_lib_name";
 
 // Register plugin EP library with ONNX Runtime.
 OrtStatus* status = ort_api->RegisterExecutionProviderLibrary(
   ort_env,
   lib_registration_name,  // Registration name can be anything the application chooses.
-  "my_ep.dll"             // Path to the plugin EP library
+  "ep_path.dll"           // Path to the plugin EP library
 );
 
 
 {
   OrtSession* session = nullptr;
-
   // Create an OrtSession and run a model ...
 }
 
@@ -330,10 +328,75 @@ ONNX Runtime discovered during initialization.
 The factory returns `OrtEpDevice` instances from `OrtEpFactory::GetSupportedDevices()`.
 Each `OrtEpDevice` instance pairs a factory with a hardware device that the factory supports.
 For example, if a single factory instance supports both CPU and NPU, then the call to `OrtEpFactory::GetSupportedDevices()` returns two `OrtEpDevice` instances:
-  - ep_device_0: (factory_0, CPU)
-  - ep_device_1: (factory_0, NPU)
+    - ep_device_0: (factory_0, CPU)
+    - ep_device_1: (factory_0, NPU)
 
-<p align="center"><img width="90%" src="../../images/plugin_ep_sd_lib_reg.png" alt="EP Context node example"/></p>
+<br/>
+<p align="center"><img width="100%" src="../../images/plugin_ep_sd_lib_reg.png" alt="Sequence diagram showing registration and unregistration of a plugin EP library"/></p>
+
+### Session creation with explicit OrtEpDevice(s)
+The application code below use the API function [SessionOptionsAppendExecutionProvider_V2](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a285a5da8c9a63eff55dc48e4cf3b56f6) to add an EP to an ONNX Runtime session.
+
+The application first calls [GetEpDevices](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a52107386ff1be870f55a0140e6add8dd) to get a list of `OrtEpDevices`
+available to the application. Each `OrtEpDevice` represents a hardware device supported by an `OrtEpFactory`.
+The `SessionOptionsAppendExecutionProvider_V2` function takes an array of `OrtEpDevice` instances as input, where all `OrtEpDevice` instances refer to the same `OrtEpFactory`.
+
+```cpp
+// NOTE: this snippet does not properly handle errors.
+
+// NOTE: Assume plugin EP library has been registered with RegisterExecutionProviderLibrary()
+OrtStatus* status = ort_api->RegisterExecutionProviderLibrary(/*...*/);
+
+size_t num_ep_devices = 0;
+const OrtEpDevice* const* ep_devices = nullptr;
+
+status = ort_api->GetEpDevices(ort_env, &ep_devices, &num_ep_devices);
+
+// Find the OrtEpDevice for "my_ep".
+std::array<const OrtEpDevice*, 1> desired_ep_devices = { nullptr };
+for (const OrtEpDevice* ep_device : ep_devices) {
+  if (std::strcmp(ort_api->EpDevice_EpName(ep_device), "my_ep") == 0) {
+    desired_ep_devices[0] = ep_device;
+    break;
+  }
+}
+assert(desired_ep_devices[0] != nullptr);  // Would normally handle this as an app error.
+
+OrtSessionOptions* session_options = nullptr;
+status = ort_api->CreateSessionOptions(&session_options);
+status = ort_api->SessionOptionsAppendExecutionProvider_V2(
+    session_options,
+    ort_env,
+    desired_ep_devices.data(),
+    desired_ep_devices.size(),
+    nullptr,  // ep_option_keys
+    nullptr,  // ep_option_vals
+    0         // num_ep_options
+);
+
+
+OrtSession* session = nullptr;
+status = ort_api->CreateSession(
+    ort_env,
+    ORT_TSTR("model.onnx"),
+    session_options,
+    &session
+);
+
+// Run model ...
+
+// Release resources
+ort_api->ReleaseStatus(status);
+ort_api->ReleaseSession(session);
+ort_api->ReleaseSessionOptions(session_options);
+
+status = ort_api->UnregisterExecutionProviderLibrary(/*...*/);
+```
+
+As shown in the following sequence diagram, ONNX Runtime calls `OrtEpFactory::CreateEp()` during session creation in order to create an instance of the plugin EP.
+
+<br/>
+<p align="center"><img width="100%" src="../../images/plugin_ep_sd_appendv2.png" alt="Sequence diagram showing session creation with explicit ep devices"/></p>
 
 ## API reference
 API header files:
