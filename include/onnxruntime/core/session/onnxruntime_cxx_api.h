@@ -1016,6 +1016,8 @@ struct EpDevice : detail::EpDeviceImpl<OrtEpDevice> {
 /** \brief Validate a compiled model's compatibility for one or more EP devices.
  *
  * Throws on error. Returns the resulting compatibility status.
+ * /// \param ep_devices The EP devices to check compatibility against.
+ * /// \param compatibility_info The compatibility string from the precompiled model to validate.
  */
 OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
     const std::vector<ConstEpDevice>& ep_devices,

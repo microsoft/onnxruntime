@@ -380,9 +380,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// Validate a compiled model's compatibility information for one or more EP devices.
         /// </summary>
         /// <param name="epDevices">The list of EP devices to validate against.</param>
-        /// <param name="compatibilityInfo">The opaque compatibility information string from the precompiled model to validate.</param>
+        /// <param name="compatibilityInfo">The compatibility string from the precompiled model to validate.</param>
         /// <returns>OrtCompiledModelCompatibility enum value denoting the compatibility status</returns>
-        public OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(IReadOnlyList<OrtEpDevice> epDevices, string compatibilityInfo)
+        public OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
+            IReadOnlyList<OrtEpDevice> epDevices, string compatibilityInfo)
         {
             if (epDevices == null || epDevices.Count == 0)
                 throw new ArgumentException("epDevices must be non-empty", nameof(epDevices));
@@ -394,7 +395,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             var infoUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(compatibilityInfo);
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetModelCompatibilityForEpDevices(devicePtrs, (UIntPtr)devicePtrs.Length, infoUtf8, out int status));
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetModelCompatibilityForEpDevices(
+                    devicePtrs, (UIntPtr)devicePtrs.Length, infoUtf8, out int status));
             return (OrtCompiledModelCompatibility)status;
         }
 
