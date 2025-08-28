@@ -88,8 +88,7 @@ static const std::unordered_set<std::string> VERIFIED_PUBLIC_MODELS = {
     "SSD",
     "VGG 19-caffe2",
     "YOLOv3",
-    "ZFNet-512"
-};
+    "ZFNet-512"};
 
 // All ONNX Model Zoo models (always safe as they're public)
 // Total: 158 models from https://github.com/onnx/models
