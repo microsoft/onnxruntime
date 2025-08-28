@@ -3049,8 +3049,10 @@ inline std::vector<ConstValueInfo> ConstNodeImpl<T>::GetInputs() const {
   size_t num_vi;
   ThrowOnError(GetApi().Node_GetNumInputs(this->p_, &num_vi));
   std::vector<ConstValueInfo> result;
-  result.resize(num_vi);
-  ThrowOnError(GetApi().Node_GetInputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()), num_vi));
+  if (num_vi > 0) {
+    result.resize(num_vi);
+    ThrowOnError(GetApi().Node_GetInputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()), num_vi));
+  }
   return result;
 }
 
@@ -3060,8 +3062,10 @@ inline std::vector<ConstValueInfo> ConstNodeImpl<T>::GetOutputs() const {
   size_t num_vi;
   ThrowOnError(GetApi().Node_GetNumOutputs(this->p_, &num_vi));
   std::vector<ConstValueInfo> result;
-  result.resize(num_vi);
-  ThrowOnError(GetApi().Node_GetOutputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()), num_vi));
+  if (num_vi > 0) {
+    result.resize(num_vi);
+    ThrowOnError(GetApi().Node_GetOutputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()), num_vi));
+  }
   return result;
 }
 
@@ -3071,20 +3075,24 @@ inline std::vector<ConstValueInfo> ConstNodeImpl<T>::GetImplictiInputs() const {
   size_t num_vi;
   ThrowOnError(GetApi().Node_GetNumImplicitInputs(this->p_, &num_vi));
   std::vector<ConstValueInfo> result;
-  result.resize(num_vi);
-  ThrowOnError(GetApi().Node_GetImplicitInputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()),
-                                               num_vi));
+  if (num_vi > 0) {
+    result.resize(num_vi);
+    ThrowOnError(GetApi().Node_GetImplicitInputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()),
+                                                 num_vi));
+  }
   return result;
 }
 
 template <typename T>
 inline std::vector<ConstOpAttr> ConstNodeImpl<T>::GetAttributes() const {
-  static_assert(sizeof(const OrtAttr*) == sizeof(ConstOpAttr), "Must be the same size");
-  size_t num_attr;
-  ThrowOnError(GetApi().Node_GetNumAttributes(this->p_, &num_attr));
+  static_assert(sizeof(const OrtOpAttr*) == sizeof(ConstOpAttr), "Must be the same size");
+  size_t num_attrs;
+  ThrowOnError(GetApi().Node_GetNumAttributes(this->p_, &num_attrs));
   std::vector<ConstOpAttr> attrs;
-  attrs.resize(num_attr);
-  ThrowOnError(GetApi().Node_GetAttributes(this->p_, reinterpret_cast<const OrtOpAttr**>(attrs.data()), num_attr));
+  if (num_attrs > 0) {
+    attrs.resize(num_attrs);
+    ThrowOnError(GetApi().Node_GetAttributes(this->p_, reinterpret_cast<const OrtOpAttr**>(attrs.data()), num_attrs));
+  }
   return attrs;
 }
 
@@ -3110,13 +3118,19 @@ inline Value ConstNodeImpl<T>::GetTensorAttributeAsOrtValue(const std::string& n
 }
 
 template <typename T>
-inline std::vector<ConstGraph> ConstNodeImpl<T>::GetSubgraphs() const {
-  static_assert(sizeof(const OrtGraph*) == sizeof(Graph));
+inline std::vector<AttrNameSubgraph> ConstNodeImpl<T>::GetSubgraphs() const {
   size_t num_graphs;
   ThrowOnError(GetApi().Node_GetNumSubgraphs(this->p_, &num_graphs));
-  std::vector<ConstGraph> result;
-  result.resize(num_graphs);
-  ThrowOnError(GetApi().Node_GetSubgraphs(this->p_, reinterpret_cast<const OrtGraph**>(result.data()), num_graphs));
+  std::vector<AttrNameSubgraph> result;
+  if (num_graphs > 0) {
+    std::vector<const OrtGraph*> sub_graphs(num_graphs);
+    std::vector<const char*> attr_names(num_graphs);
+    ThrowOnError(GetApi().Node_GetSubgraphs(this->p_, sub_graphs.data(), num_graphs, attr_names.data()));
+    result.reserve(num_graphs);
+    for (size_t i = 0; i < num_graphs; ++i) {
+      result.push_back({std::string(attr_names[i]), ConstGraph{sub_graphs[i]}});
+    }
+  }
   return result;
 }
 
@@ -3177,25 +3191,6 @@ inline Node::Node(const std::string& operator_name, const std::string& operator_
   std::vector<OpAttr> empty_attributes;
   Init(operator_name, operator_domain, node_name, input_names, output_names, empty_attributes, p_);
 }
-
-inline Graph::Graph() {
-  ThrowOnError(GetModelEditorApi().CreateGraph(&p_));
-}
-
-inline Model::Model(const std::vector<DomainOpsetPair>& opsets) {
-  std::vector<const char*> domains;
-  std::vector<int> versions;
-  domains.reserve(opsets.size());
-  versions.reserve(opsets.size());
-
-  for (const auto& pair : opsets) {
-    domains.push_back(pair.first.c_str());
-    versions.push_back(pair.second);
-  }
-
-  ThrowOnError(GetModelEditorApi().CreateModel(domains.data(), versions.data(), opsets.size(), &p_));
-}
-
 inline ValueInfo::ValueInfo(const std::string& name, const ConstTypeInfo& type_info) {
   ThrowOnError(GetModelEditorApi().CreateValueInfo(name.c_str(), type_info, &p_));
 }
@@ -3231,13 +3226,15 @@ template <typename T>
 inline std::vector<ValueInfoConsumerProducerInfo> ConstValueInfoImpl<T>::GetConsumers() const {
   size_t num = 0;
   ThrowOnError(GetApi().ValueInfo_GetValueNumConsumers(this->p_, &num));
-  std::vector<const OrtNode*> nodes(num);
-  std::vector<int64_t> indices(num);
-  ThrowOnError(GetApi().ValueInfo_GetValueConsumers(this->p_, nodes.data(), indices.data(), num));
   std::vector<ValueInfoConsumerProducerInfo> out;
-  out.reserve(num);
-  for (size_t i = 0; i < num; ++i) {
-    out.push_back({ConstNode{nodes[i]}, indices[i]});
+  if (num > 0) {
+    std::vector<const OrtNode*> nodes(num);
+    std::vector<int64_t> indices(num);
+    ThrowOnError(GetApi().ValueInfo_GetValueConsumers(this->p_, nodes.data(), indices.data(), num));
+    out.reserve(num);
+    for (size_t i = 0; i < num; ++i) {
+      out.push_back({ConstNode{nodes[i]}, indices[i]});
+    }
   }
   return out;
 }
@@ -3295,8 +3292,6 @@ inline bool ConstValueInfoImpl<T>::IsFromOuterScope() const {
   return out;
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
-
 template <typename T>
 inline ModelMetadata ConstGraphImpl<T>::GetModelMetadata() const {
   OrtModelMetadata* out;
@@ -3304,6 +3299,116 @@ inline ModelMetadata ConstGraphImpl<T>::GetModelMetadata() const {
   return ModelMetadata{out};
 }
 
+template <typename T>
+inline std::string ConstGraphImpl<T>::GetName() const {
+  const char* name;
+  ThrowOnError(GetApi().Graph_GetName(this->p_, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline std::basic_string<ORTCHAR_T> ConstGraphImpl<T>::GetModelPath() const {
+  const ORTCHAR_T* path;
+  ThrowOnError(GetApi().Graph_GetModelPath(this->p_, &path));
+  return std::basic_string<ORTCHAR_T>(path);
+}
+
+template <typename T>
+inline int64_t ConstGraphImpl<T>::GetOnnxIRVersion() const {
+  int64_t version;
+  ThrowOnError(GetApi().Graph_GetOnnxIRVersion(this->p_, &version));
+  return version;
+}
+
+template <typename T>
+inline std::vector<OperatorSet> ConstGraphImpl<T>::GetOperatorSets() const {
+  size_t num_opsets;
+  ThrowOnError(GetApi().Graph_GetNumOperatorSets(this->p_, &num_opsets));
+  std::vector<OperatorSet> result;
+  if (num_opsets > 0) {
+    std::vector<const char*> domains;
+    std::vector<int64_t> versions;
+    domains.resize(num_opsets);
+    versions.resize(num_opsets);
+    ThrowOnError(GetApi().Graph_GetOperatorSets(this->p_, domains.data(), versions.data(), num_opsets));
+    result.reserve(num_opsets);
+    for (size_t i = 0; i < num_opsets; ++i) {
+      result.push_back({domains[i], versions[i]});
+    }
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstValueInfo> ConstGraphImpl<T>::GetInputs() const {
+  static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
+  size_t num_vi;
+  ThrowOnError(GetApi().Graph_GetNumInputs(this->p_, &num_vi));
+  std::vector<ConstValueInfo> result;
+  if (num_vi > 0) {
+    result.resize(num_vi);
+    ThrowOnError(GetApi().Graph_GetInputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()), num_vi));
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstValueInfo> ConstGraphImpl<T>::GetOutputs() const {
+  static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
+  size_t num_vi;
+  ThrowOnError(GetApi().Graph_GetNumOutputs(this->p_, &num_vi));
+  std::vector<ConstValueInfo> result;
+  if (num_vi > 0) {
+    result.resize(num_vi);
+    ThrowOnError(GetApi().Graph_GetOutputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()), num_vi));
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstValueInfo> ConstGraphImpl<T>::GetInitializers() const {
+  static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
+  size_t num_vi;
+  ThrowOnError(GetApi().Graph_GetNumInitializers(this->p_, &num_vi));
+  std::vector<ConstValueInfo> result;
+  if (num_vi > 0) {
+    result.resize(um_vi);
+    ThrowOnError(GetApi().Graph_GetInitializers(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()),
+                                                num_vi));
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstNode> ConstGraphImpl<T>::GetNodes() const {
+  static_assert(sizeof(const OrtNode*) == sizeof(ConstNode));
+  size_t num_nodes;
+  ThrowOnError(GetApi().Graph_GetNumNodes(this->p_, &num_nodes));
+  std::vector<ConstNode> result;
+  if (num_nodes > 1) {
+    result.resize(num_nodes);
+    ThrowOnError(GetApi().Graph_GetNodes(this->p_, reinterpret_cast<const OrtNode**>(result.data()), num_nodes));
+  }
+  return result;
+}
+
+template <typename T>
+inline ConstNode ConstGraphImpl<T>::GetParentNode() const {
+  const OrtNode* parent;
+  ThrowOnError(GetApi().Graph_GetParentNode(this->p_, &parent));
+  return ConstNode{parent};
+}
+
+template <typename T>
+inline Graph ConstGraphImpl<T>::GetGraphView(const std::vector<ConstNode>& nodes) const {
+  static_assert(sizeof(const OrtNode*) == sizeof(ConstNode));
+  OrtGraph* graph_view;
+  ThrowOnError(GetApi().Graph_GetGraphView(this->p_, reinterpret_cast<const OrtNode**>(nodes.data()),
+                                           nodes.size(), &graph_viwer));
+  return Graph{graph_view};
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
 template <typename T>
 inline void GraphImpl<T>::SetInputs(std::vector<ValueInfo>& inputs) {
   std::vector<OrtValueInfo*> inputs_ptrs;
@@ -3335,7 +3440,7 @@ inline void GraphImpl<T>::AddInitializer(const std::string& name, Value& initial
   // Graph takes ownership of `initializer`
   // XXX: Check we assume that on error the ownership is not transferred.
   ThrowOnError(GetModelEditorApi().AddInitializerToGraph(p_, name.c_str(), initializer, data_is_external));
-  initializer.release()
+  initializer.release();
 }
 
 template <typename T>
@@ -3344,12 +3449,31 @@ inline void GraphImpl<T>::AddNode(Node& node) {
   ThrowOnError(GetModelEditorApi().AddNodeToGraph(p_, node.release()));
 }
 
-template <>
-inline void ModelImpl<OrtModel>::AddGraph(Graph& graph) {
+template <typename T>
+inline void ModelImpl<T>::AddGraph(Graph& graph) {
   // Model takes ownership of `graph`
   ThrowOnError(GetModelEditorApi().AddGraphToModel(p_, graph.release()));
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace detail
+
+inline Graph::Graph() {
+  ThrowOnError(GetModelEditorApi().CreateGraph(&p_));
+}
+
+inline Model::Model(const std::vector<DomainOpsetPair>& opsets) {
+  std::vector<const char*> domains;
+  std::vector<int> versions;
+  domains.reserve(opsets.size());
+  versions.reserve(opsets.size());
+
+  for (const auto& pair : opsets) {
+    domains.push_back(pair.first.c_str());
+    versions.push_back(pair.second);
+  }
+
+  ThrowOnError(GetModelEditorApi().CreateModel(domains.data(), versions.data(), opsets.size(), &p_));
+}
+
 }  // namespace Ort

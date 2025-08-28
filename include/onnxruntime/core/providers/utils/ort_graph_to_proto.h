@@ -229,41 +229,32 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(Ort::ConstValueInfo vi,
 static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info, onnx::ValueInfoProto& value_info_proto);
 static Ort::Status OrtOpAttrToProto(Ort::ConstNode ort_node, Ort::ConstOpAttr ort_attr, onnx::AttributeProto& attr_proto);
 
-Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
+Ort::Status OrtGraphToProto(const OrtGraph& graph,
                             onnx::GraphProto& graph_proto,
                             HandleInitializerDataFunc handle_initializer_data_func) {
-  const OrtApi& ort_api = Ort::GetApi();
-
   try {
+    Ort::ConstGraph ort_graph{&graph};
     //
     // Set GraphProto metadata
     //
-    const char* graph_name = nullptr;
-    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetName(&ort_graph, &graph_name));
+    auto graph_name = ort_graph.GetName();
     graph_proto.set_name(graph_name);
     graph_proto.set_doc_string("Serialized from OrtGraph");
 
     //
     // Set GraphProto inputs and outputs
     //
-    size_t num_graph_inputs = 0;
-    size_t num_graph_outputs = 0;
-    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetNumInputs(&ort_graph, &num_graph_inputs));
-    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetNumOutputs(&ort_graph, &num_graph_outputs));
+    std::vector<Ort::ConstValueInfo> graph_inputs = ort_graph.GetInputs();
+    std::vector<Ort::ConstValueInfo> graph_outputs = ort_graph.GetOutputs();
 
-    std::vector<const OrtValueInfo*> graph_inputs(num_graph_inputs);
-    std::vector<const OrtValueInfo*> graph_outputs(num_graph_outputs);
-    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetInputs(&ort_graph, graph_inputs.data(), graph_inputs.size()));
-    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetOutputs(&ort_graph, graph_outputs.data(), graph_outputs.size()));
-
-    for (const OrtValueInfo* ort_value_info : graph_inputs) {
+    for (const auto ort_value_info : graph_inputs) {
       onnx::ValueInfoProto* value_info_proto = graph_proto.mutable_input()->Add();
-      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtValueInfoToProto(Ort::ConstValueInfo{ort_value_info}, *value_info_proto));
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtValueInfoToProto(ort_value_info, *value_info_proto));
     }
 
-    for (const OrtValueInfo* ort_value_info : graph_outputs) {
+    for (const auto ort_value_info : graph_outputs) {
       onnx::ValueInfoProto* value_info_proto = graph_proto.mutable_output()->Add();
-      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtValueInfoToProto(Ort::ConstValueInfo{ort_value_info}, *value_info_proto));
+      ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtValueInfoToProto(ort_value_info, *value_info_proto));
     }
 
     //
@@ -277,7 +268,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
 
     // Helper function to collect an OrtValueInfo into `value_infos` or `initializer_value_infos`.
     // Optionally returns the OrtValueInfo name to the caller.
-    auto collect_value_info = [&ort_api, &value_infos,
+    auto collect_value_info = [&value_infos,
                                &initializer_value_infos](Ort::ConstValueInfo ort_value_info,
                                                          /*out*/ std::optional<std::string>& value_name_out) {
       auto value_name = ort_value_info.GetName();
@@ -311,131 +302,80 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
       }
     };
 
-    size_t num_nodes = 0;
-    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetNumNodes(&ort_graph, &num_nodes));
-
-    std::vector<const OrtNode*> nodes(num_nodes);
-    ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetNodes(&ort_graph, nodes.data(), nodes.size()));
-
+    std::vector<Ort::ConstNode> nodes = ort_graph.GetNodes();
     // Loop through all nodes (topological order): add NodeProto instances to GraphProto and track OrtValueInfos
     // that will be stored in GraphProto.value_info and GraphProto.initializer.
-    for (size_t i = 0; i < num_nodes; i++) {
-      Ort::ConstNode ort_node{nodes[i]};
+    for (const auto& ort_node : nodes) {
       onnx::NodeProto* node_proto = graph_proto.add_node();
 
-      const char* node_name = nullptr;
-      const char* node_domain = nullptr;
-      const char* node_op_type = nullptr;
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetName(ort_node, &node_name));
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetDomain(ort_node, &node_domain));
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetOperatorType(ort_node, &node_op_type));
+      std::string node_name = ort_node.GetName();
+      std::string node_domain = ort_node.GetDomain();
+      std::string node_op_type = ort_node.GetDomain();
 
       node_proto->set_name(node_name);
       node_proto->set_domain(node_domain);
       node_proto->set_op_type(node_op_type);
 
-      size_t num_inputs = 0;
-      size_t num_implicit_inputs = 0;
-      size_t num_outputs = 0;
-      size_t num_attrs = 0;
-      size_t num_subgraphs = 0;
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetNumInputs(ort_node, &num_inputs));
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetNumImplicitInputs(ort_node, &num_implicit_inputs));
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetNumOutputs(ort_node, &num_outputs));
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetNumAttributes(ort_node, &num_attrs));
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetNumSubgraphs(ort_node, &num_subgraphs));
-
       // Handle node attributes
-      if (num_attrs > 0) {
-        std::vector<const OrtOpAttr*> ort_attrs(num_attrs);
-        ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetAttributes(ort_node, ort_attrs.data(), ort_attrs.size()));
-
-        for (const OrtOpAttr* ort_attr : ort_attrs) {
-          Ort::ConstOpAttr attr{ort_attr};
-          OrtOpAttrType attr_type = attr.GetType();
-          if (attr_type == OrtOpAttrType::ORT_OP_ATTR_GRAPH) {
-            // ORT does not support reading subgraphs via ReadOpAttr(), so skip it.
-            // Can use Node_GetSubgraphs to get subgraphs.
-            continue;
-          }
-
-          onnx::AttributeProto* attr_proto = node_proto->add_attribute();
-          ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtOpAttrToProto(ort_node, attr, *attr_proto));
+      std::vector<Ort::ConstOpAttr> ort_attrs = ort_node.GetAttributes();
+      for (const auto& attr : ort_attrs) {
+        OrtOpAttrType attr_type = attr.GetType();
+        if (attr_type == OrtOpAttrType::ORT_OP_ATTR_GRAPH) {
+          // ORT does not support reading subgraphs via ReadOpAttr(), so skip it.
+          // Can use Node_GetSubgraphs to get subgraphs.
+          continue;
         }
+
+        onnx::AttributeProto* attr_proto = node_proto->add_attribute();
+        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtOpAttrToProto(ort_node, attr, *attr_proto));
       }
 
       // Handle node subgraphs
-      if (num_subgraphs > 0) {
-        std::vector<const OrtGraph*> ort_subgraphs(num_subgraphs);
-        std::vector<const char*> subgraph_attr_names(num_subgraphs);
-        ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetSubgraphs(ort_node, ort_subgraphs.data(), ort_subgraphs.size(),
-                                                                 subgraph_attr_names.data()));
-
-        for (size_t subgraph_idx = 0; subgraph_idx < num_subgraphs; subgraph_idx++) {
-          const OrtGraph* ort_subgraph = ort_subgraphs[subgraph_idx];
-          const char* subgraph_attr_name = subgraph_attr_names[subgraph_idx];
-
-          onnx::AttributeProto* attr_proto = node_proto->add_attribute();
-          onnx::GraphProto* subgraph_proto = attr_proto->mutable_g();
-
-          attr_proto->set_name(subgraph_attr_name);
-          attr_proto->set_type(onnx::AttributeProto_AttributeType_GRAPH);
-          ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtGraphToProto(*ort_subgraph, *subgraph_proto));
-        }
+      std::vector<Ort::AttrNameSubgraph> ort_subgraphs = ort_node.GetSubgraphs();
+      for (const auto& [subgraph_attr_name, ort_subgraph] : ort_subgraphs) {
+        onnx::AttributeProto* attr_proto = node_proto->add_attribute();
+        onnx::GraphProto* subgraph_proto = attr_proto->mutable_g();
+        attr_proto->set_name(subgraph_attr_name);
+        attr_proto->set_type(onnx::AttributeProto_AttributeType_GRAPH);
+        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtGraphToProto(*ort_subgraph, *subgraph_proto));
       }
 
       // Handle node inputs
-      if (num_inputs > 0) {
-        std::vector<const OrtValueInfo*> ort_inputs(num_inputs);
-        ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetInputs(ort_node, ort_inputs.data(), ort_inputs.size()));
-
-        for (const OrtValueInfo* ort_value_info : ort_inputs) {
-          Ort::ConstValueInfo vi{ort_value_info};
-          if (vi == nullptr) {
-            // missing optional input.
-            node_proto->add_input("");
-            continue;
-          }
-
-          std::optional<std::string> value_name;
-          value_name.emplace();
-          collect_value_info(vi, value_name);
-          node_proto->add_input(*value_name);
+      std::vector<Ort::ConstValueInfo> ort_inputs = ort_node.GetInputs();
+      for (const auto& vi : ort_inputs) {
+        if (vi == nullptr) {
+          // missing optional input.
+          node_proto->add_input("");
+          continue;
         }
+
+        std::optional<std::string> value_name;
+        value_name.emplace();
+        collect_value_info(vi, value_name);
+        node_proto->add_input(*value_name);
       }
 
       // Handle implicit inputs to this node.
-      if (num_implicit_inputs > 0) {
-        std::vector<const OrtValueInfo*> ort_implicit_inputs(num_implicit_inputs);
-        ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetImplicitInputs(ort_node, ort_implicit_inputs.data(),
-                                                                      ort_implicit_inputs.size()));
-
-        for (const OrtValueInfo* ort_value_info : ort_implicit_inputs) {
-          Ort::ConstValueInfo vi{ort_value_info};
-          assert(vi != nullptr);
-          std::optional<std::string> value_name;
-          collect_value_info(vi, value_name);
-        }
+      std::vector<Ort::ConstValueInfo> ort_implicit_inputs = ort_node.GetImplictiInputs();
+      for (const auto& vi : ort_implicit_inputs) {
+        assert(vi != nullptr);
+        std::optional<std::string> value_name;
+        collect_value_info(vi, value_name);
       }
 
       // Handle node outputs
-      if (num_outputs > 0) {
-        std::vector<const OrtValueInfo*> ort_outputs(num_outputs);
-        ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetOutputs(ort_node, ort_outputs.data(), ort_outputs.size()));
-
-        for (const OrtValueInfo* ort_value_info : ort_outputs) {
-          Ort::ConstValueInfo vi{ort_value_info};
-          if (vi == nullptr) {
-            // missing optional output.
-            node_proto->add_output("");
-            continue;
-          }
-
-          std::optional<std::string> value_name;
-          value_name.emplace();
-          collect_value_info(vi, value_name);
-          node_proto->add_output(*value_name);
+      std::vector<Ort::ConstValueInfo> ort_outputs = ort_node.GetOutputs();
+      for (const auto& vi : ort_outputs) {
+        if (vi == nullptr) {
+          // missing optional output.
+          node_proto->add_output("");
+          continue;
         }
+
+        std::optional<std::string> value_name;
+        value_name.emplace();
+        collect_value_info(vi, value_name);
+        node_proto->add_output(*value_name);
       }
     }
 
@@ -507,47 +447,44 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
   return Ort::Status{nullptr};
 }
 
-Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
+Ort::Status OrtGraphToProto(const OrtGraph& graph,
                             onnx::ModelProto& model_proto,
                             HandleInitializerDataFunc handle_initializer_data_func) {
-  const OrtApi& ort_api = Ort::GetApi();
+  try {
+    // Check that OrtGraph is a top-level graph (no parent node).
+    Ort::ConstGraph ort_graph{&graph};
+    Ort::ConstNode parent_node = ort_graph.GetParentNode();
+    ORT_EP_UTILS_C_RETURN_IF(parent_node != nullptr, "Cannot serialize nested OrtGraph into a ModelProto");
 
-  // Check that OrtGraph is a top-level graph (no parent node).
-  const OrtNode* parent_node = nullptr;
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetParentNode(&ort_graph, &parent_node));
-  ORT_EP_UTILS_C_RETURN_IF(parent_node != nullptr, "Cannot serialize nested OrtGraph into a ModelProto");
+    // Set model description.
+    model_proto.set_doc_string("Serialized from OrtGraph");
+    model_proto.set_producer_name("ort_ep_utils::OrtGraphToProto");
 
-  // Set model description.
-  model_proto.set_doc_string("Serialized from OrtGraph");
-  model_proto.set_producer_name("ort_ep_utils::OrtGraphToProto");
+    // Set ir version.
+    int64_t ir_version = ort_graph.GetOnnxIRVersion();
+    model_proto.set_ir_version(ir_version);
 
-  // Set ir version.
-  int64_t ir_version = 0;
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetOnnxIRVersion(&ort_graph, &ir_version));
-  model_proto.set_ir_version(ir_version);
+    // Set operator sets.
+    std::vector<Ort::OperatorSet> op_sets = ort_graph.GetOperatorSets();
+    ORT_EP_UTILS_C_RETURN_IF(op_sets.empty(), "OrtGraph should have at least one operator set.");
 
-  // Set operator sets.
-  size_t num_operator_sets = 0;
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetNumOperatorSets(&ort_graph, &num_operator_sets));
-  ORT_EP_UTILS_C_RETURN_IF(num_operator_sets == 0, "OrtGraph should have at least one operator set.");
+    auto* operator_sets = model_proto.mutable_opset_import();
 
-  std::vector<const char*> domains(num_operator_sets, nullptr);
-  std::vector<int64_t> opset_versions(num_operator_sets);
-  ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Graph_GetOperatorSets(&ort_graph, domains.data(), opset_versions.data(),
-                                                               num_operator_sets));
+    for (const auto& op_set : op_sets) {
+      onnx::OperatorSetIdProto* operator_set = operator_sets->Add();
+      operator_set->set_domain(op_set.domain);
+      operator_set->set_version(op_set.version);
+    }
 
-  auto* operator_sets = model_proto.mutable_opset_import();
+    model_proto.clear_graph();
+    onnx::GraphProto* graph_proto = model_proto.mutable_graph();
+    ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtGraphToProto(*ort_graph, *graph_proto, handle_initializer_data_func));
 
-  for (size_t i = 0; i < num_operator_sets; ++i) {
-    onnx::OperatorSetIdProto* operator_set = operator_sets->Add();
-    operator_set->set_domain(domains[i]);
-    operator_set->set_version(opset_versions[i]);
+  } catch (const Ort::Exception& ex) {
+    return Ort::Status(ex);
+  } catch (const std::exception& ex) {
+    return Ort::Status(ex.what(), ORT_EP_FAIL);
   }
-
-  model_proto.clear_graph();
-  onnx::GraphProto* graph_proto = model_proto.mutable_graph();
-
-  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtGraphToProto(ort_graph, *graph_proto, handle_initializer_data_func));
 
   return Ort::Status{nullptr};
 }

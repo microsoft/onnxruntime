@@ -2982,12 +2982,13 @@ struct ValueInfo : detail::ConstValueInfoImpl<OrtValueInfo> {
 };
 
 // Forward declaration
-namespace detail {
-template <typename T>
-struct ConstGraphImpl;
-}
+struct AttrNameSubgraph;
 
 namespace detail {
+// Forward decl
+template <typename T>
+struct ConstGraphImpl;
+
 template <typename T>
 struct ConstNodeImpl : Base<T> {
   using B = Base<T>;
@@ -3008,8 +3009,8 @@ struct ConstNodeImpl : Base<T> {
   Value GetTensorAttributeAsOrtValue(const std::string& name) const;
 
   // ConstGraph is not available yet
-  std::vector<detail::ConstGraphImpl<detail::Unowned<const OrtGraph>>> GetSubgraphs() const;
-  detail::ConstGraphImpl<detail::Unowned<const OrtGraph>> GetGraph() const;
+  std::vector<AttrNameSubgraph> GetSubgraphs() const;
+  ConstGraphImpl<detail::Unowned<const OrtGraph>> GetGraph() const;
 
   std::string GetEpName() const;
 };
@@ -3059,19 +3060,30 @@ struct ValueInfoConsumerProducerInfo {
   int64_t index;
 };
 
-namespace detail {
+struct OperatorSet {
+  std::string domain;
+  int64_t version;
+};
 
+namespace detail {
 template <typename T>
 struct ConstGraphImpl : Base<T> {
   using B = Base<T>;
   using B::B;
 
-#if !defined(ORT_MINIMAL_BUILD)
-  ModelMetadata GetModelMetadata() const;  ///< Wraps OrtApi::Graph_GetModelMetadata
-#endif
-};
+  std::string GetName() const;
+  std::basic_string<ORTCHAR_T> GetModelPath() const;
+  int64_t GetOnnxIRVersion() const;
+  std::vector<OperatorSet> GetOperatorSets() const;
+  std::vector<ConstValueInfo> GetInputs() const;
+  std::vector<ConstValueInfo> GetOutputs() const;
+  std::vector<ConstValueInfo> GetInitializers() const;
+  std::vector<ConstNode> GetNodes() const;
+  ConstNode GetParentNode() const;
+  Graph GetGraphView(const std::vector<ConstNode>& nodes) const;
 
-using ConstGraph = detail::ConstGraphImpl<detail::Unowned<const OrtGraph>>;
+  ModelMetadata GetModelMetadata() const;  ///< Wraps OrtApi::Graph_GetModelMetadata
+};
 
 template <typename T>
 struct GraphImpl : ConstGraphImpl<T> {
@@ -3087,6 +3099,15 @@ struct GraphImpl : ConstGraphImpl<T> {
 };
 }  // namespace detail
 
+using ConstGraph = detail::ConstGraphImpl<detail::Unowned<const OrtGraph>>;
+
+// Return value for Node API
+// Must be declared after ConstGraph
+struct AttrNameSubgraph {
+  std::string attr_name;
+  ConstGraph sub_graph;
+};
+
 /** \brief Wrapper around ::OrtGraph
  *
  */
@@ -3100,7 +3121,7 @@ struct Graph : detail::GraphImpl<OrtGraph> {
 
 namespace detail {
 template <typename T>
-struct ModelImpl : Ort::detail::Base<T> {
+struct ModelImpl : detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
 
