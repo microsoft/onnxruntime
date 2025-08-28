@@ -3045,7 +3045,7 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetTensorAttributeAsOrtValue, _In_ const Ort
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attribute argument is null");
   }
 
-   const auto* attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute);
+  const auto* attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute);
 
   if (attr_proto->type() != onnx::AttributeProto::TENSOR) {
     return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "This OrtOpAttr instance is not a 'TENSOR' attribute");
@@ -3066,7 +3066,7 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetTensorAttributeAsOrtValue, _In_ const Ort
   // Therefore, the 'model_path' passed to TensorProtoToOrtValue() may be an empty path.
   std::filesystem::path model_path;
   ORT_API_RETURN_IF_STATUS_NOT_OK(utils::TensorProtoToOrtValue(Env::Default(), model_path, tensor_proto,
-                                                   tensor_attribute_allocator, *tensor_attribute_value));
+                                                               tensor_attribute_allocator, *tensor_attribute_value));
 
   *attr_tensor = tensor_attribute_value.release();
 
