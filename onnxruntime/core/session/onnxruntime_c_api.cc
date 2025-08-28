@@ -1094,7 +1094,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorMutableData, _Inout_ OrtValue* value, _Out
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetTensorData, _Inout_ const OrtValue* value, _Outptr_ const void** output) {
+ORT_API_STATUS_IMPL(OrtApis::GetTensorData, _In_ const OrtValue* value, _Outptr_ const void** output) {
   TENSOR_READ_API_BEGIN
   *output = tensor.DataRaw();
   return nullptr;
@@ -2626,6 +2626,16 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetName, _In_ const OrtGraph* graph, _Outptr_
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetModelMetadata, _In_ const OrtGraph* graph, _Outptr_ OrtModelMetadata** out) {
+  API_IMPL_BEGIN
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'out' argument is NULL");
+  }
+  *out = reinterpret_cast<OrtModelMetadata*>(graph->GetModelMetadata().release());
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetModelPath, _In_ const OrtGraph* graph, _Outptr_ const ORTCHAR_T** model_path) {
   API_IMPL_BEGIN
   if (model_path == nullptr) {
@@ -2761,7 +2771,8 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetNodes, _In_ const OrtGraph* graph,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_ const OrtNode** node) {
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph,
+                    _Outptr_result_maybenull_ const OrtNode** node) {
   API_IMPL_BEGIN
   if (node == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'node' argument is NULL");
@@ -3209,7 +3220,7 @@ ORT_API(void, OrtApis::GetKeyValuePairs, _In_ const OrtKeyValuePairs* kvps,
   *num_entries = kvps->Entries().size();
 }
 
-ORT_API(void, OrtApis::RemoveKeyValuePair, _Frees_ptr_opt_ OrtKeyValuePairs* kvps, _In_ const char* key) {
+ORT_API(void, OrtApis::RemoveKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key) {
   kvps->Remove(key);
 }
 
@@ -3218,7 +3229,7 @@ ORT_API(void, OrtApis::ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs* k
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* registration_name,
+ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name,
                     const ORTCHAR_T* path) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().RegisterExecutionProviderLibrary(registration_name, path));
@@ -3226,7 +3237,7 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* env,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* registration_name) {
+ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().UnregisterExecutionProviderLibrary(registration_name));
   return nullptr;
@@ -3412,25 +3423,86 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
   API_IMPL_END
 }
 
+// Validate compiled model compatibility info for specific EP device(s)
+ORT_API_STATUS_IMPL(OrtApis::GetModelCompatibilityForEpDevices,
+                    _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices,
+                    _In_ size_t num_ep_devices,
+                    _In_ const char* compatibility_info,
+                    _Out_ OrtCompiledModelCompatibility* out_status) {
+  API_IMPL_BEGIN
+  if (ep_devices == nullptr || num_ep_devices == 0 || compatibility_info == nullptr || out_status == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument provided to GetModelCompatibilityForEpDevices.");
+  }
+
+  // Validate inputs and ensure all devices belong to the same EP/factory
+  const OrtEpFactory* first_factory = nullptr;
+  for (size_t i = 0; i < num_ep_devices; ++i) {
+    if (ep_devices[i] == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_devices contains a null entry.");
+    }
+    const OrtEpFactory* f = ep_devices[i]->GetMutableFactory();
+    if (i == 0) {
+      first_factory = f;
+    } else if (f != first_factory) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "All ep_devices must be from the same execution provider.");
+    }
+  }
+
+  OrtCompiledModelCompatibility status = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  OrtStatus* ort_status = nullptr;
+  OrtEpFactory* factory = ep_devices[0]->GetMutableFactory();
+  if (factory && factory->ValidateCompiledModelCompatibilityInfo) {
+    // collect hardware devices corresponding to the ep_devices
+    InlinedVector<const OrtHardwareDevice*> hardware_devices;
+    hardware_devices.reserve(num_ep_devices);
+    for (size_t i = 0; i < num_ep_devices; ++i) {
+      hardware_devices.push_back(ep_devices[i]->device);
+    }
+    ort_status = factory->ValidateCompiledModelCompatibilityInfo(factory,
+                                                                 hardware_devices.data(),
+                                                                 hardware_devices.size(),
+                                                                 compatibility_info,
+                                                                 &status);
+  }
+  if (ort_status != nullptr) {
+    return ToOrtStatus(ToStatusAndRelease(ort_status));
+  }
+
+  *out_status = status;
+  return nullptr;
+  API_IMPL_END
+}
+
 #else  // defined(ORT_MINIMAL_BUILD)
-ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, const char* /*registration_name*/,
+ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, _In_ const char* /*registration_name*/,
                     const ORTCHAR_T* /*path*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "RegisterExecutionProviderLibrary is not supported in a minimal build.");
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/,
-                    const char* /*registration_name*/) {
+                    _In_ const char* /*registration_name*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "UnregisterExecutionProviderLibrary is not supported in a minimal build.");
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetEpDevices, _In_ const OrtEnv* /*env*/,
                     _Outptr_ const OrtEpDevice* const** /*ep_devices*/, _Out_ size_t* /*num_ep_devices*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetEpDevices is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+// Minimal build stub for GetModelCompatibilityForEpDevices to satisfy symbol references from the API table
+ORT_API_STATUS_IMPL(OrtApis::GetModelCompatibilityForEpDevices,
+                    _In_reads_(num_ep_devices) const OrtEpDevice* const* /*ep_devices*/,
+                    _In_ size_t /*num_ep_devices*/,
+                    _In_ const char* /*compatibility_info*/,
+                    _Out_ OrtCompiledModelCompatibility* /*out_status*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetModelCompatibilityForEpDevices is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -3442,7 +3514,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
                     _In_reads_(num_op_options) const char* const* /*ep_option_vals*/,
                     size_t /*num_ep_options*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SessionOptionsAppendExecutionProvider_V2 is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -3455,7 +3527,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession*
                     _Out_writes_(num_values) const OrtEpDevice** /*inputs_ep_devices*/,
                     _In_ size_t /*num_values*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SessionGetEpDeviceForInputs is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -3463,7 +3535,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
                     _In_opt_ const OrtKeyValuePairs* /*stream_options*/,
                     _Outptr_ OrtSyncStream** /*ort_stream*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CreateSyncStreamForEpDevice is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -3482,7 +3554,7 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* /*env*/,
                     _In_opt_ OrtSyncStream* /*stream*/,
                     _In_ size_t /*num_tensors*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CopyTensors is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -4095,6 +4167,9 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ReleaseSyncStream,
 
     &OrtApis::CopyTensors,
+
+    &OrtApis::Graph_GetModelMetadata,
+    &OrtApis::GetModelCompatibilityForEpDevices,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

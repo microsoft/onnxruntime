@@ -13,9 +13,11 @@
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 #include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
+#if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
+#endif
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 
@@ -27,6 +29,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
+
+#if USE_FPA_INTB_GEMM
 using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
 using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 using onnxruntime::llm::kernels::weight_only::WeightTypeId;
@@ -246,6 +250,7 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
   }
   return Status::OK();
 }
+#endif
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -257,11 +262,25 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   const Tensor* a = ctx->Input<Tensor>(0);
+  const Tensor* reorder_idx = ctx->Input<Tensor>(4);
+  const Tensor* bias = ctx->Input<Tensor>(5);
+
+#if USE_FPA_INTB_GEMM
   const Tensor* b = is_prepacked_weight_ ? nullptr : ctx->Input<Tensor>(1);
   const Tensor* scales = is_prepacked_scale_ ? nullptr : ctx->Input<Tensor>(2);
   const Tensor* zero_points = is_prepacked_zero_point_ ? nullptr : ctx->Input<Tensor>(3);
-  const Tensor* reorder_idx = ctx->Input<Tensor>(4);
-  const Tensor* bias = ctx->Input<Tensor>(5);
+  const uint8_t* blob_data = is_prepacked_weight_ ? nullptr : b->Data<uint8_t>();
+  const auto* scales_data = is_prepacked_scale_ ? nullptr : scales->Data<T>();
+  const auto* zero_points_data = (is_prepacked_zero_point_ || zero_points == nullptr) ? nullptr : zero_points->DataRaw();
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
+#else
+  const Tensor* b = ctx->Input<Tensor>(1);
+  const Tensor* scales = ctx->Input<Tensor>(2);
+  const Tensor* zero_points = ctx->Input<Tensor>(3);
+  const uint8_t* blob_data = b->Data<uint8_t>();
+  const auto* scales_data = scales->Data<T>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+#endif
 
   if (bias != nullptr) {
     ORT_THROW("MatMulNBits does not support bias in CUDA kernel");
@@ -271,11 +290,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
 
   const auto* a_data = a->Data<T>();
-  const uint8_t* blob_data = is_prepacked_weight_ ? nullptr : b->Data<uint8_t>();
-  const auto* scales_data = is_prepacked_scale_ ? nullptr : scales->Data<T>();
-  const auto* zero_points_data = (is_prepacked_zero_point_ || zero_points == nullptr) ? nullptr : zero_points->DataRaw();
   const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
-  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
   constexpr bool transa = false;
   constexpr bool transb = true;
@@ -292,13 +307,15 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   cudaStream_t stream = static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle());
 
   typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
-  CudaT* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
   int m = SafeInt<int>(helper.M());
   int n = SafeInt<int>(helper.N());
   int k = SafeInt<int>(helper.K());
 
   DUMP_TENSOR_INIT();
+
+#if USE_FPA_INTB_GEMM
+  CudaT* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
   if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
     if (has_fpA_intB_gemm_) {
@@ -356,6 +373,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       return Status::OK();
     }
   }
+#endif
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
     if (TryMatMulNBits(

@@ -540,7 +540,8 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
       if (normalize_routing_weights && k_idx == k - 1) {
 #pragma unroll
         for (int ki = 0; ki < k; ++ki) {
-          output[idx - ki] = T(static_cast<float>(output[idx - ki]) / output_row_sum);
+          float old_val = static_cast<float>(output[idx - ki]);
+          output[idx - ki] = T(old_val / output_row_sum);
         }
       }
     }
