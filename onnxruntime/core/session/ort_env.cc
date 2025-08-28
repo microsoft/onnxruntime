@@ -19,7 +19,7 @@ std::atomic<bool> g_is_shutting_down(false);
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
-#ifdef USE_WEBGPU
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
 namespace onnxruntime {
 namespace webgpu {
 void CleanupWebGpuContexts();
@@ -36,7 +36,7 @@ OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
 }
 
 OrtEnv::~OrtEnv() {
-#ifdef USE_WEBGPU
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
   webgpu::CleanupWebGpuContexts();
 #endif
 

@@ -23,7 +23,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
 }
 #endif
 
-#if defined(USE_WEBGPU)
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
 std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateWebGpuEp() {
   auto webgpu_factory_impl = std::make_unique<WebGpuEpFactory>();
   auto internal_factory = std::make_unique<EpFactoryInternal>(std::move(webgpu_factory_impl));
@@ -38,7 +38,7 @@ std::vector<std::unique_ptr<EpLibraryInternal>> EpLibraryInternal::CreateInterna
   // CPU EP
   internal_eps.push_back(CreateCpuEp());
 
-#if defined(USE_WEBGPU)
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
   internal_eps.push_back(CreateWebGpuEp());
 #endif
 

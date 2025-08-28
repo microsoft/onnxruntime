@@ -592,10 +592,6 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
 endif()
 
-if(onnxruntime_USE_WEBGPU)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
-endif()
-
 if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
 endif()
@@ -630,7 +626,6 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
-    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
@@ -643,6 +638,9 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
 
 if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_qnn)
+endif()
+if (onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+  list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_webgpu)
 endif()
 
 set(ONNXRUNTIME_TEST_LIBS
@@ -706,7 +704,7 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
 endif()
 
-if(onnxruntime_USE_WEBGPU)
+if(onnxruntime_USE_WEBGPU AND onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
