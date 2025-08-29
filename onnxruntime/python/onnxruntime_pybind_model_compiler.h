@@ -3,7 +3,6 @@
 // Licensed under the MIT License.
 #pragma once
 
-#if !defined(ORT_MINIMAL_BUILD)
 #include <memory>
 #include <string>
 #include "core/common/status.h"
@@ -14,11 +13,19 @@ namespace onnxruntime {
 class Environment;
 
 namespace python {
+// Type of the function provided by Python code that is called by ORT to write out the compiled model.
+// Returns the number of bytes written to the underlying stream.
+using PyOutStreamWriteFunc = std::function<void(const pybind11::bytes& buffer)>;
+
 /// <summary>
 /// Class exposed to Python that enables compiling ONNX models.
 /// Internally wraps a onnxruntime::ModelCompilationOptions that stores and validates settings.
 /// </summary>
 class PyModelCompiler {
+#if defined(ORT_MINIMAL_BUILD)
+ public:
+  bool not_defined_in_this_build{};  // Prevent empty class warning.
+#else
  private:
   // private tag to pass to constructor to ensure that constructor cannot be directly called externally
   struct PrivateConstructorTag {};
@@ -70,11 +77,18 @@ class PyModelCompiler {
   /// <returns>A Status indicating error or success.</returns>
   onnxruntime::Status CompileToBytes(std::string& output_buffer);
 
+  /// <summary>
+  /// Compiles the input model and writes the result into the provided output stream (write functor).
+  /// </summary>
+  /// <param name="write_func">Write functor that encapsulates the stream's state.</param>
+  /// <returns>A Status indicating error or success.</returns>
+  onnxruntime::Status CompileToOutStream(PyOutStreamWriteFunc& write_func);
+
  private:
   onnxruntime::Environment& env_;
   onnxruntime::ModelCompilationOptions model_compile_options_;
   std::string input_model_bytes_;
+#endif  // defined(ORT_MINIMAL_BUILD)
 };
 }  // namespace python
 }  // namespace onnxruntime
-#endif  // !defined(ORT_MINIMAL_BUILD)

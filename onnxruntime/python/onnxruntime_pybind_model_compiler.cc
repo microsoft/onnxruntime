@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
+#if !defined(ORT_MINIMAL_BUILD)
 #include "python/onnxruntime_pybind_model_compiler.h"
 
 #include <algorithm>
@@ -77,9 +78,46 @@ onnxruntime::Status PyModelCompiler::CompileToBytes(std::string& output_buffer) 
   return Status::OK();
 }
 
+/**
+ * Calls the user's Python PyOutStreamWriteFunc function and converts the results to a form that can be used
+ * by ORT to write out a compiled ONNX model.
+ *
+ * @param stream_state Opaque state that holds a pointer to the user's Python function.
+ * @param buffer The buffer to write out. Contains a portion of the compiled ONNX model's bytes.
+ * @param buffer_num_bytes The number of bytes to write out.
+ *
+ * @return nullptr OrtStatus* to indicate success.
+ */
+static OrtStatus* ORT_API_CALL PyOutStreamWriteFuncWrapper(void* stream_state, const void* buffer,
+                                                           size_t buffer_num_bytes) {
+  PyOutStreamWriteFunc* py_write_func = reinterpret_cast<PyOutStreamWriteFunc*>(stream_state);
+  OrtStatus* status = nullptr;
+
+  // Call the Python write function and convert any exceptions to a status.
+  ORT_TRY {
+    pybind11::bytes py_bytes(reinterpret_cast<const char*>(buffer), buffer_num_bytes);
+    (*py_write_func)(py_bytes);
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what()));
+    });
+  }
+
+  return status;
+}
+
+onnxruntime::Status PyModelCompiler::CompileToOutStream(PyOutStreamWriteFunc& write_func) {
+  model_compile_options_.SetOutputModelWriteFunc(PyOutStreamWriteFuncWrapper,
+                                                 reinterpret_cast<void*>(&write_func));
+  ORT_RETURN_IF_ERROR(onnxruntime::CompileModel(env_, model_compile_options_));
+  return Status::OK();
+}
+
 PyModelCompiler::PyModelCompiler(onnxruntime::Environment& env, const PySessionOptions& sess_options,
                                  PrivateConstructorTag)
     : env_(env), model_compile_options_(env, sess_options) {
 }
 }  // namespace python
 }  // namespace onnxruntime
+#endif  // !defined(ORT_MINIMAL_BUILD)

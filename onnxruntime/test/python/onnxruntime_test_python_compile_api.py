@@ -225,6 +225,65 @@ class TestCompileApi(AutoEpTestCase):
         self.assertTrue(isinstance(output_model_bytes, bytes))
         self.assertGreater(len(output_model_bytes), 0)
 
+    def test_compile_from_file_to_stream(self):
+        """
+        Tests compiling a model (from files) to an output stream using a custom write functor.
+        """
+        provider = None
+        provider_options = dict()
+        if "QNNExecutionProvider" in available_providers:
+            provider = "QNNExecutionProvider"
+            provider_options["backend_type"] = "htp"
+
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "model.compiled.stream.onnx")
+
+        with open(output_model_path, "wb") as output_fd:
+            # User's custom write functor. Writes the model to a file.
+            def my_write_func(buffer: bytes):
+                self.assertGreater(len(buffer), 0)
+                output_fd.write(buffer)
+
+            session_options = onnxrt.SessionOptions()
+            if provider:
+                session_options.add_provider(provider, provider_options)
+
+            model_compiler = onnxrt.ModelCompiler(
+                session_options,
+                input_model_path,
+                embed_compiled_data_into_model=True,
+                external_initializers_file_path=None,
+            )
+            model_compiler.compile_to_stream(my_write_func)
+
+        self.assertTrue(os.path.exists(output_model_path))
+
+    def test_compile_to_stream_that_raises_exception(self):
+        """
+        Tests compiling a model to an output stream that always raises an exception.
+        """
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+
+        # User's custom write functor that raises an exception.
+        test_py_error_message = "My Python Error"
+
+        def my_write_func(buffer: bytes):
+            self.assertGreater(len(buffer), 0)
+            raise ValueError(test_py_error_message)
+
+        session_options = onnxrt.SessionOptions()
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path=None,
+        )
+
+        # Try to compile and expect ORT to raise a Fail exception that contains our message.
+        with self.assertRaises(Fail) as context:
+            model_compiler.compile_to_stream(my_write_func)
+        self.assertIn(test_py_error_message, str(context.exception))
+
     def test_fail_load_uncompiled_model_and_then_compile(self):
         """
         Tests compiling scenario:

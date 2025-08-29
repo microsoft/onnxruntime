@@ -9,7 +9,7 @@ import collections.abc
 import os
 import typing
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from onnxruntime.capi import _pybind_state as C
@@ -732,6 +732,14 @@ class ModelCompiler:
         :return: A bytes object representing the compiled ONNX model.
         """
         return self._model_compiler.compile_to_bytes()
+
+    def compile_to_stream(self, write_function: Callable[[bytes], None]):
+        """
+        Compiles the input model and writes the serialized ONNX bytes to a stream using the provided write function.
+        Raises an 'InvalidArgument' exception if the compilation options are invalid.
+        :param write_function: A callable that accepts a bytes buffer to write.
+        """
+        self._model_compiler.compile_to_stream(write_function)
 
 
 class IOBinding:
