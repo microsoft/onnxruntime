@@ -26,8 +26,11 @@ class ExternalDataInfo {
 #endif
 
   ExternalDataInfo() = default;
+
+#if !defined(ORT_MINIMAL_BUILD)
   ExternalDataInfo(const PathString& rel_path, OFFSET_TYPE offset, size_t length)
       : rel_path_(rel_path), offset_(offset), length_(length) {}
+#endif
 
   const PathString& GetRelPath() const { return rel_path_; }
 
