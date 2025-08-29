@@ -97,6 +97,7 @@ struct ModelGenOptions {
   const InitializerHandler* TryGetInitializerHandler() const;
 };
 
+#if !defined(ORT_MINIMAL_BUILD)
 // Class that wraps the user's OrtOutStreamWriteFunc function to enable use with
 // C++'s std::ostream.
 // Example:
@@ -121,6 +122,7 @@ class OutStreamBuf : public std::streambuf {
   std::array<char, 4096> buffer_{};
   Status last_status_{};
 };
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace epctx
 }  // namespace onnxruntime

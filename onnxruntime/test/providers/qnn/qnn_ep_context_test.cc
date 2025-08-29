@@ -781,7 +781,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_InputFile_OutputFile_InitializerHandler) {
 }
 
 static OrtStatus* ORT_API_CALL ReuseExternalInitializers(void* state,
-                                                         const char* initializer_name,
+                                                         const char* /*initializer_name*/,
                                                          const OrtValue* initializer_value,
                                                          const OrtExternalInitializerInfo* external_info,
                                                          OrtExternalInitializerInfo** new_external_info) {

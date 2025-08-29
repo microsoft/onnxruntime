@@ -65,6 +65,7 @@ const InitializerHandler* ModelGenOptions::TryGetInitializerHandler() const {
   return std::get_if<InitializerHandler>(&initializers_location);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 // class OutStreamBuf
 
 OutStreamBuf::OutStreamBuf(OutStreamHolder out_stream_holder) : out_stream_holder_(out_stream_holder) {
@@ -128,6 +129,7 @@ int OutStreamBuf::sync() {
   pbump(-static_cast<int>(num_bytes));  // Reset internal pointer to point to the beginning of the buffer_
   return 0;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace epctx
 }  // namespace onnxruntime
