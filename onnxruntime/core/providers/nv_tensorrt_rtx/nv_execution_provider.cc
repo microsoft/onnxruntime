@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 #include <fstream>
 #include <list>
+#include <thread>
 #include <unordered_set>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
@@ -1576,8 +1577,8 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
               // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
               size_t size = 0;
               const void* ptr = nullptr;
-              c_api.GetTensorSizeInBytes(&initializer_value, &size);
-              c_api.GetTensorData(&initializer_value, &ptr);
+              Ort::ThrowOnError(c_api.GetTensorSizeInBytes(&initializer_value, &size));
+              Ort::ThrowOnError(c_api.GetTensorData(&initializer_value, &ptr));
               userWeights.emplace_back(tp->name(), ptr, size);
             } else if (utils::HasExternalDataInMemory(*tp)) {
               // only copy and take ownership of the data if none of the above conditions are met
@@ -2396,8 +2397,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
         size_t size = 0;
         const void* ptr = nullptr;
-        c_api.GetTensorSizeInBytes(&initializer_value, &size);
-        c_api.GetTensorData(&initializer_value, &ptr);
+        Ort::ThrowOnError(c_api.GetTensorSizeInBytes(&initializer_value, &size));
+        Ort::ThrowOnError(c_api.GetTensorData(&initializer_value, &ptr));
         userWeights.emplace_back(tp->name(), ptr, size);
       } else if (utils::HasExternalDataInMemory(*tp)) {
         // only copy and take ownership of the data if none of the above conditions are met
