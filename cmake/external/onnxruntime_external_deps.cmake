@@ -362,7 +362,7 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
   if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
-    message(STATUS "Applying a patch for Windows ARM64/ARM64EC in cpuinfo")
+    message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo")
     onnxruntime_fetchcontent_declare(
       pytorch_cpuinfo
       URL ${DEP_URL_pytorch_cpuinfo}
