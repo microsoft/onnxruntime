@@ -21,6 +21,9 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
         public IntPtr ModelCompilationOptions_SetEpContextEmbedMode;
         public IntPtr CompileModel;
         public IntPtr ModelCompilationOptions_SetFlags;
+        public IntPtr ModelCompilationOptions_SetEpContextBinaryInformation;
+        public IntPtr ModelCompilationOptions_SetOutputModelWriteFunc;
+        public IntPtr ModelCompilationOptions_SetOutputModelHandleInitializerFunc;
     }
 
     internal class NativeMethods

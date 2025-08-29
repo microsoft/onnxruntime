@@ -2549,6 +2549,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateExternalInitializerInfo, _In_ const ORTCHAR_T
   ORT_UNUSED_PARAMETER(filepath);
   ORT_UNUSED_PARAMETER(file_offset);
   ORT_UNUSED_PARAMETER(byte_size);
+  ORT_UNUSED_PARAMETER(out);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CreateExternalInitializerInfo() is not supported in this build.");
 #endif
   API_IMPL_END
