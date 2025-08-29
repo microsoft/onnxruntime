@@ -646,38 +646,6 @@ set(onnxruntime_test_common_libs
   onnxruntime_common
 )
 
-set(onnxruntime_test_ir_libs
-  onnxruntime_test_utils
-  onnxruntime_graph
-  onnxruntime_common
-)
-
-set(onnxruntime_test_optimizer_libs
-  onnxruntime_test_utils
-  onnxruntime_framework
-  onnxruntime_util
-  onnxruntime_graph
-  onnxruntime_common
-)
-
-set(onnxruntime_test_framework_libs
-  onnxruntime_test_utils
-  onnxruntime_framework
-  onnxruntime_util
-  onnxruntime_graph
-  ${ONNXRUNTIME_MLAS_LIBS}
-  onnxruntime_common
-  )
-
-set(onnxruntime_test_server_libs
-  onnxruntime_test_utils
-  onnxruntime_test_utils_for_server
-)
-
-if(WIN32)
-    list(APPEND onnxruntime_test_framework_libs Advapi32)
-endif()
-
 set (onnxruntime_test_providers_dependencies ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if(onnxruntime_USE_CUDA)
@@ -717,7 +685,7 @@ if(onnxruntime_USE_DNNL)
 endif()
 
 if(onnxruntime_USE_MIGRAPHX)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx)
 endif()
 
 if(onnxruntime_USE_COREML)
@@ -782,7 +750,6 @@ set(onnxruntime_test_providers_libs
 if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
   list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/tensorrt_execution_provider_utils.h")
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt onnxruntime_providers_shared)
   list(APPEND onnxruntime_test_providers_libs ${TENSORRT_LIBRARY_INFER})
 endif()
@@ -790,7 +757,6 @@ endif()
 if(onnxruntime_USE_NV)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/nv_tensorrt_rtx/*)
   list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/nv_execution_provider_utils.h")
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nv_tensorrt_rtx)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nv_tensorrt_rtx onnxruntime_providers_shared)
   list(APPEND onnxruntime_test_providers_libs ${TENSORRT_LIBRARY_INFER})
 endif()
@@ -802,21 +768,18 @@ endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/nnapi/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
 endif()
 
 if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/js/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_js)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
 endif()
 
 if(onnxruntime_USE_WEBGPU)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
 endif()
@@ -827,7 +790,6 @@ if(onnxruntime_USE_QNN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_RED
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/*)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/qnn_node_group/*)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/optimizer/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
   if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
     list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_shared)
@@ -836,14 +798,12 @@ endif()
 
 if(onnxruntime_USE_SNPE)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/snpe/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_snpe)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_snpe)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_snpe)
 endif()
 
 if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/rknpu/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_rknpu)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_rknpu)
 endif()
@@ -853,28 +813,24 @@ if(onnxruntime_USE_COREML)
   if(APPLE)
     list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/coreml/*.mm)
   endif()
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_coreml coreml_proto)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml coreml_proto)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_coreml coreml_proto)
 endif()
 
 if(onnxruntime_USE_XNNPACK)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/xnnpack/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_xnnpack)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_xnnpack)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
 endif()
 
 if(onnxruntime_USE_AZURE)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/azure/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_azure)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_azure)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_azure)
 endif()
 
 if (onnxruntime_USE_OPENVINO)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/openvino/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_openvino)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_shared)
 endif()
@@ -991,9 +947,6 @@ if (onnxruntime_USE_OPENVINO)
   list(APPEND all_tests ${onnxruntime_test_openvino_src})
 endif()
 
-# this is only added to onnxruntime_test_framework_libs above, but we use onnxruntime_test_providers_libs for the onnxruntime_test_all target.
-# for now, add it here. better is probably to have onnxruntime_test_providers_libs use the full onnxruntime_test_framework_libs
-# list given it's built on top of that library and needs all the same dependencies.
 if(WIN32)
   list(APPEND onnxruntime_test_providers_libs Advapi32)
 endif()
