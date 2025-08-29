@@ -802,13 +802,10 @@ void LaunchAddBiasTranspose<BFloat16>(
     bool enable_bf162, const int v_head_size,
     BFloat16* qkv_add_bias, int total_matrix_count,
     bool do_rotary, int rotary_embedding, int past_sequence_length) {
-
   total_matrix_count = std::max(num_matrices, total_matrix_count);
-
   if ((qk_head_size % 2 == 0) &&
       (v_head_size == -1 || (v_head_size % 2 == 0)) &&
       !do_rotary) {
-    // vectorized 2-wide path
     const int H   = qk_head_size / 2;
     const int H_v = v_head_size / 2;
 
@@ -823,7 +820,6 @@ void LaunchAddBiasTranspose<BFloat16>(
         input2, biases2, output2, qkv_add_bias2,
         H_v, total_matrix_count);
   } else {
-    // scalar fallback
     InvokeAddBiasTranspose<BFloat16>(
         stream, num_matrices, format, max_threads_per_block,
         batch_size, sequence_length, num_heads, qk_head_size,

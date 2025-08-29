@@ -761,14 +761,8 @@ Status UnfusedAttention(
   } else {  // no mask
     if (nullptr != data.output_qk) {
       int64_t qk_size = (int64_t)batch_size * num_heads * sequence_length * total_sequence_length;
-       if constexpr (std::is_same_v<T, onnxruntime::BFloat16>) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "BF16 not supported TODO");
-    } else {
-  ORT_RETURN_IF_ERROR(
+      ORT_RETURN_IF_ERROR(
           (CopyQK<T, QK>(stream, static_cast<int>(qk_size), data.scratch, reinterpret_cast<QK*>(data.output_qk))));
-    }
-    
     }
     /*
     ORT_RETURN_IF_ERROR(
@@ -1013,14 +1007,9 @@ Status QkvToContext(
                                                stream, max_threads_per_block, data));
 
   } else {  // past_present_share_buffer
-    if constexpr (std::is_same_v<T, onnxruntime::BFloat16>) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "BF16 not supported TODO");
-    } else {
-      ORT_RETURN_IF_ERROR(PastPresentBufferShare<T>(batch_size, num_heads, qk_head_size, v_head_size,
-                                                    sequence_length, fused_runner,
-                                                    parameters, data, stream, max_threads_per_block));
-    }
+    ORT_RETURN_IF_ERROR(PastPresentBufferShare<T>(batch_size, num_heads, qk_head_size, v_head_size,
+                                                  sequence_length, fused_runner,
+                                                  parameters, data, stream, max_threads_per_block));
   }
 
   // Q, K and V are ready now

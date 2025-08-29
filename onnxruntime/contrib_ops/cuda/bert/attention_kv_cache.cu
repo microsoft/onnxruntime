@@ -4,7 +4,7 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention_kv_cache.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include <cuda_bf16.h> 
+#include <cuda_bf16.h>
 
 using namespace onnxruntime::cuda;
 
@@ -210,29 +210,7 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                   const BFloat16* tensor_add,
                                   BFloat16* tensor_out) {
   const dim3 grid(all_sequence_length, batch_size, matrix_num);
-
-  // Fast path: pack 4×bf16 (64 bits) per thread using float2 copies
-  if ((head_size % 4) == 0) {
-    const int H = head_size / 4;
-    if (H * num_heads <= max_threads_per_block) {
-      const dim3 block(H, num_heads, 1);
-      ConcatTensorToTensor<float2><<<grid, block, 0, stream>>>(
-          sequence_length,
-          reinterpret_cast<const float2*>(tensor_in),
-          reinterpret_cast<const float2*>(tensor_add),
-          reinterpret_cast<float2*>(tensor_out));
-    } else {
-      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      ConcatTensorToTensorLarge<float2><<<grid, block, 0, stream>>>(
-          sequence_length,
-          H,
-          reinterpret_cast<const float2*>(tensor_in),
-          reinterpret_cast<const float2*>(tensor_add),
-          reinterpret_cast<float2*>(tensor_out));
-    }
-
-  // Next: pack 2×bf16 (32 bits) per thread using __nv_bfloat162 copies
-  } else if ((head_size & 1) == 0) {
+  if ((head_size & 1) == 0) {
     const int H = head_size / 2;
     if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
@@ -250,21 +228,22 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
           reinterpret_cast<const __nv_bfloat162*>(tensor_add),
           reinterpret_cast<__nv_bfloat162*>(tensor_out));
     }
-
-  // Odd head_size: scalar path
   } else {
     if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
-      ConcatTensorToTensor<BFloat16><<<grid, block, 0, stream>>>(
-          sequence_length, tensor_in, tensor_add, tensor_out);
+      ConcatTensorToTensor<__nv_bfloat16><<<grid, block, 0, stream>>>(
+          sequence_length,
+          reinterpret_cast<const __nv_bfloat16*>(tensor_in),
+          reinterpret_cast<const __nv_bfloat16*>(tensor_add),
+          reinterpret_cast<__nv_bfloat16*>(tensor_out));
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      ConcatTensorToTensorLarge<BFloat16><<<grid, block, 0, stream>>>(
+      ConcatTensorToTensorLarge<__nv_bfloat16><<<grid, block, 0, stream>>>(
           sequence_length,
           head_size,
-          tensor_in,
-          tensor_add,
-          tensor_out);
+          reinterpret_cast<const __nv_bfloat16*>(tensor_in),
+          reinterpret_cast<const __nv_bfloat16*>(tensor_add),
+          reinterpret_cast<__nv_bfloat16*>(tensor_out));
     }
   }
 
@@ -406,6 +385,18 @@ template Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
                                                     const half* bias,
                                                     const half* qkv_buffer,
                                                     half* present);
+
+template Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
+                                                    const int max_sequence_length,
+                                                    const int total_sequence_length,
+                                                    const int sequence_length,
+                                                    const int batch_size,
+                                                    const int head_size,
+                                                    const int num_heads,
+                                                    const int max_threads_per_block,
+                                                    const BFloat16* bias,
+                                                    const BFloat16* qkv_buffer,
+                                                    BFloat16* present);
 #endif
 
 // Kernel to append new and past kv in either BSNH or BNSH format
