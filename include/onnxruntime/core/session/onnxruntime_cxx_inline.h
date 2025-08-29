@@ -3154,7 +3154,7 @@ inline std::vector<AttrNameSubgraph> ConstNodeImpl<T>::GetSubgraphs() const {
 
 template <typename T>
 inline ConstGraph ConstNodeImpl<T>::GetGraph() const {
-  const Graph* graph;
+  const OrtGraph* graph;
   ThrowOnError(GetApi().Node_GetGraph(this->p_, &graph));
   return ConstGraph{graph};
 }
@@ -3437,7 +3437,7 @@ inline void GraphImpl<T>::SetInputs(std::vector<ValueInfo>& inputs) {
   std::transform(inputs.begin(), inputs.end(), std::back_inserter(inputs_ptrs),
                  [](ValueInfo& vi) -> OrtValueInfo* { return vi; });
 
-  ThrowOnError(GetModelEditorApi().SetGraphInputs(p_, inputs_ptrs.data(), inputs_ptrs.size()));
+  ThrowOnError(GetModelEditorApi().SetGraphInputs(this->p_, inputs_ptrs.data(), inputs_ptrs.size()));
 
   // Graph now owns the inputs
   std::for_each(inputs.begin(), inputs.end(), [](ValueInfo& vi) { vi.release(); });
@@ -3450,7 +3450,7 @@ inline void GraphImpl<T>::SetOutputs(std::vector<ValueInfo>& outputs) {
   std::transform(outputs.begin(), outputs.end(), std::back_inserter(outputs_ptrs),
                  [](ValueInfo& vi) -> OrtValueInfo* { return vi; });
 
-  ThrowOnError(GetModelEditorApi().SetGraphOutputs(p_, outputs_ptrs.data(), outputs_ptrs.size()));
+  ThrowOnError(GetModelEditorApi().SetGraphOutputs(this->p_, outputs_ptrs.data(), outputs_ptrs.size()));
 
   // Graph now owns the outputs
   std::for_each(outputs.begin(), outputs.end(), [](ValueInfo& vi) { vi.release(); });
@@ -3460,14 +3460,14 @@ template <typename T>
 inline void GraphImpl<T>::AddInitializer(const std::string& name, Value& initializer, bool data_is_external) {
   // Graph takes ownership of `initializer`
   // XXX: Check we assume that on error the ownership is not transferred.
-  ThrowOnError(GetModelEditorApi().AddInitializerToGraph(p_, name.c_str(), initializer, data_is_external));
+  ThrowOnError(GetModelEditorApi().AddInitializerToGraph(this->p_, name.c_str(), initializer, data_is_external));
   initializer.release();
 }
 
 template <typename T>
 inline void GraphImpl<T>::AddNode(Node& node) {
   // Graph takes ownership of `node`
-  ThrowOnError(GetModelEditorApi().AddNodeToGraph(p_, node.release()));
+  ThrowOnError(GetModelEditorApi().AddNodeToGraph(this->p_, node.release()));
 }
 
 template <typename T>
