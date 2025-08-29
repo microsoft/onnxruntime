@@ -22,10 +22,10 @@
 #include "core/util/thread_utils.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
-#include "test/optimizer/graph_transform_test_builder.h"
-#include "test/util/include/test_environment.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/file_util.h"
+#include "test/util/include/graph_transform_test_builder.h"
+#include "test/util/include/test_environment.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 

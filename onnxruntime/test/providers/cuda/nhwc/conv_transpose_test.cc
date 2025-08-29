@@ -20,7 +20,7 @@ struct ConvTransposeOp {
   std::vector<int64_t> dilations = {1, 1};
 
   std::unique_ptr<CompareOpTester> get_test() {
-    RandomValueGenerator random{T(123.f)};  // use seed so output is deterministic to aid in debugging failures
+    RandomValueGenerator random{123};  // use seed so output is deterministic to aid in debugging failures
 
     auto test = std::make_unique<CompareOpTester>("ConvTranspose", 14);
     std::vector<T> input_data = random.Uniform<T>(input_dims, 0.0f, 1.0f);

@@ -10,10 +10,57 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
 
+# Exclude files based on CMake options.
+function(filter_test_srcs test_srcs_var)
+  set(excluded_path_prefixes)
+
+  if(onnxruntime_DISABLE_CONTRIB_OPS)
+    list(APPEND excluded_path_prefixes ${TEST_SRC_DIR}/contrib_ops)
+  endif()
+
+  if(onnxruntime_DISABLE_ML_OPS)
+    list(APPEND excluded_path_prefixes ${TEST_SRC_DIR}/providers/cpu/ml)
+  endif()
+
+  list(LENGTH excluded_path_prefixes num_excluded_path_prefixes)
+
+  if("${num_excluded_path_prefixes}" GREATER "0")
+    set(filtered_test_srcs)
+
+    foreach(test_src ${${test_srcs_var}})
+      set(is_excluded false)
+
+      foreach(excluded_path_prefix ${excluded_path_prefixes})
+        cmake_path(ABSOLUTE_PATH test_src OUTPUT_VARIABLE test_src_absolute)
+
+        cmake_path(IS_PREFIX excluded_path_prefix ${test_src_absolute} NORMALIZE is_excluded)
+
+        if (is_excluded)
+          break()
+        endif()
+      endforeach()
+
+      if(NOT is_excluded)
+        list(APPEND filtered_test_srcs ${test_src})
+      endif()
+    endforeach()
+
+    set(${test_srcs_var} ${filtered_test_srcs} PARENT_SCOPE)
+  endif()
+endfunction()
+
 set(disabled_warnings)
 function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
   list(REMOVE_DUPLICATES _UT_SOURCES)
+
+  filter_test_srcs(_UT_SOURCES)
+
+  message(VERBOSE "AddTest() TARGET: ${_UT_TARGET}")
+  message(VERBOSE "AddTest() SOURCES:")
+  foreach(ut_src ${_UT_SOURCES})
+    message(VERBOSE "  ${ut_src}")
+  endforeach()
 
   if (IOS)
     onnxruntime_add_executable(${_UT_TARGET} ${TEST_SRC_DIR}/xctest/orttestmain.m)
@@ -253,6 +300,50 @@ function(AddTest)
   endif()
 endfunction(AddTest)
 
+# Given a list of test source files, in variable `all_srcs_var`, partition it into two lists:
+# - a list of the provider-related test source files, stored in `provider_test_srcs_var`
+# - a list of the other remaining test source files, stored in `other_srcs_var`
+#
+# In particular, provider-related test source files are located in these root paths:
+# - onnxruntime/test/contrib_ops
+# - onnxruntime/test/providers
+function(partition_provider_test_srcs
+         all_srcs_var provider_test_srcs_var other_srcs_var)
+  set(provider_test_src_roots
+    ${TEST_SRC_DIR}/contrib_ops
+    ${TEST_SRC_DIR}/providers
+  )
+
+  function(is_provider_test_src src_var result_var)
+    cmake_path(ABSOLUTE_PATH ${src_var} OUTPUT_VARIABLE src_absolute)
+
+    foreach(provider_test_src_root ${provider_test_src_roots})
+      cmake_path(IS_PREFIX provider_test_src_root ${src_absolute} NORMALIZE src_matches_root)
+      if(src_matches_root)
+        set(${result_var} true PARENT_SCOPE)
+        return()
+      endif()
+    endforeach()
+
+    set(${result_var} false PARENT_SCOPE)
+  endfunction()
+
+  set(provider_test_srcs)
+  set(other_srcs)
+
+  foreach(src ${${all_srcs_var}})
+    is_provider_test_src(src is_provider_test_src_result)
+    if(is_provider_test_src_result)
+      list(APPEND provider_test_srcs ${src})
+    else()
+      list(APPEND other_srcs ${src})
+    endif()
+  endforeach()
+
+  set(${provider_test_srcs_var} ${provider_test_srcs} PARENT_SCOPE)
+  set(${other_srcs_var} ${other_srcs} PARENT_SCOPE)
+endfunction()
+
 # general program entrypoint for C++ unit tests
 set(onnxruntime_unittest_main_src "${TEST_SRC_DIR}/unittest_main/test_main.cc")
 
@@ -264,6 +355,30 @@ file(GLOB onnxruntime_test_utils_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/util/include/*.h"
   "${TEST_SRC_DIR}/util/*.cc"
 )
+
+if(onnxruntime_MINIMAL_BUILD OR onnxruntime_REDUCED_OPS_BUILD)
+  # some exclusions from a minimal or reduced ops build
+  list(REMOVE_ITEM onnxruntime_test_utils_src
+    "${TEST_SRC_DIR}/util/include/base_tester.h"
+    "${TEST_SRC_DIR}/util/include/function_test_util.h"
+    "${TEST_SRC_DIR}/util/include/graph_transform_test_builder.h"
+    "${TEST_SRC_DIR}/util/include/model_tester.h"
+    "${TEST_SRC_DIR}/util/include/op_tester.h"
+    "${TEST_SRC_DIR}/util/include/qdq_test_utils.h"
+    "${TEST_SRC_DIR}/util/base_tester.cc"
+    "${TEST_SRC_DIR}/util/function_test_util.cc"
+    "${TEST_SRC_DIR}/util/graph_transform_test_builder.cc"
+    "${TEST_SRC_DIR}/util/op_tester.cc"
+    "${TEST_SRC_DIR}/util/qdq_test_utils.cc"
+  )
+
+  if (onnxruntime_MINIMAL_BUILD)
+    list(REMOVE_ITEM onnxruntime_test_utils_src
+      "${TEST_SRC_DIR}/util/include/test_dynamic_plugin_ep.h"
+      "${TEST_SRC_DIR}/util/test_dynamic_plugin_ep.cc"
+    )
+  endif()
+endif()
 
 file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/common/*.cc"
@@ -381,15 +496,11 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     "${TEST_SRC_DIR}/framework/TestAllocatorManager.h"
     "${TEST_SRC_DIR}/framework/test_utils.cc"
     "${TEST_SRC_DIR}/framework/test_utils.h"
+    "${TEST_SRC_DIR}/contrib_ops/*.h"
+    "${TEST_SRC_DIR}/contrib_ops/*.cc"
+    "${TEST_SRC_DIR}/contrib_ops/math/*.h"
+    "${TEST_SRC_DIR}/contrib_ops/math/*.cc"
   )
-
-  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-    list(APPEND onnxruntime_test_providers_src_patterns
-      "${TEST_SRC_DIR}/contrib_ops/*.h"
-      "${TEST_SRC_DIR}/contrib_ops/*.cc"
-      "${TEST_SRC_DIR}/contrib_ops/math/*.h"
-      "${TEST_SRC_DIR}/contrib_ops/math/*.cc")
-  endif()
 
 else()
   set(onnxruntime_test_providers_src_patterns
@@ -405,10 +516,6 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/cpu/*"
     )
-endif()
-
-if(onnxruntime_DISABLE_ML_OPS)
-  list(FILTER onnxruntime_test_providers_cpu_src EXCLUDE REGEX ".*/ml/.*")
 endif()
 
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
@@ -481,11 +588,12 @@ if (onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
 endif()
 
+set(onnxruntime_test_internal_testing_ep_src)
 if (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
   file(GLOB_RECURSE onnxruntime_test_providers_internal_testing_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/providers/internal_testing/*"
+    "${TEST_SRC_DIR}/internal_testing_ep/*"
     )
-  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_internal_testing_src})
+  list(APPEND onnxruntime_test_internal_testing_ep_src ${onnxruntime_test_providers_internal_testing_src})
 endif()
 
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${TEST_SRC_DIR}/shared_lib")
@@ -775,6 +883,9 @@ file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   ${onnxruntime_test_framework_src_patterns}
   )
 
+# TODO either update the below comment or follow it...
+# it's not obvious why this limitation of not using onnxruntime internal symbols exists
+
 #This is a small wrapper library that shouldn't use any onnxruntime internal symbols(except onnxruntime_common).
 #Because it could dynamically link to onnxruntime. Otherwise you will have two copies of onnxruntime in the same
 #process and you won't know which one you are testing.
@@ -832,12 +943,20 @@ if(NOT IOS)
     set(onnx_test_runner_common_lib onnx_test_runner_common)
 endif()
 
-set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
-        ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_quantization_src}
-        ${onnxruntime_test_flatbuffers_src} ${onnxruntime_test_lora_src})
+set(all_tests
+    ${onnxruntime_test_common_src}
+    ${onnxruntime_test_ir_src}
+    ${onnxruntime_test_optimizer_src}
+    ${onnxruntime_test_framework_src}
+    ${onnxruntime_test_providers_src}
+    ${onnxruntime_test_internal_testing_ep_src}
+    ${onnxruntime_test_quantization_src}
+    ${onnxruntime_test_flatbuffers_src}
+    ${onnxruntime_test_lora_src}
+)
 
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
-  if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     set(onnxruntime_test_cuda_kernels_src_patterns "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc")
   endif()
 
@@ -897,14 +1016,15 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       "${TEST_SRC_DIR}/providers/memcpy_test.cc"
     )
   endif()
-  list(REMOVE_ITEM all_tests "${TEST_SRC_DIR}/providers/cpu/reduction/reduction_ops_test.cc"
-      "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test.cc")
+  list(REMOVE_ITEM all_tests
+    "${TEST_SRC_DIR}/providers/cpu/reduction/reduction_ops_test.cc"
+    "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test.cc")
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR IOS)
    # Because we do not run these model tests in our web or iOS CI build pipelines, and some test code uses C++17
    # filesystem functions that are not available in the iOS version we target.
-   message("Disable model tests in onnxruntime_test_all")
+   message("Disable model tests")
    list(REMOVE_ITEM all_tests
       "${TEST_SRC_DIR}/providers/cpu/model_tests.cc"
     )
@@ -923,9 +1043,12 @@ endif ()
 if(NOT onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   list(REMOVE_ITEM all_tests ${TEST_SRC_DIR}/providers/cuda/cuda_provider_test.cc)
 endif()
+
+partition_provider_test_srcs(all_tests provider_test_srcs onnxruntime_test_all_srcs)
+
 AddTest(
   TARGET onnxruntime_test_all
-  SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
+  SOURCES ${onnxruntime_test_all_srcs} ${onnxruntime_unittest_main_src}
   LIBS
     ${onnx_test_runner_common_lib} ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     onnx_test_data_proto
@@ -995,9 +1118,9 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   target_link_libraries(onnxruntime_test_all PRIVATE Python::Python)
 endif()
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js)
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_adapter.js)
   set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre.js)
-  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=5242880 -s INITIAL_MEMORY=536870912 -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4294967296 -s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm] --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" --pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=5242880 -s INITIAL_MEMORY=536870912 -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4294967296 -s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm] --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_adapter.js\" --pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s DEFAULT_PTHREAD_STACK_SIZE=131072 -s PROXY_TO_PTHREAD=1")
   endif()
@@ -1095,6 +1218,87 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 
+# onnxruntime_provider_test
+# Execution provider-related tests.
+# These also have some support for dynamically specified plugin EPs.
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+block()
+  set(supporting_test_srcs
+    ${TEST_SRC_DIR}/common/cuda_op_test_utils.cc
+    ${TEST_SRC_DIR}/common/cuda_op_test_utils.h
+    ${TEST_SRC_DIR}/common/tensor_op_test_utils.cc
+    ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
+    ${TEST_SRC_DIR}/framework/dummy_allocator.cc
+    ${TEST_SRC_DIR}/framework/dummy_allocator.h
+    ${TEST_SRC_DIR}/framework/test_utils.cc
+    ${TEST_SRC_DIR}/framework/TestAllocatorManager.cc
+    ${TEST_SRC_DIR}/framework/TestAllocatorManager.h
+  )
+
+  set(onnxruntime_provider_test_srcs
+    ${provider_test_srcs}
+
+    ${supporting_test_srcs}
+
+    ${onnxruntime_unittest_main_src}
+  )
+
+  set(onnxruntime_provider_test_libs
+    ${onnx_test_runner_common_lib}
+    ${onnxruntime_test_providers_libs}
+    ${onnxruntime_test_common_libs}
+    onnx_test_data_proto
+  )
+
+  set(onnxruntime_provider_test_deps ${onnxruntime_test_providers_dependencies})
+
+  AddTest(
+    TARGET onnxruntime_provider_test
+    SOURCES ${onnxruntime_provider_test_srcs}
+    LIBS ${onnxruntime_provider_test_libs}
+    DEPENDS ${onnxruntime_provider_test_deps}
+  )
+
+  # enable dynamic plugin EP infrastructure
+  target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
+
+  # TODO fix shorten-64-to-32 warnings
+  # there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'
+  if (HAS_SHORTEN_64_TO_32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    target_compile_options(onnxruntime_provider_test PRIVATE -Wno-error=shorten-64-to-32)
+  endif()
+
+  # copied from onnxruntime_test_all
+  # TODO reuse instead of copy?
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set_target_properties(onnxruntime_provider_test PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_adapter.js)
+    set_target_properties(onnxruntime_provider_test PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre.js)
+    set_target_properties(onnxruntime_provider_test PROPERTIES LINK_FLAGS "-s STACK_SIZE=5242880 -s INITIAL_MEMORY=536870912 -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4294967296 -s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm] --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_adapter.js\" --pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
+    if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+      set_property(TARGET onnxruntime_provider_test APPEND_STRING PROPERTY LINK_FLAGS " -s DEFAULT_PTHREAD_STACK_SIZE=131072 -s PROXY_TO_PTHREAD=1")
+    endif()
+    if (onnxruntime_USE_JSEP)
+      set_target_properties(onnxruntime_provider_test PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js)
+      set_property(TARGET onnxruntime_provider_test APPEND_STRING PROPERTY LINK_FLAGS " --pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\"")
+    endif()
+
+    ###
+    ### if you want to investigate or debug a test failure in onnxruntime_provider_test, replace the following line.
+    ### those flags slow down the CI test significantly, so we don't use them by default.
+    ###
+    #   set_property(TARGET onnxruntime_provider_test APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2")
+    set_property(TARGET onnxruntime_provider_test APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=0 -s SAFE_HEAP=0 -s STACK_OVERFLOW_CHECK=1")
+  endif()
+
+  if (IOS)
+    add_custom_command(
+      TARGET onnxruntime_provider_test POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${TEST_DATA_SRC}
+      $<TARGET_FILE_DIR:onnxruntime_provider_test>/testdata)
+  endif()
+endblock()
+endif()
 
 set(onnx_test_libs
   onnxruntime_test_utils
@@ -1429,20 +1633,18 @@ endif()
         "${TEST_SRC_DIR}/debug_node_inputs_outputs/debug_node_inputs_outputs_utils_test.cc"
         "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
         "${TEST_SRC_DIR}/framework/test_utils.cc"
-        "${TEST_SRC_DIR}/providers/base_tester.h"
-        "${TEST_SRC_DIR}/providers/base_tester.cc"
-        "${TEST_SRC_DIR}/providers/checkers.h"
-        "${TEST_SRC_DIR}/providers/checkers.cc"
-        "${TEST_SRC_DIR}/providers/op_tester.h"
-        "${TEST_SRC_DIR}/providers/op_tester.cc"
+        "${TEST_SRC_DIR}/util/include/base_tester.h"
+        "${TEST_SRC_DIR}/util/base_tester.cc"
+        "${TEST_SRC_DIR}/util/include/checkers.h"
+        "${TEST_SRC_DIR}/util/checkers.cc"
+        "${TEST_SRC_DIR}/util/include/op_tester.h"
+        "${TEST_SRC_DIR}/util/op_tester.cc"
         "${TEST_SRC_DIR}/providers/provider_test_utils.h"
-        "${TEST_SRC_DIR}/providers/tester_types.h"
+        "${TEST_SRC_DIR}/util/include/tester_types.h"
         ${onnxruntime_unittest_main_src}
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
       DEPENDS ${all_dependencies}
     )
-
-
 
     target_compile_definitions(onnxruntime_test_debug_node_inputs_outputs
       PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
