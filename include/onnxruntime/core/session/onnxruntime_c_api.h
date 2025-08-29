@@ -754,13 +754,13 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
   int migraphx_fp8_enable;                           // MIGraphX FP8 precision. Default 0 = false, nonzero = true
   int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
-  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
+  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, nonzero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
-  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, noznero = true
+  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, nonzero = true
   const char* migraphx_save_model_path;              // migraphx model path name
-  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
+  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, nonzero = true
   const char* migraphx_load_model_path;              // migraphx model path name
-  bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
+  bool migraphx_exhaustive_tune;                     // MIGraphX tuned compile. Default = false, nonzero = true
 
   /** \brief MIGraphX memory limit (To use all possible memory pass in maximum size_t)
    *   Defaults to SIZE_MAX.
@@ -776,6 +776,7 @@ typedef struct OrtMIGraphXProviderOptions {
    */
   int migraphx_arena_extend_strategy;
 
+  // This is the legacy struct and don't add new fields here.
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -901,6 +902,16 @@ typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t n
  *
  * \nosubgrouping
  */
+/*
+ * Public enum for compiled model compatibility across EPs.
+ */
+typedef enum OrtCompiledModelCompatibility {
+  OrtCompiledModelCompatibility_EP_NOT_APPLICABLE = 0,
+  OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL,
+  OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION,
+  OrtCompiledModelCompatibility_EP_UNSUPPORTED,
+} OrtCompiledModelCompatibility;
+
 struct OrtApi {
   /// \name OrtStatus
   /// @{
@@ -5828,7 +5839,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph,
+  ORT_API2_STATUS(Graph_GetNodes, _In_ const OrtGraph* graph,
                   _Out_writes_(num_nodes) const OrtNode** nodes, _In_ size_t num_nodes);
 
   /** \brief Get the parent node for the given graph, if any exists.
@@ -6468,6 +6479,35 @@ struct OrtApi {
                   _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                   _In_opt_ OrtSyncStream* stream,
                   _In_ size_t num_tensors);
+
+  /** \brief Get ::OrtModelMetadata from an ::OrtGraph
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] out Newly created ::OrtModelMetadata. Must be freed using OrtApi::ReleaseModelMetadata.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetModelMetadata, _In_ const OrtGraph* graph, _Outptr_ OrtModelMetadata** out);
+
+  /** \brief Validate a compiled model's compatibility information for one or more EP devices.
+   *
+   * \param[in] ep_devices The EP devices to validate against (e.g., from GetEpDevices).
+   *                        All devices must belong to the same execution provider.
+   * \param[in] num_ep_devices The number of EP devices provided.
+   * \param[in] compatibility_info The compatibility info string produced when the model was compiled.
+   * \param[out] out_status The resulting compatibility status for the EP devices.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetModelCompatibilityForEpDevices,
+                  _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices,
+                  _In_ size_t num_ep_devices,
+                  _In_ const char* compatibility_info,
+                  _Out_ OrtCompiledModelCompatibility* out_status);
 };
 
 /*

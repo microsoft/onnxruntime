@@ -53,7 +53,8 @@ jobs:
     runs-on: macos-15
 
     env:
-      xcode_version: 16
+      xcode_version: 16.4
+      simulator_runtime_version: 18.5
 
     strategy:
       matrix:
@@ -90,6 +91,8 @@ jobs:
             --apple_deploy_target=15.1 \
             --apple_sysroot=iphonesimulator \
             --osx_arch=${{ matrix.target_arch }}
+        env:
+          ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ env.simulator_runtime_version }}
 
   Objective-C-StaticAnalysis:
     runs-on: macos-14

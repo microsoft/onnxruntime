@@ -336,7 +336,13 @@ if (onnxruntime_ENABLE_CPUINFO)
       set(CPUINFO_SUPPORTED TRUE)
     endif()
     if (WIN32)
-      set(CPUINFO_SUPPORTED TRUE)
+      # There's an error when linking with cpuinfo on arm64ec with a vcpkg build (--use_vcpkg).
+      # TODO Fix it and then re-enable cpuinfo on arm64ec.
+      if (onnxruntime_target_platform STREQUAL "ARM64EC")
+        set(CPUINFO_SUPPORTED FALSE)
+      else()
+        set(CPUINFO_SUPPORTED TRUE)
+      endif()
     elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
       message(WARNING
         "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "

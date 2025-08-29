@@ -189,6 +189,8 @@ class Model {
 
   const ModelMetaData& MetaData() const noexcept;
 
+  ModelMetaData& MetaData() noexcept;
+
   // Gets the path from which the model was loaded, if any.
   const std::filesystem::path& ModelPath() const noexcept { return model_path_; }
 

@@ -12,7 +12,7 @@ typedef void* cublasHandle_t;
 typedef void* cudnnStatus_t;
 #endif
 #include "core/providers/nv_tensorrt_rtx/nv_includes.h"
-
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include <mutex>
 #include "core/providers/cuda/cuda_graph.h"
 #include "nv_execution_provider_info.h"
@@ -78,6 +78,9 @@ using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 //
 class OutputAllocator : public nvinfer1::IOutputAllocator {
  public:
+  OutputAllocator() = delete;
+  OutputAllocator(OrtAllocator* allocator) : alloc_(allocator) {};
+
   void* reallocateOutputAsync(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment, cudaStream_t stream) noexcept override;
 
   void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override;
@@ -95,10 +98,11 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
   }
 
   ~OutputAllocator() override {
-    cudaFree(outputPtr);
+    alloc_->Free(alloc_, outputPtr);
   }
 
  private:
+  OrtAllocator* alloc_;
   void* outputPtr{nullptr};
   uint64_t allocated_size = 0;
   std::vector<int64_t> output_shapes;
@@ -110,6 +114,80 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
  */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
 
+/**
+ * @brief Container for tensor data and their shape.
+ *
+ */
+struct TensorParams {
+  const void* data{nullptr};
+  nvinfer1::Dims dims;
+
+  TensorParams() = default;
+
+  TensorParams(const void* data_ptr, const std::vector<int64_t>& shape) {
+    // Initialize data and dims from the Ort::ConstValue
+    data = data_ptr;
+
+    dims.nbDims = static_cast<int32_t>(shape.size());
+    for (int i = 0; i < dims.nbDims; ++i) {
+      dims.d[i] = static_cast<int32_t>(shape[i]);
+    }
+  }
+
+  TensorParams(const void* data_ptr, nvinfer1::Dims& shape) {
+    // Initialize data and dims from the Ort::ConstValue
+    data = data_ptr;
+
+    dims = shape;
+  }
+
+  bool operator!=(const TensorParams& other) const {
+    if (data != other.data || dims.nbDims != other.dims.nbDims)
+      return true;
+
+    for (int i = 0; i < dims.nbDims; ++i) {
+      if (dims.d[i] != other.dims.d[i])
+        return true;
+    }
+    return false;
+  }
+};
+
+// Data structure to hold user weights when ModelProtos are serialized with external data
+class TensorrtUserWeights {
+ public:
+  TensorrtUserWeights(const std::string& name, const std::string& data) : name_(name),
+                                                                          data_cpy_(data) {
+                                                                          };
+
+  TensorrtUserWeights(const std::string& name, const void* data, size_t size) : name_(name), data_(data), size_(size) {
+                                                                                };
+
+  const char* Name() const {
+    return name_.c_str();
+  };
+
+  const void* Data() const {
+    if (!data_cpy_.empty()) {
+      return data_cpy_.data();
+    }
+    return data_;
+  }
+
+  int64_t Size() const {
+    if (!data_cpy_.empty()) {
+      return static_cast<int64_t>(data_cpy_.size());
+    }
+    return static_cast<int64_t>(size_);
+  }
+
+ private:
+  std::string name_{};
+  std::string data_cpy_{};
+  void const* data_;
+  size_t size_;
+};
+
 // Information to construct kernel function state.
 struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
@@ -117,7 +195,6 @@ struct TensorrtFuncState {
   AllocatorHandle allocator = nullptr;
   std::string fused_node_name;
   nvinfer1::IBuilder* builder;
-  tensorrt_ptr::unique_pointer<nvonnxparser::IParser>* parser = nullptr;
   std::unique_ptr<nvinfer1::ICudaEngine>* engine = nullptr;
   std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
   std::unique_ptr<nvinfer1::INetworkDefinition>* network = nullptr;
@@ -125,13 +202,10 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
   std::mutex* tensorrt_mu_ptr = nullptr;
-  std::string trt_node_name_with_precision;
   bool engine_cache_enable = false;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
   std::vector<nvinfer1::IOptimizationProfile*> profiles;
-  bool context_memory_sharing_enable = false;
-  size_t* max_context_mem_size_ptr = nullptr;
   bool engine_decryption_enable = false;
   int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
   int (*engine_encryption)(const char*, char*, size_t) = nullptr;
@@ -139,8 +213,17 @@ struct TensorrtFuncState {
   bool sparsity_enable = false;
   int auxiliary_streams = -1;
   bool cuda_graph_enable = 0;
+  bool is_dynamic_shape = false;
   std::string cache_prefix;
   std::string cache_suffix;
+  // runtime parameters
+  std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
+  std::vector<TensorParams> input_tensors;
+  std::vector<TensorParams> output_tensors;
+  bool is_first_run = true;              // Indicates if this is the first run of the engine
+  bool skip_io_binding_allowed = false;  // Indicates if input/output binding can be skipped
+  IAllocatorUniquePtr<void> context_memory = nullptr;
+  size_t context_memory_size = 0;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -153,9 +236,16 @@ struct TensorrtShortFuncState {
   std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
-  bool context_memory_sharing_enable = false;
-  size_t* max_context_mem_size_ptr = nullptr;
   std::mutex* tensorrt_mu_ptr = nullptr;
+  bool is_dynamic_shape = false;
+  // runtime parameters
+  std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
+  std::vector<TensorParams> input_tensors;
+  std::vector<TensorParams> output_tensors;
+  bool is_first_run = true;              // Indicates if this is the first run of the engine
+  bool skip_io_binding_allowed = false;  // Indicates if input/output binding can be skipped
+  IAllocatorUniquePtr<void> context_memory = nullptr;
+  size_t context_memory_size = 0;
 };
 
 // Holds important information for building valid ORT graph.
@@ -214,19 +304,23 @@ class NvExecutionProvider : public IExecutionProvider {
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
+  // CUDA Graph support
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
+  void HandleCudaGraphStart(cudaStream_t stream, bool require_io_binding, CudaGraphAnnotation_t cuda_graph_annotation_id, bool& graph_replay_on_this_run, bool& should_start_capture);
 
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,
-                                    std::string& weight_stripped_engine_cath_path,
                                     bool path_check,
                                     const void* onnx_model_bytestream,
                                     size_t onnx_model_bytestream_size,
+                                    const void* onnx_external_data_bytestream,
+                                    size_t onnx_external_data_bytestream_size,
                                     nvinfer1::ICudaEngine* trt_engine,
-                                    bool serialize_refitted_engine,
                                     bool detailed_build_log);
+
+  const InlinedVector<const Node*> GetEpContextNodes() const override;
 
  private:
   mutable NvExecutionProviderInfo info_;
@@ -244,6 +338,9 @@ class NvExecutionProvider : public IExecutionProvider {
   std::string onnx_model_folder_path_;
   const void* onnx_model_bytestream_;
   size_t onnx_model_bytestream_size_;
+  bool use_external_data_initializer_ = false;
+  const void* onnx_external_data_bytestream_ = nullptr;
+  size_t onnx_external_data_bytestream_size_ = 0;
   bool sparsity_enable_ = false;
   int auxiliary_streams_ = -1;
   std::string cache_path_, engine_decryption_lib_path_;
@@ -251,9 +348,7 @@ class NvExecutionProvider : public IExecutionProvider {
   std::mutex tensorrt_mu_;
   int device_id_;
   std::string compute_capability_;
-  bool context_memory_sharing_enable_ = false;
   size_t max_ctx_mem_size_ = 0;
-  IAllocatorUniquePtr<void> context_memory_ = nullptr;
   mutable char model_path_[4096] = {};  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*) = nullptr;
@@ -264,6 +359,7 @@ class NvExecutionProvider : public IExecutionProvider {
   std::string cache_prefix_;
   std::string op_types_to_exclude_;
   int nv_profile_index_ = 0;
+  std::unique_ptr<onnxruntime::Model> ep_context_model_;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
@@ -278,7 +374,6 @@ class NvExecutionProvider : public IExecutionProvider {
   std::string ep_context_file_path_;
   int ep_context_embed_mode_ = 0;
   std::string ctx_model_path_;
-  std::string ep_cache_context_attr_;
   std::string engine_cache_relative_path_to_context_model_dir;
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
@@ -290,7 +385,6 @@ class NvExecutionProvider : public IExecutionProvider {
   // In general, TensorRT objects are not thread safe; accesses to an object from different threads must be serialized by the client.
   // But there are still some thread safe operations, please see here https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
   // For those non thread safe operations, TRT EP uses (1) lock_guard or (2) PerThreadContext to make sure synchronization.
-  std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::ICudaEngine>> engines_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> contexts_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::IBuilder>> builders_;
@@ -310,15 +404,6 @@ class NvExecutionProvider : public IExecutionProvider {
 
   // Call cudaStreamSynchronize() after TRT enqueueV3()
   mutable bool sync_stream_after_enqueue_ = true;
-
-  CUDAGraph cuda_graph_;
-  bool is_graph_captured_ = false;
-  int regular_run_count_before_graph_capture_ = 0;
-  // There is chance (currently only happens in CUDA EP) that the second regular run allocates GPU memory for causes like:
-  // (1) memory pattern is enabled. (2) arena allocation for stream.
-  // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
-  // to allocate enough memory in Arena before graph capturing.
-  const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
 
   // [Note] We don't use PerThreadContext for now since it has issue with multithreading
   //
@@ -341,17 +426,21 @@ class NvExecutionProvider : public IExecutionProvider {
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
     bool UpdateTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context);
     void ResetTensorRTContext(std::string fused_node);
-    bool CompareProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges);
-    void UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges);
 
-    void InitCUDAGraph();
-    void SetGraphStream(cudaStream_t stream);
-    bool IsGraphCaptureAllowed() const;
-    void CaptureBegin(int graph_annotation_id);
-    void CaptureEnd(int graph_annotation_id);
-    bool IsGraphCaptured(int graph_annotation_id) const;
-    Status ReplayGraph(int graph_annotation_id);
-    void IncrementRegularRunCountBeforeGraphCapture();
+    // CUDA Graph management
+    void SetCudaGraphStream(cudaStream_t stream) { cuda_graph_.SetStream(stream); }
+    bool IsGraphCaptureAllowed(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
+    bool IsGraphCaptureAllowedOnRun(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
+    CudaGraphAnnotation_t GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
+    void SetCurrentGraphAnnotationId(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    CudaGraphAnnotation_t GetCurrentGraphAnnotationId() const;
+    void CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
+    Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync_status_flag);
+    void IncrementRegularRunCountBeforeGraphCapture(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    void ResetWarmupRuns(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    void DeleteCapturedGraph(CudaGraphAnnotation_t cuda_graph_annotation_id);
 
    private:
     cudnnHandle_t external_cudnn_handle_ = nullptr;
@@ -374,13 +463,18 @@ class NvExecutionProvider : public IExecutionProvider {
     // Cuda graph with multi threads will be supported in the future, so cuda_graph_ is put under PerThreadContext.
     // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph instance is enough (no need to maintain one CUDAGraph instance per TRT subgraph)
     CUDAGraph cuda_graph_;
+    // Map of graph id to regular_run_count_before_graph_capture
+    std::unordered_map<CudaGraphAnnotation_t, int> graph_id_to_run_count_;
     bool is_graph_captured_ = false;
     int regular_run_count_before_graph_capture_ = 0;
+    // Current graph annotation ID for this run
+    CudaGraphAnnotation_t current_graph_annotation_id_ = kCudaGraphAnnotationDefault;
     // There is chance (currently only happens in CUDA EP) that the second regular run allocates GPU memory for causes like:
     // (1) memory pattern is enabled. (2) arena allocation for stream.
     // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
     // to allocate enough memory in Arena before graph capturing.
-    const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
+    const int min_num_runs_before_cuda_graph_capture_ = 2;  // required min regular runs before graph capture for the necessary memory allocations.
+    // https://github.com/NVIDIA/TensorRT/blob/main/samples/common/sampleInference.cpp#L1258-L1291 Based on the trtexec code
   };
 
   using PerThreadContextMap = std::unordered_map<const NvExecutionProvider*, std::weak_ptr<PerThreadContext>>;
@@ -499,6 +593,7 @@ class NvExecutionProvider : public IExecutionProvider {
    * going through the time-consuming processes of model parsing and engine building.
    */
   Status CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
+                                                    size_t node_idx,
                                                     const Node& fused_node,
                                                     std::unordered_map<std::string, size_t>& input_map,
                                                     std::unordered_map<std::string, size_t>& output_map,
@@ -512,11 +607,6 @@ class NvExecutionProvider : public IExecutionProvider {
                                         std::unordered_map<std::string, size_t>& input_map,
                                         std::unordered_map<std::string, size_t>& output_map,
                                         std::vector<NodeComputeInfo>& node_compute_funcs);
-
-  bool IsGraphCaptureAllowed() const;
-  void CaptureBegin(int graph_annotation_id);
-  void CaptureEnd(int graph_annotation_id);
-  void IncrementRegularRunCountBeforeGraphCapture();
 
   /**
    * Get the pointer to the IBuilder instance.
