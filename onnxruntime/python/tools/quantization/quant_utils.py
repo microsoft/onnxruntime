@@ -14,25 +14,13 @@ from pathlib import Path
 
 import numpy
 import onnx
+from ml_dtypes import float8_e4m3fn, int4, uint4
 from onnx import ModelProto, TensorProto, external_data_helper
 from onnx import onnx_pb as onnx_proto
 from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
 from onnx.reference import ReferenceEvaluator
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
-
-try:
-    from onnx.reference.custom_element_types import float8e4m3fn
-except ImportError:
-    float8e4m3fn = None
-
-# INT4 np.dtypes added in ONNX 1.16. These map to np.int8/np.uint8 because numpy
-# does not support sub-byte types.
-try:
-    from onnx.reference.custom_element_types import int4, uint4
-except ImportError:
-    int4 = None
-    uint4 = None
 
 try:
     from onnx.reference.op_run import to_array_extended
@@ -149,9 +137,9 @@ ONNX_TYPE_TO_NP_TYPE = {
     onnx_proto.TensorProto.UINT8: numpy.dtype("uint8"),
     onnx_proto.TensorProto.INT16: numpy.dtype("int16"),
     onnx_proto.TensorProto.UINT16: numpy.dtype("uint16"),
-    onnx_proto.TensorProto.FLOAT8E4M3FN: float8e4m3fn,
-    onnx_proto.TensorProto.INT4: int4,  # base_dtype is np.int8
-    onnx_proto.TensorProto.UINT4: uint4,  # base_dtype is np.uint8
+    onnx_proto.TensorProto.FLOAT8E4M3FN: float8_e4m3fn,
+    onnx_proto.TensorProto.INT4: int4,
+    onnx_proto.TensorProto.UINT4: uint4,
 }
 
 ONNX_INT_TYPE_RANGE = {
@@ -175,7 +163,7 @@ ONNX_INT_TYPE_REDUCED_RANGE = {
     onnx_proto.TensorProto.INT8: (numpy.array(-64, dtype=numpy.int8), numpy.array(64, dtype=numpy.int8)),
     onnx_proto.TensorProto.UINT16: (numpy.array(0, dtype=numpy.uint16), numpy.array(32767, dtype=numpy.uint16)),
     onnx_proto.TensorProto.INT16: (numpy.array(-16384, dtype=numpy.int16), numpy.array(16384, dtype=numpy.int16)),
-    onnx_proto.TensorProto.UINT4: (numpy.array(0, dtype=int4), numpy.array(7, dtype=int4)),
+    onnx_proto.TensorProto.UINT4: (numpy.array(0, dtype=uint4), numpy.array(7, dtype=uint4)),
     onnx_proto.TensorProto.INT4: (numpy.array(-4, dtype=int4), numpy.array(3, dtype=int4)),
 }
 
@@ -324,10 +312,10 @@ def compute_scale_zp_float8(element_type, std):
     zp_dtype = None
     if element_type not in FLOAT8_DISTRIBUTIONS:
         if element_type == TensorProto.FLOAT8E4M3FN:
+            from ml_dtypes import float8_e4m3fn  # noqa: PLC0415
             from onnx.numpy_helper import float8e4m3_to_float32  # noqa: PLC0415
-            from onnx.reference.custom_element_types import float8e4m3fn  # noqa: PLC0415
 
-            zp_dtype = float8e4m3fn
+            zp_dtype = float8_e4m3fn
             all_values = [float8e4m3_to_float32(i) for i in range(256)]
             values = numpy.array(
                 [f for f in all_values if not numpy.isnan(f) and not numpy.isinf(f)], dtype=numpy.float32
@@ -336,9 +324,9 @@ def compute_scale_zp_float8(element_type, std):
             raise ValueError(f"Quantization to element_type={element_type} not implemented.")
         FLOAT8_DISTRIBUTIONS[element_type] = values
     elif element_type == TensorProto.FLOAT8E4M3FN:
-        from onnx.reference.custom_element_types import float8e4m3fn  # noqa: PLC0415
+        from ml_dtypes import float8_e4m3fn  # noqa: PLC0415
 
-        zp_dtype = float8e4m3fn
+        zp_dtype = float8_e4m3fn
 
     if zp_dtype is None:
         raise TypeError(f"Unexpected element_type {element_type}.")

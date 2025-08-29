@@ -10,12 +10,12 @@ from pathlib import Path
 
 import numpy as np
 import onnx
+from ml_dtypes import float8_e4m3fn
 from onnx import TensorProto
 from onnx.helper import float32_to_float8e4m3, np_dtype_to_tensor_dtype
 from onnx.numpy_helper import float8e4m3_to_float32
 from onnx.reference import ReferenceEvaluator
 from onnx.reference import ops as onnx_ops
-from onnx.reference.custom_element_types import float8e4m3fn, float8e4m3fnuz, float8e5m2, float8e5m2fnuz
 from onnx.reference.op_run import OpRun
 
 import onnxruntime
@@ -46,14 +46,6 @@ class QOpRun(OpRun):
     }
 
     def get_tensor_type(self, tensor: np.ndarray) -> int:
-        if tensor.dtype == float8e4m3fn and tensor.dtype.descr[0][0] == "e4m3fn":
-            return TensorProto.FLOAT8E4M3FN
-        if tensor.dtype == float8e4m3fnuz and tensor.dtype.descr[0][0] == "e4m3fnuz":
-            return TensorProto.FLOAT8E4M3FNUZ
-        if tensor.dtype == float8e5m2 and tensor.dtype.descr[0][0] == "e5m2":
-            return TensorProto.FLOAT8E5M2
-        if tensor.dtype == float8e5m2fnuz and tensor.dtype.descr[0][0] == "e5m2fnuz":
-            return TensorProto.FLOAT8E5M2FNUZ
         return np_dtype_to_tensor_dtype(tensor.dtype)
 
 
@@ -100,7 +92,7 @@ class QGemm(QOpRun):
                 y += float8e4m3_to_float32(y_zero_point)
                 ry = y.ravel()
 
-                fy = np.empty(ry.shape, dtype=float8e4m3fn)
+                fy = np.empty(ry.shape, dtype=float8_e4m3fn)
                 for i in range(fy.shape[0]):
                     el = float32_to_float8e4m3(ry[i])  # type: ignore[assignment]
                     fy[i] = el
@@ -170,7 +162,7 @@ class QLinearMatMul(QOpRun):
                 y += float8e4m3_to_float32(y_zero_point)
                 ry = y.ravel()
 
-                fy = np.empty(ry.shape, dtype=float8e4m3fn)
+                fy = np.empty(ry.shape, dtype=float8_e4m3fn)
                 for i in range(fy.shape[0]):
                     el = float32_to_float8e4m3(ry[i])  # type: ignore[assignment]
                     fy[i] = el
