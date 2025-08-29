@@ -3077,7 +3077,7 @@ struct ConstNodeImpl : Base<T> {
 
   std::vector<ConstValueInfo> GetInputs() const;
   std::vector<ConstValueInfo> GetOutputs() const;
-  std::vector<ConstValueInfo> GetImplictiInputs() const;
+  std::vector<ConstValueInfo> GetImplicitInputs() const;
 
   std::vector<ConstOpAttr> GetAttributes() const;
   // Please, read C API doc for details
@@ -3207,7 +3207,7 @@ struct ModelImpl : detail::Base<T> {
 }  // namespace detail
 
 // Const object holder that does not own the underlying object
-using UnowedModel = detail::ModelImpl<detail::Unowned<OrtModel>>;
+using UnownedModel = detail::ModelImpl<detail::Unowned<OrtModel>>;
 
 /** \brief Wrapper around ::OrtModel
  *

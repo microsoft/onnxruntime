@@ -356,7 +356,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
       }
 
       // Handle implicit inputs to this node.
-      std::vector<Ort::ConstValueInfo> ort_implicit_inputs = ort_node.GetImplictiInputs();
+      std::vector<Ort::ConstValueInfo> ort_implicit_inputs = ort_node.GetImplicitInputs();
       for (const auto& vi : ort_implicit_inputs) {
         assert(vi != nullptr);
         std::optional<std::string> value_name;

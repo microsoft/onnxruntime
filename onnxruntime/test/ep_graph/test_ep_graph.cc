@@ -23,7 +23,6 @@
 #include "test/ep_graph/test_ep_graph_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
-#include "test/util/include/api_asserts.h"
 #include "test/util/include/test_environment.h"
 
 // defined in unittest_main/test_main.cc
@@ -1013,7 +1012,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
       // Check node's implicit inputs to its subgraph nodes.
       const auto implicit_input_node_args = node->ImplicitInputDefs();
 
-      std::vector<Ort::ConstValueInfo> api_node_implicit_inputs = api_node.GetImplictiInputs();
+      std::vector<Ort::ConstValueInfo> api_node_implicit_inputs = api_node.GetImplicitInputs();
       ASSERT_EQ(api_node_implicit_inputs.size(), implicit_input_node_args.size());
       CheckValueInfosCApi(graph_viewer, api_node_implicit_inputs, implicit_input_node_args);
 

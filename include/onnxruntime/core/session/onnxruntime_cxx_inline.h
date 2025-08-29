@@ -3101,7 +3101,7 @@ inline std::vector<ConstValueInfo> ConstNodeImpl<T>::GetOutputs() const {
 }
 
 template <typename T>
-inline std::vector<ConstValueInfo> ConstNodeImpl<T>::GetImplictiInputs() const {
+inline std::vector<ConstValueInfo> ConstNodeImpl<T>::GetImplicitInputs() const {
   static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
   size_t num_vi;
   ThrowOnError(GetApi().Node_GetNumImplicitInputs(this->p_, &num_vi));
