@@ -174,6 +174,7 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"Greater", {"greater", {{0, "a"}, {1, "b"}}}},
     {"Reciprocal", {"reciprocal", {{0, "input"}}}},
     {"ReduceMean", {"reduceMean", {{0, "input"}}}},
+    {"Round", {"roundEven", {{0, "input"}}}},
     {"GlobalMaxPool", {"maxPool2d", {{0, "input"}}}},
     {"HardSigmoid", {"hardSigmoid", {{0, "input"}}}},
     {"ReduceProd", {"reduceProduct", {{0, "input"}}}},
@@ -200,7 +201,7 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"DequantizeLinear", {"dequantizeLinear", {{0, "input"}, {1, "scale"}, {2, "zeroPoint"}}}},
     {"InstanceNormalization", {"instanceNormalization", {{0, "input"}, {1, "scale"}, {2, "bias"}}}},
     {"GRU", {"gru", {{0, "input"}, {1, "weight"}, {2, "recurrentWeight"}, {3, "bias"}, {5, "initialHiddenState"}}}},
-    {"BatchNormalization", {"batchNormalization", {{0, "input"}, {1, "scale"}, {2, "bias"}, {3, "input_mean"}, {4, "input_var"}}}},
+    {"BatchNormalization", {"batchNormalization", {{0, "input"}, {1, "scale"}, {2, "bias"}, {3, "mean"}, {4, "variance"}}}},
     {"LSTM", {"lstm", {{0, "input"}, {1, "weight"}, {2, "recurrentWeight"}, {3, "bias"}, {5, "initialHiddenState"}, {6, "initialCellState"}, {7, "peepholeWeight"}}}},
 };
 }  // namespace webnn

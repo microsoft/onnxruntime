@@ -627,7 +627,7 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstNode ort_node, Ort::ConstOpAttr at
         // TensorProto as an attribute value doesn't require a name.
 
         OrtValue* ort_value = nullptr;
-        ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetTensorAttributeAsOrtValue(ort_node, attr, &ort_value));
+      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.OpAttr_GetTensorAttributeAsOrtValue(&ort_attr, &ort_value));
 
         Ort::Value tensor(ort_value);
 

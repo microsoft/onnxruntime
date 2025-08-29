@@ -877,6 +877,26 @@ inline void CustomOpDomain::Add(const OrtCustomOp* op) {
   ThrowOnError(GetApi().CustomOpDomain_Add(p_, op));
 }
 
+inline OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
+    const std::vector<ConstEpDevice>& ep_devices,
+    const char* compatibility_info) {
+  if (ep_devices.empty()) {
+    ORT_CXX_API_THROW("ep_devices is empty", ORT_INVALID_ARGUMENT);
+  }
+
+  std::vector<const OrtEpDevice*> ptrs;
+  ptrs.reserve(ep_devices.size());
+  for (const auto& d : ep_devices) ptrs.push_back(d);
+
+  OrtCompiledModelCompatibility status = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  ThrowOnError(GetApi().GetModelCompatibilityForEpDevices(
+      reinterpret_cast<const OrtEpDevice* const*>(ptrs.data()),
+      ptrs.size(),
+      compatibility_info,
+      &status));
+  return status;
+}
+
 inline LoraAdapter LoraAdapter::CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
                                                   OrtAllocator* allocator) {
   OrtLoraAdapter* p;

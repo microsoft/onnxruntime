@@ -80,22 +80,19 @@ struct Exception : std::exception {
   throw Ort::Exception(string, code)
 #endif
 
-// This is used internally by the C++ API. This class holds the global variable that points to the OrtApi,
-//  it's in a template so that we can define a global variable in a header and make
-// it transparent to the users of the API.
-template <typename T>
-struct Global {
-  static const OrtApi* api_;
-};
-
-// If macro ORT_API_MANUAL_INIT is defined, no static initialization will be performed. Instead, user must call InitApi() before using it.
-template <typename T>
 #ifdef ORT_API_MANUAL_INIT
-const OrtApi* Global<T>::api_{};
-inline void InitApi() noexcept { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
+// If the macro ORT_API_MANUAL_INIT is defined, no static initialization
+// will be performed. Instead, users must call InitApi() before using the
+// ORT C++ APIs..
+//
+// InitApi() sets the global API object using the default initialization
+// logic. Users call this to initialize the ORT C++ APIs at a time that
+// makes sense in their program.
+inline void InitApi() noexcept;
 
-// Used by custom operator libraries that are not linked to onnxruntime. Sets the global API object, which is
-// required by C++ APIs.
+// InitApi(const OrtApi*) is used by custom operator libraries that are not
+// linked to onnxruntime. It sets the global API object, which is required
+// by the ORT C++ APIs.
 //
 // Example mycustomop.cc:
 //
@@ -108,22 +105,88 @@ inline void InitApi() noexcept { Global<void>::api_ = OrtGetApiBase()->GetApi(OR
 //   // ...
 // }
 //
-inline void InitApi(const OrtApi* api) noexcept { Global<void>::api_ = api; }
-#else
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-// "Global initializer calls a non-constexpr function." Therefore you can't use ORT APIs in the other global initializers.
-// Please define ORT_API_MANUAL_INIT if it conerns you.
-#pragma warning(disable : 26426)
-#endif
-const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
+inline void InitApi(const OrtApi* api) noexcept;
 #endif
 
+namespace detail {
+// This is used internally by the C++ API. This class holds the global
+// variable that points to the OrtApi.
+struct Global {
+  static const OrtApi* Api(const OrtApi* newValue = nullptr) noexcept {
+    // This block-level static will be initialized once when this function is
+    // first executed, delaying the call to DefaultInit() until it is first needed.
+    //
+    // When ORT_API_MANUAL_INIT is not defined, DefaultInit() calls
+    // OrtGetApiBase()->GetApi(), which may result in a shared library being
+    // loaded.
+    //
+    // Using a block-level static instead of a class-level static helps
+    // avoid issues with static initialization order and dynamic libraries
+    // loading other dynamic libraries.
+    //
+    // This makes it safe to include the C++ API headers in a shared library
+    // that is delay loaded or delay loads its dependencies.
+    //
+    // This DOES NOT make it safe to _use_ arbitrary ORT C++ APIs when
+    // initializing static members, however.
+    static const OrtApi* api = DefaultInit();
+
+    if (newValue) {
+      api = newValue;
+    }
+
+    return api;
+  }
+
+ private:
+  // Has different definitions based on ORT_API_MANUAL_INIT
+  static const OrtApi* DefaultInit() noexcept;
+
+#ifdef ORT_API_MANUAL_INIT
+  // Public APIs to set the OrtApi* to use.
+  friend void ::Ort::InitApi() noexcept;
+  friend void ::Ort::InitApi(const OrtApi*) noexcept;
+#endif
+};
+}  // namespace detail
+
+#ifdef ORT_API_MANUAL_INIT
+
+// See comments on declaration above for usage.
+inline void InitApi(const OrtApi* api) noexcept { detail::Global::Api(api); }
+inline void InitApi() noexcept { InitApi(OrtGetApiBase()->GetApi(ORT_API_VERSION)); }
+
+#ifdef _MSC_VER
+// If you get a linker error about a mismatch here, you are trying to
+// link two compilation units that have different definitions for
+// ORT_API_MANUAL_INIT together. All compilation units must agree on the
+// definition of ORT_API_MANUAL_INIT.
+#pragma detect_mismatch("ORT_API_MANUAL_INIT", "enabled")
+#endif
+
+inline const OrtApi* detail::Global::DefaultInit() noexcept {
+  // When ORT_API_MANUAL_INIT is defined, there's no default init that can
+  // be done.
+  return nullptr;
+}
+
+#else  // ORT_API_MANUAL_INIT
+
+#ifdef _MSC_VER
+// If you get a linker error about a mismatch here, you are trying to link
+// two compilation units that have different definitions for
+// ORT_API_MANUAL_INIT together. All compilation units must agree on the
+// definition of ORT_API_MANUAL_INIT.
+#pragma detect_mismatch("ORT_API_MANUAL_INIT", "disabled")
+#endif
+
+inline const OrtApi* detail::Global::DefaultInit() noexcept {
+  return OrtGetApiBase()->GetApi(ORT_API_VERSION);
+}
+#endif  // ORT_API_MANUAL_INIT
+
 /// This returns a reference to the ORT C API.
-inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
+inline const OrtApi& GetApi() noexcept { return *detail::Global::Api(); }
 
 /// <summary>
 /// This function returns the onnxruntime version string
@@ -1049,6 +1112,16 @@ struct EpDevice : detail::EpDeviceImpl<OrtEpDevice> {
   EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardware_device,
            ConstKeyValuePairs ep_metadata = {}, ConstKeyValuePairs ep_options = {});
 };
+
+/** \brief Validate a compiled model's compatibility for one or more EP devices.
+ *
+ * Throws on error. Returns the resulting compatibility status.
+ * /// \param ep_devices The EP devices to check compatibility against.
+ * /// \param compatibility_info The compatibility string from the precompiled model to validate.
+ */
+OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
+    const std::vector<ConstEpDevice>& ep_devices,
+    const char* compatibility_info);
 
 /** \brief The Env (Environment)
  *
