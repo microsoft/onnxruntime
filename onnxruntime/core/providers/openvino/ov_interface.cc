@@ -11,6 +11,7 @@
 #include "core/providers/openvino/backend_utils.h"
 #include "core/providers/openvino/backends/basic_backend.h"
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
+#include "core/providers/openvino/onnx_ctx_model_helper.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -191,14 +192,23 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
                              "Exception while Loading Network for graph {}", name);
 }
 
-OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
+OVExeNetwork OVCore::ImportModel(ModelBlobWrapper& model_blob,
                                  std::string hw_target,
                                  const ov::AnyMap& device_config,
                                  std::string name) {
   return OvExceptionBoundary([&]() {
     ov::CompiledModel obj;
-    obj = core.import_model(model_stream, hw_target, device_config);
+#if (OPENVINO_VERSION_MAJOR > 2025 || (OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR >= 3))
+    if (!model_blob.maybe_native_blob_path_.empty()) {
+      obj = core.import_model(ov::read_tensor_data(model_blob.maybe_native_blob_path_), hw_target, device_config);
+    } else {
+      obj = core.import_model(*model_blob.stream_, hw_target, device_config);
+    }
+#else
+    obj = core.import_model(*model_blob.stream_, hw_target, device_config);
+#endif
     OVExeNetwork exe(obj, hw_target);
+
 #ifndef NDEBUG
     printDebugInfo(exe.Get());
 #endif

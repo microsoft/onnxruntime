@@ -100,7 +100,8 @@ Status EPCtxHandler::AddOVEPCtxNodeToGraph(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) const {
+std::unique_ptr<ModelBlobWrapper>
+EPCtxHandler::GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) const {
   auto first_index = *graph_viewer.GetNodesInTopologicalOrder().begin();
   auto node = graph_viewer.GetNode(first_index);
   ORT_ENFORCE(node != nullptr);
@@ -113,10 +114,11 @@ std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(const std::filesy
   bool embed_mode = static_cast<bool>(attrs.at(EMBED_MODE).i());
 
   std::unique_ptr<std::istream> result;
+  std::filesystem::path blob_filepath{};
   if (embed_mode) {
     result.reset((std::istream*)new std::istringstream(ep_cache_context));
   } else {
-    auto blob_filepath = so_context_file_path;
+    blob_filepath = so_context_file_path;
     if (blob_filepath.empty() && !graph_viewer.ModelPath().empty()) {
       blob_filepath = graph_viewer.ModelPath();
     }
@@ -126,16 +128,18 @@ std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(const std::filesy
   }
 
   bool isXML = backend_utils::IsModelStreamXML(*result);
+  std::filesystem::path native_blob_path{};
   if (!isXML) {
     // If the model stream is not an XML (i.e. precompiled blob), the OpenVINO SDK version that it was
     // exported with must match the version that is currently running.
+    native_blob_path = std::move(blob_filepath);
     ORT_ENFORCE((attrs.count(EP_SDK_VER) == 1) && (attrs.at(EP_SDK_VER).s() == openvino_sdk_version_),
                 "EPCtx blob was exported / is compatible with OpenVINO SDK version " + attrs.at(EP_SDK_VER).s() +
                     ", but OpenVINO SDK version currently in use is " + openvino_sdk_version_);
   }
 
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Read blob from EPContext Node";
-  return result;
+  return std::make_unique<ModelBlobWrapper>(std::move(result), native_blob_path);
 }
 
 bool EPCtxHandler::CheckForOVEPCtxNodeInGraph(const GraphViewer& graph_viewer) const {
