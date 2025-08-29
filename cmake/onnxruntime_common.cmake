@@ -194,9 +194,16 @@ if(APPLE)
   target_link_libraries(onnxruntime_common PRIVATE "-framework Foundation")
 endif()
 
+# TODO do we need these tests for ARM64, X64, etc. when we have CPUINFO_SUPPORTED?
+# if so, what's the point of CPUINFO_SUPPORTED?
+# maybe this can be cleaned up to just check CPUINFO_SUPPORTED...
+block(SCOPE_FOR VARIABLES PROPAGATE onnxruntime_EXTERNAL_LIBRARIES)
+
 if(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
     set(ARM64 TRUE)
+  elseif (onnxruntime_target_platform STREQUAL "ARM64EC")
+    set(ARM64EC TRUE)
   elseif (onnxruntime_target_platform STREQUAL "ARM")
     set(ARM TRUE)
   elseif(onnxruntime_target_platform STREQUAL "x64")
@@ -241,13 +248,17 @@ elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 endif()
 
-if (RISCV64 OR ARM64 OR ARM OR X86 OR X64 OR X86_64)
+if(CPUINFO_SUPPORTED)
+  if (RISCV64 OR ARM64 OR ARM64EC OR ARM OR X86 OR X64 OR X86_64)
     # Link cpuinfo if supported
-    if (CPUINFO_SUPPORTED)
-      onnxruntime_add_include_to_target(onnxruntime_common cpuinfo::cpuinfo)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo ${ONNXRUNTIME_CLOG_TARGET_NAME})
-    endif()
+    onnxruntime_add_include_to_target(onnxruntime_common cpuinfo::cpuinfo)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo ${ONNXRUNTIME_CLOG_TARGET_NAME})
+  else()
+    message(FATAL_ERROR "CPUINFO_SUPPORTED is true, but cpuinfo will not be linked to.")
+  endif()
 endif()
+
+endblock()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
