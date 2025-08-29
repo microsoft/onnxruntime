@@ -31,10 +31,10 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
   const auto& copy_kv_shape = shader.AddIndices("copy_kv_shape");
-  shader.AddInput("seqlen_k");
+  shader.AddInput("seqlen_k", ShaderUsage::None);
   // If prepare_indirect_dispatch is enabled, add seqlen_k input and indirect_buffer output
   if (prepare_indirect_dispatch_) {
-    shader.AddOutput("indirect_buffer", ShaderUsage::UseUniform);
+    shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.copy_size")
@@ -184,7 +184,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status FlashAttentionDecodeQKTProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  shader.AddInput("seqlens_k");
+  shader.AddInput("seqlens_k", ShaderUsage::None);
   if (has_attention_bias_) {
     shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
@@ -241,7 +241,7 @@ Status FlashAttentionDecodeSplitVxProgram::GenerateShaderCode(ShaderHelper& shad
   shader.AddInput("metadata", ShaderUsage::UseUniform);
   shader.AddInput("qk", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("present_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("seqlens_k");
+  shader.AddInput("seqlens_k", ShaderUsage::None);
   shader.AddOutput("out_split_vx", ShaderUsage::UseUniform);
 
   const uint32_t tile_size_k_vec = 8u;
@@ -292,7 +292,7 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
 
 Status FlashAttentionDecodeVxReduceProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input", ShaderUsage::UseUniform);
-  shader.AddInput("seqlens_k");
+  shader.AddInput("seqlens_k", ShaderUsage::None);
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_decode_vx_reduce.wgsl.template",
