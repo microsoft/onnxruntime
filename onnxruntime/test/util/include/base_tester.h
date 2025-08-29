@@ -17,8 +17,8 @@
 #include "core/graph/graph.h"
 #include "core/graph/model.h"
 
-#include "test/framework/TestAllocatorManager.h"
 #include "test/util/include/checkers.h"
+#include "test/util/include/test_allocator_manager.h"
 #include "test/util/include/tester_types.h"
 
 namespace onnxruntime {

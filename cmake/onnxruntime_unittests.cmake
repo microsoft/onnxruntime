@@ -492,8 +492,6 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     "${TEST_SRC_DIR}/providers/*.h"
     "${TEST_SRC_DIR}/providers/*.cc"
     "${TEST_SRC_DIR}/opaque_api/test_opaque_api.cc"
-    "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
-    "${TEST_SRC_DIR}/framework/TestAllocatorManager.h"
     "${TEST_SRC_DIR}/framework/test_utils.cc"
     "${TEST_SRC_DIR}/framework/test_utils.h"
     "${TEST_SRC_DIR}/contrib_ops/*.h"
@@ -1178,8 +1176,6 @@ block()
     ${TEST_SRC_DIR}/framework/dummy_allocator.cc
     ${TEST_SRC_DIR}/framework/dummy_allocator.h
     ${TEST_SRC_DIR}/framework/test_utils.cc
-    ${TEST_SRC_DIR}/framework/TestAllocatorManager.cc
-    ${TEST_SRC_DIR}/framework/TestAllocatorManager.h
   )
 
   set(onnxruntime_provider_test_srcs
@@ -1578,14 +1574,7 @@ endif()
       TARGET onnxruntime_test_debug_node_inputs_outputs
       SOURCES
         "${TEST_SRC_DIR}/debug_node_inputs_outputs/debug_node_inputs_outputs_utils_test.cc"
-        "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
         "${TEST_SRC_DIR}/framework/test_utils.cc"
-        "${TEST_SRC_DIR}/util/include/base_tester.h"
-        "${TEST_SRC_DIR}/util/base_tester.cc"
-        "${TEST_SRC_DIR}/util/include/checkers.h"
-        "${TEST_SRC_DIR}/util/checkers.cc"
-        "${TEST_SRC_DIR}/util/include/op_tester.h"
-        "${TEST_SRC_DIR}/util/op_tester.cc"
         "${TEST_SRC_DIR}/providers/provider_test_utils.h"
         "${TEST_SRC_DIR}/util/include/tester_types.h"
         ${onnxruntime_unittest_main_src}
