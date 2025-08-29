@@ -201,6 +201,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
 #include <map>
 #include <vector>
 
+#ifndef ORT_EP_UTILS_C_RETURN_IF_ERROR
 #define ORT_EP_UTILS_C_RETURN_IF_ERROR(fn) \
   do {                                     \
     OrtStatus* _status = (fn);             \
@@ -208,7 +209,9 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
       return Ort::Status{_status};         \
     }                                      \
   } while (0)
+#endif
 
+#ifndef ORT_EP_UTILS_CXX_RETURN_IF_ERROR
 #define ORT_EP_UTILS_CXX_RETURN_IF_ERROR(fn) \
   do {                                       \
     Ort::Status _status = (fn);              \
@@ -216,13 +219,16 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
       return _status;                        \
     }                                        \
   } while (0)
+#endif
 
+#ifndef ORT_EP_UTILS_C_RETURN_IF
 #define ORT_EP_UTILS_C_RETURN_IF(cond, ort_api, msg)               \
   do {                                                             \
     if ((cond)) {                                                  \
       return Ort::Status{(ort_api).CreateStatus(ORT_FAIL, (msg))}; \
     }                                                              \
   } while (0)
+#endif
 
 namespace OrtEpUtils {
 
