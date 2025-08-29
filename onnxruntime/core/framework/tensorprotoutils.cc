@@ -347,43 +347,25 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
   // For some data_type, element size differs for raw data vs
   // data set using the add_<data_type>data() API
   if (tensor.has_raw_data()) {
-    switch (tensor.data_type()) {
-      case TensorProto_DataType_FLOAT:
-        element_size = sizeof(float);
-        break;
-
-      case TensorProto_DataType_UINT8:
-      case TensorProto_DataType_INT8:
-        element_size = sizeof(uint8_t);
-        break;
-
-      case TensorProto_DataType_UINT16:
-      case TensorProto_DataType_INT16:
-      case TensorProto_DataType_FLOAT16:
-      case TensorProto_DataType_BFLOAT16:
-        element_size = sizeof(uint16_t);
-        break;
-      case TensorProto_DataType_INT32:
-      case TensorProto_DataType_UINT32:
-        element_size = sizeof(int32_t);
-        break;
-
-      case TensorProto_DataType_UINT64:
-        element_size = sizeof(uint64_t);
-        break;
-
-      case TensorProto_DataType_INT64:
-        element_size = sizeof(int64_t);
-        break;
-
-      case TensorProto_DataType_DOUBLE:
-        element_size = sizeof(double);
-        break;
-
-      case TensorProto_DataType_COMPLEX64:
-        element_size = sizeof(float);
-        break;
+    static std::unordered_map<size_t, size_t> tensorproto_data_size{
+        {TensorProto_DataType_FLOAT, sizeof(float)},
+        {TensorProto_DataType_UINT8, sizeof(uint8_t)},
+        {TensorProto_DataType_INT8, sizeof(int8_t)},
+        {TensorProto_DataType_UINT16, sizeof(uint16_t)},
+        {TensorProto_DataType_INT16, sizeof(int16_t)},
+        {TensorProto_DataType_FLOAT16, sizeof(uint16_t)},
+        {TensorProto_DataType_BFLOAT16, sizeof(uint16_t)},
+        {TensorProto_DataType_INT32, sizeof(int32_t)},
+        {TensorProto_DataType_UINT32, sizeof(uint32_t)},
+        {TensorProto_DataType_UINT64, sizeof(uint64_t)},
+        {TensorProto_DataType_INT64, sizeof(int64_t)},
+        {TensorProto_DataType_DOUBLE, sizeof(double)},
+    };
+    auto pos = tensorproto_data_size.find(tensor.data_type());
+    if (pos == tensorproto_data_size.end()) {
+      return;
     }
+    element_size = pos->second;
     if (element_size <= 1) {
       return;
     }
@@ -435,12 +417,6 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
         bytes = tensor.mutable_double_data()->mutable_data();
         num_elements = tensor.double_data_size();
         element_size = sizeof(double);
-        break;
-
-      case TensorProto_DataType_COMPLEX64:
-        bytes = tensor.mutable_float_data()->mutable_data();
-        num_elements = tensor.float_data_size();
-        element_size = sizeof(float);
         break;
     }
 

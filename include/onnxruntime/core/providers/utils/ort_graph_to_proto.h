@@ -870,6 +870,22 @@ static Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* dat
   if constexpr (onnxruntime::endian::native == onnxruntime::endian::little) {
     return Ort::Status{nullptr};
   }
+  using tensor_elem_data_map = std::unordered_map<ONNXTensorElementDataType, size_t>;
+  ;
+  static tensor_elem_data_map tensor_elem_data_size{
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, sizeof(float)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, sizeof(int8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16, sizeof(uint16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, sizeof(int16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, sizeof(uint16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, sizeof(uint16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, sizeof(int32_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32, sizeof(uint32_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, sizeof(int64_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64, sizeof(uint64_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, sizeof(double)},
+  };
   std::vector<int64_t> initializer_dims;
   std::vector<std::string> initializer_sym_dims;
   ONNXTensorElementDataType initializer_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
@@ -877,38 +893,12 @@ static Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* dat
   ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(*value_info, false,
                                                                   initializer_elem_type, initializer_dims,
                                                                   initializer_sym_dims));
-  switch (initializer_elem_type) {
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-      element_size = sizeof(float);
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-      element_size = sizeof(uint8_t);
-      break;
-
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
-      element_size = sizeof(uint16_t);
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-      element_size = sizeof(int32_t);
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-      element_size = sizeof(int64_t);
-      break;
-
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-      element_size = sizeof(double);
-      break;
-    default: {
-      std::string err_msg = "Unexpected ONNXTensorElementDataType with value " + std::to_string(static_cast<int>(initializer_elem_type));
-      return Ort::Status(err_msg.c_str(), ORT_FAIL);
-    }
+  auto pos = tensor_elem_data_size.find(initializer_elem_type);
+  if (pos == tensor_elem_data_size.end()) {
+    std::string err_msg = "Unexpected ONNXTensorElementDataType with value " + std::to_string(static_cast<int>(initializer_elem_type));
+    return Ort::Status(err_msg.c_str(), ORT_FAIL);
   }
+  element_size = pos->second;
   gsl::span<std::byte> span = gsl::make_span(reinterpret_cast<std::byte*>(data), bytes);
   onnxruntime::utils::SwapByteOrderInplace(element_size, span);
   return Ort::Status{nullptr};
