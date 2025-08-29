@@ -3473,7 +3473,7 @@ inline void GraphImpl<T>::AddNode(Node& node) {
 template <typename T>
 inline void ModelImpl<T>::AddGraph(Graph& graph) {
   // Model takes ownership of `graph`
-  ThrowOnError(GetModelEditorApi().AddGraphToModel(p_, graph.release()));
+  ThrowOnError(GetModelEditorApi().AddGraphToModel(this->p_, graph.release()));
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
