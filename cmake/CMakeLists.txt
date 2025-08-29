@@ -1607,7 +1607,6 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
   endif()
 endif()
 
-
 #Now the 'onnxruntime_EXTERNAL_LIBRARIES' variable should be sealed. It will be used in onnxruntime.cmake which will be included in the next.
 #The order of the following targets matters. Right depends on left. If target A appears before target B. Then A.cmake can not use variables defined in B.cmake.
 set(ONNXRUNTIME_CMAKE_FILES onnxruntime_flatbuffers onnxruntime_common onnxruntime_mlas onnxruntime_graph onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session ${ONNXRUNTIME_EAGER_CMAKE_FILE_NAME})
@@ -1623,9 +1622,6 @@ if (onnxruntime_USE_WINML)
   list(APPEND ONNXRUNTIME_CMAKE_FILES winml)
 endif() # if (onnxruntime_USE_WINML)
 
-if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
-  message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
-endif()
 list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 
 if (onnxruntime_BUILD_JAVA)

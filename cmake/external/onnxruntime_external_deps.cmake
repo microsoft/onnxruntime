@@ -313,35 +313,30 @@ onnxruntime_fetchcontent_makeavailable(nlohmann_json)
 if (onnxruntime_ENABLE_CPUINFO)
   # Adding pytorch CPU info library
   # TODO!! need a better way to find out the supported architectures
-  list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
+  set(CPUINFO_SUPPORTED FALSE)
   if (APPLE)
+    list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
     if (CMAKE_OSX_ARCHITECTURES_LEN LESS_EQUAL 1)
       set(CPUINFO_SUPPORTED TRUE)
-    elseif (onnxruntime_BUILD_APPLE_FRAMEWORK)
-      # We stitch multiple static libraries together when onnxruntime_BUILD_APPLE_FRAMEWORK is true,
-      # but that would not work for universal static libraries
-      message(FATAL_ERROR "universal binary is not supported for apple framework")
-    endif()
-  else()
-    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo
-    # so we don't set CPUINFO_SUPPORTED in the CXX flags below.
-    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_USE_XNNPACK)
-      set(CPUINFO_SUPPORTED FALSE)
     else()
-      set(CPUINFO_SUPPORTED TRUE)
+      message(WARNING "cpuinfo is not supported when CMAKE_OSX_ARCHITECTURES has more than one value.")
     endif()
-    if (WIN32)
+  elseif (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_XNNPACK)
+    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo.
+    set(CPUINFO_SUPPORTED TRUE)
+  elseif (WIN32)
+    set(CPUINFO_SUPPORTED TRUE)
+  else()
+    if (onnxruntime_target_platform MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
       set(CPUINFO_SUPPORTED TRUE)
-    elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
-      message(WARNING
-        "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "
-        "cpuinfo not included."
-      )
-      set(CPUINFO_SUPPORTED FALSE)
+    else()
+      message(WARNING "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo.")
     endif()
   endif()
-else()
-  set(CPUINFO_SUPPORTED FALSE)
+
+  if(NOT CPUINFO_SUPPORTED)
+    message(WARNING "onnxruntime_ENABLE_CPUINFO was set but cpuinfo is not supported.")
+  endif()
 endif()
 
 if (CPUINFO_SUPPORTED)
@@ -352,10 +347,10 @@ if (CPUINFO_SUPPORTED)
 
   # if this is a wasm build with xnnpack (only type of wasm build where cpuinfo is involved)
   # we do not use cpuinfo in ORT code, so don't define CPUINFO_SUPPORTED.
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_XNNPACK)
+  else()
+    add_compile_definitions(CPUINFO_SUPPORTED)
   endif()
-
 
   set(CPUINFO_BUILD_TOOLS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
