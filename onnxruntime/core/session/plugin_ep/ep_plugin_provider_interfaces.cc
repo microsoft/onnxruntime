@@ -668,8 +668,15 @@ Status PluginExecutionProvider::ValidateCompiledModelCompatibilityInfo(const std
     // Plugin EP did not provide an implementation of this function, so we call a default implementation.
     return Base::ValidateCompiledModelCompatibilityInfo(compatibility_info, model_compatibility);
   }
-  // Delegate to the EP factory's validation method
+  // Delegate to the EP factory's validation method, passing hardware devices derived from our ep_devices_
+  std::vector<const OrtHardwareDevice*> hardware_devices;
+  hardware_devices.reserve(ep_devices_.size());
+  for (const auto* ep_device : ep_devices_) {
+    hardware_devices.push_back(ep_device->device);
+  }
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory_.ValidateCompiledModelCompatibilityInfo(&ep_factory_,
+                                                                                            hardware_devices.data(),
+                                                                                            hardware_devices.size(),
                                                                                             compatibility_info.c_str(),
                                                                                             &model_compatibility)));
   return Status::OK();

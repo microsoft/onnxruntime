@@ -233,8 +233,9 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(const OrtValueInfo& ort_value_
                                                   /*out*/ std::vector<int64_t>& dims,
                                                   /*out*/ std::vector<std::string>& symbolic_dims);
 static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info, onnx::ValueInfoProto& value_info_proto);
-static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& ort_attr, onnx::AttributeProto& attr_proto);
+static Ort::Status OrtOpAttrToProto(const OrtOpAttr& ort_attr, onnx::AttributeProto& attr_proto);
 static Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes);
+
 
 Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
                             onnx::GraphProto& graph_proto,
@@ -381,7 +382,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
         }
 
         onnx::AttributeProto* attr_proto = node_proto->add_attribute();
-        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtOpAttrToProto(*ort_node, *ort_attr, *attr_proto));
+        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtOpAttrToProto(*ort_attr, *attr_proto));
       }
     }
 
@@ -654,7 +655,7 @@ static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info,
   return Ort::Status{nullptr};
 }
 
-static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& ort_attr, onnx::AttributeProto& attr_proto) {
+static Ort::Status OrtOpAttrToProto(const OrtOpAttr& ort_attr, onnx::AttributeProto& attr_proto) {
   const OrtApi& ort_api = Ort::GetApi();
 
   const char* attr_name = nullptr;
@@ -768,7 +769,7 @@ static Ort::Status OrtOpAttrToProto(const OrtNode& ort_node, const OrtOpAttr& or
       // TensorProto as an attribute value doesn't require a name.
 
       OrtValue* ort_value = nullptr;
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.Node_GetTensorAttributeAsOrtValue(&ort_node, &ort_attr, &ort_value));
+      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.OpAttr_GetTensorAttributeAsOrtValue(&ort_attr, &ort_value));
 
       Ort::Value tensor(ort_value);
 
