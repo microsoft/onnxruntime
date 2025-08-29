@@ -331,7 +331,13 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         const int64_t token_idx = route_idx / k_;
         const float weight = route_scale[route_idx];
 
-        float* dest = thread_local_outputs + static_cast<size_t>(thread_id) * output_buffer_size + token_idx * hidden_size;
+        const size_t buffer_offset = static_cast<size_t>(token_idx) * static_cast<size_t>(hidden_size);
+        if (buffer_offset + static_cast<size_t>(hidden_size) > output_buffer_size) {
+          // Skip this token to prevent buffer overflow
+          continue;
+        }
+
+        float* dest = thread_local_outputs + static_cast<size_t>(thread_id) * output_buffer_size + buffer_offset;
         const float* src = C2 + i * hidden_size;
         for (int64_t j = 0; j < hidden_size; ++j) {
           dest[j] += weight * (src[j] + (B2_bias ? bias2_float[j] : 0.0f));
@@ -344,8 +350,9 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   auto accumulate = [&](float* buffer) {
     memset(buffer, 0, output_buffer_size * sizeof(float));
     for (int i = 0; i < num_expert_threads; ++i) {
+      const size_t thread_offset = static_cast<size_t>(i) * output_buffer_size;
       for (size_t j = 0; j < output_buffer_size; ++j) {
-        buffer[j] += thread_local_outputs[static_cast<size_t>(i) * output_buffer_size + j];
+        buffer[j] += thread_local_outputs[thread_offset + j];
       }
     }
   };

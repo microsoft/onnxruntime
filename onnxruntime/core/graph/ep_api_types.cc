@@ -249,32 +249,6 @@ Status EpNode::GetAttributes(gsl::span<const OrtOpAttr*> dst) const {
   return Status::OK();
 }
 
-Status EpNode::GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute, OrtValue*& result) const {
-  const auto* attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute);
-
-  if (attr_proto->type() != onnx::AttributeProto::TENSOR) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This OrtOpAttr instance is not a 'TENSOR' attribute");
-  }
-
-  const auto& graph_viewer = ep_graph_->GetGraphViewer();
-  const auto& tensor_proto = attr_proto->t();
-
-  // Check that TensorProto is valid.
-  ORT_ENFORCE(utils::HasDataType(tensor_proto), "Tensor proto doesn't have data type.");
-  ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(tensor_proto.data_type()), "Tensor proto has invalid data type.");
-  ORT_ENFORCE(!utils::HasExternalData(tensor_proto),
-              "Tensor proto with external data for value attribute is not supported.");
-
-  // Initialize OrtValue for tensor attribute.
-  auto tensor_attribute_value = std::make_unique<OrtValue>();
-  AllocatorPtr tensor_attribute_allocator = CPUAllocator::DefaultInstance();
-  ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), tensor_proto,
-                                                   tensor_attribute_allocator, *tensor_attribute_value));
-
-  result = tensor_attribute_value.release();
-  return Status::OK();
-}
-
 Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {
   num_subgraphs = subgraphs_.size();
   return Status::OK();
