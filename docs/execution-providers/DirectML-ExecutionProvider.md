@@ -9,6 +9,9 @@ redirect_from: /docs/reference/execution-providers/DirectML-ExecutionProvider
 # DirectML Execution Provider
 {: .no_toc }
 
+{: .note }
+**Note: DirectML is deprecated.** Please use [WinML](../get-started/with-windows.md) for Windows-based ONNX Runtime deployments. WinML provides the same ONNX Runtime APIs while dynamically selecting the best execution provider based on your hardware. See the [WinML install section](../install/#cccwinml-installs) for installation instructions.
+
 The DirectML Execution Provider is a component of ONNX Runtime that uses [DirectML](https://docs.microsoft.com/en-us/windows/ai/directml/dml-intro) to accelerate inference of ONNX models. The DirectML execution provider is capable of greatly improving evaluation time of models using commodity GPU hardware, without sacrificing broad hardware support or requiring vendor-specific extensions to be installed.
 
 
