@@ -864,9 +864,9 @@ Status MatMulNBitsOpBuilder::ProcessAttributesAndOutputs([[maybe_unused]]QnnMode
       int output_ndim = node_outputs[0].node_arg.Shape()->dim_size();
       int32_t default_axis = output_ndim - 1;
       Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
-      axis_qnn_scalar.dataType = QNN_DATATYPE_INT_32;
+      axis_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
       axis_qnn_scalar.int32Value = default_axis;
-      QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_SOFTMAX_PARAM_AXIS, axis_qnn_scalar);
+      QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_CONCAT_PARAM_AXIS, axis_qnn_scalar);
       param_tensor_names_concat.push_back(axis_param.GetParamTensorName());
       qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
 
@@ -875,7 +875,7 @@ Status MatMulNBitsOpBuilder::ProcessAttributesAndOutputs([[maybe_unused]]QnnMode
                                                         QNN_OP_CONCAT,
                                                         std::move(split_output_tensor_names),
                                                         {node_outputs[0].node_arg.Name()},
-                                                        std::move(param_tensor_names_concat),
+                                                        {},//std::move(param_tensor_names_concat),
                                                         do_op_validation),
                         "Failed to add fused Concat node.");
     }
