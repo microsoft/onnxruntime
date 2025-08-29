@@ -68,6 +68,7 @@ if wheel_name_suffix == "gpu":
         is_cuda_version_12 = cuda_version.startswith("12.")
 elif parse_arg_remove_boolean(sys.argv, "--use_migraphx"):
     is_migraphx = True
+    package_name = "onnxruntime-migraphx"
 elif parse_arg_remove_boolean(sys.argv, "--use_openvino"):
     is_openvino = True
     package_name = "onnxruntime-openvino"
@@ -90,8 +91,6 @@ elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     is_qnn = True
     package_name = "onnxruntime-qnn"
     qnn_version = parse_arg_remove_string(sys.argv, "--qnn_version=")
-elif is_migraphx:
-    package_name = "onnxruntime-migraphx" if not nightly_build else "ort-migraphx-nightly"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -283,7 +282,6 @@ try:
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
                 self._rewrite_ld_preload_tensorrt(to_preload_nv_tensorrt_rtx)
                 self._rewrite_ld_preload(to_preload_cann)
-
             else:
                 pass
 
@@ -412,10 +410,13 @@ else:
     libs.extend(["onnxruntime_providers_nv_tensorrt_rtx.dll"])
     libs.extend(["onnxruntime_providers_openvino.dll"])
     libs.extend(["onnxruntime_providers_cuda.dll"])
+    libs.extend(["onnxruntime_providers_migraphx.dll"])
     libs.extend(["onnxruntime_providers_vitisai.dll"])
     libs.extend(["onnxruntime_providers_qnn.dll"])
     # DirectML Libs
     libs.extend(["DirectML.dll"])
+    # WebGPU/Dawn Libs
+    libs.extend(["dxcompiler.dll", "dxil.dll"])
     # QNN V68/V73 dependencies
     qnn_deps = [
         "QnnCpu.dll",
@@ -433,6 +434,26 @@ else:
     libs.extend(qnn_deps)
     if nightly_build:
         libs.extend(["onnxruntime_pywrapper.dll"])
+    migraphx_deps = [
+        "amd_comgr0602.dll",
+        "amd_comgr0604.dll",
+        "amd_comgr0700.dll",
+        "hiprtc0602.dll",
+        "hiprtc0604.dll",
+        "hiprtc0700.dll",
+        "hiprtc-builtins0602.dll",
+        "hiprtc-builtins0604.dll",
+        "hiprtc-builtins0700.dll",
+        "migraphx-hiprtc-driver.exe",
+        "migraphx.dll",
+        "migraphx_c.dll",
+        "migraphx_cpu.dll",
+        "migraphx_device.dll",
+        "migraphx_gpu.dll",
+        "migraphx_onnx.dll",
+        "migraphx_tf.dll",
+    ]
+    libs.extend(migraphx_deps)
 
 if is_manylinux:
     if is_openvino:
@@ -476,7 +497,7 @@ examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join("datasets", x) for x in examples_names]
 
 # Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)
-extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm AI Hub Proprietary License.pdf"]
+extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm_LICENSE.pdf"]
 
 # Description
 readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"

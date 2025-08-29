@@ -199,12 +199,20 @@ class BucketCacheManager : public IBufferCacheManager {
     if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
       it->second.emplace_back(buffer);
     } else {
-      wgpuBufferRelease(buffer);
+      pending_buffers_.emplace_back(buffer, buffer_size);
     }
   }
 
   void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
-    // no-op
+    for (auto& [buffer, buffer_size] : pending_buffers_) {
+      auto it = buckets_.find(buffer_size);
+      if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
+        it->second.emplace_back(buffer);
+      } else {
+        wgpuBufferRelease(buffer);
+      }
+    }
+    pending_buffers_.clear();
   }
 
   ~BucketCacheManager() {
@@ -236,6 +244,7 @@ class BucketCacheManager : public IBufferCacheManager {
   }
   std::unordered_map<size_t, size_t> buckets_limit_;
   std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
+  std::vector<std::pair<WGPUBuffer, size_t>> pending_buffers_;
   std::vector<size_t> buckets_keys_;
 };
 
@@ -499,27 +508,10 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) const {
   wgpu::BufferDescriptor desc{};
   desc.size = buffer_size;
   desc.usage = usage;
+  if (usage & wgpu::BufferUsage::MapWrite) {
+    desc.mappedAtCreation = true;  // ensure the buffer is mapped for writing at creation
+  }
   buffer = context_.Device().CreateBuffer(&desc).MoveToCHandle();
-
-  ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
-
-  cache.RegisterBuffer(buffer, size);
-  return buffer;
-}
-
-WGPUBuffer BufferManager::CreateUMA(size_t size, wgpu::BufferUsage usage) const {
-  ORT_ENFORCE(usage & wgpu::BufferUsage::Storage, "UMA buffer must be a storage buffer.");
-  auto& cache = GetCacheManager(usage);
-  auto buffer_size = cache.CalculateBufferSize(size);
-
-  // Ensure the buffer is mapped for writing at creation.
-  usage |= wgpu::BufferUsage::MapWrite;
-
-  wgpu::BufferDescriptor desc{};
-  desc.size = buffer_size;
-  desc.usage = usage;
-  desc.mappedAtCreation = true;
-  auto buffer = context_.Device().CreateBuffer(&desc).MoveToCHandle();
 
   ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
 

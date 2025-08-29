@@ -1,5 +1,5 @@
 parameters:
-  AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  AgentPool: 'onnxruntime-Ubuntu2404-AMD-CPU'
   ArtifactSuffix: ''
   NugetPackageName: ''
   StageSuffix: 'CPU'
@@ -13,7 +13,7 @@ parameters:
 stages:
 - stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
   dependsOn:
-  - NuGet_Packaging_${{ parameters.StageSuffix }}
+  - Setup
   condition: succeeded()
   jobs:
   - job: NuGet_Test_Linux_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
@@ -30,21 +30,18 @@ stages:
       value: '$(Build.BinariesDirectory)'
 
     steps:
-    - template: ../../templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Signed NuGet'
-        ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
-        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
+    - download: build
+      displayName: 'Download Nuget'
+      artifact: 'drop-signed-nuget-${{ parameters.ArtifactSuffix }}'
+    - download: build
+      displayName: 'Download Linux CustomOp TestData'
+      artifact: ${{ parameters.CustomOpArtifactName }}
 
-    - template: ../../templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Linux CustomOp TestData'
-        ArtifactName: ${{ parameters.CustomOpArtifactName }}
-        TargetPath: '$(Build.BinariesDirectory)/testdata'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
+
+    - script: |
+        mv $(Pipeline.Workspace)/build/drop-signed-nuget-${{ parameters.ArtifactSuffix }} $(Build.BinariesDirectory)/nuget-artifact
+        mv $(Pipeline.Workspace)/build/${{ parameters.CustomOpArtifactName }} $(Build.BinariesDirectory)/testdata
+   
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:
@@ -111,5 +108,3 @@ stages:
           DisableMlOps: $(DisableMlOps)
           IsReleaseBuild: $(IsReleaseBuild)
           PACKAGENAME: ${{ parameters.NugetPackageName }}
-
-    - template: ../../templates/clean-agent-build-directory-step.yml

@@ -361,7 +361,6 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 }
 #endif
 
-#ifdef USE_MIGRAPHX
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXAllocator(device_id, name);
 }
@@ -369,7 +368,6 @@ std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const cha
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXPinnedAllocator(device_id, name);
 }
-#endif
 
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
@@ -792,12 +790,12 @@ Status LoadDynamicLibrary(onnxruntime::PathString library_name) {
 #endif
 
 #ifdef _WIN32
-std::string ToUTF8String(const std::wstring& s) {
-  return g_host->ToUTF8String(s);
+std::string ToUTF8String(std::wstring_view s) {
+  return g_host->ToUTF8String(std::wstring{s});
 }
 
-std::wstring ToWideString(const std::string& s) {
-  return g_host->ToWideString(s);
+std::wstring ToWideString(std::string_view s) {
+  return g_host->ToWideString(std::string{s});
 }
 #endif  // _WIN32
 }  // namespace onnxruntime

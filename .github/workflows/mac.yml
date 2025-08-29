@@ -23,37 +23,50 @@ jobs:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       # Only build arm64 for CPU
-      matrix_exclude: >-
+      matrix_include: >-
         [
-          {"platform_machine": "x86_64"}
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
         ]
 
   coreml:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       use_coreml: true
+      matrix_include: >-
+        [
+          {"machine": "x86_64", "target": "x86_64", "build_config": "Release"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
+        ]
 
   xnnpack:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       use_xnnpack: true
       # only build arm64/Debug for XNNPack
-      matrix_exclude: >-
+      matrix_include: >-
         [
-          {"platform_machine": "x86_64"},
-          {"platform_machine": "arm64", "build_config": "Release"}
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"}
         ]
 
   webgpu:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       use_webgpu: true
+      matrix_include: >-
+        [
+          {"machine": "arm64", "target": "x86_64", "build_config": "Release"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
+        ]
 
   iphone_simulator:
     runs-on: macos-15
 
     env:
-      xcode_version: 16
+      xcode_version: 16.4
+      simulator_runtime_version: 18.5
 
     strategy:
       matrix:
@@ -63,7 +76,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup
@@ -90,6 +103,8 @@ jobs:
             --apple_deploy_target=15.1 \
             --apple_sysroot=iphonesimulator \
             --osx_arch=${{ matrix.target_arch }}
+        env:
+          ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ env.simulator_runtime_version }}
 
   Objective-C-StaticAnalysis:
     runs-on: macos-14
@@ -101,7 +116,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup

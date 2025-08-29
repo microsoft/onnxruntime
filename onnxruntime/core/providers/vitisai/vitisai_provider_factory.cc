@@ -101,8 +101,8 @@ struct VitisAI_Provider : Provider {
 } g_provider;
 
 struct VitisAIEpFactory : OrtEpFactory {
-  VitisAIEpFactory(const OrtApi& ort_api_in)
-      : ort_api{ort_api_in} {
+  VitisAIEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in)
+      : ort_api{ort_api_in}, default_logger{default_logger_in} {
     ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
@@ -111,6 +111,13 @@ struct VitisAIEpFactory : OrtEpFactory {
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
+
+    CreateAllocator = CreateAllocatorImpl;
+    ReleaseAllocator = ReleaseAllocatorImpl;
+    CreateDataTransfer = CreateDataTransferImpl;
+
+    IsStreamAware = IsStreamAwareImpl;
+    CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   }
 
   static const char* GetNameImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
@@ -175,7 +182,45 @@ struct VitisAIEpFactory : OrtEpFactory {
     // no-op as we never create an EP here.
   }
 
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
+                                                     const OrtMemoryInfo* /*memory_info*/,
+                                                     const OrtKeyValuePairs* /*allocator_options*/,
+                                                     OrtAllocator** allocator) noexcept {
+    auto* factory = static_cast<VitisAIEpFactory*>(this_ptr);
+
+    *allocator = nullptr;
+    return factory->ort_api.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "CreateAllocator should not be called as we did not add OrtMemoryInfo to our OrtEpDevice.");
+  }
+
+  static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* /*allocator*/) noexcept {
+    // should never be called as we don't implement CreateAllocator
+  }
+
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* /*this_ptr*/,
+                                                        OrtDataTransferImpl** data_transfer) noexcept {
+    *data_transfer = nullptr;  // not implemented
+    return nullptr;
+  }
+
+  static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return false;
+  }
+
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+                                                               const OrtMemoryDevice* /*memory_device*/,
+                                                               const OrtKeyValuePairs* /*stream_options*/,
+                                                               OrtSyncStreamImpl** stream) noexcept {
+    auto* factory = static_cast<VitisAIEpFactory*>(this_ptr);
+
+    *stream = nullptr;
+    return factory->ort_api.CreateStatus(
+        ORT_INVALID_ARGUMENT, "CreateSyncStreamForDevice should not be called as IsStreamAware returned false.");
+  }
+
   const OrtApi& ort_api;
+  const OrtLogger& default_logger;
   static constexpr const char* const ep_name{kVitisAIExecutionProvider};
   static constexpr std::uint32_t hardware_vendor_id{0x1022};
   static constexpr const char* const vendor{"AMD"};
@@ -190,13 +235,14 @@ ORT_API(onnxruntime::Provider*, GetProvider) {
 }
 
 OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
+                             const OrtLogger* default_logger,
                              OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
                                  "Not enough space to return EP factory. Need at least one.");
   }
-  factories[0] = std::make_unique<onnxruntime::VitisAIEpFactory>(*ort_api).release();
+  factories[0] = std::make_unique<onnxruntime::VitisAIEpFactory>(*ort_api, *default_logger).release();
   *num_factories = 1;
   return nullptr;
 }

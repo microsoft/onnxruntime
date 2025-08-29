@@ -72,7 +72,7 @@ void MatMulReadFnSource(ShaderHelper& shader,
               ? ", batch_indices: batch_dims_indices_t"
               : "")
       << ") -> " << type_string << " {\n "
-      << "    var value = " << type_string << "(0.0);\n"
+      << "    var value = " << type_string << "(0);\n"
       << "    let col = colIn * " << components << ";\n";
   if (transA) {
     shader.AdditionalImplementation() << "    if(row < i32(uniforms.dim_inner) && col < i32(uniforms.dim_a_outer)) {\n";
@@ -98,7 +98,7 @@ void MatMulReadFnSource(ShaderHelper& shader,
               ? ", batch_indices: batch_dims_indices_t"
               : "")
       << ") -> " << type_string << " {\n "
-      << "    var value = " << type_string << "(0.0);\n"
+      << "    var value = " << type_string << "(0);\n"
       << "    let col = colIn * " << components << ";\n";
 
   if (transB) {

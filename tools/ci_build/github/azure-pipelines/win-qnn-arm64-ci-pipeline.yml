@@ -33,7 +33,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.36.1.250708
+  default: 2.37.1.250807
 
 jobs:
 - job: 'BUILD_QNN_EP'
@@ -61,16 +61,6 @@ jobs:
         # because the python bindings also use the USE_<EP>_PROVIDER_INTERFACE preprocessor macros.
         ExtraQnnBuildArgs: '--enable_generic_interface --build_wheel'
   steps:
-
-  - script: |
-      MKDIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
-      XCOPY /s /y /h /e /c /q "C:\Python\Python311\*.*" $(Agent.ToolsDirectory)\Python\3.11.0\arm64\
-      COPY NUL $(Agent.ToolsDirectory)\Python\3.11.0\arm64.complete
-      DIR $(Agent.ToolsDirectory)\Python
-      DIR $(Agent.ToolsDirectory)\Python\3.11.0
-      DIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
-    displayName: Copy python 3.11.0 version to agent tools directory
-
   - task: UsePythonVersion@0
     inputs:
       versionSpec: '3.x'

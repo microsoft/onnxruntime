@@ -40,13 +40,13 @@ struct OrtStatus {
 #define BACKEND_PROC "CPU"
 #endif
 
-#if USE_DNNL
+#ifdef USE_DNNL
 #define BACKEND_DNNL "-DNNL"
 #else
 #define BACKEND_DNNL ""
 #endif
 
-#if USE_MIGRAPHX
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 #define BACKEND_MIGRAPHX "-MIGRAPHX"
 #else
 #define BACKEND_MIGRAPHX ""
@@ -132,7 +132,7 @@ struct OrtStatus {
 #if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
 #include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
 #endif
-#ifdef USE_MIGRAPHX
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #endif
@@ -226,9 +226,14 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 namespace onnxruntime {
 ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
-namespace python {
-extern onnxruntime::MIGraphXExecutionProviderExternalAllocatorInfo migx_external_allocator_info;
-}  // namespace python
+namespace python::migraphx::external {
+extern void* alloc_fn;
+extern void* free_fn;
+extern void* empty_cache_fn;
+inline bool UseExternalAllocator() {
+  return alloc_fn != nullptr && free_fn != nullptr;
+}
+}  // namespace python::migraphx::external
 }  // namespace onnxruntime
 
 #endif

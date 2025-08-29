@@ -229,7 +229,7 @@ int vitisai_ep_set_ep_dynamic_options(
 struct MyCustomOpKernel : OpKernel {
   MyCustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
     op_kernel_ =
-        op_.CreateKernel(&op_, Ort::Global<void>::api_, reinterpret_cast<const OrtKernelInfo*>(&info));
+        op_.CreateKernel(&op_, &Ort::GetApi(), reinterpret_cast<const OrtKernelInfo*>(&info));
   }
 
   ~MyCustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
@@ -332,8 +332,8 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   InitProviderOrtApi();
   set_version_info(the_global_api);
   the_global_api.host_ = Provider_GetHost();
-  assert(Ort::Global<void>::api_ != nullptr);
-  the_global_api.ort_api_ = Ort::Global<void>::api_;
+  assert(&Ort::GetApi() != nullptr);
+  the_global_api.ort_api_ = &Ort::GetApi();
   the_global_api.model_load = [](const std::string& filename) -> Model* {
     auto model_proto = ONNX_NAMESPACE::ModelProto::Create();
     auto& logger = logging::LoggingManager::DefaultLogger();
@@ -580,6 +580,8 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     graph.RemoveInitializedTensor(tensor_name);
   };
   the_global_api.graph_reverse_dfs_from_preemp = vaip::graph_reverse_dfs_from;
+  the_global_api.graph_save_string = vaip::graph_save_string;
+
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
   } else {
