@@ -80,12 +80,12 @@ struct ModelGenOptions {
                std::filesystem::path,  // output model path
                BufferHolder,           // buffer to save output model
                OutStreamHolder>        // Function to write the output model to a user's stream.
-      output_model_location{};
+      output_model_location = std::monostate{};
 
   std::variant<std::monostate,               // Initial state (initializers embedded in ONNX model).
                ExternalInitializerFileInfo,  // Initializers saved in an external file
                InitializerHandler>           // Custom function called for every initializer to determine location.
-      initializers_location{};
+      initializers_location = std::monostate{};
 
   bool HasOutputModelLocation() const;
   const std::filesystem::path* TryGetOutputModelPath() const;
@@ -119,7 +119,7 @@ class OutStreamBuf : public std::streambuf {
 
  private:
   OutStreamHolder out_stream_holder_{};
-  std::array<char, 4096> buffer_{};
+  std::vector<char> buffer_;
   Status last_status_{};
 };
 #endif  // !defined(ORT_MINIMAL_BUILD)

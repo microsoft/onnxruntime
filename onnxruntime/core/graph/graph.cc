@@ -4753,7 +4753,7 @@ Status Graph::ToGraphProtoWithInitializerHandlerImpl(OrtHandleInitializerDataFun
       } else {
         const Tensor& tensor = ort_value.Get<Tensor>();
         output_proto->clear_data_location();
-        output_proto->set_raw_data(tensor.DataRaw(), tensor.SizeInBytes());
+        utils::SetRawDataInTensorProto(*output_proto, tensor.DataRaw(), tensor.SizeInBytes());
       }
 #if !defined(DISABLE_SPARSE_TENSORS)
     }

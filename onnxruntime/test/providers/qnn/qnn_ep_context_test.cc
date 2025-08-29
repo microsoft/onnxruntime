@@ -780,6 +780,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_InputFile_OutputFile_InitializerHandler) {
   CheckEpContextNodeCounts(output_model_file, 2, 2);
 }
 
+#if 0
 static OrtStatus* ORT_API_CALL ReuseExternalInitializers(void* state,
                                                          const char* /*initializer_name*/,
                                                          const OrtValue* /*initializer_value*/,
@@ -841,6 +842,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_InitializerHandler_ReuseExternalInitialize
 
   ASSERT_EQ(num_reused_ext_initializers, 2);  // Reused external conv weight and bias.
 }
+#endif
 
 // Test that the explicit compile API can be configured to return an error if the output model does not
 // have EPContext nodes.

@@ -2546,7 +2546,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateExternalInitializerInfo, _In_ const ORTCHAR_T
   *out = static_cast<OrtExternalInitializerInfo*>(ext_data_info.release());
   return nullptr;
 #else
-  *out = nullptr;
   ORT_UNUSED_PARAMETER(filepath);
   ORT_UNUSED_PARAMETER(file_offset);
   ORT_UNUSED_PARAMETER(byte_size);
