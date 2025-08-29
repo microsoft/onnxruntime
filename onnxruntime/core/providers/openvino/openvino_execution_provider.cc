@@ -94,18 +94,23 @@ common::Status OpenVINOExecutionProvider::Compile(
   auto& logger = *GetLogger();
   Status status = Status::OK();
 
+  bool is_epctx_model = false;
   if (!fused_nodes.empty()) {
     // Assume these properties are constant for all the model subgraphs, otherwise move to SubGraphContext
     const auto& graph_body_viewer_0 = fused_nodes[0].filtered_graph.get();
     session_context_.onnx_model_path_name = graph_body_viewer_0.ModelPath().string();
     session_context_.onnx_opset_version =
         graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
+
+    // OVIR wrapped in epctx should be treated as source but this code does not
+    // This corner case is not in use and will be addressed in a future commit
+    is_epctx_model = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(graph_body_viewer_0);
   }
 
   // The block below is executed during EP context model inference
   auto& metadata = shared_context_->shared_weights.metadata;  // Metadata object in memory
   if (session_context_.so_share_ep_contexts &&
-      !session_context_.so_context_enable &&
+      is_epctx_model &&
       metadata.empty()) {
     fs::path context_model_file_path = session_context_.so_context_file_path;
     if (context_model_file_path.empty()) {

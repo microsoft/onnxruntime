@@ -150,6 +150,11 @@ CreateOVModel(std::string&& model,
       LOGS_DEFAULT(INFO) << log_tag << "Reshaping the ov tensor to specified shape";
       ov_model->reshape(session_context.reshape);
     }
+
+    if (!session_context.layout.empty()) {
+      LOGS_DEFAULT(INFO) << log_tag << "Setting the ov tensor layout to specified layout";
+      ov_model = Set_Layout(ov_model, session_context.layout);
+    }
     // Check for Constant Folding
     if ((session_context.device_type != "NPU") && !session_context.is_wholly_supported_graph) {
       ov::pass::ConstantFolding pass_const_obj;
@@ -197,6 +202,41 @@ GetOutputTensor(Ort::KernelContext& context,
   auto output_shape = ParameterShape::ToOrtShape(node->get_shape());
 
   return context.GetOutput(index, output_shape);
+}
+
+std::shared_ptr<OVNetwork> Set_Layout(std::shared_ptr<OVNetwork> ov_model, const layout_t& layout) {
+  ov::preprocess::PrePostProcessor preproc(ov_model);
+
+  const auto& inputs = ov_model->inputs();
+  const auto& outputs = ov_model->outputs();
+
+  auto find_tensor_index = [](const std::vector<ov::Output<ov::Node>>& tensors, const std::string& name) -> std::optional<size_t> {
+    for (size_t i = 0; i < tensors.size(); ++i) {
+      const auto& tensor = tensors[i];
+      if (tensor.get_any_name() == name || tensor.get_tensor().get_names().count(name) > 0) {
+        return i;
+      }
+    }
+    return std::nullopt;
+  };
+
+  for (const auto& [tensor_name, layout_value] : layout) {
+    bool tensor_found = false;
+
+    if (auto input_idx = find_tensor_index(inputs, tensor_name)) {
+      preproc.input(*input_idx).tensor().set_layout(layout_value);
+      tensor_found = true;
+    } else if (auto output_idx = find_tensor_index(outputs, tensor_name)) {
+      preproc.output(*output_idx).tensor().set_layout(layout_value);
+      tensor_found = true;
+    }
+
+    if (!tensor_found) {
+      LOGS_DEFAULT(WARNING) << "Tensor '" << tensor_name << "' not found in model inputs or outputs";
+    }
+  }
+
+  return preproc.build();
 }
 
 int GetFirstAvailableDevice(SessionContext& session_context) {
