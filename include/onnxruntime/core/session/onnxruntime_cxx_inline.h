@@ -3479,6 +3479,7 @@ inline void ModelImpl<T>::AddGraph(Graph& graph) {
 
 }  // namespace detail
 
+#if !defined(ORT_MINIMAL_BUILD)
 inline Graph::Graph() {
   ThrowOnError(GetModelEditorApi().CreateGraph(&p_));
 }
@@ -3496,5 +3497,6 @@ inline Model::Model(const std::vector<DomainOpsetPair>& opsets) {
 
   ThrowOnError(GetModelEditorApi().CreateModel(domains.data(), versions.data(), opsets.size(), &p_));
 }
+#endif
 
 }  // namespace Ort

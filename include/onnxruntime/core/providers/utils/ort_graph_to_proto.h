@@ -247,12 +247,12 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
     std::vector<Ort::ConstValueInfo> graph_inputs = ort_graph.GetInputs();
     std::vector<Ort::ConstValueInfo> graph_outputs = ort_graph.GetOutputs();
 
-    for (const auto ort_value_info : graph_inputs) {
+    for (const auto& ort_value_info : graph_inputs) {
       onnx::ValueInfoProto* value_info_proto = graph_proto.mutable_input()->Add();
       ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtValueInfoToProto(ort_value_info, *value_info_proto));
     }
 
-    for (const auto ort_value_info : graph_outputs) {
+    for (const auto& ort_value_info : graph_outputs) {
       onnx::ValueInfoProto* value_info_proto = graph_proto.mutable_output()->Add();
       ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtValueInfoToProto(ort_value_info, *value_info_proto));
     }
