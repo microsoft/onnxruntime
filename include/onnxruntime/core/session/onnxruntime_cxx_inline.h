@@ -2602,19 +2602,19 @@ struct GetValueImpl<std::string> {
     status = Status{GetApi().ReadOpAttr(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS, nullptr, 0, &total_buffer_size)};
 
     // Create a temporary buffer to hold the string data
-    std::vector<char> buffer;
-    buffer.resize(total_buffer_size);
-
+    std::vector<char> buffer(total_buffer_size);
     status = Status{GetApi().ReadOpAttr(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS, buffer.data(),
                                         total_buffer_size, &total_buffer_size)};
     if (!status.IsOK()) return status;
 
     std::vector<std::string> result;
-    const char* data = buffer.data();
-    const char* end = data + total_buffer_size;
-    while (data < end) {
-      result.emplace_back(data);
-      data += result.back().size() + 1;  // Move past the null terminator
+    if (total_buffer_size > 0) {
+      const char* data = buffer.data();
+      const char* end = data + total_buffer_size;
+      while (data < end) {
+        result.emplace_back(data);
+        data += result.back().size() + 1;  // Move past the null terminator
+      }
     }
     out.swap(result);
     return status;
@@ -2631,6 +2631,17 @@ template <typename T>
 template <typename R>
 inline Status ConstOpAttrImpl<T>::GetValueArray(std::vector<R>& out) const {
   return GetValueImpl<R>::GetValues(this->p_, out);
+}
+
+template <typename T>
+inline Status ConstOpAttrImpl<T>::GetTensorAttributeAsOrtValue(Value& out) const {
+  Status status = CheckAttrType(this->p_, OrtOpAttrType::ORT_OP_ATTR_TENSOR);
+  if (!status.IsOK()) return status;
+  OrtValue* tensor_value = nullptr;
+  status = Status(GetApi().OpAttr_GetTensorAttributeAsOrtValue(this->p_, &tensor_value));
+  if (!status.IsOK()) return status;
+  out = Value{tensor_value};
+  return status;
 }
 
 template <typename T>
@@ -3122,20 +3133,6 @@ inline Status ConstNodeImpl<T>::GetAttributeByName(const std::string& name, Cons
   auto status = Status(GetApi().Node_GetAttributeByName(this->p_, name.c_str(), &attr));
   out = ConstOpAttr{attr};
   return status;
-}
-
-template <typename T>
-inline Value ConstNodeImpl<T>::GetTensorAttributeAsOrtValue(const std::string& name) const {
-  auto attr = GetAttributeByName(name);
-  auto attr_type = attr.GetType();
-  if (ORT_OP_ATTR_TENSOR != attr_type) {
-    throw Ort::Exception("Attribute: " + name + " expected to be of tensor type, but its type is : " +
-                             std::to_string(attr_type),
-                         ORT_INVALID_ARGUMENT);
-  }
-  OrtValue* ort_value;
-  ThrowOnError(GetApi().Node_GetTensorAttributeAsOrtValue(this->p_, attr, &ort_value));
-  return Value{ort_value};
 }
 
 template <typename T>

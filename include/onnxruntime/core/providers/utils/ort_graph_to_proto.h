@@ -227,7 +227,7 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(Ort::ConstValueInfo vi,
                                                   /*out*/ std::vector<int64_t>& dims,
                                                   /*out*/ std::vector<std::string>& symbolic_dims);
 static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info, onnx::ValueInfoProto& value_info_proto);
-static Ort::Status OrtOpAttrToProto(Ort::ConstNode ort_node, Ort::ConstOpAttr ort_attr, onnx::AttributeProto& attr_proto);
+static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr ort_attr, onnx::AttributeProto& attr_proto);
 
 Ort::Status OrtGraphToProto(const OrtGraph& graph,
                             onnx::GraphProto& graph_proto,
@@ -327,7 +327,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
         }
 
         onnx::AttributeProto* attr_proto = node_proto->add_attribute();
-        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtOpAttrToProto(ort_node, attr, *attr_proto));
+        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtOpAttrToProto(attr, *attr_proto));
       }
 
       // Handle node subgraphs
@@ -408,7 +408,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
 
       assert(ort_value.IsTensor());
       const void* data = ort_value.GetTensorRawData();
-      size_t data_bytes = ort_value.GetTensorSizeInBytes();
+      const size_t data_bytes = ort_value.GetTensorSizeInBytes();
 
       std::string ext_location;
       int64_t ext_offset = 0;
@@ -520,7 +520,7 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(Ort::ConstValueInfo vi,
   } catch (const Ort::Exception& ex) {
     return Ort::Status{ex};
   } catch (const std::exception& ex) {
-    return Ort::Status{ex.what(), ORT_FAIL};
+    return Ort::Status{ex.what(), ORT_EP_FAIL};
   }
   return Ort::Status{nullptr};
 }
@@ -566,7 +566,7 @@ static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info,
   return Ort::Status{nullptr};
 }
 
-static Ort::Status OrtOpAttrToProto(Ort::ConstNode ort_node, Ort::ConstOpAttr attr, onnx::AttributeProto& attr_proto) {
+static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto& attr_proto) {
   try {
     std::string attr_name = attr.GetName();
     attr_proto.set_name(attr_name);
@@ -619,17 +619,14 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstNode ort_node, Ort::ConstOpAttr at
         break;
       }
       case OrtOpAttrType::ORT_OP_ATTR_TENSOR: {
-        const OrtApi& ort_api = Ort::GetApi();
         attr_proto.set_type(onnx::AttributeProto_AttributeType_TENSOR);
 
         onnx::TensorProto tensor_proto;
 
         // TensorProto as an attribute value doesn't require a name.
 
-        OrtValue* ort_value = nullptr;
-      ORT_EP_UTILS_C_RETURN_IF_ERROR(ort_api.OpAttr_GetTensorAttributeAsOrtValue(&ort_attr, &ort_value));
-
-        Ort::Value tensor(ort_value);
+        Ort::Value tensor;
+        ORT_EP_UTILS_C_RETURN_IF_ERROR(attr.GetTensorAttributeAsOrtValue(tensor));
 
         // Get tensor type and shape info
         Ort::TensorTypeAndShapeInfo type_shape_info = tensor.GetTensorTypeAndShapeInfo();
@@ -706,9 +703,8 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstNode ort_node, Ort::ConstOpAttr at
           tensor_proto.add_dims(dim);
         }
 
-        size_t element_count = type_shape_info.GetElementCount();
-        size_t data_bytes = element_count * element_size;
-        const void* data = tensor.GetTensorData<void>();
+        const void* data = tensor.GetTensorRawData();
+        const size_t data_bytes = tensor.GetTensorSizeInBytes();
 
         // Copy the Ortvalue to TensorProto as raw data
         tensor_proto.set_raw_data(data, data_bytes);

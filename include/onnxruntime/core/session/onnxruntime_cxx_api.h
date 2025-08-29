@@ -2487,6 +2487,8 @@ struct ConstOpAttrImpl : Base<T> {
   // Wraps OrtApi::ReadAttr for an array of values
   template <typename R>
   Status GetValueArray(std::vector<R>& out) const;
+  // Wraps OrtApi::OpAttr_GetTensorAttributeAsOrtValue
+  Status GetTensorAttributeAsOrtValue(Value&) const;
 };
 }  // namespace detail
 
@@ -3078,10 +3080,9 @@ struct ConstNodeImpl : Base<T> {
   std::vector<ConstValueInfo> GetImplictiInputs() const;
 
   std::vector<ConstOpAttr> GetAttributes() const;
-  // See C API documentation
+  // Please, read C API doc for details
   Status GetAttributeByName(const std::string& name, ConstOpAttr& attr) const;
 
-  Value GetTensorAttributeAsOrtValue(const std::string& name) const;
   std::vector<AttrNameSubgraph> GetSubgraphs() const;
   // ConstGraph is not available yet
   ConstGraphImpl<detail::Unowned<const OrtGraph>> GetGraph() const;
