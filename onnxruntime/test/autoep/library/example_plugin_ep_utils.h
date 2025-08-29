@@ -107,4 +107,4 @@ OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api, const OrtSessio
                                           /*out*/ std::string& config_val);
 
 // Returns true (via output parameter) if the given OrtValueInfo represents a float tensor.
-OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value_info, bool& result);
+void IsFloatTensor(Ort::ConstValueInfo value_info, bool& result);
