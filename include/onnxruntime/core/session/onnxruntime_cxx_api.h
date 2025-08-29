@@ -639,6 +639,7 @@ ORT_DEFINE_RELEASE(Graph);
 ORT_DEFINE_RELEASE(Model);
 ORT_DEFINE_RELEASE(KeyValuePairs);
 ORT_DEFINE_RELEASE(PrepackedWeightsContainer);
+ORT_DEFINE_RELEASE(ExternalInitializerInfo);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 
@@ -3063,5 +3064,41 @@ struct Model : detail::ModelImpl<OrtModel> {
 
   ConstModel GetConst() const { return ConstModel{this->p_}; }
 };
+
+namespace detail {
+template <typename T>
+struct ExternalInitializerInfoImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  std::basic_string<ORTCHAR_T> GetFilePath() const;  ///< Wraps ExternalInitializerInfo_GetFilePath
+  int64_t GetFileOffset() const;                     ///< Wraps ExternalInitializerInfo_GetFileOffset
+  size_t GetByteSize() const;                        ///< Wraps ExternalInitializerInfo_GetByteSize
+};
+}  // namespace detail
+
+// Wrapper around an unowned ::OrtExternalInitializerInfo.
+using UnownedExternalInitializerInfo = detail::ExternalInitializerInfoImpl<detail::Unowned<OrtExternalInitializerInfo>>;
+
+// Wrapper around a constant and unowned ::OrtExternalInitializerInfo.
+using ConstExternalInitializerInfo = detail::ExternalInitializerInfoImpl<detail::Unowned<const OrtExternalInitializerInfo>>;
+
+/** \brief Wrapper around ::OrtExternalInitializerInfo
+ *
+ */
+struct ExternalInitializerInfo : detail::ExternalInitializerInfoImpl<OrtExternalInitializerInfo> {
+  explicit ExternalInitializerInfo(std::nullptr_t) {}  ///< No instance is created
+
+  explicit ExternalInitializerInfo(OrtExternalInitializerInfo* p)
+      : ExternalInitializerInfoImpl<OrtExternalInitializerInfo>{p} {}  ///< Take ownership of a pointer created by the C API
+
+  ///< Wrapper around CreateExternalInitializerInfo that does not throw an exception.
+  static Status Create(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size,
+                       /*out*/ ExternalInitializerInfo& out);
+
+  ExternalInitializerInfo(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size);  ///< Wrapper around CreateExternalInitializerInfo
+  ConstExternalInitializerInfo GetConst() const;
+};
+
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"

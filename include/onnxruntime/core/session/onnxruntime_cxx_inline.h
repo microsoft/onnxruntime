@@ -3044,6 +3044,47 @@ inline void ModelImpl<OrtModel>::AddGraph(Graph& graph) {
   ThrowOnError(GetModelEditorApi().AddGraphToModel(p_, graph.release()));
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
+}  // namespace detail
+
+namespace detail {
+
+template <typename T>
+inline std::basic_string<ORTCHAR_T> ExternalInitializerInfoImpl<T>::GetFilePath() const {
+  return GetApi().ExternalInitializerInfo_GetFilePath(this->p_);
+}
+
+template <typename T>
+inline int64_t ExternalInitializerInfoImpl<T>::GetFileOffset() const {
+  return GetApi().ExternalInitializerInfo_GetFileOffset(this->p_);
+}
+
+template <typename T>
+inline size_t ExternalInitializerInfoImpl<T>::GetByteSize() const {
+  return GetApi().ExternalInitializerInfo_GetByteSize(this->p_);
+}
 
 }  // namespace detail
+
+inline ExternalInitializerInfo::ExternalInitializerInfo(const ORTCHAR_T* filepath, int64_t file_offset,
+                                                        size_t byte_size) {
+  ThrowOnError(GetApi().CreateExternalInitializerInfo(filepath, file_offset, byte_size, &this->p_));
+}
+
+inline ConstExternalInitializerInfo ExternalInitializerInfo::GetConst() const {
+  return ConstExternalInitializerInfo{this->p_};
+}
+
+inline Status ExternalInitializerInfo::Create(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size,
+                                              /*out*/ ExternalInitializerInfo& out) {
+  OrtExternalInitializerInfo* info = nullptr;
+  OrtStatus* status = GetApi().CreateExternalInitializerInfo(filepath, file_offset, byte_size, &info);
+  if (status != nullptr) {
+    return Status{status};
+  }
+
+  out = ExternalInitializerInfo(info);
+
+  return Status{nullptr};
+}
+
 }  // namespace Ort

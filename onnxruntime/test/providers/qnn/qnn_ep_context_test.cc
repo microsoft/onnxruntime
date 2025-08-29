@@ -789,14 +789,18 @@ static OrtStatus* ORT_API_CALL ReuseExternalInitializers(void* state,
 
   // If the original initializer was stored in an external file, keep it there (just for testing).
   if (external_info != nullptr) {
-    const ORTCHAR_T* location = ort_api.ExternalInitializerInfo_GetFilePath(external_info);
-    int64_t offset = ort_api.ExternalInitializerInfo_GetFileOffset(external_info);
-    size_t byte_size = ort_api.ExternalInitializerInfo_GetByteSize(external_info);
+    Ort::ConstExternalInitializerInfo info(external_info);
+    auto location = info.GetFilePath();
+    int64_t offset = info.GetFileOffset();
+    size_t byte_size = info.GetByteSize();
 
-    if (OrtStatus* status = ort_api.CreateExternalInitializerInfo(location, offset, byte_size, new_external_info);
-        status != nullptr) {
-      return status;
+    Ort::ExternalInitializerInfo new_info(nullptr);
+    Ort::Status status = Ort::ExternalInitializerInfo::Create(location.c_str(), offset, byte_size, new_info);
+    if (!status.IsOK()) {
+      return status.release();
     }
+
+    *new_external_info = new_info.release();
 
     // Keep track of number of reused external initializers so that we can assert
     // that we reused the expected number of initializers.
