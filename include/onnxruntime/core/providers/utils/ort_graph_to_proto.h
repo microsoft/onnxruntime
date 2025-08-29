@@ -634,61 +634,49 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
         // Get tensor type
         ONNXTensorElementDataType element_type = type_shape_info.GetElementType();
 
-        size_t element_size = 0;
         switch (element_type) {
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_FLOAT);
-            element_size = sizeof(float);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT8);
-            element_size = sizeof(uint8_t);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_INT8);
-            element_size = sizeof(int8_t);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT16);
-            element_size = sizeof(uint16_t);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_INT16);
-            element_size = sizeof(int16_t);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_INT32);
-            element_size = sizeof(int32_t);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_INT64);
-            element_size = sizeof(int64_t);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_BOOL);
-            element_size = sizeof(bool);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_DOUBLE);
-            element_size = sizeof(double);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT32);
-            element_size = sizeof(uint32_t);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_UINT64);
-            element_size = sizeof(uint64_t);
             break;
           }
           default: {
