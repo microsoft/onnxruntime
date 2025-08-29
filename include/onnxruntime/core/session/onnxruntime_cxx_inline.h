@@ -3386,7 +3386,7 @@ inline std::vector<ConstNode> ConstGraphImpl<T>::GetNodes() const {
   size_t num_nodes;
   ThrowOnError(GetApi().Graph_GetNumNodes(this->p_, &num_nodes));
   std::vector<ConstNode> result;
-  if (num_nodes > 1) {
+  if (num_nodes > 0) {
     result.resize(num_nodes);
     ThrowOnError(GetApi().Graph_GetNodes(this->p_, reinterpret_cast<const OrtNode**>(result.data()), num_nodes));
   }

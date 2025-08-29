@@ -310,7 +310,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
 
       std::string node_name = ort_node.GetName();
       std::string node_domain = ort_node.GetDomain();
-      std::string node_op_type = ort_node.GetDomain();
+      std::string node_op_type = ort_node.GetOperatorType();
 
       node_proto->set_name(node_name);
       node_proto->set_domain(node_domain);
