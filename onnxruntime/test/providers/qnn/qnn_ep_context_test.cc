@@ -688,7 +688,7 @@ struct CustomInitializerHandlerState {
 static OrtStatus* ORT_API_CALL TestHandleInitializerDataFunc(void* state,
                                                              const char* initializer_name,
                                                              const OrtValue* initializer_value,
-                                                             const OrtExternalInitializerInfo* external_info,
+                                                             const OrtExternalInitializerInfo* /*external_info*/,
                                                              OrtExternalInitializerInfo** new_external_info) {
   const OrtApi& ort_api = Ort::GetApi();
   CustomInitializerHandlerState* custom_state = reinterpret_cast<CustomInitializerHandlerState*>(state);
@@ -703,20 +703,6 @@ static OrtStatus* ORT_API_CALL TestHandleInitializerDataFunc(void* state,
   //
   // Store other initializers in an external file.
   //
-
-  // If the original initializer was stored in an external file, keep it there (just for testing).
-  if (external_info != nullptr) {
-    const ORTCHAR_T* location = ort_api.ExternalInitializerInfo_GetFilePath(external_info);
-    int64_t offset = ort_api.ExternalInitializerInfo_GetFileOffset(external_info);
-    size_t byte_size = ort_api.ExternalInitializerInfo_GetByteSize(external_info);
-
-    if (OrtStatus* status = ort_api.CreateExternalInitializerInfo(location, offset, byte_size, new_external_info);
-        status != nullptr) {
-      return status;
-    }
-
-    return nullptr;
-  }
 
   // Get initializer's byte size
   size_t byte_size = 0;
@@ -792,6 +778,68 @@ TEST_F(QnnHTPBackendTests, CompileApi_InputFile_OutputFile_InitializerHandler) {
   ASSERT_TRUE(std::filesystem::exists(initializer_file));
   ASSERT_TRUE(std::filesystem::exists(output_model_file));
   CheckEpContextNodeCounts(output_model_file, 2, 2);
+}
+
+static OrtStatus* ORT_API_CALL ReuseExternalInitializers(void* state,
+                                                         const char* initializer_name,
+                                                         const OrtValue* initializer_value,
+                                                         const OrtExternalInitializerInfo* external_info,
+                                                         OrtExternalInitializerInfo** new_external_info) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  // If the original initializer was stored in an external file, keep it there (just for testing).
+  if (external_info != nullptr) {
+    const ORTCHAR_T* location = ort_api.ExternalInitializerInfo_GetFilePath(external_info);
+    int64_t offset = ort_api.ExternalInitializerInfo_GetFileOffset(external_info);
+    size_t byte_size = ort_api.ExternalInitializerInfo_GetByteSize(external_info);
+
+    if (OrtStatus* status = ort_api.CreateExternalInitializerInfo(location, offset, byte_size, new_external_info);
+        status != nullptr) {
+      return status;
+    }
+
+    // Keep track of number of reused external initializers so that we can assert
+    // that we reused the expected number of initializers.
+    // THIS IS TEST CODE. An application would not do this.
+    size_t* num_reused_ext_initializers = reinterpret_cast<size_t*>(state);
+    *num_reused_ext_initializers += 1;
+
+    return nullptr;
+  }
+
+  // If not originally external, save it within the generated compiled model
+  *new_external_info = nullptr;
+  return nullptr;
+}
+
+// Test using the CompileModel() API with settings:
+//   - input model comes from a file
+//   - write output model to a file
+//   - Use callback to specify where each initializer is stored. We'll reuse external initializers
+//     from original model!
+TEST_F(QnnHTPBackendTests, CompileApi_InitializerHandler_ReuseExternalInitializers) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/conv_qdq_external_ini.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("testdata/conv_qdq_external_ini_reuse_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+
+  size_t num_reused_ext_initializers = 0;
+
+  // Create model compilation options from the session options.
+  Ort::SessionOptions so;
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetOutputModelHandleInitializerFunc(ReuseExternalInitializers,
+                                                      reinterpret_cast<void*>(&num_reused_ext_initializers));
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  std::filesystem::remove(output_model_file);
+
+  ASSERT_EQ(num_reused_ext_initializers, 2);  // Reused external conv weight and bias.
 }
 
 // Test that the explicit compile API can be configured to return an error if the output model does not

@@ -2541,9 +2541,17 @@ ORT_API(void, OrtApis::ReleaseExternalInitializerInfo, _Frees_ptr_opt_ OrtExtern
 ORT_API_STATUS_IMPL(OrtApis::CreateExternalInitializerInfo, _In_ const ORTCHAR_T* filepath,
                     _In_ int64_t file_offset, _In_ size_t byte_size, _Outptr_ OrtExternalInitializerInfo** out) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
   auto ext_data_info = std::make_unique<onnxruntime::ExternalDataInfo>(filepath, file_offset, byte_size);
   *out = static_cast<OrtExternalInitializerInfo*>(ext_data_info.release());
   return nullptr;
+#else
+  *out = nullptr;
+  ORT_UNUSED_PARAMETER(filepath);
+  ORT_UNUSED_PARAMETER(file_offset);
+  ORT_UNUSED_PARAMETER(byte_size);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CreateExternalInitializerInfo() is not supported in this build.");
+#endif
   API_IMPL_END
 }
 
