@@ -313,10 +313,9 @@ def compute_scale_zp_float8(element_type, std):
     if element_type not in FLOAT8_DISTRIBUTIONS:
         if element_type == TensorProto.FLOAT8E4M3FN:
             from ml_dtypes import float8_e4m3fn  # noqa: PLC0415
-            from onnx.numpy_helper import float8e4m3_to_float32  # noqa: PLC0415
 
             zp_dtype = float8_e4m3fn
-            all_values = [float8e4m3_to_float32(i) for i in range(256)]
+            all_values = [float(i) for i in range(256)]
             values = numpy.array(
                 [f for f in all_values if not numpy.isnan(f) and not numpy.isinf(f)], dtype=numpy.float32
             )
@@ -437,7 +436,7 @@ def quantize_data(
     )
     if qType == TensorProto.FLOAT8E4M3FN:
         quantized_data = quantize_nparray(qType, data, scale, zero_point)
-        if any((quantized_data.astype(numpy.uint8).ravel() & 127) == 127):
+        if any((quantized_data.view(numpy.uint8).ravel() & 127) == 127):
             np_data = numpy.asarray(data)
             raise RuntimeError(
                 f"One of the quantized value is NaN data in [{np_data.min()}, {np_data.max()}], "
@@ -521,7 +520,7 @@ def quantize_onnx_initializer(
                     f"\nraw={str(q_weight_initializer)[:200]}."
                 )
     elif quant_type in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
-        if q_weight_data.dtype not in (numpy.int8, numpy.uint8):
+        if q_weight_data.dtype not in (int4, uint4):
             raise RuntimeError(f"Quantized weights for {q_weight_name} must be 8-bit before packing as 4-bit values.")
 
         # We do not use onnx.helper.pack_float32_to_4bit() due to performance.
