@@ -6079,7 +6079,6 @@ struct OrtApi {
 
   /** \brief Get the OrtNode's 'TENSOR' attribute as an OrtValue.
    *
-   * \param[in] node The OrtNode instance.
    * \param[in] attribute The OrtOpAttr instance.
    * \param[out] attr_tensor If successful, contains the 'TENSOR' attribute as a newly created OrtValue.
                              Must be freed with OrtApi::ReleaseValue.
@@ -6088,7 +6087,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetTensorAttributeAsOrtValue, _In_ const OrtNode* node, _In_ const OrtOpAttr* attribute,
+  ORT_API2_STATUS(OpAttr_GetTensorAttributeAsOrtValue, _In_ const OrtOpAttr* attribute,
                   _Outptr_result_maybenull_ OrtValue** attr_tensor);
 
   /** \brief Get the attribute type as OrtOpAttrType from an OrtOpAttr.
