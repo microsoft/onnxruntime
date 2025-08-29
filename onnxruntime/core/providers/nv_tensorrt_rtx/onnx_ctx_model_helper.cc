@@ -311,13 +311,19 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const Node& node) {
                                  ". Please make sure engine cache is in the same directory or sub-directory of context model.");
     }
 
-    std::ifstream engine_file(engine_cache_path.string(), std::ios::binary | std::ios::in);
-    engine_file.seekg(0, std::ios::end);
-    size_t engine_size = engine_file.tellg();
-    engine_file.seekg(0, std::ios::beg);
-    std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-    engine_file.read((char*)engine_buf.get(), engine_size);
-    *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
+    size_t file_length = 0;
+    auto path_str = ToPathString(engine_cache_path.string());
+
+    Env::MappedMemoryPtr engine_buf;
+    const auto& env = GetDefaultEnv();
+    ORT_RETURN_IF_ERROR(env.GetFileLength(path_str.c_str(), file_length));
+    if (!file_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "Nv EP could not read engine from cache: " + engine_cache_path.string());
+    }
+    ORT_RETURN_IF_ERROR(env.MapFileIntoMemory(path_str.c_str(), 0, file_length, engine_buf));
+
+    *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(engine_buf.get(), file_length));
     if (!(*trt_engine_)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "Nv EP could not deserialize engine from cache: " + engine_cache_path.string());
