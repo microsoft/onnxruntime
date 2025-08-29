@@ -1578,6 +1578,17 @@ void addGlobalMethods(py::module& m) {
       R"pbdoc(Get the list of available OrtEpDevice instances.)pbdoc",
       py::return_value_policy::reference);
 
+  m.def(
+      "get_model_compatibility_for_ep_devices",
+      [](const std::vector<const OrtEpDevice*>& ep_devices,
+         const std::string& compatibility_info) -> OrtCompiledModelCompatibility {
+        OrtCompiledModelCompatibility status = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+        Ort::ThrowOnError(Ort::GetApi().GetModelCompatibilityForEpDevices(
+            ep_devices.data(), ep_devices.size(), compatibility_info.c_str(), &status));
+        return status;
+      },
+      R"pbdoc("Validate a compiled model's compatibility information for one or more EP devices.)pbdoc");
+
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
   m.def(
       "get_available_openvino_device_ids", []() -> std::vector<std::string> {
@@ -1762,6 +1773,12 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED)
       .value("MEMORY_EFFICIENT", ExecutionOrder::MEMORY_EFFICIENT);
 
+  py::enum_<OrtCompiledModelCompatibility>(m, "OrtCompiledModelCompatibility")
+      .value("EP_NOT_APPLICABLE", OrtCompiledModelCompatibility_EP_NOT_APPLICABLE)
+      .value("EP_SUPPORTED_OPTIMAL", OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL)
+      .value("EP_SUPPORTED_PREFER_RECOMPILATION", OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION)
+      .value("EP_UNSUPPORTED", OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+
   py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
       .value("INVALID", OrtInvalidAllocator)
       .value("ORT_DEVICE_ALLOCATOR", OrtDeviceAllocator)
@@ -1785,7 +1802,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
                type = OrtDevice::GPU;
                vendor = OrtDevice::VendorIds::MICROSOFT;
              } else if (type == OrtDevice::GPU) {
-#if USE_CUDA
+#if USE_CUDA || USE_NV || USE_NV_PROVIDER_INTERFACE || USE_CUDA_PROVIDER_INTERFACE
                vendor = OrtDevice::VendorIds::NVIDIA;
 #elif USE_ROCM || USE_MIGRAPHX
                vendor = OrtDevice::VendorIds::AMD;
