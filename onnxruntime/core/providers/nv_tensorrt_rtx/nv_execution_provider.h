@@ -195,7 +195,6 @@ struct TensorrtFuncState {
   AllocatorHandle allocator = nullptr;
   std::string fused_node_name;
   nvinfer1::IBuilder* builder;
-  tensorrt_ptr::unique_pointer<nvonnxparser::IParser>* parser = nullptr;
   std::unique_ptr<nvinfer1::ICudaEngine>* engine = nullptr;
   std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
   std::unique_ptr<nvinfer1::INetworkDefinition>* network = nullptr;
@@ -386,7 +385,6 @@ class NvExecutionProvider : public IExecutionProvider {
   // In general, TensorRT objects are not thread safe; accesses to an object from different threads must be serialized by the client.
   // But there are still some thread safe operations, please see here https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
   // For those non thread safe operations, TRT EP uses (1) lock_guard or (2) PerThreadContext to make sure synchronization.
-  std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::ICudaEngine>> engines_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> contexts_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::IBuilder>> builders_;
