@@ -17,7 +17,7 @@
 #include <gsl/gsl>
 
 #include "gtest/gtest.h"
-
+#include "asserts.h"
 #include "core/common/span_utils.h"
 #include "test/util/include/file_util.h"
 
