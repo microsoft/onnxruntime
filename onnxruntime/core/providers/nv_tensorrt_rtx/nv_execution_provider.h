@@ -285,6 +285,7 @@ class NvExecutionProvider : public IExecutionProvider {
                 IResourceAccountant* /* resource_accountant */) const override;
 
   int GetDeviceId() const { return device_id_; }
+  Status Sync() const;
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
