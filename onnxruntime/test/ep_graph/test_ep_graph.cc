@@ -101,30 +101,20 @@ TEST(EpGraphTest, GetAttributeByName) {
   // 'auto_pad' and 'group'. The other optional attributes (i.e. dilations, kernel_shape, pads, strides) do not
   // have statically computable default values, so will not be filled in by Graph::Resolve().
   const OrtGraph& ort_graph = test_graph->GetOrtGraph();
-  const OrtApi& ort_api = Ort::GetApi();
+  Ort::ConstGraph graph{&ort_graph};
 
-  size_t num_nodes = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNumNodes(&ort_graph, &num_nodes));
-  ASSERT_EQ(num_nodes, 1);
+  auto nodes = graph.GetNodes();
+  ASSERT_EQ(nodes.size(), 1);
 
-  std::vector<const OrtNode*> nodes(num_nodes);
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNodes(&ort_graph, nodes.data(), nodes.size()));
+  auto conv_node = nodes[0];
+  auto op_type = conv_node.GetOperatorType();
+  ASSERT_EQ(op_type, "Conv");
 
-  const OrtNode* conv_node = nodes[0];
-  const char* op_type = nullptr;
-  ASSERT_ORTSTATUS_OK(ort_api.Node_GetOperatorType(conv_node, &op_type));
-  ASSERT_STREQ(op_type, "Conv");
+  auto attrs = conv_node.GetAttributes();
+  ASSERT_EQ(attrs.size(), 2);
 
-  size_t num_attrs = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumAttributes(conv_node, &num_attrs));
-  ASSERT_EQ(num_attrs, 2);
-
-  std::vector<const OrtOpAttr*> attrs(num_attrs);
-  ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributes(conv_node, attrs.data(), attrs.size()));
-  for (const OrtOpAttr* attr : attrs) {
-    const char* attr_name_cstr = nullptr;
-    ASSERT_ORTSTATUS_OK(ort_api.OpAttr_GetName(attr, &attr_name_cstr));
-    std::string_view attr_name = attr_name_cstr;
+  for (const auto& attr : attrs) {
+    auto attr_name = attr.GetName();
     ASSERT_TRUE(attr_name == "auto_pad" || attr_name == "group");  // Only 'auto_pad' and 'group' have been set
   }
 
@@ -132,9 +122,8 @@ TEST(EpGraphTest, GetAttributeByName) {
   // Test 1: Get optional attribute that is not set (e.g., dilations). Should not get an error.
   //
   {
-    const OrtOpAttr* attr = nullptr;
-    Ort::Status status{ort_api.Node_GetAttributeByName(conv_node, "dilations", &attr)};
-    ASSERT_TRUE(status.IsOK());
+    Ort::ConstOpAttr attr;
+    auto status = conv_node.GetAttributeByName("dilations", attr);
     ASSERT_EQ(attr, nullptr);
   }
 
@@ -142,8 +131,8 @@ TEST(EpGraphTest, GetAttributeByName) {
   // Test 2: Get attribute that does not exist in operator schema. Should get a ORT_NOT_FOUND error.
   //
   {
-    const OrtOpAttr* attr = nullptr;
-    Ort::Status status{ort_api.Node_GetAttributeByName(conv_node, "_does_not_exist_", &attr)};
+    Ort::ConstOpAttr attr;
+    Ort::Status status = conv_node.GetAttributeByName("_does_not_exist_", attr);
     ASSERT_FALSE(status.IsOK());
     ASSERT_EQ(status.GetErrorCode(), ORT_NOT_FOUND);
     ASSERT_EQ(attr, nullptr);
@@ -153,11 +142,10 @@ TEST(EpGraphTest, GetAttributeByName) {
   // Test 3: Get attribute that is known to be set.
   //
   {
-    const OrtOpAttr* attr_p = nullptr;
-    ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributeByName(conv_node, "auto_pad", &attr_p));
-    ASSERT_NE(attr_p, nullptr);
+    Ort::ConstOpAttr attr;
+    ASSERT_ORTSTATUS_OK(conv_node.GetAttributeByName("auto_pad", attr));
+    ASSERT_NE(attr, nullptr);
 
-    Ort::ConstOpAttr attr{attr_p};
     OrtOpAttrType type = attr.GetType();
     ASSERT_EQ(ORT_OP_ATTR_STRING, type);
     std::string auto_pad_val;
@@ -752,7 +740,7 @@ static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
   CheckTypeInfo(api_type_info, type_info.get());
 }
 
-static void CheckInitializerValueInfosCApi(gsl::span<const OrtValueInfo* const> initializer_value_infos,
+static void CheckInitializerValueInfosCApi(gsl::span<Ort::ConstValueInfo> initializer_value_infos,
                                            const InitializedTensorSet& initializer_tensor_protos,
                                            const GraphViewer& graph_viewer) {
   for (size_t i = 0; i < initializer_value_infos.size(); i++) {
@@ -770,7 +758,7 @@ static void CheckInitializerValueInfosCApi(gsl::span<const OrtValueInfo* const> 
 
 // Checks that the OrtValueInfos obtained from the public C API are "equivalent" to the NodeArgs
 // in the original graph.
-static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const OrtValueInfo* const> value_infos,
+static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<Ort::ConstValueInfo> value_infos,
                                 gsl::span<const NodeArg* const> node_args) {
   ASSERT_EQ(value_infos.size(), node_args.size());
   const auto& graph_viewer_inputs = graph_viewer.GetInputsIncludingInitializers();
@@ -835,25 +823,19 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
 
 // Checks the Graph_GetSubgraph C API
 static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
-  const OrtApi& ort_api = Ort::GetApi();
-
+  Ort::ConstGraph ort_graph{&api_graph};
   // Get all the nodes
-  size_t num_nodes = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNumNodes(&api_graph, &num_nodes));
-
-  std::vector<const OrtNode*> nodes(num_nodes);
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNodes(&api_graph, nodes.data(), nodes.size()));
+  std::vector<Ort::ConstNode> nodes = ort_graph.GetNodes();
 
   // Select a half of nodes to create a OrtGraph
   size_t num_selected_nodes = std::max((nodes.size() >> 1), (size_t)1);
-  std::vector<const OrtNode*> selected_nodes(num_selected_nodes);
+  std::vector<Ort::ConstNode> selected_nodes(num_selected_nodes);
 
   for (size_t i = 0; i < num_selected_nodes; i++) {
     selected_nodes[i] = nodes[i];
   }
 
-  OrtGraph* sub_graph;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetGraphView(&api_graph, selected_nodes.data(), selected_nodes.size(), &sub_graph));
+  Ort::Graph sub_graph = ort_graph.GetGraphView(selected_nodes);
 
   // Convert OrtGraph/GraphViewer to ModelProto and dump it to disk.
   // If the GraphViewer associated with the OrtGraph somehow is incorrect, GraphViewerToProto() will throw.
@@ -863,31 +845,25 @@ static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
   GraphViewerToProto(sub_graph_viewer, *model_proto->mutable_graph(), true, true, static_cast<ExecutionOrder>(1));
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-  const char* graph_name = nullptr;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetName(&api_graph, &graph_name));
+  auto graph_name = ort_graph.GetName();
   std::string name = graph_name;
   name += "_half.onnx";
 
   // Dump the graph for debugging
   // std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
   // model_proto->SerializeToOstream(&dump);
-
-  ort_api.ReleaseGraph(sub_graph);
 }
 
 // Checks that the contents of the original GraphViewer matches the contents of the OrtGraph.
 // Uses the public C APIs to traverse the OrtGraph.
 static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph) {
-  const OrtApi& ort_api = Ort::GetApi();
-
+  auto ort_cxx_graph = Ort::ConstGraph(&api_graph);
   // Check the path to model.
   const std::filesystem::path& model_path = graph_viewer.ModelPath();
-  const ORTCHAR_T* api_model_path = nullptr;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetModelPath(&api_graph, &api_model_path));
+  const auto api_model_path = ort_cxx_graph.GetModelPath();
   ASSERT_EQ(PathString(api_model_path), PathString(model_path.c_str()));
   // Check the model metadata
   Ort::AllocatorWithDefaultOptions default_allocator;
-  auto ort_cxx_graph = Ort::ConstGraph(&api_graph);
   auto ort_cxx_model_metadat = ort_cxx_graph.GetModelMetadata();
   auto& model = graph_viewer.GetGraph().GetModel();
   ASSERT_EQ(std::strcmp(ort_cxx_model_metadat.GetProducerNameAllocated(default_allocator).get(), model.ProducerName().c_str()), 0);
@@ -904,42 +880,30 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   // Check graph inputs.
   const auto& graph_input_node_args = graph_viewer.GetInputsIncludingInitializers();
 
-  size_t api_num_graph_inputs = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNumInputs(&api_graph, &api_num_graph_inputs));
-  ASSERT_EQ(api_num_graph_inputs, graph_input_node_args.size());
+  std::vector<Ort::ConstValueInfo> api_graph_inputs = ort_cxx_graph.GetInputs();
+  ASSERT_EQ(api_graph_inputs.size(), graph_input_node_args.size());
 
-  std::vector<const OrtValueInfo*> api_graph_inputs(api_num_graph_inputs);
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetInputs(&api_graph, api_graph_inputs.data(), api_graph_inputs.size()));
   CheckValueInfosCApi(graph_viewer, api_graph_inputs, graph_input_node_args);
 
   // Check graph outputs.
   const auto& graph_output_node_args = graph_viewer.GetOutputs();
 
-  size_t api_num_graph_outputs = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNumOutputs(&api_graph, &api_num_graph_outputs));
-  ASSERT_EQ(api_num_graph_outputs, graph_output_node_args.size());
+  std::vector<Ort::ConstValueInfo> api_graph_outputs = ort_cxx_graph.GetOutputs();
+  ASSERT_EQ(api_graph_outputs.size(), graph_output_node_args.size());
 
-  std::vector<const OrtValueInfo*> api_graph_outputs(api_num_graph_outputs);
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetOutputs(&api_graph, api_graph_outputs.data(), api_graph_outputs.size()));
   CheckValueInfosCApi(graph_viewer, api_graph_outputs, graph_output_node_args);
 
   // Check graph initializers
   const auto& graph_initializers = graph_viewer.GetAllInitializedTensors();
 
-  size_t api_num_initializers = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNumInitializers(&api_graph, &api_num_initializers));
-  ASSERT_EQ(api_num_initializers, graph_initializers.size());
-
-  std::vector<const OrtValueInfo*> api_initializers(api_num_initializers);
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetInitializers(&api_graph, api_initializers.data(), api_initializers.size()));
+  std::vector<Ort::ConstValueInfo> api_initializers = ort_cxx_graph.GetInitializers();
+  ASSERT_EQ(api_initializers.size(), graph_initializers.size());
   CheckInitializerValueInfosCApi(api_initializers, graph_initializers, graph_viewer);
 
   // Check if it has a parent node.
   const Node* parent_node = graph_viewer.ParentNode();
   const bool has_parent_node = parent_node != nullptr;
-  const OrtNode* api_parent_node = nullptr;
-
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetParentNode(&api_graph, &api_parent_node));
+  Ort::ConstNode api_parent_node = ort_cxx_graph.GetParentNode();
   const bool api_has_parent_node = api_parent_node != nullptr;
   ASSERT_EQ(api_has_parent_node, has_parent_node);
 
@@ -948,79 +912,56 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   }
 
   // Check all nodes.
-  size_t api_num_nodes = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNumNodes(&api_graph, &api_num_nodes));
-  ASSERT_EQ(api_num_nodes, graph_viewer.NumberOfNodes());
-
-  std::vector<const OrtNode*> api_nodes(api_num_nodes);
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNodes(&api_graph, api_nodes.data(), api_nodes.size()));
+  std::vector<Ort::ConstNode> api_nodes = ort_cxx_graph.GetNodes();
+  ASSERT_EQ(api_nodes.size(), graph_viewer.NumberOfNodes());
 
   std::vector<NodeIndex> node_indices = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT);
-  for (size_t node_idx = 0; node_idx < api_num_nodes; node_idx++) {
+  for (size_t node_idx = 0; node_idx < api_nodes.size(); node_idx++) {
     // Check basic node properties.
     const Node* node = graph_viewer.GetNode(node_indices[node_idx]);
-    const OrtNode* api_node = api_nodes[node_idx];
+    Ort::ConstNode api_node = api_nodes[node_idx];
     CheckNode(node, api_node);
 
-    int api_since_version = 0;
-    ASSERT_ORTSTATUS_OK(ort_api.Node_GetSinceVersion(api_node, &api_since_version));
+    const int api_since_version = api_node.GetSinceVersion();
     ASSERT_EQ(api_since_version, node->SinceVersion());
 
     // Check node inputs
     const auto input_node_args = node->InputDefs();
 
-    size_t api_node_num_inputs = 0;
-    ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumInputs(api_node, &api_node_num_inputs));
-    ASSERT_EQ(api_node_num_inputs, input_node_args.size());
-
-    std::vector<const OrtValueInfo*> api_node_inputs(api_node_num_inputs);
-    ASSERT_ORTSTATUS_OK(ort_api.Node_GetInputs(api_node, api_node_inputs.data(), api_node_inputs.size()));
+    std::vector<Ort::ConstValueInfo> api_node_inputs = api_node.GetInputs();
+    ASSERT_EQ(api_node_inputs.size(), input_node_args.size());
     CheckValueInfosCApi(graph_viewer, api_node_inputs, input_node_args);
 
     // Check node outputs
     const auto output_node_args = node->OutputDefs();
-    size_t api_node_num_outputs = 0;
-    ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumOutputs(api_node, &api_node_num_outputs));
-    ASSERT_EQ(api_node_num_outputs, output_node_args.size());
-
-    std::vector<const OrtValueInfo*> api_node_outputs(api_node_num_outputs);
-    ASSERT_ORTSTATUS_OK(ort_api.Node_GetOutputs(api_node, api_node_outputs.data(), api_node_outputs.size()));
+    std::vector<Ort::ConstValueInfo> api_node_outputs = api_node.GetOutputs();
+    ASSERT_EQ(api_node_outputs.size(), output_node_args.size());
     CheckValueInfosCApi(graph_viewer, api_node_outputs, output_node_args);
 
     // Check node attributes
     const auto& node_attrs = node->GetAttributes();
 
     if (!node_attrs.empty()) {
-      size_t api_num_node_attributes = 0;
-      ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumAttributes(api_node, &api_num_node_attributes));
-
-      std::vector<const OrtOpAttr*> api_node_attributes(api_num_node_attributes);
-      ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributes(api_node, api_node_attributes.data(), api_node_attributes.size()));
+      std::vector<Ort::ConstOpAttr> api_node_attributes = api_node.GetAttributes();
 
       size_t attr_idx = 0;
       for (const auto& node_attr : node_attrs) {
-        const OrtOpAttr* api_node_attr = api_node_attributes[attr_idx];
+        auto api_node_attr = api_node_attributes[attr_idx];
         ASSERT_NE(api_node_attr, nullptr);
 
-        api_node_attr = nullptr;
-        ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributeByName(api_node, node_attr.first.c_str(), &api_node_attr));
+        auto status = api_node.GetAttributeByName(node_attr.first, api_node_attr);
+        ASSERT_TRUE(status.IsOK());
         ASSERT_NE(api_node_attr, nullptr);
 
-        const char* api_node_attr_name = nullptr;
-        ASSERT_ORTSTATUS_OK(ort_api.OpAttr_GetName(api_node_attr, &api_node_attr_name));
-        ASSERT_STREQ(api_node_attr_name, node_attr.first.c_str());
+        auto api_node_attr_name = api_node_attr.GetName();
+        ASSERT_EQ(api_node_attr_name, node_attr.first);
 
-        OrtOpAttrType api_node_attr_type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
-
+        // XXX: Investigate why not
         // It's possible that the type is defined in ONNX::AttributeProto_AttributeType but not in OrtOpAttrType, since the two are not in a 1:1 mapping.
         // In such cases, OpAttr_GetType will return a non-null status, and we simply skip the check here.
         // TODO: Once we add support for ORT_OP_ATTR_TENSOR, we should be able to just fail if OpAttr_GetType
         // returns an error.
-        OrtStatusPtr status = ort_api.OpAttr_GetType(api_node_attr, &api_node_attr_type);
-        if (status != nullptr) {
-          Ort::GetApi().ReleaseStatus(status);
-          continue;
-        }
+        OrtOpAttrType api_node_attr_type = api_node_attr.GetType();
 
         ONNX_NAMESPACE::AttributeProto_AttributeType node_attr_type = node_attr.second.type();
         switch (node_attr_type) {
@@ -1062,7 +1003,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
           }
           default:
             // The unsupported type should be skipped by 'continue' above. It's unexpected so we force test to fail.
-            ASSERT_ORTSTATUS_OK(ort_api.CreateStatus(ORT_FAIL, "The attribute type is not in AttributeProto_AttributeType and this case shouldn't be hit."));
+            FAIL() << "The attribute type is not in AttributeProto_AttributeType and this case shouldn't be hit.";
         }
         attr_idx++;
       }
@@ -1076,41 +1017,19 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
       // Check node's implicit inputs to its subgraph nodes.
       const auto implicit_input_node_args = node->ImplicitInputDefs();
 
-      size_t api_num_node_implicit_inputs = 0;
-      ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumImplicitInputs(api_node, &api_num_node_implicit_inputs));
-      ASSERT_EQ(api_num_node_implicit_inputs, implicit_input_node_args.size());
-
-      std::vector<const OrtValueInfo*> api_node_implicit_inputs(api_num_node_implicit_inputs);
-      ASSERT_ORTSTATUS_OK(ort_api.Node_GetImplicitInputs(api_node, api_node_implicit_inputs.data(),
-                                                         api_node_implicit_inputs.size()));
-
+      std::vector<Ort::ConstValueInfo> api_node_implicit_inputs = api_node.GetImplictiInputs();
+      ASSERT_EQ(api_node_implicit_inputs.size(), implicit_input_node_args.size());
       CheckValueInfosCApi(graph_viewer, api_node_implicit_inputs, implicit_input_node_args);
 
       // Recursively check subgraphs.
-      size_t api_num_node_subgraphs = 0;
-      ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumSubgraphs(api_node, &api_num_node_subgraphs));
-      ASSERT_EQ(api_num_node_subgraphs, node_subgraphs_map.size());
+      std::vector<Ort::AttrNameSubgraph> api_node_subgraphs = api_node.GetSubgraphs();
+      ASSERT_EQ(api_node_subgraphs.size(), node_subgraphs_map.size());
 
-      std::vector<const OrtGraph*> api_node_subgraphs(api_num_node_subgraphs);
-      std::vector<const char*> api_subgraph_attr_names(api_num_node_subgraphs);
-      ASSERT_ORTSTATUS_OK(ort_api.Node_GetSubgraphs(api_node, api_node_subgraphs.data(), api_node_subgraphs.size(),
-                                                    api_subgraph_attr_names.data()));
-
-      for (const auto& [attr_name, subgraph] : node_subgraphs_map) {
-        // find index of this subgraph.
-        size_t api_subgraph_idx = api_num_node_subgraphs;
-        for (size_t subgraph_idx = 0; subgraph_idx < api_num_node_subgraphs; subgraph_idx++) {
-          if (api_subgraph_attr_names[subgraph_idx] == attr_name) {
-            api_subgraph_idx = subgraph_idx;
-            break;
-          }
-        }
-        ASSERT_NE(api_subgraph_idx, api_num_node_subgraphs);
-
-        // Recursively check the subgraph
-        auto subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
-        const OrtGraph* api_subgraph = api_node_subgraphs[api_subgraph_idx];
-        CheckGraphCApi(*subgraph_viewer, *api_subgraph);
+      for (const auto& name_subgraph : api_node_subgraphs) {
+        auto hit = node_subgraphs_map.find(name_subgraph.attr_name);
+        ASSERT_NE(node_subgraphs_map.end(), hit);
+        auto subgraph_viewer = std::make_unique<GraphViewer>(*hit->second);
+        CheckGraphCApi(*subgraph_viewer, *name_subgraph.sub_graph);
       }
     }
   }

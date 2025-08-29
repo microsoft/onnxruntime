@@ -176,90 +176,74 @@ const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept
   return ep->name_.c_str();
 }
 
-OrtStatus* ExampleEp::SaveConstantInitializers(const OrtGraph* graph) {
-  size_t num_initializers = 0;
-  RETURN_IF_ERROR(ort_api.Graph_GetNumInitializers(graph, &num_initializers));
+OrtStatus* ExampleEp::SaveConstantInitializers(const OrtGraph* ort_graph) {
+  Ort::ConstGraph graph{ort_graph};
 
-  std::vector<const OrtValueInfo*> initializers(num_initializers);
-  RETURN_IF_ERROR(ort_api.Graph_GetInitializers(graph, initializers.data(), initializers.size()));
+  try {
+    std::vector<Ort::ConstValueInfo> initializers = graph.GetInitializers();
 
-  for (const OrtValueInfo* initializer : initializers) {
-    bool is_constant = false;
-    RETURN_IF_ERROR(ort_api.ValueInfo_IsConstantInitializer(initializer, &is_constant));
+    for (const auto& initializer : initializers) {
+      const bool is_constant = initializer.IsConstantInitializer();
 
-    if (is_constant) {
-      const char* name = nullptr;
-      const OrtValue* value = nullptr;
-      OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-      DeferOrtRelease<OrtTensorTypeAndShapeInfo> release_type(&type_shape, ort_api.ReleaseTensorTypeAndShapeInfo);
-      size_t num_elems = 0;
+      if (is_constant) {
+        auto name = initializer.GetName();
+        Ort::ConstValue value;
+        auto status = initializer.GetInitializer(value);
+        if (!status.IsOK())
+          return status.release();
 
-      RETURN_IF_ERROR(ort_api.GetValueInfoName(initializer, &name));
-      RETURN_IF_ERROR(ort_api.ValueInfo_GetInitializerValue(initializer, &value));
-      RETURN_IF_ERROR(ort_api.GetTensorTypeAndShape(value, &type_shape));
-      RETURN_IF_ERROR(ort_api.GetTensorShapeElementCount(type_shape, &num_elems));
+        auto type_shape = value.GetTensorTypeAndShapeInfo();
+        const size_t num_elems = type_shape.GetElementCount();
+        const ONNXTensorElementDataType elem_type = type_shape.GetElementType();
+        if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
+          return Ort::Status("Expected float32 initializers", ORT_INVALID_ARGUMENT).release();
 
-      ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-      RETURN_IF_ERROR(ort_api.GetTensorElementType(type_shape, &elem_type));
-      RETURN_IF(elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ort_api, "Expected float32 initializers");
+        std::vector<int64_t> dims = type_shape.GetShape();
+        const float* data = value.GetTensorData<float>();
 
-      size_t num_dims = 0;
-      RETURN_IF_ERROR(ort_api.GetDimensionsCount(type_shape, &num_dims));
-
-      std::vector<int64_t> dims(num_dims, 0);
-      RETURN_IF_ERROR(ort_api.GetDimensions(type_shape, dims.data(), dims.size()));
-
-      const float* data = nullptr;
-      RETURN_IF_ERROR(ort_api.GetTensorMutableData(const_cast<OrtValue*>(value), (void**)&data));
-
-      FloatInitializer ep_initializer = {std::move(dims), std::vector<float>(data, data + num_elems)};
-      float_initializers_.emplace(name, std::move(ep_initializer));
+        FloatInitializer ep_initializer = {std::move(dims), std::vector<float>(data, data + num_elems)};
+        float_initializers_.emplace(std::move(name), std::move(ep_initializer));
+      }
     }
+  } catch (const Ort::Exception& ex) {
+    Ort::Status status(ex);
+    return status.release();
+  } catch (const std::exception& ex) {
+    Ort::Status status(ex.what(), ORT_EP_FAIL);
+    return status.release();
   }
 
   return nullptr;
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* graph,
+OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* ort_graph,
                                                      OrtEpGraphSupportInfo* graph_support_info) noexcept {
   try {
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
-    size_t num_nodes = 0;
-    RETURN_IF_ERROR(ep->ort_api.Graph_GetNumNodes(graph, &num_nodes));
-
-    if (num_nodes == 0) {
+    Ort::ConstGraph graph{ort_graph};
+    std::vector<Ort::ConstNode> nodes = graph.GetNodes();
+    if (nodes.empty()) {
       return nullptr;  // No nodes to process
     }
 
-    std::vector<const OrtNode*> nodes(num_nodes);
-    RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graph, nodes.data(), nodes.size()));
+    std::vector<Ort::ConstNode> supported_nodes;
 
-    std::vector<const OrtNode*> supported_nodes;
+    for (const auto& node : nodes) {
+      auto op_type = node.GetOperatorType();
 
-    for (const OrtNode* ort_node : nodes) {
-      Ort::ConstNode node{ort_node};
-      const char* op_type = nullptr;
-      RETURN_IF_ERROR(ep->ort_api.Node_GetOperatorType(node, &op_type));
-
-      if (std::strncmp(op_type, "Mul", 4) == 0) {
+      if (op_type != "Mul") {
         // Check that Mul has inputs/output of type float
-        size_t num_inputs = 0;
-        size_t num_outputs = 0;
-        RETURN_IF_ERROR(ep->ort_api.Node_GetNumInputs(node, &num_inputs));
-        RETURN_IF_ERROR(ep->ort_api.Node_GetNumOutputs(node, &num_outputs));
-        RETURN_IF(num_inputs != 2 || num_outputs != 1, ep->ort_api, "Mul should have 2 inputs and 1 output");
+        std::vector<Ort::ConstValueInfo> inputs = node.GetInputs();
+        std::vector<Ort::ConstValueInfo> outputs = node.GetOutputs();
 
-        std::vector<const OrtValueInfo*> inputs(num_inputs);
-        std::vector<const OrtValueInfo*> outputs(num_outputs);
-        RETURN_IF_ERROR(ep->ort_api.Node_GetInputs(node, inputs.data(), inputs.size()));
-        RETURN_IF_ERROR(ep->ort_api.Node_GetOutputs(node, outputs.data(), outputs.size()));
+        RETURN_IF(inputs.size() != 2 || outputs.size() != 1, ep->ort_api, "Mul should have 2 inputs and 1 output");
 
         std::array<bool, 3> is_float = {false, false, false};
-        IsFloatTensor(Ort::ConstValueInfo{inputs[0]}, is_float[0]);
-        IsFloatTensor(Ort::ConstValueInfo{inputs[1]}, is_float[1]);
-        IsFloatTensor(Ort::ConstValueInfo{outputs[0]}, is_float[2]);
+        IsFloatTensor(inputs[0], is_float[0]);
+        IsFloatTensor(inputs[1], is_float[1]);
+        IsFloatTensor(outputs[0], is_float[2]);
         if (!is_float[0] || !is_float[1] || !is_float[2]) {
           continue;  // Input or output is not of type float
         }
@@ -278,8 +262,10 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
     // This example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
     // during inference.
     node_fusion_options.drop_constant_initializers = true;
-    RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info, supported_nodes.data(),
-                                                                 supported_nodes.size(), &node_fusion_options));
+    RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+                                                                 reinterpret_cast<const OrtNode* const*>(supported_nodes.data()),
+                                                                 supported_nodes.size(),
+                                                                 &node_fusion_options));
   } catch (const Ort::Exception& ex) {
     Ort::Status status(ex);
     return status.release();
@@ -292,71 +278,73 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
+OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const OrtGraph** ort_graphs,
                                                _In_ const OrtNode** fused_nodes, _In_ size_t count,
                                                _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
                                                _Out_writes_(count) OrtNode** ep_context_nodes) noexcept {
-  ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
-  const OrtApi& ort_api = ep->ort_api;
+  try {
+    if (count != 1) {
+      Ort::Status status("Expected to compile a single graph", ORT_EP_FAIL);
+      return status.release();
+    }
 
-  if (count != 1) {
-    return ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single graph");
-  }
+    ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
-  // In GetCapability(), this EP specified that it doesn't need ORT to provide constant initializers during inference.
-  // So, this EP saves constant initializers so that they're available during inference, but an actual EP
-  // implementation could transfer the weights to device memory.
-  ep->SaveConstantInitializers(graphs[0]);
+    Ort::ConstGraph graph{ort_graphs[0]};
 
-  size_t num_nodes = 0;
-  RETURN_IF_ERROR(ep->ort_api.Graph_GetNumNodes(graphs[0], &num_nodes));
+    // In GetCapability(), this EP specified that it doesn't need ORT to provide constant initializers during inference.
+    // So, this EP saves constant initializers so that they're available during inference, but an actual EP
+    // implementation could transfer the weights to device memory.
+    ep->SaveConstantInitializers(graph);
 
-  std::vector<const OrtNode*> nodes(num_nodes);
-  RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graphs[0], nodes.data(), nodes.size()));
+    std::vector<Ort::ConstNode> nodes = graph.GetNodes();
+    if (nodes.size() != 1) {
+      Ort::Status status("Expected to compile a single Mul node", ORT_EP_FAIL);
+      return status.release();
+    }
 
-  if (num_nodes != 1) {
-    return ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
-  }
+    auto node_op_type = nodes[0].GetOperatorType();
+    if (node_op_type != "Mul") {
+      Ort::Status status("Expected to compile a single Mul node", ORT_EP_FAIL);
+      return status.release();
+    }
 
-  const char* node_op_type = nullptr;
-  RETURN_IF_ERROR(ort_api.Node_GetOperatorType(nodes[0], &node_op_type));
+    // Now we know we're compiling a single Mul node. Create a computation kernel.
+    std::vector<Ort::ConstValueInfo> node_inputs = nodes[0].GetInputs();
+    std::array<std::string, 2> node_input_names;
+    node_input_names[0] = node_inputs[0].GetName();
+    node_input_names[1] = node_inputs[1].GetName();
 
-  if (std::strncmp(node_op_type, "Mul", 4) != 0) {
-    return ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
-  }
+    Ort::ConstNode fused_node{fused_nodes[0]};
+    auto ep_name = fused_node.GetEpName();
+    if (ep_name != "example_ep") {
+      Ort::Status status("The fused node is expected to assigned to this EP to run on", ORT_EP_FAIL);
+      return status.release();
+    }
 
-  // Now we know we're compiling a single Mul node. Create a computation kernel.
-  std::array<const OrtValueInfo*, 2> node_inputs = {};
-  std::array<const char*, 2> node_input_names = {};
-
-  RETURN_IF_ERROR(ort_api.Node_GetInputs(nodes[0], node_inputs.data(), node_inputs.size()));
-  RETURN_IF_ERROR(ort_api.GetValueInfoName(node_inputs[0], &node_input_names[0]));
-  RETURN_IF_ERROR(ort_api.GetValueInfoName(node_inputs[1], &node_input_names[1]));
-
-  const char* ep_name = nullptr;
-  RETURN_IF_ERROR(ort_api.Node_GetEpName(fused_nodes[0], &ep_name));
-  if (std::strncmp(ep_name, "example_ep", 11) != 0) {
-    return ort_api.CreateStatus(ORT_EP_FAIL, "The fused node is expected to assigned to this EP to run on");
-  }
-
-  // Associate the name of the fused node with our MulKernel.
-  const char* fused_node_name = nullptr;
-  RETURN_IF_ERROR(ort_api.Node_GetName(fused_nodes[0], &fused_node_name));
-
-  ep->kernels_.emplace(std::string(fused_node_name), std::make_unique<MulKernel>(ep->ort_api, ep->logger_,
+    // Associate the name of the fused node with our MulKernel.
+    auto fused_node_name = fused_node.GetName();
+    ep->kernels_.emplace(std::move(fused_node_name), std::make_unique<MulKernel>(ep->ort_api, ep->logger_,
                                                                                  ep->float_initializers_,
                                                                                  node_input_names[0],
                                                                                  node_input_names[1]));
 
-  // Update the OrtNodeComputeInfo associated with the graph.
-  auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
-  node_compute_infos[0] = node_compute_info.release();
+    // Update the OrtNodeComputeInfo associated with the graph.
+    auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
+    node_compute_infos[0] = node_compute_info.release();
 
-  // Create EpContext nodes for the fused nodes we compiled.
-  if (ep->config_.enable_ep_context) {
-    assert(ep_context_nodes != nullptr);
-    RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count),
-                                             gsl::span<OrtNode*>(ep_context_nodes, count)));
+    // Create EpContext nodes for the fused nodes we compiled.
+    if (ep->config_.enable_ep_context) {
+      assert(ep_context_nodes != nullptr);
+      RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count),
+                                               gsl::span<OrtNode*>(ep_context_nodes, count)));
+    }
+  } catch (const Ort::Exception& ex) {
+    Ort::Status status(ex);
+    return status.release();
+  } catch (const std::exception& ex) {
+    Ort::Status status(ex.what(), ORT_EP_FAIL);
+    return status.release();
   }
 
   return nullptr;
@@ -381,65 +369,62 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
     assert(fused_nodes.size() == ep_context_nodes.size());
 
     // Helper to collect input or output names from an array of OrtValueInfo instances.
-    auto collect_input_output_names = [&](gsl::span<const OrtValueInfo* const> value_infos,
-                                          std::vector<const char*>& result) -> OrtStatus* {
-      size_t num_values = value_infos.size();
-      std::vector<const char*> value_names(num_values);
+    auto collect_input_output_names = [&](gsl::span<Ort::ConstValueInfo const> value_infos,
+                                          std::vector<std::string>& result) {
+      std::vector<std::string> value_names;
+      value_names.reserve(value_infos.size());
 
-      for (size_t i = 0; i < num_values; ++i) {
-        const OrtValueInfo* value_info = value_infos[i];
-        RETURN_IF_ERROR(ort_api.GetValueInfoName(value_info, &value_names[i]));
+      for (const auto vi : value_infos) {
+        value_names.push_back(vi.GetName());
       }
 
       result = std::move(value_names);
-      return nullptr;
     };
 
     // Create an "EPContext" node for every fused node.
     for (size_t i = 0; i < fused_nodes.size(); ++i) {
-      const OrtNode* fused_node = fused_nodes[i];
-      const char* fused_node_name = nullptr;
+      Ort::ConstNode fused_node{fused_nodes[i]};
+      auto fused_node_name = fused_node.GetName();
 
-      RETURN_IF_ERROR(ort_api.Node_GetName(fused_node, &fused_node_name));
+      std::vector<Ort::ConstValueInfo> fused_node_inputs = fused_node.GetInputs();
+      std::vector<Ort::ConstValueInfo> fused_node_outputs = fused_node.GetOutputs();
 
-      size_t num_fused_node_inputs = 0;
-      size_t num_fused_node_outputs = 0;
-      RETURN_IF_ERROR(ort_api.Node_GetNumInputs(fused_node, &num_fused_node_inputs));
-      RETURN_IF_ERROR(ort_api.Node_GetNumOutputs(fused_node, &num_fused_node_outputs));
+      std::vector<std::string> input_names;
+      std::vector<std::string> output_names;
 
-      std::vector<const OrtValueInfo*> fused_node_inputs(num_fused_node_inputs);
-      std::vector<const OrtValueInfo*> fused_node_outputs(num_fused_node_outputs);
-      RETURN_IF_ERROR(ort_api.Node_GetInputs(fused_node, fused_node_inputs.data(), fused_node_inputs.size()));
-      RETURN_IF_ERROR(ort_api.Node_GetOutputs(fused_node, fused_node_outputs.data(), fused_node_outputs.size()));
-
-      std::vector<const char*> input_names;
-      std::vector<const char*> output_names;
-
-      RETURN_IF_ERROR(collect_input_output_names(fused_node_inputs, /*out*/ input_names));
-      RETURN_IF_ERROR(collect_input_output_names(fused_node_outputs, /*out*/ output_names));
+      collect_input_output_names(fused_node_inputs, /*out*/ input_names);
+      collect_input_output_names(fused_node_outputs, /*out*/ output_names);
 
       int64_t is_main_context = (i == 0);
       int64_t embed_mode = 1;
 
-      // Create node attributes. The CreateNode() function copies the attributes, so we have to release them.
-      std::array<OrtOpAttr*, 6> attributes = {};
-      DeferOrtRelease<OrtOpAttr> defer_release_attrs(attributes.data(), attributes.size(), ort_api.ReleaseOpAttr);
-
+      // Create node attributes. The CreateNode() function copies the attributes.
+      std::array<Ort::OpAttr, 6> attributes = {};
       std::string ep_ctx = "binary_data";
-      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", ep_ctx.c_str(), static_cast<int>(ep_ctx.length()),
-                                           ORT_OP_ATTR_STRING, &attributes[0]));
-      RETURN_IF_ERROR(ort_api.CreateOpAttr("main_context", &is_main_context, 1, ORT_OP_ATTR_INT, &attributes[1]));
-      RETURN_IF_ERROR(ort_api.CreateOpAttr("embed_mode", &embed_mode, 1, ORT_OP_ATTR_INT, &attributes[2]));
-      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_sdk_version", "1", 1, ORT_OP_ATTR_STRING, &attributes[3]));
-      RETURN_IF_ERROR(ort_api.CreateOpAttr("partition_name", fused_node_name, static_cast<int>(strlen(fused_node_name)),
-                                           ORT_OP_ATTR_STRING, &attributes[4]));
-      RETURN_IF_ERROR(ort_api.CreateOpAttr("source", this->name_.c_str(), static_cast<int>(this->name_.length()),
-                                           ORT_OP_ATTR_STRING, &attributes[5]));
+      attributes[0] = Ort::OpAttr("ep_cache_context", ep_ctx.data(), static_cast<int>(ep_ctx.size()),
+                                  ORT_OP_ATTR_STRING);
 
-      RETURN_IF_ERROR(model_editor_api.CreateNode("EPContext", "com.microsoft", fused_node_name,
-                                                  input_names.data(), input_names.size(),
-                                                  output_names.data(), output_names.size(),
-                                                  attributes.data(), attributes.size(),
+      attributes[1] = Ort::OpAttr("main_context", &is_main_context, 1, ORT_OP_ATTR_INT);
+      attributes[2] = Ort::OpAttr("embed_mode", &embed_mode, 1, ORT_OP_ATTR_INT);
+      attributes[3] = Ort::OpAttr("ep_sdk_version", "1", 1, ORT_OP_ATTR_STRING);
+      attributes[4] = Ort::OpAttr("partition_name", fused_node_name.data(), static_cast<int>(fused_node_name.size()),
+                                  ORT_OP_ATTR_STRING);
+
+      attributes[5] = Ort::OpAttr("source", this->name_.data(), static_cast<int>(this->name_.size()),
+                                  ORT_OP_ATTR_STRING);
+
+      std::vector<const char*> c_input_names;
+      std::transform(input_names.begin(), input_names.end(), std::back_inserter(c_input_names),
+                     [](const std::string& s) { return s.c_str(); });
+      std::vector<const char*> c_output_names;
+      std::transform(output_names.begin(), output_names.end(), std::back_inserter(c_output_names),
+                     [](const std::string& s) { return s.c_str(); });
+
+      OrtOpAttr** op_attrs = reinterpret_cast<OrtOpAttr**>(attributes.data());
+      RETURN_IF_ERROR(model_editor_api.CreateNode("EPContext", "com.microsoft", fused_node_name.c_str(),
+                                                  c_input_names.data(), c_input_names.size(),
+                                                  c_output_names.data(), c_output_names.size(),
+                                                  op_attrs, attributes.size(),
                                                   &ep_context_nodes[i]));
     }
   } catch (const Ort::Exception& ex) {

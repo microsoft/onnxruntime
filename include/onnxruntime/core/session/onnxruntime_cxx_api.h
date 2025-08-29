@@ -3005,11 +3005,12 @@ struct ConstNodeImpl : Base<T> {
   std::vector<ConstValueInfo> GetImplictiInputs() const;
 
   std::vector<ConstOpAttr> GetAttributes() const;
-  ConstOpAttr GetAttributeByName(const std::string& name) const;
-  Value GetTensorAttributeAsOrtValue(const std::string& name) const;
+  // See C API documentation
+  Status GetAttributeByName(const std::string& name, ConstOpAttr& attr) const;
 
-  // ConstGraph is not available yet
+  Value GetTensorAttributeAsOrtValue(const std::string& name) const;
   std::vector<AttrNameSubgraph> GetSubgraphs() const;
+  // ConstGraph is not available yet
   ConstGraphImpl<detail::Unowned<const OrtGraph>> GetGraph() const;
 
   std::string GetEpName() const;

@@ -3097,10 +3097,11 @@ inline std::vector<ConstOpAttr> ConstNodeImpl<T>::GetAttributes() const {
 }
 
 template <typename T>
-inline ConstOpAttr ConstNodeImpl<T>::GetAttributeByName(const std::string& name) const {
-  const OrtOpAttr* attr;
-  ThrowOnError(GetApi().Node_GetAttributeByName(this->p_, name.c_str(), &attr));
-  return ConstOpAttr{attr};
+inline Status ConstNodeImpl<T>::GetAttributeByName(const std::string& name, ConstOpAttr& out) const {
+  const OrtOpAttr* attr = nullptr;
+  auto status = Status(GetApi().Node_GetAttributeByName(this->p_, name.c_str(), &attr));
+  out = ConstOpAttr{attr};
+  return status;
 }
 
 template <typename T>
@@ -3144,7 +3145,7 @@ inline ConstGraph ConstNodeImpl<T>::GetGraph() const {
 template <typename T>
 inline std::string ConstNodeImpl<T>::GetEpName() const {
   const char* name;
-  ThrowOnError(GetApi().Node_GetEpName(this->p_, *name));
+  ThrowOnError(GetApi().Node_GetEpName(this->p_, &name));
   return std::string(name);
 }
 
@@ -3372,7 +3373,7 @@ inline std::vector<ConstValueInfo> ConstGraphImpl<T>::GetInitializers() const {
   ThrowOnError(GetApi().Graph_GetNumInitializers(this->p_, &num_vi));
   std::vector<ConstValueInfo> result;
   if (num_vi > 0) {
-    result.resize(um_vi);
+    result.resize(num_vi);
     ThrowOnError(GetApi().Graph_GetInitializers(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()),
                                                 num_vi));
   }
@@ -3401,11 +3402,14 @@ inline ConstNode ConstGraphImpl<T>::GetParentNode() const {
 
 template <typename T>
 inline Graph ConstGraphImpl<T>::GetGraphView(const std::vector<ConstNode>& nodes) const {
-  static_assert(sizeof(const OrtNode*) == sizeof(ConstNode));
-  OrtGraph* graph_view;
-  ThrowOnError(GetApi().Graph_GetGraphView(this->p_, reinterpret_cast<const OrtNode**>(nodes.data()),
-                                           nodes.size(), &graph_viwer));
-  return Graph{graph_view};
+  OrtGraph* graph_viewer;
+  std::vector<const OrtNode*> inputs_ptrs;
+  inputs_ptrs.reserve(nodes.size());
+  std::transform(nodes.begin(), nodes.end(), std::back_inserter(inputs_ptrs),
+                 [](ConstNode n) -> const OrtNode* { return n; });
+  ThrowOnError(GetApi().Graph_GetGraphView(this->p_, inputs_ptrs.data(),
+                                           nodes.size(), &graph_viewer));
+  return Graph{graph_viewer};
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
