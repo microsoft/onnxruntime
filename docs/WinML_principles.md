@@ -1,13 +1,24 @@
 # Contributing to Windows ML
 
-Window Machine Learning is a high-performance, reliable API for deploying hardware-accelerated ML inferences on Windows devices. Please visit the [Windows ML documentation](https://docs.microsoft.com/en-us/windows/ai/windows-ml/) to learn more about Windows ML.
+Windows Machine Learning is a high-performance, reliable API for deploying hardware-accelerated ML inferences on Windows devices. WinML is the **preferred and future-safe execution path** for Windows developers using ONNX Runtime.
+
+## WinML and ONNX Runtime
+
+WinML is built on ONNX Runtime and provides Windows developers with:
+
+- **Same ONNX Runtime APIs**: Uses the familiar ONNX Runtime APIs you already know, ensuring easy migration and compatibility
+- **Dynamic Execution Provider Selection**: Automatically selects the best execution provider (EP) based on available hardware (CPU, GPU, NPU, etc.)
+- **Simplified Windows Deployment**: Streamlines deployment for Windows developers by handling distribution and packaging complexities
+- **Windows-Optimized Performance**: Leverages Windows-specific optimizations and hardware acceleration capabilities
+
+Please visit the [Windows ML documentation](https://learn.microsoft.com/en-us/windows/ai/new-windows-ml/overview) to learn more about Windows ML.
 
 
 ## Windows ML Base Principles
 
 **We design and optimize for all Windows devices.**
 
-  Our goal is to provide developers with a platform that enables new experiences that run well on all Windows devices. Our design drives innovation in the DirectX ecosystem through DirectML and gives developers the confidence that their applications will work for all Windows customers.
+  Our goal is to provide developers with a platform that enables new experiences that run well on all Windows devices. WinML is designed as the unified solution that gives developers confidence that their applications will work optimally for all Windows customers.
 
 **We maintain and curate the Windows ML APIs.**
 
