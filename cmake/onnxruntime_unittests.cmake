@@ -883,13 +883,7 @@ file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   ${onnxruntime_test_framework_src_patterns}
   )
 
-# TODO either update the below comment or follow it...
-# it's not obvious why this limitation of not using onnxruntime internal symbols exists
-
-#This is a small wrapper library that shouldn't use any onnxruntime internal symbols(except onnxruntime_common).
-#Because it could dynamically link to onnxruntime. Otherwise you will have two copies of onnxruntime in the same
-#process and you won't know which one you are testing.
-onnxruntime_add_static_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
+onnxruntime_add_object_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 if(MSVC)
   target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")

@@ -1191,6 +1191,11 @@ function(onnxruntime_add_static_library target_name)
   onnxruntime_configure_target(${target_name})
 endfunction()
 
+function(onnxruntime_add_object_library target_name)
+  add_library(${target_name} OBJECT ${ARGN})
+  onnxruntime_configure_target(${target_name})
+endfunction()
+
 #For plugins that are not linked into other targets but may be loaded dynamically at runtime using dlopen-like functionality.
 function(onnxruntime_add_shared_library_module target_name)
   if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") OR (${CMAKE_SYSTEM_NAME} MATCHES "iOS"))
