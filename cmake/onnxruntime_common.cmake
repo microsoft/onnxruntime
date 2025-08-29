@@ -252,7 +252,7 @@ if(CPUINFO_SUPPORTED)
   if (RISCV64 OR ARM64 OR ARM64EC OR ARM OR X86 OR X64 OR X86_64)
     # Link cpuinfo if supported
     onnxruntime_add_include_to_target(onnxruntime_common cpuinfo::cpuinfo)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo ${ONNXRUNTIME_CLOG_TARGET_NAME})
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo)
   else()
     message(FATAL_ERROR "CPUINFO_SUPPORTED is true, but cpuinfo will not be linked to.")
   endif()

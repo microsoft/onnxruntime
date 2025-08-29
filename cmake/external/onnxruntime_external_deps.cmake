@@ -581,8 +581,7 @@ endif()
 
 set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json
                                    onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface
-                                   flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date
-                                   ${ONNXRUNTIME_CLOG_TARGET_NAME} Eigen3::Eigen)
+                                   flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date Eigen3::Eigen)
 
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
