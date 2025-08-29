@@ -30,9 +30,10 @@ static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, cons
                                            const std::vector<int64_t>& dilations,
                                            std::optional<int64_t> group,
                                            const std::string& auto_pad = "NOTSET",
-                                           std::optional<OutputActivationInfo> output_activation = std::nullopt) {
+                                           std::optional<OutputActivationInfo> output_activation = std::nullopt,
+                                           std::optional<std::vector<int64_t>> output_shape = std::nullopt) {
   return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
-          dilations, group, auto_pad, output_activation](ModelTestBuilder& builder) {
+          dilations, group, auto_pad, output_activation, output_shape](ModelTestBuilder& builder) {
     std::vector<NodeArg*> conv_inputs = {
         MakeTestInput(builder, input_def),
         MakeTestInput(builder, weights_def)};
@@ -60,6 +61,10 @@ static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, cons
 
     if (!dilations.empty()) {
       conv_node.AddAttribute("dilations", dilations);
+    }
+
+    if (output_shape.has_value()) {
+      conv_node.AddAttribute("output_shape", output_shape.value());
     }
 
     if (output_activation.has_value()) {
@@ -113,11 +118,12 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQConvTestCase(
     std::optional<int64_t> group,
     const std::string& auto_pad = "NOTSET",
     bool use_contrib_qdq = false,
-    std::optional<OutputActivationInfo> output_activation = std::nullopt) {
+    std::optional<OutputActivationInfo> output_activation = std::nullopt,
+    std::optional<std::vector<int64_t>> output_shape = std::nullopt) {
   return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
           dilations, group, auto_pad,
-          use_contrib_qdq, output_activation](ModelTestBuilder& builder,
-                                              std::vector<QuantParams<ActivationQType>>& output_qparams) {
+          use_contrib_qdq, output_activation, output_shape](ModelTestBuilder& builder,
+                                                            std::vector<QuantParams<ActivationQType>>& output_qparams) {
     std::vector<NodeArg*> conv_inputs;
 
     // input -> Q/DQ ->
@@ -159,6 +165,9 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQConvTestCase(
     }
     if (!dilations.empty()) {
       conv_node.AddAttribute("dilations", dilations);
+    }
+    if (output_shape.has_value()) {
+      conv_node.AddAttribute("output_shape", output_shape.value());
     }
 
     NodeArg* q_input = conv_output;
@@ -307,17 +316,18 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                              bool use_contrib_qdq = false,
                              int opset = 13,
                              QDQTolerance tolerance = QDQTolerance(),
-                             std::optional<OutputActivationInfo> output_activation = std::nullopt) {
+                             std::optional<OutputActivationInfo> output_activation = std::nullopt,
+                             std::optional<std::vector<int64_t>> output_shape = std::nullopt) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
-                                            group, auto_pad, output_activation),
+                                            group, auto_pad, output_activation, output_shape),
                        BuildQDQConvTestCase<ActivationQType, WeightQType>(conv_op_type, input_def, weights_def,
                                                                           bias_def, strides, pads, dilations,
                                                                           group, auto_pad, use_contrib_qdq,
-                                                                          output_activation),
+                                                                          output_activation, output_shape),
                        provider_options,
                        opset,
                        expected_ep_assignment,
@@ -2167,6 +2177,51 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_AutoPadValid) {
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_contrib_qdq
                                      13);
+}
+
+// Test ConvTranspose with output_shape attribute
+// This test verifies that when 'output_shape' is provided, the QNN EP correctly
+// calculates and applies padding for ConvTranspose, overriding any 'pads' attribute,
+// and correctly distributes the padding according to 'auto_pad' rules.
+// CPU does not use "output_shape" in the node config and caluculates it with pad=0
+// qnn_test_utils.h(652): error: Expected equality of these values: num_vals Which is: 36  cpu_qdq_vals.size() Which is: 64
+TEST_F(QnnHTPBackendTests, DISABLED_ConvTransposeU8U8S32_OutputShape) {
+  // Explicit output shape: [N, C_out, H_out, W_out] = [1, 1, 6, 6]
+  // This implies a total padding of 1 per spatial dim (H/W), distributed as (0, 1) for SAME_UPPER
+  std::vector<int64_t> output_shape = {1, 1, 6, 6};
+  RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
+                                     TestInputDef<float>({1, 1, 4, 4}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 2, 2}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),               // Initializer bias
+                                     {2, 2},                                               // strides
+                                     {0, 0, 0, 0},                                         // pads
+                                     {1, 1},                                               // dilations
+                                     1,                                                    // group
+                                     "SAME_UPPER",                                         // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13,     // opset
+                                     QDQTolerance(),
+                                     std::nullopt,   // No output activation
+                                     output_shape);  // Pass the output_shape attribute
+
+  // Explicit output shape: [N, C_out, H_out, W_out] = [1, 1, 6, 6, 6]
+  std::vector<int64_t> output_shape_3d = {1, 1, 6, 6, 6};
+  RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
+                                     TestInputDef<float>({1, 1, 4, 4, 4}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 2, 2, 2}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),                  // Initializer bias
+                                     {2, 2, 2},                                               // strides
+                                     {0, 0, 0, 0, 0, 0},                                      // pads
+                                     {1, 1, 1},                                               // dilations
+                                     1,                                                       // group
+                                     "SAME_UPPER",                                            // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13,     // opset
+                                     QDQTolerance(),
+                                     std::nullopt,      // No output activation
+                                     output_shape_3d);  // Pass the output_shape attribute
 }
 
 // Tests Conv1d auto_pad value "VALID" on HTP backend (compares to CPU EP).

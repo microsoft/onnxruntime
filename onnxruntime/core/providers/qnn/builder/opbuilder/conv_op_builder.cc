@@ -668,7 +668,51 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER" && auto_pad != "VALID",
                   "QNN Conv operators do not support 'auto_pad' value: ", auto_pad.c_str());
 
-    if (auto_pad != "NOTSET") {
+    std::vector<int64_t> output_shape_attribute_value = node_helper.Get("output_shape", std::vector<int64_t>());
+    bool has_output_shape_attr = !output_shape_attribute_value.empty();
+
+    if (conv_type == OnnxConvType::kConvTranspose && has_output_shape_attr) {
+      // Pads are auto generated using the formula:
+      // total_padding[i] = stride[i] * (input_size[i] - 1) + output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i]
+      // Then distributed using auto_pad rules.
+
+      LOGS(logger, VERBOSE) << "ConvTranspose with 'output_shape' attribute. Calculating pads since output_shape is specified, pad values are ignored";
+
+      // input_dims for calculation are (H, W, D...) excluding N, C
+      std::vector<uint32_t> input_dims(input_0_shape.begin() + 1, input_0_shape.end() - 1);
+      // output_dims for calculation are from the 'output_shape' attribute
+      std::vector<uint32_t> output_dims_from_attr;
+      output_dims_from_attr.reserve(output_shape_attribute_value.size());  // Use the new name
+      for (int64_t dim : output_shape_attribute_value) {                   // Use the new name
+        output_dims_from_attr.push_back(narrow<uint32_t>(dim));
+      }
+
+      if (is_1d_conv) {  // Adjust input_dims and output_dims_from_attr for 1D conv logic
+        input_dims.insert(input_dims.begin(), 1);
+        output_dims_from_attr.insert(output_dims_from_attr.begin(), 1);
+      }
+
+      pads.assign(kernel_shape.size() * 2, 0);  // Reset pads before filling
+      size_t rank = input_dims.size();
+
+      ORT_RETURN_IF_NOT(rank == output_dims_from_attr.size(),
+                        "QNN EP: ConvTranspose 'output_shape' attribute rank mismatch "
+                        "with input dims for padding calculation.");
+
+      for (size_t dim = 0; dim < rank; ++dim) {
+        int64_t pad_head = 0;
+        int64_t pad_tail = 0;
+        AutoPadType pad_type = StringToAutoPadType(auto_pad);  // Use current auto_pad for distribution
+
+        auto total_pad = ComputeTotalPad(input_dims[dim], strides[dim], output_padding[dim],
+                                         kernel_shape[dim], dilations[dim], output_dims_from_attr[dim]);
+        DistributePadding(pad_type, total_pad, pad_head, pad_tail);
+
+        pads[dim] = narrow<uint32_t>(pad_head);
+        pads[rank + dim] = narrow<uint32_t>(pad_tail);
+      }
+
+    } else if (auto_pad != "NOTSET") {  // Case: auto_pad is SAME_UPPER/LOWER/VALID, no output_shape attribute
       auto pad_type = StringToAutoPadType(auto_pad);
       // skip N, C, input0 shape NHWC
       std::vector<uint32_t> input_dims(input_0_shape.begin() + 1, input_0_shape.end() - 1);
