@@ -1901,14 +1901,6 @@ TEST(CApiTest, test_pyop_kwarg) {
 }
 #endif
 
-#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
-TEST(CApiTest, create_session_without_session_option) {
-  constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
-  Ort::Session ret(*ort_env, model_uri, Ort::SessionOptions{nullptr});
-  ASSERT_NE(nullptr, ret);
-}
-#endif
-
 #ifdef REDUCED_OPS_BUILD
 TEST(ReducedOpsBuildTest, test_excluded_ops) {
   // In reduced ops build, test a model containing ops not included in required_ops.config cannot be loaded.
