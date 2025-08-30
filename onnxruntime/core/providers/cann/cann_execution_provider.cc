@@ -1056,9 +1056,12 @@ Status CANNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_op
 
 static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
+static bool repeat_init_acl_flag_ = true;
 void InitializeRegistry() {
-  CANN_CALL_THROW(aclInit(nullptr));
-
+  auto ret_code = aclInit(nullptr);
+  if (ret_code == ACL_ERROR_REPEAT_INITIALIZE) {
+    repeat_init_acl_flag_ = false;
+  }
   s_kernel_registry = KernelRegistry::Create();
   ORT_THROW_IF_ERROR(cann::RegisterCANNKernels(*s_kernel_registry));
 }
@@ -1067,8 +1070,9 @@ void DeleteRegistry() {
   s_kernel_registry.reset();
 
   ge::aclgrphBuildFinalize();
-
-  CANN_CALL_THROW(aclFinalize());
+  if (repeat_init_acl_flag_) {
+    CANN_CALL_THROW(aclFinalize());
+  }
 }
 
 std::shared_ptr<KernelRegistry> CANNExecutionProvider::GetKernelRegistry() const {
@@ -1393,7 +1397,7 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         modelID = modelIDs_[filename];
       } else {
         std::lock_guard<std::mutex> lock(g_mutex);
-        auto filename_with_suffix = cann::RegexMatchFile(filename);
+        auto filename_with_suffix = cann::MatchFile(filename);
         if (!filename_with_suffix.empty()) {
           CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));
         } else {
