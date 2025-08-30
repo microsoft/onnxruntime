@@ -391,12 +391,10 @@ void MoeGemmRunner<T, WeightType>::dispatch_to_arch<EpilogueTag>(const T* A, con
     dispatch_moe_gemm_to_cutlass<T, WeightType, cutlass::arch::Sm75, EpilogueTag>(
         A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n, gemm_k, num_experts, gemm_config,
         sm_, multi_processor_count_, stream, occupancy);
-  } else if (sm_ >= 80 && sm_ < 90) {
+  } else if (sm_ >= 80) {  // Hopper and Blackwell will fallback to use Ampere kernels.
     dispatch_moe_gemm_to_cutlass<T, WeightType, cutlass::arch::Sm80, EpilogueTag>(
         A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n, gemm_k, num_experts, gemm_config,
         sm_, multi_processor_count_, stream, occupancy);
-  } else {
-    ORT_THROW("[MoE][GEMM Dispatch] Arch unsupported for MoE GEMM");
   }
 }
 
@@ -478,6 +476,7 @@ void MoeGemmRunner<T, WeightType>::moe_gemm_bias_act(const T* A, const WeightTyp
                                                      int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
                                                      int num_experts, ActivationType activation_type,
                                                      cudaStream_t stream) {
+  // Swiglu will use Identity to call this function so we not need to handle it here.
   switch (activation_type) {
     case ActivationType::Relu:
       run_gemm<EpilogueOpDefaultReLU>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n,

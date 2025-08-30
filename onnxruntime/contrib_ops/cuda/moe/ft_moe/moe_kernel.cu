@@ -44,6 +44,72 @@
 
 namespace ort_fastertransformer {
 static constexpr int WARP_SIZE = 32;
+
+// SwiGLU with interleaved is like the following python code using PyTorch:
+//   dim = x.shape[-1]
+//   x = x.view(-1, dim // 2, 2)
+//   x_glu, x_linear = x[..., 0], x[..., 1]
+//   y = x_glu * torch.sigmoid(alpha * x_glu) * (x_linear + 1)
+template <typename T>
+__global__ void swiglu_kernel_interleaved(T* output, T const* input, int intermediate_size, int num_rows, float swiglu_alpha) {
+  int const row = blockIdx.x;
+  if (row >= num_rows) {
+    return;
+  }
+
+  T const* row_input = input + row * 2 * intermediate_size;
+  T* row_output = output + row * intermediate_size;
+
+  for (int i = threadIdx.x; i < intermediate_size; i += blockDim.x) {
+    T x_glu = row_input[2 * i];
+    T x_linear = row_input[2 * i + 1];
+
+    float sigmoid_arg = swiglu_alpha * static_cast<float>(x_glu);
+    float sigmoid_out = 1.f / (1.f + expf(-sigmoid_arg));
+
+    float swish_out = static_cast<float>(x_glu) * sigmoid_out;
+    row_output[i] = static_cast<T>(swish_out * (static_cast<float>(x_linear) + 1.f));
+  }
+}
+
+// Non interleaved version of SwiGLU kernel, which splits each row into two chunks of same size.
+template <typename T>
+__global__ void swiglu_kernel_chunked(T* output, T const* input, int intermediate_size, int num_rows, float swiglu_alpha) {
+  int const row = blockIdx.x;
+  if (row >= num_rows) {
+    return;
+  }
+
+  T const* row_input = input + row * 2 * intermediate_size;
+  T* row_output = output + row * intermediate_size;
+
+  for (int i = threadIdx.x; i < intermediate_size; i += blockDim.x) {
+    T x_glu = row_input[i];
+    T x_linear = row_input[i + intermediate_size];
+
+    float sigmoid_arg = swiglu_alpha * static_cast<float>(x_glu);
+    float sigmoid_out = 1.f / (1.f + expf(-sigmoid_arg));
+
+    float swish_out = static_cast<float>(x_glu) * sigmoid_out;
+    row_output[i] = static_cast<T>(swish_out * (static_cast<float>(x_linear) + 1.f));
+  }
+}
+
+template <typename T, bool interleaved>
+void invokeSwiGLU(T* output, T const* input, int intermediate_size, int num_rows, float swiglu_alpha, cudaStream_t stream) {
+  if (num_rows == 0) {
+    return;
+  }
+  dim3 block(std::min(intermediate_size, 1024));
+  dim3 grid(num_rows);
+
+  if constexpr (interleaved) {
+    swiglu_kernel_interleaved<T><<<grid, block, 0, stream>>>(output, input, intermediate_size, num_rows, swiglu_alpha);
+  } else {
+    swiglu_kernel_chunked<T><<<grid, block, 0, stream>>>(output, input, intermediate_size, num_rows, swiglu_alpha);
+  }
+}
+
 // ====================== Softmax things ===============================
 // We have our own implementation of softmax here so we can support transposing the output
 // in the softmax kernel when we extend this module to support expert-choice routing.
@@ -666,9 +732,14 @@ __global__ void dispatch_activations_kernel(int64_t* total_rows_before_expert, i
 }
 
 template <typename T, typename WeightType, typename Enable>
-CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(int sm_version, bool has_fc3,
+CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(int sm_version, ActivationType activation_type, bool has_fc3,
                                                               bool normalize_routing_weights, bool use_sparse_mixer)
-    : has_fc3_(has_fc3), total_past_rows_(0), total_covered_rows_(0), normalize_routing_weights_(normalize_routing_weights), use_sparse_mixer_(use_sparse_mixer) {
+    : activation_type_(activation_type),
+      has_fc3_(has_fc3),
+      total_past_rows_(0),
+      total_covered_rows_(0),
+      normalize_routing_weights_(normalize_routing_weights),
+      use_sparse_mixer_(use_sparse_mixer) {
   moe_gemm_runner_.initialize(sm_version);
 }
 
@@ -695,8 +766,16 @@ size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(size_t num_ro
   total_ws_bytes += buf_size * sizeof(T);                    // permuted_data
   total_ws_bytes += padded_experts * sizeof(int64_t);        // Hold total_rows_before_expert_
   total_ws_bytes += num_softmax_outs * sizeof(T);
-  const size_t bytes_for_fc1_result = has_fc3_ ? 2 * interbuf_size * sizeof(T) : interbuf_size * sizeof(T);
-  const size_t sorter_ws_size_bytes = pad_to_multiple_of_16(sorter_.getWorkspaceSize(num_rows));
+
+  size_t bytes_for_fc1_result;
+  if (activation_type_ == ActivationType::SwiGLU) {
+    // Space for both fc1_result_ and act_result_.
+    bytes_for_fc1_result = (2 * interbuf_size + interbuf_size) * sizeof(T);
+  } else {
+    bytes_for_fc1_result = has_fc3_ ? 2 * interbuf_size * sizeof(T) : interbuf_size * sizeof(T);
+  }
+
+  const size_t sorter_ws_size_bytes = pad_to_multiple_of_16(sorter_.getWorkspaceSize(k * num_rows));
   sorter_.update_num_experts(static_cast<int>(num_experts));
 
   size_t bytes_for_intermediate_and_sorting = bytes_for_fc1_result;
@@ -705,7 +784,7 @@ size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(size_t num_ro
     bytes_for_intermediate_and_sorting += remaining_bytes;
   }
 
-  total_ws_bytes += bytes_for_intermediate_and_sorting;  // intermediate (fc1) output + cub sorting workspace
+  total_ws_bytes += bytes_for_intermediate_and_sorting;
   return total_ws_bytes;
 }
 
@@ -725,16 +804,34 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, 
 
   total_rows_before_expert_ = reinterpret_cast<int64_t*>(permuted_data_ + buf_size);
 
-  if (has_fc3_) {
-    fc3_result_ = reinterpret_cast<T*>(total_rows_before_expert_ + padded_experts);
-    fc1_result_ = reinterpret_cast<T*>(fc3_result_ + interbuf_size);
+  char* current_ptr = reinterpret_cast<char*>(total_rows_before_expert_ + padded_experts);
+
+  if (activation_type_ == ActivationType::SwiGLU) {
+    // fc1_result_ is used for GEMM1 output (2 * inter_size)
+    fc1_result_ = reinterpret_cast<T*>(current_ptr);
+    current_ptr += 2 * interbuf_size * sizeof(T);
+
+    // act_result_ is used for SwiGLU output (inter_size)
+    act_result_ = reinterpret_cast<T*>(current_ptr);
+    current_ptr += interbuf_size * sizeof(T);
+
+    ORT_ENFORCE(!has_fc3_, "SwiGLU activation is not supported with fc3");
   } else {
-    fc1_result_ = reinterpret_cast<T*>(total_rows_before_expert_ + padded_experts);
+    fc1_result_ = reinterpret_cast<T*>(current_ptr);
+    act_result_ = nullptr;  // No extra buffer for activation since it is done inplace.
+    current_ptr += interbuf_size * sizeof(T);
+  }
+
+  if (has_fc3_) {
+    fc3_result_ = reinterpret_cast<T*>(current_ptr);
+    current_ptr += interbuf_size * sizeof(T);
+  } else {
+    fc3_result_ = nullptr;
   }
 
   const bool is_pow_2 = (num_experts != 0) && ((num_experts & (num_experts - 1)) == 0);
   if (!is_pow_2 || num_experts > 256) {
-    softmax_out_ = reinterpret_cast<T*>(fc1_result_ + interbuf_size);
+    softmax_out_ = reinterpret_cast<T*>(current_ptr);
   } else {
     softmax_out_ = nullptr;
   }
@@ -880,8 +977,51 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
                          stream);
   }
 
-  // moe_gemm_runner_.try_find_best_config(local_num_experts, hidden_size, inter_size,
-  // expanded_active_expert_rows);
+  if (fc1_activation_type == ActivationType::SwiGLU) {
+    T* gemm1_output_buffer = fc1_result_;
+    T* swiglu_output_buffer = act_result_;
+
+    moe_gemm_runner_.moe_gemm_bias_act(
+        permuted_data_ + total_past_rows_ * hidden_size,
+        fc1_expert_weights,
+        fc1_scales,
+        fc1_expert_biases,
+        gemm1_output_buffer + total_past_rows_ * 2 * inter_size,
+        total_rows_before_expert_ + local_experts_start_index,
+        expanded_active_expert_rows,
+        2 * inter_size,
+        hidden_size,
+        local_num_experts,
+        ActivationType::Identity,
+        stream);
+
+    constexpr bool swiglu_interleaved = true;
+    constexpr float swiglu_alpha = 1.702f;
+    invokeSwiGLU<T, swiglu_interleaved>(
+        swiglu_output_buffer + total_past_rows_ * inter_size,
+        gemm1_output_buffer + total_past_rows_ * 2 * inter_size,
+        inter_size,
+        static_cast<int>(total_covered_rows_),
+        swiglu_alpha,
+        stream);
+
+    moe_gemm_runner_.moe_gemm(
+        swiglu_output_buffer + total_past_rows_ * inter_size,
+        fc2_expert_weights,
+        fc2_scales,
+        nullptr,
+        fc2_result + total_past_rows_ * hidden_size,
+        total_rows_before_expert_ + local_experts_start_index,
+        expanded_active_expert_rows,
+        hidden_size,
+        inter_size,
+        local_num_experts,
+        stream);
+
+    // No fc3 for SwiGLU
+    return;
+  }
+
   moe_gemm_runner_.moe_gemm_bias_act(
       permuted_data_ + total_past_rows_ * hidden_size, fc1_expert_weights, fc1_scales, fc1_expert_biases,
       fc1_result_ + total_past_rows_ * inter_size, total_rows_before_expert_ + local_experts_start_index,
@@ -1177,5 +1317,8 @@ template void finalize_moe_routing_kernelLauncher(const float*, float*, const fl
                                                   const float*, const int*, const int*, int, int, int, cudaStream_t);
 template void finalize_moe_routing_kernelLauncher(const half*, half*, const half*, const half*, const half*,
                                                   const half*, const int*, const int*, int, int, int, cudaStream_t);
+
+template void invokeSwiGLU<float, true>(float*, float const*, int, int, float, cudaStream_t);
+template void invokeSwiGLU<half, true>(half*, half const*, int, int, float, cudaStream_t);
 
 }  // namespace ort_fastertransformer
