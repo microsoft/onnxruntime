@@ -234,7 +234,8 @@ static void CreateTestModel(test::GetTestModelFn graph_builder,
 // Helper that checks that a compiled model has the expected number of EPContext nodes.
 static void CheckEpContextNodeCounts(const onnxruntime::Model& ep_ctx_model,
                                      int expected_ep_context_node_count,
-                                     int expected_other_node_count) {
+                                     int expected_other_node_count,
+                                     bool optimizations_disabled = false) {
   int ep_context_node_count = 0;
   int non_ep_context_node_count = 0;
   auto& ctx_graph = ep_ctx_model.MainGraph();
@@ -242,7 +243,11 @@ static void CheckEpContextNodeCounts(const onnxruntime::Model& ep_ctx_model,
     if (node.OpType() == "EPContext") {
       ++ep_context_node_count;
       // validate the fix for the partition issue relate to QDQ model
-      ASSERT_EQ(node.InputDefs().size(), 1);
+      // When optimizations are enabled, constant folding (of QuantizeLinear) will ensure all EPContext nodes
+      // have 1 input. When optimizations are off, 1 EPContext node will have 2 inputs, so don't check.
+      if (!optimizations_disabled) {
+        ASSERT_EQ(node.InputDefs().size(), 1);
+      }
     } else {
       ++non_ep_context_node_count;
     }
@@ -255,22 +260,26 @@ static void CheckEpContextNodeCounts(const onnxruntime::Model& ep_ctx_model,
 // Helper to check that a compiled model (stored as a file) has the expected number of EPContext nodes.
 static void CheckEpContextNodeCounts(const ORTCHAR_T* model_path,
                                      int expected_ep_context_node_count,
-                                     int expected_other_node_count) {
+                                     int expected_other_node_count,
+                                     bool optimizations_disabled = false) {
   std::shared_ptr<Model> ep_ctx_model;
   ASSERT_STATUS_OK(Model::Load(ToPathString(model_path), ep_ctx_model, nullptr, DefaultLoggingManager().DefaultLogger()));
-  CheckEpContextNodeCounts(*ep_ctx_model, expected_ep_context_node_count, expected_other_node_count);
+  CheckEpContextNodeCounts(*ep_ctx_model, expected_ep_context_node_count, expected_other_node_count,
+                           optimizations_disabled);
 }
 
 // Helper to check that a compiled model (stored in a buffer) has the expected number of EPContext nodes.
 static void CheckEpContextNodeCounts(void* model_buffer, size_t model_buffer_size,
                                      int expected_ep_context_node_count,
-                                     int expected_other_node_count) {
+                                     int expected_other_node_count,
+                                     bool optimizations_disabled = false) {
   std::shared_ptr<Model> ep_ctx_model;
   const ORTCHAR_T* output_model_path = ORT_TSTR("tmp_output_ctx_model.onnx");
   ASSERT_STATUS_OK(onnxruntime::Model::LoadFromBytes(static_cast<int>(model_buffer_size),
                                                      model_buffer, output_model_path, ep_ctx_model,
                                                      nullptr, DefaultLoggingManager().DefaultLogger()));
-  CheckEpContextNodeCounts(*ep_ctx_model, expected_ep_context_node_count, expected_other_node_count);
+  CheckEpContextNodeCounts(*ep_ctx_model, expected_ep_context_node_count, expected_other_node_count,
+                           optimizations_disabled);
   std::filesystem::remove(output_model_path);
 }
 
@@ -317,6 +326,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_DisableEpCompile_ThenCompileExplicitly) {
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
   compile_options.SetInputModelPath(input_model_file);
   compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
 
   // Compile the model.
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
@@ -324,7 +334,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_DisableEpCompile_ThenCompileExplicitly) {
 
   // Make sure the compiled model was generated and has the expected number of EPContext nodes.
   ASSERT_TRUE(std::filesystem::exists(output_model_file));
-  CheckEpContextNodeCounts(output_model_file, 2, 2);
+  CheckEpContextNodeCounts(output_model_file, 2, 2, /*optimizations_disabled*/ false);
 
   // Should be able to create a session with the compiled model and the original session options.
   EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_file, so)));
@@ -362,7 +372,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelFromPath) {
 
   // Make sure the compiled model was generated and has the expected number of EPContext nodes.
   ASSERT_TRUE(std::filesystem::exists(output_model_file));
-  CheckEpContextNodeCounts(output_model_file, 2, 2);
+  CheckEpContextNodeCounts(output_model_file, 2, 2, /*optimizations_disabled*/ true);
 
   // Should be able to create a session with the compiled model and the original session options.
   EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_file, so)));
@@ -400,7 +410,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelAsBuffer_Embe
 
   // Make sure the compiled model was generated and has the expected number of EPContext nodes.
   ASSERT_TRUE(std::filesystem::exists(output_model_file));
-  CheckEpContextNodeCounts(output_model_file, 2, 2);
+  CheckEpContextNodeCounts(output_model_file, 2, 2, /*optimizations_disabled*/ true);
 
   // Should be able to create a session with the compiled model and the original session options.
   EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_file, so)));
@@ -443,7 +453,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer) {
   ASSERT_TRUE(output_model_buffer_size > 0);
 
   // Check that the compiled model has the expected number of EPContext nodes.
-  CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+  CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2, /*optimizations_disabled*/ true);
 
   {
     // Should be able to create a session with the compiled model and the original session options.
@@ -492,7 +502,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
     ASSERT_TRUE(output_model_buffer_size > 0);
 
     // Check that the compiled model has the expected number of EPContext nodes.
-    CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+    CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2, /*optimizations_disabled*/ true);
 
     // Should be able to create a session with the compiled model and the original session options.
     EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_buffer, output_model_buffer_size, session_options)));
@@ -527,7 +537,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
     ASSERT_TRUE(std::filesystem::exists(target_dir + bin_file_name)) << "expected context binary file should exist";
 
     // Check that the compiled model has the expected number of EPContext nodes.
-    CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+    CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2, /*optimizations_disabled*/ true);
 
     // Add session option "ep.context_file_path" so that the session can use it to locate the [model_name]_qnn.bin file
     std::string ctx_model = target_dir + model_name;
@@ -586,7 +596,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
   ASSERT_TRUE(std::filesystem::exists(output_initializers_file));
 
   // Check that the compiled model has the expected number of EPContext nodes.
-  CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+  CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2, /*optimizations_disabled*/ true);
 
   // Should be able to create a session with the compiled model and the original session options.
   EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_buffer, output_model_buffer_size, so)));
