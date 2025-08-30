@@ -53,12 +53,14 @@ void RunTest(const std::vector<int64_t>& input_dims,
   std::vector<T> output_data(output_size);
   std::vector<int64_t> input_strides(rank);
   std::vector<int64_t> output_strides(rank);
-  input_strides[rank - 1] = output_strides[rank - 1] = 1;
-  if (rank > 1) {
-    for (size_t i = rank - 2;; --i) {
-      input_strides[i] = input_dims[i + 1] * input_strides[i + 1];
-      output_strides[i] = output_dims[i + 1] * output_strides[i + 1];
-      if (i == 0) break;
+  if (rank >= 1) {
+    input_strides[rank - 1] = output_strides[rank - 1] = 1;
+    if (rank > 1) {
+      for (size_t i = rank - 2;; --i) {
+        input_strides[i] = input_dims[i + 1] * input_strides[i + 1];
+        output_strides[i] = output_dims[i + 1] * output_strides[i + 1];
+        if (i == 0) break;
+      }
     }
   }
   for (size_t i = 0; i < output_size; ++i) {
