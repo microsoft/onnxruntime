@@ -17,6 +17,10 @@ namespace python {
 // Returns the number of bytes written to the underlying stream.
 using PyOutStreamWriteFunc = std::function<void(const pybind11::bytes& buffer)>;
 
+using PyHandleInitializerFunc = std::function<std::shared_ptr<const OrtExternalInitializerInfo>(const std::string& initializer_name,
+                                                                                                const OrtValue& initializer_value,
+                                                                                                const OrtExternalInitializerInfo* external_info)>;
+
 /// <summary>
 /// Class exposed to Python that enables compiling ONNX models.
 /// Internally wraps a onnxruntime::ModelCompilationOptions that stores and validates settings.
@@ -53,11 +57,13 @@ class PyModelCompiler {
                                     bool embed_compiled_data_into_model = false,
                                     const std::string& external_initializers_file_path = {},
                                     size_t external_initializers_size_threshold = 1024,
-                                    size_t flags = 0);
+                                    size_t flags = 0,
+                                    const PyHandleInitializerFunc& py_handle_initializer_func = nullptr);
 
   // Note: Creation should be done via Create(). This constructor is public so that it can be called from
   // std::make_shared().
   PyModelCompiler(onnxruntime::Environment& env, const PySessionOptions& sess_options,
+                  const PyHandleInitializerFunc& py_handle_initializer_func,
                   PrivateConstructorTag);
 
   /// <summary>
@@ -88,6 +94,7 @@ class PyModelCompiler {
   onnxruntime::Environment& env_;
   onnxruntime::ModelCompilationOptions model_compile_options_;
   std::string input_model_bytes_;
+  PyHandleInitializerFunc py_handle_initializer_func_;
 #endif  // defined(ORT_MINIMAL_BUILD)
 };
 }  // namespace python

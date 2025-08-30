@@ -4738,13 +4738,17 @@ Status Graph::ToGraphProtoWithInitializerHandlerImpl(OrtHandleInitializerDataFun
       // Call the user's initializer handler function. If the user wants to store the initializer externally,
       // the handler function will use OrtApi::CreateExternalInitializerInfo() to create a new
       // OrtExternalInitializerInfo instance that indicates the location of the data.
-      ExternalDataInfo* new_external_info = nullptr;
+      OrtExternalInitializerInfo* new_external_info = nullptr;
       Status status = ToStatusAndRelease(handle_initializer_func(state, initializer->name().c_str(),
                                                                  &ort_value,
                                                                  static_cast<OrtExternalInitializerInfo*>(original_ext_data_info.get()),
-                                                                 reinterpret_cast<OrtExternalInitializerInfo**>(&new_external_info)));
+                                                                 &new_external_info));
 
-      std::unique_ptr<ExternalDataInfo> new_external_info_holder(new_external_info);  // Take ownership
+      ORT_RETURN_IF(new_external_info != nullptr &&
+                        new_external_info == static_cast<OrtExternalInitializerInfo*>(original_ext_data_info.get()),
+                    "User's OrtHandleInitializerDataFunc must not return the external_info parameter.",
+                    "Return a copy instead.");
+      std::unique_ptr<OrtExternalInitializerInfo> new_external_info_holder(new_external_info);  // Take ownership
       ORT_RETURN_IF_ERROR(status);
 
       if (new_external_info != nullptr) {

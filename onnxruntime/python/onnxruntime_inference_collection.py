@@ -620,6 +620,36 @@ class InferenceSession(Session):
                 C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
 
 
+def make_handle_initializer_func_wrapper(
+    handle_initializer_func: InitializerHandlerFunc,
+) -> InitializerHandlerWrapperFunc:
+    """
+    Wraps a user's "initializer handler" function. The returned wrapper function adheres to the
+    signature expected by ORT.
+
+    Need this wrapper to:
+      - Convert the `initializer_value` parameter from `C.OrtValue` to `onnxruntime.OrtValue`, which is more
+        convenient for the user's function to use.
+      - Allow the user's function to return the original `external_info` parameter (this wrapper makes a copy)
+    """
+
+    def handle_initializer_func_wrapper(
+        initializer_name: str,
+        initializer_value: C.OrtValue,
+        external_info: C.OrtExternalInitializerInfo | None,
+    ) -> C.OrtExternalInitializerInfo | None:
+        ret_val: C.OrtExternalInitializerInfo | None = handle_initializer_func(
+            initializer_name, OrtValue(initializer_value), external_info
+        )
+        if ret_val is not None and ret_val == external_info:
+            # User returned `external_info` (const and owned by ORT). ORT expects the returned value to be
+            # a new instance (that it deletes), so make a copy.
+            ret_val = C.OrtExternalInitializerInfo(ret_val.filepath, ret_val.file_offset, ret_val.byte_size)
+        return ret_val
+
+    return handle_initializer_func_wrapper
+
+
 class ModelCompiler:
     """
     This class is used to compile an ONNX model. A compiled ONNX model has EPContext nodes that each
@@ -647,6 +677,7 @@ class ModelCompiler:
         external_initializers_file_path: str | os.PathLike | None = None,
         external_initializers_size_threshold: int = 1024,
         flags: int = C.OrtCompileApiFlags.NONE,
+        handle_initializer_func: InitializerHandlerFunc | None = None,
     ):
         """
         Creates a ModelCompiler instance.
@@ -663,6 +694,8 @@ class ModelCompiler:
             is None or empty. Initializers larger than this threshold are stored in the external initializers file.
         :param flags: Additional boolean options to enable. Set this parameter to a bitwise OR of
             flags in onnxruntime.OrtCompileApiFlags.
+        :param handle_initializer_func: Optional function called for every initializer to allow user to specify
+            whether an initializer should be stored within the model or externally.
         """
         input_model_path: str | os.PathLike | None = None
         input_model_bytes: bytes | None = None
@@ -685,6 +718,16 @@ class ModelCompiler:
         else:
             external_initializers_file_path = ""
 
+        if handle_initializer_func is not None:
+            if external_initializers_file_path:
+                raise ValueError(
+                    "Cannot initialize ModelCompiler with both `external_initializers_file_path` "
+                    "and `handle_initializer_func`"
+                )
+            self.handle_initializer_func_wrapper = make_handle_initializer_func_wrapper(handle_initializer_func)
+        else:
+            self.handle_initializer_func_wrapper = None
+
         if input_model_path:
             self._model_compiler = C.ModelCompiler(
                 sess_options,
@@ -694,6 +737,7 @@ class ModelCompiler:
                 external_initializers_file_path,
                 external_initializers_size_threshold,
                 flags,
+                self.handle_initializer_func_wrapper,
             )
         else:
             self._model_compiler = C.ModelCompiler(
@@ -704,6 +748,7 @@ class ModelCompiler:
                 external_initializers_file_path,
                 external_initializers_size_threshold,
                 flags,
+                self.handle_initializer_func_wrapper,
             )
 
     def compile_to_file(self, output_model_path: str | None = None):
@@ -1301,3 +1346,14 @@ class SparseTensor:
         Returns the name of the device where the SparseTensor data buffers reside e.g. cpu, cuda
         """
         return self._tensor.device_name().lower()
+
+
+# Type hint for user-specified function that handles initializers when compiling a model.
+InitializerHandlerFunc = Callable[
+    [str, OrtValue, C.OrtExternalInitializerInfo | None], C.OrtExternalInitializerInfo | None
+]
+
+# Type hint that adheres to the signature expected by ORT.
+InitializerHandlerWrapperFunc = Callable[
+    [str, C.OrtValue, C.OrtExternalInitializerInfo | None], C.OrtExternalInitializerInfo | None
+]

@@ -42,6 +42,7 @@
 #include "core/session/lora_adapters.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include "core/graph/abi_graph_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/provider_policy_context.h"
@@ -2727,6 +2728,35 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
       .export_values();
 
+  // Must use a std::shared_ptr to hold OrtExternalInitializerInfo because the same instances is passed
+  // between C++ and Python (and Python cannot transfer ownership to C++).
+  py::class_<OrtExternalInitializerInfo, std::shared_ptr<OrtExternalInitializerInfo>> ort_external_initializer_info_binding(
+      m, "OrtExternalInitializerInfo",
+      R"pbdoc(Location information for initializer data stored in an external file)pbdoc");
+  ort_external_initializer_info_binding
+      .def(py::init([](const std::basic_string<ORTCHAR_T>& filepath, int64_t file_offset, size_t byte_size) {
+#if !defined(ORT_MINIMAL_BUILD)
+        return std::make_shared<OrtExternalInitializerInfo>(filepath, file_offset, byte_size);
+#else
+        ORT_UNUSED_PARAMETER(filepath);
+        ORT_UNUSED_PARAMETER(file_offset);
+        ORT_UNUSED_PARAMETER(byte_size);
+        ORT_THROW("OrtExternalInitializerInfo creation is not supported in this build");
+#endif
+      }))
+      .def_property_readonly(
+          "filepath",
+          [](OrtExternalInitializerInfo* info) -> std::basic_string<ORTCHAR_T> { return info->GetRelPath(); },
+          R"pbdoc(The relative path to the file in which initializer data is stored.)pbdoc")
+      .def_property_readonly(
+          "file_offset",
+          [](OrtExternalInitializerInfo* info) -> int64_t { return info->GetOffset(); },
+          R"pbdoc(The file byte offset where the initializer data is stored.)pbdoc")
+      .def_property_readonly(
+          "byte_size",
+          [](OrtExternalInitializerInfo* info) -> size_t { return info->GetLength(); },
+          R"pbdoc(The byte size of the initializer data in the file.)pbdoc");
+
   py::enum_<OrtCompileApiFlags>(m, "OrtCompileApiFlags", py::arithmetic())
       .value("NONE", OrtCompileApiFlags_NONE)
       .value("ERROR_IF_NO_NODES_COMPILED", OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED)
@@ -2740,7 +2770,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                        bool embed_compiled_data_into_model = false,
                        std::string external_initializers_file_path = {},
                        size_t external_initializers_size_threshold = 1024,
-                       size_t flags = OrtCompileApiFlags_NONE) {
+                       size_t flags = OrtCompileApiFlags_NONE,
+                       const PyHandleInitializerFunc& py_handle_initializer_func = nullptr) {
 #if !defined(ORT_MINIMAL_BUILD)
         std::unique_ptr<PyModelCompiler> result;
         OrtPybindThrowIfError(PyModelCompiler::Create(result, GetEnv(), sess_options,
@@ -2748,7 +2779,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                                                       embed_compiled_data_into_model,
                                                       external_initializers_file_path,
                                                       external_initializers_size_threshold,
-                                                      flags));
+                                                      flags,
+                                                      py_handle_initializer_func));
         return result;
 #else
         ORT_UNUSED_PARAMETER(sess_options);
@@ -2758,6 +2790,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_UNUSED_PARAMETER(external_initializers_file_path);
         ORT_UNUSED_PARAMETER(external_initializers_size_threshold);
         ORT_UNUSED_PARAMETER(flags);
+        ORT_UNUSED_PARAMETER(py_handle_initializer_func);
         ORT_THROW("Compile API is not supported in this build.");
 #endif
       }))

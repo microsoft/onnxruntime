@@ -284,6 +284,90 @@ class TestCompileApi(AutoEpTestCase):
             model_compiler.compile_to_stream(my_write_func)
         self.assertIn(test_py_error_message, str(context.exception))
 
+    def test_compile_with_initializer_handler(self):
+        """
+        Tests compiling a model using a custom initializer handler that stores initializers
+        in an external file.
+        """
+        input_model_path = get_name("conv_qdq_external_ini.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "conv_qdq.init_handler.onnx")
+        initializer_file_path = os.path.join(self._tmp_dir_path, "conv_qdq.init_handler.bin")
+
+        if os.path.exists(output_model_path):
+            os.remove(output_model_path)
+
+        if os.path.exists(initializer_file_path):
+            os.remove(initializer_file_path)
+
+        with open(initializer_file_path, "wb") as ext_init_file:
+
+            def handle_initializers(
+                initializer_name: str,
+                initializer_value: onnxrt.OrtValue,
+                external_info: onnxrt.OrtExternalInitializerInfo | None,
+            ) -> onnxrt.OrtExternalInitializerInfo | None:
+                self.assertTrue(initializer_name)  # Should have valid name
+                byte_size = initializer_value.tensor_size_in_bytes()
+
+                if byte_size < 64:
+                    return None  # Store small initializer within compiled model.
+
+                # Else, write initializer to new external file.
+                value_np = initializer_value.numpy()
+                file_offset = ext_init_file.tell()
+                ext_init_file.write(value_np.tobytes())
+                return onnxrt.OrtExternalInitializerInfo(initializer_file_path, file_offset, byte_size)
+
+            session_options = onnxrt.SessionOptions()
+            model_compiler = onnxrt.ModelCompiler(
+                session_options,
+                input_model_path,
+                embed_compiled_data_into_model=True,
+                external_initializers_file_path=None,
+                handle_initializer_func=handle_initializers,
+            )
+            model_compiler.compile_to_file(output_model_path)
+
+        self.assertTrue(os.path.exists(output_model_path))
+        self.assertTrue(os.path.exists(initializer_file_path))
+
+    def test_compile_with_initializer_handler_that_reuses(self):
+        """
+        Tests compiling a model using a custom initializer handler that reuses external initializer files.
+        """
+        input_model_path = get_name("conv_qdq_external_ini.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "conv_qdq.init_handler_reuse.onnx")
+
+        if os.path.exists(output_model_path):
+            os.remove(output_model_path)
+
+        # Function that reuses external initializer files for the compiled model.
+        def reuse_external_initializers(
+            initializer_name: str,
+            initializer_value: onnxrt.OrtValue,
+            external_info: onnxrt.OrtExternalInitializerInfo | None,
+        ) -> onnxrt.OrtExternalInitializerInfo | None:
+            self.assertTrue(initializer_name)  # Should have valid name
+            self.assertNotEqual(initializer_value.data_ptr(), 0)
+            self.assertGreater(initializer_value.tensor_size_in_bytes(), 0)
+            if external_info is not None:
+                # Original initializer is stored externally.
+                # Make the initializer in the compiled model use the same external file
+                return external_info
+
+            return None  # Otherwise, make a copy of the initializer and store it within compiled model.
+
+        session_options = onnxrt.SessionOptions()
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path=None,
+            handle_initializer_func=reuse_external_initializers,
+        )
+        model_compiler.compile_to_file(output_model_path)
+        self.assertTrue(os.path.exists(output_model_path))
+
     def test_fail_load_uncompiled_model_and_then_compile(self):
         """
         Tests compiling scenario:

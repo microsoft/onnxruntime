@@ -2542,8 +2542,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateExternalInitializerInfo, _In_ const ORTCHAR_T
                     _In_ int64_t file_offset, _In_ size_t byte_size, _Outptr_ OrtExternalInitializerInfo** out) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  auto ext_data_info = std::make_unique<onnxruntime::ExternalDataInfo>(filepath, file_offset, byte_size);
-  *out = static_cast<OrtExternalInitializerInfo*>(ext_data_info.release());
+  auto ext_data_info = std::make_unique<OrtExternalInitializerInfo>(filepath, file_offset, byte_size);
+  *out = ext_data_info.release();
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(filepath);

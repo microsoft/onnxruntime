@@ -785,8 +785,6 @@ static OrtStatus* ORT_API_CALL ReuseExternalInitializers(void* state,
                                                          const OrtValue* /*initializer_value*/,
                                                          const OrtExternalInitializerInfo* external_info,
                                                          OrtExternalInitializerInfo** new_external_info) {
-  const OrtApi& ort_api = Ort::GetApi();
-
   // If the original initializer was stored in an external file, keep it there (just for testing).
   if (external_info != nullptr) {
     Ort::ConstExternalInitializerInfo info(external_info);
