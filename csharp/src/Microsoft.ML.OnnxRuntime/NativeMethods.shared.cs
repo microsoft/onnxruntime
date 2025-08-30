@@ -422,6 +422,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr Node_GetGraph;
         public IntPtr Node_GetEpName;
         public IntPtr ReleaseExternalInitializerInfo;
+        public IntPtr CreateExternalInitializerInfo;
         public IntPtr ExternalInitializerInfo_GetFilePath;
         public IntPtr ExternalInitializerInfo_GetFileOffset;
         public IntPtr ExternalInitializerInfo_GetByteSize;

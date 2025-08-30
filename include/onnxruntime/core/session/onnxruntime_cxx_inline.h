@@ -1003,11 +1003,26 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalI
   return *this;
 }
 
+inline ModelCompilationOptions&
+ModelCompilationOptions::SetOutputModelHandleInitializerFunc(OrtHandleInitializerDataFunc handle_initializer_func,
+                                                             void* state) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelHandleInitializerFunc(this->p_,
+                                                                                                handle_initializer_func,
+                                                                                                state));
+  return *this;
+}
+
 inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelBuffer(
     OrtAllocator* allocator, void** output_model_buffer_ptr, size_t* output_model_buffer_size_ptr) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelBuffer(this->p_, allocator,
                                                                                  output_model_buffer_ptr,
                                                                                  output_model_buffer_size_ptr));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelWriteFunc(OrtWriteBufferFunc write_func,
+                                                                                 void* state) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelWriteFunc(this->p_, write_func, state));
   return *this;
 }
 
@@ -3029,6 +3044,47 @@ inline void ModelImpl<OrtModel>::AddGraph(Graph& graph) {
   ThrowOnError(GetModelEditorApi().AddGraphToModel(p_, graph.release()));
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
+}  // namespace detail
+
+namespace detail {
+
+template <typename T>
+inline std::basic_string<ORTCHAR_T> ExternalInitializerInfoImpl<T>::GetFilePath() const {
+  return GetApi().ExternalInitializerInfo_GetFilePath(this->p_);
+}
+
+template <typename T>
+inline int64_t ExternalInitializerInfoImpl<T>::GetFileOffset() const {
+  return GetApi().ExternalInitializerInfo_GetFileOffset(this->p_);
+}
+
+template <typename T>
+inline size_t ExternalInitializerInfoImpl<T>::GetByteSize() const {
+  return GetApi().ExternalInitializerInfo_GetByteSize(this->p_);
+}
 
 }  // namespace detail
+
+inline ExternalInitializerInfo::ExternalInitializerInfo(const ORTCHAR_T* filepath, int64_t file_offset,
+                                                        size_t byte_size) {
+  ThrowOnError(GetApi().CreateExternalInitializerInfo(filepath, file_offset, byte_size, &this->p_));
+}
+
+inline ConstExternalInitializerInfo ExternalInitializerInfo::GetConst() const {
+  return ConstExternalInitializerInfo{this->p_};
+}
+
+inline Status ExternalInitializerInfo::Create(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size,
+                                              /*out*/ ExternalInitializerInfo& out) {
+  OrtExternalInitializerInfo* info = nullptr;
+  OrtStatus* status = GetApi().CreateExternalInitializerInfo(filepath, file_offset, byte_size, &info);
+  if (status != nullptr) {
+    return Status{status};
+  }
+
+  out = ExternalInitializerInfo(info);
+
+  return Status{nullptr};
+}
+
 }  // namespace Ort

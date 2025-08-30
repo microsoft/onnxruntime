@@ -6,11 +6,8 @@
 #include <mutex>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
-#include "python/onnxruntime_pybind_state_common.h"
-
-#if !defined(ORT_MINIMAL_BUILD)
 #include "python/onnxruntime_pybind_model_compiler.h"
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#include "python/onnxruntime_pybind_state_common.h"
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
@@ -2788,7 +2785,19 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             ORT_THROW("Compile API is not supported in this build.");
 #endif
           },
-          R"pbdoc(Compile an ONNX model into a buffer.)pbdoc");
+          R"pbdoc(Compile an ONNX model into a buffer.)pbdoc")
+      .def(
+          "compile_to_stream",
+          [](PyModelCompiler* model_compiler, PyOutStreamWriteFunc& py_stream_write_func) {
+#if !defined(ORT_MINIMAL_BUILD)
+            OrtPybindThrowIfError(model_compiler->CompileToOutStream(py_stream_write_func));
+#else
+            ORT_UNUSED_PARAMETER(model_compiler);
+            ORT_UNUSED_PARAMETER(py_stream_write_func);
+            ORT_THROW("Compile API is not supported in this build.");
+#endif
+          },
+          R"pbdoc(Compile an ONNX model into an output stream using the provided write functor.)pbdoc");
 }
 
 bool InitArray() {
