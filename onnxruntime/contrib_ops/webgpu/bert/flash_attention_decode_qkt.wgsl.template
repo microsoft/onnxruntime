@@ -6,6 +6,29 @@
 #param tile_size_k_vec
 #param sub_tile_count
 
+// Note that this shader adopts similar algorithm with dp4a generation shader.
+//
+// This algorithm works to compute dot product of keys with queries parallelly,
+// by processing on the k (head_size) dimension at each step amongst
+// tile_size_k_vec threads, and utilizing the remaining threads in the workgroup
+// to process additional rows of |present_key| in parallel (such that the values
+// in shared memory (tile_q) for |q| can be reused). For each load of q, the
+// tile_size_k_vec threads also reload |present_key| tile_size/sub_tile_count
+// times to compute partial dot products of other |present_key| rows in order to
+// complete all tile_size |present_key| rows in this workgroup and also reusing
+// the loaded in register values of |q|.
+
+// 1. Each workgroup processes one row of |q| and tile_size rows of |present_key|
+//
+// 2. Computation Process:
+//    - Reads [tile_size][tile_size_k_vec] block of |present_key| data at a time
+//    - Each thread within workgroup computes dot products of 4 A*B elements
+//      since each k represents 4 elements of |present_key|
+//    - Stores intermediate results in shared memory (inner_qk_values)
+//    - Iterates through columns (head_size_vec) accumulating results in
+//      inner_qk_values
+//    - Performs final reduction sum in inner_qk_values for output
+
 var<workgroup> tile_q: array<q_value_t, tile_size_k_vec>;
 var<workgroup> inner_qk_values: array<array<q_element_t, tile_size_k_vec>, tile_size>;
 var<workgroup> tile_qk: array<q_element_t, tile_size>;
