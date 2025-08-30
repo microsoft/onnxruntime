@@ -84,6 +84,7 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double, Affine);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, Affine);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, Attention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, Attention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, Attention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedMultiHeadAttention);
@@ -320,6 +321,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, Affine)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, Attention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, Attention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, Attention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedMultiHeadAttention)>,

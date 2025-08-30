@@ -76,6 +76,15 @@ Status CopyQK(cudaStream_t stream,
   return Status::OK();
 }
 
+template <>
+Status CopyQK(cudaStream_t stream,
+              const int qk_size,
+              const BFloat16* input,
+              BFloat16* output) {
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, qk_size * sizeof(BFloat16), cudaMemcpyDeviceToDevice, stream));
+  return Status::OK();
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -505,11 +505,34 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(
       ldb, strideB, &h_b, C, CUDA_R_16BF, ldc, strideC, batch_count, CUDA_R_32F,
       CUBLAS_GEMM_DEFAULT);
 }
+inline cublasStatus_t cublasGemmStridedBatchedHelper(
+    cublasHandle_t handle, cublasOperation_t transa,
+    cublasOperation_t transb, int m, int n, int k,
+    const float* alpha, const onnxruntime::BFloat16* A, int lda,
+    int64_t strideA, const onnxruntime::BFloat16* B, int ldb,
+    int64_t strideB, const float* beta, onnxruntime::BFloat16* C, int ldc,
+    int64_t strideC, int batch_count,
+    const cudaDeviceProp& /*prop*/, bool /*use_tf32*/) {
+  float h_a = *alpha;
+  float h_b = *beta;
+  // accumulating in FP32
+  return cublasGemmStridedBatchedEx(
+      handle, transa, transb, m, n, k, &h_a, A, CUDA_R_16BF, lda, strideA, B, CUDA_R_16BF,
+      ldb, strideB, &h_b, C, CUDA_R_16BF, ldc, strideC, batch_count, CUDA_R_32F,
+      CUBLAS_GEMM_DEFAULT);
+}
 #else
 inline cublasStatus_t cublasGemmStridedBatchedHelper(
     cublasHandle_t, cublasOperation_t, cublasOperation_t, int, int,
     int, const onnxruntime::BFloat16*, const onnxruntime::BFloat16*, int, int64_t,
     const onnxruntime::BFloat16*, int, int64_t, const onnxruntime::BFloat16*, onnxruntime::BFloat16*,
+    int, int64_t, int, const cudaDeviceProp&, bool /*use_tf32*/) {
+  return CUBLAS_STATUS_NOT_SUPPORTED;
+}
+inline cublasStatus_t cublasGemmStridedBatchedHelper(
+    cublasHandle_t, cublasOperation_t, cublasOperation_t, int, int,
+    int, const float*, const onnxruntime::BFloat16*, int, int64_t,
+    const onnxruntime::BFloat16*, int, int64_t, const float*, onnxruntime::BFloat16*,
     int, int64_t, int, const cudaDeviceProp&, bool /*use_tf32*/) {
   return CUBLAS_STATUS_NOT_SUPPORTED;
 }

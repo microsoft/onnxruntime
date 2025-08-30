@@ -38,6 +38,18 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                   const half* tensor_add,
                                   half* tensor_out);
 
+Status LaunchConcatTensorToTensor(cudaStream_t stream,
+                                  const int all_sequence_length,
+                                  const int sequence_length,
+                                  const int batch_size,
+                                  const int head_size,
+                                  const int num_heads,
+                                  const int max_threads_per_block,
+                                  const int matrix_num,
+                                  const BFloat16* tensor_in,
+                                  const BFloat16* tensor_add,
+                                  BFloat16* tensor_out);
+
 template <typename T>
 Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
                                            const int max_sequence_length,
