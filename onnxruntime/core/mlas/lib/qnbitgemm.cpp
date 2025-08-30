@@ -34,6 +34,7 @@ enum QNBitGemmVariant {
     HQ4BitGemmVariant_CompInt8,
     SQ8BitGemmVariant_CompInt8,
 
+    SQNBitGemmVariant_BitWidth2_CompInt8,
     // End of valid variants
 
     // Keep this element last and ensure that its value is the number of valid QNBitGemmVariant values.
@@ -49,7 +50,11 @@ GetQNBitGemmVariant(
 )
 {
     if ((BlkLen == 16 || BlkLen == 32 || BlkLen == 64 || BlkLen == 128 || BlkLen == 256)) {
-        if (BlkBitWidth == 4) {
+        if (BlkBitWidth == 2) {
+            if (ComputeType == SQNBIT_CompInt8) {
+                return SQNBitGemmVariant_BitWidth2_CompInt8;
+            }
+        } else if (BlkBitWidth == 4) {
             if (ComputeType == SQNBIT_CompFp32) {
                 return SQ4BitGemmVariant_CompFp32;
             } else if (ComputeType == HQNBIT_CompFp16) {
@@ -101,6 +106,9 @@ MlasIsQNBitGemmAvailable(
               (Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8 != nullptr) ||
               (Dispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr && Dispatch->QuantizeARowComputeBlkSum_CompInt8 != nullptr);
         }
+        case SQNBitGemmVariant_BitWidth2_CompInt8: {
+            return (Dispatch->SQ2BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8 != nullptr);
+        }
         case SQ8BitGemmVariant_CompInt8: {
             return Dispatch->SQ8BitGemmPackQuantBDataAndBlkSum != nullptr &&
                    Dispatch->SQ8BitGemmKernel_BlkSum_CompInt8 != nullptr &&
@@ -131,9 +139,10 @@ QNBitGemmPerGemmWorkspaceSize(
         return 0;
     }
 
-    if (BlkBitWidth == 4 || BlkBitWidth == 8) {
+    if (BlkBitWidth == 2 || BlkBitWidth == 4 || BlkBitWidth == 8) {
         return Dispatch->QNBitGemmPerGemmWorkspaceSize(M, N, K, BlkLen, HasZeroPoint, ComputeType);
     }
+
 
     return 0;
 }
@@ -150,7 +159,7 @@ QNBitGemmPerGemmWorkspaceAlignment(
         return 1;
     }
 
-    if (BlkBitWidth == 4 || BlkBitWidth == 8) {
+    if (BlkBitWidth == 2 || BlkBitWidth == 4 || BlkBitWidth == 8) {
         return Dispatch->QNBitGemmPerGemmWorkspaceAlignment(BlkLen, ComputeType);
     }
 
@@ -225,6 +234,12 @@ MlasQNBitGemmPackQuantBDataSize(
         );
     }
 
+    if (BlkBitWidth == 2 && Dispatch->Q2BitGemmPackQuantBDataSize != nullptr) {
+        return Dispatch->Q2BitGemmPackQuantBDataSize(
+            N, K, BlkLen, HasZeroPoint, ComputeType
+        );
+    }
+
     return 0;
 }
 
@@ -290,10 +305,23 @@ MlasQNBitGemmPackQuantBData(
                 ThreadPool
             );
         } else if (Dispatch->SQ4BitGemmPackQuantBData != nullptr) {
-          // TODO: these assertions are true if called from matmul_nbits kernel but not from mlas tests.
-            //assert(QuantBScale == nullptr);
-            //assert(QuantBZeroPoint == nullptr);
+            // TODO: these assertions are true if called from matmul_nbits kernel but not from mlas tests.
+            // assert(QuantBScale == nullptr);
+            // assert(QuantBZeroPoint == nullptr);
             Dispatch->SQ4BitGemmPackQuantBData(
+                N,
+                K,
+                BlkLen,
+                ComputeType,
+                static_cast<const std::byte*>(QuantBData),
+                static_cast<std::byte*>(PackedQuantBDataAndOrBlkSumWorkspace),
+                ThreadPool
+            );
+            return;
+        }
+    } else if (BlkBitWidth == 2) {
+        if (Dispatch->SQ2BitGemmPackQuantBData != nullptr) {
+            Dispatch->SQ2BitGemmPackQuantBData(
                 N,
                 K,
                 BlkLen,
@@ -569,6 +597,21 @@ HQ4BitGemm_CompFp16(
 }
 
 void
+SQ2BitGemm_CompInt8(
+    const size_t /*BlkLen*/,
+    const size_t /*K*/,
+    const MLAS_QNBIT_GEMM_DATA_PARAMS<float>* const /*DataParams*/,
+    void* const /*PerGemmWorkspace*/,
+    const size_t /*RangeStartM*/,
+    const size_t /*RangeCountM*/,
+    const size_t /*RangeStartN*/,
+    const size_t /*RangeCountN*/
+)
+{
+  // TODO: implement this to call 2bit t-mac kernel
+}
+
+void
 SQ4BitGemm_CompInt8(
     const size_t BlkLen,
     const size_t K,
@@ -790,6 +833,7 @@ SQ8BitGemm_CompInt8(
 template <typename T>
 void
 InitializeWorkspace_CompInt8(
+    size_t BlkBitWidth,
     size_t M,
     size_t N,
     size_t K,
@@ -804,6 +848,7 @@ InitializeWorkspace_CompInt8(
 template <>
 void
 InitializeWorkspace_CompInt8<float>(
+    size_t BlkBitWidth,
     size_t M,
     size_t N,
     size_t K,
@@ -820,11 +865,12 @@ InitializeWorkspace_CompInt8<float>(
     const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
     const auto QuantizeA_Packed = GetMlasPlatform().QNBitGemmDispatch->QuantizeA_Packed_CompInt8;
     const auto QuantizeARow = GetMlasPlatform().QNBitGemmDispatch->QuantizeARow_CompInt8;
-    const auto QuantizeARow2 = GetMlasPlatform().QNBitGemmDispatch->QuantizeARowComputeBlkSum_CompInt8;
+    // TODO: THIS is temporary: in case of BlkBitWidth == 2 we want to force use QuantizeARow even if
+    // QuantizeARowComputeBlkSum_CompInt8 is available.
+    const auto QuantizeARow2 = BlkBitWidth == 2 ? nullptr : GetMlasPlatform().QNBitGemmDispatch->QuantizeARowComputeBlkSum_CompInt8;
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
-
     // TODO: try parallel on BatchN * M threads because BatchN is usually 1.
     if (UsePacked && QuantizeA_Packed && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint)) {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
@@ -871,6 +917,7 @@ InitializeWorkspace_CompInt8<float>(
 template <>
 void
 InitializeWorkspace_CompInt8<MLAS_FP16>(
+    size_t BlkBitWidth,
     size_t M,
     size_t N,
     size_t K,
@@ -881,6 +928,7 @@ InitializeWorkspace_CompInt8<MLAS_FP16>(
     size_t PerGemmWorkspaceStride,
     MLAS_THREADPOOL* ThreadPool
 ) {
+    MLAS_UNREFERENCED_PARAMETER(BlkBitWidth);
     MLAS_UNREFERENCED_PARAMETER(M);
     MLAS_UNREFERENCED_PARAMETER(N);
     MLAS_UNREFERENCED_PARAMETER(K);
@@ -894,6 +942,7 @@ InitializeWorkspace_CompInt8<MLAS_FP16>(
 
 template <typename T>
 using InitializeWorkspaceFn = std::function<void(
+    size_t BlkBitWidth,
     size_t M,
     size_t N,
     size_t K,
@@ -914,6 +963,7 @@ InitializeWorkspaceFn<float>
 GetInitializeWorkspace(QNBitGemmVariant variant)
 {
     switch (variant) {
+        case SQNBitGemmVariant_BitWidth2_CompInt8:
         case SQ4BitGemmVariant_CompInt8:
         case SQ8BitGemmVariant_CompInt8:
             return InitializeWorkspace_CompInt8<float>;
@@ -959,6 +1009,8 @@ GetQNBitGemm(QNBitGemmVariant variant)
             return SQ4BitGemm_CompFp32;
         case SQ4BitGemmVariant_CompInt8:
             return SQ4BitGemm_CompInt8;
+        case SQNBitGemmVariant_BitWidth2_CompInt8:
+            return SQ2BitGemm_CompInt8;
         case SQ8BitGemmVariant_CompInt8:
             return SQ8BitGemm_CompInt8;
         default:
@@ -1015,7 +1067,7 @@ MlasQNBitGemmBatch(
     if (const auto InitializeWorkspaceOperation = GetInitializeWorkspace<T>(Variant);
         InitializeWorkspaceOperation != nullptr) {
         InitializeWorkspaceOperation(
-            M, N, K, BatchN, BlkLen, DataParams, Workspace, PerGemmWorkspaceStride, ThreadPool
+            BlkBitWidth, M, N, K, BatchN, BlkLen, DataParams, Workspace, PerGemmWorkspaceStride, ThreadPool
         );
     }
 
