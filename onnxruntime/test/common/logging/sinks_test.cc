@@ -7,14 +7,17 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/logging/sinks/composite_sink.h"
 #include "core/common/logging/sinks/file_sink.h"
+#include "core/session/onnxruntime_c_api.h"
 
+#include <iostream>
+#include <fstream>
 #include "test/common/logging/helpers.h"
 
 using namespace ::onnxruntime::logging;
 using InstanceType = LoggingManager::InstanceType;
 
 namespace {
-void CheckStringInFile(const std::string& filename, const std::string& look_for) {
+void CheckStringInFile(const std::filesystem::path& filename, const std::string& look_for) {
   std::ifstream ifs{filename};
   std::string content(std::istreambuf_iterator<char>{ifs},
                       std::istreambuf_iterator<char>{});
@@ -22,8 +25,8 @@ void CheckStringInFile(const std::string& filename, const std::string& look_for)
   EXPECT_NE(content.find(look_for), std::string::npos);
 }
 
-void DeleteFile(const std::string& filename) {
-  int result = std::remove(filename.c_str());
+void DeleteFile(const std::filesystem::path& filename) {
+  int result = std::filesystem::remove(filename);
   EXPECT_EQ(result, 0);
 }
 }  // namespace
@@ -40,7 +43,7 @@ void DeleteFile(const std::string& filename) {
 /// Tests that the std::clog sink produces the expected output.
 /// </summary>
 TEST(LoggingTests, TestCLogSink) {
-  const std::string filename{"TestCLogSink.out"};
+  constexpr const ORTCHAR_T* filename = ORT_TSTR("TestCLogSink.out");
   const std::string logid{"CLogSink"};
   const std::string message{"Test clog message"};
   const Severity min_log_level = Severity::kWARNING;
@@ -79,7 +82,7 @@ TEST(LoggingTests, TestCLogSink) {
 /// Tests that the std::cerr sink produces the expected output.
 /// </summary>
 TEST(LoggingTests, TestCErrSink) {
-  const std::string filename{"TestCErrSink.out"};
+  constexpr const ORTCHAR_T* filename = ORT_TSTR("TestCErrSink.out");
   const std::string logid{"CErrSink"};
   const std::string message{"Test cerr message"};
   const Severity min_log_level = Severity::kWARNING;
@@ -119,7 +122,7 @@ TEST(LoggingTests, TestCErrSink) {
 /// Tests that the file_sink produces the expected output.
 /// </summary>
 TEST(LoggingTests, TestFileSink) {
-  const std::string filename{"TestFileSink.out"};
+  constexpr const ORTCHAR_T* filename = ORT_TSTR("TestFileSink.out");
   const std::string logid{"FileSink"};
   const std::string message{"Test message"};
   const Severity min_log_level = Severity::kWARNING;
@@ -127,7 +130,7 @@ TEST(LoggingTests, TestFileSink) {
   // create scoped manager so sink gets destroyed once done
   {
 #ifdef _WIN32
-    LoggingManager manager{std::make_unique<FileSink>(onnxruntime::ToWideString(filename), false, false),
+    LoggingManager manager{std::make_unique<FileSink>(filename, false, false),
                            min_log_level, false, InstanceType::Temporal};
 #else
     LoggingManager manager{std::unique_ptr<ISink>{new FileSink{filename, false, false}},
