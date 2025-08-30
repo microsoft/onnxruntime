@@ -2898,14 +2898,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCANNProviderOptions, _Outptr_ OrtCANNProvider
   API_IMPL_BEGIN
 #ifdef USE_CANN
   auto options = std::make_unique<OrtCANNProviderOptions>();
-  options->device_id = 0;
-  options->npu_mem_limit = SIZE_MAX;
-  options->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
-  options->enable_cann_graph = 1;
-  options->enable_cann_subgraph = 0;
-  options->dump_graphs = 0;
-  options->dump_om_model = 1;
-  options->default_memory_arena_cfg = nullptr;
   *out = options.release();
   return nullptr;
 #else
