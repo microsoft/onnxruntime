@@ -24,10 +24,10 @@ TEST(DeviceDiscoveryTest, HasCpuDevice) {
   const auto cpu_devices = GetDevicesByType(OrtHardwareDeviceType_CPU);
   ASSERT_GT(cpu_devices.size(), 0);
 
-// torch cpuinfo is not yet supported for AIX , so blocking this below check.
-#if !defined(__wasm__) && !defined(_AIX)
+
+#if defined(CPUINFO_SUPPORTED)
   ASSERT_NE(cpu_devices[0].vendor_id, 0);
-#endif  // !defined(__WASM__)
+#endif  // defined(CPUINFO_SUPPORTED)
 }
 
 }  // namespace onnxruntime::test
