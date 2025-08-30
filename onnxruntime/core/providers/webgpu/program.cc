@@ -319,6 +319,7 @@ ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
       dispatch_group_size_x_{0},
       dispatch_group_size_y_{0},
       dispatch_group_size_z_{0},
+      indirect_dispatch_tensor_{nullptr},
       workgroup_size_x_{0},
       workgroup_size_y_{0},
       workgroup_size_z_{0} {
@@ -356,6 +357,11 @@ ProgramBase& ProgramBase::SetDispatchGroupSize(uint32_t x, uint32_t y, uint32_t 
   dispatch_group_size_x_ = x;
   dispatch_group_size_y_ = y;
   dispatch_group_size_z_ = z;
+  return *this;
+}
+
+ProgramBase& ProgramBase::SetIndirectDispatchTensor(const Tensor* indirect_dispatch_tensor) {
+  indirect_dispatch_tensor_ = indirect_dispatch_tensor;
   return *this;
 }
 
