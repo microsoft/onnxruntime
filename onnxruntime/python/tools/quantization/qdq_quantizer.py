@@ -12,7 +12,6 @@ from typing import Any
 
 import numpy as np
 import onnx
-import onnx.numpy_helper
 from onnx import TensorProto
 from onnx import onnx_pb as onnx_proto
 
