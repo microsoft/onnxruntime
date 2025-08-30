@@ -129,5 +129,8 @@ bool is_dynamic_shape(const aclmdlIODims& dims);
 std::string MatchFile(const std::string& file_name);
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger);
 
+void SetRepeatInitFlag(bool val);
+bool GetRepeatInitFlag();
+
 }  // namespace cann
 }  // namespace onnxruntime

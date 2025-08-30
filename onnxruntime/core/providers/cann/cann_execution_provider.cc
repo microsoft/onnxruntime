@@ -1056,12 +1056,9 @@ Status CANNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_op
 
 static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
-static bool repeat_init_acl_flag_ = true;
 void InitializeRegistry() {
-  auto ret_code = aclInit(nullptr);
-  if (ret_code == ACL_ERROR_REPEAT_INITIALIZE) {
-    repeat_init_acl_flag_ = false;
-  }
+  CANN_CALL_THROW(aclInit(nullptr));
+
   s_kernel_registry = KernelRegistry::Create();
   ORT_THROW_IF_ERROR(cann::RegisterCANNKernels(*s_kernel_registry));
 }
@@ -1070,7 +1067,8 @@ void DeleteRegistry() {
   s_kernel_registry.reset();
 
   ge::aclgrphBuildFinalize();
-  if (repeat_init_acl_flag_) {
+
+  if (cann::GetRepeatInitFlag()) {
     CANN_CALL_THROW(aclFinalize());
   }
 }

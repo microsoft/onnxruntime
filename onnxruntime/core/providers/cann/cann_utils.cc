@@ -241,5 +241,14 @@ std::string MatchFile(const std::string& file_name) {
   }
   return "";
 }
+
+static bool repeat_init_acl_flag_ = true;
+bool GetRepeatInitFlag() {
+  return repeat_init_acl_flag_;
+}
+
+void SetRepeatInitFlag(bool val) {
+  repeat_init_acl_flag_ = val;
+}
 }  // namespace cann
 }  // namespace onnxruntime
