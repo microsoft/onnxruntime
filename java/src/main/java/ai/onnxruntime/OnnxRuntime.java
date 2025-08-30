@@ -84,6 +84,12 @@ final class OnnxRuntime {
   /** The short name of the WebGPU DAWN library */
   static final String ONNXRUNTIME_LIBRARY_WEBGPU_DAWN_NAME = "webgpu_dawn";
 
+  /** The short name of the WebGPU DXC library "dxil.dll" */
+  static final String ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXIL_NAME = "dxil";
+
+  /** The short name of the WebGPU DXC library "dxcompiler.dll" */
+  static final String ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXCOMPILER_NAME = "dxcompiler";
+
   /** The OS & CPU architecture string */
   private static final String OS_ARCH_STR = initOsArch();
 
@@ -172,9 +178,11 @@ final class OnnxRuntime {
       // the ONNX Runtime native library will load it
       extractProviderLibrary(ONNXRUNTIME_LIBRARY_SHARED_NAME);
 
-      // Extract and prepare the Dawn shared library (if present) but don't try to load it,
-      // the ONNX Runtime native library will load it
+      // Extract and prepare the Dawn shared libraries (if present) but don't try to load them,
+      // the ONNX Runtime native library will load them
       extractProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DAWN_NAME);
+      extractProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXIL_NAME);
+      extractProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXCOMPILER_NAME);
 
       if (!isAndroid()) {
         load(ONNXRUNTIME_LIBRARY_NAME);
