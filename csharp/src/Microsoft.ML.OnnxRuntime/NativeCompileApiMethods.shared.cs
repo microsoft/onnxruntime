@@ -104,6 +104,31 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
             uint flags);
         public DOrtModelCompilationOptions_SetFlags OrtModelCompilationOptions_SetFlags;
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetEpContextBinaryInformation(
+            IntPtr /* OrtModelCompilationOptions* */ options,
+            byte[] /* const ORTCHAR_T* */ outputDirectory,
+            byte[] /* const ORTCHAR_T* */ modelName);
+        public DOrtModelCompilationOptions_SetEpContextBinaryInformation
+                        OrtModelCompilationOptions_SetEpContextBinaryInformation;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetOutputModelWriteFunc(
+            IntPtr /* OrtModelCompilationOptions* */ options,
+            IntPtr /* DOrtWriteBufferDelegate */ writeFunc,
+            IntPtr /* void* */ state);
+        public DOrtModelCompilationOptions_SetOutputModelWriteFunc
+                        OrtModelCompilationOptions_SetOutputModelWriteFunc;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetOutputModelHandleInitializerFunc(
+            IntPtr /* OrtModelCompilationOptions* */ options,
+            IntPtr /* DOrtHandleInitializerDataDelegate */ handleInitializerFunc,
+            IntPtr /* void* */ state);
+        public DOrtModelCompilationOptions_SetOutputModelHandleInitializerFunc
+                        OrtModelCompilationOptions_SetOutputModelHandleInitializerFunc;
+
+
         internal NativeMethods(OnnxRuntime.NativeMethods.DOrtGetCompileApi getCompileApi)
         {
 
@@ -163,6 +188,21 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
                 (DOrtModelCompilationOptions_SetFlags)Marshal.GetDelegateForFunctionPointer(
                     _compileApi.ModelCompilationOptions_SetFlags,
                     typeof(DOrtModelCompilationOptions_SetFlags));
+
+            OrtModelCompilationOptions_SetEpContextBinaryInformation =
+                (DOrtModelCompilationOptions_SetEpContextBinaryInformation)Marshal.GetDelegateForFunctionPointer(
+                    _compileApi.ModelCompilationOptions_SetEpContextBinaryInformation,
+                    typeof(DOrtModelCompilationOptions_SetEpContextBinaryInformation));
+
+            OrtModelCompilationOptions_SetOutputModelWriteFunc =
+                (DOrtModelCompilationOptions_SetOutputModelWriteFunc)Marshal.GetDelegateForFunctionPointer(
+                    _compileApi.ModelCompilationOptions_SetOutputModelWriteFunc,
+                    typeof(DOrtModelCompilationOptions_SetOutputModelWriteFunc));
+
+            OrtModelCompilationOptions_SetOutputModelHandleInitializerFunc =
+                (DOrtModelCompilationOptions_SetOutputModelHandleInitializerFunc)Marshal.GetDelegateForFunctionPointer(
+                    _compileApi.ModelCompilationOptions_SetOutputModelHandleInitializerFunc,
+                    typeof(DOrtModelCompilationOptions_SetOutputModelHandleInitializerFunc));
 
         }
     }

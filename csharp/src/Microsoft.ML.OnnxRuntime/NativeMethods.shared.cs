@@ -2383,6 +2383,42 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate ref CompileApi.OrtCompileApi DOrtGetCompileApi();
 #endif
         public static DOrtGetCompileApi OrtGetCompileApi;
+
+        /// <summary>
+        /// Delegate called by ORT to write a buffer (ONNX model bytes) to a custom destination (e.g., file or stream).
+        /// </summary>
+        /// <param name="state">State that was provided in when the delegate was registered.</param>
+        /// <param name="buffer">The buffer to write.</param>
+        /// <param name="bufferNumBytes">The size of the buffer in bytes.</param>
+        /// <returns>OrtStatus*</returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtWriteBufferDelegate(
+            IntPtr /* void* */ state,
+            IntPtr /* const void* */ buffer,
+            UIntPtr /* size_t */ bufferNumBytes
+        );
+
+        /// <summary>
+        /// Function called by ORT to allow user to specify how an initializer should be saved while compiling
+        /// a model, that is, either written to an external file or stored within the model. ORT calls this function
+        /// for every initializer.
+        /// </summary>
+        /// <param name="state">State that was provided when the delegate was registered.</param>
+        /// <param name="initializerName">The initializer's name.</param>
+        /// <param name="initializerValue">The OrtValue containing the initializer's data, type, and shape</param>
+        /// <param name="externalInfo">The original initializer's location in an external file, or NULL.</param>
+        /// <param name="newExternalInfo">Output parameter set to a new OrtExternalInitializerInfo instance
+        /// indicating the location where the function implementation stored the initializer data. If the function
+        /// implementation sets `newExternalInfo` to NULL, ORT stores the initializer within the generated model.</param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtHandleInitializerDataDelegate(
+            IntPtr /* void* */ state,
+            byte[] /* const char* */ initializerName,
+            IntPtr /* const OrtValue* */ initializerValue,
+            IntPtr /* const OrtExternalInitializerInfo* */ externalInfo,
+            out IntPtr /* OrtExternalInitializerInfo** */ newExternalInfo
+        );
 #endregion
 
 #region Auto EP API related

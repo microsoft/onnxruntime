@@ -130,6 +130,101 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeMethods.CompileApi.OrtModelCompilationOptions_SetFlags(handle, (uint)flags));
         }
 
+        /// <summary>
+        /// Sets information related to EP context binary file. The Ep uses this information to decide the
+        /// location and context binary file name when compiling with both the input and output models
+        /// stored in buffers.
+        /// </summary>
+        /// <param name="outputDirectory">Path to the model directory.</param>
+        /// <param name="modelName">The name of the model.</param>
+        public void SetEpContextBinaryInformation(string outputDirectory, string modelName)
+        {
+            var platformOutputDirectory = NativeOnnxValueHelper.GetPlatformSerializedString(outputDirectory);
+            var platformModelName = NativeOnnxValueHelper.GetPlatformSerializedString(modelName);
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextBinaryInformation(
+                    handle, platformOutputDirectory, platformModelName));
+        }
+
+        /// <summary>
+        /// Sets a delegate that is called by ORT to write out the output model's serialized ONNX bytes.
+        /// The provided delegate may be called repeatedly until the entire output model has been written out.
+        /// Each call to the delegate is expected to consume/handle the entire input buffer.
+        /// </summary>
+        /// <param name="writeBufferDelegate">The delegate called by ORT to write out the model.</param>
+        public void SetOutputModelWriteBufferDelegate(WriteBufferDelegate writeBufferDelegate)
+        {
+            ReleaseWriteBufferDelegate();
+
+            _writeBufferConnector = new WriteBufferConnector(writeBufferDelegate);
+            _writeBufferDelegate = new NativeMethods.DOrtWriteBufferDelegate(
+                WriteBufferConnector.WriteBufferDelegateWrapper);
+
+            // make sure these stay alive. not sure if this is necessary when they're class members though
+            _writeBufferConnectorHandle = GCHandle.Alloc(_writeBufferConnector);
+            _writeBufferDelegateHandle = GCHandle.Alloc(_writeBufferDelegate);
+
+            IntPtr funcPtr = Marshal.GetFunctionPointerForDelegate(_writeBufferDelegate);
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetOutputModelWriteFunc(
+                    handle,
+                    funcPtr,
+                    GCHandle.ToIntPtr(_writeBufferConnectorHandle)));
+        }
+
+        #region Delegate helpers
+        /// <summary>
+        /// Delegate to write/save a buffer containing ONNX model bytes to a custom destination.
+        /// </summary>
+        /// <param name="buffer">The buffer to write out.</param>
+        public delegate void WriteBufferDelegate(ReadOnlySpan<byte> buffer);
+
+        /// <summary>
+        /// Class to bridge the C# and native worlds for the "write buffer" delegate
+        /// </summary>
+        internal class WriteBufferConnector
+        {
+            private readonly WriteBufferDelegate _csharpDelegate;
+
+            internal WriteBufferConnector(WriteBufferDelegate writeBufferDelegate)
+            {
+                _csharpDelegate = writeBufferDelegate;
+            }
+
+            public static IntPtr WriteBufferDelegateWrapper(IntPtr /* void* */ state,
+                                                            IntPtr /* const void* */ buffer,
+                                                            UIntPtr /* size_t */ bufferNumBytes)
+            {
+                try
+                {
+
+                    WriteBufferConnector connector = (WriteBufferConnector)GCHandle.FromIntPtr(state).Target;
+                    ReadOnlySpan<byte> bufferSpan;
+
+                    unsafe
+                    {
+                        // NOTE: A Span<byte> can only view 2GB of data. This is fine because ORT does not write out
+                        // chunks that large. However, if we ever need to, the solution is to just write a loop here
+                        // that repeatedly calls the delegate with smaller chunks of data.
+                        bufferSpan = new ReadOnlySpan<byte>(buffer.ToPointer(), checked((int)bufferNumBytes));
+                    }
+
+                    connector._csharpDelegate(bufferSpan);
+                }
+                catch (Exception ex)
+                {
+                    var error = $"The C# WriteBuffer delegate threw an exception: {ex.Message}";
+                    IntPtr status = NativeMethods.OrtCreateStatus((uint)ErrorCode.Fail,
+                                            NativeOnnxValueHelper.StringToZeroTerminatedUtf8(error));
+                    return status;
+                }
+
+                return IntPtr.Zero;
+            }
+        }
+        #endregion
+
         internal IntPtr Handle => handle;
 
 
@@ -146,7 +241,48 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeMethods.CompileApi.OrtReleaseModelCompilationOptions(handle);
             handle = IntPtr.Zero;
+
+            ReleaseWriteBufferDelegate();
             return true;
         }
+
+        /// <summary>
+        /// Release resources for the "write buffer" delegate set via SetOutputModelWriteBufferDelegate.
+        /// </summary>
+        private void ReleaseWriteBufferDelegate()
+        {
+            if (_writeBufferConnectorHandle.IsAllocated)
+            {
+                _writeBufferConnectorHandle.Free();
+                _writeBufferConnector = null;
+            }
+
+            if (_writeBufferDelegateHandle.IsAllocated)
+            {
+                _writeBufferDelegateHandle.Free();
+                _writeBufferDelegate = null;
+            }
+        }
+
+        /// <summary>
+        /// Instance of helper class to connect C and C# usage of the "write buffer" delegate.
+        /// </summary>
+        WriteBufferConnector _writeBufferConnector = null;
+
+        /// <summary>
+        /// Handle to the "write buffer" delegate connector that is passed to the C API as state for the
+        /// "write buffer" delegate.
+        /// </summary>
+        GCHandle _writeBufferConnectorHandle = default;
+
+        /// <summary>
+        /// Delegate instance for "write buffer" that is provided to the C API.
+        /// </summary>
+        NativeMethods.DOrtWriteBufferDelegate _writeBufferDelegate = null;
+
+        /// <summary>
+        /// Handle to the "write buffer" delegate (ensures stays alive).
+        /// </summary>
+        GCHandle _writeBufferDelegateHandle = default;
     }
 }

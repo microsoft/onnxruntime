@@ -45,6 +45,7 @@ public class CompileApiTests
             UIntPtr bytesSize = new UIntPtr();
             var allocator = OrtAllocator.DefaultInstance;
             compileOptions.SetOutputModelBuffer(allocator, ref bytePtr, ref bytesSize);
+            compileOptions.SetEpContextBinaryInformation("./", "squeezenet.onnx");
 
             compileOptions.CompileModel();
 
@@ -113,6 +114,38 @@ public class CompileApiTests
             {
                 Assert.Contains("exists already", ex.Message);
             }
+
+            if (File.Exists(output_model_file))
+            {
+                File.Delete(output_model_file);
+            }
+        }
+    }
+
+    [Fact]
+    public void WriteOutModelWithDelegate()
+    {
+        var sess_options = new SessionOptions();
+
+        using (var compileOptions = new OrtModelCompilationOptions(sess_options))
+        {
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+            var output_model_file = "squeezenet_write_delegate_ctx.onnx";
+
+            using (FileStream fs = new FileStream(output_model_file, FileMode.Create, FileAccess.Write))
+            {
+                void BasicWriteBufferDelegate(ReadOnlySpan<byte> buffer)
+                {
+                    Assert.True(buffer.Length > 0);
+                    fs.Write(buffer.ToArray(), 0, buffer.Length);  // Write it out to a file
+                }
+
+                // Compile and generate an output model.
+                compileOptions.SetInputModelFromBuffer(model);
+                compileOptions.SetOutputModelWriteBufferDelegate(BasicWriteBufferDelegate);
+                compileOptions.CompileModel();
+            }
+            Assert.True(File.Exists(output_model_file));
 
             if (File.Exists(output_model_file))
             {
